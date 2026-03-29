@@ -1,0 +1,181 @@
+use std::fmt;
+
+/// Identity of an authenticated agent.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AgentIdentity {
+    pub name: String,
+    pub permissions: String,
+}
+
+impl fmt::Display for AgentIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}({})", self.name, self.permissions)
+    }
+}
+
+/// Context available to tool handlers during a call.
+#[derive(Debug, Clone)]
+pub struct CallContext {
+    pub agent: AgentIdentity,
+    pub session_id: String,
+}
+
+/// Error returned by authentication.
+#[derive(Debug, thiserror::Error)]
+pub enum AuthError {
+    #[error("missing authorization header")]
+    MissingToken,
+    #[error("invalid token")]
+    InvalidToken,
+    #[error("agent not found: {0}")]
+    AgentNotFound(String),
+}
+
+/// Trait for pluggable authentication backends.
+///
+/// Implementations extract agent identity from HTTP request headers.
+pub trait Authenticator: Send + Sync + 'static {
+    fn authenticate(
+        &self,
+        headers: &axum::http::HeaderMap,
+    ) -> Result<AgentIdentity, AuthError>;
+}
+
+/// Token-based authenticator using BLAKE3-hashed bearer tokens.
+pub struct TokenAuthenticator {
+    /// Map from BLAKE3 hash of token → AgentIdentity.
+    agents: std::collections::HashMap<String, AgentIdentity>,
+}
+
+impl TokenAuthenticator {
+    pub fn new() -> Self {
+        Self {
+            agents: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Register an agent by raw token. The token is hashed immediately.
+    pub fn register(&mut self, token: &str, identity: AgentIdentity) {
+        let hash = Self::hash_token(token);
+        self.agents.insert(hash, identity);
+    }
+
+    fn hash_token(token: &str) -> String {
+        // Placeholder: use a simple hash for now.
+        // In production, use blake3::hash(token.as_bytes()).to_hex().to_string()
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        token.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    }
+}
+
+impl Authenticator for TokenAuthenticator {
+    fn authenticate(
+        &self,
+        headers: &axum::http::HeaderMap,
+    ) -> Result<AgentIdentity, AuthError> {
+        let header = headers
+            .get("authorization")
+            .ok_or(AuthError::MissingToken)?;
+
+        let value = header.to_str().map_err(|_| AuthError::InvalidToken)?;
+        let token = value
+            .strip_prefix("Bearer ")
+            .ok_or(AuthError::InvalidToken)?;
+
+        let hash = Self::hash_token(token);
+        self.agents
+            .get(&hash)
+            .cloned()
+            .ok_or(AuthError::InvalidToken)
+    }
+}
+
+/// No-op authenticator that always returns a default identity.
+/// For development/testing only.
+pub struct NoAuthenticator {
+    pub default_identity: AgentIdentity,
+}
+
+impl Authenticator for NoAuthenticator {
+    fn authenticate(
+        &self,
+        _headers: &axum::http::HeaderMap,
+    ) -> Result<AgentIdentity, AuthError> {
+        Ok(self.default_identity.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderMap;
+
+    fn test_identity() -> AgentIdentity {
+        AgentIdentity {
+            name: "test-agent".to_string(),
+            permissions: "developer".to_string(),
+        }
+    }
+
+    #[test]
+    fn token_auth_register_and_authenticate() {
+        let mut auth = TokenAuthenticator::new();
+        auth.register("secret-token-123", test_identity());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer secret-token-123".parse().unwrap());
+
+        let identity = auth.authenticate(&headers).unwrap();
+        assert_eq!(identity.name, "test-agent");
+        assert_eq!(identity.permissions, "developer");
+    }
+
+    #[test]
+    fn token_auth_missing_header() {
+        let auth = TokenAuthenticator::new();
+        let headers = HeaderMap::new();
+        let err = auth.authenticate(&headers).unwrap_err();
+        assert!(matches!(err, AuthError::MissingToken));
+    }
+
+    #[test]
+    fn token_auth_invalid_token() {
+        let mut auth = TokenAuthenticator::new();
+        auth.register("correct-token", test_identity());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer wrong-token".parse().unwrap());
+
+        let err = auth.authenticate(&headers).unwrap_err();
+        assert!(matches!(err, AuthError::InvalidToken));
+    }
+
+    #[test]
+    fn token_auth_missing_bearer_prefix() {
+        let auth = TokenAuthenticator::new();
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Token abc".parse().unwrap());
+
+        let err = auth.authenticate(&headers).unwrap_err();
+        assert!(matches!(err, AuthError::InvalidToken));
+    }
+
+    #[test]
+    fn no_auth_always_succeeds() {
+        let auth = NoAuthenticator {
+            default_identity: test_identity(),
+        };
+        let headers = HeaderMap::new();
+        let identity = auth.authenticate(&headers).unwrap();
+        assert_eq!(identity.name, "test-agent");
+    }
+
+    #[test]
+    fn agent_identity_display() {
+        let id = test_identity();
+        assert_eq!(format!("{id}"), "test-agent(developer)");
+    }
+}
