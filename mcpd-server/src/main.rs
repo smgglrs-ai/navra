@@ -1,4 +1,5 @@
 mod config;
+mod tray;
 
 use clap::{Parser, Subcommand};
 use mcpd_core::permissions::{PathAcl, PermissionEngine};
@@ -18,6 +19,9 @@ enum Commands {
         /// Path to config file
         #[arg(short, long)]
         config: Option<String>,
+        /// Disable system tray icon
+        #[arg(long)]
+        no_tray: bool,
     },
     /// Generate or manage agent tokens
     Token {
@@ -57,9 +61,9 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Commands::Serve { config: config_path } => {
+        Commands::Serve { config: config_path, no_tray } => {
             let cfg = config::Config::load(config_path.as_deref())?;
-            serve(cfg).await?;
+            serve(cfg, no_tray).await?;
         }
         Commands::Token { action } => match action {
             TokenAction::Generate { name, permissions } => {
@@ -106,7 +110,7 @@ fn build_perm_engine(cfg: &config::Config) -> PermissionEngine {
     engine
 }
 
-async fn serve(cfg: config::Config) -> anyhow::Result<()> {
+async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     tracing::info!("Starting mcpd");
 
     let perm_engine = Arc::new(build_perm_engine(&cfg));
@@ -150,12 +154,27 @@ async fn serve(cfg: config::Config) -> anyhow::Result<()> {
         builder = builder.module(docs);
     }
 
-    // --- Future modules would be registered here ---
-    // if cfg.git_enabled() { builder = builder.module(git_module); }
-
     let server = Arc::new(builder.build());
     tracing::info!("Registered {} tools", server.tool_count());
 
+    // --- System tray ---
+    if !no_tray {
+        match tray::spawn_tray().await {
+            Ok((cmd_rx, handle)) => {
+                tracing::info!("System tray icon active");
+                tokio::spawn(tray::run_tray_updater(
+                    handle,
+                    approvals.clone(),
+                    cmd_rx,
+                ));
+            }
+            Err(e) => {
+                tracing::warn!("System tray unavailable: {e}");
+            }
+        }
+    }
+
+    // --- HTTP transport ---
     let router = mcpd_core::transport::build_router(server);
 
     let addr = cfg.server.listen_addr();
