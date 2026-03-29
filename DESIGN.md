@@ -2,371 +2,437 @@
 
 ## Overview
 
-**mcpd** is a workspace of two Rust crates:
+**mcpd** is a composable, secure MCP (Model Context Protocol) server
+designed to run as a user-level systemd unit on Linux desktops. It
+exposes user documents and local resources to AI agents through a rich
+permission model with human-in-the-loop approval.
 
-- **mcpd-core**: A lightweight, reusable MCP (Model Context Protocol) server
-  framework implementing the 2025-03-26 specification.
-- **mcpd-docs**: A secure document server built on mcpd-core, designed to run
-  as a user-level systemd unit and expose user documents to AI agents through
-  a rich permission model.
+The architecture is modular: feature **modules** plug into a shared
+framework. Each module contributes MCP tools. The permission engine,
+approval workflow, and transport are shared across all modules.
+
+## Crate Structure
+
+```
+mcpd/
+├── mcpd-core         MCP framework, permissions, approval, D-Bus, notify
+├── mcpd-mod-docs     Document module (search, read, write, edit, delete, list, info)
+└── mcpd-server       Binary: config, module loading, system tray
+```
+
+| Crate | Role |
+|-------|------|
+| `mcpd-core` | MCP protocol (JSON-RPC 2.0, Streamable HTTP), Module trait, permission engine (string-based ops, deny-wins ACLs), approval store with grants cache, D-Bus notifier, auth |
+| `mcpd-mod-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
+| `mcpd-server` | Binary that loads modules from config, system tray (ksni), CLI |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      AI Agent                           │
-│                  (Claude, etc.)                          │
-└──────────────────────┬──────────────────────────────────┘
-                       │ MCP Streamable HTTP
-                       │ (Unix socket or TCP)
-┌──────────────────────▼──────────────────────────────────┐
-│                    mcpd-docs                             │
-│  ┌────────────┐ ┌──────────┐ ┌────────────────────────┐ │
-│  │ Permission │ │ Approval │ │    Document Tools      │ │
-│  │   Engine   │ │ Workflow │ │ search/read/write/list │ │
-│  └─────┬──────┘ └────┬─────┘ └──────────┬─────────────┘ │
-│        │              │                  │               │
-│  ┌─────▼──────────────▼──────────────────▼─────────────┐ │
-│  │              Index Store                             │ │
-│  │         SQLite (FTS5 + vec)                          │ │
-│  └─────────────────────▲───────────────────────────────┘ │
-│                        │                                 │
-│  ┌─────────────────────┴───────────────────────────────┐ │
-│  │           File Watcher (notify)                     │ │
-│  │         Content Extraction Pipeline                 │ │
-│  └─────────────────────────────────────────────────────┘ │
-└──────────────────────┬──────────────────────────────────┘
-                       │ uses
-┌──────────────────────▼──────────────────────────────────┐
-│                    mcpd-core                             │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐ │
-│  │  JSON-RPC    │ │  MCP Proto   │ │ Streamable HTTP  │ │
-│  │  2.0 Types   │ │  Messages    │ │ Transport (axum) │ │
-│  └──────────────┘ └──────────────┘ └──────────────────┘ │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐ │
-│  │  Session     │ │  Tool/Res    │ │  Auth Trait      │ │
-│  │  Manager     │ │  Registry    │ │  (pluggable)     │ │
-│  └──────────────┘ └──────────────┘ └──────────────────┘ │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                          AI Agent (Claude, etc.)                     │
+└────────────────────────────┬─────────────────────────────────────────┘
+                             │ MCP Streamable HTTP
+                             │ (Unix socket or TCP)
+┌────────────────────────────▼─────────────────────────────────────────┐
+│                          mcpd-server                                 │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐ │
+│  │ System Tray │  │    Config    │  │      Module Loader          │ │
+│  │   (ksni)    │  │   (TOML)    │  │ [modules.docs] → DocsModule │ │
+│  │ Approve/Deny│  │             │  │ [modules.git]  → (future)   │ │
+│  └──────┬──────┘  └─────────────┘  └──────────────┬──────────────┘ │
+│         │                                          │                │
+│  ┌──────▼──────────────────────────────────────────▼──────────────┐ │
+│  │                        mcpd-core                               │ │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐  │ │
+│  │  │ JSON-RPC   │ │ MCP Proto  │ │ Streamable │ │   Auth     │  │ │
+│  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP(axum) │ │ (token)    │  │ │
+│  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘  │ │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐  │ │
+│  │  │ Permission │ │  Approval  │ │  D-Bus     │ │  Module    │  │ │
+│  │  │ Engine     │ │  Store +   │ │  Notifier  │ │  Trait     │  │ │
+│  │  │ (ACLs)     │ │  Grants    │ │            │ │            │  │ │
+│  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │                     mcpd-mod-docs                              │ │
+│  │  ┌──────────────────────────────────────────────────────────┐  │ │
+│  │  │ Tools: docs_search, docs_read, docs_write, docs_edit,   │  │ │
+│  │  │        docs_delete, docs_list, docs_info,                │  │ │
+│  │  │        docs_approve, docs_deny                           │  │ │
+│  │  └──────────────────────┬───────────────────────────────────┘  │ │
+│  │                         │                                      │ │
+│  │  ┌──────────────────────▼───────────────────────────────────┐  │ │
+│  │  │              SQLite Index (FTS5)                          │  │ │
+│  │  └──────────────────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
+
+         ┌──────────────────────────────────────────┐
+         │         Desktop Integration              │
+         │  ┌────────────────────────────────────┐  │
+         │  │  D-Bus Notifications               │  │
+         │  │  (org.freedesktop.Notifications)   │  │
+         │  │  Approve/Deny action buttons       │  │
+         │  └────────────────────────────────────┘  │
+         │  ┌────────────────────────────────────┐  │
+         │  │  System Tray (StatusNotifierItem)  │  │
+         │  │  KDE, Gnome, XFCE, Sway, etc.     │  │
+         │  │  Pending approvals, agents, pause  │  │
+         │  └────────────────────────────────────┘  │
+         └──────────────────────────────────────────┘
 ```
 
-## mcpd-core
+## Module System
+
+### Module Trait
+
+Modules are the unit of composition. Each module is a Rust crate
+implementing the `Module` trait:
+
+```rust
+pub trait Module: Send + Sync + 'static {
+    fn name(&self) -> &str;
+    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)>;
+}
+```
+
+### Registration
+
+Compile-time composition — modules are wired in `main.rs`:
+
+```rust
+McpServer::builder()
+    .name("mcpd")
+    .module(DocsModule::new(perm_engine, index, approvals, notifier))
+    // .module(GitModule::new(...))  // future
+    .authenticator(token_auth)
+    .build()
+```
+
+Duplicate tool names are detected at startup (panic on conflict).
+Tool names must be prefixed with the module name: `docs_read`,
+`git_status`, etc.
+
+### Config-driven
+
+Modules are enabled/disabled in config:
+
+```toml
+[modules.docs]
+enabled = true
+db = "$XDG_DATA_HOME/mcpd/index.db"
+
+# [modules.git]
+# enabled = true
+```
+
+### Adding a Module
+
+1. Create crate implementing `Module` → provides `(ToolDefinition, ToolHandler)` pairs
+2. Add dependency in `mcpd-server/Cargo.toml`
+3. Add config struct in `config.rs`
+4. Add `if cfg.xxx_enabled() { builder = builder.module(xxx); }` in `main.rs`
+
+## MCP Protocol
 
 ### JSON-RPC 2.0 Layer
-
-Standard JSON-RPC 2.0 implementation:
 
 - `Request` — method + params + id
 - `Response` — result or error + id
 - `Notification` — method + params (no id)
-- `BatchRequest` / `BatchResponse`
-- Standard error codes (-32700 parse, -32600 invalid, -32601 not found,
-  -32602 invalid params, -32603 internal)
+- Standard error codes (-32700, -32600, -32601, -32602, -32603)
 
-### MCP Protocol (2025-03-26 spec)
-
-Lifecycle:
+### MCP Lifecycle (2025-03-26 spec)
 
 1. Client sends `initialize` with capabilities and `clientInfo`
 2. Server responds with `serverInfo` and capabilities
 3. Client sends `notifications/initialized`
-4. Normal operation: `tools/list`, `tools/call`, `resources/list`, etc.
-
-Server capabilities declared:
-
-```json
-{
-  "capabilities": {
-    "tools": { "listChanged": true },
-    "resources": { "subscribe": true, "listChanged": true }
-  }
-}
-```
+4. Normal operation: `tools/list`, `tools/call`
 
 ### Streamable HTTP Transport
 
-Single HTTP endpoint (`POST /mcp`) per the 2025-03-26 spec:
+Single HTTP endpoint (`POST /mcp`):
 
 - **Request-Response**: Client POSTs JSON-RPC, server responds with
   `application/json`.
-- **Streaming**: Server may respond with `text/event-stream` (SSE) for
-  long-running operations or server-initiated messages.
-- **Session management**: Server issues `Mcp-Session-Id` header on
-  `initialize`. Client includes it in subsequent requests.
-- **Resumability**: `Last-Event-ID` header for SSE reconnection.
+- **Streaming**: Server may respond with `text/event-stream` (SSE).
+- **Session management**: `Mcp-Session-Id` header.
 
 Transport binding:
 
-- **Unix domain socket** (default): `$XDG_RUNTIME_DIR/mcpd/docs.sock`
-  — no network exposure, filesystem permissions enforce access.
-- **TCP** (optional): `127.0.0.1:port` for development/debugging.
+- **Unix domain socket** (default): `$XDG_RUNTIME_DIR/mcpd/mcpd.sock`
+- **TCP** (optional): `127.0.0.1:9315` for development
 
-### Tool & Resource Registry
+### Auth
 
-Builder pattern for server construction:
-
-```rust
-McpServer::builder()
-    .name("mcpd-docs")
-    .version("0.1.0")
-    .tool(search_tool)
-    .tool(read_tool)
-    .resource_template("doc://{path}")
-    .auth(token_auth)
-    .build()
-```
-
-Tools implement a trait:
+Pluggable via `Authenticator` trait. Token-based implementation included:
 
 ```rust
-#[async_trait]
-pub trait Tool: Send + Sync + 'static {
-    fn definition(&self) -> ToolDefinition;
-    async fn call(
-        &self,
-        params: serde_json::Value,
-        ctx: &CallContext,
-    ) -> Result<ToolResult, ToolError>;
-}
-```
-
-### Auth Trait
-
-Pluggable authentication — mcpd-core defines the trait, applications
-provide implementations:
-
-```rust
-#[async_trait]
 pub trait Authenticator: Send + Sync + 'static {
-    async fn authenticate(&self, req: &Request) -> Result<AgentIdentity, AuthError>;
+    fn authenticate(&self, headers: &HeaderMap) -> Result<AgentIdentity, AuthError>;
 }
 ```
 
-`AgentIdentity` carries the agent's name/ID and is threaded through
-`CallContext` so tools and permission checks can access it.
+`AgentIdentity` carries the agent's name and permission set name,
+threaded through `CallContext` to all tool handlers.
 
-## mcpd-docs
-
-### Permission Model
+## Permission Model
 
 Four dimensions, evaluated in order:
 
-#### 1. Agent Identity
+### 1. Agent Identity
 
-Each agent has a unique identity (token-based). Agents are registered in
-the configuration file with a name, token, and permission set.
+Token-based. Agents registered in config with a permission set:
 
 ```toml
 [[agents]]
 name = "claude-code"
-token = "mcd_..."  # generated via `mcpd-docs token generate`
+token_hash = "$blake3$..."
 permissions = "developer"
-
-[[agents]]
-name = "background-indexer"
-token = "mcd_..."
-permissions = "readonly"
 ```
 
-#### 2. Path ACLs
+### 2. Path ACLs (deny-wins)
 
-Glob-pattern rules controlling which paths each permission set can access:
+Glob patterns controlling path access per permission set:
 
 ```toml
 [permissions.developer]
-allow = [
-    "~/Documents/**",
-    "~/Code/**/*.md",
-    "~/Notes/**",
-]
-deny = [
-    "~/Documents/private/**",
-    "**/.env",
-    "**/*secret*",
-    "**/credentials*",
-]
-
-[permissions.readonly]
-allow = ["~/Documents/shared/**"]
-deny = []
+allow = ["~/Documents/**", "~/Code/**"]
+deny = ["**/.env", "**/*secret*", "**/credentials*"]
 ```
 
-Evaluation: deny rules are checked first (deny-wins). Paths are
-canonicalized before matching to prevent traversal attacks. Symlinks
-are resolved and re-checked against ACLs.
+- Deny rules checked first (deny-wins)
+- Paths canonicalized before matching (prevents traversal)
+- Symlinks resolved and re-checked
+- `dir/**` also matches `dir` itself (for listing)
 
-#### 3. Operation Permissions
+### 3. Operation Permissions (string-based, namespaced)
 
-Fine-grained per-operation control:
+Operations are strings, enabling module namespacing:
 
 ```toml
-[permissions.developer]
-operations = ["read", "write", "search", "list", "index"]
-
-[permissions.readonly]
-operations = ["read", "search", "list"]
+operations = ["read", "write", "search", "list", "git.status", "git.diff"]
 ```
 
-Operations:
-- `read` — read document content
-- `write` — create, update, or delete documents
-- `search` — full-text and semantic search
-- `list` — list directory contents
-- `index` — trigger re-indexing
+Modules define their own operations without modifying a central enum.
 
-#### 4. Human-in-the-Loop Approval
+### 4. Human-in-the-Loop Approval
 
-Certain operations can require explicit user approval before execution:
+Operations can require explicit user approval:
 
 ```toml
-[permissions.developer]
-approve = ["write"]  # writes need human approval
+approve = ["write", "git.commit"]
 ```
 
-Approval flow:
-1. Agent calls a tool requiring approval
-2. Server returns a `pending_approval` response with a request ID
-3. Server sends a desktop notification (via D-Bus `org.freedesktop.Notifications`)
-4. User approves/denies via:
-   - `mcpd-docs approve <request-id>` CLI command
-   - D-Bus notification action button
-5. Server resolves the pending request
+## Approval System
 
-Pending requests expire after a configurable timeout (default: 5 minutes).
+### Dual-Channel, Non-Blocking
 
-### Document Indexing
+When a tool requires approval, the server returns immediately with an
+approval-needed response (not blocking the HTTP connection) and sends
+a D-Bus notification in parallel. Three resolution channels:
 
-#### Storage: SQLite
+```
+Agent: docs_write(path, content)
+Server: "Approval required. Request ID: abc-123.
+         Call docs_approve with this request_id to approve."
+        (+ D-Bus notification with Approve/Deny buttons)
+        (+ tray icon shows pending approval)
 
-Single database at `$XDG_DATA_HOME/mcpd-docs/index.db`:
+Resolution via ANY channel:
+  1. Agent calls docs_approve(request_id=abc-123)     ← MCP-native
+  2. User clicks D-Bus notification "Approve" button  ← Desktop
+  3. User clicks tray menu Approve                    ← Tray icon
+  4. CLI: mcpd approve abc-123                        ← Terminal
+
+Server: "Approved"
+
+Agent: docs_write(path, content)  # retry
+Server: "Written 42 bytes to /path"  # grant consumed
+```
+
+### Grants Cache
+
+When an approval is resolved as `Approved`, a grant is cached:
+
+- Key: `(agent_name, operation, path)`
+- TTL: 5 minutes
+- Single-use: consumed on the next matching `check_perm` call
+
+This allows the agent to retry the operation after approval without
+needing another approval cycle.
+
+### ApprovalStore
+
+```rust
+pub struct ApprovalStore {
+    pending: HashMap<String, PendingRequest>,  // request_id → oneshot channel
+    grants: Vec<Grant>,                        // cached approvals for retry
+    timeout: Duration,                         // approval expiry
+    grant_ttl: Duration,                       // grant expiry (5 min)
+}
+```
+
+- `request()` → creates pending entry, returns `(ApprovalRequest, Receiver)`
+- `approve(id)` / `deny(id)` → resolves channel + caches grant (if approved)
+- `check_grant(agent, op, path)` → consumes matching grant
+- `wait(rx)` → async wait with timeout (for blocking mode if needed)
+
+### Notifier Trait
+
+```rust
+pub trait Notifier: Send + Sync + 'static {
+    fn notify(&self, request: &ApprovalRequest, store: Arc<ApprovalStore>)
+        -> BoxFuture<'_, Result<(), NotifyError>>;
+    fn dismiss(&self, request_id: &str)
+        -> BoxFuture<'_, Result<(), NotifyError>>;
+}
+```
+
+Implementations:
+- `DbusNotifier` — sends `org.freedesktop.Notifications` with action buttons,
+  listens for `ActionInvoked` / `NotificationClosed` signals via zbus
+- `NoopNotifier` — logs to tracing (headless/SSH fallback)
+
+## MCP Tools (docs module)
+
+| Tool | Permission | Description |
+|------|-----------|-------------|
+| `docs_search` | search | Full-text search via FTS5 |
+| `docs_read` | read | Read file with optional offset/limit (line-based partial reads) |
+| `docs_write` | write | Create or overwrite file, auto-indexes |
+| `docs_edit` | write | Surgical string replacement (old_string → new_string, must be unique) |
+| `docs_delete` | write | Delete file, removes from index |
+| `docs_list` | list | List directory (filters entries by path ACL) |
+| `docs_info` | read | File metadata (size, lines, mime, modified, indexed) without content |
+| `docs_approve` | — | Approve a pending request by ID |
+| `docs_deny` | — | Deny a pending request by ID |
+
+### Path Security
+
+All path-accepting tools pass through `resolve_path()`:
+
+1. Expand `~` to home directory
+2. Reject relative paths
+3. Canonicalize (resolves symlinks, eliminates `..`)
+4. For reads: path must exist
+5. For writes: parent directory must exist
+
+Then `check_perm()`:
+
+1. Check grants cache (from previous approval)
+2. Check operation permission (string match)
+3. Check deny rules (glob, deny-wins)
+4. Check allow rules (glob)
+5. If `requires_approval`: create request + notify, return approval-needed
+
+### Document Indexing (SQLite FTS5)
+
+Single database at `$XDG_DATA_HOME/mcpd/index.db`:
 
 ```sql
--- Document metadata
 CREATE TABLE documents (
     id          INTEGER PRIMARY KEY,
     path        TEXT UNIQUE NOT NULL,
+    title       TEXT NOT NULL DEFAULT '',
+    content     TEXT NOT NULL DEFAULT '',
     mime_type   TEXT NOT NULL,
     size        INTEGER NOT NULL,
-    modified_at TEXT NOT NULL,  -- ISO 8601
+    modified_at TEXT NOT NULL,
     indexed_at  TEXT NOT NULL,
-    checksum    TEXT NOT NULL   -- BLAKE3
+    checksum    TEXT NOT NULL
 );
 
--- Full-text search (FTS5)
 CREATE VIRTUAL TABLE documents_fts USING fts5(
     path, title, content,
     content=documents,
     content_rowid=id,
     tokenize='porter unicode61'
 );
-
--- Vector embeddings (sqlite-vec)
-CREATE VIRTUAL TABLE documents_vec USING vec0(
-    id INTEGER PRIMARY KEY,
-    embedding FLOAT[384]  -- all-MiniLM-L6-v2 dimension
-);
-
--- Chunk-level vectors for large documents
-CREATE TABLE chunks (
-    id          INTEGER PRIMARY KEY,
-    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    offset      INTEGER NOT NULL,
-    length      INTEGER NOT NULL,
-    content     TEXT NOT NULL
-);
-
-CREATE VIRTUAL TABLE chunks_vec USING vec0(
-    id INTEGER PRIMARY KEY,
-    embedding FLOAT[384]
-);
 ```
 
-#### Content Extraction
+Thread-safe via `Mutex<Connection>` with WAL mode enabled.
+Auto-indexed on `docs_write` and `docs_edit`.
 
-Pipeline by MIME type:
+## System Tray (ksni)
 
-| Format | Method |
-|--------|--------|
-| text/plain | Direct read |
-| text/markdown | Strip frontmatter, preserve structure |
-| text/html | Strip tags, extract text |
-| application/pdf | `pdf-extract` crate |
-| application/json | Pretty-print + extract string values |
-| text/csv | Parse and flatten |
-| \*/\* (fallback) | Skip binary, attempt UTF-8 decode |
+StatusNotifierItem (SNI) via the `ksni` crate. Works with:
+KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar, MATE.
 
-#### File Watcher
+### Icon States
 
-`notify` crate watches configured paths. On file change:
+| State | Meaning |
+|-------|---------|
+| Active | Running, no pending approvals |
+| NeedsAttention | Pending approval(s) — user action needed |
+| Passive | Server paused |
 
-1. Debounce (500ms) to coalesce rapid edits
-2. Check against path ACLs (only index permitted paths)
-3. Compute BLAKE3 checksum — skip if unchanged
-4. Extract content → update FTS5 index
-5. Generate embeddings → update vector index
+### Menu
 
-### MCP Tools
+```
+┌─────────────────────────────────────────┐
+│  Pending Approvals (N)                  │
+│    claude-code wants to write ~/doc.md  │
+│      ├ Approve                          │
+│      └ Deny                             │
+├─────────────────────────────────────────┤
+│  Connected Agents                       │
+│    claude-code (developer)              │
+│    reader-bot (readonly)                │
+├─────────────────────────────────────────┤
+│  Pause / Resume                         │
+│  Quit                                   │
+└─────────────────────────────────────────┘
+```
 
-| Tool | Operation | Description |
-|------|-----------|-------------|
-| `docs_search` | search | Full-text search with FTS5 ranking |
-| `docs_semantic_search` | search | Vector similarity search |
-| `docs_read` | read | Read document content by path |
-| `docs_write` | write | Create or update a document |
-| `docs_list` | list | List documents in a directory |
-| `docs_index` | index | Trigger re-indexing of a path |
+### Wiring
 
-### MCP Resources
-
-- `doc://{path}` — Individual document as a resource (supports subscribe)
-- `index://status` — Indexing status (document count, last indexed, etc.)
+- `TrayCommand` channel: menu actions → server event loop
+- Background updater polls `ApprovalStore` every 1s
+- `--no-tray` flag for headless/systemd operation
 
 ## Security Model
 
 ### Defense in Depth
 
-1. **Unix socket** — No network exposure. Filesystem permissions (0600)
-   restrict access to the owning user.
-2. **Token authentication** — Each agent must present a valid token.
-   Tokens are BLAKE3-hashed in the config file (never stored in plaintext
-   after initial generation).
-3. **Path canonicalization** — All paths are resolved to absolute paths
-   before ACL evaluation. Symlinks are followed and re-checked.
-   `..` traversal is eliminated.
-4. **Deny-first ACLs** — Deny rules always win. Default-deny for
-   unmatched paths.
-5. **Operation restrictions** — Even with path access, agents can only
-   perform explicitly permitted operations.
-6. **Approval workflow** — Destructive operations can require human
-   confirmation.
-7. **Systemd hardening** — The unit file uses `ProtectHome=read-only`,
-   `ProtectSystem=strict`, `NoNewPrivileges=yes`,
-   `PrivateNetwork=yes` (when using Unix socket only).
+1. **Unix socket** — No network exposure. Filesystem permissions (0600).
+2. **Token authentication** — Bearer tokens, BLAKE3-hashed in config.
+3. **Path canonicalization** — Symlinks resolved, `..` eliminated.
+4. **Deny-first ACLs** — Deny rules always win. Default-deny.
+5. **Operation restrictions** — String-based, module-namespaced.
+6. **Approval workflow** — Three-channel human-in-the-loop.
+7. **Systemd hardening** — `NoNewPrivileges`, `ProtectHome=read-only`,
+   `ProtectSystem=strict`, `MemoryDenyWriteExecute`, etc.
 
 ### Threat Model
 
 | Threat | Mitigation |
 |--------|------------|
-| Malicious agent reads private files | Path ACLs with deny-wins |
-| Agent writes to unauthorized paths | Operation permissions + approval |
-| Path traversal (`../../../etc/passwd`) | Canonicalization before ACL check |
-| Token theft | Hashed storage, Unix socket limits exposure |
-| Prompt injection via document content | Out of scope (agent responsibility) |
-| Denial of service | Systemd resource limits (MemoryMax, CPUQuota) |
+| Agent reads private files | Path ACLs (deny-wins) |
+| Agent writes to unauthorized paths | Operation perms + approval |
+| Path traversal (`../../etc/passwd`) | Canonicalization before ACL check |
+| Token theft | Hashed storage, Unix socket |
+| Agent bypasses approval | Non-blocking return, grant is single-use |
+| Prompt injection via documents | Out of scope (agent responsibility) |
+| Denial of service | Systemd resource limits |
 
 ## Configuration
 
-Default config path: `$XDG_CONFIG_HOME/mcpd-docs/config.toml`
+Default path: `~/.config/mcpd/config.toml`
 
 ```toml
 [server]
-socket = "$XDG_RUNTIME_DIR/mcpd/docs.sock"
-# tcp = "127.0.0.1:9315"  # optional, for development
+# socket = "$XDG_RUNTIME_DIR/mcpd/mcpd.sock"
+tcp = "127.0.0.1:9315"  # development default
 
-[index]
-db = "$XDG_DATA_HOME/mcpd-docs/index.db"
-watch_debounce_ms = 500
-# embedding_model = "all-MiniLM-L6-v2"  # future
+[modules.docs]
+enabled = true
+# db = "$XDG_DATA_HOME/mcpd/index.db"
+
+# [modules.git]
+# enabled = true
 
 [approval]
 timeout_secs = 300
@@ -378,9 +444,9 @@ token_hash = "$blake3$..."
 permissions = "developer"
 
 [permissions.developer]
-allow = ["~/Documents/**", "~/Notes/**"]
-deny = ["**/.env", "**/*secret*"]
-operations = ["read", "write", "search", "list", "index"]
+allow = ["~/Documents/**", "~/Notes/**", "~/Code/**"]
+deny = ["**/.env", "**/*secret*", "**/credentials*"]
+operations = ["read", "write", "search", "list"]
 approve = ["write"]
 
 [permissions.readonly]
@@ -392,17 +458,17 @@ approve = []
 
 ## Systemd Integration
 
-User unit at `~/.config/systemd/user/mcpd-docs.service`:
+User unit at `~/.config/systemd/user/mcpd.service`:
 
 ```ini
 [Unit]
-Description=mcpd-docs — MCP Document Server
+Description=mcpd — Composable MCP Server
 Documentation=https://github.com/user/mcpd
 After=default.target
 
 [Service]
 Type=notify
-ExecStart=%h/.cargo/bin/mcpd-docs serve
+ExecStart=%h/.cargo/bin/mcpd serve
 Restart=on-failure
 RestartSec=5
 
@@ -410,7 +476,7 @@ RestartSec=5
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.local/share/mcpd-docs
+ReadWritePaths=%h/.local/share/mcpd
 RuntimeDirectory=mcpd
 PrivateTmp=yes
 PrivateDevices=yes
@@ -427,14 +493,23 @@ SystemCallArchitectures=native
 WantedBy=default.target
 ```
 
-## CLI Interface
+## CLI
 
 ```
-mcpd-docs serve              Start the server (foreground or systemd)
-mcpd-docs token generate     Generate a new agent token
-mcpd-docs token list         List registered agents
-mcpd-docs approve <id>       Approve a pending request
-mcpd-docs deny <id>          Deny a pending request
-mcpd-docs index <path>       Manually trigger indexing
-mcpd-docs status             Show server status
+mcpd serve [--config path] [--no-tray]   Start the server
+mcpd token generate --name N --perms P   Generate agent token
+mcpd token list                          List registered agents
+mcpd approve <request-id>                Approve a pending request
+mcpd deny <request-id>                   Deny a pending request
+mcpd status                              Show server status
 ```
+
+## Future Work
+
+- **mcpd-mod-git** — Git module (`git_status`, `git_diff`, `git_log`,
+  `git_commit`, `git_branch`) with approval for push/commit
+- **Vector search** — sqlite-vec for semantic similarity
+- **File watcher** — `notify` crate for live re-indexing
+- **Content extraction** — PDF, HTML, CSV pipeline
+- **WASM modules** — WASI P2 component model for third-party plugins
+- **Gnome Keyring** — Token storage via `org.freedesktop.secrets`
