@@ -62,6 +62,13 @@ pub struct PermissionSet {
     pub operations: Vec<String>,
     #[serde(default)]
     pub approve: Vec<String>,
+    /// Safety profile: "standard", "secrets-only", "block", "none"
+    #[serde(default = "default_safety")]
+    pub safety: String,
+}
+
+fn default_safety() -> String {
+    "standard".to_string()
 }
 
 fn default_true() -> bool {

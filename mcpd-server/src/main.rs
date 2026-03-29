@@ -120,6 +120,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         .name("mcpd")
         .version(env!("CARGO_PKG_VERSION"));
 
+    // Register safety profiles per permission set
+    for (name, pset) in &cfg.permissions {
+        let pipeline = mcpd_core::safety::build_pipeline(&pset.safety);
+        tracing::info!(
+            permission_set = %name,
+            safety = %pset.safety,
+            "Safety profile"
+        );
+        builder = builder.safety_profile(name.clone(), pipeline);
+    }
+
     // Build shared approval infrastructure
     let approvals = Arc::new(mcpd_core::permissions::ApprovalStore::new(
         cfg.approval.timeout_secs,

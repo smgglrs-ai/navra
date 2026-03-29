@@ -2,6 +2,7 @@ pub mod auth;
 pub mod notify;
 pub mod permissions;
 pub mod protocol;
+pub mod safety;
 pub mod transport;
 
 mod module;

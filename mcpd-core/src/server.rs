@@ -1,9 +1,10 @@
 use crate::auth::{Authenticator, CallContext};
 use crate::module::Module;
 use crate::protocol::{
-    CallToolParams, CallToolResult, InitializeParams, InitializeResult, ListToolsResult,
+    CallToolParams, CallToolResult, Content, InitializeParams, InitializeResult, ListToolsResult,
     ServerCapabilities, ServerInfo, ToolDefinition, ToolsCapability,
 };
+use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::{Session, SessionStore};
 use std::collections::HashMap;
 use std::future::Future;
@@ -30,6 +31,8 @@ pub struct McpServer {
     tools: HashMap<String, RegisteredTool>,
     pub(crate) sessions: SessionStore,
     pub(crate) authenticator: Arc<dyn Authenticator>,
+    /// Safety filter pipelines keyed by permission set name.
+    safety_pipelines: HashMap<String, FilterPipeline>,
 }
 
 impl McpServer {
@@ -82,10 +85,51 @@ impl McpServer {
         params: CallToolParams,
         ctx: CallContext,
     ) -> CallToolResult {
-        match self.tools.get(&params.name) {
-            Some(tool) => (tool.handler)(params.arguments, ctx).await,
-            None => CallToolResult::error(format!("Unknown tool: {}", params.name)),
+        let result = match self.tools.get(&params.name) {
+            Some(tool) => (tool.handler)(params.arguments, ctx.clone()).await,
+            None => return CallToolResult::error(format!("Unknown tool: {}", params.name)),
+        };
+
+        // Apply safety filters to outbound content
+        if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions) {
+            if pipeline.has_filters() {
+                return self.apply_safety_filter(pipeline, result, &ctx, &params.name);
+            }
         }
+
+        result
+    }
+
+    fn apply_safety_filter(
+        &self,
+        pipeline: &FilterPipeline,
+        mut result: CallToolResult,
+        ctx: &CallContext,
+        tool_name: &str,
+    ) -> CallToolResult {
+        let filter_ctx = FilterContext {
+            agent_name: &ctx.agent.name,
+            operation: tool_name,
+            path: None,
+        };
+
+        let mut filtered_content = Vec::new();
+        for content in result.content.drain(..) {
+            match content {
+                Content::Text(text) => {
+                    match pipeline.process(&text.text, &filter_ctx) {
+                        Ok(processed) => {
+                            filtered_content.push(Content::text(processed));
+                        }
+                        Err(reason) => {
+                            return CallToolResult::error(reason);
+                        }
+                    }
+                }
+            }
+        }
+        result.content = filtered_content;
+        result
     }
 
     pub fn sessions(&self) -> &SessionStore {
@@ -107,6 +151,7 @@ pub struct McpServerBuilder {
     version: String,
     tools: HashMap<String, RegisteredTool>,
     authenticator: Option<Arc<dyn Authenticator>>,
+    safety_pipelines: HashMap<String, FilterPipeline>,
 }
 
 impl McpServerBuilder {
@@ -116,6 +161,7 @@ impl McpServerBuilder {
             version: "0.1.0".to_string(),
             tools: HashMap::new(),
             authenticator: None,
+            safety_pipelines: HashMap::new(),
         }
     }
 
@@ -185,6 +231,16 @@ impl McpServerBuilder {
         self
     }
 
+    /// Set the safety filter pipeline for a permission set.
+    pub fn safety_profile(
+        mut self,
+        permission_set: impl Into<String>,
+        pipeline: FilterPipeline,
+    ) -> Self {
+        self.safety_pipelines.insert(permission_set.into(), pipeline);
+        self
+    }
+
     pub fn build(self) -> McpServer {
         let authenticator = self.authenticator.unwrap_or_else(|| {
             Arc::new(crate::auth::NoAuthenticator {
@@ -201,6 +257,7 @@ impl McpServerBuilder {
             tools: self.tools,
             sessions: SessionStore::new(),
             authenticator,
+            safety_pipelines: self.safety_pipelines,
         }
     }
 }
@@ -456,5 +513,87 @@ mod tests {
         assert_eq!(result.protocol_version, "2025-03-26");
         assert_eq!(result.server_info.name, "test");
         assert_eq!(server.sessions().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn safety_filter_redacts_secrets() {
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |args, _ctx| {
+                Box::pin(async move {
+                    let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                    CallToolResult::text(msg.to_string())
+                })
+            })
+            .safety_profile("dev", crate::safety::build_pipeline("standard"))
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("[REDACTED:aws-key]"));
+                assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn safety_filter_blocks_when_configured() {
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |args, _ctx| {
+                Box::pin(async move {
+                    let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                    CallToolResult::text(msg.to_string())
+                })
+            })
+            .safety_profile("dev", crate::safety::build_pipeline("block"))
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({"message": "SSN: 123-45-6789"}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn no_safety_profile_passes_through() {
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("AKIAIOSFODNN7EXAMPLE") })
+            })
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        // No safety profile configured → content passes through unmodified
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("AKIAIOSFODNN7EXAMPLE"));
+            }
+        }
     }
 }

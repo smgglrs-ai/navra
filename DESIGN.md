@@ -393,6 +393,129 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar, MATE.
 - Background updater polls `ApprovalStore` every 1s
 - `--no-tray` flag for headless/systemd operation
 
+## Content Safety
+
+Two-tier filter pipeline applied to all outbound tool responses,
+between the tool handler and the MCP transport. Modules are unaware
+of filtering — it's a framework-level concern.
+
+```
+Tool handler response
+        │
+        ▼
+┌─── Fast Tier (regex) ──────────┐
+│ API keys, private keys, tokens │  ~microseconds
+│ SSNs, credit cards, phone, PII │  deterministic
+└────────────┬───────────────────┘
+             │
+             ▼
+┌─── ML Tier (ONNX, future) ────┐
+│ Contextual PII, sensitivity    │  ~1-10ms
+│ "medical records", "salaries"  │  confidence-scored
+└────────────┬───────────────────┘
+             │
+             ▼
+  FilterAction: Pass / Redact / Block
+```
+
+### ContentFilter Trait
+
+```rust
+pub trait ContentFilter: Send + Sync + 'static {
+    fn name(&self) -> &str;
+    fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding>;
+}
+
+pub struct Finding {
+    pub start: usize,       // byte offset
+    pub end: usize,
+    pub category: String,   // "aws-key", "ssn", "credit-card"
+    pub confidence: f32,    // 1.0 for regex, model score for ML
+}
+```
+
+### Regex Detectors (implemented)
+
+**SecretFilter** (11 patterns):
+
+| Category | Pattern |
+|----------|---------|
+| `aws-key` | `AKIA[0-9A-Z]{16}` |
+| `aws-secret` | `aws_secret_access_key=...` |
+| `github-token` | `ghp_...`, `github_pat_...` |
+| `gitlab-token` | `glpat-...` |
+| `api-key` | `sk-...` (OpenAI/Anthropic) |
+| `bearer-token` | `bearer=...`, `authorization=...` |
+| `private-key` | `-----BEGIN...PRIVATE KEY-----` |
+| `password` | `password=...`, `passwd:...` |
+| `connection-string` | `postgres://user:pass@host` |
+| `slack-webhook` | `hooks.slack.com/services/...` |
+
+**PiiFilter** (4 patterns with validators):
+
+| Category | Pattern | Validation |
+|----------|---------|------------|
+| `ssn` | `\d{3}-\d{2}-\d{4}` | SSA rules (no 000/666/9xx) |
+| `credit-card` | 13-19 digit sequences | Luhn algorithm |
+| `phone` | US formats with optional +1 | — |
+| `email` | Standard email pattern | — |
+
+### ML Tier (future, ONNX Runtime)
+
+For contextual detection that regex can't catch ("John Smith's
+medical records show...", "the salary for this position is..."):
+
+- ONNX Runtime (`ort` crate) as optional feature (`safety-model`)
+- Auto-detects best execution provider: NPU > GPU > CPU
+- Small model (~5-50MB): token classifier for PII/sensitivity
+- Runs after regex tier, additive findings
+
+| Hardware | ONNX Execution Provider |
+|----------|------------------------|
+| CPU | Default (always available) |
+| GPU (NVIDIA) | CUDA / TensorRT |
+| GPU (AMD) | ROCm |
+| NPU (Intel) | OpenVINO (Core Ultra) |
+| NPU (Qualcomm) | QNN (Snapdragon X) |
+
+### Redaction
+
+Sensitive spans replaced with category markers:
+
+```
+Original:  export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+Redacted:  export AWS_ACCESS_KEY_ID=[REDACTED:aws-key]
+
+Original:  SSN: 123-45-6789
+Redacted:  SSN: [REDACTED:ssn]
+```
+
+Overlapping findings are merged (longest span wins).
+
+### Safety Profiles
+
+Configured per permission set:
+
+```toml
+[permissions.developer]
+safety = "standard"     # all regex filters, redact
+
+[permissions.deployer]
+safety = "secrets-only" # only secrets, allow PII
+
+[permissions.admin]
+safety = "none"         # no filtering (full trust)
+```
+
+Profiles: `"standard"` (default), `"secrets-only"`, `"block"`, `"none"`.
+
+### Where Filtering Happens
+
+Applied in `McpServer::handle_call_tool()` — after the tool handler
+returns, before the response enters the transport. The pipeline maps
+permission set names to `FilterPipeline` instances, set up at server
+startup via `builder.safety_profile(name, pipeline)`.
+
 ## Security Model
 
 ### Defense in Depth
@@ -403,7 +526,8 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar, MATE.
 4. **Deny-first ACLs** — Deny rules always win. Default-deny.
 5. **Operation restrictions** — String-based, module-namespaced.
 6. **Approval workflow** — Three-channel human-in-the-loop.
-7. **Systemd hardening** — `NoNewPrivileges`, `ProtectHome=read-only`,
+7. **Content safety** — Regex + ML filters redact/block sensitive data.
+8. **Systemd hardening** — `NoNewPrivileges`, `ProtectHome=read-only`,
    `ProtectSystem=strict`, `MemoryDenyWriteExecute`, etc.
 
 ### Threat Model
@@ -415,6 +539,8 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar, MATE.
 | Path traversal (`../../etc/passwd`) | Canonicalization before ACL check |
 | Token theft | Hashed storage, Unix socket |
 | Agent bypasses approval | Non-blocking return, grant is single-use |
+| Agent exfiltrates secrets in file content | Content safety filters (redact/block) |
+| Agent exfiltrates PII | PII detector with Luhn/SSA validation |
 | Prompt injection via documents | Out of scope (agent responsibility) |
 | Denial of service | Systemd resource limits |
 
@@ -448,12 +574,17 @@ allow = ["~/Documents/**", "~/Notes/**", "~/Code/**"]
 deny = ["**/.env", "**/*secret*", "**/credentials*"]
 operations = ["read", "write", "search", "list"]
 approve = ["write"]
+safety = "standard"      # redact secrets + PII in responses
 
 [permissions.readonly]
 allow = ["~/Documents/shared/**"]
 deny = []
 operations = ["read", "search", "list"]
 approve = []
+safety = "standard"
+
+# [permissions.admin]
+# safety = "none"        # full trust, no filtering
 ```
 
 ## Systemd Integration
@@ -506,6 +637,9 @@ mcpd status                              Show server status
 
 ## Future Work
 
+- **ML safety tier** — ONNX Runtime (`ort` crate, optional feature)
+  for contextual PII/sensitivity detection. Auto-detect NPU > GPU > CPU.
+  Ship with a tiny token classifier (~5-15MB ONNX model).
 - **mcpd-mod-git** — Git module (`git_status`, `git_diff`, `git_log`,
   `git_commit`, `git_branch`) with approval for push/commit
 - **Vector search** — sqlite-vec for semantic similarity
@@ -513,3 +647,4 @@ mcpd status                              Show server status
 - **Content extraction** — PDF, HTML, CSV pipeline
 - **WASM modules** — WASI P2 component model for third-party plugins
 - **Gnome Keyring** — Token storage via `org.freedesktop.secrets`
+- **Custom safety rules** — User-defined regex patterns in config
