@@ -116,11 +116,36 @@ async fn serve(cfg: config::Config) -> anyhow::Result<()> {
         .name("mcpd")
         .version(env!("CARGO_PKG_VERSION"));
 
+    // Build shared approval infrastructure
+    let approvals = Arc::new(mcpd_core::permissions::ApprovalStore::new(
+        cfg.approval.timeout_secs,
+    ));
+    let notifier: Arc<dyn mcpd_core::notify::Notifier> = match cfg.approval.notify.as_str() {
+        "dbus" => {
+            match mcpd_core::notify::DbusNotifier::new().await {
+                Ok(n) => {
+                    tracing::info!("D-Bus notifier connected");
+                    Arc::new(n)
+                }
+                Err(e) => {
+                    tracing::warn!("D-Bus unavailable ({e}), falling back to CLI-only approvals");
+                    Arc::new(mcpd_core::notify::NoopNotifier)
+                }
+            }
+        }
+        _ => Arc::new(mcpd_core::notify::NoopNotifier),
+    };
+
     // --- Docs module ---
     if cfg.docs_enabled() {
         let db_path = cfg.docs_db_path();
         let index = Arc::new(mcpd_mod_docs::IndexStore::open(&db_path)?);
-        let docs = mcpd_mod_docs::DocsModule::new(perm_engine.clone(), index);
+        let docs = mcpd_mod_docs::DocsModule::new(
+            perm_engine.clone(),
+            index,
+            approvals.clone(),
+            notifier.clone(),
+        );
         tracing::info!("Module 'docs' enabled (db: {db_path})");
         builder = builder.module(docs);
     }

@@ -1,10 +1,12 @@
 use crate::store::IndexStore;
 use mcpd_core::auth::CallContext;
-use mcpd_core::permissions::{PermissionEngine, PermissionResult};
+use mcpd_core::notify::Notifier;
+use mcpd_core::permissions::{ApprovalStatus, ApprovalStore, PermissionEngine, PermissionResult};
 use mcpd_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
 use mcpd_core::ToolHandler;
 use mcpd_core::Module;
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -16,12 +18,24 @@ pub struct DocsModule {
 struct DocsState {
     perm_engine: Arc<PermissionEngine>,
     index: Arc<IndexStore>,
+    approvals: Arc<ApprovalStore>,
+    notifier: Arc<dyn Notifier>,
 }
 
 impl DocsModule {
-    pub fn new(perm_engine: Arc<PermissionEngine>, index: Arc<IndexStore>) -> Self {
+    pub fn new(
+        perm_engine: Arc<PermissionEngine>,
+        index: Arc<IndexStore>,
+        approvals: Arc<ApprovalStore>,
+        notifier: Arc<dyn Notifier>,
+    ) -> Self {
         Self {
-            state: Arc::new(DocsState { perm_engine, index }),
+            state: Arc::new(DocsState {
+                perm_engine,
+                index,
+                approvals,
+                notifier,
+            }),
         }
     }
 }
@@ -45,15 +59,18 @@ impl Module for DocsModule {
     }
 }
 
-/// Helper to create a (ToolDefinition, ToolHandler) pair from a sync handler function.
-fn make_tool(
+/// Helper to create a (ToolDefinition, ToolHandler) pair from an async handler.
+fn make_tool<F>(
     def: ToolDefinition,
     state: Arc<DocsState>,
-    handler: fn(serde_json::Value, CallContext, &DocsState) -> CallToolResult,
-) -> (ToolDefinition, ToolHandler) {
+    handler: fn(serde_json::Value, CallContext, Arc<DocsState>) -> F,
+) -> (ToolDefinition, ToolHandler)
+where
+    F: Future<Output = CallToolResult> + Send + 'static,
+{
     let h: ToolHandler = Arc::new(move |args, ctx| {
         let s = state.clone();
-        Box::pin(async move { handler(args, ctx, &s) })
+        Box::pin(handler(args, ctx, s))
     });
     (def, h)
 }
@@ -241,7 +258,12 @@ fn resolve_path(raw: &str, must_exist: bool) -> Result<PathBuf, String> {
     }
 }
 
-fn check_perm(
+/// Check permission, handling the approval flow if needed.
+///
+/// If the operation requires approval, creates an approval request,
+/// sends a D-Bus notification, and blocks until the user responds
+/// or the request times out.
+async fn check_perm(
     state: &DocsState,
     ctx: &CallContext,
     op: &str,
@@ -249,10 +271,57 @@ fn check_perm(
 ) -> Result<(), CallToolResult> {
     match state.perm_engine.check(&ctx.agent.permissions, op, path) {
         PermissionResult::Allowed => Ok(()),
-        PermissionResult::NeedsApproval => Err(CallToolResult::error(format!(
-            "{op} on {} requires approval",
-            path.display()
-        ))),
+        PermissionResult::NeedsApproval => {
+            let path_str = path.display().to_string();
+            let (req, rx) = state.approvals.request(
+                &ctx.agent.name,
+                op,
+                &path_str,
+            );
+
+            // Send desktop notification
+            if let Err(e) = state.notifier.notify(&req, state.approvals.clone()).await {
+                tracing::warn!("Failed to send notification: {e}");
+                // Fall through to wait — user can still approve via CLI
+            }
+
+            tracing::info!(
+                request_id = %req.id,
+                agent = %ctx.agent.name,
+                op,
+                path = %path_str,
+                "Waiting for approval (timeout: {}s)",
+                state.approvals.timeout().as_secs(),
+            );
+
+            // Block until approved, denied, or timed out
+            let status = state.approvals.wait(rx).await;
+
+            // Dismiss the notification
+            let _ = state.notifier.dismiss(&req.id).await;
+
+            match status {
+                ApprovalStatus::Approved => {
+                    tracing::info!(request_id = %req.id, "Approved");
+                    Ok(())
+                }
+                ApprovalStatus::Denied => {
+                    tracing::info!(request_id = %req.id, "Denied");
+                    Err(CallToolResult::error(format!(
+                        "{op} on {} was denied by user",
+                        path.display()
+                    )))
+                }
+                ApprovalStatus::Expired => {
+                    tracing::info!(request_id = %req.id, "Expired");
+                    Err(CallToolResult::error(format!(
+                        "{op} on {} — approval timed out",
+                        path.display()
+                    )))
+                }
+                ApprovalStatus::Pending => unreachable!(),
+            }
+        }
         PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
             "Access denied: {}",
             path.display()
@@ -318,10 +387,10 @@ fn simple_checksum(data: &[u8]) -> String {
 
 // --- Tool handlers ---
 
-fn handle_search(
+async fn handle_search(
     args: serde_json::Value,
     ctx: CallContext,
-    state: &DocsState,
+    state: Arc<DocsState>,
 ) -> CallToolResult {
     let query = match args.get("query").and_then(|v| v.as_str()) {
         Some(q) if !q.is_empty() => q,
@@ -371,10 +440,10 @@ fn handle_search(
     CallToolResult::text(output)
 }
 
-fn handle_read(
+async fn handle_read(
     args: serde_json::Value,
     ctx: CallContext,
-    state: &DocsState,
+    state: Arc<DocsState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -386,7 +455,7 @@ fn handle_read(
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(state, &ctx, "read", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "read", &path).await {
         return e;
     }
 
@@ -445,10 +514,10 @@ fn handle_read(
     ))
 }
 
-fn handle_list(
+async fn handle_list(
     args: serde_json::Value,
     ctx: CallContext,
-    state: &DocsState,
+    state: Arc<DocsState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -460,7 +529,7 @@ fn handle_list(
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(state, &ctx, "list", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "list", &path).await {
         return e;
     }
 
@@ -529,10 +598,10 @@ fn handle_list(
     CallToolResult::text(output)
 }
 
-fn handle_write(
+async fn handle_write(
     args: serde_json::Value,
     ctx: CallContext,
-    state: &DocsState,
+    state: Arc<DocsState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -549,7 +618,7 @@ fn handle_write(
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(state, &ctx, "write", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "write", &path).await {
         return e;
     }
 
@@ -574,10 +643,10 @@ fn handle_write(
     CallToolResult::text(format!("Written {} bytes to {}", size, path.display()))
 }
 
-fn handle_edit(
+async fn handle_edit(
     args: serde_json::Value,
     ctx: CallContext,
-    state: &DocsState,
+    state: Arc<DocsState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -597,7 +666,7 @@ fn handle_edit(
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(state, &ctx, "write", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "write", &path).await {
         return e;
     }
 
@@ -648,10 +717,10 @@ fn handle_edit(
     CallToolResult::text(format!("Edited {}", path.display()))
 }
 
-fn handle_info(
+async fn handle_info(
     args: serde_json::Value,
     ctx: CallContext,
-    state: &DocsState,
+    state: Arc<DocsState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -663,7 +732,7 @@ fn handle_info(
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(state, &ctx, "read", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "read", &path).await {
         return e;
     }
 
@@ -720,10 +789,10 @@ fn handle_info(
     CallToolResult::text(output)
 }
 
-fn handle_delete(
+async fn handle_delete(
     args: serde_json::Value,
     ctx: CallContext,
-    state: &DocsState,
+    state: Arc<DocsState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
@@ -735,7 +804,7 @@ fn handle_delete(
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(state, &ctx, "write", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "write", &path).await {
         return e;
     }
 
@@ -760,6 +829,7 @@ fn handle_delete(
 mod tests {
     use super::*;
     use mcpd_core::auth::AgentIdentity;
+    use mcpd_core::notify::NoopNotifier;
     use mcpd_core::permissions::PathAcl;
     use std::collections::HashSet;
     use tempfile::TempDir;
@@ -794,6 +864,8 @@ mod tests {
         Arc::new(DocsState {
             perm_engine: Arc::new(engine),
             index: Arc::new(index),
+            approvals: Arc::new(ApprovalStore::new(300)),
+            notifier: Arc::new(NoopNotifier),
         })
     }
 
@@ -846,8 +918,8 @@ mod tests {
 
     // --- read ---
 
-    #[test]
-    fn read_full_file() {
+    #[tokio::test]
+    async fn read_full_file() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("hello.txt");
@@ -856,15 +928,15 @@ mod tests {
         let result = handle_read(
             serde_json::json!({"path": file.to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
         assert!(text_of(&result).contains("Hello, world!"));
         assert!(text_of(&result).contains("1 lines"));
     }
 
-    #[test]
-    fn read_partial_with_offset_and_limit() {
+    #[tokio::test]
+    async fn read_partial_with_offset_and_limit() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("multi.txt");
@@ -873,8 +945,8 @@ mod tests {
         let result = handle_read(
             serde_json::json!({"path": file.to_str().unwrap(), "offset": 2, "limit": 2}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
         let text = text_of(&result);
         assert!(text.contains("lines 2-3 of"));
@@ -884,8 +956,8 @@ mod tests {
         assert!(!text.contains("line4"));
     }
 
-    #[test]
-    fn read_denied_path() {
+    #[tokio::test]
+    async fn read_denied_path() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let secret_dir = tmp.path().join(".secret");
@@ -896,16 +968,16 @@ mod tests {
         let result = handle_read(
             serde_json::json!({"path": file.to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(result.is_error);
         assert!(text_of(&result).contains("denied"));
     }
 
     // --- write ---
 
-    #[test]
-    fn write_new_file() {
+    #[tokio::test]
+    async fn write_new_file() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("new.md");
@@ -913,14 +985,14 @@ mod tests {
         let result = handle_write(
             serde_json::json!({"path": file.to_str().unwrap(), "content": "# Hello\n\nWorld"}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "# Hello\n\nWorld");
     }
 
-    #[test]
-    fn write_denied_for_readonly() {
+    #[tokio::test]
+    async fn write_denied_for_readonly() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("nope.txt");
@@ -928,16 +1000,16 @@ mod tests {
         let result = handle_write(
             serde_json::json!({"path": file.to_str().unwrap(), "content": "fail"}),
             readonly_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(result.is_error);
         assert!(!file.exists());
     }
 
     // --- edit ---
 
-    #[test]
-    fn edit_replaces_unique_string() {
+    #[tokio::test]
+    async fn edit_replaces_unique_string() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("doc.md");
@@ -950,8 +1022,8 @@ mod tests {
                 "new_string": "Goodbye world"
             }),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
         assert_eq!(
             std::fs::read_to_string(&file).unwrap(),
@@ -959,8 +1031,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn edit_fails_if_not_found() {
+    #[tokio::test]
+    async fn edit_fails_if_not_found() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("doc.md");
@@ -973,14 +1045,14 @@ mod tests {
                 "new_string": "replacement"
             }),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(result.is_error);
         assert!(text_of(&result).contains("not found"));
     }
 
-    #[test]
-    fn edit_fails_if_not_unique() {
+    #[tokio::test]
+    async fn edit_fails_if_not_unique() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("doc.md");
@@ -993,16 +1065,16 @@ mod tests {
                 "new_string": "qux"
             }),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(result.is_error);
         assert!(text_of(&result).contains("2 times"));
         // File should be unchanged
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "foo bar foo baz");
     }
 
-    #[test]
-    fn edit_denied_for_readonly() {
+    #[tokio::test]
+    async fn edit_denied_for_readonly() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("doc.md");
@@ -1015,16 +1087,16 @@ mod tests {
                 "new_string": "modified"
             }),
             readonly_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(result.is_error);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "content");
     }
 
     // --- info ---
 
-    #[test]
-    fn info_returns_metadata() {
+    #[tokio::test]
+    async fn info_returns_metadata() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("info.md");
@@ -1033,8 +1105,8 @@ mod tests {
         let result = handle_info(
             serde_json::json!({"path": file.to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
         let text = text_of(&result);
         assert!(text.contains("type: file"));
@@ -1045,8 +1117,8 @@ mod tests {
 
     // --- delete ---
 
-    #[test]
-    fn delete_removes_file() {
+    #[tokio::test]
+    async fn delete_removes_file() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("doomed.txt");
@@ -1055,14 +1127,14 @@ mod tests {
         let result = handle_delete(
             serde_json::json!({"path": file.to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
         assert!(!file.exists());
     }
 
-    #[test]
-    fn delete_denied_for_readonly() {
+    #[tokio::test]
+    async fn delete_denied_for_readonly() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("safe.txt");
@@ -1071,16 +1143,16 @@ mod tests {
         let result = handle_delete(
             serde_json::json!({"path": file.to_str().unwrap()}),
             readonly_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(result.is_error);
         assert!(file.exists());
     }
 
     // --- list ---
 
-    #[test]
-    fn list_directory() {
+    #[tokio::test]
+    async fn list_directory() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         std::fs::write(tmp.path().join("a.txt"), "aaa").unwrap();
@@ -1089,8 +1161,8 @@ mod tests {
         let result = handle_list(
             serde_json::json!({"path": tmp.path().to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
         let text = text_of(&result);
         assert!(text.contains("a.txt"));
@@ -1099,8 +1171,8 @@ mod tests {
 
     // --- search ---
 
-    #[test]
-    fn search_returns_results() {
+    #[tokio::test]
+    async fn search_returns_results() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let path = tmp.path().join("notes.md");
@@ -1113,8 +1185,8 @@ mod tests {
         let result = handle_search(
             serde_json::json!({"query": "rust programming"}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
         assert!(text_of(&result).contains("1 result"));
     }
@@ -1125,7 +1197,9 @@ mod tests {
     fn module_provides_all_tools() {
         let engine = Arc::new(PermissionEngine::new());
         let index = Arc::new(IndexStore::open_memory().unwrap());
-        let module = DocsModule::new(engine, index);
+        let approvals = Arc::new(ApprovalStore::new(300));
+        let notifier: Arc<dyn Notifier> = Arc::new(NoopNotifier);
+        let module = DocsModule::new(engine, index, approvals, notifier);
 
         assert_eq!(module.name(), "docs");
         let tools = module.tools();
@@ -1142,8 +1216,8 @@ mod tests {
 
     // --- roundtrips ---
 
-    #[test]
-    fn write_then_read_roundtrip() {
+    #[tokio::test]
+    async fn write_then_read_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("rt.md");
@@ -1151,19 +1225,19 @@ mod tests {
         handle_write(
             serde_json::json!({"path": file.to_str().unwrap(), "content": "# RT\n\nContent."}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
 
         let result = handle_read(
             serde_json::json!({"path": file.to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(text_of(&result).contains("# RT\n\nContent."));
     }
 
-    #[test]
-    fn write_edit_read_roundtrip() {
+    #[tokio::test]
+    async fn write_edit_read_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("edit_rt.md");
@@ -1171,8 +1245,8 @@ mod tests {
         handle_write(
             serde_json::json!({"path": file.to_str().unwrap(), "content": "Hello world"}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
 
         handle_edit(
             serde_json::json!({
@@ -1181,19 +1255,19 @@ mod tests {
                 "new_string": "Goodbye world"
             }),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
 
         let result = handle_read(
             serde_json::json!({"path": file.to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(text_of(&result).contains("Goodbye world"));
     }
 
-    #[test]
-    fn write_then_search_roundtrip() {
+    #[tokio::test]
+    async fn write_then_search_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("searchable.md");
@@ -1204,19 +1278,19 @@ mod tests {
                 "content": "# K8s Guide\n\nDeploy pods with kubectl."
             }),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
 
         let result = handle_search(
             serde_json::json!({"query": "kubectl deploy"}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(text_of(&result).contains("1 result"));
     }
 
-    #[test]
-    fn write_delete_read_fails() {
+    #[tokio::test]
+    async fn write_delete_read_fails() {
         let tmp = TempDir::new().unwrap();
         let state = test_state(&tmp);
         let file = tmp.path().join("temp.txt");
@@ -1224,20 +1298,166 @@ mod tests {
         handle_write(
             serde_json::json!({"path": file.to_str().unwrap(), "content": "temporary"}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
 
         handle_delete(
             serde_json::json!({"path": file.to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
 
         let result = handle_read(
             serde_json::json!({"path": file.to_str().unwrap()}),
             dev_ctx(),
-            &state,
-        );
+            state.clone(),
+        ).await;
         assert!(result.is_error);
+    }
+
+    // --- approval flow ---
+
+    fn test_state_with_approval(tmpdir: &TempDir) -> Arc<DocsState> {
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "needs_approval".to_string(),
+            PathAcl {
+                allow: vec![format!("{}/**", tmpdir.path().display())],
+                deny: vec![],
+                operations: ["read", "write", "search", "list"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+                requires_approval: ["write"].into_iter().map(String::from).collect(),
+            },
+        );
+        let index = IndexStore::open_memory().unwrap();
+        Arc::new(DocsState {
+            perm_engine: Arc::new(engine),
+            index: Arc::new(index),
+            approvals: Arc::new(ApprovalStore::new(5)),
+            notifier: Arc::new(NoopNotifier),
+        })
+    }
+
+    fn approval_ctx() -> CallContext {
+        CallContext {
+            agent: AgentIdentity {
+                name: "approval-agent".to_string(),
+                permissions: "needs_approval".to_string(),
+            },
+            session_id: "test".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn write_with_approval_granted() {
+        let tmp = TempDir::new().unwrap();
+        let state = test_state_with_approval(&tmp);
+        let file = tmp.path().join("approved.md");
+
+        // Spawn the write in background — it will block waiting for approval
+        let state2 = state.clone();
+        let path = file.to_str().unwrap().to_string();
+        let handle = tokio::spawn(async move {
+            handle_write(
+                serde_json::json!({"path": path, "content": "approved content"}),
+                approval_ctx(),
+                state2,
+            ).await
+        });
+
+        // Give the handler time to create the approval request
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Approve the pending request
+        let pending = state.approvals.pending_requests();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].operation, "write");
+        state.approvals.approve(&pending[0].id);
+
+        // The handler should complete successfully
+        let result = handle.await.unwrap();
+        assert!(!result.is_error);
+        assert!(file.exists());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "approved content");
+    }
+
+    #[tokio::test]
+    async fn write_with_approval_denied() {
+        let tmp = TempDir::new().unwrap();
+        let state = test_state_with_approval(&tmp);
+        let file = tmp.path().join("denied.md");
+
+        let state2 = state.clone();
+        let path = file.to_str().unwrap().to_string();
+        let handle = tokio::spawn(async move {
+            handle_write(
+                serde_json::json!({"path": path, "content": "should not exist"}),
+                approval_ctx(),
+                state2,
+            ).await
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let pending = state.approvals.pending_requests();
+        assert_eq!(pending.len(), 1);
+        state.approvals.deny(&pending[0].id);
+
+        let result = handle.await.unwrap();
+        assert!(result.is_error);
+        assert!(text_of(&result).contains("denied"));
+        assert!(!file.exists());
+    }
+
+    #[tokio::test]
+    async fn write_with_approval_timeout() {
+        let tmp = TempDir::new().unwrap();
+        // 0 second timeout = instant expiry
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "needs_approval".to_string(),
+            PathAcl {
+                allow: vec![format!("{}/**", tmp.path().display())],
+                deny: vec![],
+                operations: ["read", "write"].into_iter().map(String::from).collect(),
+                requires_approval: ["write"].into_iter().map(String::from).collect(),
+            },
+        );
+        let state = Arc::new(DocsState {
+            perm_engine: Arc::new(engine),
+            index: Arc::new(IndexStore::open_memory().unwrap()),
+            approvals: Arc::new(ApprovalStore::new(0)),
+            notifier: Arc::new(NoopNotifier),
+        });
+
+        let file = tmp.path().join("timeout.md");
+        let result = handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "timeout"}),
+            approval_ctx(),
+            state,
+        ).await;
+
+        assert!(result.is_error);
+        assert!(text_of(&result).contains("timed out"));
+        assert!(!file.exists());
+    }
+
+    #[tokio::test]
+    async fn read_without_approval_still_works() {
+        let tmp = TempDir::new().unwrap();
+        let state = test_state_with_approval(&tmp);
+        let file = tmp.path().join("readable.txt");
+        std::fs::write(&file, "no approval needed").unwrap();
+
+        // Read does NOT require approval in the "needs_approval" set
+        let result = handle_read(
+            serde_json::json!({"path": file.to_str().unwrap()}),
+            approval_ctx(),
+            state,
+        ).await;
+        assert!(!result.is_error);
+        assert!(text_of(&result).contains("no approval needed"));
     }
 }

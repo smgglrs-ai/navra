@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::sync::oneshot;
 
 /// Status of an approval request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,111 +12,115 @@ pub enum ApprovalStatus {
     Expired,
 }
 
-/// A pending approval request.
+/// Metadata for a pending approval request.
 #[derive(Debug, Clone)]
 pub struct ApprovalRequest {
     pub id: String,
     pub agent_name: String,
     pub operation: String,
     pub path: String,
-    pub status: ApprovalStatus,
-    pub created_at: Instant,
-    pub timeout: Duration,
 }
 
-impl ApprovalRequest {
-    pub fn is_expired(&self) -> bool {
-        self.created_at.elapsed() > self.timeout
-    }
-
-    pub fn effective_status(&self) -> ApprovalStatus {
-        if self.status == ApprovalStatus::Pending && self.is_expired() {
-            ApprovalStatus::Expired
-        } else {
-            self.status.clone()
-        }
-    }
+/// Internal state for a pending request.
+struct PendingRequest {
+    meta: ApprovalRequest,
+    sender: Option<oneshot::Sender<ApprovalStatus>>,
 }
 
 /// Thread-safe store for pending approvals.
-#[derive(Debug, Clone)]
+///
+/// When a tool needs approval, `request()` creates an entry and returns
+/// a `oneshot::Receiver` the caller can `.await`. The D-Bus notifier or
+/// CLI resolves it via `resolve()`.
 pub struct ApprovalStore {
-    requests: Arc<RwLock<HashMap<String, ApprovalRequest>>>,
+    pending: Arc<Mutex<HashMap<String, PendingRequest>>>,
     timeout: Duration,
 }
 
 impl ApprovalStore {
     pub fn new(timeout_secs: u64) -> Self {
         Self {
-            requests: Arc::new(RwLock::new(HashMap::new())),
+            pending: Arc::new(Mutex::new(HashMap::new())),
             timeout: Duration::from_secs(timeout_secs),
         }
     }
 
-    /// Create a new pending approval request. Returns the request ID.
-    pub fn create(
+    /// Create an approval request. Returns the request metadata and a
+    /// receiver that resolves when the user approves, denies, or the
+    /// request times out.
+    pub fn request(
         &self,
         agent_name: &str,
         operation: &str,
         path: &str,
-    ) -> String {
+    ) -> (ApprovalRequest, oneshot::Receiver<ApprovalStatus>) {
         let id = uuid::Uuid::new_v4().to_string();
-        let request = ApprovalRequest {
+        let (tx, rx) = oneshot::channel();
+        let meta = ApprovalRequest {
             id: id.clone(),
             agent_name: agent_name.to_string(),
             operation: operation.to_string(),
             path: path.to_string(),
-            status: ApprovalStatus::Pending,
-            created_at: Instant::now(),
-            timeout: self.timeout,
         };
-        let mut requests = self.requests.write().unwrap();
-        requests.insert(id.clone(), request);
-        id
+        let mut pending = self.pending.lock().unwrap();
+        pending.insert(
+            id,
+            PendingRequest {
+                meta: meta.clone(),
+                sender: Some(tx),
+            },
+        );
+        (meta, rx)
     }
 
-    /// Get the effective status of a request.
-    pub fn status(&self, id: &str) -> Option<ApprovalStatus> {
-        let requests = self.requests.read().unwrap();
-        requests.get(id).map(|r| r.effective_status())
+    /// Resolve a pending request (from D-Bus action or CLI).
+    /// Returns true if the request was found and resolved.
+    pub fn resolve(&self, id: &str, status: ApprovalStatus) -> bool {
+        let mut pending = self.pending.lock().unwrap();
+        if let Some(mut req) = pending.remove(id) {
+            if let Some(tx) = req.sender.take() {
+                let _ = tx.send(status);
+                return true;
+            }
+        }
+        false
     }
 
-    /// Approve a request.
+    /// Convenience: approve a request.
     pub fn approve(&self, id: &str) -> bool {
-        let mut requests = self.requests.write().unwrap();
-        if let Some(req) = requests.get_mut(id) {
-            if req.effective_status() == ApprovalStatus::Pending {
-                req.status = ApprovalStatus::Approved;
-                return true;
-            }
-        }
-        false
+        self.resolve(id, ApprovalStatus::Approved)
     }
 
-    /// Deny a request.
+    /// Convenience: deny a request.
     pub fn deny(&self, id: &str) -> bool {
-        let mut requests = self.requests.write().unwrap();
-        if let Some(req) = requests.get_mut(id) {
-            if req.effective_status() == ApprovalStatus::Pending {
-                req.status = ApprovalStatus::Denied;
-                return true;
+        self.resolve(id, ApprovalStatus::Denied)
+    }
+
+    /// Wait for approval with timeout. Returns the final status.
+    pub async fn wait(&self, rx: oneshot::Receiver<ApprovalStatus>) -> ApprovalStatus {
+        match tokio::time::timeout(self.timeout, rx).await {
+            Ok(Ok(status)) => status,
+            Ok(Err(_)) => ApprovalStatus::Expired, // sender dropped
+            Err(_) => {
+                // Timeout — clean up is handled by the caller
+                ApprovalStatus::Expired
             }
         }
-        false
     }
 
-    /// Remove expired requests.
-    pub fn cleanup(&self) {
-        let mut requests = self.requests.write().unwrap();
-        requests.retain(|_, req| !req.is_expired());
-    }
-
+    /// Number of pending requests.
     pub fn pending_count(&self) -> usize {
-        let requests = self.requests.read().unwrap();
-        requests
-            .values()
-            .filter(|r| r.effective_status() == ApprovalStatus::Pending)
-            .count()
+        self.pending.lock().unwrap().len()
+    }
+
+    /// List all pending requests (for tray icon / status display).
+    pub fn pending_requests(&self) -> Vec<ApprovalRequest> {
+        let pending = self.pending.lock().unwrap();
+        pending.values().map(|r| r.meta.clone()).collect()
+    }
+
+    pub fn timeout(&self) -> Duration {
+        self.timeout
     }
 }
 
@@ -123,69 +128,75 @@ impl ApprovalStore {
 mod tests {
     use super::*;
 
-    #[test]
-    fn create_and_query() {
+    #[tokio::test]
+    async fn request_and_approve() {
         let store = ApprovalStore::new(300);
-        let id = store.create("agent", "write", "/home/user/doc.md");
-        assert_eq!(store.status(&id), Some(ApprovalStatus::Pending));
+        let (req, rx) = store.request("agent", "write", "/path");
         assert_eq!(store.pending_count(), 1);
-    }
 
-    #[test]
-    fn approve_request() {
-        let store = ApprovalStore::new(300);
-        let id = store.create("agent", "write", "/path");
-        assert!(store.approve(&id));
-        assert_eq!(store.status(&id), Some(ApprovalStatus::Approved));
+        assert!(store.approve(&req.id));
         assert_eq!(store.pending_count(), 0);
+
+        let status = rx.await.unwrap();
+        assert_eq!(status, ApprovalStatus::Approved);
     }
 
-    #[test]
-    fn deny_request() {
+    #[tokio::test]
+    async fn request_and_deny() {
         let store = ApprovalStore::new(300);
-        let id = store.create("agent", "write", "/path");
-        assert!(store.deny(&id));
-        assert_eq!(store.status(&id), Some(ApprovalStatus::Denied));
+        let (req, rx) = store.request("agent", "write", "/path");
+
+        assert!(store.deny(&req.id));
+
+        let status = rx.await.unwrap();
+        assert_eq!(status, ApprovalStatus::Denied);
+    }
+
+    #[tokio::test]
+    async fn request_timeout() {
+        let store = ApprovalStore::new(0); // 0 second timeout
+        let (_req, rx) = store.request("agent", "write", "/path");
+
+        let status = store.wait(rx).await;
+        assert_eq!(status, ApprovalStatus::Expired);
+    }
+
+    #[tokio::test]
+    async fn wait_returns_approved() {
+        let store = Arc::new(ApprovalStore::new(5));
+        let (req, rx) = store.request("agent", "write", "/path");
+
+        let store2 = store.clone();
+        let id = req.id.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            store2.approve(&id);
+        });
+
+        let status = store.wait(rx).await;
+        assert_eq!(status, ApprovalStatus::Approved);
     }
 
     #[test]
-    fn cannot_approve_twice() {
+    fn resolve_unknown_id() {
         let store = ApprovalStore::new(300);
-        let id = store.create("agent", "write", "/path");
-        assert!(store.approve(&id));
-        assert!(!store.approve(&id));
-    }
-
-    #[test]
-    fn cannot_approve_denied() {
-        let store = ApprovalStore::new(300);
-        let id = store.create("agent", "write", "/path");
-        assert!(store.deny(&id));
-        assert!(!store.approve(&id));
-    }
-
-    #[test]
-    fn expired_request() {
-        let store = ApprovalStore::new(0);
-        let id = store.create("agent", "write", "/path");
-        std::thread::sleep(Duration::from_millis(10));
-        assert_eq!(store.status(&id), Some(ApprovalStatus::Expired));
-        assert!(!store.approve(&id));
-    }
-
-    #[test]
-    fn cleanup_removes_expired() {
-        let store = ApprovalStore::new(0);
-        store.create("agent", "write", "/path");
-        std::thread::sleep(Duration::from_millis(10));
-        store.cleanup();
-        assert_eq!(store.pending_count(), 0);
-    }
-
-    #[test]
-    fn unknown_id() {
-        let store = ApprovalStore::new(300);
-        assert_eq!(store.status("nonexistent"), None);
         assert!(!store.approve("nonexistent"));
+    }
+
+    #[test]
+    fn pending_requests_list() {
+        let store = ApprovalStore::new(300);
+        store.request("a1", "write", "/path1");
+        store.request("a2", "read", "/path2");
+        let pending = store.pending_requests();
+        assert_eq!(pending.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn cannot_resolve_twice() {
+        let store = ApprovalStore::new(300);
+        let (req, _rx) = store.request("agent", "write", "/path");
+        assert!(store.approve(&req.id));
+        assert!(!store.approve(&req.id));
     }
 }
