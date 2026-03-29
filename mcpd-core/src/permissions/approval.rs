@@ -2,8 +2,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use super::Operation;
-
 /// Status of an approval request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApprovalStatus {
@@ -18,7 +16,7 @@ pub enum ApprovalStatus {
 pub struct ApprovalRequest {
     pub id: String,
     pub agent_name: String,
-    pub operation: Operation,
+    pub operation: String,
     pub path: String,
     pub status: ApprovalStatus,
     pub created_at: Instant,
@@ -58,14 +56,14 @@ impl ApprovalStore {
     pub fn create(
         &self,
         agent_name: &str,
-        operation: Operation,
+        operation: &str,
         path: &str,
     ) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         let request = ApprovalRequest {
             id: id.clone(),
             agent_name: agent_name.to_string(),
-            operation,
+            operation: operation.to_string(),
             path: path.to_string(),
             status: ApprovalStatus::Pending,
             created_at: Instant::now(),
@@ -128,7 +126,7 @@ mod tests {
     #[test]
     fn create_and_query() {
         let store = ApprovalStore::new(300);
-        let id = store.create("agent", Operation::Write, "/home/user/doc.md");
+        let id = store.create("agent", "write", "/home/user/doc.md");
         assert_eq!(store.status(&id), Some(ApprovalStatus::Pending));
         assert_eq!(store.pending_count(), 1);
     }
@@ -136,7 +134,7 @@ mod tests {
     #[test]
     fn approve_request() {
         let store = ApprovalStore::new(300);
-        let id = store.create("agent", Operation::Write, "/path");
+        let id = store.create("agent", "write", "/path");
         assert!(store.approve(&id));
         assert_eq!(store.status(&id), Some(ApprovalStatus::Approved));
         assert_eq!(store.pending_count(), 0);
@@ -145,7 +143,7 @@ mod tests {
     #[test]
     fn deny_request() {
         let store = ApprovalStore::new(300);
-        let id = store.create("agent", Operation::Write, "/path");
+        let id = store.create("agent", "write", "/path");
         assert!(store.deny(&id));
         assert_eq!(store.status(&id), Some(ApprovalStatus::Denied));
     }
@@ -153,32 +151,32 @@ mod tests {
     #[test]
     fn cannot_approve_twice() {
         let store = ApprovalStore::new(300);
-        let id = store.create("agent", Operation::Write, "/path");
+        let id = store.create("agent", "write", "/path");
         assert!(store.approve(&id));
-        assert!(!store.approve(&id)); // already approved
+        assert!(!store.approve(&id));
     }
 
     #[test]
     fn cannot_approve_denied() {
         let store = ApprovalStore::new(300);
-        let id = store.create("agent", Operation::Write, "/path");
+        let id = store.create("agent", "write", "/path");
         assert!(store.deny(&id));
         assert!(!store.approve(&id));
     }
 
     #[test]
     fn expired_request() {
-        let store = ApprovalStore::new(0); // 0 second timeout = instant expiry
-        let id = store.create("agent", Operation::Write, "/path");
+        let store = ApprovalStore::new(0);
+        let id = store.create("agent", "write", "/path");
         std::thread::sleep(Duration::from_millis(10));
         assert_eq!(store.status(&id), Some(ApprovalStatus::Expired));
-        assert!(!store.approve(&id)); // can't approve expired
+        assert!(!store.approve(&id));
     }
 
     #[test]
     fn cleanup_removes_expired() {
         let store = ApprovalStore::new(0);
-        store.create("agent", Operation::Write, "/path");
+        store.create("agent", "write", "/path");
         std::thread::sleep(Duration::from_millis(10));
         store.cleanup();
         assert_eq!(store.pending_count(), 0);

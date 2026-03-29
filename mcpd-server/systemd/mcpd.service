@@ -1,11 +1,11 @@
 [Unit]
-Description=mcpd-docs — MCP Document Server
+Description=mcpd — Composable MCP Server
 Documentation=https://github.com/user/mcpd
 After=default.target
 
 [Service]
 Type=notify
-ExecStart=%h/.cargo/bin/mcpd-docs serve
+ExecStart=%h/.cargo/bin/mcpd serve
 Restart=on-failure
 RestartSec=5
 
@@ -13,7 +13,7 @@ RestartSec=5
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.local/share/mcpd-docs
+ReadWritePaths=%h/.local/share/mcpd
 RuntimeDirectory=mcpd
 PrivateTmp=yes
 PrivateDevices=yes

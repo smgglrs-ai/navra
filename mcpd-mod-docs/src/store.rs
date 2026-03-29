@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection};
 use std::path::Path;
+use std::sync::Mutex;
 
 /// Metadata for an indexed document.
 #[derive(Debug, Clone)]
@@ -23,8 +24,11 @@ pub struct SearchResult {
 }
 
 /// SQLite-backed document index with FTS5.
+///
+/// Thread-safe via internal Mutex — SQLite in WAL mode supports
+/// concurrent reads but serializes writes.
 pub struct IndexStore {
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 impl IndexStore {
@@ -35,7 +39,8 @@ impl IndexStore {
             std::fs::create_dir_all(parent).ok();
         }
         let conn = Connection::open(db_path)?;
-        let store = Self { conn };
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
+        let store = Self { conn: Mutex::new(conn) };
         store.init_schema()?;
         Ok(store)
     }
@@ -43,13 +48,14 @@ impl IndexStore {
     /// Open an in-memory database (for testing).
     pub fn open_memory() -> rusqlite::Result<Self> {
         let conn = Connection::open_in_memory()?;
-        let store = Self { conn };
+        let store = Self { conn: Mutex::new(conn) };
         store.init_schema()?;
         Ok(store)
     }
 
     fn init_schema(&self) -> rusqlite::Result<()> {
-        self.conn.execute_batch(
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS documents (
                 id          INTEGER PRIMARY KEY,
@@ -85,20 +91,21 @@ impl IndexStore {
         content: &str,
     ) -> rusqlite::Result<i64> {
         let now = chrono_now();
+        let conn = self.conn.lock().unwrap();
 
         // Delete old FTS entry if exists
-        if let Ok(old_id) = self.conn.query_row(
+        if let Ok(old_id) = conn.query_row(
             "SELECT id FROM documents WHERE path = ?1",
             params![path],
             |row| row.get::<_, i64>(0),
         ) {
-            self.conn.execute(
+            conn.execute(
                 "DELETE FROM documents_fts WHERE rowid = ?1",
                 params![old_id],
             )?;
         }
 
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO documents (path, title, content, mime_type, size, modified_at, indexed_at, checksum)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(path) DO UPDATE SET
@@ -112,13 +119,13 @@ impl IndexStore {
             params![path, title, content, mime_type, size, modified_at, now, checksum],
         )?;
 
-        let id = self.conn.query_row(
+        let id = conn.query_row(
             "SELECT id FROM documents WHERE path = ?1",
             params![path],
             |row| row.get::<_, i64>(0),
         )?;
 
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO documents_fts (rowid, path, title, content)
              VALUES (?1, ?2, ?3, ?4)",
             params![id, path, title, content],
@@ -129,7 +136,8 @@ impl IndexStore {
 
     /// Full-text search.
     pub fn search(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<SearchResult>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT path, title, snippet(documents_fts, 2, '<b>', '</b>', '...', 32), rank
              FROM documents_fts
              WHERE documents_fts MATCH ?1
@@ -153,7 +161,8 @@ impl IndexStore {
 
     /// Get document metadata by path.
     pub fn get_by_path(&self, path: &str) -> rusqlite::Result<Option<DocumentMeta>> {
-        let result = self.conn.query_row(
+        let conn = self.conn.lock().unwrap();
+        let result = conn.query_row(
             "SELECT id, path, mime_type, size, modified_at, indexed_at, checksum
              FROM documents WHERE path = ?1",
             params![path],
@@ -178,23 +187,23 @@ impl IndexStore {
 
     /// Count total indexed documents.
     pub fn count(&self) -> rusqlite::Result<i64> {
-        self.conn
-            .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        let conn = self.conn.lock().unwrap();
+        conn.query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
     }
 
     /// Delete a document from the index.
     pub fn delete(&self, path: &str) -> rusqlite::Result<bool> {
-        if let Ok(id) = self.conn.query_row(
+        let conn = self.conn.lock().unwrap();
+        if let Ok(id) = conn.query_row(
             "SELECT id FROM documents WHERE path = ?1",
             params![path],
             |row| row.get::<_, i64>(0),
         ) {
-            self.conn.execute(
+            conn.execute(
                 "DELETE FROM documents_fts WHERE rowid = ?1",
                 params![id],
             )?;
-            self.conn
-                .execute("DELETE FROM documents WHERE id = ?1", params![id])?;
+            conn.execute("DELETE FROM documents WHERE id = ?1", params![id])?;
             Ok(true)
         } else {
             Ok(false)

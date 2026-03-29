@@ -1,13 +1,11 @@
 mod config;
-mod index;
-mod permissions;
-mod tools;
 
 use clap::{Parser, Subcommand};
+use mcpd_core::permissions::{PathAcl, PermissionEngine};
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(name = "mcpd-docs", about = "Secure MCP document server")]
+#[command(name = "mcpd", about = "Composable MCP server")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -15,7 +13,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start the MCP document server
+    /// Start the MCP server
     Serve {
         /// Path to config file
         #[arg(short, long)]
@@ -27,15 +25,9 @@ enum Commands {
         action: TokenAction,
     },
     /// Approve a pending request
-    Approve {
-        /// Request ID to approve
-        id: String,
-    },
+    Approve { id: String },
     /// Deny a pending request
-    Deny {
-        /// Request ID to deny
-        id: String,
-    },
+    Deny { id: String },
     /// Show server status
     Status,
 }
@@ -44,10 +36,8 @@ enum Commands {
 enum TokenAction {
     /// Generate a new agent token
     Generate {
-        /// Agent name
         #[arg(short, long)]
         name: String,
-        /// Permission set name
         #[arg(short, long)]
         permissions: String,
     },
@@ -101,22 +91,51 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Build the permission engine from config.
+fn build_perm_engine(cfg: &config::Config) -> PermissionEngine {
+    let mut engine = PermissionEngine::new();
+    for (name, pset) in &cfg.permissions {
+        let acl = PathAcl {
+            allow: pset.allow.clone(),
+            deny: pset.deny.clone(),
+            operations: pset.operations.iter().cloned().collect(),
+            requires_approval: pset.approve.iter().cloned().collect(),
+        };
+        engine.add_permission_set(name.clone(), acl);
+    }
+    engine
+}
+
 async fn serve(cfg: config::Config) -> anyhow::Result<()> {
-    tracing::info!("Starting mcpd-docs");
+    tracing::info!("Starting mcpd");
 
-    // Build permission engine
-    let perm_engine = Arc::new(permissions::PermissionEngine::from_config(&cfg));
+    let perm_engine = Arc::new(build_perm_engine(&cfg));
 
-    // Build MCP server with tools
-    let server = tools::build_server(cfg.clone(), perm_engine)?;
-    let server = Arc::new(server);
+    // Build server, registering enabled modules
+    let mut builder = mcpd_core::McpServer::builder()
+        .name("mcpd")
+        .version(env!("CARGO_PKG_VERSION"));
 
-    // Build transport
+    // --- Docs module ---
+    if cfg.docs_enabled() {
+        let db_path = cfg.docs_db_path();
+        let index = Arc::new(mcpd_mod_docs::IndexStore::open(&db_path)?);
+        let docs = mcpd_mod_docs::DocsModule::new(perm_engine.clone(), index);
+        tracing::info!("Module 'docs' enabled (db: {db_path})");
+        builder = builder.module(docs);
+    }
+
+    // --- Future modules would be registered here ---
+    // if cfg.git_enabled() { builder = builder.module(git_module); }
+
+    let server = Arc::new(builder.build());
+    tracing::info!("Registered {} tools", server.tool_count());
+
     let router = mcpd_core::transport::build_router(server);
 
-    // Bind to Unix socket or TCP
-    let listener = tokio::net::TcpListener::bind(&cfg.server.listen_addr()).await?;
-    tracing::info!("Listening on {}", cfg.server.listen_addr());
+    let addr = cfg.server.listen_addr();
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!("Listening on {addr}");
 
     axum::serve(listener, router).await?;
     Ok(())

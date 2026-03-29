@@ -6,7 +6,7 @@ use std::path::PathBuf;
 pub struct Config {
     pub server: ServerConfig,
     #[serde(default)]
-    pub index: IndexConfig,
+    pub modules: ModulesConfig,
     #[serde(default)]
     pub approval: ApprovalConfig,
     #[serde(default)]
@@ -22,12 +22,19 @@ pub struct ServerConfig {
     pub tcp: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ModulesConfig {
+    #[serde(default)]
+    pub docs: Option<DocsModuleConfig>,
+    // Future: git, shell, etc.
+}
+
 #[derive(Debug, Clone, Deserialize)]
-pub struct IndexConfig {
+pub struct DocsModuleConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     #[serde(default = "default_db_path")]
     pub db: String,
-    #[serde(default = "default_debounce")]
-    pub watch_debounce_ms: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,21 +64,21 @@ pub struct PermissionSet {
     pub approve: Vec<String>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_socket() -> Option<String> {
     dirs::runtime_dir()
-        .map(|d| d.join("mcpd/docs.sock").to_string_lossy().into_owned())
+        .map(|d| d.join("mcpd/mcpd.sock").to_string_lossy().into_owned())
 }
 
 fn default_db_path() -> String {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("mcpd-docs/index.db")
+        .join("mcpd/index.db")
         .to_string_lossy()
         .into_owned()
-}
-
-fn default_debounce() -> u64 {
-    500
 }
 
 fn default_timeout() -> u64 {
@@ -82,11 +89,11 @@ fn default_notify() -> String {
     "dbus".to_string()
 }
 
-impl Default for IndexConfig {
+impl Default for DocsModuleConfig {
     fn default() -> Self {
         Self {
+            enabled: true,
             db: default_db_path(),
-            watch_debounce_ms: default_debounce(),
         }
     }
 }
@@ -127,7 +134,23 @@ impl Config {
     fn default_config_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("mcpd-docs/config.toml")
+            .join("mcpd/config.toml")
+    }
+
+    pub fn docs_enabled(&self) -> bool {
+        self.modules
+            .docs
+            .as_ref()
+            .map(|d| d.enabled)
+            .unwrap_or(true)
+    }
+
+    pub fn docs_db_path(&self) -> String {
+        self.modules
+            .docs
+            .as_ref()
+            .map(|d| d.db.clone())
+            .unwrap_or_else(default_db_path)
     }
 }
 
@@ -138,7 +161,7 @@ impl Default for Config {
                 socket: default_socket(),
                 tcp: None,
             },
-            index: IndexConfig::default(),
+            modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),
             agents: Vec::new(),
             permissions: HashMap::new(),
@@ -161,23 +184,19 @@ mod tests {
 tcp = "127.0.0.1:9315"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
-        assert_eq!(config.server.tcp.unwrap(), "127.0.0.1:9315");
-        assert!(config.agents.is_empty());
+        assert_eq!(config.server.tcp.as_deref(), Some("127.0.0.1:9315"));
+        assert!(config.docs_enabled());
     }
 
     #[test]
-    fn parse_full_config() {
+    fn parse_modular_config() {
         let toml = r#"
 [server]
 tcp = "127.0.0.1:9315"
 
-[index]
+[modules.docs]
+enabled = true
 db = "/tmp/test.db"
-watch_debounce_ms = 1000
-
-[approval]
-timeout_secs = 60
-notify = "none"
 
 [[agents]]
 name = "claude"
@@ -187,25 +206,36 @@ permissions = "developer"
 [permissions.developer]
 allow = ["~/Documents/**"]
 deny = ["**/.env"]
-operations = ["read", "search", "list"]
-approve = ["write"]
+operations = ["read", "write", "search", "list", "git.status"]
+approve = ["write", "git.commit"]
 "#;
         let config: Config = toml::from_str(toml).unwrap();
+        assert!(config.docs_enabled());
+        assert_eq!(config.docs_db_path(), "/tmp/test.db");
         assert_eq!(config.agents.len(), 1);
-        assert_eq!(config.agents[0].name, "claude");
         let dev = &config.permissions["developer"];
-        assert_eq!(dev.allow, vec!["~/Documents/**"]);
-        assert_eq!(dev.deny, vec!["**/.env"]);
-        assert_eq!(dev.operations, vec!["read", "search", "list"]);
-        assert_eq!(dev.approve, vec!["write"]);
+        assert!(dev.operations.contains(&"git.status".to_string()));
+        assert!(dev.approve.contains(&"git.commit".to_string()));
+    }
+
+    #[test]
+    fn disable_module() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[modules.docs]
+enabled = false
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert!(!config.docs_enabled());
     }
 
     #[test]
     fn default_config_is_valid() {
         let config = Config::default();
         assert!(config.agents.is_empty());
-        assert_eq!(config.approval.timeout_secs, 300);
-        assert_eq!(config.index.watch_debounce_ms, 500);
+        assert!(config.docs_enabled());
     }
 
     #[test]

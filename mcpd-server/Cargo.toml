@@ -1,25 +1,30 @@
 [package]
-name = "mcpd-core"
-description = "Lightweight MCP server framework for Rust"
+name = "mcpd"
+description = "Composable MCP server with modular architecture"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "mcpd"
+path = "src/main.rs"
+
 [dependencies]
+mcpd-core = { path = "../mcpd-core" }
+mcpd-mod-docs = { path = "../mcpd-mod-docs" }
 axum = { workspace = true }
-hyper = { workspace = true }
-hyper-util = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
-glob = "0.3"
+toml = "0.8"
+clap = { version = "4", features = ["derive"] }
 dirs = "6"
+anyhow = "1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
-tower = { version = "0.5", features = ["util"] }
-http-body-util = "0.1"
+tempfile = "3"

@@ -1,4 +1,5 @@
 use crate::auth::{Authenticator, CallContext};
+use crate::module::Module;
 use crate::protocol::{
     CallToolParams, CallToolResult, InitializeParams, InitializeResult, ListToolsResult,
     ServerCapabilities, ServerInfo, ToolDefinition, ToolsCapability,
@@ -94,6 +95,10 @@ impl McpServer {
     pub fn authenticator(&self) -> &dyn Authenticator {
         self.authenticator.as_ref()
     }
+
+    pub fn tool_count(&self) -> usize {
+        self.tools.len()
+    }
 }
 
 /// Builder for constructing an McpServer.
@@ -124,6 +129,7 @@ impl McpServerBuilder {
         self
     }
 
+    /// Register an individual tool with its handler.
     pub fn tool(
         mut self,
         definition: ToolDefinition,
@@ -140,6 +146,37 @@ impl McpServerBuilder {
                 handler: Arc::new(handler),
             },
         );
+        self
+    }
+
+    /// Register all tools from a module.
+    ///
+    /// Panics if a tool name conflicts with an already-registered tool.
+    /// Tool names should be prefixed with the module name (e.g. `docs_read`,
+    /// `git_status`) to avoid collisions.
+    pub fn module(mut self, module: impl Module) -> Self {
+        let mod_name = module.name().to_string();
+        for (definition, handler) in module.tools() {
+            let tool_name = definition.name.clone();
+            if self.tools.contains_key(&tool_name) {
+                panic!(
+                    "Tool name conflict: '{}' from module '{}' already registered by another module",
+                    tool_name, mod_name
+                );
+            }
+            tracing::info!(
+                module = %mod_name,
+                tool = %tool_name,
+                "Registered tool"
+            );
+            self.tools.insert(
+                tool_name,
+                RegisteredTool {
+                    definition,
+                    handler,
+                },
+            );
+        }
         self
     }
 
@@ -200,6 +237,30 @@ mod tests {
         }
     }
 
+    // A test module providing one tool.
+    struct TestModule;
+
+    impl Module for TestModule {
+        fn name(&self) -> &str {
+            "test"
+        }
+
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+            vec![(
+                ToolDefinition {
+                    name: "test_ping".to_string(),
+                    description: Some("Returns pong".to_string()),
+                    input_schema: ToolInputSchema {
+                        schema_type: "object".to_string(),
+                        properties: None,
+                        required: None,
+                    },
+                },
+                Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("pong") })),
+            )]
+        }
+    }
+
     #[test]
     fn builder_defaults() {
         let server = McpServer::builder().build();
@@ -231,6 +292,97 @@ mod tests {
         let result = server.handle_list_tools();
         assert_eq!(result.tools.len(), 1);
         assert_eq!(result.tools[0].name, "echo");
+    }
+
+    #[test]
+    fn register_module() {
+        let server = McpServer::builder()
+            .module(TestModule)
+            .build();
+
+        let result = server.handle_list_tools();
+        assert_eq!(result.tools.len(), 1);
+        assert_eq!(result.tools[0].name, "test_ping");
+    }
+
+    #[test]
+    fn register_multiple_modules() {
+        struct AnotherModule;
+        impl Module for AnotherModule {
+            fn name(&self) -> &str { "another" }
+            fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+                vec![(
+                    ToolDefinition {
+                        name: "another_hello".to_string(),
+                        description: None,
+                        input_schema: ToolInputSchema {
+                            schema_type: "object".to_string(),
+                            properties: None,
+                            required: None,
+                        },
+                    },
+                    Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("hi") })),
+                )]
+            }
+        }
+
+        let server = McpServer::builder()
+            .module(TestModule)
+            .module(AnotherModule)
+            .build();
+
+        assert_eq!(server.tool_count(), 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "Tool name conflict")]
+    fn duplicate_tool_name_panics() {
+        // Two modules both registering "test_ping" should fail
+        struct DuplicateModule;
+        impl Module for DuplicateModule {
+            fn name(&self) -> &str { "duplicate" }
+            fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+                vec![(
+                    ToolDefinition {
+                        name: "test_ping".to_string(),
+                        description: None,
+                        input_schema: ToolInputSchema {
+                            schema_type: "object".to_string(),
+                            properties: None,
+                            required: None,
+                        },
+                    },
+                    Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("dup") })),
+                )]
+            }
+        }
+
+        McpServer::builder()
+            .module(TestModule)
+            .module(DuplicateModule)
+            .build();
+    }
+
+    #[tokio::test]
+    async fn call_module_tool() {
+        let server = McpServer::builder()
+            .module(TestModule)
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "test_ping".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => assert_eq!(t.text, "pong"),
+        }
     }
 
     #[test]
