@@ -55,6 +55,8 @@ impl Module for DocsModule {
             make_tool(edit_tool_def(), s.clone(), handle_edit),
             make_tool(info_tool_def(), s.clone(), handle_info),
             make_tool(delete_tool_def(), s.clone(), handle_delete),
+            make_tool(approve_tool_def(), s.clone(), handle_approve),
+            make_tool(deny_tool_def(), s.clone(), handle_deny),
         ]
     }
 }
@@ -222,6 +224,44 @@ fn delete_tool_def() -> ToolDefinition {
     }
 }
 
+fn approve_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "docs_approve".to_string(),
+        description: Some(
+            "Approve a pending operation. Call this with the request_id \
+             returned by a tool that requires approval."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([(
+                "request_id".to_string(),
+                serde_json::json!({"type": "string", "description": "Approval request ID"}),
+            )])),
+            required: Some(vec!["request_id".to_string()]),
+        },
+    }
+}
+
+fn deny_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "docs_deny".to_string(),
+        description: Some(
+            "Deny a pending operation. Call this with the request_id \
+             returned by a tool that requires approval."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([(
+                "request_id".to_string(),
+                serde_json::json!({"type": "string", "description": "Approval request ID"}),
+            )])),
+            required: Some(vec!["request_id".to_string()]),
+        },
+    }
+}
+
 // --- Path security ---
 
 fn resolve_path(raw: &str, must_exist: bool) -> Result<PathBuf, String> {
@@ -273,54 +313,39 @@ async fn check_perm(
         PermissionResult::Allowed => Ok(()),
         PermissionResult::NeedsApproval => {
             let path_str = path.display().to_string();
-            let (req, rx) = state.approvals.request(
+
+            // Check for a cached grant from a previous approval
+            if state.approvals.check_grant(&ctx.agent.name, op, &path_str) {
+                tracing::info!(
+                    agent = %ctx.agent.name, op, path = %path_str,
+                    "Using cached approval grant"
+                );
+                return Ok(());
+            }
+
+            // No cached grant — create approval request and return to client
+            let (req, _rx) = state.approvals.request(
                 &ctx.agent.name,
                 op,
                 &path_str,
             );
 
-            // Send desktop notification
+            // Send D-Bus notification in parallel (if available)
             if let Err(e) = state.notifier.notify(&req, state.approvals.clone()).await {
-                tracing::warn!("Failed to send notification: {e}");
-                // Fall through to wait — user can still approve via CLI
+                tracing::warn!("Failed to send D-Bus notification: {e}");
             }
 
-            tracing::info!(
-                request_id = %req.id,
-                agent = %ctx.agent.name,
-                op,
-                path = %path_str,
-                "Waiting for approval (timeout: {}s)",
-                state.approvals.timeout().as_secs(),
-            );
-
-            // Block until approved, denied, or timed out
-            let status = state.approvals.wait(rx).await;
-
-            // Dismiss the notification
-            let _ = state.notifier.dismiss(&req.id).await;
-
-            match status {
-                ApprovalStatus::Approved => {
-                    tracing::info!(request_id = %req.id, "Approved");
-                    Ok(())
-                }
-                ApprovalStatus::Denied => {
-                    tracing::info!(request_id = %req.id, "Denied");
-                    Err(CallToolResult::error(format!(
-                        "{op} on {} was denied by user",
-                        path.display()
-                    )))
-                }
-                ApprovalStatus::Expired => {
-                    tracing::info!(request_id = %req.id, "Expired");
-                    Err(CallToolResult::error(format!(
-                        "{op} on {} — approval timed out",
-                        path.display()
-                    )))
-                }
-                ApprovalStatus::Pending => unreachable!(),
-            }
+            // Return approval-needed response to the MCP client
+            Err(CallToolResult::success(vec![
+                mcpd_core::protocol::Content::text(format!(
+                    "Approval required: {} on {}\n\n\
+                     Request ID: {}\n\
+                     Agent: {}\n\n\
+                     Call docs_approve with this request_id to approve,\n\
+                     or docs_deny to reject.",
+                    op, path_str, req.id, ctx.agent.name,
+                )),
+            ]))
         }
         PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
             "Access denied: {}",
@@ -825,6 +850,66 @@ async fn handle_delete(
     CallToolResult::text(format!("Deleted {}", path.display()))
 }
 
+async fn handle_approve(
+    args: serde_json::Value,
+    _ctx: CallContext,
+    state: Arc<DocsState>,
+) -> CallToolResult {
+    let request_id = match args.get("request_id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => return CallToolResult::error("Missing required parameter: request_id"),
+    };
+
+    // Validate the request exists
+    let meta = match state.approvals.get_pending(request_id) {
+        Some(m) => m,
+        None => {
+            return CallToolResult::error(format!(
+                "No pending approval request: {request_id}"
+            ))
+        }
+    };
+
+    state.approvals.approve(request_id);
+
+    // Dismiss D-Bus notification
+    let _ = state.notifier.dismiss(request_id).await;
+
+    CallToolResult::text(format!(
+        "Approved: {} on {}\n\nYou can now retry the operation.",
+        meta.operation, meta.path,
+    ))
+}
+
+async fn handle_deny(
+    args: serde_json::Value,
+    _ctx: CallContext,
+    state: Arc<DocsState>,
+) -> CallToolResult {
+    let request_id = match args.get("request_id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => return CallToolResult::error("Missing required parameter: request_id"),
+    };
+
+    let meta = match state.approvals.get_pending(request_id) {
+        Some(m) => m,
+        None => {
+            return CallToolResult::error(format!(
+                "No pending approval request: {request_id}"
+            ))
+        }
+    };
+
+    state.approvals.deny(request_id);
+
+    let _ = state.notifier.dismiss(request_id).await;
+
+    CallToolResult::text(format!(
+        "Denied: {} on {}",
+        meta.operation, meta.path,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1211,7 +1296,9 @@ mod tests {
         assert!(names.contains(&"docs_edit"));
         assert!(names.contains(&"docs_info"));
         assert!(names.contains(&"docs_delete"));
-        assert_eq!(tools.len(), 7);
+        assert!(names.contains(&"docs_approve"));
+        assert!(names.contains(&"docs_deny"));
+        assert_eq!(tools.len(), 9);
     }
 
     // --- roundtrips ---
@@ -1351,97 +1438,148 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_with_approval_granted() {
+    async fn write_needs_approval_returns_request_id() {
+        let tmp = TempDir::new().unwrap();
+        let state = test_state_with_approval(&tmp);
+        let file = tmp.path().join("needs_approval.md");
+
+        // First attempt: returns approval-needed (non-blocking)
+        let result = handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+
+        // Not an error — it's a workflow step
+        assert!(!result.is_error);
+        let text = text_of(&result);
+        assert!(text.contains("Approval required"));
+        assert!(text.contains("Request ID:"));
+        assert!(text.contains("docs_approve"));
+
+        // File should NOT exist yet
+        assert!(!file.exists());
+
+        // There should be a pending request
+        assert_eq!(state.approvals.pending_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn approve_then_retry_succeeds() {
         let tmp = TempDir::new().unwrap();
         let state = test_state_with_approval(&tmp);
         let file = tmp.path().join("approved.md");
 
-        // Spawn the write in background — it will block waiting for approval
-        let state2 = state.clone();
-        let path = file.to_str().unwrap().to_string();
-        let handle = tokio::spawn(async move {
-            handle_write(
-                serde_json::json!({"path": path, "content": "approved content"}),
-                approval_ctx(),
-                state2,
-            ).await
-        });
-
-        // Give the handler time to create the approval request
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Approve the pending request
-        let pending = state.approvals.pending_requests();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].operation, "write");
-        state.approvals.approve(&pending[0].id);
-
-        // The handler should complete successfully
-        let result = handle.await.unwrap();
+        // Step 1: write returns approval-needed
+        let result = handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "approved content"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
         assert!(!result.is_error);
-        assert!(file.exists());
+
+        // Step 2: agent calls docs_approve
+        let pending = state.approvals.pending_requests();
+        let result = handle_approve(
+            serde_json::json!({"request_id": pending[0].id}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+        assert!(!result.is_error);
+        assert!(text_of(&result).contains("Approved"));
+
+        // Step 3: agent retries the write — grant is cached
+        let result = handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "approved content"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+        assert!(!result.is_error);
+        assert!(text_of(&result).contains("Written"));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "approved content");
     }
 
     #[tokio::test]
-    async fn write_with_approval_denied() {
+    async fn deny_then_retry_still_needs_approval() {
         let tmp = TempDir::new().unwrap();
         let state = test_state_with_approval(&tmp);
         let file = tmp.path().join("denied.md");
 
-        let state2 = state.clone();
-        let path = file.to_str().unwrap().to_string();
-        let handle = tokio::spawn(async move {
-            handle_write(
-                serde_json::json!({"path": path, "content": "should not exist"}),
-                approval_ctx(),
-                state2,
-            ).await
-        });
+        // Step 1: write returns approval-needed
+        handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
+        // Step 2: agent calls docs_deny
         let pending = state.approvals.pending_requests();
-        assert_eq!(pending.len(), 1);
-        state.approvals.deny(&pending[0].id);
+        let result = handle_deny(
+            serde_json::json!({"request_id": pending[0].id}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+        assert!(!result.is_error);
+        assert!(text_of(&result).contains("Denied"));
 
-        let result = handle.await.unwrap();
-        assert!(result.is_error);
-        assert!(text_of(&result).contains("denied"));
+        // Step 3: retry still needs approval (no grant cached)
+        let result = handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+        assert!(text_of(&result).contains("Approval required"));
         assert!(!file.exists());
     }
 
     #[tokio::test]
-    async fn write_with_approval_timeout() {
+    async fn approve_unknown_request_fails() {
         let tmp = TempDir::new().unwrap();
-        // 0 second timeout = instant expiry
-        let mut engine = PermissionEngine::new();
-        engine.add_permission_set(
-            "needs_approval".to_string(),
-            PathAcl {
-                allow: vec![format!("{}/**", tmp.path().display())],
-                deny: vec![],
-                operations: ["read", "write"].into_iter().map(String::from).collect(),
-                requires_approval: ["write"].into_iter().map(String::from).collect(),
-            },
-        );
-        let state = Arc::new(DocsState {
-            perm_engine: Arc::new(engine),
-            index: Arc::new(IndexStore::open_memory().unwrap()),
-            approvals: Arc::new(ApprovalStore::new(0)),
-            notifier: Arc::new(NoopNotifier),
-        });
+        let state = test_state_with_approval(&tmp);
 
-        let file = tmp.path().join("timeout.md");
-        let result = handle_write(
-            serde_json::json!({"path": file.to_str().unwrap(), "content": "timeout"}),
+        let result = handle_approve(
+            serde_json::json!({"request_id": "nonexistent"}),
             approval_ctx(),
             state,
         ).await;
-
         assert!(result.is_error);
-        assert!(text_of(&result).contains("timed out"));
-        assert!(!file.exists());
+        assert!(text_of(&result).contains("No pending"));
+    }
+
+    #[tokio::test]
+    async fn grant_is_single_use() {
+        let tmp = TempDir::new().unwrap();
+        let state = test_state_with_approval(&tmp);
+        let file = tmp.path().join("single_use.md");
+
+        // Get approval
+        handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "first"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+        let pending = state.approvals.pending_requests();
+        handle_approve(
+            serde_json::json!({"request_id": pending[0].id}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+
+        // First retry succeeds (consumes grant)
+        let result = handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "first"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+        assert!(text_of(&result).contains("Written"));
+
+        // Second retry needs approval again (grant consumed)
+        let result = handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "second"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+        assert!(text_of(&result).contains("Approval required"));
     }
 
     #[tokio::test]
@@ -1451,7 +1589,6 @@ mod tests {
         let file = tmp.path().join("readable.txt");
         std::fs::write(&file, "no approval needed").unwrap();
 
-        // Read does NOT require approval in the "needs_approval" set
         let result = handle_read(
             serde_json::json!({"path": file.to_str().unwrap()}),
             approval_ctx(),
@@ -1459,5 +1596,31 @@ mod tests {
         ).await;
         assert!(!result.is_error);
         assert!(text_of(&result).contains("no approval needed"));
+    }
+
+    #[tokio::test]
+    async fn dbus_approval_also_creates_grant() {
+        let tmp = TempDir::new().unwrap();
+        let state = test_state_with_approval(&tmp);
+        let file = tmp.path().join("dbus_approved.md");
+
+        // Write returns approval-needed
+        handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+
+        // Simulate D-Bus approval (calls store.approve directly)
+        let pending = state.approvals.pending_requests();
+        state.approvals.approve(&pending[0].id);
+
+        // Retry should succeed (grant cached by approve)
+        let result = handle_write(
+            serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
+            approval_ctx(),
+            state.clone(),
+        ).await;
+        assert!(text_of(&result).contains("Written"));
     }
 }

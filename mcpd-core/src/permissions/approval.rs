@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
 /// Status of an approval request.
@@ -27,21 +27,36 @@ struct PendingRequest {
     sender: Option<oneshot::Sender<ApprovalStatus>>,
 }
 
-/// Thread-safe store for pending approvals.
+/// A cached approval grant — allows a retry to pass through.
+struct Grant {
+    agent_name: String,
+    operation: String,
+    path: String,
+    expires: Instant,
+}
+
+/// Thread-safe store for pending approvals and cached grants.
 ///
-/// When a tool needs approval, `request()` creates an entry and returns
-/// a `oneshot::Receiver` the caller can `.await`. The D-Bus notifier or
-/// CLI resolves it via `resolve()`.
+/// Supports two resolution channels:
+/// 1. MCP-native: agent calls `docs_approve` tool → `approve()` → grant cached
+/// 2. D-Bus: user clicks notification action → `approve()` → grant cached
+///
+/// After approval, the agent retries the original operation.
+/// `check_grant()` finds the cached grant and consumes it.
 pub struct ApprovalStore {
     pending: Arc<Mutex<HashMap<String, PendingRequest>>>,
+    grants: Arc<Mutex<Vec<Grant>>>,
     timeout: Duration,
+    grant_ttl: Duration,
 }
 
 impl ApprovalStore {
     pub fn new(timeout_secs: u64) -> Self {
         Self {
             pending: Arc::new(Mutex::new(HashMap::new())),
+            grants: Arc::new(Mutex::new(Vec::new())),
             timeout: Duration::from_secs(timeout_secs),
+            grant_ttl: Duration::from_secs(300), // 5 min to retry
         }
     }
 
@@ -73,15 +88,23 @@ impl ApprovalStore {
         (meta, rx)
     }
 
-    /// Resolve a pending request (from D-Bus action or CLI).
-    /// Returns true if the request was found and resolved.
+    /// Resolve a pending request. If approved, caches a grant for the retry.
     pub fn resolve(&self, id: &str, status: ApprovalStatus) -> bool {
         let mut pending = self.pending.lock().unwrap();
         if let Some(mut req) = pending.remove(id) {
+            if status == ApprovalStatus::Approved {
+                let mut grants = self.grants.lock().unwrap();
+                grants.push(Grant {
+                    agent_name: req.meta.agent_name.clone(),
+                    operation: req.meta.operation.clone(),
+                    path: req.meta.path.clone(),
+                    expires: Instant::now() + self.grant_ttl,
+                });
+            }
             if let Some(tx) = req.sender.take() {
                 let _ = tx.send(status);
-                return true;
             }
+            return true;
         }
         false
     }
@@ -96,16 +119,39 @@ impl ApprovalStore {
         self.resolve(id, ApprovalStatus::Denied)
     }
 
+    /// Check if there's a cached grant for this (agent, operation, path).
+    /// Consumes the grant if found (single-use).
+    pub fn check_grant(&self, agent_name: &str, operation: &str, path: &str) -> bool {
+        let mut grants = self.grants.lock().unwrap();
+        let now = Instant::now();
+
+        // Clean expired grants
+        grants.retain(|g| g.expires > now);
+
+        // Find and consume matching grant
+        if let Some(pos) = grants.iter().position(|g| {
+            g.agent_name == agent_name && g.operation == operation && g.path == path
+        }) {
+            grants.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Wait for approval with timeout. Returns the final status.
     pub async fn wait(&self, rx: oneshot::Receiver<ApprovalStatus>) -> ApprovalStatus {
         match tokio::time::timeout(self.timeout, rx).await {
             Ok(Ok(status)) => status,
-            Ok(Err(_)) => ApprovalStatus::Expired, // sender dropped
-            Err(_) => {
-                // Timeout — clean up is handled by the caller
-                ApprovalStatus::Expired
-            }
+            Ok(Err(_)) => ApprovalStatus::Expired,
+            Err(_) => ApprovalStatus::Expired,
         }
+    }
+
+    /// Get metadata for a pending request (for docs_approve to validate).
+    pub fn get_pending(&self, id: &str) -> Option<ApprovalRequest> {
+        let pending = self.pending.lock().unwrap();
+        pending.get(id).map(|r| r.meta.clone())
     }
 
     /// Number of pending requests.
@@ -113,7 +159,7 @@ impl ApprovalStore {
         self.pending.lock().unwrap().len()
     }
 
-    /// List all pending requests (for tray icon / status display).
+    /// List all pending requests.
     pub fn pending_requests(&self) -> Vec<ApprovalRequest> {
         let pending = self.pending.lock().unwrap();
         pending.values().map(|r| r.meta.clone()).collect()
@@ -154,7 +200,7 @@ mod tests {
 
     #[tokio::test]
     async fn request_timeout() {
-        let store = ApprovalStore::new(0); // 0 second timeout
+        let store = ApprovalStore::new(0);
         let (_req, rx) = store.request("agent", "write", "/path");
 
         let status = store.wait(rx).await;
@@ -198,5 +244,63 @@ mod tests {
         let (req, _rx) = store.request("agent", "write", "/path");
         assert!(store.approve(&req.id));
         assert!(!store.approve(&req.id));
+    }
+
+    // --- grant cache tests ---
+
+    #[test]
+    fn approve_creates_grant() {
+        let store = ApprovalStore::new(300);
+        let (req, _rx) = store.request("agent", "write", "/home/user/doc.md");
+        store.approve(&req.id);
+
+        assert!(store.check_grant("agent", "write", "/home/user/doc.md"));
+    }
+
+    #[test]
+    fn grant_is_single_use() {
+        let store = ApprovalStore::new(300);
+        let (req, _rx) = store.request("agent", "write", "/path");
+        store.approve(&req.id);
+
+        assert!(store.check_grant("agent", "write", "/path"));
+        assert!(!store.check_grant("agent", "write", "/path"));
+    }
+
+    #[test]
+    fn deny_does_not_create_grant() {
+        let store = ApprovalStore::new(300);
+        let (req, _rx) = store.request("agent", "write", "/path");
+        store.deny(&req.id);
+
+        assert!(!store.check_grant("agent", "write", "/path"));
+    }
+
+    #[test]
+    fn grant_requires_exact_match() {
+        let store = ApprovalStore::new(300);
+        let (req, _rx) = store.request("agent", "write", "/path");
+        store.approve(&req.id);
+
+        assert!(!store.check_grant("other_agent", "write", "/path"));
+        assert!(!store.check_grant("agent", "read", "/path"));
+        assert!(!store.check_grant("agent", "write", "/other"));
+    }
+
+    #[test]
+    fn get_pending_returns_metadata() {
+        let store = ApprovalStore::new(300);
+        let (req, _rx) = store.request("agent", "write", "/path");
+        let meta = store.get_pending(&req.id).unwrap();
+        assert_eq!(meta.agent_name, "agent");
+        assert_eq!(meta.operation, "write");
+    }
+
+    #[test]
+    fn get_pending_returns_none_after_resolve() {
+        let store = ApprovalStore::new(300);
+        let (req, _rx) = store.request("agent", "write", "/path");
+        store.approve(&req.id);
+        assert!(store.get_pending(&req.id).is_none());
     }
 }
