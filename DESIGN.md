@@ -112,15 +112,14 @@ implementing the `Module` trait:
 pub trait Module: Send + Sync + 'static {
     fn name(&self) -> &str;
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)>;
-    fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> {
-        Vec::new()  // optional, default: no prompts
-    }
+    fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> { Vec::new() }
+    fn resources(&self) -> Vec<(ResourceDefinition, ResourceHandler)> { Vec::new() }
 }
 ```
 
-Modules can contribute tools, prompts, or both. The `prompts()` method
-has a default empty implementation so existing modules (like DocsModule)
-don't need changes.
+Modules can contribute tools, prompts, resources, or any combination.
+The `prompts()` and `resources()` methods have default empty
+implementations so existing modules don't need changes.
 
 ### Registration
 
@@ -176,7 +175,7 @@ db = "$XDG_DATA_HOME/mcpd/index.db"
 4. Normal operation:
    - `tools/list`, `tools/call` — discover and invoke tools
    - `prompts/list`, `prompts/get` — discover and render prompts
-   - `resources/list`, `resources/read` — discover and read resources (future)
+   - `resources/list`, `resources/read` — discover and read resources
 
 ### Streamable HTTP Transport
 
@@ -584,13 +583,18 @@ tcp = "127.0.0.1:9315"  # development default
 enabled = true
 # db = "$XDG_DATA_HOME/mcpd/index.db"
 
-# [modules.git]
-# enabled = true
-
 [approval]
 timeout_secs = 300
 notify = "dbus"  # "dbus" or "none"
 
+# --- Upstream MCP servers ---
+[[upstream]]
+name = "myelix"
+transport = "stdio"
+command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
+cwd = "/home/user/myelix"
+
+# --- Agents ---
 [[agents]]
 name = "claude-code"
 token_hash = "$blake3$..."
@@ -700,33 +704,77 @@ Both sources are presented to agents as a single unified MCP server.
 Agents see one flat list of tools, one flat list of prompts — they
 don't know which are built-in and which are proxied.
 
+### Upstream Transports
+
+mcpd connects to upstream servers using a pluggable `Transport` trait:
+
+```rust
+#[async_trait]
+pub trait Transport: Send + 'static {
+    async fn request(&mut self, body: Value) -> Result<Value, UpstreamError>;
+    fn shutdown(&mut self);
+}
+```
+
+Three implementations:
+
+| Transport | Config field | Wire protocol |
+|-----------|-------------|---------------|
+| **stdio** | `command`, `cwd` | Subprocess, line-delimited JSON-RPC over stdin/stdout |
+| **http** | `url` | POST JSON-RPC to HTTP endpoint (MCP streamable-http) |
+| **sse** | `url` | SSE endpoint discovery → POST JSON-RPC to discovered URL |
+
+`Upstream` is transport-agnostic — it handles MCP semantics
+(initialize, discover, proxy) while the transport handles the wire
+protocol.
+
 ### Upstream Configuration
 
 ```toml
+# Subprocess (stdio) — most common for local servers
 [[upstream]]
 name = "myelix"
 transport = "stdio"
 command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
 cwd = "/home/user/myelix"
 
+# HTTP (streamable-http) — for HTTP-based servers
 [[upstream]]
-name = "git-tools"
+name = "api-server"
+transport = "http"
+url = "http://localhost:8001/mcp"
+
+# SSE — for Server-Sent Events servers
+[[upstream]]
+name = "sse-server"
 transport = "sse"
 url = "http://localhost:8002/sse"
+
+# Disabled upstream
+[[upstream]]
+name = "disabled"
+command = ["echo"]
+enabled = false
 ```
 
 ### Upstream Lifecycle
 
-1. **Startup**: mcpd connects to each upstream, calls `initialize`,
-   then `tools/list` and `prompts/list` to discover capabilities.
-2. **Registration**: Upstream tools and prompts are merged into mcpd's
-   registry (namespaced by upstream name to avoid collisions).
-3. **Runtime**: When an agent calls a proxied tool or requests a proxied
-   prompt, mcpd forwards the request to the upstream server, applies
-   safety filters to the response, and returns it to the agent.
+1. **Startup**: mcpd connects to each upstream via its configured
+   transport, calls `initialize`, then `tools/list`, `prompts/list`,
+   and `resources/list` to discover capabilities.
+2. **Registration**: Upstream capabilities are wrapped in an
+   `UpstreamModule` that implements the `Module` trait. The server
+   builder registers it like any built-in module — same conflict
+   detection, same dispatch.
+3. **Runtime**: When an agent calls a proxied tool/prompt/resource,
+   mcpd forwards the request through the `Transport` to the upstream,
+   applies safety filters to the response, and returns it to the agent.
 4. **Auth + ACLs**: mcpd's own auth and permission checks apply before
-   forwarding to the upstream. The upstream server does not need to
-   handle auth — mcpd is the trust boundary.
+   forwarding. The upstream server does not need auth — mcpd is the
+   trust boundary.
+5. **Error handling**: Spawn/connection failures are logged and the
+   upstream is skipped (mcpd starts without it). Runtime errors from
+   upstreams are returned as tool/prompt errors to the agent.
 
 ### Security Boundary
 
@@ -758,14 +806,10 @@ Through mcpd, an agent can:
 
 ## Future Work
 
-### Gateway
-- **Upstream proxy** — Connect to external MCP servers (stdio, SSE,
-  streamable-http), aggregate their tools/prompts/resources, apply
-  mcpd's security layers. This is the core gateway capability.
-- **Resources dispatch** — Route `resources/list` and `resources/read`
-  (protocol types exist, dispatch not yet wired)
-
 ### Modules
+- **Runtime-loadable modules** — Load modules from shared libraries
+  or WASI components at startup, enabling distribution without
+  recompiling mcpd
 - **mcpd-mod-git** — Git module (`git_status`, `git_diff`, `git_log`,
   `git_commit`, `git_branch`) with approval for push/commit
 
@@ -781,5 +825,4 @@ Through mcpd, an agent can:
 - **Content extraction** — PDF, HTML, CSV pipeline
 
 ### Platform
-- **WASM modules** — WASI P2 component model for third-party plugins
 - **Gnome Keyring** — Token storage via `org.freedesktop.secrets`
