@@ -9,6 +9,6 @@ mod module;
 mod server;
 mod session;
 
-pub use module::Module;
+pub use module::{Module, PromptHandler};
 pub use server::{McpServer, McpServerBuilder, ToolHandler};
 pub use session::Session;

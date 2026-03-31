@@ -1,7 +1,8 @@
 use crate::auth::{Authenticator, CallContext};
-use crate::module::Module;
+use crate::module::{Module, PromptHandler};
 use crate::protocol::{
-    CallToolParams, CallToolResult, Content, InitializeParams, InitializeResult, ListToolsResult,
+    CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
+    InitializeResult, ListPromptsResult, ListToolsResult, PromptDefinition, PromptsCapability,
     ServerCapabilities, ServerInfo, ToolDefinition, ToolsCapability,
 };
 use crate::safety::{FilterContext, FilterPipeline};
@@ -24,11 +25,18 @@ struct RegisteredTool {
     handler: ToolHandler,
 }
 
-/// The MCP server, holding all state and tool registrations.
+/// Registered prompt: definition + handler.
+struct RegisteredPrompt {
+    definition: PromptDefinition,
+    handler: PromptHandler,
+}
+
+/// The MCP server, holding all state and tool/prompt registrations.
 pub struct McpServer {
     pub(crate) name: String,
     pub(crate) version: String,
     tools: HashMap<String, RegisteredTool>,
+    prompts: HashMap<String, RegisteredPrompt>,
     pub(crate) sessions: SessionStore,
     pub(crate) authenticator: Arc<dyn Authenticator>,
     /// Safety filter pipelines keyed by permission set name.
@@ -55,6 +63,11 @@ impl McpServer {
                 Some(ToolsCapability { list_changed: true })
             },
             resources: None,
+            prompts: if self.prompts.is_empty() {
+                None
+            } else {
+                Some(PromptsCapability { list_changed: false })
+            },
         }
     }
 
@@ -132,6 +145,25 @@ impl McpServer {
         result
     }
 
+    pub fn handle_list_prompts(&self) -> ListPromptsResult {
+        let prompts = self.prompts.values().map(|p| p.definition.clone()).collect();
+        ListPromptsResult { prompts }
+    }
+
+    pub async fn handle_get_prompt(
+        &self,
+        params: GetPromptParams,
+    ) -> Result<GetPromptResult, String> {
+        match self.prompts.get(&params.name) {
+            Some(prompt) => Ok((prompt.handler)(params.arguments).await),
+            None => Err(format!("Unknown prompt: {}", params.name)),
+        }
+    }
+
+    pub fn prompt_count(&self) -> usize {
+        self.prompts.len()
+    }
+
     pub fn sessions(&self) -> &SessionStore {
         &self.sessions
     }
@@ -150,6 +182,7 @@ pub struct McpServerBuilder {
     name: String,
     version: String,
     tools: HashMap<String, RegisteredTool>,
+    prompts: HashMap<String, RegisteredPrompt>,
     authenticator: Option<Arc<dyn Authenticator>>,
     safety_pipelines: HashMap<String, FilterPipeline>,
 }
@@ -160,6 +193,7 @@ impl McpServerBuilder {
             name: "mcpd".to_string(),
             version: "0.1.0".to_string(),
             tools: HashMap::new(),
+            prompts: HashMap::new(),
             authenticator: None,
             safety_pipelines: HashMap::new(),
         }
@@ -195,9 +229,9 @@ impl McpServerBuilder {
         self
     }
 
-    /// Register all tools from a module.
+    /// Register all tools and prompts from a module.
     ///
-    /// Panics if a tool name conflicts with an already-registered tool.
+    /// Panics if a tool or prompt name conflicts with an already-registered one.
     /// Tool names should be prefixed with the module name (e.g. `docs_read`,
     /// `git_status`) to avoid collisions.
     pub fn module(mut self, module: impl Module) -> Self {
@@ -218,6 +252,27 @@ impl McpServerBuilder {
             self.tools.insert(
                 tool_name,
                 RegisteredTool {
+                    definition,
+                    handler,
+                },
+            );
+        }
+        for (definition, handler) in module.prompts() {
+            let prompt_name = definition.name.clone();
+            if self.prompts.contains_key(&prompt_name) {
+                panic!(
+                    "Prompt name conflict: '{}' from module '{}' already registered by another module",
+                    prompt_name, mod_name
+                );
+            }
+            tracing::info!(
+                module = %mod_name,
+                prompt = %prompt_name,
+                "Registered prompt"
+            );
+            self.prompts.insert(
+                prompt_name,
+                RegisteredPrompt {
                     definition,
                     handler,
                 },
@@ -255,6 +310,7 @@ impl McpServerBuilder {
             name: self.name,
             version: self.version,
             tools: self.tools,
+            prompts: self.prompts,
             sessions: SessionStore::new(),
             authenticator,
             safety_pipelines: self.safety_pipelines,
@@ -595,5 +651,126 @@ mod tests {
                 assert!(t.text.contains("AKIAIOSFODNN7EXAMPLE"));
             }
         }
+    }
+
+    // --- Prompt tests ---
+
+    fn greeting_prompt_def() -> crate::protocol::PromptDefinition {
+        crate::protocol::PromptDefinition {
+            name: "greeting".to_string(),
+            description: Some("A greeting prompt".to_string()),
+            arguments: vec![crate::protocol::PromptArgument {
+                name: "name".to_string(),
+                description: Some("Name to greet".to_string()),
+                required: true,
+            }],
+        }
+    }
+
+    fn greeting_prompt_handler() -> PromptHandler {
+        Arc::new(|args: HashMap<String, String>| {
+            Box::pin(async move {
+                let name = args.get("name").cloned().unwrap_or_else(|| "world".to_string());
+                crate::protocol::GetPromptResult {
+                    description: Some("A greeting".to_string()),
+                    messages: vec![crate::protocol::PromptMessage {
+                        role: crate::protocol::PromptRole::User,
+                        content: crate::protocol::Content::text(format!("Hello, {name}!")),
+                    }],
+                }
+            })
+        })
+    }
+
+    // A test module providing both tools and prompts.
+    struct PromptModule;
+
+    impl Module for PromptModule {
+        fn name(&self) -> &str {
+            "prompt_test"
+        }
+
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+            vec![]
+        }
+
+        fn prompts(&self) -> Vec<(crate::protocol::PromptDefinition, PromptHandler)> {
+            vec![(greeting_prompt_def(), greeting_prompt_handler())]
+        }
+    }
+
+    #[test]
+    fn register_module_with_prompts() {
+        let server = McpServer::builder()
+            .module(PromptModule)
+            .build();
+
+        assert_eq!(server.prompt_count(), 1);
+        let result = server.handle_list_prompts();
+        assert_eq!(result.prompts.len(), 1);
+        assert_eq!(result.prompts[0].name, "greeting");
+    }
+
+    #[tokio::test]
+    async fn call_registered_prompt() {
+        let server = McpServer::builder()
+            .module(PromptModule)
+            .build();
+
+        let result = server
+            .handle_get_prompt(crate::protocol::GetPromptParams {
+                name: "greeting".to_string(),
+                arguments: HashMap::from([("name".to_string(), "Alice".to_string())]),
+            })
+            .await;
+
+        let result = result.unwrap();
+        assert_eq!(result.description, Some("A greeting".to_string()));
+        match &result.messages[0].content {
+            crate::protocol::Content::Text(t) => assert_eq!(t.text, "Hello, Alice!"),
+        }
+    }
+
+    #[tokio::test]
+    async fn call_unknown_prompt() {
+        let server = McpServer::builder().build();
+        let result = server
+            .handle_get_prompt(crate::protocol::GetPromptParams {
+                name: "nonexistent".to_string(),
+                arguments: HashMap::new(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown prompt"));
+    }
+
+    #[test]
+    fn capabilities_reflect_prompts() {
+        let empty = McpServer::builder().build();
+        assert!(empty.capabilities().prompts.is_none());
+
+        let with_prompt = McpServer::builder()
+            .module(PromptModule)
+            .build();
+        assert!(with_prompt.capabilities().prompts.is_some());
+    }
+
+    #[test]
+    #[should_panic(expected = "Prompt name conflict")]
+    fn duplicate_prompt_name_panics() {
+        struct DuplicatePromptModule;
+        impl Module for DuplicatePromptModule {
+            fn name(&self) -> &str { "duplicate" }
+            fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+            fn prompts(&self) -> Vec<(crate::protocol::PromptDefinition, PromptHandler)> {
+                vec![(greeting_prompt_def(), greeting_prompt_handler())]
+            }
+        }
+
+        McpServer::builder()
+            .module(PromptModule)
+            .module(DuplicatePromptModule)
+            .build();
     }
 }
