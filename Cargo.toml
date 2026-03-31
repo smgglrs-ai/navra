@@ -9,9 +9,11 @@ license = "BSD-3-Clause"
 rust-version = "1.75"
 
 [workspace.dependencies]
+async-trait = "0.1"
 axum = "0.8"
 hyper = "1"
 hyper-util = "0.1"
+reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -57,11 +57,23 @@ pub struct AgentConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpstreamConfig {
     pub name: String,
+    #[serde(default = "default_transport")]
+    pub transport: String,
+    /// Command for stdio transport (e.g., ["python3", "-m", "server"])
+    #[serde(default)]
     pub command: Vec<String>,
+    /// Working directory for stdio transport
     #[serde(default)]
     pub cwd: Option<String>,
+    /// URL for http/sse transport (e.g., "http://localhost:8001/mcp")
+    #[serde(default)]
+    pub url: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+}
+
+fn default_transport() -> String {
+    "stdio".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -270,17 +282,42 @@ command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
 cwd = "/home/user/myelix"
 
 [[upstream]]
+name = "api-server"
+transport = "http"
+url = "http://localhost:8001/mcp"
+
+[[upstream]]
+name = "sse-server"
+transport = "sse"
+url = "http://localhost:8002/sse"
+
+[[upstream]]
 name = "disabled-server"
 command = ["echo", "noop"]
 enabled = false
 "#;
         let config: Config = toml::from_str(toml).unwrap();
-        assert_eq!(config.upstream.len(), 2);
+        assert_eq!(config.upstream.len(), 4);
+
+        // stdio (default transport)
         assert_eq!(config.upstream[0].name, "myelix");
+        assert_eq!(config.upstream[0].transport, "stdio");
         assert_eq!(config.upstream[0].command[0], "poetry");
         assert_eq!(config.upstream[0].cwd.as_deref(), Some("/home/user/myelix"));
-        assert_eq!(config.upstream[0].enabled, None); // defaults to true
-        assert_eq!(config.upstream[1].enabled, Some(false));
+
+        // http
+        assert_eq!(config.upstream[1].name, "api-server");
+        assert_eq!(config.upstream[1].transport, "http");
+        assert_eq!(
+            config.upstream[1].url.as_deref(),
+            Some("http://localhost:8001/mcp")
+        );
+
+        // sse
+        assert_eq!(config.upstream[2].transport, "sse");
+
+        // disabled
+        assert_eq!(config.upstream[3].enabled, Some(false));
     }
 
     #[test]
