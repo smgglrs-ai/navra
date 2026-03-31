@@ -1,11 +1,24 @@
-use crate::protocol::ToolDefinition;
+use crate::protocol::{GetPromptResult, PromptDefinition, ToolDefinition};
 use crate::server::ToolHandler;
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
-/// A feature module that contributes tools to the MCP server.
+/// Async prompt handler function type.
+///
+/// Takes prompt arguments (name→value) and returns the rendered prompt.
+pub type PromptHandler = Arc<
+    dyn Fn(HashMap<String, String>) -> Pin<Box<dyn Future<Output = GetPromptResult> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// A feature module that contributes tools and prompts to the MCP server.
 ///
 /// Modules are the unit of composition in mcpd. Each module provides
-/// a set of tools with their handlers. The server collects tools from
-/// all enabled modules and presents them to agents.
+/// a set of tools and/or prompts with their handlers. The server collects
+/// them from all enabled modules and presents them to agents.
 ///
 /// # Naming convention
 ///
@@ -22,4 +35,12 @@ pub trait Module: Send + Sync + 'static {
     ///
     /// Called once at server startup. Each tool is a (definition, handler) pair.
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)>;
+
+    /// Return the prompts this module provides.
+    ///
+    /// Called once at server startup. Each prompt is a (definition, handler) pair.
+    /// Default implementation returns no prompts.
+    fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> {
+        Vec::new()
+    }
 }

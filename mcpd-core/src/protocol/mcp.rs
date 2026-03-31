@@ -49,6 +49,8 @@ pub struct ServerCapabilities {
     pub tools: Option<ToolsCapability>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesCapability>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompts: Option<PromptsCapability>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +157,65 @@ impl CallToolResult {
     }
 }
 
+// --- Prompts ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptDefinition {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<PromptArgument>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptArgument {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptsCapability {
+    #[serde(default)]
+    pub list_changed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListPromptsResult {
+    pub prompts: Vec<PromptDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPromptParams {
+    pub name: String,
+    #[serde(default)]
+    pub arguments: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetPromptResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub messages: Vec<PromptMessage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptMessage {
+    pub role: PromptRole,
+    pub content: Content,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PromptRole {
+    User,
+    Assistant,
+}
+
 // --- Resources ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,6 +275,7 @@ mod tests {
                     subscribe: true,
                     list_changed: true,
                 }),
+                prompts: None,
             },
             server_info: ServerInfo {
                 name: "mcpd-docs".to_string(),
@@ -276,5 +338,79 @@ mod tests {
     fn content_type_strings() {
         assert_eq!(ContentType::Json.as_str(), "application/json");
         assert_eq!(ContentType::EventStream.as_str(), "text/event-stream");
+    }
+
+    #[test]
+    fn serialize_prompt_definition() {
+        let prompt = PromptDefinition {
+            name: "persona:developer".to_string(),
+            description: Some("Software Developer persona".to_string()),
+            arguments: vec![PromptArgument {
+                name: "mandate".to_string(),
+                description: Some("The task to perform".to_string()),
+                required: true,
+            }],
+        };
+        let json = serde_json::to_value(&prompt).unwrap();
+        assert_eq!(json["name"], "persona:developer");
+        assert_eq!(json["arguments"][0]["name"], "mandate");
+        assert!(json["arguments"][0]["required"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn serialize_prompt_definition_no_args() {
+        let prompt = PromptDefinition {
+            name: "greeting".to_string(),
+            description: None,
+            arguments: vec![],
+        };
+        let json = serde_json::to_value(&prompt).unwrap();
+        assert_eq!(json["name"], "greeting");
+        // Empty arguments should be omitted
+        assert!(json.get("arguments").is_none());
+    }
+
+    #[test]
+    fn serialize_get_prompt_result() {
+        let result = GetPromptResult {
+            description: Some("A test prompt".to_string()),
+            messages: vec![PromptMessage {
+                role: PromptRole::User,
+                content: Content::text("Hello, world!"),
+            }],
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["description"], "A test prompt");
+        assert_eq!(json["messages"][0]["role"], "user");
+        assert_eq!(json["messages"][0]["content"]["text"], "Hello, world!");
+    }
+
+    #[test]
+    fn deserialize_get_prompt_params() {
+        let json = r#"{"name":"persona:dev","arguments":{"mandate":"Fix the bug"}}"#;
+        let params: GetPromptParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.name, "persona:dev");
+        assert_eq!(params.arguments["mandate"], "Fix the bug");
+    }
+
+    #[test]
+    fn deserialize_get_prompt_params_no_args() {
+        let json = r#"{"name":"greeting"}"#;
+        let params: GetPromptParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.name, "greeting");
+        assert!(params.arguments.is_empty());
+    }
+
+    #[test]
+    fn capabilities_with_prompts() {
+        let caps = ServerCapabilities {
+            tools: None,
+            resources: None,
+            prompts: Some(PromptsCapability { list_changed: true }),
+        };
+        let json = serde_json::to_value(&caps).unwrap();
+        assert!(json["prompts"]["listChanged"].as_bool().unwrap());
+        // tools and resources should be omitted
+        assert!(json.get("tools").is_none());
     }
 }

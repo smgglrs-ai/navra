@@ -1,6 +1,7 @@
 use crate::auth::CallContext;
 use crate::protocol::{
-    CallToolParams, InitializeParams, JsonRpcError, JsonRpcRequest, JsonRpcResponse,
+    CallToolParams, GetPromptParams, InitializeParams, JsonRpcError, JsonRpcRequest,
+    JsonRpcResponse,
 };
 use crate::server::McpServer;
 use axum::extract::State;
@@ -157,6 +158,32 @@ async fn dispatch(
             JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
         }
 
+        "prompts/list" => {
+            let result = server.handle_list_prompts();
+            JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+        }
+
+        "prompts/get" => {
+            let params: GetPromptParams = match request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+            {
+                Some(p) => p,
+                None => {
+                    return JsonRpcResponse::error(
+                        id,
+                        JsonRpcError::invalid_params("Invalid prompt get params"),
+                    );
+                }
+            };
+            match server.handle_get_prompt(params).await {
+                Ok(result) => {
+                    JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+                }
+                Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+            }
+        }
+
         _ => JsonRpcResponse::error(id, JsonRpcError::method_not_found(&request.method)),
     }
 }
@@ -170,6 +197,35 @@ mod tests {
     use axum::http::Request;
     use http_body_util::BodyExt;
     use tower::util::ServiceExt;
+
+    use crate::module::{Module, PromptHandler};
+
+    struct TestPromptModule;
+
+    impl Module for TestPromptModule {
+        fn name(&self) -> &str { "test_prompt" }
+        fn tools(&self) -> Vec<(ToolDefinition, crate::server::ToolHandler)> { vec![] }
+        fn prompts(&self) -> Vec<(crate::protocol::PromptDefinition, PromptHandler)> {
+            vec![(
+                crate::protocol::PromptDefinition {
+                    name: "greet".to_string(),
+                    description: Some("A greeting".to_string()),
+                    arguments: vec![],
+                },
+                std::sync::Arc::new(|_args: std::collections::HashMap<String, String>| {
+                    Box::pin(async {
+                        crate::protocol::GetPromptResult {
+                            description: Some("Greeting".to_string()),
+                            messages: vec![crate::protocol::PromptMessage {
+                                role: crate::protocol::PromptRole::User,
+                                content: crate::protocol::Content::text("Hello!"),
+                            }],
+                        }
+                    })
+                }),
+            )]
+        }
+    }
 
     fn test_server() -> Arc<McpServer> {
         Arc::new(
@@ -194,6 +250,7 @@ mod tests {
                     },
                     |_args, _ctx| Box::pin(async { CallToolResult::text("pong") }),
                 )
+                .module(TestPromptModule)
                 .build(),
         )
     }
@@ -310,5 +367,67 @@ mod tests {
         .await;
 
         assert!(json["result"]["isError"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn prompts_list_returns_registered_prompts() {
+        let router = build_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "prompts/list",
+                "id": 6
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let prompts = json["result"]["prompts"].as_array().unwrap();
+        assert_eq!(prompts.len(), 1);
+        assert_eq!(prompts[0]["name"], "greet");
+    }
+
+    #[tokio::test]
+    async fn prompts_get_invokes_handler() {
+        let router = build_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "prompts/get",
+                "id": 7,
+                "params": {
+                    "name": "greet",
+                    "arguments": {}
+                }
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["result"]["description"], "Greeting");
+        assert_eq!(json["result"]["messages"][0]["role"], "user");
+        assert_eq!(json["result"]["messages"][0]["content"]["text"], "Hello!");
+    }
+
+    #[tokio::test]
+    async fn prompts_get_unknown_returns_error() {
+        let router = build_router(test_server());
+        let (_, json) = post_json(
+            &router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "prompts/get",
+                "id": 8,
+                "params": {"name": "nonexistent", "arguments": {}}
+            }),
+        )
+        .await;
+
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Unknown prompt"));
     }
 }
