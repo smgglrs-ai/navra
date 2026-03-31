@@ -165,8 +165,49 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         builder = builder.module(docs);
     }
 
+    // --- Upstream MCP servers ---
+    for upstream_cfg in &cfg.upstream {
+        if !upstream_cfg.enabled.unwrap_or(true) {
+            tracing::info!(upstream = %upstream_cfg.name, "Upstream disabled, skipping");
+            continue;
+        }
+        match mcpd_core::Upstream::spawn(
+            &upstream_cfg.name,
+            &upstream_cfg.command,
+            upstream_cfg.cwd.as_deref(),
+        )
+        .await
+        {
+            Ok(upstream) => match mcpd_core::UpstreamModule::discover(upstream).await {
+                Ok(module) => {
+                    tracing::info!(upstream = %upstream_cfg.name, "Connected upstream");
+                    builder = builder.module(module);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        upstream = %upstream_cfg.name,
+                        error = %e,
+                        "Failed to discover upstream capabilities, skipping"
+                    );
+                }
+            },
+            Err(e) => {
+                tracing::error!(
+                    upstream = %upstream_cfg.name,
+                    error = %e,
+                    "Failed to spawn upstream, skipping"
+                );
+            }
+        }
+    }
+
     let server = Arc::new(builder.build());
-    tracing::info!("Registered {} tools", server.tool_count());
+    tracing::info!(
+        tools = server.tool_count(),
+        prompts = server.prompt_count(),
+        resources = server.resource_count(),
+        "Server ready"
+    );
 
     // --- System tray ---
     if !no_tray {

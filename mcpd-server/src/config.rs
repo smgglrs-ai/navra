@@ -13,6 +13,8 @@ pub struct Config {
     pub agents: Vec<AgentConfig>,
     #[serde(default)]
     pub permissions: HashMap<String, PermissionSet>,
+    #[serde(default)]
+    pub upstream: Vec<UpstreamConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -50,6 +52,16 @@ pub struct AgentConfig {
     pub name: String,
     pub token_hash: String,
     pub permissions: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpstreamConfig {
+    pub name: String,
+    pub command: Vec<String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -172,6 +184,7 @@ impl Default for Config {
             approval: ApprovalConfig::default(),
             agents: Vec::new(),
             permissions: HashMap::new(),
+            upstream: Vec::new(),
         }
     }
 }
@@ -243,6 +256,31 @@ enabled = false
         let config = Config::default();
         assert!(config.agents.is_empty());
         assert!(config.docs_enabled());
+    }
+
+    #[test]
+    fn parse_upstream_config() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[[upstream]]
+name = "myelix"
+command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
+cwd = "/home/user/myelix"
+
+[[upstream]]
+name = "disabled-server"
+command = ["echo", "noop"]
+enabled = false
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.upstream.len(), 2);
+        assert_eq!(config.upstream[0].name, "myelix");
+        assert_eq!(config.upstream[0].command[0], "poetry");
+        assert_eq!(config.upstream[0].cwd.as_deref(), Some("/home/user/myelix"));
+        assert_eq!(config.upstream[0].enabled, None); // defaults to true
+        assert_eq!(config.upstream[1].enabled, Some(false));
     }
 
     #[test]
