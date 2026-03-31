@@ -171,16 +171,60 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             tracing::info!(upstream = %upstream_cfg.name, "Upstream disabled, skipping");
             continue;
         }
-        match mcpd_core::Upstream::spawn(
-            &upstream_cfg.name,
-            &upstream_cfg.command,
-            upstream_cfg.cwd.as_deref(),
-        )
-        .await
-        {
+
+        let connect_result = match upstream_cfg.transport.as_str() {
+            "stdio" => {
+                mcpd_core::Upstream::spawn(
+                    &upstream_cfg.name,
+                    &upstream_cfg.command,
+                    upstream_cfg.cwd.as_deref(),
+                )
+                .await
+            }
+            "http" | "streamable-http" => {
+                let url = match &upstream_cfg.url {
+                    Some(u) => u.as_str(),
+                    None => {
+                        tracing::error!(
+                            upstream = %upstream_cfg.name,
+                            "HTTP upstream requires 'url' field, skipping"
+                        );
+                        continue;
+                    }
+                };
+                mcpd_core::Upstream::http(&upstream_cfg.name, url).await
+            }
+            "sse" => {
+                let url = match &upstream_cfg.url {
+                    Some(u) => u.as_str(),
+                    None => {
+                        tracing::error!(
+                            upstream = %upstream_cfg.name,
+                            "SSE upstream requires 'url' field, skipping"
+                        );
+                        continue;
+                    }
+                };
+                mcpd_core::Upstream::sse(&upstream_cfg.name, url).await
+            }
+            other => {
+                tracing::error!(
+                    upstream = %upstream_cfg.name,
+                    transport = %other,
+                    "Unknown transport type, skipping"
+                );
+                continue;
+            }
+        };
+
+        match connect_result {
             Ok(upstream) => match mcpd_core::UpstreamModule::discover(upstream).await {
                 Ok(module) => {
-                    tracing::info!(upstream = %upstream_cfg.name, "Connected upstream");
+                    tracing::info!(
+                        upstream = %upstream_cfg.name,
+                        transport = %upstream_cfg.transport,
+                        "Connected upstream"
+                    );
                     builder = builder.module(module);
                 }
                 Err(e) => {
@@ -195,7 +239,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 tracing::error!(
                     upstream = %upstream_cfg.name,
                     error = %e,
-                    "Failed to spawn upstream, skipping"
+                    "Failed to connect upstream, skipping"
                 );
             }
         }
