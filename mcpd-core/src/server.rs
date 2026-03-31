@@ -1,9 +1,10 @@
 use crate::auth::{Authenticator, CallContext};
-use crate::module::{Module, PromptHandler};
+use crate::module::{Module, PromptHandler, ResourceHandler};
 use crate::protocol::{
     CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
-    InitializeResult, ListPromptsResult, ListToolsResult, PromptDefinition, PromptsCapability,
-    ServerCapabilities, ServerInfo, ToolDefinition, ToolsCapability,
+    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PromptDefinition,
+    PromptsCapability, ReadResourceParams, ReadResourceResult, ResourceDefinition,
+    ResourcesCapability, ServerCapabilities, ServerInfo, ToolDefinition, ToolsCapability,
 };
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::{Session, SessionStore};
@@ -31,12 +32,19 @@ struct RegisteredPrompt {
     handler: PromptHandler,
 }
 
-/// The MCP server, holding all state and tool/prompt registrations.
+/// Registered resource: definition + handler.
+struct RegisteredResource {
+    definition: ResourceDefinition,
+    handler: ResourceHandler,
+}
+
+/// The MCP server, holding all state and tool/prompt/resource registrations.
 pub struct McpServer {
     pub(crate) name: String,
     pub(crate) version: String,
     tools: HashMap<String, RegisteredTool>,
     prompts: HashMap<String, RegisteredPrompt>,
+    resources: HashMap<String, RegisteredResource>,
     pub(crate) sessions: SessionStore,
     pub(crate) authenticator: Arc<dyn Authenticator>,
     /// Safety filter pipelines keyed by permission set name.
@@ -62,7 +70,14 @@ impl McpServer {
             } else {
                 Some(ToolsCapability { list_changed: true })
             },
-            resources: None,
+            resources: if self.resources.is_empty() {
+                None
+            } else {
+                Some(ResourcesCapability {
+                    subscribe: false,
+                    list_changed: false,
+                })
+            },
             prompts: if self.prompts.is_empty() {
                 None
             } else {
@@ -164,6 +179,29 @@ impl McpServer {
         self.prompts.len()
     }
 
+    pub fn handle_list_resources(&self) -> ListResourcesResult {
+        let resources = self
+            .resources
+            .values()
+            .map(|r| r.definition.clone())
+            .collect();
+        ListResourcesResult { resources }
+    }
+
+    pub async fn handle_read_resource(
+        &self,
+        params: ReadResourceParams,
+    ) -> Result<ReadResourceResult, String> {
+        match self.resources.get(&params.uri) {
+            Some(resource) => Ok((resource.handler)(params.uri).await),
+            None => Err(format!("Unknown resource: {}", params.uri)),
+        }
+    }
+
+    pub fn resource_count(&self) -> usize {
+        self.resources.len()
+    }
+
     pub fn sessions(&self) -> &SessionStore {
         &self.sessions
     }
@@ -183,6 +221,7 @@ pub struct McpServerBuilder {
     version: String,
     tools: HashMap<String, RegisteredTool>,
     prompts: HashMap<String, RegisteredPrompt>,
+    resources: HashMap<String, RegisteredResource>,
     authenticator: Option<Arc<dyn Authenticator>>,
     safety_pipelines: HashMap<String, FilterPipeline>,
 }
@@ -194,6 +233,7 @@ impl McpServerBuilder {
             version: "0.1.0".to_string(),
             tools: HashMap::new(),
             prompts: HashMap::new(),
+            resources: HashMap::new(),
             authenticator: None,
             safety_pipelines: HashMap::new(),
         }
@@ -278,6 +318,27 @@ impl McpServerBuilder {
                 },
             );
         }
+        for (definition, handler) in module.resources() {
+            let resource_uri = definition.uri.clone();
+            if self.resources.contains_key(&resource_uri) {
+                panic!(
+                    "Resource URI conflict: '{}' from module '{}' already registered by another module",
+                    resource_uri, mod_name
+                );
+            }
+            tracing::info!(
+                module = %mod_name,
+                resource = %resource_uri,
+                "Registered resource"
+            );
+            self.resources.insert(
+                resource_uri,
+                RegisteredResource {
+                    definition,
+                    handler,
+                },
+            );
+        }
         self
     }
 
@@ -311,6 +372,7 @@ impl McpServerBuilder {
             version: self.version,
             tools: self.tools,
             prompts: self.prompts,
+            resources: self.resources,
             sessions: SessionStore::new(),
             authenticator,
             safety_pipelines: self.safety_pipelines,
@@ -771,6 +833,112 @@ mod tests {
         McpServer::builder()
             .module(PromptModule)
             .module(DuplicatePromptModule)
+            .build();
+    }
+
+    // --- Resource tests ---
+
+    fn info_resource_def() -> crate::protocol::ResourceDefinition {
+        crate::protocol::ResourceDefinition {
+            uri: "info://server/status".to_string(),
+            name: "Server Status".to_string(),
+            description: Some("Current server status".to_string()),
+            mime_type: Some("text/plain".to_string()),
+        }
+    }
+
+    fn info_resource_handler() -> crate::module::ResourceHandler {
+        Arc::new(|uri: String| {
+            Box::pin(async move {
+                crate::protocol::ReadResourceResult {
+                    contents: vec![crate::protocol::ResourceContent {
+                        uri,
+                        mime_type: Some("text/plain".to_string()),
+                        text: Some("running".to_string()),
+                        blob: None,
+                    }],
+                }
+            })
+        })
+    }
+
+    struct ResourceModule;
+
+    impl Module for ResourceModule {
+        fn name(&self) -> &str { "resource_test" }
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+        fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, crate::module::ResourceHandler)> {
+            vec![(info_resource_def(), info_resource_handler())]
+        }
+    }
+
+    #[test]
+    fn register_module_with_resources() {
+        let server = McpServer::builder()
+            .module(ResourceModule)
+            .build();
+
+        assert_eq!(server.resource_count(), 1);
+        let result = server.handle_list_resources();
+        assert_eq!(result.resources.len(), 1);
+        assert_eq!(result.resources[0].uri, "info://server/status");
+    }
+
+    #[tokio::test]
+    async fn read_registered_resource() {
+        let server = McpServer::builder()
+            .module(ResourceModule)
+            .build();
+
+        let result = server
+            .handle_read_resource(crate::protocol::ReadResourceParams {
+                uri: "info://server/status".to_string(),
+            })
+            .await;
+
+        let result = result.unwrap();
+        assert_eq!(result.contents[0].text, Some("running".to_string()));
+    }
+
+    #[tokio::test]
+    async fn read_unknown_resource() {
+        let server = McpServer::builder().build();
+        let result = server
+            .handle_read_resource(crate::protocol::ReadResourceParams {
+                uri: "info://nonexistent".to_string(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown resource"));
+    }
+
+    #[test]
+    fn capabilities_reflect_resources() {
+        let empty = McpServer::builder().build();
+        assert!(empty.capabilities().resources.is_none());
+
+        let with_resource = McpServer::builder()
+            .module(ResourceModule)
+            .build();
+        assert!(with_resource.capabilities().resources.is_some());
+    }
+
+    #[test]
+    #[should_panic(expected = "Resource URI conflict")]
+    fn duplicate_resource_uri_panics() {
+        struct DuplicateResourceModule;
+        impl Module for DuplicateResourceModule {
+            fn name(&self) -> &str { "duplicate" }
+            fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+            fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, crate::module::ResourceHandler)> {
+                vec![(info_resource_def(), info_resource_handler())]
+            }
+        }
+
+        McpServer::builder()
+            .module(ResourceModule)
+            .module(DuplicateResourceModule)
             .build();
     }
 }

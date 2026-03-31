@@ -229,6 +229,33 @@ pub struct ResourceDefinition {
     pub mime_type: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListResourcesResult {
+    pub resources: Vec<ResourceDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadResourceParams {
+    pub uri: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadResourceResult {
+    pub contents: Vec<ResourceContent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceContent {
+    pub uri: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blob: Option<String>,
+}
+
 // --- Content Type helper ---
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -399,6 +426,43 @@ mod tests {
         let params: GetPromptParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.name, "greeting");
         assert!(params.arguments.is_empty());
+    }
+
+    #[test]
+    fn serialize_resource_definition() {
+        let resource = ResourceDefinition {
+            uri: "file:///home/user/doc.md".to_string(),
+            name: "doc.md".to_string(),
+            description: Some("A document".to_string()),
+            mime_type: Some("text/markdown".to_string()),
+        };
+        let json = serde_json::to_value(&resource).unwrap();
+        assert_eq!(json["uri"], "file:///home/user/doc.md");
+        assert_eq!(json["name"], "doc.md");
+        assert_eq!(json["mimeType"], "text/markdown");
+    }
+
+    #[test]
+    fn serialize_read_resource_result() {
+        let result = ReadResourceResult {
+            contents: vec![ResourceContent {
+                uri: "file:///doc.md".to_string(),
+                mime_type: Some("text/markdown".to_string()),
+                text: Some("# Hello".to_string()),
+                blob: None,
+            }],
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["contents"][0]["uri"], "file:///doc.md");
+        assert_eq!(json["contents"][0]["text"], "# Hello");
+        assert!(json["contents"][0].get("blob").is_none());
+    }
+
+    #[test]
+    fn deserialize_read_resource_params() {
+        let json = r#"{"uri":"file:///doc.md"}"#;
+        let params: ReadResourceParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.uri, "file:///doc.md");
     }
 
     #[test]

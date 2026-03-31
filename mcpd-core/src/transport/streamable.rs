@@ -1,7 +1,7 @@
 use crate::auth::CallContext;
 use crate::protocol::{
     CallToolParams, GetPromptParams, InitializeParams, JsonRpcError, JsonRpcRequest,
-    JsonRpcResponse,
+    JsonRpcResponse, ReadResourceParams,
 };
 use crate::server::McpServer;
 use axum::extract::State;
@@ -158,6 +158,32 @@ async fn dispatch(
             JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
         }
 
+        "resources/list" => {
+            let result = server.handle_list_resources();
+            JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+        }
+
+        "resources/read" => {
+            let params: ReadResourceParams = match request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+            {
+                Some(p) => p,
+                None => {
+                    return JsonRpcResponse::error(
+                        id,
+                        JsonRpcError::invalid_params("Invalid resource read params"),
+                    );
+                }
+            };
+            match server.handle_read_resource(params).await {
+                Ok(result) => {
+                    JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+                }
+                Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+            }
+        }
+
         "prompts/list" => {
             let result = server.handle_list_prompts();
             JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
@@ -198,7 +224,7 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::util::ServiceExt;
 
-    use crate::module::{Module, PromptHandler};
+    use crate::module::{Module, PromptHandler, ResourceHandler};
 
     struct TestPromptModule;
 
@@ -219,6 +245,35 @@ mod tests {
                             messages: vec![crate::protocol::PromptMessage {
                                 role: crate::protocol::PromptRole::User,
                                 content: crate::protocol::Content::text("Hello!"),
+                            }],
+                        }
+                    })
+                }),
+            )]
+        }
+    }
+
+    struct TestResourceModule;
+
+    impl Module for TestResourceModule {
+        fn name(&self) -> &str { "test_resource" }
+        fn tools(&self) -> Vec<(ToolDefinition, crate::server::ToolHandler)> { vec![] }
+        fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, ResourceHandler)> {
+            vec![(
+                crate::protocol::ResourceDefinition {
+                    uri: "info://version".to_string(),
+                    name: "Version".to_string(),
+                    description: Some("Server version".to_string()),
+                    mime_type: Some("text/plain".to_string()),
+                },
+                std::sync::Arc::new(|uri: String| {
+                    Box::pin(async move {
+                        crate::protocol::ReadResourceResult {
+                            contents: vec![crate::protocol::ResourceContent {
+                                uri,
+                                mime_type: Some("text/plain".to_string()),
+                                text: Some("0.1.0".to_string()),
+                                blob: None,
                             }],
                         }
                     })
@@ -251,6 +306,7 @@ mod tests {
                     |_args, _ctx| Box::pin(async { CallToolResult::text("pong") }),
                 )
                 .module(TestPromptModule)
+                .module(TestResourceModule)
                 .build(),
         )
     }
@@ -429,5 +485,65 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Unknown prompt"));
+    }
+
+    #[tokio::test]
+    async fn resources_list_returns_registered_resources() {
+        let router = build_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "resources/list",
+                "id": 9
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let resources = json["result"]["resources"].as_array().unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_eq!(resources[0]["uri"], "info://version");
+    }
+
+    #[tokio::test]
+    async fn resources_read_invokes_handler() {
+        let router = build_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "resources/read",
+                "id": 10,
+                "params": {
+                    "uri": "info://version"
+                }
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["result"]["contents"][0]["text"], "0.1.0");
+        assert_eq!(json["result"]["contents"][0]["uri"], "info://version");
+    }
+
+    #[tokio::test]
+    async fn resources_read_unknown_returns_error() {
+        let router = build_router(test_server());
+        let (_, json) = post_json(
+            &router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "resources/read",
+                "id": 11,
+                "params": {"uri": "info://nonexistent"}
+            }),
+        )
+        .await;
+
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Unknown resource"));
     }
 }
