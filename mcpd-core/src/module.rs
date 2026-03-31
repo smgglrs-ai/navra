@@ -1,4 +1,6 @@
-use crate::protocol::{GetPromptResult, PromptDefinition, ToolDefinition};
+use crate::protocol::{
+    GetPromptResult, PromptDefinition, ReadResourceResult, ResourceDefinition, ToolDefinition,
+};
 use crate::server::ToolHandler;
 use std::collections::HashMap;
 use std::future::Future;
@@ -12,6 +14,13 @@ pub type PromptHandler = Arc<
     dyn Fn(HashMap<String, String>) -> Pin<Box<dyn Future<Output = GetPromptResult> + Send>>
         + Send
         + Sync,
+>;
+
+/// Async resource handler function type.
+///
+/// Takes the resource URI and returns the resource content.
+pub type ResourceHandler = Arc<
+    dyn Fn(String) -> Pin<Box<dyn Future<Output = ReadResourceResult> + Send>> + Send + Sync,
 >;
 
 /// A feature module that contributes tools and prompts to the MCP server.
@@ -41,6 +50,14 @@ pub trait Module: Send + Sync + 'static {
     /// Called once at server startup. Each prompt is a (definition, handler) pair.
     /// Default implementation returns no prompts.
     fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> {
+        Vec::new()
+    }
+
+    /// Return the resources this module provides.
+    ///
+    /// Called once at server startup. Each resource is a (definition, handler) pair.
+    /// Default implementation returns no resources.
+    fn resources(&self) -> Vec<(ResourceDefinition, ResourceHandler)> {
         Vec::new()
     }
 }
