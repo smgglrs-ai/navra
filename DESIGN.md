@@ -2,14 +2,17 @@
 
 ## Overview
 
-**mcpd** is a composable, secure MCP (Model Context Protocol) server
-designed to run as a user-level systemd unit on Linux desktops. It
-exposes user documents and local resources to AI agents through a rich
-permission model with human-in-the-loop approval.
+**mcpd** is a secure MCP (Model Context Protocol) gateway designed to
+run as a user-level systemd unit on Linux desktops. It aggregates
+multiple MCP servers — both built-in modules and upstream external
+servers — behind a unified security layer with authentication, path
+ACLs, content safety filtering, and human-in-the-loop approval.
 
-The architecture is modular: feature **modules** plug into a shared
-framework. Each module contributes MCP tools. The permission engine,
-approval workflow, and transport are shared across all modules.
+Built-in **modules** contribute tools and prompts directly. External
+**upstream** MCP servers (e.g., Myelix for cognitive personas, or
+specialized tool servers) are proxied through mcpd, which applies the
+same auth, permissions, and safety policies to all traffic regardless
+of origin.
 
 ## Crate Structure
 
@@ -22,7 +25,7 @@ mcpd/
 
 | Crate | Role |
 |-------|------|
-| `mcpd-core` | MCP protocol (JSON-RPC 2.0, Streamable HTTP), Module trait, permission engine (string-based ops, deny-wins ACLs), approval store with grants cache, D-Bus notifier, auth |
+| `mcpd-core` | MCP protocol (JSON-RPC 2.0, Streamable HTTP, tools + prompts + resources), Module trait, permission engine (string-based ops, deny-wins ACLs), approval store with grants cache, D-Bus notifier, auth |
 | `mcpd-mod-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
 | `mcpd-server` | Binary that loads modules from config, system tray (ksni), CLI |
 
@@ -35,11 +38,11 @@ mcpd/
                              │ MCP Streamable HTTP
                              │ (Unix socket or TCP)
 ┌────────────────────────────▼─────────────────────────────────────────┐
-│                          mcpd-server                                 │
+│                          mcpd-server (gateway)                       │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐ │
 │  │ System Tray │  │    Config    │  │      Module Loader          │ │
 │  │   (ksni)    │  │   (TOML)    │  │ [modules.docs] → DocsModule │ │
-│  │ Approve/Deny│  │             │  │ [modules.git]  → (future)   │ │
+│  │ Approve/Deny│  │             │  │                              │ │
 │  └──────┬──────┘  └─────────────┘  └──────────────┬──────────────┘ │
 │         │                                          │                │
 │  ┌──────▼──────────────────────────────────────────▼──────────────┐ │
@@ -47,26 +50,40 @@ mcpd/
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐  │ │
 │  │  │ JSON-RPC   │ │ MCP Proto  │ │ Streamable │ │   Auth     │  │ │
 │  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP(axum) │ │ (token)    │  │ │
+│  │  │            │ │ tools +    │ │            │ │            │  │ │
+│  │  │            │ │ prompts +  │ │            │ │            │  │ │
+│  │  │            │ │ resources  │ │            │ │            │  │ │
 │  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘  │ │
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐  │ │
 │  │  │ Permission │ │  Approval  │ │  D-Bus     │ │  Module    │  │ │
 │  │  │ Engine     │ │  Store +   │ │  Notifier  │ │  Trait     │  │ │
 │  │  │ (ACLs)     │ │  Grants    │ │            │ │            │  │ │
 │  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘  │ │
+│  │  ┌────────────────────────────────────────────────────────┐    │ │
+│  │  │ Content Safety (regex + ML)                            │    │ │
+│  │  │ Applied to ALL responses: built-in modules + upstreams │    │ │
+│  │  └────────────────────────────────────────────────────────┘    │ │
 │  └────────────────────────────────────────────────────────────────┘ │
 │                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐ │
-│  │                     mcpd-mod-docs                              │ │
-│  │  ┌──────────────────────────────────────────────────────────┐  │ │
-│  │  │ Tools: docs_search, docs_read, docs_write, docs_edit,   │  │ │
-│  │  │        docs_delete, docs_list, docs_info,                │  │ │
-│  │  │        docs_approve, docs_deny                           │  │ │
-│  │  └──────────────────────┬───────────────────────────────────┘  │ │
-│  │                         │                                      │ │
-│  │  ┌──────────────────────▼───────────────────────────────────┐  │ │
-│  │  │              SQLite Index (FTS5)                          │  │ │
-│  │  └──────────────────────────────────────────────────────────┘  │ │
-│  └────────────────────────────────────────────────────────────────┘ │
+│  ┌─ Built-in Modules ───────────────────────────────────────────┐   │
+│  │  mcpd-mod-docs                                               │   │
+│  │  Tools: docs_search, docs_read, docs_write, docs_edit, ...  │   │
+│  │  SQLite FTS5 index                                           │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                      │
+│  ┌─ Upstream MCP Servers (proxied) ─────────────────────────────┐   │
+│  │                                                               │   │
+│  │  ┌─────────────────────┐  ┌───────────────────────────────┐  │   │
+│  │  │ Myelix MCP Server   │  │ Other MCP Servers (future)    │  │   │
+│  │  │ (stdio / SSE)       │  │ (git, CI/CD, ...)             │  │   │
+│  │  │                     │  │                               │  │   │
+│  │  │ Prompts: personas   │  │ Tools: git_status, ...        │  │   │
+│  │  │ Tools: weave_prompt │  │                               │  │   │
+│  │  └─────────────────────┘  └───────────────────────────────┘  │   │
+│  │                                                               │   │
+│  │  mcpd aggregates tools/prompts/resources from all upstreams  │   │
+│  │  and applies auth + ACLs + safety uniformly                  │   │
+│  └───────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────┘
 
          ┌──────────────────────────────────────────┐
@@ -95,8 +112,15 @@ implementing the `Module` trait:
 pub trait Module: Send + Sync + 'static {
     fn name(&self) -> &str;
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)>;
+    fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> {
+        Vec::new()  // optional, default: no prompts
+    }
 }
 ```
+
+Modules can contribute tools, prompts, or both. The `prompts()` method
+has a default empty implementation so existing modules (like DocsModule)
+don't need changes.
 
 ### Registration
 
@@ -111,9 +135,9 @@ McpServer::builder()
     .build()
 ```
 
-Duplicate tool names are detected at startup (panic on conflict).
-Tool names must be prefixed with the module name: `docs_read`,
-`git_status`, etc.
+Duplicate tool and prompt names are detected at startup (panic on
+conflict). Tool names must be prefixed with the module name:
+`docs_read`, `git_status`, etc.
 
 ### Config-driven
 
@@ -149,7 +173,10 @@ db = "$XDG_DATA_HOME/mcpd/index.db"
 1. Client sends `initialize` with capabilities and `clientInfo`
 2. Server responds with `serverInfo` and capabilities
 3. Client sends `notifications/initialized`
-4. Normal operation: `tools/list`, `tools/call`
+4. Normal operation:
+   - `tools/list`, `tools/call` — discover and invoke tools
+   - `prompts/list`, `prompts/get` — discover and render prompts
+   - `resources/list`, `resources/read` — discover and read resources (future)
 
 ### Streamable HTTP Transport
 
@@ -635,16 +662,124 @@ mcpd deny <request-id>                   Deny a pending request
 mcpd status                              Show server status
 ```
 
+## Gateway Architecture
+
+### Design Rationale
+
+mcpd is evolving from a standalone MCP server to an **MCP gateway**
+that aggregates upstream MCP servers. The motivation:
+
+- **Domain separation**: Each upstream server owns its domain logic
+  (cognitive core, git operations, CI/CD). mcpd stays domain-agnostic.
+- **Unified security**: Auth, ACLs, content safety, and approval
+  workflows apply uniformly to all traffic, whether it comes from a
+  built-in module or an upstream server.
+- **Model agnosticism**: Upstream servers expose prompts and tools via
+  MCP. Any client that speaks MCP can consume them, regardless of the
+  underlying model.
+
+### Two Sources of Capabilities
+
+```
+┌─ Built-in ────────────────────────┐
+│ Modules compiled into mcpd-server │
+│ DocsModule: docs_read, docs_write │
+│ (future: GitModule, etc.)         │
+└───────────────────────────────────┘
+
+┌─ Upstream ─────────────────────────────────────────┐
+│ External MCP servers proxied through mcpd           │
+│ Myelix: persona prompts + weave_prompt tool         │
+│ (future: git server, CI/CD server, etc.)            │
+│                                                     │
+│ Transports: stdio (subprocess), SSE, streamable-http│
+└─────────────────────────────────────────────────────┘
+```
+
+Both sources are presented to agents as a single unified MCP server.
+Agents see one flat list of tools, one flat list of prompts — they
+don't know which are built-in and which are proxied.
+
+### Upstream Configuration
+
+```toml
+[[upstream]]
+name = "myelix"
+transport = "stdio"
+command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
+cwd = "/home/user/myelix"
+
+[[upstream]]
+name = "git-tools"
+transport = "sse"
+url = "http://localhost:8002/sse"
+```
+
+### Upstream Lifecycle
+
+1. **Startup**: mcpd connects to each upstream, calls `initialize`,
+   then `tools/list` and `prompts/list` to discover capabilities.
+2. **Registration**: Upstream tools and prompts are merged into mcpd's
+   registry (namespaced by upstream name to avoid collisions).
+3. **Runtime**: When an agent calls a proxied tool or requests a proxied
+   prompt, mcpd forwards the request to the upstream server, applies
+   safety filters to the response, and returns it to the agent.
+4. **Auth + ACLs**: mcpd's own auth and permission checks apply before
+   forwarding to the upstream. The upstream server does not need to
+   handle auth — mcpd is the trust boundary.
+
+### Security Boundary
+
+```
+Agent → mcpd (auth, ACLs, safety) → Upstream server
+         ▲                            ▲
+         │                            │
+    Trust boundary              Trusted (local)
+    (agent identity,            (no auth needed,
+     path checks,               mcpd controls
+     content filtering)         access)
+```
+
+The upstream server runs locally and trusts mcpd as its sole client.
+mcpd handles all agent-facing security concerns.
+
+### Example: Myelix Integration
+
+Myelix's MCP server exposes:
+- **Prompts**: `persona:software_developer`, `persona:researcher`, etc.
+  — discoverable via `prompts/list`, raw definitions via `prompts/get`
+- **Tools**: `weave_prompt` — assembles a fully customized system prompt
+  from cognitive core components (persona + heuristics + directives)
+
+Through mcpd, an agent can:
+1. `prompts/list` → sees both docs module tools and Myelix personas
+2. `prompts/get("persona:software_developer")` → proxied to Myelix
+3. `tools/call weave_prompt(...)` → proxied to Myelix, safety-filtered
+
 ## Future Work
 
+### Gateway
+- **Upstream proxy** — Connect to external MCP servers (stdio, SSE,
+  streamable-http), aggregate their tools/prompts/resources, apply
+  mcpd's security layers. This is the core gateway capability.
+- **Resources dispatch** — Route `resources/list` and `resources/read`
+  (protocol types exist, dispatch not yet wired)
+
+### Modules
+- **mcpd-mod-git** — Git module (`git_status`, `git_diff`, `git_log`,
+  `git_commit`, `git_branch`) with approval for push/commit
+
+### Safety
 - **ML safety tier** — ONNX Runtime (`ort` crate, optional feature)
   for contextual PII/sensitivity detection. Auto-detect NPU > GPU > CPU.
   Ship with a tiny token classifier (~5-15MB ONNX model).
-- **mcpd-mod-git** — Git module (`git_status`, `git_diff`, `git_log`,
-  `git_commit`, `git_branch`) with approval for push/commit
+- **Custom safety rules** — User-defined regex patterns in config
+
+### Search & Indexing
 - **Vector search** — sqlite-vec for semantic similarity
 - **File watcher** — `notify` crate for live re-indexing
 - **Content extraction** — PDF, HTML, CSV pipeline
+
+### Platform
 - **WASM modules** — WASI P2 component model for third-party plugins
 - **Gnome Keyring** — Token storage via `org.freedesktop.secrets`
-- **Custom safety rules** — User-defined regex patterns in config
