@@ -228,6 +228,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         builder = builder.module(docs);
     }
 
+    // --- Git module ---
+    if cfg.git_enabled() {
+        let git = mcpd_mod_git::GitModule::new(
+            perm_engine.clone(),
+            approvals.clone(),
+            notifier.clone(),
+        );
+        tracing::info!("Module 'git' enabled");
+        builder = builder.module(git);
+    }
+
     // --- Upstream MCP servers ---
     for upstream_cfg in &cfg.upstream {
         if !upstream_cfg.enabled.unwrap_or(true) {

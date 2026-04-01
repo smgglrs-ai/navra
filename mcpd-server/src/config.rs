@@ -28,7 +28,14 @@ pub struct ServerConfig {
 pub struct ModulesConfig {
     #[serde(default)]
     pub docs: Option<DocsModuleConfig>,
-    // Future: git, shell, etc.
+    #[serde(default)]
+    pub git: Option<GitModuleConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GitModuleConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -225,6 +232,14 @@ impl Config {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("mcpd/config.toml")
+    }
+
+    pub fn git_enabled(&self) -> bool {
+        self.modules
+            .git
+            .as_ref()
+            .map(|g| g.enabled)
+            .unwrap_or(false)
     }
 
     pub fn docs_enabled(&self) -> bool {
