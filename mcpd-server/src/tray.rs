@@ -236,6 +236,7 @@ pub async fn spawn_tray(
 pub async fn run_tray_updater(
     handle: ksni::Handle<McpdTray>,
     approvals: Arc<ApprovalStore>,
+    pause_flag: Arc<std::sync::atomic::AtomicBool>,
     mut cmd_rx: mpsc::UnboundedReceiver<TrayCommand>,
 ) {
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
@@ -276,11 +277,12 @@ pub async fn run_tray_updater(
                     }
                     TrayCommand::Pause => {
                         tracing::info!("Tray: server paused");
+                        pause_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                         handle.update(|tray| tray.paused = true).await;
-                        // TODO: wire pause into server to reject new calls
                     }
                     TrayCommand::Resume => {
                         tracing::info!("Tray: server resumed");
+                        pause_flag.store(false, std::sync::atomic::Ordering::Relaxed);
                         handle.update(|tray| tray.paused = false).await;
                     }
                     TrayCommand::Quit => {

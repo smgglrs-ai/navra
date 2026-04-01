@@ -355,6 +355,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 tokio::spawn(tray::run_tray_updater(
                     handle,
                     approvals.clone(),
+                    server.pause_flag(),
                     cmd_rx,
                 ));
             }
