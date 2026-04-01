@@ -12,6 +12,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+blake3 = { workspace = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 dirs = "6"
 

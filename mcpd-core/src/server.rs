@@ -1,5 +1,7 @@
 use crate::auth::{Authenticator, CallContext};
+use crate::hooks::HookPipeline;
 use crate::module::{Module, PromptHandler, ResourceHandler};
+use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy};
 use crate::protocol::{
     CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
     InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PromptDefinition,
@@ -47,8 +49,12 @@ pub struct McpServer {
     resources: HashMap<String, RegisteredResource>,
     pub(crate) sessions: SessionStore,
     pub(crate) authenticator: Arc<dyn Authenticator>,
-    /// Safety filter pipelines keyed by permission set name.
+    /// Safety filter pipelines keyed by permission set name (legacy, used when no hooks).
     safety_pipelines: HashMap<String, FilterPipeline>,
+    /// Per-tool permission rules keyed by permission set name.
+    tool_permissions: HashMap<String, ToolPermissions>,
+    /// Hook pipeline for pre/post tool-call interception.
+    hooks: HookPipeline,
 }
 
 impl McpServer {
@@ -113,12 +119,46 @@ impl McpServer {
         params: CallToolParams,
         ctx: CallContext,
     ) -> CallToolResult {
+        // Per-tool permission check (before calling handler)
+        if let Some(tp) = self.tool_permissions.get(&ctx.agent.permissions) {
+            match tp.check(&params.name) {
+                ToolPolicy::Deny => {
+                    return CallToolResult::error(format!(
+                        "Permission denied: tool '{}' is blocked for permission set '{}'",
+                        params.name, ctx.agent.permissions
+                    ));
+                }
+                ToolPolicy::Approve => {
+                    return CallToolResult::error(format!(
+                        "Approval required: tool '{}' requires approval for permission set '{}'",
+                        params.name, ctx.agent.permissions
+                    ));
+                }
+                ToolPolicy::Allow => {}
+            }
+        }
+
+        // Run pre-hooks (may modify arguments or block execution)
+        let arguments = if self.hooks.has_hooks() {
+            match self.hooks.run_pre(&params.name, params.arguments, &ctx).await {
+                Ok(args) => args,
+                Err(reason) => return CallToolResult::error(reason),
+            }
+        } else {
+            params.arguments
+        };
+
         let result = match self.tools.get(&params.name) {
-            Some(tool) => (tool.handler)(params.arguments, ctx.clone()).await,
+            Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => return CallToolResult::error(format!("Unknown tool: {}", params.name)),
         };
 
-        // Apply safety filters to outbound content
+        // Run post-hooks (includes safety filtering if wired as a hook)
+        if self.hooks.has_hooks() {
+            return self.hooks.run_post(&params.name, &arguments, result, &ctx).await;
+        }
+
+        // Legacy path: apply safety filters directly when no hooks are configured
         if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions) {
             if pipeline.has_filters() {
                 return self.apply_safety_filter(pipeline, result, &ctx, &params.name);
@@ -224,6 +264,9 @@ pub struct McpServerBuilder {
     resources: HashMap<String, RegisteredResource>,
     authenticator: Option<Arc<dyn Authenticator>>,
     safety_pipelines: HashMap<String, FilterPipeline>,
+    tool_permissions: HashMap<String, ToolPermissions>,
+    hooks: Vec<Box<dyn crate::hooks::Hook>>,
+    hook_timeout: std::time::Duration,
 }
 
 impl McpServerBuilder {
@@ -236,6 +279,9 @@ impl McpServerBuilder {
             resources: HashMap::new(),
             authenticator: None,
             safety_pipelines: HashMap::new(),
+            tool_permissions: HashMap::new(),
+            hooks: Vec::new(),
+            hook_timeout: std::time::Duration::from_secs(10),
         }
     }
 
@@ -357,6 +403,32 @@ impl McpServerBuilder {
         self
     }
 
+    /// Add a hook to the pipeline.
+    ///
+    /// Hooks are executed in the order they are added for pre-hooks,
+    /// and in reverse order for post-hooks.
+    pub fn hook(mut self, hook: impl crate::hooks::Hook) -> Self {
+        self.hooks.push(Box::new(hook));
+        self
+    }
+
+    /// Set the per-hook timeout (default: 10s).
+    pub fn hook_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.hook_timeout = timeout;
+        self
+    }
+
+    /// Set per-tool permission rules for a permission set.
+    pub fn tool_permissions(
+        mut self,
+        permission_set: impl Into<String>,
+        permissions: ToolPermissions,
+    ) -> Self {
+        self.tool_permissions
+            .insert(permission_set.into(), permissions);
+        self
+    }
+
     pub fn build(self) -> McpServer {
         let authenticator = self.authenticator.unwrap_or_else(|| {
             Arc::new(crate::auth::NoAuthenticator {
@@ -367,6 +439,11 @@ impl McpServerBuilder {
             })
         });
 
+        let mut hooks = HookPipeline::new(self.hook_timeout);
+        for hook in self.hooks {
+            hooks.add_boxed(hook);
+        }
+
         McpServer {
             name: self.name,
             version: self.version,
@@ -376,6 +453,8 @@ impl McpServerBuilder {
             sessions: SessionStore::new(),
             authenticator,
             safety_pipelines: self.safety_pipelines,
+            tool_permissions: self.tool_permissions,
+            hooks,
         }
     }
 }
@@ -940,5 +1019,249 @@ mod tests {
             .module(ResourceModule)
             .module(DuplicateResourceModule)
             .build();
+    }
+
+    // --- Per-tool permission tests ---
+
+    #[tokio::test]
+    async fn tool_permissions_deny_blocks_tool() {
+        use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("should not reach") })
+            })
+            .tool_permissions(
+                "dev",
+                ToolPermissions::new(
+                    vec![ToolRule {
+                        tool: "echo".to_string(),
+                        policy: ToolPolicy::Deny,
+                    }],
+                    ToolPolicy::Allow,
+                ),
+            )
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("Permission denied"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_permissions_allow_passes_through() {
+        use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("reached") })
+            })
+            .tool_permissions(
+                "dev",
+                ToolPermissions::new(
+                    vec![ToolRule {
+                        tool: "echo".to_string(),
+                        policy: ToolPolicy::Allow,
+                    }],
+                    ToolPolicy::Deny,
+                ),
+            )
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => assert_eq!(t.text, "reached"),
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_permissions_approve_returns_approval_required() {
+        use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("should not reach") })
+            })
+            .tool_permissions(
+                "dev",
+                ToolPermissions::new(
+                    vec![ToolRule {
+                        tool: "echo".to_string(),
+                        policy: ToolPolicy::Approve,
+                    }],
+                    ToolPolicy::Allow,
+                ),
+            )
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("Approval required"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn no_tool_permissions_allows_all() {
+        // No tool_permissions registered at all — everything should pass
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("ok") })
+            })
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(!result.is_error);
+    }
+
+    // --- Hook pipeline tests ---
+
+    #[tokio::test]
+    async fn hook_safety_filter_via_pipeline() {
+        use crate::hooks::SafetyHook;
+
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |args, _ctx| {
+                Box::pin(async move {
+                    let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                    CallToolResult::text(msg.to_string())
+                })
+            })
+            .hook(SafetyHook::single("dev", crate::safety::build_pipeline("standard")))
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("[REDACTED:aws-key]"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn hook_blocks_tool_call() {
+        /// A pre-hook that blocks all tool calls.
+        struct BlockAll;
+
+        #[async_trait::async_trait]
+        impl crate::hooks::Hook for BlockAll {
+            fn name(&self) -> &str { "block-all" }
+            async fn pre_tool_use(
+                &self,
+                _tool_name: &str,
+                _arguments: &serde_json::Value,
+                _ctx: &CallContext,
+            ) -> crate::hooks::HookDecision {
+                crate::hooks::HookDecision::Block("blocked by test hook".to_string())
+            }
+        }
+
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("should not reach") })
+            })
+            .hook(BlockAll)
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("blocked by test hook"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_safety_filter_still_works_without_hooks() {
+        // When no hooks are registered, safety_profile() still works via legacy path
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |args, _ctx| {
+                Box::pin(async move {
+                    let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                    CallToolResult::text(msg.to_string())
+                })
+            })
+            .safety_profile("dev", crate::safety::build_pipeline("standard"))
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({"message": "AKIAIOSFODNN7EXAMPLE"}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("[REDACTED:aws-key]"));
+            }
+        }
     }
 }
