@@ -1,25 +1,25 @@
 [Unit]
 Description=mcpd — Composable MCP Server
-Documentation=https://github.com/user/mcpd
 After=default.target
 
 [Service]
-Type=notify
-ExecStart=%h/.cargo/bin/mcpd serve
+Type=simple
+ExecStart=%h/.cargo/bin/mcpd serve --no-tray
 Restart=on-failure
 RestartSec=5
+
+# Paths
+RuntimeDirectory=mcpd
+ReadWritePaths=%h/.local/share/mcpd %h/.config/mcpd
 
 # Hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.local/share/mcpd
-RuntimeDirectory=mcpd
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
-MemoryDenyWriteExecute=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes

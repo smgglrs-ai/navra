@@ -1,0 +1,10 @@
+[Unit]
+Description=mcpd — MCP Server Socket
+
+[Socket]
+ListenStream=%t/mcpd/mcpd.sock
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target
