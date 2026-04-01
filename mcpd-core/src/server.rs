@@ -13,6 +13,7 @@ use crate::session::{Session, SessionStore};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Async tool handler function type.
@@ -55,6 +56,8 @@ pub struct McpServer {
     tool_permissions: HashMap<String, ToolPermissions>,
     /// Hook pipeline for pre/post tool-call interception.
     hooks: HookPipeline,
+    /// Shared pause flag — when true, tool calls are rejected.
+    paused: Arc<AtomicBool>,
 }
 
 impl McpServer {
@@ -121,6 +124,13 @@ impl McpServer {
         params: CallToolParams,
         ctx: CallContext,
     ) -> CallToolResult {
+        // Reject all tool calls when paused
+        if self.paused.load(Ordering::Relaxed) {
+            return CallToolResult::error(
+                "Server is paused. Resume from the system tray to continue.".to_string(),
+            );
+        }
+
         // Per-tool permission check (before calling handler)
         if let Some(tp) = self.tool_permissions.get(&ctx.agent.permissions) {
             match tp.check(&params.name) {
@@ -254,6 +264,27 @@ impl McpServer {
 
     pub fn tool_count(&self) -> usize {
         self.tools.len()
+    }
+
+    /// Returns the shared pause flag. Use this to wire pause/resume
+    /// from external sources (e.g., system tray).
+    pub fn pause_flag(&self) -> Arc<AtomicBool> {
+        self.paused.clone()
+    }
+
+    /// Pause the server — tool calls will be rejected until resumed.
+    pub fn pause(&self) {
+        self.paused.store(true, Ordering::Relaxed);
+    }
+
+    /// Resume the server — tool calls will be accepted again.
+    pub fn resume(&self) {
+        self.paused.store(false, Ordering::Relaxed);
+    }
+
+    /// Returns true if the server is currently paused.
+    pub fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Relaxed)
     }
 }
 
@@ -457,6 +488,7 @@ impl McpServerBuilder {
             safety_pipelines: self.safety_pipelines,
             tool_permissions: self.tool_permissions,
             hooks,
+            paused: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -1267,5 +1299,73 @@ mod tests {
                 assert!(t.text.contains("[REDACTED:aws-key]"));
             }
         }
+    }
+
+    // --- Pause/resume tests ---
+
+    #[tokio::test]
+    async fn paused_server_rejects_tool_calls() {
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("should not reach") })
+            })
+            .build();
+
+        server.pause();
+        assert!(server.is_paused());
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("paused"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn resumed_server_accepts_tool_calls() {
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("ok") })
+            })
+            .build();
+
+        server.pause();
+        server.resume();
+        assert!(!server.is_paused());
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert!(!result.is_error);
+    }
+
+    #[test]
+    fn pause_flag_is_shared() {
+        let server = McpServer::builder().build();
+        let flag = server.pause_flag();
+
+        assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
+        server.pause();
+        assert!(flag.load(std::sync::atomic::Ordering::Relaxed));
+        server.resume();
+        assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
     }
 }
