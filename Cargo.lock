@@ -1085,6 +1085,7 @@ dependencies = [
  "ksni",
  "mcpd-core",
  "mcpd-mod-docs",
+ "mcpd-mod-git",
  "reqwest",
  "serde",
  "serde_json",
@@ -1136,6 +1137,19 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "mcpd-mod-git"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "mcpd-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
