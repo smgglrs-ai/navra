@@ -92,21 +92,23 @@ impl McpServer {
         }
     }
 
-    pub fn handle_initialize(&self, params: InitializeParams, agent_identity: crate::auth::AgentIdentity) -> InitializeResult {
+    /// Handle an initialize request. Returns the result and the session ID.
+    pub fn handle_initialize(&self, params: InitializeParams, agent_identity: crate::auth::AgentIdentity) -> (InitializeResult, String) {
         let session_id = uuid::Uuid::new_v4().to_string();
         let session = Session {
-            id: session_id,
+            id: session_id.clone(),
             agent: agent_identity,
             client_info: params.client_info,
             initialized: true,
         };
         self.sessions.create(session);
 
-        InitializeResult {
+        let result = InitializeResult {
             protocol_version: crate::protocol::PROTOCOL_VERSION.to_string(),
             capabilities: self.capabilities(),
             server_info: self.server_info(),
-        }
+        };
+        (result, session_id)
     }
 
     pub fn handle_list_tools(&self) -> ListToolsResult {
@@ -706,10 +708,12 @@ mod tests {
             },
         };
 
-        let result = server.handle_initialize(params, test_agent());
+        let (result, session_id) = server.handle_initialize(params, test_agent());
         assert_eq!(result.protocol_version, "2025-03-26");
         assert_eq!(result.server_info.name, "test");
         assert_eq!(server.sessions().count(), 1);
+        assert!(!session_id.is_empty());
+        assert!(server.sessions().get(&session_id).is_some());
     }
 
     #[tokio::test]
