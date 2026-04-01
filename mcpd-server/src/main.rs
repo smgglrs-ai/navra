@@ -234,17 +234,49 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     };
 
     // --- Docs module ---
+    // Keep watcher handle alive for the lifetime of the server.
+    let mut _watcher_handle: Option<mcpd_mod_docs::WatcherHandle> = None;
     if cfg.docs_enabled() {
         let db_path = cfg.docs_db_path();
         let index = Arc::new(mcpd_mod_docs::IndexStore::open(&db_path)?);
         let docs = mcpd_mod_docs::DocsModule::new(
             perm_engine.clone(),
-            index,
+            index.clone(),
             approvals.clone(),
             notifier.clone(),
         );
         tracing::info!("Module 'docs' enabled (db: {db_path})");
         builder = builder.module(docs);
+
+        // Start file watcher if watch directories are configured
+        let watch_dirs: Vec<_> = cfg
+            .modules
+            .docs
+            .as_ref()
+            .map(|d| &d.watch)
+            .into_iter()
+            .flatten()
+            .map(|dir| {
+                if dir.starts_with("~/") {
+                    dirs::home_dir()
+                        .map(|h| h.join(&dir[2..]))
+                        .unwrap_or_else(|| std::path::PathBuf::from(dir))
+                } else {
+                    std::path::PathBuf::from(dir)
+                }
+            })
+            .collect();
+        if !watch_dirs.is_empty() {
+            match mcpd_mod_docs::start_watcher(watch_dirs, index) {
+                Ok(handle) => {
+                    tracing::info!("File watcher active");
+                    _watcher_handle = Some(handle);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to start file watcher: {e}");
+                }
+            }
+        }
     }
 
     // --- Git module ---
