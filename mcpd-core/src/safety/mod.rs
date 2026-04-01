@@ -1,6 +1,6 @@
 mod regex;
 
-pub use self::regex::{PiiFilter, SecretFilter};
+pub use self::regex::{CustomFilter, PiiFilter, SecretFilter};
 
 /// A detected sensitive content span.
 #[derive(Debug, Clone, PartialEq)]
