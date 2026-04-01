@@ -56,17 +56,19 @@ async fn handle_post(
             .into_response();
     }
 
-    let response = dispatch(server, request, agent).await;
+    // Extract session ID from request header (for non-initialize requests)
+    let session_id = headers
+        .get(SESSION_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
 
-    // Add session header if present
+    let (response, new_session_id) = dispatch(server, request, agent, session_id).await;
+
     let mut resp = Json(&response).into_response();
-    if let Some(result) = &response.result {
-        // After initialize, include session id in header
-        if let Some(session_id) = result.get("_sessionId").and_then(|v| v.as_str()) {
-            resp.headers_mut().insert(
-                SESSION_HEADER,
-                session_id.parse().unwrap(),
-            );
+    // Include session ID in response header (set on initialize, echoed otherwise)
+    if let Some(sid) = new_session_id {
+        if let Ok(val) = sid.parse() {
+            resp.headers_mut().insert(SESSION_HEADER, val);
         }
     }
 
@@ -90,11 +92,13 @@ async fn handle_get(
     (StatusCode::OK, "SSE endpoint — not yet implemented").into_response()
 }
 
+/// Returns (response, optional_session_id_for_header).
 async fn dispatch(
     server: Arc<McpServer>,
     request: JsonRpcRequest,
     agent: crate::auth::AgentIdentity,
-) -> JsonRpcResponse {
+    session_id: Option<String>,
+) -> (JsonRpcResponse, Option<String>) {
     let id = request.id.clone();
 
     match request.method.as_str() {
@@ -105,36 +109,38 @@ async fn dispatch(
             {
                 Some(p) => p,
                 None => {
-                    return JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::invalid_params("Invalid initialize params"),
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid initialize params"),
+                        ),
+                        None,
                     );
                 }
             };
-            let result = server.handle_initialize(params, agent);
-            let mut value = serde_json::to_value(result).unwrap();
-            // Embed session ID for the transport layer to extract
-            // (stripped before sending to client in production)
-            if let Some(obj) = value.as_object_mut() {
-                // Get the latest session
-                // Simple approach: session was just created
-                obj.insert(
-                    "_sessionId".to_string(),
-                    serde_json::json!(uuid::Uuid::new_v4().to_string()),
-                );
-            }
-            JsonRpcResponse::success(id, value)
+            let (result, new_session_id) = server.handle_initialize(params, agent);
+            let value = serde_json::to_value(result).unwrap();
+            (
+                JsonRpcResponse::success(id, value),
+                Some(new_session_id),
+            )
         }
 
         "notifications/initialized" => {
             // No response needed for notifications, but since this comes
             // as a request with an id via HTTP, acknowledge it.
-            JsonRpcResponse::success(id, serde_json::json!({}))
+            (
+                JsonRpcResponse::success(id, serde_json::json!({})),
+                session_id,
+            )
         }
 
         "tools/list" => {
             let result = server.handle_list_tools();
-            JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+            (
+                JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
+                session_id,
+            )
         }
 
         "tools/call" => {
@@ -144,23 +150,32 @@ async fn dispatch(
             {
                 Some(p) => p,
                 None => {
-                    return JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::invalid_params("Invalid tool call params"),
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid tool call params"),
+                        ),
+                        session_id,
                     );
                 }
             };
             let ctx = CallContext {
                 agent,
-                session_id: "TODO".to_string(),
+                session_id: session_id.clone().unwrap_or_default(),
             };
             let result = server.handle_call_tool(params, ctx).await;
-            JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+            (
+                JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
+                session_id,
+            )
         }
 
         "resources/list" => {
             let result = server.handle_list_resources();
-            JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+            (
+                JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
+                session_id,
+            )
         }
 
         "resources/read" => {
@@ -170,23 +185,30 @@ async fn dispatch(
             {
                 Some(p) => p,
                 None => {
-                    return JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::invalid_params("Invalid resource read params"),
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid resource read params"),
+                        ),
+                        session_id,
                     );
                 }
             };
-            match server.handle_read_resource(params).await {
+            let resp = match server.handle_read_resource(params).await {
                 Ok(result) => {
                     JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
                 }
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
-            }
+            };
+            (resp, session_id)
         }
 
         "prompts/list" => {
             let result = server.handle_list_prompts();
-            JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+            (
+                JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
+                session_id,
+            )
         }
 
         "prompts/get" => {
@@ -196,21 +218,28 @@ async fn dispatch(
             {
                 Some(p) => p,
                 None => {
-                    return JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::invalid_params("Invalid prompt get params"),
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid prompt get params"),
+                        ),
+                        session_id,
                     );
                 }
             };
-            match server.handle_get_prompt(params).await {
+            let resp = match server.handle_get_prompt(params).await {
                 Ok(result) => {
                     JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
                 }
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
-            }
+            };
+            (resp, session_id)
         }
 
-        _ => JsonRpcResponse::error(id, JsonRpcError::method_not_found(&request.method)),
+        _ => (
+            JsonRpcResponse::error(id, JsonRpcError::method_not_found(&request.method)),
+            session_id,
+        ),
     }
 }
 
@@ -545,5 +574,85 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Unknown resource"));
+    }
+
+    /// Post JSON and return status, headers, and body.
+    async fn post_json_full(
+        router: &Router,
+        body: serde_json::Value,
+        session_id: Option<&str>,
+    ) -> (StatusCode, HeaderMap, serde_json::Value) {
+        let mut req = Request::builder()
+            .method("POST")
+            .uri("/mcp")
+            .header("content-type", "application/json");
+
+        if let Some(sid) = session_id {
+            req = req.header(SESSION_HEADER, sid);
+        }
+
+        let req = req
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        (status, headers, json)
+    }
+
+    #[tokio::test]
+    async fn initialize_returns_session_header() {
+        let router = build_router(test_server());
+        let (status, headers, json) = post_json_full(
+            &router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "id": 1,
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test"}
+                }
+            }),
+            None,
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["result"]["protocolVersion"], "2025-03-26");
+
+        // Session header must be present and non-empty
+        let session_id = headers.get(SESSION_HEADER).expect("missing session header");
+        let sid = session_id.to_str().unwrap();
+        assert!(!sid.is_empty());
+        // Should be a valid UUID
+        assert!(uuid::Uuid::parse_str(sid).is_ok());
+    }
+
+    #[tokio::test]
+    async fn session_header_not_in_initialize_body() {
+        let router = build_router(test_server());
+        let (_, _, json) = post_json_full(
+            &router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "id": 1,
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test"}
+                }
+            }),
+            None,
+        )
+        .await;
+
+        // The _sessionId internal field should NOT leak into the response body
+        assert!(json["result"]["_sessionId"].is_null());
     }
 }
