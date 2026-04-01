@@ -4,28 +4,59 @@ use crate::protocol::{
     JsonRpcResponse, ReadResourceParams,
 };
 use crate::server::McpServer;
+use crate::transport::sse::SseBroadcaster;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures_util::stream::Stream;
+use std::convert::Infallible;
 use std::sync::Arc;
 
 const SESSION_HEADER: &str = "mcp-session-id";
 
+/// Shared state for the axum router.
+#[derive(Clone)]
+struct AppState {
+    server: Arc<McpServer>,
+    broadcaster: SseBroadcaster,
+}
+
 /// Build an axum Router for the MCP Streamable HTTP transport.
 pub fn build_router(server: Arc<McpServer>) -> Router {
+    let state = AppState {
+        server,
+        broadcaster: SseBroadcaster::new(),
+    };
     Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
-        .with_state(server)
+        .with_state(state)
+}
+
+/// Build an axum Router with a provided SSE broadcaster (for external notification injection).
+pub fn build_router_with_broadcaster(
+    server: Arc<McpServer>,
+    broadcaster: SseBroadcaster,
+) -> Router {
+    let state = AppState {
+        server,
+        broadcaster,
+    };
+    Router::new()
+        .route("/mcp", post(handle_post))
+        .route("/mcp", get(handle_get))
+        .with_state(state)
 }
 
 async fn handle_post(
-    State(server): State<Arc<McpServer>>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<JsonRpcRequest>,
 ) -> impl IntoResponse {
+    let server = &state.server;
     // Authenticate
     let agent = match server.authenticator().authenticate(&headers) {
         Ok(agent) => agent,
@@ -62,7 +93,7 @@ async fn handle_post(
         .and_then(|v| v.to_str().ok())
         .map(String::from);
 
-    let (response, new_session_id) = dispatch(server, request, agent, session_id).await;
+    let (response, new_session_id) = dispatch(state.server.clone(), request, agent, session_id).await;
 
     let mut resp = Json(&response).into_response();
     // Include session ID in response header (set on initialize, echoed otherwise)
@@ -76,20 +107,60 @@ async fn handle_post(
 }
 
 async fn handle_get(
-    State(_server): State<Arc<McpServer>>,
+    State(state): State<AppState>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
     // GET is used for SSE streaming (server-to-client).
     // Requires a valid session.
-    let _session_id = match headers.get(SESSION_HEADER) {
-        Some(v) => v.to_str().unwrap_or("").to_string(),
+    let session_id = match headers.get(SESSION_HEADER) {
+        Some(v) => match v.to_str() {
+            Ok(s) if !s.is_empty() => s.to_string(),
+            _ => {
+                return (StatusCode::BAD_REQUEST, "Invalid session header").into_response();
+            }
+        },
         None => {
-            return (StatusCode::BAD_REQUEST, "Missing session header").into_response();
+            return (StatusCode::BAD_REQUEST, "Missing mcp-session-id header").into_response();
         }
     };
 
-    // TODO: SSE stream for server-initiated notifications
-    (StatusCode::OK, "SSE endpoint — not yet implemented").into_response()
+    // Validate session exists
+    if state.server.sessions().get(&session_id).is_none() {
+        return (StatusCode::NOT_FOUND, "Unknown session").into_response();
+    }
+
+    // Subscribe to the session's SSE channel
+    let rx = state.broadcaster.subscribe(&session_id);
+
+    let stream = make_sse_stream(rx);
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
+}
+
+/// Convert a broadcast receiver into an SSE event stream.
+fn make_sse_stream(
+    mut rx: tokio::sync::broadcast::Receiver<crate::transport::sse::SseEvent>,
+) -> impl Stream<Item = Result<Event, Infallible>> {
+    async_stream::stream! {
+        loop {
+            match rx.recv().await {
+                Ok(sse_event) => {
+                    let event = Event::default()
+                        .event(sse_event.event)
+                        .data(sse_event.data);
+                    yield Ok(event);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(skipped = n, "SSE client lagged, dropped events");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /// Returns (response, optional_session_id_for_header).
