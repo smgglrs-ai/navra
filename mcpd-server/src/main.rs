@@ -35,6 +35,10 @@ enum Commands {
     Deny { id: String },
     /// Show server status
     Status,
+    /// Install systemd user units and enable the service
+    Install,
+    /// Uninstall systemd user units
+    Uninstall,
 }
 
 #[derive(Subcommand)]
@@ -109,6 +113,12 @@ async fn main() -> anyhow::Result<()> {
             let cfg = config::Config::load(None)?;
             let addr = cfg.server.listen_addr();
             query_status(&addr).await?;
+        }
+        Commands::Install => {
+            install_systemd_units()?;
+        }
+        Commands::Uninstall => {
+            uninstall_systemd_units()?;
         }
     }
 
@@ -602,5 +612,82 @@ async fn query_status(addr: &str) -> anyhow::Result<()> {
             println!("Is mcpd running? Start it with: mcpd serve");
         }
     }
+    Ok(())
+}
+
+/// Install systemd user units for mcpd.
+fn install_systemd_units() -> anyhow::Result<()> {
+    let unit_dir = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
+        .join("systemd/user");
+    std::fs::create_dir_all(&unit_dir)?;
+
+    let service_content = include_str!("../systemd/mcpd.service");
+    let socket_content = include_str!("../systemd/mcpd.socket");
+
+    let service_path = unit_dir.join("mcpd.service");
+    let socket_path = unit_dir.join("mcpd.socket");
+
+    std::fs::write(&service_path, service_content)?;
+    println!("Installed {}", service_path.display());
+
+    std::fs::write(&socket_path, socket_content)?;
+    println!("Installed {}", socket_path.display());
+
+    // Reload systemd and enable
+    let reload = std::process::Command::new("systemctl")
+        .args(["--user", "daemon-reload"])
+        .status();
+    if let Ok(status) = reload {
+        if status.success() {
+            println!("Reloaded systemd user daemon");
+        }
+    }
+
+    let enable = std::process::Command::new("systemctl")
+        .args(["--user", "enable", "mcpd.service", "mcpd.socket"])
+        .status();
+    if let Ok(status) = enable {
+        if status.success() {
+            println!("Enabled mcpd.service and mcpd.socket");
+        }
+    }
+
+    println!("\nTo start now:  systemctl --user start mcpd.service");
+    println!("To check logs: journalctl --user -u mcpd.service -f");
+    Ok(())
+}
+
+/// Uninstall systemd user units for mcpd.
+fn uninstall_systemd_units() -> anyhow::Result<()> {
+    // Stop and disable first
+    let _ = std::process::Command::new("systemctl")
+        .args(["--user", "stop", "mcpd.service", "mcpd.socket"])
+        .status();
+    let _ = std::process::Command::new("systemctl")
+        .args(["--user", "disable", "mcpd.service", "mcpd.socket"])
+        .status();
+
+    let unit_dir = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
+        .join("systemd/user");
+
+    let service_path = unit_dir.join("mcpd.service");
+    let socket_path = unit_dir.join("mcpd.socket");
+
+    if service_path.exists() {
+        std::fs::remove_file(&service_path)?;
+        println!("Removed {}", service_path.display());
+    }
+    if socket_path.exists() {
+        std::fs::remove_file(&socket_path)?;
+        println!("Removed {}", socket_path.display());
+    }
+
+    let _ = std::process::Command::new("systemctl")
+        .args(["--user", "daemon-reload"])
+        .status();
+
+    println!("mcpd systemd units uninstalled");
     Ok(())
 }
