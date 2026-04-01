@@ -13,6 +13,8 @@ pub struct StdioTransport {
     child: Child,
     stdin: BufWriter<ChildStdin>,
     stdout: BufReader<ChildStdout>,
+    /// Handle to the stderr logging task (kept alive while transport lives).
+    _stderr_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl StdioTransport {
@@ -38,7 +40,7 @@ impl StdioTransport {
         }
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::piped());
 
         let mut child = cmd.spawn().map_err(|e| UpstreamError::Spawn {
             name: name.to_string(),
@@ -56,12 +58,45 @@ impl StdioTransport {
                     name: name.to_string(),
                 })?;
 
+        // Spawn a background task to log stderr output from the subprocess.
+        let stderr_task = if let Some(stderr) = child.stderr.take() {
+            let upstream_name = name.to_string();
+            Some(tokio::spawn(async move {
+                let mut reader = BufReader::new(stderr);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line).await {
+                        Ok(0) => break, // EOF
+                        Ok(_) => {
+                            let trimmed = line.trim_end();
+                            if !trimmed.is_empty() {
+                                tracing::warn!(
+                                    upstream = %upstream_name,
+                                    "stderr: {trimmed}"
+                                );
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }))
+        } else {
+            None
+        };
+
         Ok(Self {
             name: name.to_string(),
             child,
             stdin: BufWriter::new(child_stdin),
             stdout: BufReader::new(child_stdout),
+            _stderr_task: stderr_task,
         })
+    }
+
+    /// Check if the subprocess is still running.
+    pub fn is_alive(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
     }
 }
 

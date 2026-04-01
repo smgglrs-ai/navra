@@ -2,7 +2,8 @@ mod config;
 mod tray;
 
 use clap::{Parser, Subcommand};
-use mcpd_core::permissions::{PathAcl, PermissionEngine};
+use mcpd_core::auth::{AgentIdentity, TokenAuthenticator};
+use mcpd_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use std::sync::Arc;
 
 #[derive(Parser)]
@@ -65,30 +66,49 @@ async fn main() -> anyhow::Result<()> {
             let cfg = config::Config::load(config_path.as_deref())?;
             serve(cfg, no_tray).await?;
         }
-        Commands::Token { action } => match action {
-            TokenAction::Generate { name, permissions } => {
-                let token = config::generate_token();
-                println!("Agent: {name}");
-                println!("Permissions: {permissions}");
-                println!("Token: {token}");
-                println!("\nAdd to config.toml:");
-                println!("[[agents]]");
-                println!("name = \"{name}\"");
-                println!("token_hash = \"TODO: hash the token\"");
-                println!("permissions = \"{permissions}\"");
+        Commands::Token { action } => {
+            match action {
+                TokenAction::Generate { name, permissions } => {
+                    let token = config::generate_token();
+                    let hash = TokenAuthenticator::hash_token(&token);
+                    println!("Agent: {name}");
+                    println!("Permissions: {permissions}");
+                    println!("Token: {token}");
+                    println!("Hash:  {hash}");
+                    println!("\nAdd to config.toml:");
+                    println!("[[agents]]");
+                    println!("name = \"{name}\"");
+                    println!("token_hash = \"{hash}\"");
+                    println!("permissions = \"{permissions}\"");
+                }
+                TokenAction::List => {
+                    let cfg = config::Config::load(None)?;
+                    if cfg.agents.is_empty() {
+                        println!("No agents configured.");
+                    } else {
+                        println!("{:<20} {:<20}", "NAME", "PERMISSIONS");
+                        println!("{:<20} {:<20}", "----", "-----------");
+                        for agent in &cfg.agents {
+                            println!("{:<20} {:<20}", agent.name, agent.permissions);
+                        }
+                    }
+                }
             }
-            TokenAction::List => {
-                println!("TODO: list agents from config");
-            }
-        },
+        }
         Commands::Approve { id } => {
-            println!("TODO: approve request {id}");
+            let cfg = config::Config::load(None)?;
+            let addr = cfg.server.listen_addr();
+            approve_or_deny(&addr, &id, true).await?;
         }
         Commands::Deny { id } => {
-            println!("TODO: deny request {id}");
+            let cfg = config::Config::load(None)?;
+            let addr = cfg.server.listen_addr();
+            approve_or_deny(&addr, &id, false).await?;
         }
         Commands::Status => {
-            println!("TODO: query server status");
+            let cfg = config::Config::load(None)?;
+            let addr = cfg.server.listen_addr();
+            query_status(&addr).await?;
         }
     }
 
@@ -120,7 +140,23 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         .name("mcpd")
         .version(env!("CARGO_PKG_VERSION"));
 
-    // Register safety profiles per permission set
+    // Register token-based authenticator if agents are configured
+    if !cfg.agents.is_empty() {
+        let mut auth = TokenAuthenticator::new();
+        for agent in &cfg.agents {
+            auth.register_hash(
+                &agent.token_hash,
+                AgentIdentity {
+                    name: agent.name.clone(),
+                    permissions: agent.permissions.clone(),
+                },
+            );
+            tracing::info!(agent = %agent.name, permissions = %agent.permissions, "Registered agent");
+        }
+        builder = builder.authenticator(auth);
+    }
+
+    // Register safety profiles and per-tool permissions per permission set
     for (name, pset) in &cfg.permissions {
         let pipeline = mcpd_core::safety::build_pipeline(&pset.safety);
         tracing::info!(
@@ -129,6 +165,33 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             "Safety profile"
         );
         builder = builder.safety_profile(name.clone(), pipeline);
+
+        // Build per-tool permission rules if any are configured
+        if !pset.tool_rules.is_empty() {
+            let rules: Vec<ToolRule> = pset
+                .tool_rules
+                .iter()
+                .map(|r| ToolRule {
+                    tool: r.tool.clone(),
+                    policy: match r.policy.as_str() {
+                        "deny" => ToolPolicy::Deny,
+                        "approve" => ToolPolicy::Approve,
+                        _ => ToolPolicy::Allow,
+                    },
+                })
+                .collect();
+            let default = match pset.default_tool_policy.as_str() {
+                "deny" => ToolPolicy::Deny,
+                "approve" => ToolPolicy::Approve,
+                _ => ToolPolicy::Allow,
+            };
+            tracing::info!(
+                permission_set = %name,
+                rules = rules.len(),
+                "Tool permission rules"
+            );
+            builder = builder.tool_permissions(name.clone(), ToolPermissions::new(rules, default));
+        }
     }
 
     // Build shared approval infrastructure
@@ -172,14 +235,29 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             continue;
         }
 
+        let retry_config = upstream_cfg.retry_config();
         let connect_result = match upstream_cfg.transport.as_str() {
             "stdio" => {
-                mcpd_core::Upstream::spawn(
-                    &upstream_cfg.name,
-                    &upstream_cfg.command,
-                    upstream_cfg.cwd.as_deref(),
-                )
-                .await
+                if let Some(rc) = retry_config {
+                    tracing::info!(
+                        upstream = %upstream_cfg.name,
+                        "Using resilient transport (retry enabled)"
+                    );
+                    mcpd_core::Upstream::spawn_resilient(
+                        &upstream_cfg.name,
+                        &upstream_cfg.command,
+                        upstream_cfg.cwd.as_deref(),
+                        rc,
+                    )
+                    .await
+                } else {
+                    mcpd_core::Upstream::spawn(
+                        &upstream_cfg.name,
+                        &upstream_cfg.command,
+                        upstream_cfg.cwd.as_deref(),
+                    )
+                    .await
+                }
             }
             "http" | "streamable-http" => {
                 let url = match &upstream_cfg.url {
@@ -192,7 +270,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         continue;
                     }
                 };
-                mcpd_core::Upstream::http(&upstream_cfg.name, url).await
+                if let Some(rc) = retry_config {
+                    tracing::info!(
+                        upstream = %upstream_cfg.name,
+                        "Using resilient transport (retry enabled)"
+                    );
+                    mcpd_core::Upstream::http_resilient(&upstream_cfg.name, url, rc).await
+                } else {
+                    mcpd_core::Upstream::http(&upstream_cfg.name, url).await
+                }
             }
             "sse" => {
                 let url = match &upstream_cfg.url {
@@ -205,7 +291,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         continue;
                     }
                 };
-                mcpd_core::Upstream::sse(&upstream_cfg.name, url).await
+                if let Some(rc) = retry_config {
+                    tracing::info!(
+                        upstream = %upstream_cfg.name,
+                        "Using resilient transport (retry enabled)"
+                    );
+                    mcpd_core::Upstream::sse_resilient(&upstream_cfg.name, url, rc).await
+                } else {
+                    mcpd_core::Upstream::sse(&upstream_cfg.name, url).await
+                }
             }
             other => {
                 tracing::error!(
@@ -278,5 +372,129 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     tracing::info!("Listening on {addr}");
 
     axum::serve(listener, router).await?;
+    Ok(())
+}
+
+/// Send an approve or deny request to the running server via JSON-RPC.
+async fn approve_or_deny(addr: &str, request_id: &str, approve: bool) -> anyhow::Result<()> {
+    let tool_name = if approve { "docs_approve" } else { "docs_deny" };
+    let action = if approve { "Approved" } else { "Denied" };
+
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/mcp");
+
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "id": 1,
+        "params": {
+            "name": tool_name,
+            "arguments": {
+                "request_id": request_id
+            }
+        }
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Server returned {status}: {text}");
+    }
+
+    let result: serde_json::Value = resp.json().await?;
+    if let Some(error) = result.get("error") {
+        let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown");
+        anyhow::bail!("Server error: {msg}");
+    }
+
+    println!("{action} request {request_id}");
+    Ok(())
+}
+
+/// Query the running server for status via the initialize endpoint.
+async fn query_status(addr: &str) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/mcp");
+
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "id": 1,
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "mcpd-cli",
+                "version": env!("CARGO_PKG_VERSION")
+            }
+        }
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await;
+
+    match resp {
+        Ok(r) if r.status().is_success() => {
+            let result: serde_json::Value = r.json().await?;
+            if let Some(info) = result.get("result") {
+                let name = info
+                    .get("serverInfo")
+                    .and_then(|s| s.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unknown");
+                let version = info
+                    .get("serverInfo")
+                    .and_then(|s| s.get("version"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let has_tools = info
+                    .get("capabilities")
+                    .and_then(|c| c.get("tools"))
+                    .is_some();
+                let has_prompts = info
+                    .get("capabilities")
+                    .and_then(|c| c.get("prompts"))
+                    .is_some();
+                let has_resources = info
+                    .get("capabilities")
+                    .and_then(|c| c.get("resources"))
+                    .is_some();
+
+                println!("Server: {name} v{version}");
+                println!("Status: running");
+                println!("Address: {addr}");
+                println!(
+                    "Capabilities: {}",
+                    [
+                        has_tools.then_some("tools"),
+                        has_prompts.then_some("prompts"),
+                        has_resources.then_some("resources"),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+                );
+            }
+        }
+        Ok(r) => {
+            println!("Server at {addr} returned {}", r.status());
+        }
+        Err(_) => {
+            println!("Server at {addr} is not reachable.");
+            println!("Is mcpd running? Start it with: mcpd serve");
+        }
+    }
     Ok(())
 }

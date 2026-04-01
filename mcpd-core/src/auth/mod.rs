@@ -60,14 +60,14 @@ impl TokenAuthenticator {
         self.agents.insert(hash, identity);
     }
 
-    fn hash_token(token: &str) -> String {
-        // Placeholder: use a simple hash for now.
-        // In production, use blake3::hash(token.as_bytes()).to_hex().to_string()
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        token.hash(&mut hasher);
-        format!("{:016x}", hasher.finish())
+    /// Register an agent by pre-computed BLAKE3 hash (from config).
+    pub fn register_hash(&mut self, hash: &str, identity: AgentIdentity) {
+        self.agents.insert(hash.to_string(), identity);
+    }
+
+    /// Compute the BLAKE3 hash of a token, returned as a hex string.
+    pub fn hash_token(token: &str) -> String {
+        blake3::hash(token.as_bytes()).to_hex().to_string()
     }
 }
 
@@ -177,5 +177,34 @@ mod tests {
     fn agent_identity_display() {
         let id = test_identity();
         assert_eq!(format!("{id}"), "test-agent(developer)");
+    }
+
+    #[test]
+    fn hash_token_is_deterministic() {
+        let hash1 = TokenAuthenticator::hash_token("my-secret-token");
+        let hash2 = TokenAuthenticator::hash_token("my-secret-token");
+        assert_eq!(hash1, hash2);
+        // BLAKE3 hashes are 64 hex chars
+        assert_eq!(hash1.len(), 64);
+    }
+
+    #[test]
+    fn hash_token_differs_for_different_tokens() {
+        let hash1 = TokenAuthenticator::hash_token("token-a");
+        let hash2 = TokenAuthenticator::hash_token("token-b");
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn register_hash_authenticates() {
+        let hash = TokenAuthenticator::hash_token("my-token");
+        let mut auth = TokenAuthenticator::new();
+        auth.register_hash(&hash, test_identity());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer my-token".parse().unwrap());
+
+        let identity = auth.authenticate(&headers).unwrap();
+        assert_eq!(identity.name, "test-agent");
     }
 }

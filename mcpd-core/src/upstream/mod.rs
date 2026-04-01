@@ -5,10 +5,12 @@
 //! and proxies MCP requests.
 
 pub mod http;
+pub mod retry;
 pub mod sse;
 pub mod stdio;
 mod transport;
 
+pub use retry::{RetryConfig, TransportFactory};
 pub use transport::Transport;
 
 use crate::protocol::{
@@ -53,6 +55,28 @@ pub enum UpstreamError {
     },
 }
 
+impl UpstreamError {
+    /// Returns true if this error is permanent and should NOT be retried.
+    ///
+    /// Permanent errors include:
+    /// - Spawn failures where the command was not found
+    /// - HTTP 401, 403, 404 responses (auth/not found)
+    pub fn is_permanent(&self) -> bool {
+        match self {
+            UpstreamError::Spawn { source, .. } => {
+                source.kind() == std::io::ErrorKind::NotFound
+            }
+            UpstreamError::Protocol { message, .. } => {
+                message.contains("HTTP 401")
+                    || message.contains("HTTP 403")
+                    || message.contains("HTTP 404")
+            }
+            UpstreamError::NoStdio { .. } => true,
+            _ => false,
+        }
+    }
+}
+
 /// An MCP client connected to an upstream server.
 pub struct Upstream {
     name: String,
@@ -94,6 +118,55 @@ impl Upstream {
     /// Connect via SSE and initialize.
     pub async fn sse(name: &str, url: &str) -> Result<Self, UpstreamError> {
         let transport = sse::SseTransport::new(name, url);
+        Self::connect(name, transport).await
+    }
+
+    /// Spawn a subprocess with resilient reconnection and initialize.
+    pub async fn spawn_resilient(
+        name: &str,
+        command: &[String],
+        cwd: Option<&str>,
+        config: RetryConfig,
+    ) -> Result<Self, UpstreamError> {
+        let factory = retry::StdioTransportFactory::new(name, command, cwd);
+        let transport = retry::ResilientTransport::from_factory(
+            name,
+            Box::new(factory),
+            config,
+        )
+        .await?;
+        Self::connect(name, transport).await
+    }
+
+    /// Connect via HTTP with resilient reconnection and initialize.
+    pub async fn http_resilient(
+        name: &str,
+        url: &str,
+        config: RetryConfig,
+    ) -> Result<Self, UpstreamError> {
+        let factory = retry::HttpTransportFactory::new(name, url);
+        let transport = retry::ResilientTransport::from_factory(
+            name,
+            Box::new(factory),
+            config,
+        )
+        .await?;
+        Self::connect(name, transport).await
+    }
+
+    /// Connect via SSE with resilient reconnection and initialize.
+    pub async fn sse_resilient(
+        name: &str,
+        url: &str,
+        config: RetryConfig,
+    ) -> Result<Self, UpstreamError> {
+        let factory = retry::SseTransportFactory::new(name, url);
+        let transport = retry::ResilientTransport::from_factory(
+            name,
+            Box::new(factory),
+            config,
+        )
+        .await?;
         Self::connect(name, transport).await
     }
 

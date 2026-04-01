@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod hooks;
 pub mod notify;
 pub mod permissions;
 pub mod protocol;
@@ -14,5 +15,5 @@ mod upstream_module;
 pub use module::{Module, PromptHandler, ResourceHandler};
 pub use server::{McpServer, McpServerBuilder, ToolHandler};
 pub use session::Session;
-pub use upstream::Upstream;
+pub use upstream::{RetryConfig, Upstream};
 pub use upstream_module::UpstreamModule;

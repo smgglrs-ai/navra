@@ -70,6 +70,46 @@ pub struct UpstreamConfig {
     pub url: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Retry base delay in milliseconds (default: 1000)
+    #[serde(default)]
+    pub retry_base_delay_ms: Option<u64>,
+    /// Maximum retry delay in milliseconds (default: 30000)
+    #[serde(default)]
+    pub retry_max_delay_ms: Option<u64>,
+    /// Total retry budget in seconds (default: 600)
+    #[serde(default)]
+    pub retry_budget_secs: Option<u64>,
+    /// Request timeout in seconds (default: 45)
+    #[serde(default)]
+    pub request_timeout_secs: Option<u64>,
+}
+
+impl UpstreamConfig {
+    /// Returns a RetryConfig if any retry fields are set, otherwise None.
+    pub fn retry_config(&self) -> Option<mcpd_core::upstream::RetryConfig> {
+        if self.retry_base_delay_ms.is_none()
+            && self.retry_max_delay_ms.is_none()
+            && self.retry_budget_secs.is_none()
+            && self.request_timeout_secs.is_none()
+        {
+            return None;
+        }
+
+        let mut config = mcpd_core::upstream::RetryConfig::default();
+        if let Some(ms) = self.retry_base_delay_ms {
+            config.base_delay = std::time::Duration::from_millis(ms);
+        }
+        if let Some(ms) = self.retry_max_delay_ms {
+            config.max_delay = std::time::Duration::from_millis(ms);
+        }
+        if let Some(secs) = self.retry_budget_secs {
+            config.total_budget = std::time::Duration::from_secs(secs);
+        }
+        if let Some(secs) = self.request_timeout_secs {
+            config.request_timeout = std::time::Duration::from_secs(secs);
+        }
+        Some(config)
+    }
 }
 
 fn default_transport() -> String {
@@ -89,6 +129,25 @@ pub struct PermissionSet {
     /// Safety profile: "standard", "secrets-only", "block", "none"
     #[serde(default = "default_safety")]
     pub safety: String,
+    /// Per-tool permission rules (evaluated before handler invocation).
+    #[serde(default)]
+    pub tool_rules: Vec<ToolRuleConfig>,
+    /// Default policy for tools not matched by any rule: "allow", "deny", "approve"
+    #[serde(default = "default_tool_policy")]
+    pub default_tool_policy: String,
+}
+
+/// A per-tool permission rule in config.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ToolRuleConfig {
+    /// Glob pattern matching tool names (e.g., "git_*", "shell_exec").
+    pub tool: String,
+    /// Policy: "allow", "deny", or "approve".
+    pub policy: String,
+}
+
+fn default_tool_policy() -> String {
+    "allow".to_string()
 }
 
 fn default_safety() -> String {

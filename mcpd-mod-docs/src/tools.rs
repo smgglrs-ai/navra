@@ -403,11 +403,7 @@ fn chrono_now() -> String {
 }
 
 fn simple_checksum(data: &[u8]) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    data.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    blake3::hash(data).to_hex().to_string()
 }
 
 // --- Tool handlers ---
