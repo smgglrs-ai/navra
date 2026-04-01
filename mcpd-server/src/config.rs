@@ -136,6 +136,9 @@ pub struct PermissionSet {
     /// Safety profile: "standard", "secrets-only", "block", "none"
     #[serde(default = "default_safety")]
     pub safety: String,
+    /// Custom regex patterns for content safety filtering.
+    #[serde(default)]
+    pub safety_patterns: Vec<SafetyPatternConfig>,
     /// Per-tool permission rules (evaluated before handler invocation).
     #[serde(default)]
     pub tool_rules: Vec<ToolRuleConfig>,
@@ -151,6 +154,15 @@ pub struct ToolRuleConfig {
     pub tool: String,
     /// Policy: "allow", "deny", or "approve".
     pub policy: String,
+}
+
+/// A custom regex pattern for safety filtering.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SafetyPatternConfig {
+    /// Category name for this pattern (e.g., "internal-url", "project-secret").
+    pub category: String,
+    /// Regex pattern to match.
+    pub pattern: String,
 }
 
 fn default_tool_policy() -> String {

@@ -158,7 +158,26 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
     // Register safety profiles and per-tool permissions per permission set
     for (name, pset) in &cfg.permissions {
-        let pipeline = mcpd_core::safety::build_pipeline(&pset.safety);
+        let mut pipeline = mcpd_core::safety::build_pipeline(&pset.safety);
+
+        // Add custom regex patterns if configured
+        if !pset.safety_patterns.is_empty() {
+            let patterns: Vec<(String, String)> = pset
+                .safety_patterns
+                .iter()
+                .map(|p| (p.category.clone(), p.pattern.clone()))
+                .collect();
+            let custom = mcpd_core::safety::CustomFilter::new(patterns);
+            if custom.has_patterns() {
+                tracing::info!(
+                    permission_set = %name,
+                    patterns = pset.safety_patterns.len(),
+                    "Custom safety patterns"
+                );
+                pipeline.add_filter(custom);
+            }
+        }
+
         tracing::info!(
             permission_set = %name,
             safety = %pset.safety,
@@ -380,11 +399,53 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     let broadcaster = mcpd_core::transport::SseBroadcaster::new();
     let router = mcpd_core::transport::build_router_with_broadcaster(server, broadcaster);
 
-    let addr = cfg.server.listen_addr();
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    tracing::info!("Listening on {addr}");
+    // Listen on Unix socket, TCP, or both
+    if let Some(ref socket_path) = cfg.server.socket {
+        let tcp_addr = cfg.server.tcp.clone();
 
-    axum::serve(listener, router).await?;
+        // Ensure parent directory exists
+        if let Some(parent) = std::path::Path::new(socket_path).parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Remove stale socket file if it exists
+        if std::path::Path::new(socket_path).exists() {
+            std::fs::remove_file(socket_path)?;
+        }
+
+        let unix_listener = tokio::net::UnixListener::bind(socket_path)?;
+
+        // Set socket permissions to owner-only (0600)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+
+        tracing::info!("Listening on unix:{socket_path}");
+
+        if let Some(addr) = tcp_addr {
+            // Both Unix socket and TCP
+            let tcp_listener = tokio::net::TcpListener::bind(&addr).await?;
+            tracing::info!("Listening on tcp:{addr}");
+
+            let tcp_router = router.clone();
+            tokio::select! {
+                result = axum::serve(unix_listener, router) => result?,
+                result = axum::serve(tcp_listener, tcp_router) => result?,
+            }
+        } else {
+            // Unix socket only
+            axum::serve(unix_listener, router).await?;
+        }
+    } else {
+        // TCP only (fallback)
+        let addr = cfg.server.listen_addr();
+        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        tracing::info!("Listening on tcp:{addr}");
+        axum::serve(listener, router).await?;
+    }
+
     Ok(())
 }
 

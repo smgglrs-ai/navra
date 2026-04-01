@@ -186,6 +186,71 @@ impl ContentFilter for PiiFilter {
     }
 }
 
+/// User-defined regex patterns from config.
+///
+/// Each pattern has a category name and a regex. Matched spans
+/// are reported as findings with confidence 1.0.
+pub struct CustomFilter {
+    patterns: Vec<CustomPattern>,
+}
+
+struct CustomPattern {
+    category: String,
+    regex: regex_lite::Regex,
+}
+
+impl CustomFilter {
+    /// Create a custom filter from a list of (category, regex_pattern) pairs.
+    ///
+    /// Invalid regex patterns are logged and skipped.
+    pub fn new(patterns: Vec<(String, String)>) -> Self {
+        let compiled: Vec<CustomPattern> = patterns
+            .into_iter()
+            .filter_map(|(category, pattern)| {
+                match regex_lite::Regex::new(&pattern) {
+                    Ok(regex) => Some(CustomPattern { category, regex }),
+                    Err(e) => {
+                        tracing::warn!(
+                            category = %category,
+                            pattern = %pattern,
+                            error = %e,
+                            "Invalid custom safety pattern, skipping"
+                        );
+                        None
+                    }
+                }
+            })
+            .collect();
+        Self { patterns: compiled }
+    }
+
+    /// Returns true if this filter has any valid patterns.
+    pub fn has_patterns(&self) -> bool {
+        !self.patterns.is_empty()
+    }
+}
+
+impl ContentFilter for CustomFilter {
+    fn name(&self) -> &str {
+        "custom"
+    }
+
+    fn scan(&self, content: &str, _ctx: &FilterContext) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for pattern in &self.patterns {
+            for m in pattern.regex.find_iter(content) {
+                findings.push(Finding {
+                    start: m.start(),
+                    end: m.end(),
+                    category: pattern.category.clone(),
+                    confidence: 1.0,
+                });
+            }
+        }
+        findings
+    }
+}
+
 /// Validate a US SSN: not all zeros in any group, not 000/666/9xx prefix.
 fn validate_ssn(s: &str) -> bool {
     let parts: Vec<&str> = s.split('-').collect();
@@ -457,5 +522,63 @@ mod tests {
         assert!(categories.contains(&"aws-key"));
         assert!(categories.contains(&"ssn"));
         assert!(categories.contains(&"email"));
+    }
+
+    // --- Custom filter tests ---
+
+    #[test]
+    fn custom_filter_matches_pattern() {
+        let filter = CustomFilter::new(vec![
+            ("internal-url".to_string(), r"https://internal\.example\.com/\S+".to_string()),
+        ]);
+        let content = "Visit https://internal.example.com/secret-page for details";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "internal-url");
+    }
+
+    #[test]
+    fn custom_filter_multiple_patterns() {
+        let filter = CustomFilter::new(vec![
+            ("project-id".to_string(), r"PROJ-\d{4,}".to_string()),
+            ("api-key".to_string(), r"myapp_[a-f0-9]{32}".to_string()),
+        ]);
+        let content = "Project PROJ-12345 uses key myapp_deadbeef01234567890abcdef1234567";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 2);
+        let categories: Vec<&str> = findings.iter().map(|f| f.category.as_str()).collect();
+        assert!(categories.contains(&"project-id"));
+        assert!(categories.contains(&"api-key"));
+    }
+
+    #[test]
+    fn custom_filter_no_match() {
+        let filter = CustomFilter::new(vec![
+            ("secret".to_string(), r"TOP_SECRET_\w+".to_string()),
+        ]);
+        let content = "This is perfectly normal text";
+        let findings = filter.scan(content, &ctx());
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn custom_filter_invalid_regex_skipped() {
+        let filter = CustomFilter::new(vec![
+            ("valid".to_string(), r"hello".to_string()),
+            ("invalid".to_string(), r"[invalid".to_string()),
+        ]);
+        // Only valid pattern should survive
+        assert!(filter.has_patterns());
+        let findings = filter.scan("hello world", &ctx());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "valid");
+    }
+
+    #[test]
+    fn custom_filter_empty() {
+        let filter = CustomFilter::new(vec![]);
+        assert!(!filter.has_patterns());
+        let findings = filter.scan("anything", &ctx());
+        assert!(findings.is_empty());
     }
 }
