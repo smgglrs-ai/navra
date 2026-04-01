@@ -1,3 +1,5 @@
+pub mod sse;
 mod streamable;
 
-pub use streamable::build_router;
+pub use sse::SseBroadcaster;
+pub use streamable::{build_router, build_router_with_broadcaster};

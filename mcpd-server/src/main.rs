@@ -365,8 +365,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         }
     }
 
-    // --- HTTP transport ---
-    let router = mcpd_core::transport::build_router(server);
+    // --- HTTP transport with SSE broadcaster ---
+    let broadcaster = mcpd_core::transport::SseBroadcaster::new();
+    let router = mcpd_core::transport::build_router_with_broadcaster(server, broadcaster);
 
     let addr = cfg.server.listen_addr();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
