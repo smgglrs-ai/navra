@@ -6,7 +6,9 @@
 run as a user-level systemd unit on Linux desktops. It aggregates
 multiple MCP servers — both built-in modules and upstream external
 servers — behind a unified security layer with authentication, path
-ACLs, content safety filtering, and human-in-the-loop approval.
+ACLs, per-tool permission rules, content safety filtering (built-in
+and custom regex), human-in-the-loop approval, and a hook/middleware
+system.
 
 Built-in **modules** contribute tools and prompts directly. External
 **upstream** MCP servers (e.g., Myelix for cognitive personas, or
@@ -18,16 +20,18 @@ of origin.
 
 ```
 mcpd/
-├── mcpd-core         MCP framework, permissions, approval, D-Bus, notify
+├── mcpd-core         MCP framework, permissions, hooks, approval, D-Bus, notify
 ├── mcpd-mod-docs     Document module (search, read, write, edit, delete, list, info)
-└── mcpd-server       Binary: config, module loading, system tray
+├── mcpd-mod-git      Git module (status, diff, log, branch, commit)
+└── mcpd-server       Binary: config, module loading, system tray, CLI
 ```
 
 | Crate | Role |
 |-------|------|
-| `mcpd-core` | MCP protocol (JSON-RPC 2.0, Streamable HTTP, tools + prompts + resources), Module trait, permission engine (string-based ops, deny-wins ACLs), approval store with grants cache, D-Bus notifier, auth |
+| `mcpd-core` | MCP protocol (JSON-RPC 2.0, Streamable HTTP + SSE, tools + prompts + resources), Module trait, permission engine (path ACLs + per-tool rules), hook pipeline, approval store, D-Bus notifier, BLAKE3 token auth, resilient transports |
 | `mcpd-mod-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
-| `mcpd-server` | Binary that loads modules from config, system tray (ksni), CLI |
+| `mcpd-mod-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`), approval for commits |
+| `mcpd-server` | Binary that loads modules from config, system tray (ksni), CLI commands |
 
 ## Architecture
 
@@ -35,69 +39,60 @@ mcpd/
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          AI Agent (Claude, etc.)                     │
 └────────────────────────────┬─────────────────────────────────────────┘
-                             │ MCP Streamable HTTP
+                             │ MCP Streamable HTTP + SSE
                              │ (Unix socket or TCP)
 ┌────────────────────────────▼─────────────────────────────────────────┐
 │                          mcpd-server (gateway)                       │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐ │
 │  │ System Tray │  │    Config    │  │      Module Loader          │ │
-│  │   (ksni)    │  │   (TOML)    │  │ [modules.docs] → DocsModule │ │
-│  │ Approve/Deny│  │             │  │                              │ │
+│  │   (ksni)    │  │   (TOML)    │  │ DocsModule, GitModule       │ │
+│  │ Approve/Deny│  │             │  │ + upstream MCP servers       │ │
+│  │ Pause/Resume│  │             │  │                              │ │
 │  └──────┬──────┘  └─────────────┘  └──────────────┬──────────────┘ │
 │         │                                          │                │
 │  ┌──────▼──────────────────────────────────────────▼──────────────┐ │
 │  │                        mcpd-core                               │ │
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐  │ │
 │  │  │ JSON-RPC   │ │ MCP Proto  │ │ Streamable │ │   Auth     │  │ │
-│  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP(axum) │ │ (token)    │  │ │
-│  │  │            │ │ tools +    │ │            │ │            │  │ │
+│  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP + SSE │ │ (BLAKE3)   │  │ │
+│  │  │            │ │ tools +    │ │ (axum)     │ │            │  │ │
 │  │  │            │ │ prompts +  │ │            │ │            │  │ │
 │  │  │            │ │ resources  │ │            │ │            │  │ │
 │  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘  │ │
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐  │ │
 │  │  │ Permission │ │  Approval  │ │  D-Bus     │ │  Module    │  │ │
 │  │  │ Engine     │ │  Store +   │ │  Notifier  │ │  Trait     │  │ │
-│  │  │ (ACLs)     │ │  Grants    │ │            │ │            │  │ │
+│  │  │ (ACLs +    │ │  Grants    │ │            │ │            │  │ │
+│  │  │ tool rules)│ │            │ │            │ │            │  │ │
 │  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘  │ │
+│  │  ┌────────────────────────────┐ ┌────────────────────────────┐ │ │
+│  │  │ Hook Pipeline              │ │ Content Safety             │ │ │
+│  │  │ Pre/post tool-call hooks   │ │ (regex + custom + ML)      │ │ │
+│  │  │ SafetyHook (built-in)      │ │ Applied via hook pipeline  │ │ │
+│  │  └────────────────────────────┘ └────────────────────────────┘ │ │
 │  │  ┌────────────────────────────────────────────────────────┐    │ │
-│  │  │ Content Safety (regex + ML)                            │    │ │
-│  │  │ Applied to ALL responses: built-in modules + upstreams │    │ │
+│  │  │ Resilient Transports (upstream)                        │    │ │
+│  │  │ Exponential backoff, timeout, reconnection, sleep      │    │ │
+│  │  │ detection. TransportFactory for subprocess respawn.    │    │ │
 │  │  └────────────────────────────────────────────────────────┘    │ │
 │  └────────────────────────────────────────────────────────────────┘ │
 │                                                                      │
 │  ┌─ Built-in Modules ───────────────────────────────────────────┐   │
-│  │  mcpd-mod-docs                                               │   │
-│  │  Tools: docs_search, docs_read, docs_write, docs_edit, ...  │   │
-│  │  SQLite FTS5 index                                           │   │
+│  │  mcpd-mod-docs: docs_search, docs_read, docs_write, ...     │   │
+│  │  mcpd-mod-git:  git_status, git_diff, git_log, git_branch,  │   │
+│  │                 git_commit (approval required)                │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                      │
 │  ┌─ Upstream MCP Servers (proxied) ─────────────────────────────┐   │
-│  │                                                               │   │
-│  │  ┌─────────────────────┐  ┌───────────────────────────────┐  │   │
-│  │  │ Myelix MCP Server   │  │ Other MCP Servers (future)    │  │   │
-│  │  │ (stdio / SSE)       │  │ (git, CI/CD, ...)             │  │   │
-│  │  │                     │  │                               │  │   │
-│  │  │ Prompts: personas   │  │ Tools: git_status, ...        │  │   │
-│  │  │ Tools: weave_prompt │  │                               │  │   │
-│  │  └─────────────────────┘  └───────────────────────────────┘  │   │
-│  │                                                               │   │
-│  │  mcpd aggregates tools/prompts/resources from all upstreams  │   │
-│  │  and applies auth + ACLs + safety uniformly                  │   │
+│  │  Myelix, other MCP servers — stdio / HTTP / SSE              │   │
+│  │  Discovered at startup, registered as Module, safety-filtered│   │
 │  └───────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────┘
 
          ┌──────────────────────────────────────────┐
          │         Desktop Integration              │
-         │  ┌────────────────────────────────────┐  │
-         │  │  D-Bus Notifications               │  │
-         │  │  (org.freedesktop.Notifications)   │  │
-         │  │  Approve/Deny action buttons       │  │
-         │  └────────────────────────────────────┘  │
-         │  ┌────────────────────────────────────┐  │
-         │  │  System Tray (StatusNotifierItem)  │  │
-         │  │  KDE, Gnome, XFCE, Sway, etc.     │  │
-         │  │  Pending approvals, agents, pause  │  │
-         │  └────────────────────────────────────┘  │
+         │  D-Bus Notifications (Approve/Deny)      │
+         │  System Tray (Pause/Resume, agents)      │
          └──────────────────────────────────────────┘
 ```
 
@@ -117,10 +112,6 @@ pub trait Module: Send + Sync + 'static {
 }
 ```
 
-Modules can contribute tools, prompts, resources, or any combination.
-The `prompts()` and `resources()` methods have default empty
-implementations so existing modules don't need changes.
-
 ### Registration
 
 Compile-time composition — modules are wired in `main.rs`:
@@ -129,8 +120,10 @@ Compile-time composition — modules are wired in `main.rs`:
 McpServer::builder()
     .name("mcpd")
     .module(DocsModule::new(perm_engine, index, approvals, notifier))
-    // .module(GitModule::new(...))  // future
+    .module(GitModule::new(perm_engine, approvals, notifier))
     .authenticator(token_auth)
+    .safety_profile("developer", build_pipeline("standard"))
+    .hook(SafetyHook::single("developer", pipeline))
     .build()
 ```
 
@@ -147,8 +140,8 @@ Modules are enabled/disabled in config:
 enabled = true
 db = "$XDG_DATA_HOME/mcpd/index.db"
 
-# [modules.git]
-# enabled = true
+[modules.git]
+enabled = true
 ```
 
 ### Adding a Module
@@ -170,30 +163,55 @@ db = "$XDG_DATA_HOME/mcpd/index.db"
 ### MCP Lifecycle (2025-03-26 spec)
 
 1. Client sends `initialize` with capabilities and `clientInfo`
-2. Server responds with `serverInfo` and capabilities
+2. Server responds with `serverInfo`, capabilities, and
+   `mcp-session-id` header
 3. Client sends `notifications/initialized`
 4. Normal operation:
    - `tools/list`, `tools/call` — discover and invoke tools
    - `prompts/list`, `prompts/get` — discover and render prompts
    - `resources/list`, `resources/read` — discover and read resources
+5. Client may open `GET /mcp` with session ID for SSE notifications
 
 ### Streamable HTTP Transport
 
-Single HTTP endpoint (`POST /mcp`):
+Dual endpoint:
 
-- **Request-Response**: Client POSTs JSON-RPC, server responds with
-  `application/json`.
-- **Streaming**: Server may respond with `text/event-stream` (SSE).
-- **Session management**: `Mcp-Session-Id` header.
+- **`POST /mcp`**: Client sends JSON-RPC request, server responds with
+  `application/json`. Session tracked via `mcp-session-id` header.
+- **`GET /mcp`**: SSE stream for server-initiated notifications.
+  Requires `mcp-session-id` header from a prior `initialize`.
 
-Transport binding:
+### SSE Streaming
+
+Per-session broadcast channels (`SseBroadcaster`). The server pushes
+JSON-RPC notifications as SSE `message` events:
+
+- `notifications/tools/list_changed` — tool registry changed
+- Custom notifications from hooks or approval resolution
+
+Lagged clients log a warning and continue (no disconnect). Keep-alive
+prevents connection timeouts.
+
+### Session Management
+
+Sessions are created on `initialize` and tracked via UUID:
+
+1. `handle_initialize()` creates a `Session` in `SessionStore`,
+   returns `(InitializeResult, session_id)`
+2. Transport layer sets `mcp-session-id` response header
+3. Subsequent requests extract session ID from request header
+4. `CallContext` carries the real session ID to tool handlers
+
+### Transport Bindings
 
 - **Unix domain socket** (default): `$XDG_RUNTIME_DIR/mcpd/mcpd.sock`
+  with 0600 permissions. Parent directories created automatically.
 - **TCP** (optional): `127.0.0.1:9315` for development
+- Both can be active simultaneously.
 
 ### Auth
 
-Pluggable via `Authenticator` trait. Token-based implementation included:
+Pluggable via `Authenticator` trait. BLAKE3 token-based implementation:
 
 ```rust
 pub trait Authenticator: Send + Sync + 'static {
@@ -201,12 +219,17 @@ pub trait Authenticator: Send + Sync + 'static {
 }
 ```
 
+`TokenAuthenticator` uses BLAKE3 cryptographic hashing for bearer
+tokens. Tokens are hashed on registration; incoming tokens are hashed
+and compared against stored hashes. Supports `register()` (raw token)
+and `register_hash()` (pre-computed hash from config).
+
 `AgentIdentity` carries the agent's name and permission set name,
 threaded through `CallContext` to all tool handlers.
 
 ## Permission Model
 
-Four dimensions, evaluated in order:
+Five dimensions, evaluated in order:
 
 ### 1. Agent Identity
 
@@ -215,9 +238,11 @@ Token-based. Agents registered in config with a permission set:
 ```toml
 [[agents]]
 name = "claude-code"
-token_hash = "$blake3$..."
+token_hash = "20a8c34a..."  # BLAKE3 hex hash
 permissions = "developer"
 ```
+
+Generate tokens via CLI: `mcpd token generate --name N --perms P`
 
 ### 2. Path ACLs (deny-wins)
 
@@ -244,12 +269,81 @@ operations = ["read", "write", "search", "list", "git.status", "git.diff"]
 
 Modules define their own operations without modifying a central enum.
 
-### 4. Human-in-the-Loop Approval
+### 4. Per-Tool Permission Rules
+
+Glob-based rules applied per tool name, evaluated before the handler:
+
+```toml
+[[permissions.developer.tool_rules]]
+tool = "git_push"
+policy = "deny"
+
+[[permissions.developer.tool_rules]]
+tool = "git_commit"
+policy = "approve"
+
+[[permissions.developer.tool_rules]]
+tool = "docs_*"
+policy = "allow"
+```
+
+Priority: deny wins > allow > approve > default policy.
+Default policy is configurable: `default_tool_policy = "allow"`.
+
+### 5. Human-in-the-Loop Approval
 
 Operations can require explicit user approval:
 
 ```toml
 approve = ["write", "git.commit"]
+```
+
+## Hook / Middleware System
+
+Extensible pre/post tool-call hooks. Hooks intercept tool calls and
+can modify arguments, modify results, or block execution.
+
+### Hook Trait
+
+```rust
+#[async_trait]
+pub trait Hook: Send + Sync + 'static {
+    fn name(&self) -> &str;
+    async fn pre_tool_use(&self, tool_name, arguments, ctx) -> HookDecision;
+    async fn post_tool_use(&self, tool_name, arguments, result, ctx) -> HookDecision;
+}
+
+pub enum HookDecision {
+    Continue,
+    ModifyArgs(Value),
+    ModifyResult(CallToolResult),
+    Block(String),
+}
+```
+
+### HookPipeline
+
+- Pre-hooks run in registration order; post-hooks in reverse
+- Each hook wrapped in `tokio::time::timeout` (configurable, default 10s)
+- Block short-circuits the pre-pipeline
+- Timeout logs a warning and continues
+
+### SafetyHook
+
+Content safety filtering is implemented as a built-in post-hook
+(`SafetyHook`). It wraps the `FilterPipeline` and applies it to tool
+results. This replaces the previous hardcoded safety filter in
+`handle_call_tool()`. Legacy `safety_profile()` builder API still works
+when no hooks are configured.
+
+### Builder API
+
+```rust
+McpServer::builder()
+    .hook(SafetyHook::single("dev", pipeline))
+    .hook(custom_audit_hook)
+    .hook_timeout(Duration::from_secs(5))
+    .build()
 ```
 
 ## Approval System
@@ -258,12 +352,11 @@ approve = ["write", "git.commit"]
 
 When a tool requires approval, the server returns immediately with an
 approval-needed response (not blocking the HTTP connection) and sends
-a D-Bus notification in parallel. Three resolution channels:
+a D-Bus notification in parallel. Four resolution channels:
 
 ```
 Agent: docs_write(path, content)
-Server: "Approval required. Request ID: abc-123.
-         Call docs_approve with this request_id to approve."
+Server: "Approval required. Request ID: abc-123."
         (+ D-Bus notification with Approve/Deny buttons)
         (+ tray icon shows pending approval)
 
@@ -272,8 +365,6 @@ Resolution via ANY channel:
   2. User clicks D-Bus notification "Approve" button  ← Desktop
   3. User clicks tray menu Approve                    ← Tray icon
   4. CLI: mcpd approve abc-123                        ← Terminal
-
-Server: "Approved"
 
 Agent: docs_write(path, content)  # retry
 Server: "Written 42 bytes to /path"  # grant consumed
@@ -287,42 +378,22 @@ When an approval is resolved as `Approved`, a grant is cached:
 - TTL: 5 minutes
 - Single-use: consumed on the next matching `check_perm` call
 
-This allows the agent to retry the operation after approval without
-needing another approval cycle.
-
-### ApprovalStore
-
-```rust
-pub struct ApprovalStore {
-    pending: HashMap<String, PendingRequest>,  // request_id → oneshot channel
-    grants: Vec<Grant>,                        // cached approvals for retry
-    timeout: Duration,                         // approval expiry
-    grant_ttl: Duration,                       // grant expiry (5 min)
-}
-```
-
-- `request()` → creates pending entry, returns `(ApprovalRequest, Receiver)`
-- `approve(id)` / `deny(id)` → resolves channel + caches grant (if approved)
-- `check_grant(agent, op, path)` → consumes matching grant
-- `wait(rx)` → async wait with timeout (for blocking mode if needed)
-
 ### Notifier Trait
 
-```rust
-pub trait Notifier: Send + Sync + 'static {
-    fn notify(&self, request: &ApprovalRequest, store: Arc<ApprovalStore>)
-        -> BoxFuture<'_, Result<(), NotifyError>>;
-    fn dismiss(&self, request_id: &str)
-        -> BoxFuture<'_, Result<(), NotifyError>>;
-}
-```
-
 Implementations:
-- `DbusNotifier` — sends `org.freedesktop.Notifications` with action buttons,
-  listens for `ActionInvoked` / `NotificationClosed` signals via zbus
+- `DbusNotifier` — sends `org.freedesktop.Notifications` with action buttons
 - `NoopNotifier` — logs to tracing (headless/SSH fallback)
 
-## MCP Tools (docs module)
+## Pause / Resume
+
+The system tray Pause action sets a shared `AtomicBool` on the
+`McpServer`. When paused, `handle_call_tool()` rejects all tool calls
+with "Server is paused" error. Resume clears the flag. The pause flag
+is accessible via `server.pause_flag()` for external integration.
+
+## MCP Tools
+
+### Docs Module (`mcpd-mod-docs`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
@@ -335,6 +406,19 @@ Implementations:
 | `docs_info` | read | File metadata (size, lines, mime, modified, indexed) without content |
 | `docs_approve` | — | Approve a pending request by ID |
 | `docs_deny` | — | Deny a pending request by ID |
+
+### Git Module (`mcpd-mod-git`)
+
+| Tool | Permission | Description |
+|------|-----------|-------------|
+| `git_status` | git.status | Working tree status (short format with branch) |
+| `git_diff` | git.diff | Unstaged, staged (`--cached`), or ref-based diffs |
+| `git_log` | git.log | Commit history with limit and oneline options |
+| `git_branch` | git.branch | List branches, optionally including remotes |
+| `git_commit` | git.commit | Create a commit (requires approval) |
+
+Uses `tokio::process::Command` to run git. Path validation with
+tilde expansion, canonicalization, and `.git` directory check.
 
 ### Path Security
 
@@ -359,33 +443,146 @@ Then `check_perm()`:
 Single database at `$XDG_DATA_HOME/mcpd/index.db`:
 
 ```sql
-CREATE TABLE documents (
-    id          INTEGER PRIMARY KEY,
-    path        TEXT UNIQUE NOT NULL,
-    title       TEXT NOT NULL DEFAULT '',
-    content     TEXT NOT NULL DEFAULT '',
-    mime_type   TEXT NOT NULL,
-    size        INTEGER NOT NULL,
-    modified_at TEXT NOT NULL,
-    indexed_at  TEXT NOT NULL,
-    checksum    TEXT NOT NULL
-);
-
+CREATE TABLE documents (...);
 CREATE VIRTUAL TABLE documents_fts USING fts5(
     path, title, content,
-    content=documents,
-    content_rowid=id,
+    content=documents, content_rowid=id,
     tokenize='porter unicode61'
 );
 ```
 
 Thread-safe via `Mutex<Connection>` with WAL mode enabled.
-Auto-indexed on `docs_write` and `docs_edit`.
+Auto-indexed on `docs_write` and `docs_edit`. Content checksums
+computed with BLAKE3.
+
+## Content Safety
+
+Two-tier filter pipeline applied to all outbound tool responses,
+between the tool handler and the MCP transport. Can be applied via
+the hook pipeline (`SafetyHook`) or the legacy direct path.
+
+### ContentFilter Trait
+
+```rust
+pub trait ContentFilter: Send + Sync + 'static {
+    fn name(&self) -> &str;
+    fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding>;
+}
+```
+
+### Built-in Filters
+
+**SecretFilter** (11 patterns): AWS keys, GitHub/GitLab tokens,
+OpenAI/Anthropic keys, bearer tokens, private keys, passwords,
+connection strings, Slack webhooks.
+
+**PiiFilter** (4 patterns with validators): SSNs (SSA rules), credit
+cards (Luhn), US phone numbers, email addresses.
+
+### Custom Filters
+
+User-defined regex patterns in config per permission set:
+
+```toml
+[[permissions.developer.safety_patterns]]
+category = "internal-url"
+pattern = "https://internal\\.corp\\.com/\\S+"
+
+[[permissions.developer.safety_patterns]]
+category = "project-secret"
+pattern = "PROJ_SECRET_[A-Za-z0-9]{32}"
+```
+
+Invalid regex patterns are logged and skipped.
+
+### Safety Profiles
+
+Configured per permission set:
+
+```toml
+[permissions.developer]
+safety = "standard"     # all regex filters, redact
+
+[permissions.deployer]
+safety = "secrets-only" # only secrets, allow PII
+
+[permissions.admin]
+safety = "none"         # no filtering (full trust)
+```
+
+Profiles: `"standard"` (default), `"secrets-only"`, `"block"`, `"none"`.
+
+### Redaction
+
+Sensitive spans replaced with category markers:
+
+```
+Original:  export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+Redacted:  export AWS_ACCESS_KEY_ID=[REDACTED:aws-key]
+```
+
+Overlapping findings are merged (longest span wins).
+
+## Resilient Transports (Upstream)
+
+Upstream transports support automatic retry and reconnection via the
+`ResilientTransport` decorator pattern:
+
+### RetryConfig
+
+```rust
+pub struct RetryConfig {
+    pub base_delay: Duration,       // default 1s
+    pub max_delay: Duration,        // default 30s
+    pub total_budget: Duration,     // default 10min
+    pub request_timeout: Duration,  // default 45s
+    pub sleep_gap_threshold: Duration, // default 60s
+}
+```
+
+### TransportFactory
+
+```rust
+pub trait TransportFactory: Send + Sync + 'static {
+    async fn create(&self) -> Result<Box<dyn Transport>, UpstreamError>;
+}
+```
+
+Three factory implementations: `StdioTransportFactory` (respawns
+subprocess), `HttpTransportFactory`, `SseTransportFactory`.
+
+### Behavior
+
+- Exponential backoff: `delay = min(base * 2^n, max)`
+- Permanent errors (401/403/404, command not found) return immediately
+- Transient errors trigger retry with backoff
+- Sleep detection: gap > threshold resets the retry budget
+- Request timeout via `tokio::time::timeout`
+
+### Configuration
+
+```toml
+[[upstream]]
+name = "myelix"
+command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
+retry_base_delay_ms = 1000
+retry_max_delay_ms = 30000
+retry_budget_secs = 600
+request_timeout_secs = 45
+```
+
+Retry fields are optional. When absent, the transport uses the
+non-resilient path (no retry, immediate failure).
+
+### StdioTransport
+
+- Subprocess stderr is captured and logged via `tracing::warn!`
+- `is_alive()` method checks subprocess status via `try_wait()`
 
 ## System Tray (ksni)
 
 StatusNotifierItem (SNI) via the `ksni` crate. Works with:
-KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar, MATE.
+KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar.
 
 ### Icon States
 
@@ -406,7 +603,6 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar, MATE.
 ├─────────────────────────────────────────┤
 │  Connected Agents                       │
 │    claude-code (developer)              │
-│    reader-bot (readonly)                │
 ├─────────────────────────────────────────┤
 │  Pause / Resume                         │
 │  Quit                                   │
@@ -417,144 +613,25 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar, MATE.
 
 - `TrayCommand` channel: menu actions → server event loop
 - Background updater polls `ApprovalStore` every 1s
+- Pause/Resume toggles shared `AtomicBool` on `McpServer`
 - `--no-tray` flag for headless/systemd operation
-
-## Content Safety
-
-Two-tier filter pipeline applied to all outbound tool responses,
-between the tool handler and the MCP transport. Modules are unaware
-of filtering — it's a framework-level concern.
-
-```
-Tool handler response
-        │
-        ▼
-┌─── Fast Tier (regex) ──────────┐
-│ API keys, private keys, tokens │  ~microseconds
-│ SSNs, credit cards, phone, PII │  deterministic
-└────────────┬───────────────────┘
-             │
-             ▼
-┌─── ML Tier (ONNX, future) ────┐
-│ Contextual PII, sensitivity    │  ~1-10ms
-│ "medical records", "salaries"  │  confidence-scored
-└────────────┬───────────────────┘
-             │
-             ▼
-  FilterAction: Pass / Redact / Block
-```
-
-### ContentFilter Trait
-
-```rust
-pub trait ContentFilter: Send + Sync + 'static {
-    fn name(&self) -> &str;
-    fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding>;
-}
-
-pub struct Finding {
-    pub start: usize,       // byte offset
-    pub end: usize,
-    pub category: String,   // "aws-key", "ssn", "credit-card"
-    pub confidence: f32,    // 1.0 for regex, model score for ML
-}
-```
-
-### Regex Detectors (implemented)
-
-**SecretFilter** (11 patterns):
-
-| Category | Pattern |
-|----------|---------|
-| `aws-key` | `AKIA[0-9A-Z]{16}` |
-| `aws-secret` | `aws_secret_access_key=...` |
-| `github-token` | `ghp_...`, `github_pat_...` |
-| `gitlab-token` | `glpat-...` |
-| `api-key` | `sk-...` (OpenAI/Anthropic) |
-| `bearer-token` | `bearer=...`, `authorization=...` |
-| `private-key` | `-----BEGIN...PRIVATE KEY-----` |
-| `password` | `password=...`, `passwd:...` |
-| `connection-string` | `postgres://user:pass@host` |
-| `slack-webhook` | `hooks.slack.com/services/...` |
-
-**PiiFilter** (4 patterns with validators):
-
-| Category | Pattern | Validation |
-|----------|---------|------------|
-| `ssn` | `\d{3}-\d{2}-\d{4}` | SSA rules (no 000/666/9xx) |
-| `credit-card` | 13-19 digit sequences | Luhn algorithm |
-| `phone` | US formats with optional +1 | — |
-| `email` | Standard email pattern | — |
-
-### ML Tier (future, ONNX Runtime)
-
-For contextual detection that regex can't catch ("John Smith's
-medical records show...", "the salary for this position is..."):
-
-- ONNX Runtime (`ort` crate) as optional feature (`safety-model`)
-- Auto-detects best execution provider: NPU > GPU > CPU
-- Small model (~5-50MB): token classifier for PII/sensitivity
-- Runs after regex tier, additive findings
-
-| Hardware | ONNX Execution Provider |
-|----------|------------------------|
-| CPU | Default (always available) |
-| GPU (NVIDIA) | CUDA / TensorRT |
-| GPU (AMD) | ROCm |
-| NPU (Intel) | OpenVINO (Core Ultra) |
-| NPU (Qualcomm) | QNN (Snapdragon X) |
-
-### Redaction
-
-Sensitive spans replaced with category markers:
-
-```
-Original:  export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-Redacted:  export AWS_ACCESS_KEY_ID=[REDACTED:aws-key]
-
-Original:  SSN: 123-45-6789
-Redacted:  SSN: [REDACTED:ssn]
-```
-
-Overlapping findings are merged (longest span wins).
-
-### Safety Profiles
-
-Configured per permission set:
-
-```toml
-[permissions.developer]
-safety = "standard"     # all regex filters, redact
-
-[permissions.deployer]
-safety = "secrets-only" # only secrets, allow PII
-
-[permissions.admin]
-safety = "none"         # no filtering (full trust)
-```
-
-Profiles: `"standard"` (default), `"secrets-only"`, `"block"`, `"none"`.
-
-### Where Filtering Happens
-
-Applied in `McpServer::handle_call_tool()` — after the tool handler
-returns, before the response enters the transport. The pipeline maps
-permission set names to `FilterPipeline` instances, set up at server
-startup via `builder.safety_profile(name, pipeline)`.
 
 ## Security Model
 
 ### Defense in Depth
 
 1. **Unix socket** — No network exposure. Filesystem permissions (0600).
-2. **Token authentication** — Bearer tokens, BLAKE3-hashed in config.
+2. **Token authentication** — Bearer tokens, BLAKE3-hashed.
 3. **Path canonicalization** — Symlinks resolved, `..` eliminated.
 4. **Deny-first ACLs** — Deny rules always win. Default-deny.
-5. **Operation restrictions** — String-based, module-namespaced.
-6. **Approval workflow** — Three-channel human-in-the-loop.
-7. **Content safety** — Regex + ML filters redact/block sensitive data.
-8. **Systemd hardening** — `NoNewPrivileges`, `ProtectHome=read-only`,
-   `ProtectSystem=strict`, `MemoryDenyWriteExecute`, etc.
+5. **Per-tool rules** — Glob-based allow/deny/approve per tool name.
+6. **Operation restrictions** — String-based, module-namespaced.
+7. **Approval workflow** — Four-channel human-in-the-loop.
+8. **Content safety** — Regex + custom filters redact/block sensitive data.
+9. **Hook pipeline** — Extensible pre/post processing with timeouts.
+10. **Pause/Resume** — Operator can halt all tool calls instantly.
+11. **Systemd hardening** — `NoNewPrivileges`, `ProtectHome=read-only`,
+    `ProtectSystem=strict`, `MemoryDenyWriteExecute`, etc.
 
 ### Threat Model
 
@@ -562,13 +639,16 @@ startup via `builder.safety_profile(name, pipeline)`.
 |--------|------------|
 | Agent reads private files | Path ACLs (deny-wins) |
 | Agent writes to unauthorized paths | Operation perms + approval |
+| Agent calls dangerous tools | Per-tool deny/approve rules |
 | Path traversal (`../../etc/passwd`) | Canonicalization before ACL check |
-| Token theft | Hashed storage, Unix socket |
+| Token theft | BLAKE3-hashed storage, Unix socket |
 | Agent bypasses approval | Non-blocking return, grant is single-use |
 | Agent exfiltrates secrets in file content | Content safety filters (redact/block) |
 | Agent exfiltrates PII | PII detector with Luhn/SSA validation |
+| Custom sensitive data | User-defined regex patterns per permission set |
+| Hook bypass | Hooks run with timeout, timeout continues (no bypass) |
 | Prompt injection via documents | Out of scope (agent responsibility) |
-| Denial of service | Systemd resource limits |
+| Denial of service | Systemd resource limits, pause/resume |
 
 ## Configuration
 
@@ -576,12 +656,15 @@ Default path: `~/.config/mcpd/config.toml`
 
 ```toml
 [server]
-# socket = "$XDG_RUNTIME_DIR/mcpd/mcpd.sock"
-tcp = "127.0.0.1:9315"  # development default
+socket = "$XDG_RUNTIME_DIR/mcpd/mcpd.sock"
+tcp = "127.0.0.1:9315"    # optional, for development
 
 [modules.docs]
 enabled = true
 # db = "$XDG_DATA_HOME/mcpd/index.db"
+
+[modules.git]
+enabled = true
 
 [approval]
 timeout_secs = 300
@@ -593,19 +676,35 @@ name = "myelix"
 transport = "stdio"
 command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
 cwd = "/home/user/myelix"
+retry_base_delay_ms = 1000
+
+[[upstream]]
+name = "api-server"
+transport = "http"
+url = "http://localhost:8001/mcp"
 
 # --- Agents ---
 [[agents]]
 name = "claude-code"
-token_hash = "$blake3$..."
+token_hash = "20a8c34a..."  # BLAKE3 hex hash from `mcpd token generate`
 permissions = "developer"
 
 [permissions.developer]
 allow = ["~/Documents/**", "~/Notes/**", "~/Code/**"]
 deny = ["**/.env", "**/*secret*", "**/credentials*"]
-operations = ["read", "write", "search", "list"]
-approve = ["write"]
-safety = "standard"      # redact secrets + PII in responses
+operations = ["read", "write", "search", "list", "git.status", "git.diff",
+              "git.log", "git.branch", "git.commit"]
+approve = ["write", "git.commit"]
+safety = "standard"
+default_tool_policy = "allow"
+
+[[permissions.developer.tool_rules]]
+tool = "git_commit"
+policy = "approve"
+
+[[permissions.developer.safety_patterns]]
+category = "internal-url"
+pattern = "https://internal\\.corp\\.com/\\S+"
 
 [permissions.readonly]
 allow = ["~/Documents/shared/**"]
@@ -613,10 +712,61 @@ deny = []
 operations = ["read", "search", "list"]
 approve = []
 safety = "standard"
-
-# [permissions.admin]
-# safety = "none"        # full trust, no filtering
 ```
+
+## CLI
+
+```
+mcpd serve [--config path] [--no-tray]   Start the server
+mcpd token generate --name N --perms P   Generate agent token (prints BLAKE3 hash)
+mcpd token list                          List registered agents from config
+mcpd approve <request-id>                Approve a pending request (via server)
+mcpd deny <request-id>                   Deny a pending request (via server)
+mcpd status                              Query running server status
+```
+
+## Gateway Architecture
+
+### Design Rationale
+
+mcpd is an **MCP gateway** that aggregates upstream MCP servers:
+
+- **Domain separation**: Each upstream server owns its domain logic.
+  mcpd stays domain-agnostic.
+- **Unified security**: Auth, ACLs, per-tool rules, content safety,
+  and approval workflows apply uniformly to all traffic.
+- **Model agnosticism**: Any MCP client can consume the aggregated
+  tools and prompts.
+
+### Upstream Transports
+
+```rust
+#[async_trait]
+pub trait Transport: Send + 'static {
+    async fn request(&mut self, body: Value) -> Result<Value, UpstreamError>;
+    fn shutdown(&mut self);
+}
+```
+
+| Transport | Config field | Wire protocol |
+|-----------|-------------|---------------|
+| **stdio** | `command`, `cwd` | Subprocess, line-delimited JSON-RPC over stdin/stdout |
+| **http** | `url` | POST JSON-RPC to HTTP endpoint (MCP streamable-http) |
+| **sse** | `url` | SSE endpoint discovery → POST JSON-RPC to discovered URL |
+
+Each transport can be wrapped in `ResilientTransport` for automatic
+retry and reconnection (see Resilient Transports section).
+
+### Upstream Lifecycle
+
+1. **Startup**: Connect via configured transport, call `initialize`,
+   discover tools/prompts/resources
+2. **Registration**: Wrap in `UpstreamModule` (implements `Module`
+   trait), register like any built-in module
+3. **Runtime**: Forward requests through `Transport`, apply safety
+   filters, return to agent
+4. **Error handling**: Connection failures logged, upstream skipped.
+   With resilient transport, reconnection is automatic.
 
 ## Systemd Integration
 
@@ -625,12 +775,11 @@ User unit at `~/.config/systemd/user/mcpd.service`:
 ```ini
 [Unit]
 Description=mcpd — Composable MCP Server
-Documentation=https://github.com/user/mcpd
 After=default.target
 
 [Service]
 Type=notify
-ExecStart=%h/.cargo/bin/mcpd serve
+ExecStart=%h/.cargo/bin/mcpd serve --no-tray
 Restart=on-failure
 RestartSec=5
 
@@ -642,182 +791,18 @@ ReadWritePaths=%h/.local/share/mcpd
 RuntimeDirectory=mcpd
 PrivateTmp=yes
 PrivateDevices=yes
-ProtectKernelTunables=yes
-ProtectControlGroups=yes
 MemoryDenyWriteExecute=yes
-RestrictRealtime=yes
-RestrictSUIDSGID=yes
-LockPersonality=yes
 SystemCallFilter=@system-service
-SystemCallArchitectures=native
 
 [Install]
 WantedBy=default.target
 ```
 
-## CLI
-
-```
-mcpd serve [--config path] [--no-tray]   Start the server
-mcpd token generate --name N --perms P   Generate agent token
-mcpd token list                          List registered agents
-mcpd approve <request-id>                Approve a pending request
-mcpd deny <request-id>                   Deny a pending request
-mcpd status                              Show server status
-```
-
-## Gateway Architecture
-
-### Design Rationale
-
-mcpd is evolving from a standalone MCP server to an **MCP gateway**
-that aggregates upstream MCP servers. The motivation:
-
-- **Domain separation**: Each upstream server owns its domain logic
-  (cognitive core, git operations, CI/CD). mcpd stays domain-agnostic.
-- **Unified security**: Auth, ACLs, content safety, and approval
-  workflows apply uniformly to all traffic, whether it comes from a
-  built-in module or an upstream server.
-- **Model agnosticism**: Upstream servers expose prompts and tools via
-  MCP. Any client that speaks MCP can consume them, regardless of the
-  underlying model.
-
-### Two Sources of Capabilities
-
-```
-┌─ Built-in ────────────────────────┐
-│ Modules compiled into mcpd-server │
-│ DocsModule: docs_read, docs_write │
-│ (future: GitModule, etc.)         │
-└───────────────────────────────────┘
-
-┌─ Upstream ─────────────────────────────────────────┐
-│ External MCP servers proxied through mcpd           │
-│ Myelix: persona prompts + weave_prompt tool         │
-│ (future: git server, CI/CD server, etc.)            │
-│                                                     │
-│ Transports: stdio (subprocess), SSE, streamable-http│
-└─────────────────────────────────────────────────────┘
-```
-
-Both sources are presented to agents as a single unified MCP server.
-Agents see one flat list of tools, one flat list of prompts — they
-don't know which are built-in and which are proxied.
-
-### Upstream Transports
-
-mcpd connects to upstream servers using a pluggable `Transport` trait:
-
-```rust
-#[async_trait]
-pub trait Transport: Send + 'static {
-    async fn request(&mut self, body: Value) -> Result<Value, UpstreamError>;
-    fn shutdown(&mut self);
-}
-```
-
-Three implementations:
-
-| Transport | Config field | Wire protocol |
-|-----------|-------------|---------------|
-| **stdio** | `command`, `cwd` | Subprocess, line-delimited JSON-RPC over stdin/stdout |
-| **http** | `url` | POST JSON-RPC to HTTP endpoint (MCP streamable-http) |
-| **sse** | `url` | SSE endpoint discovery → POST JSON-RPC to discovered URL |
-
-`Upstream` is transport-agnostic — it handles MCP semantics
-(initialize, discover, proxy) while the transport handles the wire
-protocol.
-
-### Upstream Configuration
-
-```toml
-# Subprocess (stdio) — most common for local servers
-[[upstream]]
-name = "myelix"
-transport = "stdio"
-command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
-cwd = "/home/user/myelix"
-
-# HTTP (streamable-http) — for HTTP-based servers
-[[upstream]]
-name = "api-server"
-transport = "http"
-url = "http://localhost:8001/mcp"
-
-# SSE — for Server-Sent Events servers
-[[upstream]]
-name = "sse-server"
-transport = "sse"
-url = "http://localhost:8002/sse"
-
-# Disabled upstream
-[[upstream]]
-name = "disabled"
-command = ["echo"]
-enabled = false
-```
-
-### Upstream Lifecycle
-
-1. **Startup**: mcpd connects to each upstream via its configured
-   transport, calls `initialize`, then `tools/list`, `prompts/list`,
-   and `resources/list` to discover capabilities.
-2. **Registration**: Upstream capabilities are wrapped in an
-   `UpstreamModule` that implements the `Module` trait. The server
-   builder registers it like any built-in module — same conflict
-   detection, same dispatch.
-3. **Runtime**: When an agent calls a proxied tool/prompt/resource,
-   mcpd forwards the request through the `Transport` to the upstream,
-   applies safety filters to the response, and returns it to the agent.
-4. **Auth + ACLs**: mcpd's own auth and permission checks apply before
-   forwarding. The upstream server does not need auth — mcpd is the
-   trust boundary.
-5. **Error handling**: Spawn/connection failures are logged and the
-   upstream is skipped (mcpd starts without it). Runtime errors from
-   upstreams are returned as tool/prompt errors to the agent.
-
-### Security Boundary
-
-```
-Agent → mcpd (auth, ACLs, safety) → Upstream server
-         ▲                            ▲
-         │                            │
-    Trust boundary              Trusted (local)
-    (agent identity,            (no auth needed,
-     path checks,               mcpd controls
-     content filtering)         access)
-```
-
-The upstream server runs locally and trusts mcpd as its sole client.
-mcpd handles all agent-facing security concerns.
-
-### Example: Myelix Integration
-
-Myelix's MCP server exposes:
-- **Prompts**: `persona:software_developer`, `persona:researcher`, etc.
-  — discoverable via `prompts/list`, raw definitions via `prompts/get`
-- **Tools**: `weave_prompt` — assembles a fully customized system prompt
-  from cognitive core components (persona + heuristics + directives)
-
-Through mcpd, an agent can:
-1. `prompts/list` → sees both docs module tools and Myelix personas
-2. `prompts/get("persona:software_developer")` → proxied to Myelix
-3. `tools/call weave_prompt(...)` → proxied to Myelix, safety-filtered
-
 ## Future Work
-
-### Modules
-- **Runtime-loadable modules** — Load modules from shared libraries
-  or WASI components at startup, enabling distribution without
-  recompiling mcpd
-- **mcpd-mod-git** — Git module (`git_status`, `git_diff`, `git_log`,
-  `git_commit`, `git_branch`) with approval for push/commit
 
 ### Safety
 - **ML safety tier** — ONNX Runtime (`ort` crate, optional feature)
   for contextual PII/sensitivity detection. Auto-detect NPU > GPU > CPU.
-  Ship with a tiny token classifier (~5-15MB ONNX model).
-- **Custom safety rules** — User-defined regex patterns in config
 
 ### Search & Indexing
 - **Vector search** — sqlite-vec for semantic similarity
