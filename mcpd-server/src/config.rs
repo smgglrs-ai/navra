@@ -44,6 +44,9 @@ pub struct DocsModuleConfig {
     pub enabled: bool,
     #[serde(default = "default_db_path")]
     pub db: String,
+    /// Directories to watch for auto-reindexing.
+    #[serde(default)]
+    pub watch: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -203,6 +206,7 @@ impl Default for DocsModuleConfig {
         Self {
             enabled: true,
             db: default_db_path(),
+            watch: Vec::new(),
         }
     }
 }
