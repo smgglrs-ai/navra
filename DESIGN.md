@@ -455,9 +455,79 @@ Thread-safe via `Mutex<Connection>` with WAL mode enabled.
 Auto-indexed on `docs_write` and `docs_edit`. Content checksums
 computed with BLAKE3.
 
+## Model Serving (ONNX Runtime)
+
+In-process model inference via the `ort` crate (ONNX Runtime).
+Models load at startup and run on CPU with automatic GPU/NPU
+fallback when available. Used for safety classification and
+text embeddings.
+
+### ModelBackend Trait
+
+```rust
+pub trait ModelBackend: Send + Sync + 'static {
+    fn embed(&self, request: &EmbedRequest)
+        -> Pin<Box<dyn Future<Output = Result<EmbedResponse, ModelError>> + Send + '_>>;
+    fn classify(&self, request: &ClassifyRequest)
+        -> Pin<Box<dyn Future<Output = Result<ClassifyResponse, ModelError>> + Send + '_>>;
+}
+```
+
+### OnnxModel
+
+Wraps `ort::Session` with an optional HuggingFace tokenizer.
+Thread-safe via `Mutex<Session>`, runs inference via
+`block_in_place` to avoid blocking the Tokio executor.
+
+- **Embedding**: mean-pools hidden states, L2-normalizes
+- **Classification**: softmax over logits, returns sorted labels
+
+### Tokenization
+
+Uses the `tokenizers` crate (HuggingFace) for proper BPE/WordPiece
+tokenization when a `tokenizer.json` is provided. Falls back to
+character-level tokenization otherwise.
+
+### Supported Models
+
+| Model | Task | Params | License |
+|-------|------|--------|---------|
+| Granite Guardian HAP 38M | Safety classification | 38M | Apache 2.0 |
+| Granite Embedding R2 | Text embeddings (768-dim) | 149M | Apache 2.0 |
+
+### Model Management CLI
+
+```
+mcpd model available              Show supported models
+mcpd model pull guardian-hap       Download safety classifier
+mcpd model pull granite-embed      Download embedding model
+mcpd model list                    Show installed models with sizes
+```
+
+Models are downloaded from HuggingFace to
+`~/.local/share/mcpd/models/<name>/` with streaming progress.
+After download, prints a ready-to-paste config snippet.
+
+### Configuration
+
+```toml
+[models.safety]
+model_path = "~/.local/share/mcpd/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/mcpd/models/guardian-hap/tokenizer.json"
+task = "classification"
+labels = ["safe", "hap"]
+threshold = 0.5
+
+[models.embeddings]
+model_path = "~/.local/share/mcpd/models/granite-embed/model.onnx"
+tokenizer_path = "~/.local/share/mcpd/models/granite-embed/tokenizer.json"
+task = "embedding"
+dimensions = 768
+```
+
 ## Content Safety
 
-Two-tier filter pipeline applied to all outbound tool responses,
+Three-tier filter pipeline applied to all outbound tool responses,
 between the tool handler and the MCP transport. Can be applied via
 the hook pipeline (`SafetyHook`) or the legacy direct path.
 
@@ -494,6 +564,33 @@ pattern = "PROJ_SECRET_[A-Za-z0-9]{32}"
 ```
 
 Invalid regex patterns are logged and skipped.
+
+### ML Filter (ONNX)
+
+Contextual detection that regex can't catch, using ONNX models:
+
+```rust
+pub struct MlFilter {
+    model: Arc<dyn ModelBackend>,
+    threshold: f32,
+    category: String,
+}
+```
+
+The `MlFilter` implements `ContentFilter` and runs the full text
+through a classification model. If the model detects unsafe content
+above the threshold, the entire text is reported as a finding.
+
+Loaded automatically when a classification model is configured:
+
+```toml
+[models.safety]
+model_path = "~/.local/share/mcpd/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/mcpd/models/guardian-hap/tokenizer.json"
+task = "classification"
+labels = ["safe", "hap"]
+threshold = 0.5
+```
 
 ### Safety Profiles
 
@@ -627,7 +724,7 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar.
 5. **Per-tool rules** — Glob-based allow/deny/approve per tool name.
 6. **Operation restrictions** — String-based, module-namespaced.
 7. **Approval workflow** — Four-channel human-in-the-loop.
-8. **Content safety** — Regex + custom filters redact/block sensitive data.
+8. **Content safety** — Regex + custom + ML filters redact/block sensitive data.
 9. **Hook pipeline** — Extensible pre/post processing with timeouts.
 10. **Pause/Resume** — Operator can halt all tool calls instantly.
 11. **Systemd hardening** — `NoNewPrivileges`, `ProtectHome=read-only`,
@@ -645,6 +742,7 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar.
 | Agent bypasses approval | Non-blocking return, grant is single-use |
 | Agent exfiltrates secrets in file content | Content safety filters (redact/block) |
 | Agent exfiltrates PII | PII detector with Luhn/SSA validation |
+| Contextual sensitive content | ML classifier (Guardian HAP) via ONNX |
 | Custom sensitive data | User-defined regex patterns per permission set |
 | Hook bypass | Hooks run with timeout, timeout continues (no bypass) |
 | Prompt injection via documents | Out of scope (agent responsibility) |
@@ -662,9 +760,24 @@ tcp = "127.0.0.1:9315"    # optional, for development
 [modules.docs]
 enabled = true
 # db = "$XDG_DATA_HOME/mcpd/index.db"
+watch = ["~/Documents", "~/Notes"]   # auto-reindex on file changes
 
 [modules.git]
 enabled = true
+
+# --- ONNX models (install via: mcpd model pull <name>) ---
+[models.safety]
+model_path = "~/.local/share/mcpd/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/mcpd/models/guardian-hap/tokenizer.json"
+task = "classification"
+labels = ["safe", "hap"]
+threshold = 0.5
+
+[models.embeddings]
+model_path = "~/.local/share/mcpd/models/granite-embed/model.onnx"
+tokenizer_path = "~/.local/share/mcpd/models/granite-embed/tokenizer.json"
+task = "embedding"
+dimensions = 768
 
 [approval]
 timeout_secs = 300
@@ -723,6 +836,11 @@ mcpd token list                          List registered agents from config
 mcpd approve <request-id>                Approve a pending request (via server)
 mcpd deny <request-id>                   Deny a pending request (via server)
 mcpd status                              Query running server status
+mcpd install                             Install systemd user units
+mcpd uninstall                           Uninstall systemd user units
+mcpd model available                     Show supported models for download
+mcpd model pull <name>                   Download model from HuggingFace
+mcpd model list                          Show installed models
 ```
 
 ## Gateway Architecture
@@ -770,7 +888,9 @@ retry and reconnection (see Resilient Transports section).
 
 ## Systemd Integration
 
-User unit at `~/.config/systemd/user/mcpd.service`:
+Install via `mcpd install`, uninstall via `mcpd uninstall`.
+
+Service unit (`~/.config/systemd/user/mcpd.service`):
 
 ```ini
 [Unit]
@@ -778,35 +898,54 @@ Description=mcpd — Composable MCP Server
 After=default.target
 
 [Service]
-Type=notify
+Type=simple
 ExecStart=%h/.cargo/bin/mcpd serve --no-tray
 Restart=on-failure
 RestartSec=5
-
-# Hardening
+RuntimeDirectory=mcpd
+ReadWritePaths=%h/.local/share/mcpd %h/.config/mcpd
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.local/share/mcpd
-RuntimeDirectory=mcpd
-PrivateTmp=yes
-PrivateDevices=yes
-MemoryDenyWriteExecute=yes
-SystemCallFilter=@system-service
 
 [Install]
 WantedBy=default.target
 ```
 
+Socket unit (`~/.config/systemd/user/mcpd.socket`):
+
+```ini
+[Unit]
+Description=mcpd — MCP Server Socket
+
+[Socket]
+ListenStream=%t/mcpd/mcpd.sock
+SocketMode=0600
+
+[Install]
+WantedBy=sockets.target
+```
+
+## File Watcher
+
+The docs module can watch directories for file changes using the
+`notify` crate (inotify on Linux). On create/modify, files are read
+and upserted into the FTS5 index. On delete, removed from the index.
+
+```toml
+[modules.docs]
+watch = ["~/Documents", "~/Notes"]
+```
+
+- Skips hidden files (dotfiles) and binary extensions
+- Background processing via `spawn_blocking`
+- Uses BLAKE3 checksums for content deduplication
+
 ## Future Work
 
-### Safety
-- **ML safety tier** — ONNX Runtime (`ort` crate, optional feature)
-  for contextual PII/sensitivity detection. Auto-detect NPU > GPU > CPU.
-
 ### Search & Indexing
-- **Vector search** — sqlite-vec for semantic similarity
-- **File watcher** — `notify` crate for live re-indexing
+- **Vector search** — sqlite-vec with Granite Embedding R2 for
+  semantic similarity (embedding model infrastructure is ready)
 - **Content extraction** — PDF, HTML, CSV pipeline
 
 ### Platform

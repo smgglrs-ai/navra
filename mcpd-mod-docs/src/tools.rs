@@ -1,7 +1,7 @@
 use crate::store::IndexStore;
 use mcpd_core::auth::CallContext;
 use mcpd_core::notify::Notifier;
-use mcpd_core::permissions::{ApprovalStatus, ApprovalStore, PermissionEngine, PermissionResult};
+use mcpd_core::permissions::{ApprovalStore, PermissionEngine, PermissionResult};
 use mcpd_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
 use mcpd_core::ToolHandler;
 use mcpd_core::Module;

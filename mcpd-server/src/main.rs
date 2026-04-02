@@ -812,8 +812,6 @@ struct KnownModel {
     model_file: &'static str,
     /// Tokenizer filename (if any).
     tokenizer_file: Option<&'static str>,
-    /// Model task.
-    task: &'static str,
     /// Config snippet template.
     config_template: &'static str,
 }
@@ -825,7 +823,6 @@ const KNOWN_MODELS: &[KnownModel] = &[
         repo: "KantiArumilli/granite-guardian-hap-38m-onnx",
         model_file: "guardian_model_quantized.onnx",
         tokenizer_file: Some("tokenizer/tokenizer.json"),
-        task: "classification",
         config_template: r#"[models.guardian-hap]
 model_path = "{model_dir}/model.onnx"
 tokenizer_path = "{model_dir}/tokenizer.json"
@@ -839,7 +836,6 @@ threshold = 0.5"#,
         repo: "yasserrmd/granite-embedding-r2-onnx",
         model_file: "model.onnx",
         tokenizer_file: Some("tokenizer.json"),
-        task: "embedding",
         config_template: r#"[models.granite-embed]
 model_path = "{model_dir}/model.onnx"
 tokenizer_path = "{model_dir}/tokenizer.json"
