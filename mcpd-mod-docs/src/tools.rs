@@ -452,6 +452,31 @@ fn extract_title(path: &Path, content: &str) -> String {
         .to_string()
 }
 
+/// Generate and store an embedding for a document, if an embedding model is available.
+async fn maybe_embed(state: &DocsState, doc_id: i64, content: &str) {
+    let model = match &state.embedding_model {
+        Some(m) => m,
+        None => return,
+    };
+    if !state.index.has_vectors() {
+        return;
+    }
+
+    let request = mcpd_core::models::EmbedRequest {
+        text: content.to_string(),
+    };
+    match model.embed(&request).await {
+        Ok(response) => {
+            if let Err(e) = state.index.upsert_embedding(doc_id, &response.embedding) {
+                tracing::warn!(doc_id, error = %e, "Failed to store embedding");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(doc_id, error = %e, "Failed to generate embedding");
+        }
+    }
+}
+
 fn chrono_now() -> String {
     use std::time::SystemTime;
     let since_epoch = SystemTime::now()
@@ -712,11 +737,16 @@ async fn handle_write(
     let modified = chrono_now();
     let checksum = simple_checksum(content.as_bytes());
 
-    if let Err(e) = state
+    match state
         .index
         .upsert(&path_str, mime, size, &modified, &checksum, &title, content)
     {
-        tracing::warn!("Failed to index {}: {e}", path.display());
+        Ok(doc_id) => {
+            maybe_embed(&state, doc_id, content).await;
+        }
+        Err(e) => {
+            tracing::warn!("Failed to index {}: {e}", path.display());
+        }
     }
 
     CallToolResult::text(format!("Written {} bytes to {}", size, path.display()))
@@ -787,10 +817,15 @@ async fn handle_edit(
     let modified = chrono_now();
     let checksum = simple_checksum(new_content.as_bytes());
 
-    if let Err(e) = state.index.upsert(
+    match state.index.upsert(
         &path_str, mime, size, &modified, &checksum, &title, &new_content,
     ) {
-        tracing::warn!("Failed to index {}: {e}", path.display());
+        Ok(doc_id) => {
+            maybe_embed(&state, doc_id, &new_content).await;
+        }
+        Err(e) => {
+            tracing::warn!("Failed to index {}: {e}", path.display());
+        }
     }
 
     CallToolResult::text(format!("Edited {}", path.display()))
