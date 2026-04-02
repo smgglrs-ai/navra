@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod hooks;
+pub mod models;
 pub mod notify;
 pub mod permissions;
 pub mod protocol;
