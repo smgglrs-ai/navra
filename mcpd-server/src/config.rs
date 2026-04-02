@@ -24,6 +24,9 @@ pub struct Config {
 pub struct ModelConfig {
     /// Path to the ONNX model file.
     pub model_path: String,
+    /// Path to the HuggingFace tokenizer.json file.
+    #[serde(default)]
+    pub tokenizer_path: Option<String>,
     /// Model task: "embedding" or "classification".
     #[serde(default = "default_model_task")]
     pub task: String,
