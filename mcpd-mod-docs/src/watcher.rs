@@ -5,6 +5,7 @@
 //! are created, modified, or deleted.
 
 use crate::store::IndexStore;
+use mcpd_core::models::ModelBackend;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -13,9 +14,19 @@ use std::sync::Arc;
 ///
 /// Returns a handle that keeps the watcher alive. Drop the handle to
 /// stop watching. File changes are processed in a background tokio task.
+/// If an embedding model is provided, generates embeddings for indexed files.
 pub fn start_watcher(
     directories: Vec<PathBuf>,
     index: Arc<IndexStore>,
+) -> Result<WatcherHandle, notify::Error> {
+    start_watcher_with_embeddings(directories, index, None)
+}
+
+/// Start watching with optional embedding model.
+pub fn start_watcher_with_embeddings(
+    directories: Vec<PathBuf>,
+    index: Arc<IndexStore>,
+    embedding_model: Option<Arc<dyn ModelBackend>>,
 ) -> Result<WatcherHandle, notify::Error> {
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -39,7 +50,7 @@ pub fn start_watcher(
 
     // Spawn background task to process events.
     // Use spawn_blocking because std::sync::mpsc::Receiver::recv() blocks.
-    let task = tokio::task::spawn_blocking(move || process_events(rx, index));
+    let task = tokio::task::spawn_blocking(move || process_events(rx, index, embedding_model));
 
     Ok(WatcherHandle {
         _watcher: watcher,
@@ -57,6 +68,7 @@ pub struct WatcherHandle {
 fn process_events(
     rx: std::sync::mpsc::Receiver<Event>,
     index: Arc<IndexStore>,
+    embedding_model: Option<Arc<dyn ModelBackend>>,
 ) {
     while let Ok(event) = rx.recv() {
         for path in &event.paths {
@@ -66,7 +78,7 @@ fn process_events(
                     if !is_indexable(path) {
                             continue;
                     }
-                    index_file(path, &index);
+                    index_file(path, &index, embedding_model.as_ref());
                 }
                 EventKind::Remove(_) => {
                     // For remove, only check name (file no longer exists)
@@ -90,8 +102,8 @@ fn process_events(
     }
 }
 
-/// Index a single file into the store.
-fn index_file(path: &Path, index: &IndexStore) {
+/// Index a single file into the store, optionally generating an embedding.
+fn index_file(path: &Path, index: &IndexStore, embedding_model: Option<&Arc<dyn ModelBackend>>) {
     let path_str = path.to_string_lossy().to_string();
 
     // Read file content
@@ -118,8 +130,30 @@ fn index_file(path: &Path, index: &IndexStore) {
     let checksum = blake3::hash(content.as_bytes()).to_hex().to_string();
 
     match index.upsert(&path_str, mime_type, size, &modified_at, &checksum, &title, &content) {
-        Ok(_) => {
+        Ok(doc_id) => {
             tracing::debug!(path = %path_str, "Indexed file (watcher)");
+
+            // Generate embedding if model is available
+            if let Some(model) = embedding_model {
+                if index.has_vectors() {
+                    let request = mcpd_core::models::EmbedRequest {
+                        text: content.clone(),
+                    };
+                    // We're in spawn_blocking, so use Handle::block_on for async
+                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                        match handle.block_on(model.embed(&request)) {
+                            Ok(response) => {
+                                if let Err(e) = index.upsert_embedding(doc_id, &response.embedding) {
+                                    tracing::warn!(path = %path_str, error = %e, "Failed to store embedding");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(path = %path_str, error = %e, "Failed to generate embedding");
+                            }
+                        }
+                    }
+                }
+            }
         }
         Err(e) => {
             tracing::warn!(path = %path_str, error = %e, "Failed to index file");

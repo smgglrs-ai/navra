@@ -409,7 +409,11 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             })
             .collect();
         if !watch_dirs.is_empty() {
-            match mcpd_mod_docs::start_watcher(watch_dirs, index) {
+            match mcpd_mod_docs::start_watcher_with_embeddings(
+                watch_dirs,
+                index,
+                _embedding_model.clone(),
+            ) {
                 Ok(handle) => {
                     tracing::info!("File watcher active");
                     _watcher_handle = Some(handle);
