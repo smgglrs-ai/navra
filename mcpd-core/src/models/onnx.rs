@@ -1,8 +1,9 @@
 //! ONNX Runtime backend for in-process model inference.
 //!
-//! Wraps `ort::session::Session` for text-based models (embeddings,
-//! classification). Thread-safe via `std::sync::Mutex`. Uses
-//! `spawn_blocking` to avoid blocking the Tokio executor.
+//! Wraps `ort::session::Session` with an optional HuggingFace tokenizer
+//! for text-based models (embeddings, classification). Thread-safe via
+//! `std::sync::Mutex`. Uses `block_in_place` to avoid blocking the
+//! Tokio executor.
 
 use super::{
     ClassifyLabel, ClassifyResponse, ClassifyRequest, EmbedRequest, EmbedResponse, ModelBackend,
@@ -14,6 +15,7 @@ use std::sync::Mutex;
 /// An ONNX model loaded into the runtime.
 pub struct OnnxModel {
     session: Mutex<ort::session::Session>,
+    tokenizer: Option<tokenizers::Tokenizer>,
     task: ModelTask,
     name: String,
 }
@@ -34,8 +36,17 @@ pub enum ModelTask {
 }
 
 impl OnnxModel {
-    /// Load an ONNX model from a file.
-    pub fn load(name: &str, model_path: &Path, task: ModelTask) -> Result<Self, ModelError> {
+    /// Load an ONNX model with an optional HuggingFace tokenizer.
+    ///
+    /// If `tokenizer_path` points to a valid `tokenizer.json`, it will be
+    /// used for proper BPE/WordPiece tokenization. Otherwise, a simple
+    /// character-level fallback is used.
+    pub fn load(
+        name: &str,
+        model_path: &Path,
+        tokenizer_path: Option<&Path>,
+        task: ModelTask,
+    ) -> Result<Self, ModelError> {
         let mut builder = ort::session::Session::builder()
             .map_err(|e| ModelError::Inference(format!("session builder error: {e}")))?
             .with_execution_providers([
@@ -43,29 +54,89 @@ impl OnnxModel {
             ])
             .map_err(|e| ModelError::Inference(format!("execution provider error: {e}")))?;
 
-        let session = builder
-            .commit_from_file(model_path)
-            .map_err(|e| {
-                ModelError::Inference(format!(
-                    "failed to load '{}' from {}: {e}",
-                    name,
-                    model_path.display()
-                ))
-            })?;
+        let session = builder.commit_from_file(model_path).map_err(|e| {
+            ModelError::Inference(format!(
+                "failed to load '{}' from {}: {e}",
+                name,
+                model_path.display()
+            ))
+        })?;
+
+        // Load tokenizer if provided
+        let tokenizer = match tokenizer_path {
+            Some(path) if path.exists() => {
+                match tokenizers::Tokenizer::from_file(path) {
+                    Ok(tok) => {
+                        tracing::info!(
+                            model = name,
+                            tokenizer = %path.display(),
+                            "Loaded HuggingFace tokenizer"
+                        );
+                        Some(tok)
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            model = name,
+                            tokenizer = %path.display(),
+                            error = %e,
+                            "Failed to load tokenizer, using fallback"
+                        );
+                        None
+                    }
+                }
+            }
+            Some(path) => {
+                tracing::warn!(
+                    model = name,
+                    tokenizer = %path.display(),
+                    "Tokenizer file not found, using fallback"
+                );
+                None
+            }
+            None => None,
+        };
 
         tracing::info!(
             model = name,
             path = %model_path.display(),
             inputs = session.inputs().len(),
             outputs = session.outputs().len(),
+            has_tokenizer = tokenizer.is_some(),
             "Loaded ONNX model"
         );
 
         Ok(Self {
             session: Mutex::new(session),
+            tokenizer,
             task,
             name: name.to_string(),
         })
+    }
+
+    /// Tokenize text into input_ids and attention_mask.
+    ///
+    /// Uses the HuggingFace tokenizer if loaded, otherwise falls back
+    /// to simple character-level tokenization.
+    fn tokenize(&self, text: &str) -> Result<(Vec<i64>, Vec<i64>), ModelError> {
+        match &self.tokenizer {
+            Some(tok) => {
+                let encoding = tok.encode(text, true).map_err(|e| {
+                    ModelError::Tokenization(format!("tokenization failed: {e}"))
+                })?;
+                let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
+                let attention_mask: Vec<i64> = encoding
+                    .get_attention_mask()
+                    .iter()
+                    .map(|&m| m as i64)
+                    .collect();
+                Ok((input_ids, attention_mask))
+            }
+            None => {
+                let input_ids = simple_tokenize(text);
+                let attention_mask = vec![1i64; input_ids.len()];
+                Ok((input_ids, attention_mask))
+            }
+        }
     }
 
     /// Run inference and return raw output values as flattened f32 vectors.
@@ -89,7 +160,9 @@ impl OnnxModel {
 
         let outputs = session
             .run(ort::inputs![input_ids_tensor, mask_tensor])
-            .map_err(|e| ModelError::Inference(format!("inference error for '{}': {e}", self.name)))?;
+            .map_err(|e| {
+                ModelError::Inference(format!("inference error for '{}': {e}", self.name))
+            })?;
 
         let mut result = Vec::new();
         for (_name, value) in outputs.iter() {
@@ -167,7 +240,10 @@ impl OnnxModel {
         let logits = &outputs[0];
         let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let exp_sum: f32 = logits.iter().map(|x| (x - max_logit).exp()).sum();
-        let probs: Vec<f32> = logits.iter().map(|x| (x - max_logit).exp() / exp_sum).collect();
+        let probs: Vec<f32> = logits
+            .iter()
+            .map(|x| (x - max_logit).exp() / exp_sum)
+            .collect();
 
         let mut label_results: Vec<ClassifyLabel> = labels
             .iter()
@@ -178,8 +254,11 @@ impl OnnxModel {
             })
             .collect();
 
-        label_results
-            .sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        label_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(ClassifyResponse {
             labels: label_results,
@@ -189,6 +268,11 @@ impl OnnxModel {
     /// Returns the model name.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Returns whether this model has a proper tokenizer loaded.
+    pub fn has_tokenizer(&self) -> bool {
+        self.tokenizer.is_some()
     }
 }
 
@@ -210,15 +294,13 @@ impl ModelBackend for OnnxModel {
             }
         };
 
-        let input_ids = simple_tokenize(&request.text);
-        let attention_mask = vec![1i64; input_ids.len()];
+        let tokens = self.tokenize(&request.text);
 
-        // Run inference synchronously via block_in_place since we hold &self.
         Box::pin(async move {
-            let result = tokio::task::block_in_place(|| {
+            let (input_ids, attention_mask) = tokens?;
+            tokio::task::block_in_place(|| {
                 self.compute_embedding(&input_ids, &attention_mask, dimensions)
-            });
-            result
+            })
         })
     }
 
@@ -239,23 +321,22 @@ impl ModelBackend for OnnxModel {
             }
         };
 
-        let input_ids = simple_tokenize(&request.text);
-        let attention_mask = vec![1i64; input_ids.len()];
+        let tokens = self.tokenize(&request.text);
 
         Box::pin(async move {
-            let result = tokio::task::block_in_place(|| {
+            let (input_ids, attention_mask) = tokens?;
+            let labels = labels;
+            tokio::task::block_in_place(|| {
                 self.compute_classification(&input_ids, &attention_mask, &labels)
-            });
-            result
+            })
         })
     }
 }
 
-/// Simple character-level tokenization as a fallback.
+/// Simple character-level tokenization fallback.
 ///
-/// Real models need proper tokenization (BPE, WordPiece) via the
-/// `tokenizers` crate with a model-specific vocabulary. This fallback
-/// is suitable for testing and models with character-level input.
+/// Used when no HuggingFace tokenizer is loaded. Produces CLS + char
+/// codes + SEP, truncated to 512 tokens.
 fn simple_tokenize(text: &str) -> Vec<i64> {
     let mut ids = vec![101i64]; // [CLS]
     for ch in text.chars().take(512) {
@@ -288,8 +369,14 @@ mod tests {
     fn classify_response_top_label() {
         let response = ClassifyResponse {
             labels: vec![
-                ClassifyLabel { label: "safe".to_string(), score: 0.9 },
-                ClassifyLabel { label: "hap".to_string(), score: 0.1 },
+                ClassifyLabel {
+                    label: "safe".to_string(),
+                    score: 0.9,
+                },
+                ClassifyLabel {
+                    label: "hap".to_string(),
+                    score: 0.1,
+                },
             ],
         };
         assert_eq!(response.top_label().unwrap().label, "safe");
@@ -299,16 +386,28 @@ mod tests {
     fn classify_response_is_unsafe() {
         let safe = ClassifyResponse {
             labels: vec![
-                ClassifyLabel { label: "safe".to_string(), score: 0.95 },
-                ClassifyLabel { label: "hap".to_string(), score: 0.05 },
+                ClassifyLabel {
+                    label: "safe".to_string(),
+                    score: 0.95,
+                },
+                ClassifyLabel {
+                    label: "hap".to_string(),
+                    score: 0.05,
+                },
             ],
         };
         assert!(!safe.is_unsafe(0.5));
 
         let unsafe_resp = ClassifyResponse {
             labels: vec![
-                ClassifyLabel { label: "hap".to_string(), score: 0.8 },
-                ClassifyLabel { label: "safe".to_string(), score: 0.2 },
+                ClassifyLabel {
+                    label: "hap".to_string(),
+                    score: 0.8,
+                },
+                ClassifyLabel {
+                    label: "safe".to_string(),
+                    score: 0.2,
+                },
             ],
         };
         assert!(unsafe_resp.is_unsafe(0.5));

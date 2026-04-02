@@ -202,7 +202,12 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             }
         };
 
-        match mcpd_core::models::OnnxModel::load(name, path, task) {
+        let tokenizer_path = model_cfg
+            .tokenizer_path
+            .as_ref()
+            .map(|p| std::path::PathBuf::from(expand_tilde(p)));
+
+        match mcpd_core::models::OnnxModel::load(name, path, tokenizer_path.as_deref(), task) {
             Ok(model) => {
                 let model: Arc<dyn mcpd_core::models::ModelBackend> = Arc::new(model);
                 match model_cfg.task.as_str() {
