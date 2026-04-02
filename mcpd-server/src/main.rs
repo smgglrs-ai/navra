@@ -39,6 +39,24 @@ enum Commands {
     Install,
     /// Uninstall systemd user units
     Uninstall,
+    /// Manage ONNX models
+    Model {
+        #[command(subcommand)]
+        action: ModelAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelAction {
+    /// Download a model from HuggingFace
+    Pull {
+        /// Model name (e.g., guardian-hap, granite-embed)
+        name: String,
+    },
+    /// List installed models
+    List,
+    /// Show available models for download
+    Available,
 }
 
 #[derive(Subcommand)]
@@ -120,6 +138,17 @@ async fn main() -> anyhow::Result<()> {
         Commands::Uninstall => {
             uninstall_systemd_units()?;
         }
+        Commands::Model { action } => match action {
+            ModelAction::Pull { name } => {
+                model_pull(&name).await?;
+            }
+            ModelAction::List => {
+                model_list()?;
+            }
+            ModelAction::Available => {
+                model_available();
+            }
+        },
     }
 
     Ok(())
@@ -767,6 +796,203 @@ fn uninstall_systemd_units() -> anyhow::Result<()> {
 
     println!("mcpd systemd units uninstalled");
     Ok(())
+}
+
+// --- Model management ---
+
+/// A known model in the registry.
+struct KnownModel {
+    /// Short name for CLI use.
+    name: &'static str,
+    /// Description.
+    description: &'static str,
+    /// HuggingFace repo ID.
+    repo: &'static str,
+    /// ONNX model filename within the repo.
+    model_file: &'static str,
+    /// Tokenizer filename (if any).
+    tokenizer_file: Option<&'static str>,
+    /// Model task.
+    task: &'static str,
+    /// Config snippet template.
+    config_template: &'static str,
+}
+
+const KNOWN_MODELS: &[KnownModel] = &[
+    KnownModel {
+        name: "guardian-hap",
+        description: "Granite Guardian HAP 38M — fast safety classifier (Apache 2.0)",
+        repo: "KantiArumilli/granite-guardian-hap-38m-onnx",
+        model_file: "guardian_model_quantized.onnx",
+        tokenizer_file: Some("tokenizer/tokenizer.json"),
+        task: "classification",
+        config_template: r#"[models.guardian-hap]
+model_path = "{model_dir}/model.onnx"
+tokenizer_path = "{model_dir}/tokenizer.json"
+task = "classification"
+labels = ["safe", "hap"]
+threshold = 0.5"#,
+    },
+    KnownModel {
+        name: "granite-embed",
+        description: "Granite Embedding R2 — text embeddings, 768-dim (Apache 2.0)",
+        repo: "yasserrmd/granite-embedding-r2-onnx",
+        model_file: "model.onnx",
+        tokenizer_file: Some("tokenizer.json"),
+        task: "embedding",
+        config_template: r#"[models.granite-embed]
+model_path = "{model_dir}/model.onnx"
+tokenizer_path = "{model_dir}/tokenizer.json"
+task = "embedding"
+dimensions = 768"#,
+    },
+];
+
+/// Get the models directory.
+fn models_dir() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("mcpd/models")
+}
+
+/// Download a file from a URL to a local path with progress.
+async fn download_file(url: &str, dest: &std::path::Path) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let resp = client.get(url).send().await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!("Download failed: HTTP {}", resp.status());
+    }
+
+    let total = resp.content_length();
+    let mut file = tokio::fs::File::create(dest).await?;
+    let mut stream = resp.bytes_stream();
+
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let mut downloaded: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        file.write_all(&chunk).await?;
+        downloaded += chunk.len() as u64;
+        if let Some(total) = total {
+            eprint!(
+                "\r  {:.1} / {:.1} MB",
+                downloaded as f64 / 1_048_576.0,
+                total as f64 / 1_048_576.0
+            );
+        } else {
+            eprint!("\r  {:.1} MB", downloaded as f64 / 1_048_576.0);
+        }
+    }
+    eprintln!();
+    file.flush().await?;
+    Ok(())
+}
+
+/// Pull a model from HuggingFace.
+async fn model_pull(name: &str) -> anyhow::Result<()> {
+    let model = KNOWN_MODELS
+        .iter()
+        .find(|m| m.name == name)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Unknown model: '{}'\nRun 'mcpd model available' to see supported models",
+                name
+            )
+        })?;
+
+    let model_dir = models_dir().join(model.name);
+    std::fs::create_dir_all(&model_dir)?;
+
+    println!("Pulling {} ...", model.description);
+
+    // Download ONNX model
+    let model_url = format!(
+        "https://huggingface.co/{}/resolve/main/{}",
+        model.repo, model.model_file
+    );
+    let model_dest = model_dir.join("model.onnx");
+    if model_dest.exists() {
+        println!("  model.onnx already exists, skipping");
+    } else {
+        println!("  Downloading model.onnx ...");
+        download_file(&model_url, &model_dest).await?;
+    }
+
+    // Download tokenizer if needed
+    if let Some(tok_file) = model.tokenizer_file {
+        let tok_url = format!(
+            "https://huggingface.co/{}/resolve/main/{}",
+            model.repo, tok_file
+        );
+        let tok_dest = model_dir.join("tokenizer.json");
+        if tok_dest.exists() {
+            println!("  tokenizer.json already exists, skipping");
+        } else {
+            println!("  Downloading tokenizer.json ...");
+            download_file(&tok_url, &tok_dest).await?;
+        }
+    }
+
+    println!("\nInstalled to: {}", model_dir.display());
+    println!("\nAdd to config.toml:\n");
+    let config_snippet = model
+        .config_template
+        .replace("{model_dir}", &model_dir.to_string_lossy());
+    println!("{config_snippet}");
+
+    Ok(())
+}
+
+/// List installed models.
+fn model_list() -> anyhow::Result<()> {
+    let dir = models_dir();
+    if !dir.exists() {
+        println!("No models installed.");
+        println!("Run 'mcpd model available' to see supported models.");
+        return Ok(());
+    }
+
+    let mut found = false;
+    for entry in std::fs::read_dir(&dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let model_path = entry.path().join("model.onnx");
+            let has_model = model_path.exists();
+            let has_tokenizer = entry.path().join("tokenizer.json").exists();
+            let size = if has_model {
+                let meta = std::fs::metadata(&model_path)?;
+                format!("{:.1} MB", meta.len() as f64 / 1_048_576.0)
+            } else {
+                "incomplete".to_string()
+            };
+
+            let tok_status = if has_tokenizer { "yes" } else { "no" };
+            println!("{name:<20} {size:<12} tokenizer: {tok_status}");
+            found = true;
+        }
+    }
+
+    if !found {
+        println!("No models installed.");
+        println!("Run 'mcpd model available' to see supported models.");
+    }
+
+    Ok(())
+}
+
+/// Show available models for download.
+fn model_available() {
+    println!("{:<20} {}", "NAME", "DESCRIPTION");
+    println!("{:<20} {}", "----", "-----------");
+    for model in KNOWN_MODELS {
+        println!("{:<20} {}", model.name, model.description);
+    }
+    println!("\nPull a model: mcpd model pull <name>");
 }
 
 /// Expand `~` to the user's home directory in a path string.
