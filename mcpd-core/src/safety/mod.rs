@@ -1,5 +1,7 @@
+pub mod ml;
 mod regex;
 
+pub use self::ml::MlFilter;
 pub use self::regex::{CustomFilter, PiiFilter, SecretFilter};
 
 /// A detected sensitive content span.

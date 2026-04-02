@@ -15,6 +15,35 @@ pub struct Config {
     pub permissions: HashMap<String, PermissionSet>,
     #[serde(default)]
     pub upstream: Vec<UpstreamConfig>,
+    #[serde(default)]
+    pub models: HashMap<String, ModelConfig>,
+}
+
+/// Configuration for an ONNX model.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelConfig {
+    /// Path to the ONNX model file.
+    pub model_path: String,
+    /// Model task: "embedding" or "classification".
+    #[serde(default = "default_model_task")]
+    pub task: String,
+    /// Embedding dimensions (for embedding models).
+    #[serde(default)]
+    pub dimensions: Option<usize>,
+    /// Classification labels (for classification models).
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// Confidence threshold for safety classification (default: 0.5).
+    #[serde(default = "default_threshold")]
+    pub threshold: Option<f32>,
+}
+
+fn default_model_task() -> String {
+    "embedding".to_string()
+}
+
+fn default_threshold() -> Option<f32> {
+    Some(0.5)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -287,6 +316,7 @@ impl Default for Config {
             agents: Vec::new(),
             permissions: HashMap::new(),
             upstream: Vec::new(),
+            models: HashMap::new(),
         }
     }
 }
