@@ -10,7 +10,7 @@
 
 mod onnx;
 
-pub use onnx::OnnxModel;
+pub use onnx::{ModelTask, OnnxModel};
 
 use std::future::Future;
 use std::pin::Pin;
