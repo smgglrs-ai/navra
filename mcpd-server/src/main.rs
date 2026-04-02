@@ -166,6 +166,63 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         builder = builder.authenticator(auth);
     }
 
+    // --- Load ONNX models ---
+    let mut safety_model: Option<Arc<dyn mcpd_core::models::ModelBackend>> = None;
+    let mut _embedding_model: Option<Arc<dyn mcpd_core::models::ModelBackend>> = None;
+
+    for (name, model_cfg) in &cfg.models {
+        let model_path = expand_tilde(&model_cfg.model_path);
+        let path = std::path::Path::new(&model_path);
+
+        if !path.exists() {
+            tracing::warn!(
+                model = %name,
+                path = %model_path,
+                "Model file not found, skipping"
+            );
+            continue;
+        }
+
+        let task = match model_cfg.task.as_str() {
+            "embedding" => {
+                let dims = model_cfg.dimensions.unwrap_or(768);
+                mcpd_core::models::ModelTask::Embedding { dimensions: dims }
+            }
+            "classification" => {
+                let labels = if model_cfg.labels.is_empty() {
+                    vec!["safe".to_string(), "unsafe".to_string()]
+                } else {
+                    model_cfg.labels.clone()
+                };
+                mcpd_core::models::ModelTask::Classification { labels }
+            }
+            other => {
+                tracing::warn!(model = %name, task = %other, "Unknown model task, skipping");
+                continue;
+            }
+        };
+
+        match mcpd_core::models::OnnxModel::load(name, path, task) {
+            Ok(model) => {
+                let model: Arc<dyn mcpd_core::models::ModelBackend> = Arc::new(model);
+                match model_cfg.task.as_str() {
+                    "embedding" => {
+                        tracing::info!(model = %name, "Embedding model loaded");
+                        _embedding_model = Some(model);
+                    }
+                    "classification" => {
+                        tracing::info!(model = %name, "Safety classification model loaded");
+                        safety_model = Some(model);
+                    }
+                    _ => {}
+                }
+            }
+            Err(e) => {
+                tracing::error!(model = %name, error = %e, "Failed to load model, skipping");
+            }
+        }
+    }
+
     // Register safety profiles and per-tool permissions per permission set
     for (name, pset) in &cfg.permissions {
         let mut pipeline = mcpd_core::safety::build_pipeline(&pset.safety);
@@ -186,6 +243,21 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 );
                 pipeline.add_filter(custom);
             }
+        }
+
+        // Add ML safety filter if a classification model is loaded
+        if let Some(ref model) = safety_model {
+            let threshold = cfg
+                .models
+                .values()
+                .find(|m| m.task == "classification")
+                .and_then(|m| m.threshold)
+                .unwrap_or(0.5);
+            pipeline.add_filter(mcpd_core::safety::MlFilter::new(
+                model.clone(),
+                threshold,
+                "ml-unsafe",
+            ));
         }
 
         tracing::info!(
@@ -690,4 +762,14 @@ fn uninstall_systemd_units() -> anyhow::Result<()> {
 
     println!("mcpd systemd units uninstalled");
     Ok(())
+}
+
+/// Expand `~` to the user's home directory in a path string.
+fn expand_tilde(path: &str) -> String {
+    if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return format!("{}{}", home.display(), &path[1..]);
+        }
+    }
+    path.to_string()
 }
