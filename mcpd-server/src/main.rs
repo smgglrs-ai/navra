@@ -354,13 +354,39 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     let mut _watcher_handle: Option<mcpd_mod_docs::WatcherHandle> = None;
     if cfg.docs_enabled() {
         let db_path = cfg.docs_db_path();
-        let index = Arc::new(mcpd_mod_docs::IndexStore::open(&db_path)?);
-        let docs = mcpd_mod_docs::DocsModule::new(
-            perm_engine.clone(),
-            index.clone(),
-            approvals.clone(),
-            notifier.clone(),
-        );
+        let mut index = mcpd_mod_docs::IndexStore::open(&db_path)?;
+
+        // Enable vector search if an embedding model is loaded
+        if _embedding_model.is_some() {
+            // Get dimensions from config
+            let dims = cfg
+                .models
+                .values()
+                .find(|m| m.task == "embedding")
+                .and_then(|m| m.dimensions)
+                .unwrap_or(768);
+            index.enable_vectors(dims)?;
+            tracing::info!(dimensions = dims, "Vector search enabled");
+        }
+
+        let index = Arc::new(index);
+
+        let docs = if let Some(ref model) = _embedding_model {
+            mcpd_mod_docs::DocsModule::with_embeddings(
+                perm_engine.clone(),
+                index.clone(),
+                approvals.clone(),
+                notifier.clone(),
+                model.clone(),
+            )
+        } else {
+            mcpd_mod_docs::DocsModule::new(
+                perm_engine.clone(),
+                index.clone(),
+                approvals.clone(),
+                notifier.clone(),
+            )
+        };
         tracing::info!("Module 'docs' enabled (db: {db_path})");
         builder = builder.module(docs);
 

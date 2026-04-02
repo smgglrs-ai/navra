@@ -1,6 +1,7 @@
 use rusqlite::{params, Connection};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, Once};
+use zerocopy::IntoBytes;
 
 /// Metadata for an indexed document.
 #[derive(Debug, Clone)]
@@ -23,34 +24,81 @@ pub struct SearchResult {
     pub rank: f64,
 }
 
-/// SQLite-backed document index with FTS5.
+/// A semantic search result from vector similarity.
+#[derive(Debug, Clone)]
+pub struct SimilarResult {
+    pub path: String,
+    pub distance: f64,
+}
+
+/// Register sqlite-vec extension (once, before any connection opens).
+static INIT_VEC: Once = Once::new();
+
+fn init_sqlite_vec() {
+    INIT_VEC.call_once(|| {
+        unsafe {
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+    });
+}
+
+/// SQLite-backed document index with FTS5 and vector search.
 ///
 /// Thread-safe via internal Mutex — SQLite in WAL mode supports
 /// concurrent reads but serializes writes.
 pub struct IndexStore {
     conn: Mutex<Connection>,
+    /// Embedding dimensions (0 = vector search disabled).
+    embed_dimensions: usize,
 }
 
 impl IndexStore {
     /// Open or create the index database at the given path.
     pub fn open(db_path: &str) -> rusqlite::Result<Self> {
+        init_sqlite_vec();
         let path = Path::new(db_path);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
         let conn = Connection::open(db_path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
-        let store = Self { conn: Mutex::new(conn) };
+        let store = Self {
+            conn: Mutex::new(conn),
+            embed_dimensions: 0,
+        };
         store.init_schema()?;
         Ok(store)
     }
 
     /// Open an in-memory database (for testing).
     pub fn open_memory() -> rusqlite::Result<Self> {
+        init_sqlite_vec();
         let conn = Connection::open_in_memory()?;
-        let store = Self { conn: Mutex::new(conn) };
+        let store = Self {
+            conn: Mutex::new(conn),
+            embed_dimensions: 0,
+        };
         store.init_schema()?;
         Ok(store)
+    }
+
+    /// Enable vector search with the given embedding dimensions.
+    ///
+    /// Creates the vec0 virtual table if it doesn't exist.
+    pub fn enable_vectors(&mut self, dimensions: usize) -> rusqlite::Result<()> {
+        self.embed_dimensions = dimensions;
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS doc_embeddings USING vec0(embedding float[{dimensions}])"
+        ))?;
+        Ok(())
+    }
+
+    /// Returns true if vector search is enabled.
+    pub fn has_vectors(&self) -> bool {
+        self.embed_dimensions > 0
     }
 
     fn init_schema(&self) -> rusqlite::Result<()> {
@@ -203,11 +251,69 @@ impl IndexStore {
                 "DELETE FROM documents_fts WHERE rowid = ?1",
                 params![id],
             )?;
+            if self.embed_dimensions > 0 {
+                conn.execute(
+                    "DELETE FROM doc_embeddings WHERE rowid = ?1",
+                    params![id],
+                )?;
+            }
             conn.execute("DELETE FROM documents WHERE id = ?1", params![id])?;
             Ok(true)
         } else {
             Ok(false)
         }
+    }
+
+    /// Store an embedding vector for a document.
+    pub fn upsert_embedding(&self, doc_id: i64, embedding: &[f32]) -> rusqlite::Result<()> {
+        if self.embed_dimensions == 0 {
+            return Ok(());
+        }
+        let conn = self.conn.lock().unwrap();
+        // Delete old embedding if exists
+        conn.execute(
+            "DELETE FROM doc_embeddings WHERE rowid = ?1",
+            params![doc_id],
+        )?;
+        conn.execute(
+            "INSERT INTO doc_embeddings(rowid, embedding) VALUES (?1, ?2)",
+            params![doc_id, embedding.as_bytes()],
+        )?;
+        Ok(())
+    }
+
+    /// Search for documents similar to the given embedding vector.
+    pub fn search_similar(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> rusqlite::Result<Vec<SimilarResult>> {
+        if self.embed_dimensions == 0 {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT d.path, e.distance
+             FROM doc_embeddings e
+             JOIN documents d ON d.id = e.rowid
+             WHERE e.embedding MATCH ?1
+             ORDER BY e.distance
+             LIMIT ?2",
+        )?;
+
+        let results = stmt
+            .query_map(
+                params![query_embedding.as_bytes(), limit as i64],
+                |row| {
+                    Ok(SimilarResult {
+                        path: row.get(0)?,
+                        distance: row.get(1)?,
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        Ok(results)
     }
 }
 

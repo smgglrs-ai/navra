@@ -1,5 +1,6 @@
 use crate::store::IndexStore;
 use mcpd_core::auth::CallContext;
+use mcpd_core::models::ModelBackend;
 use mcpd_core::notify::Notifier;
 use mcpd_core::permissions::{ApprovalStore, PermissionEngine, PermissionResult};
 use mcpd_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
@@ -20,6 +21,7 @@ struct DocsState {
     index: Arc<IndexStore>,
     approvals: Arc<ApprovalStore>,
     notifier: Arc<dyn Notifier>,
+    embedding_model: Option<Arc<dyn ModelBackend>>,
 }
 
 impl DocsModule {
@@ -35,6 +37,26 @@ impl DocsModule {
                 index,
                 approvals,
                 notifier,
+                embedding_model: None,
+            }),
+        }
+    }
+
+    /// Create a docs module with an embedding model for semantic search.
+    pub fn with_embeddings(
+        perm_engine: Arc<PermissionEngine>,
+        index: Arc<IndexStore>,
+        approvals: Arc<ApprovalStore>,
+        notifier: Arc<dyn Notifier>,
+        embedding_model: Arc<dyn ModelBackend>,
+    ) -> Self {
+        Self {
+            state: Arc::new(DocsState {
+                perm_engine,
+                index,
+                approvals,
+                notifier,
+                embedding_model: Some(embedding_model),
             }),
         }
     }
@@ -47,7 +69,7 @@ impl Module for DocsModule {
 
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
         let s = self.state.clone();
-        vec![
+        let mut tools = vec![
             make_tool(search_tool_def(), s.clone(), handle_search),
             make_tool(read_tool_def(), s.clone(), handle_read),
             make_tool(list_tool_def(), s.clone(), handle_list),
@@ -57,7 +79,18 @@ impl Module for DocsModule {
             make_tool(delete_tool_def(), s.clone(), handle_delete),
             make_tool(approve_tool_def(), s.clone(), handle_approve),
             make_tool(deny_tool_def(), s.clone(), handle_deny),
-        ]
+        ];
+
+        // Add semantic search tool if embedding model is available
+        if s.embedding_model.is_some() && s.index.has_vectors() {
+            tools.push(make_tool(
+                semantic_search_tool_def(),
+                s.clone(),
+                handle_semantic_search,
+            ));
+        }
+
+        tools
     }
 }
 
@@ -258,6 +291,31 @@ fn deny_tool_def() -> ToolDefinition {
                 serde_json::json!({"type": "string", "description": "Approval request ID"}),
             )])),
             required: Some(vec!["request_id".to_string()]),
+        },
+    }
+}
+
+fn semantic_search_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "docs_semantic_search".to_string(),
+        description: Some(
+            "Semantic search across indexed documents using vector similarity. \
+             Finds documents with similar meaning, even if they don't share exact words."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                (
+                    "query".to_string(),
+                    serde_json::json!({"type": "string", "description": "Natural language search query"}),
+                ),
+                (
+                    "limit".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Max results (default 5)", "default": 5}),
+                ),
+            ])),
+            required: Some(vec!["query".to_string()]),
         },
     }
 }
@@ -906,6 +964,63 @@ async fn handle_deny(
     ))
 }
 
+async fn handle_semantic_search(
+    args: serde_json::Value,
+    ctx: CallContext,
+    state: Arc<DocsState>,
+) -> CallToolResult {
+    let query = match args.get("query").and_then(|v| v.as_str()) {
+        Some(q) if !q.is_empty() => q,
+        _ => return CallToolResult::error("Missing required parameter: query"),
+    };
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(5) as usize;
+
+    if let Err(result) = check_perm(&state, &ctx, "search", std::path::Path::new("/")).await {
+        return result;
+    }
+
+    let model = match &state.embedding_model {
+        Some(m) => m,
+        None => return CallToolResult::error("Embedding model not available"),
+    };
+
+    // Generate embedding for the query
+    let embed_request = mcpd_core::models::EmbedRequest {
+        text: query.to_string(),
+    };
+    let embed_response = match model.embed(&embed_request).await {
+        Ok(r) => r,
+        Err(e) => return CallToolResult::error(format!("Embedding failed: {e}")),
+    };
+
+    // Search for similar documents
+    match state
+        .index
+        .search_similar(&embed_response.embedding, limit)
+    {
+        Ok(results) => {
+            if results.is_empty() {
+                return CallToolResult::text("No similar documents found.".to_string());
+            }
+
+            let mut output = format!("Found {} similar documents:\n\n", results.len());
+            for (i, result) in results.iter().enumerate() {
+                output.push_str(&format!(
+                    "{}. {} (distance: {:.4})\n",
+                    i + 1,
+                    result.path,
+                    result.distance
+                ));
+            }
+            CallToolResult::text(output)
+        }
+        Err(e) => CallToolResult::error(format!("Search failed: {e}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -947,6 +1062,7 @@ mod tests {
             index: Arc::new(index),
             approvals: Arc::new(ApprovalStore::new(300)),
             notifier: Arc::new(NoopNotifier),
+            embedding_model: None,
         })
     }
 
@@ -1420,6 +1536,7 @@ mod tests {
             index: Arc::new(index),
             approvals: Arc::new(ApprovalStore::new(5)),
             notifier: Arc::new(NoopNotifier),
+            embedding_model: None,
         })
     }
 
