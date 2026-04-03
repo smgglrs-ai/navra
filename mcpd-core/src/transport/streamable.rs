@@ -22,6 +22,8 @@ const SESSION_HEADER: &str = "mcp-session-id";
 struct AppState {
     server: Arc<McpServer>,
     broadcaster: SseBroadcaster,
+    /// AID (Agent Identity & Discovery) record, served at /.well-known/agent.
+    aid_record: Option<serde_json::Value>,
 }
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
@@ -29,6 +31,7 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
     let state = AppState {
         server,
         broadcaster: SseBroadcaster::new(),
+        aid_record: None,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -45,11 +48,31 @@ pub fn build_router_with_broadcaster(
     let state = AppState {
         server,
         broadcaster,
+        aid_record: None,
     };
     Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
         .route("/.well-known/mcp.json", get(handle_server_card))
+        .with_state(state)
+}
+
+/// Build a router with SSE broadcaster and AID discovery record.
+pub fn build_router_with_discovery(
+    server: Arc<McpServer>,
+    broadcaster: SseBroadcaster,
+    aid_record: serde_json::Value,
+) -> Router {
+    let state = AppState {
+        server,
+        broadcaster,
+        aid_record: Some(aid_record),
+    };
+    Router::new()
+        .route("/mcp", post(handle_post))
+        .route("/mcp", get(handle_get))
+        .route("/.well-known/mcp.json", get(handle_server_card))
+        .route("/.well-known/agent", get(handle_aid_record))
         .with_state(state)
 }
 
@@ -146,6 +169,17 @@ async fn handle_get(
 /// Enables client autoconfiguration without a full initialize handshake.
 async fn handle_server_card(State(state): State<AppState>) -> impl IntoResponse {
     Json(state.server.server_card())
+}
+
+/// Serve the AID (Agent Identity & Discovery) record.
+///
+/// Available at `GET /.well-known/agent` without authentication.
+/// Returns the AID JSON fallback per the AID specification.
+async fn handle_aid_record(State(state): State<AppState>) -> impl IntoResponse {
+    match &state.aid_record {
+        Some(record) => (StatusCode::OK, Json(record.clone())).into_response(),
+        None => (StatusCode::NOT_FOUND, "AID not configured").into_response(),
+    }
 }
 
 /// Convert a broadcast receiver into an SSE event stream.
@@ -756,6 +790,55 @@ mod tests {
         assert!(json["capabilities"]["tools"].is_object());
         assert!(json["capabilities"]["prompts"].is_object());
         assert!(json["capabilities"]["resources"].is_object());
+    }
+
+    #[tokio::test]
+    async fn aid_record_served_when_configured() {
+        let aid = serde_json::json!({
+            "v": "aid1",
+            "u": "https://tools.example.com/mcp",
+            "p": "mcp",
+            "a": "pat",
+            "s": "Example MCP Tools",
+        });
+        let router = build_router_with_discovery(
+            test_server(),
+            SseBroadcaster::new(),
+            aid,
+        );
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/.well-known/agent")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["v"], "aid1");
+        assert_eq!(json["u"], "https://tools.example.com/mcp");
+        assert_eq!(json["p"], "mcp");
+        assert_eq!(json["a"], "pat");
+        assert_eq!(json["s"], "Example MCP Tools");
+    }
+
+    #[tokio::test]
+    async fn aid_record_not_served_when_unconfigured() {
+        let router = build_router(test_server());
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/.well-known/agent")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        // Route doesn't exist when AID is not configured
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

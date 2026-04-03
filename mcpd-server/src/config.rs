@@ -54,6 +54,34 @@ pub struct ServerConfig {
     #[serde(default = "default_socket")]
     pub socket: Option<String>,
     pub tcp: Option<String>,
+    /// AID discovery configuration. When set, mcpd serves
+    /// `/.well-known/agent` for the AID fallback protocol.
+    #[serde(default)]
+    pub discovery: Option<DiscoveryConfig>,
+}
+
+/// AID (Agent Identity & Discovery) configuration.
+///
+/// Populates the `/.well-known/agent` JSON endpoint per the AID spec.
+/// See: https://aid.agentcommunity.org/docs/specification
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscoveryConfig {
+    /// Externally-reachable URL of this server's MCP endpoint.
+    /// Example: "https://tools.example.com/mcp"
+    pub url: String,
+    /// Authentication hint: "none", "pat", "apikey", "oauth2_code", "mtls".
+    #[serde(default = "default_aid_auth")]
+    pub auth: String,
+    /// Human-readable description (max 60 bytes per AID spec).
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Documentation URL.
+    #[serde(default)]
+    pub docs_url: Option<String>,
+}
+
+fn default_aid_auth() -> String {
+    "pat".to_string()
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -388,6 +416,7 @@ impl Default for Config {
             server: ServerConfig {
                 socket: default_socket(),
                 tcp: None,
+                discovery: None,
             },
             modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),
