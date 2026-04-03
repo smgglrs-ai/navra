@@ -62,12 +62,63 @@ pub struct ModulesConfig {
     pub docs: Option<DocsModuleConfig>,
     #[serde(default)]
     pub git: Option<GitModuleConfig>,
+    #[serde(default)]
+    pub rag: Option<RagModuleConfig>,
+    #[serde(default)]
+    pub voice: Option<VoiceModuleConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitModuleConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RagModuleConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Database path. Defaults to the same directory as docs, separate file.
+    #[serde(default = "default_rag_db_path")]
+    pub db: String,
+}
+
+fn default_rag_db_path() -> String {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("mcpd/rag.db")
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VoiceModuleConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Name of the ASR model in [models.*] config.
+    #[serde(default = "default_asr_model")]
+    pub asr_model: String,
+    /// Name of the TTS model in [models.*] config.
+    #[serde(default = "default_tts_model")]
+    pub tts_model: String,
+    /// VAD energy threshold (RMS). Default: 0.01
+    #[serde(default = "default_vad_threshold")]
+    pub vad_threshold: f32,
+    /// Default voice for TTS.
+    #[serde(default)]
+    pub voice: Option<String>,
+}
+
+fn default_asr_model() -> String {
+    "asr".to_string()
+}
+
+fn default_tts_model() -> String {
+    "tts".to_string()
+}
+
+fn default_vad_threshold() -> f32 {
+    0.01
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -304,6 +355,30 @@ impl Config {
             .as_ref()
             .map(|d| d.db.clone())
             .unwrap_or_else(default_db_path)
+    }
+
+    pub fn rag_enabled(&self) -> bool {
+        self.modules
+            .rag
+            .as_ref()
+            .map(|r| r.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn voice_enabled(&self) -> bool {
+        self.modules
+            .voice
+            .as_ref()
+            .map(|v| v.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn rag_db_path(&self) -> String {
+        self.modules
+            .rag
+            .as_ref()
+            .map(|r| r.db.clone())
+            .unwrap_or_else(default_rag_db_path)
     }
 }
 
