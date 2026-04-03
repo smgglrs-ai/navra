@@ -5,15 +5,15 @@
 //! `std::sync::Mutex`. Uses `block_in_place` to avoid blocking the
 //! Tokio executor.
 
-use super::{
-    ClassifyLabel, ClassifyResponse, ClassifyRequest, EmbedRequest, EmbedResponse, ModelBackend,
+use mcpd_core::models::{
+    ClassifyLabel, ClassifyRequest, ClassifyResponse, EmbedRequest, EmbedResponse, ModelBackend,
     ModelError,
 };
 use std::path::Path;
 use std::sync::Mutex;
 
 /// An ONNX model loaded into the runtime.
-pub struct OnnxModel {
+pub struct OnnxBackend {
     session: Mutex<ort::session::Session>,
     tokenizer: Option<tokenizers::Tokenizer>,
     task: ModelTask,
@@ -35,7 +35,7 @@ pub enum ModelTask {
     },
 }
 
-impl OnnxModel {
+impl OnnxBackend {
     /// Load an ONNX model with an optional HuggingFace tokenizer.
     ///
     /// If `tokenizer_path` points to a valid `tokenizer.json`, it will be
@@ -276,7 +276,7 @@ impl OnnxModel {
     }
 }
 
-impl ModelBackend for OnnxModel {
+impl ModelBackend for OnnxBackend {
     fn embed(
         &self,
         request: &EmbedRequest,
