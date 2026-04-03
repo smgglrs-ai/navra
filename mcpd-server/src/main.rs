@@ -703,23 +703,79 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         }
     }
 
+    // --- Build registry entries ---
+    let mut registry_entries: Vec<serde_json::Value> = Vec::new();
+
+    // Add mcpd's own entry (from its server card data)
+    if let Some(ref discovery) = cfg.server.discovery {
+        registry_entries.push(serde_json::json!({
+            "server": {
+                "name": server.server_info().name,
+                "description": format!(
+                    "{}",
+                    discovery.description.as_deref().unwrap_or("mcpd MCP gateway")
+                ),
+                "version": server.server_info().version,
+                "remotes": [{
+                    "type": "streamable-http",
+                    "url": &discovery.url,
+                }],
+            },
+            "_meta": {
+                "source": "self",
+            }
+        }));
+    }
+
+    // Add whitelisted entries from config
+    for entry in &cfg.registry {
+        registry_entries.push(serde_json::json!({
+            "server": {
+                "name": &entry.name,
+                "description": &entry.description,
+                "remotes": [{
+                    "type": &entry.remote_type,
+                    "url": &entry.url,
+                }],
+                "repository": entry.repository.as_ref().map(|r| serde_json::json!({"url": r})),
+            },
+            "_meta": {
+                "source": "whitelist",
+            }
+        }));
+    }
+
+    if !registry_entries.is_empty() {
+        tracing::info!(
+            entries = registry_entries.len(),
+            "Registry serving {} entries at /v0.1/servers",
+            registry_entries.len()
+        );
+    }
+
     // --- HTTP transport with SSE broadcaster ---
     let broadcaster = mcpd_core::transport::SseBroadcaster::new();
-    let router = if let Some(ref discovery) = cfg.server.discovery {
-        let mut aid = serde_json::json!({
-            "v": "aid1",
-            "u": &discovery.url,
-            "p": "mcp",
-            "a": &discovery.auth,
+    let has_discovery = cfg.server.discovery.is_some() || !registry_entries.is_empty();
+    let router = if has_discovery {
+        let aid_record = cfg.server.discovery.as_ref().map(|discovery| {
+            let mut aid = serde_json::json!({
+                "v": "aid1",
+                "u": &discovery.url,
+                "p": "mcp",
+                "a": &discovery.auth,
+            });
+            if let Some(ref desc) = discovery.description {
+                aid["s"] = serde_json::json!(desc);
+            }
+            if let Some(ref docs) = discovery.docs_url {
+                aid["d"] = serde_json::json!(docs);
+            }
+            tracing::info!(url = %discovery.url, "AID discovery at /.well-known/agent");
+            aid
         });
-        if let Some(ref desc) = discovery.description {
-            aid["s"] = serde_json::json!(desc);
-        }
-        if let Some(ref docs) = discovery.docs_url {
-            aid["d"] = serde_json::json!(docs);
-        }
-        tracing::info!(url = %discovery.url, "AID discovery enabled at /.well-known/agent");
-        mcpd_core::transport::build_router_with_discovery(server, broadcaster, aid)
+        mcpd_core::transport::build_router_with_discovery(
+            server, broadcaster, aid_record, registry_entries,
+        )
     } else {
         mcpd_core::transport::build_router_with_broadcaster(server, broadcaster)
     };
