@@ -643,7 +643,24 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
     // --- HTTP transport with SSE broadcaster ---
     let broadcaster = mcpd_core::transport::SseBroadcaster::new();
-    let router = mcpd_core::transport::build_router_with_broadcaster(server, broadcaster);
+    let router = if let Some(ref discovery) = cfg.server.discovery {
+        let mut aid = serde_json::json!({
+            "v": "aid1",
+            "u": &discovery.url,
+            "p": "mcp",
+            "a": &discovery.auth,
+        });
+        if let Some(ref desc) = discovery.description {
+            aid["s"] = serde_json::json!(desc);
+        }
+        if let Some(ref docs) = discovery.docs_url {
+            aid["d"] = serde_json::json!(docs);
+        }
+        tracing::info!(url = %discovery.url, "AID discovery enabled at /.well-known/agent");
+        mcpd_core::transport::build_router_with_discovery(server, broadcaster, aid)
+    } else {
+        mcpd_core::transport::build_router_with_broadcaster(server, broadcaster)
+    };
 
     // Listen on Unix socket, TCP, or both
     if let Some(ref socket_path) = cfg.server.socket {
