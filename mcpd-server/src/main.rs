@@ -773,8 +773,12 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             tracing::info!(url = %discovery.url, "AID discovery at /.well-known/agent");
             aid
         });
+        let a2a_endpoint = cfg.server.discovery.as_ref().map(|d| d.url.clone());
+        if a2a_endpoint.is_some() {
+            tracing::info!("A2A Agent Card at /.well-known/agent-card.json");
+        }
         mcpd_core::transport::build_router_with_discovery(
-            server, broadcaster, aid_record, registry_entries,
+            server, broadcaster, aid_record, registry_entries, a2a_endpoint,
         )
     } else {
         mcpd_core::transport::build_router_with_broadcaster(server, broadcaster)
