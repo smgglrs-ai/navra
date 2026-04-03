@@ -195,9 +195,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         builder = builder.authenticator(auth);
     }
 
-    // --- Load ONNX models ---
-    let mut safety_model: Option<Arc<dyn mcpd_core::models::ModelBackend>> = None;
-    let mut _embedding_model: Option<Arc<dyn mcpd_core::models::ModelBackend>> = None;
+    // --- Load models into registry ---
+    let mut models: std::collections::HashMap<String, Arc<dyn mcpd_model::ModelBackend>> =
+        std::collections::HashMap::new();
 
     for (name, model_cfg) in &cfg.models {
         let model_path = expand_tilde(&model_cfg.model_path);
@@ -215,7 +215,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let task = match model_cfg.task.as_str() {
             "embedding" => {
                 let dims = model_cfg.dimensions.unwrap_or(768);
-                mcpd_core::models::ModelTask::Embedding { dimensions: dims }
+                mcpd_model::ModelTask::Embedding { dimensions: dims }
             }
             "classification" => {
                 let labels = if model_cfg.labels.is_empty() {
@@ -223,7 +223,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 } else {
                     model_cfg.labels.clone()
                 };
-                mcpd_core::models::ModelTask::Classification { labels }
+                mcpd_model::ModelTask::Classification { labels }
             }
             other => {
                 tracing::warn!(model = %name, task = %other, "Unknown model task, skipping");
@@ -236,26 +236,18 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             .as_ref()
             .map(|p| std::path::PathBuf::from(expand_tilde(p)));
 
-        match mcpd_core::models::OnnxModel::load(name, path, tokenizer_path.as_deref(), task) {
+        match mcpd_model::OnnxBackend::load(name, path, tokenizer_path.as_deref(), task) {
             Ok(model) => {
-                let model: Arc<dyn mcpd_core::models::ModelBackend> = Arc::new(model);
-                match model_cfg.task.as_str() {
-                    "embedding" => {
-                        tracing::info!(model = %name, "Embedding model loaded");
-                        _embedding_model = Some(model);
-                    }
-                    "classification" => {
-                        tracing::info!(model = %name, "Safety classification model loaded");
-                        safety_model = Some(model);
-                    }
-                    _ => {}
-                }
+                tracing::info!(model = %name, task = %model_cfg.task, "Model loaded");
+                models.insert(name.clone(), Arc::new(model));
             }
             Err(e) => {
                 tracing::error!(model = %name, error = %e, "Failed to load model, skipping");
             }
         }
     }
+
+    tracing::info!(count = models.len(), "Model registry ready");
 
     // Register safety profiles and per-tool permissions per permission set
     for (name, pset) in &cfg.permissions {
@@ -279,19 +271,18 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             }
         }
 
-        // Add ML safety filter if a classification model is loaded
-        if let Some(ref model) = safety_model {
-            let threshold = cfg
-                .models
-                .values()
-                .find(|m| m.task == "classification")
-                .and_then(|m| m.threshold)
-                .unwrap_or(0.5);
-            pipeline.add_filter(mcpd_core::safety::MlFilter::new(
-                model.clone(),
-                threshold,
-                "ml-unsafe",
-            ));
+        // Add ML safety filter from any loaded classification model
+        for (model_name, model_cfg) in &cfg.models {
+            if model_cfg.task == "classification" {
+                if let Some(model) = models.get(model_name) {
+                    let threshold = model_cfg.threshold.unwrap_or(0.5);
+                    pipeline.add_model_filter(mcpd_core::safety::MlFilter::new(
+                        model.clone(),
+                        threshold,
+                        "ml-unsafe",
+                    ));
+                }
+            }
         }
 
         tracing::info!(
@@ -349,6 +340,18 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         _ => Arc::new(mcpd_core::notify::NoopNotifier),
     };
 
+    // --- Resolve named models for modules ---
+    // Find the first embedding model in the registry.
+    let embedding_model_name = cfg
+        .models
+        .iter()
+        .find(|(_, m)| m.task == "embedding")
+        .map(|(name, _)| name.clone());
+    let embedding_model = embedding_model_name
+        .as_ref()
+        .and_then(|name| models.get(name))
+        .cloned();
+
     // --- Docs module ---
     // Keep watcher handle alive for the lifetime of the server.
     let mut _watcher_handle: Option<mcpd_mod_docs::WatcherHandle> = None;
@@ -357,12 +360,10 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let mut index = mcpd_mod_docs::IndexStore::open(&db_path)?;
 
         // Enable vector search if an embedding model is loaded
-        if _embedding_model.is_some() {
-            // Get dimensions from config
-            let dims = cfg
-                .models
-                .values()
-                .find(|m| m.task == "embedding")
+        if embedding_model.is_some() {
+            let dims = embedding_model_name
+                .as_ref()
+                .and_then(|name| cfg.models.get(name))
                 .and_then(|m| m.dimensions)
                 .unwrap_or(768);
             index.enable_vectors(dims)?;
@@ -371,7 +372,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
         let index = Arc::new(index);
 
-        let docs = if let Some(ref model) = _embedding_model {
+        let docs = if let Some(ref model) = embedding_model {
             mcpd_mod_docs::DocsModule::with_embeddings(
                 perm_engine.clone(),
                 index.clone(),
@@ -412,7 +413,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             match mcpd_mod_docs::start_watcher_with_embeddings(
                 watch_dirs,
                 index,
-                _embedding_model.clone(),
+                embedding_model.clone(),
             ) {
                 Ok(handle) => {
                     tracing::info!("File watcher active");
@@ -434,6 +435,73 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         );
         tracing::info!("Module 'git' enabled");
         builder = builder.module(git);
+    }
+
+    // --- RAG module ---
+    if cfg.rag_enabled() {
+        if let Some(ref model) = embedding_model {
+            let rag_db_path = cfg.rag_db_path();
+            let dims = embedding_model_name
+                .as_ref()
+                .and_then(|name| cfg.models.get(name))
+                .and_then(|m| m.dimensions)
+                .unwrap_or(768);
+            match mcpd_mod_rag::ChunkStore::open(&rag_db_path, dims) {
+                Ok(store) => {
+                    let rag = mcpd_mod_rag::RagModule::new(
+                        std::sync::Arc::new(store),
+                        model.clone(),
+                    );
+                    tracing::info!("Module 'rag' enabled (db: {rag_db_path}, dims: {dims})");
+                    builder = builder.module(rag);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to open RAG store: {e}");
+                }
+            }
+        } else {
+            tracing::warn!("RAG module requires an embedding model, skipping");
+        }
+    }
+
+    // --- Voice module ---
+    if cfg.voice_enabled() {
+        let voice_cfg = cfg.modules.voice.as_ref().unwrap();
+        let asr = models.get(&voice_cfg.asr_model).cloned();
+        let tts = models.get(&voice_cfg.tts_model).cloned();
+
+        match (asr, tts) {
+            (Some(asr_model), Some(tts_model)) => {
+                let voice = mcpd_mod_voice::VoiceModule::with_config(
+                    asr_model,
+                    tts_model,
+                    voice_cfg.vad_threshold,
+                    30,
+                    1500,
+                    voice_cfg.voice.clone(),
+                );
+                tracing::info!(
+                    asr = %voice_cfg.asr_model,
+                    tts = %voice_cfg.tts_model,
+                    "Module 'voice' enabled"
+                );
+                builder = builder.module(voice);
+            }
+            (None, _) => {
+                tracing::warn!(
+                    model = %voice_cfg.asr_model,
+                    "Voice module: ASR model '{}' not found, skipping",
+                    voice_cfg.asr_model
+                );
+            }
+            (_, None) => {
+                tracing::warn!(
+                    model = %voice_cfg.tts_model,
+                    "Voice module: TTS model '{}' not found, skipping",
+                    voice_cfg.tts_model
+                );
+            }
+        }
     }
 
     // --- Upstream MCP servers ---

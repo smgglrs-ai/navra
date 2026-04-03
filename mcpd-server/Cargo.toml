@@ -12,8 +12,11 @@ path = "src/main.rs"
 
 [dependencies]
 mcpd-core = { path = "../mcpd-core" }
+mcpd-model = { path = "../mcpd-model" }
 mcpd-mod-docs = { path = "../mcpd-mod-docs" }
 mcpd-mod-git = { path = "../mcpd-mod-git" }
+mcpd-mod-rag = { path = "../mcpd-mod-rag" }
+mcpd-mod-voice = { path = "../mcpd-mod-voice" }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

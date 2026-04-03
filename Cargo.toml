@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["mcpd-core", "mcpd-mod-docs", "mcpd-mod-git", "mcpd-server"]
+members = ["mcpd-core", "mcpd-model", "mcpd-mod-docs", "mcpd-mod-git", "mcpd-mod-rag", "mcpd-mod-voice", "mcpd-server"]
 
 [workspace.package]
 version = "0.1.0"
