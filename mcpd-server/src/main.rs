@@ -1,4 +1,5 @@
 mod config;
+mod discover;
 mod tray;
 
 use clap::{Parser, Subcommand};
@@ -517,6 +518,51 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 "Vision module: model '{}' not found, skipping",
                 vision_cfg.model
             );
+        }
+    }
+
+    // --- AID upstream discovery ---
+    if !cfg.discover.is_empty() {
+        tracing::info!(
+            domains = cfg.discover.len(),
+            "Discovering upstream MCP servers via AID"
+        );
+        let discovered = discover::discover_all(&cfg.discover).await;
+        for endpoint in &discovered {
+            tracing::info!(
+                domain = %endpoint.domain,
+                url = %endpoint.url,
+                description = ?endpoint.description,
+                "Discovered MCP endpoint"
+            );
+            match mcpd_core::Upstream::http(&endpoint.domain, &endpoint.url).await {
+                Ok(upstream) => match mcpd_core::UpstreamModule::discover(upstream).await {
+                    Ok(module) => {
+                        tracing::info!(
+                            domain = %endpoint.domain,
+                            "Connected discovered upstream"
+                        );
+                        builder = builder.module(module);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            domain = %endpoint.domain,
+                            error = %e,
+                            "Failed to discover capabilities of AID endpoint"
+                        );
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        domain = %endpoint.domain,
+                        error = %e,
+                        "Failed to connect to discovered endpoint"
+                    );
+                }
+            }
+        }
+        if discovered.is_empty() && !cfg.discover.is_empty() {
+            tracing::info!("No MCP endpoints discovered via AID");
         }
     }
 
