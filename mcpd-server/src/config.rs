@@ -17,6 +17,9 @@ pub struct Config {
     pub upstream: Vec<UpstreamConfig>,
     #[serde(default)]
     pub models: HashMap<String, ModelConfig>,
+    /// Domains to query for AID upstream discovery at startup.
+    #[serde(default)]
+    pub discover: Vec<String>,
 }
 
 /// Configuration for an ONNX model.
@@ -447,6 +450,7 @@ impl Default for Config {
             permissions: HashMap::new(),
             upstream: Vec::new(),
             models: HashMap::new(),
+            discover: Vec::new(),
         }
     }
 }
