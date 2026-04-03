@@ -94,12 +94,27 @@ pub struct ModulesConfig {
     pub rag: Option<RagModuleConfig>,
     #[serde(default)]
     pub voice: Option<VoiceModuleConfig>,
+    #[serde(default)]
+    pub vision: Option<VisionModuleConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitModuleConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VisionModuleConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Name of the vision model in [models.*] config.
+    #[serde(default = "default_vision_model")]
+    pub model: String,
+}
+
+fn default_vision_model() -> String {
+    "vision".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -396,6 +411,14 @@ impl Config {
     pub fn voice_enabled(&self) -> bool {
         self.modules
             .voice
+            .as_ref()
+            .map(|v| v.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn vision_enabled(&self) -> bool {
+        self.modules
+            .vision
             .as_ref()
             .map(|v| v.enabled)
             .unwrap_or(false)

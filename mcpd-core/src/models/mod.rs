@@ -87,7 +87,16 @@ impl ClassifyResponse {
 
 // --- Text generation ---
 
-/// Text generation request.
+/// An image to include in a generation request.
+#[derive(Debug, Clone)]
+pub struct ImageInput {
+    /// Base64-encoded image data.
+    pub data: String,
+    /// MIME type (e.g. "image/png", "image/jpeg").
+    pub mime_type: String,
+}
+
+/// Text generation request (supports multimodal input).
 #[derive(Debug, Clone)]
 pub struct GenerateRequest {
     /// The prompt or messages to generate from.
@@ -98,6 +107,8 @@ pub struct GenerateRequest {
     pub temperature: Option<f32>,
     /// System prompt (for chat-style APIs).
     pub system: Option<String>,
+    /// Images to include with the prompt (for vision models).
+    pub images: Vec<ImageInput>,
 }
 
 /// Text generation response.

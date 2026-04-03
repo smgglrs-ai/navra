@@ -16,6 +16,7 @@ mcpd-model = { path = "../mcpd-model" }
 mcpd-mod-docs = { path = "../mcpd-mod-docs" }
 mcpd-mod-git = { path = "../mcpd-mod-git" }
 mcpd-mod-rag = { path = "../mcpd-mod-rag" }
+mcpd-mod-vision = { path = "../mcpd-mod-vision" }
 mcpd-mod-voice = { path = "../mcpd-mod-voice" }
 axum = { workspace = true }
 tokio = { workspace = true }
