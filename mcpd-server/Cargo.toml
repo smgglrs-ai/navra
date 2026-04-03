@@ -32,6 +32,8 @@ clap = { version = "4", features = ["derive"] }
 dirs = "6"
 anyhow = "1"
 ksni = "0.3"
+mdns-sd = "0.18"
+flume = "0.11"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
