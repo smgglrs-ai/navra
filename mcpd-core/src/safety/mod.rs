@@ -4,6 +4,9 @@ mod regex;
 pub use self::ml::MlFilter;
 pub use self::regex::{CustomFilter, PiiFilter, SecretFilter};
 
+use std::future::Future;
+use std::pin::Pin;
+
 /// A detected sensitive content span.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Finding {
@@ -35,7 +38,7 @@ pub struct FilterContext<'a> {
     pub path: Option<&'a str>,
 }
 
-/// Trait for content safety filters.
+/// Trait for synchronous content safety filters (regex-based).
 ///
 /// Filters scan text content and return findings (spans of sensitive
 /// content with categories and confidence scores).
@@ -44,9 +47,27 @@ pub trait ContentFilter: Send + Sync + 'static {
     fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding>;
 }
 
+/// Trait for asynchronous model-based content filters.
+///
+/// Runs after sync filters. Only invoked if sync filters did not
+/// already block the content.
+pub trait ModelFilter: Send + Sync + 'static {
+    fn name(&self) -> &str;
+    fn scan<'a>(
+        &'a self,
+        content: &'a str,
+        ctx: &'a FilterContext<'a>,
+    ) -> Pin<Box<dyn Future<Output = Vec<Finding>> + Send + 'a>>;
+}
+
 /// Pipeline that runs multiple filters and applies a configured action.
+///
+/// Sync filters (regex) run first. If they don't block, async model
+/// filters run next. Supports both outbound (tool responses) and
+/// inbound (tool arguments on write-path operations) filtering.
 pub struct FilterPipeline {
     filters: Vec<Box<dyn ContentFilter>>,
+    model_filters: Vec<Box<dyn ModelFilter>>,
     action: FilterAction,
 }
 
@@ -54,6 +75,7 @@ impl FilterPipeline {
     pub fn new(action: FilterAction) -> Self {
         Self {
             filters: Vec::new(),
+            model_filters: Vec::new(),
             action,
         }
     }
@@ -62,15 +84,43 @@ impl FilterPipeline {
         self.filters.push(Box::new(filter));
     }
 
-    /// Scan content through all filters and apply the configured action.
+    pub fn add_model_filter(&mut self, filter: impl ModelFilter) {
+        self.model_filters.push(Box::new(filter));
+    }
+
+    /// Filter outbound content (tool responses → agent).
     ///
+    /// Runs all sync filters, then all model filters.
     /// Returns `Ok(content)` (possibly redacted) or `Err(reason)` if blocked.
+    pub async fn process_outbound(
+        &self,
+        content: &str,
+        ctx: &FilterContext<'_>,
+    ) -> Result<String, String> {
+        self.run_pipeline(content, ctx, true).await
+    }
+
+    /// Filter inbound content (agent → tool write operations).
+    ///
+    /// Runs only model filters (not regex secret/PII filters, which
+    /// are irrelevant for content an agent is writing). Used for
+    /// write, edit, and voice.speak operations.
+    /// Returns `Ok(content)` or `Err(reason)` if blocked.
+    pub async fn process_inbound(
+        &self,
+        content: &str,
+        ctx: &FilterContext<'_>,
+    ) -> Result<String, String> {
+        self.run_pipeline(content, ctx, false).await
+    }
+
+    /// Backward-compatible sync process (for callers that don't have
+    /// model filters). Runs only sync filters.
     pub fn process(&self, content: &str, ctx: &FilterContext) -> Result<String, String> {
-        if self.action == FilterAction::Pass || self.filters.is_empty() {
+        if self.action == FilterAction::Pass || self.no_filters() {
             return Ok(content.to_string());
         }
 
-        // Collect all findings from all filters
         let mut findings: Vec<Finding> = Vec::new();
         for filter in &self.filters {
             findings.extend(filter.scan(content, ctx));
@@ -80,27 +130,76 @@ impl FilterPipeline {
             return Ok(content.to_string());
         }
 
-        match &self.action {
-            FilterAction::Pass => Ok(content.to_string()),
-            FilterAction::Block => {
-                let categories: Vec<&str> = findings
-                    .iter()
-                    .map(|f| f.category.as_str())
-                    .collect::<std::collections::HashSet<_>>()
-                    .into_iter()
-                    .collect();
-                Err(format!(
-                    "Content blocked: detected {} sensitive item(s) ({})",
-                    findings.len(),
-                    categories.join(", "),
-                ))
-            }
-            FilterAction::Redact => Ok(redact(content, &mut findings)),
+        apply_action(&self.action, content, &mut findings)
+    }
+
+    async fn run_pipeline(
+        &self,
+        content: &str,
+        ctx: &FilterContext<'_>,
+        include_sync: bool,
+    ) -> Result<String, String> {
+        if self.action == FilterAction::Pass || self.no_filters() {
+            return Ok(content.to_string());
         }
+
+        let mut findings: Vec<Finding> = Vec::new();
+
+        // Phase 1: sync filters (regex) — sub-microsecond
+        if include_sync {
+            for filter in &self.filters {
+                findings.extend(filter.scan(content, ctx));
+            }
+
+            // Short-circuit: if sync filters already blocked, skip model filters
+            if !findings.is_empty() && self.action == FilterAction::Block {
+                return apply_action(&self.action, content, &mut findings);
+            }
+        }
+
+        // Phase 2: async model filters
+        for model_filter in &self.model_filters {
+            findings.extend(model_filter.scan(content, ctx).await);
+        }
+
+        if findings.is_empty() {
+            return Ok(content.to_string());
+        }
+
+        apply_action(&self.action, content, &mut findings)
     }
 
     pub fn has_filters(&self) -> bool {
-        !self.filters.is_empty()
+        !self.filters.is_empty() || !self.model_filters.is_empty()
+    }
+
+    fn no_filters(&self) -> bool {
+        self.filters.is_empty() && self.model_filters.is_empty()
+    }
+}
+
+/// Apply the filter action (block or redact) to content with findings.
+fn apply_action(
+    action: &FilterAction,
+    content: &str,
+    findings: &mut Vec<Finding>,
+) -> Result<String, String> {
+    match action {
+        FilterAction::Pass => Ok(content.to_string()),
+        FilterAction::Block => {
+            let categories: Vec<&str> = findings
+                .iter()
+                .map(|f| f.category.as_str())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            Err(format!(
+                "Content blocked: detected {} sensitive item(s) ({})",
+                findings.len(),
+                categories.join(", "),
+            ))
+        }
+        FilterAction::Redact => Ok(redact(content, findings)),
     }
 }
 
@@ -146,7 +245,13 @@ fn redact(content: &str, findings: &mut [Finding]) -> String {
 /// - `"standard"` — all regex filters, redact action
 /// - `"secrets-only"` — secret filter only, redact action
 /// - `"block"` — all regex filters, block action
+/// - `"guardian"` — regex + ML safety (Guardian HAP 38M, in-process)
+/// - `"guardian-deep"` — regex + ML safety (HAP 38M + Guardian 3.3 8B)
 /// - `"none"` — no filters
+///
+/// The `"guardian"` and `"guardian-deep"` profiles create the regex
+/// pipeline here. ML model filters are added by the server at startup
+/// when models are loaded (via `pipeline.add_model_filter()`).
 pub fn build_pipeline(profile: &str) -> FilterPipeline {
     match profile {
         "standard" => {
@@ -162,6 +267,14 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
         }
         "block" => {
             let mut pipeline = FilterPipeline::new(FilterAction::Block);
+            pipeline.add_filter(SecretFilter::new());
+            pipeline.add_filter(PiiFilter::new());
+            pipeline
+        }
+        "guardian" | "guardian-deep" => {
+            // Regex tier (same as standard). ML model filters are added
+            // by the server when models are loaded.
+            let mut pipeline = FilterPipeline::new(FilterAction::Redact);
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
             pipeline
@@ -257,5 +370,42 @@ mod tests {
     fn build_pipeline_none() {
         let pipeline = build_pipeline("none");
         assert!(!pipeline.has_filters());
+    }
+
+    #[test]
+    fn build_pipeline_guardian() {
+        let pipeline = build_pipeline("guardian");
+        assert!(pipeline.has_filters());
+        assert_eq!(pipeline.action, FilterAction::Redact);
+    }
+
+    #[test]
+    fn build_pipeline_guardian_deep() {
+        let pipeline = build_pipeline("guardian-deep");
+        assert!(pipeline.has_filters());
+        assert_eq!(pipeline.action, FilterAction::Redact);
+    }
+
+    #[tokio::test]
+    async fn process_outbound_redacts() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(SecretFilter::new());
+        let result = pipeline
+            .process_outbound("key = AKIAIOSFODNN7EXAMPLE", &ctx())
+            .await
+            .unwrap();
+        assert!(result.contains("[REDACTED:aws-key]"));
+    }
+
+    #[tokio::test]
+    async fn process_inbound_skips_regex() {
+        // Inbound filtering skips regex (sync) filters — only model filters run
+        let mut pipeline = FilterPipeline::new(FilterAction::Block);
+        pipeline.add_filter(SecretFilter::new());
+        // No model filters, so inbound should pass even with a secret
+        let result = pipeline
+            .process_inbound("key = AKIAIOSFODNN7EXAMPLE", &ctx())
+            .await;
+        assert!(result.is_ok());
     }
 }

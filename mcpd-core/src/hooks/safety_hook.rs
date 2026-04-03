@@ -1,8 +1,12 @@
-//! Safety filter as a post-tool-use hook.
+//! Safety filter as a pre- and post-tool-use hook.
 //!
-//! Migrates the safety filtering logic from `McpServer::apply_safety_filter()`
-//! into a reusable `Hook` implementation, so it participates in the hook
-//! pipeline alongside other hooks.
+//! **Outbound** (post-hook): Filters tool responses before they reach
+//! the agent. Applies regex + ML filters to redact secrets, PII, and
+//! unsafe content.
+//!
+//! **Inbound** (pre-hook): Filters tool arguments on write-path
+//! operations (write, edit, voice.speak). Applies ML filters only —
+//! regex secret detection is irrelevant for content an agent is writing.
 
 use super::{Hook, HookDecision};
 use crate::auth::CallContext;
@@ -10,10 +14,20 @@ use crate::protocol::{CallToolResult, Content};
 use crate::safety::{FilterContext, FilterPipeline};
 use std::collections::HashMap;
 
-/// A hook that applies content safety filtering to tool results.
+/// Operations that carry content from the agent into the system
+/// (write-path). These get inbound filtering.
+const WRITE_OPS: &[&str] = &[
+    "docs_write",
+    "docs_edit",
+    "voice_speak",
+];
+
+/// A hook that applies content safety filtering to tool calls.
 ///
 /// Looks up the appropriate `FilterPipeline` by the agent's permission
-/// set name and applies it to all text content in the tool result.
+/// set name and applies it:
+/// - **post_tool_use**: outbound filtering on all tool responses
+/// - **pre_tool_use**: inbound filtering on write-path tool arguments
 pub struct SafetyHook {
     /// Safety pipelines keyed by permission set name.
     pipelines: HashMap<String, FilterPipeline>,
@@ -44,6 +58,46 @@ impl Hook for SafetyHook {
         "safety-filter"
     }
 
+    async fn pre_tool_use(
+        &self,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+        ctx: &CallContext,
+    ) -> HookDecision {
+        // Only filter write-path operations
+        if !WRITE_OPS.iter().any(|op| *op == tool_name) {
+            return HookDecision::Continue;
+        }
+
+        let pipeline = match self.pipelines.get(&ctx.agent.permissions) {
+            Some(p) if p.has_filters() => p,
+            _ => return HookDecision::Continue,
+        };
+
+        // Extract the content field from arguments
+        let content_field = arguments
+            .get("content")
+            .or_else(|| arguments.get("new_string"))
+            .or_else(|| arguments.get("text"))
+            .and_then(|v| v.as_str());
+
+        let content = match content_field {
+            Some(c) => c,
+            None => return HookDecision::Continue,
+        };
+
+        let filter_ctx = FilterContext {
+            agent_name: &ctx.agent.name,
+            operation: tool_name,
+            path: arguments.get("path").and_then(|v| v.as_str()),
+        };
+
+        match pipeline.process_inbound(content, &filter_ctx).await {
+            Ok(_) => HookDecision::Continue,
+            Err(reason) => HookDecision::Block(reason),
+        }
+    }
+
     async fn post_tool_use(
         &self,
         tool_name: &str,
@@ -65,14 +119,16 @@ impl Hook for SafetyHook {
         let mut filtered_content = Vec::new();
         for content in &result.content {
             match content {
-                Content::Text(text) => match pipeline.process(&text.text, &filter_ctx) {
-                    Ok(processed) => {
-                        filtered_content.push(Content::text(processed));
+                Content::Text(text) => {
+                    match pipeline.process_outbound(&text.text, &filter_ctx).await {
+                        Ok(processed) => {
+                            filtered_content.push(Content::text(processed));
+                        }
+                        Err(reason) => {
+                            return HookDecision::ModifyResult(CallToolResult::error(reason));
+                        }
                     }
-                    Err(reason) => {
-                        return HookDecision::ModifyResult(CallToolResult::error(reason));
-                    }
-                },
+                }
             }
         }
 
@@ -188,6 +244,31 @@ mod tests {
             .await;
 
         // "none" profile has no filters -> continue
+        assert!(matches!(decision, HookDecision::Continue));
+    }
+
+    #[tokio::test]
+    async fn inbound_skips_non_write_tools() {
+        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("block"));
+
+        let args = serde_json::json!({"path": "/tmp/test", "content": "SSN: 123-45-6789"});
+        let decision = hook
+            .pre_tool_use("docs_read", &args, &test_ctx())
+            .await;
+
+        // docs_read is not a write-path tool, so inbound filtering skips it
+        assert!(matches!(decision, HookDecision::Continue));
+    }
+
+    #[tokio::test]
+    async fn inbound_continues_on_clean_write() {
+        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
+
+        let args = serde_json::json!({"path": "/tmp/test", "content": "Hello, world!"});
+        let decision = hook
+            .pre_tool_use("docs_write", &args, &test_ctx())
+            .await;
+
         assert!(matches!(decision, HookDecision::Continue));
     }
 }
