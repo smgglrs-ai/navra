@@ -33,6 +33,7 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
     Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
+        .route("/.well-known/mcp.json", get(handle_server_card))
         .with_state(state)
 }
 
@@ -48,6 +49,7 @@ pub fn build_router_with_broadcaster(
     Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
+        .route("/.well-known/mcp.json", get(handle_server_card))
         .with_state(state)
 }
 
@@ -136,6 +138,14 @@ async fn handle_get(
     Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response()
+}
+
+/// Serve the MCP Server Card — static metadata about this server.
+///
+/// Available at `GET /.well-known/mcp.json` without authentication.
+/// Enables client autoconfiguration without a full initialize handshake.
+async fn handle_server_card(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.server.server_card())
 }
 
 /// Convert a broadcast receiver into an SSE event stream.
@@ -702,6 +712,50 @@ mod tests {
         assert!(!sid.is_empty());
         // Should be a valid UUID
         assert!(uuid::Uuid::parse_str(sid).is_ok());
+    }
+
+    #[tokio::test]
+    async fn server_card_returns_metadata() {
+        let router = build_router(test_server());
+        let req = Request::builder()
+            .method("GET")
+            .uri("/.well-known/mcp.json")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Server info
+        assert_eq!(json["serverInfo"]["name"], "test-server");
+        assert_eq!(json["serverInfo"]["version"], "0.1.0");
+
+        // Protocol version
+        assert_eq!(json["protocolVersion"], "2025-03-26");
+
+        // Tools
+        let tools = json["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["name"], "ping");
+        assert_eq!(tools[0]["description"], "Returns pong");
+
+        // Prompts
+        let prompts = json["prompts"].as_array().unwrap();
+        assert_eq!(prompts.len(), 1);
+        assert_eq!(prompts[0]["name"], "greet");
+
+        // Resources
+        let resources = json["resources"].as_array().unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_eq!(resources[0]["uri"], "info://version");
+
+        // Capabilities
+        assert!(json["capabilities"]["tools"].is_object());
+        assert!(json["capabilities"]["prompts"].is_object());
+        assert!(json["capabilities"]["resources"].is_object());
     }
 
     #[tokio::test]
