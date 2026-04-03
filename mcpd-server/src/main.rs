@@ -504,6 +504,22 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         }
     }
 
+    // --- Vision module ---
+    if cfg.vision_enabled() {
+        let vision_cfg = cfg.modules.vision.as_ref().unwrap();
+        if let Some(vision_model) = models.get(&vision_cfg.model).cloned() {
+            let vision = mcpd_mod_vision::VisionModule::new(vision_model);
+            tracing::info!(model = %vision_cfg.model, "Module 'vision' enabled");
+            builder = builder.module(vision);
+        } else {
+            tracing::warn!(
+                model = %vision_cfg.model,
+                "Vision module: model '{}' not found, skipping",
+                vision_cfg.model
+            );
+        }
+    }
+
     // --- Upstream MCP servers ---
     for upstream_cfg in &cfg.upstream {
         if !upstream_cfg.enabled.unwrap_or(true) {

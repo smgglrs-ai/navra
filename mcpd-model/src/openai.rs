@@ -59,7 +59,24 @@ impl ModelBackend for OpenAiBackend {
         if let Some(ref system) = request.system {
             messages.push(serde_json::json!({"role": "system", "content": system}));
         }
-        messages.push(serde_json::json!({"role": "user", "content": &request.prompt}));
+
+        // Build user message — multimodal if images are present
+        if request.images.is_empty() {
+            messages.push(serde_json::json!({"role": "user", "content": &request.prompt}));
+        } else {
+            let mut content_parts = vec![
+                serde_json::json!({"type": "text", "text": &request.prompt}),
+            ];
+            for image in &request.images {
+                content_parts.push(serde_json::json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": format!("data:{};base64,{}", image.mime_type, image.data),
+                    },
+                }));
+            }
+            messages.push(serde_json::json!({"role": "user", "content": content_parts}));
+        }
 
         let mut body = serde_json::json!({
             "model": &self.model,

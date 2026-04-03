@@ -13,6 +13,6 @@ pub use openai::OpenAiBackend;
 // Re-export trait and types from mcpd-core for convenience.
 pub use mcpd_core::models::{
     ClassifyLabel, ClassifyRequest, ClassifyResponse, EmbedRequest, EmbedResponse,
-    GenerateRequest, GenerateResponse, Locality, ModelBackend, ModelError, SynthesizeRequest,
-    SynthesizeResponse, TranscribeRequest, TranscribeResponse,
+    GenerateRequest, GenerateResponse, ImageInput, Locality, ModelBackend, ModelError,
+    SynthesizeRequest, SynthesizeResponse, TranscribeRequest, TranscribeResponse,
 };

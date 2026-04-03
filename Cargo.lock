@@ -1569,6 +1569,7 @@ dependencies = [
  "mcpd-mod-docs",
  "mcpd-mod-git",
  "mcpd-mod-rag",
+ "mcpd-mod-vision",
  "mcpd-mod-voice",
  "mcpd-model",
  "reqwest",
@@ -1655,6 +1656,21 @@ dependencies = [
  "tracing",
  "uuid",
  "zerocopy",
+]
+
+[[package]]
+name = "mcpd-mod-vision"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "dirs",
+ "futures-util",
+ "mcpd-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "zbus",
 ]
 
 [[package]]
