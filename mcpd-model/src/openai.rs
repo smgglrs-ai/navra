@@ -1,11 +1,12 @@
 //! OpenAI-compatible API backend for external model inference.
 //!
 //! Connects to vLLM, ollama, or any OpenAI-compatible API server.
-//! Supports generate, embed, and classify operations.
+//! Supports generate, embed, classify, transcribe, and synthesize.
 
 use mcpd_core::models::{
     ClassifyLabel, ClassifyRequest, ClassifyResponse, EmbedRequest, EmbedResponse,
-    GenerateRequest, GenerateResponse, Locality, ModelBackend, ModelError,
+    GenerateRequest, GenerateResponse, Locality, ModelBackend, ModelError, SynthesizeRequest,
+    SynthesizeResponse, TranscribeRequest, TranscribeResponse,
 };
 
 /// External model backend using OpenAI-compatible HTTP APIs.
@@ -275,5 +276,202 @@ impl ModelBackend for OpenAiBackend {
                 })
             }
         })
+    }
+
+    fn transcribe(
+        &self,
+        request: &TranscribeRequest,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<TranscribeResponse, ModelError>> + Send + '_>,
+    > {
+        let url = format!("{}/audio/transcriptions", self.base_url);
+        let wav_data = pcm_to_wav(&request.audio, 16000);
+        let language = request.language.clone();
+        let model = self.model.clone();
+
+        let part = reqwest::multipart::Part::bytes(wav_data)
+            .file_name("audio.wav")
+            .mime_str("audio/wav")
+            .unwrap();
+
+        let mut form = reqwest::multipart::Form::new()
+            .part("file", part)
+            .text("model", model)
+            .text("response_format", "json");
+
+        if let Some(ref lang) = language {
+            form = form.text("language", lang.clone());
+        }
+
+        let mut req = self.client.post(&url).multipart(form);
+        if let Some((header, value)) = self.auth_header() {
+            req = req.header(header, value);
+        }
+
+        Box::pin(async move {
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| ModelError::Api(format!("transcription request failed: {e}")))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(ModelError::Api(format!("HTTP {status}: {text}")));
+            }
+
+            let json: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| ModelError::Api(format!("invalid response: {e}")))?;
+
+            let text = json["text"].as_str().unwrap_or("").to_string();
+            let detected_lang = json["language"].as_str().map(String::from);
+
+            Ok(TranscribeResponse {
+                text,
+                language: detected_lang.or(language),
+            })
+        })
+    }
+
+    fn synthesize(
+        &self,
+        request: &SynthesizeRequest,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<SynthesizeResponse, ModelError>> + Send + '_>,
+    > {
+        let url = format!("{}/audio/speech", self.base_url);
+        let body = serde_json::json!({
+            "model": &self.model,
+            "input": &request.text,
+            "voice": request.voice.as_deref().unwrap_or("alloy"),
+            "response_format": "pcm",
+        });
+
+        let mut req = self.client.post(&url).json(&body);
+        if let Some((header, value)) = self.auth_header() {
+            req = req.header(header, value);
+        }
+
+        Box::pin(async move {
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| ModelError::Api(format!("synthesis request failed: {e}")))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                return Err(ModelError::Api(format!("HTTP {status}: {text}")));
+            }
+
+            let bytes = resp
+                .bytes()
+                .await
+                .map_err(|e| ModelError::Api(format!("failed to read audio: {e}")))?;
+
+            // OpenAI PCM format: 24kHz mono 16-bit signed little-endian
+            let samples: Vec<f32> = bytes
+                .chunks_exact(2)
+                .map(|chunk| {
+                    let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+                    sample as f32 / 32768.0
+                })
+                .collect();
+
+            Ok(SynthesizeResponse {
+                audio: samples,
+                sample_rate: 24000,
+            })
+        })
+    }
+}
+
+/// Encode f32 PCM samples as a 16-bit WAV file in memory.
+fn pcm_to_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
+    let num_samples = samples.len() as u32;
+    let data_size = num_samples * 2; // 16-bit = 2 bytes per sample
+    let file_size = 36 + data_size;
+
+    let mut buf = Vec::with_capacity(file_size as usize + 8);
+
+    // RIFF header
+    buf.extend_from_slice(b"RIFF");
+    buf.extend_from_slice(&file_size.to_le_bytes());
+    buf.extend_from_slice(b"WAVE");
+
+    // fmt chunk
+    buf.extend_from_slice(b"fmt ");
+    buf.extend_from_slice(&16u32.to_le_bytes()); // chunk size
+    buf.extend_from_slice(&1u16.to_le_bytes()); // PCM format
+    buf.extend_from_slice(&1u16.to_le_bytes()); // mono
+    buf.extend_from_slice(&sample_rate.to_le_bytes());
+    buf.extend_from_slice(&(sample_rate * 2).to_le_bytes()); // byte rate
+    buf.extend_from_slice(&2u16.to_le_bytes()); // block align
+    buf.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+
+    // data chunk
+    buf.extend_from_slice(b"data");
+    buf.extend_from_slice(&data_size.to_le_bytes());
+    for &sample in samples {
+        let clamped = sample.clamp(-1.0, 1.0);
+        let int_sample = (clamped * 32767.0) as i16;
+        buf.extend_from_slice(&int_sample.to_le_bytes());
+    }
+
+    buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pcm_to_wav_valid_header() {
+        let samples = vec![0.0f32; 16000]; // 1 second of silence
+        let wav = pcm_to_wav(&samples, 16000);
+
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(&wav[12..16], b"fmt ");
+        // PCM format = 1
+        assert_eq!(u16::from_le_bytes([wav[20], wav[21]]), 1);
+        // Mono
+        assert_eq!(u16::from_le_bytes([wav[22], wav[23]]), 1);
+        // Sample rate
+        assert_eq!(
+            u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]),
+            16000
+        );
+        // Data chunk
+        assert_eq!(&wav[36..40], b"data");
+        // Data size = 16000 samples * 2 bytes
+        assert_eq!(
+            u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]),
+            32000
+        );
+    }
+
+    #[test]
+    fn pcm_to_wav_roundtrip() {
+        let samples = vec![0.5, -0.5, 0.0, 1.0, -1.0];
+        let wav = pcm_to_wav(&samples, 16000);
+
+        // Read back the samples from the data section
+        let data_start = 44;
+        let decoded: Vec<f32> = wav[data_start..]
+            .chunks_exact(2)
+            .map(|chunk| {
+                let s = i16::from_le_bytes([chunk[0], chunk[1]]);
+                s as f32 / 32768.0
+            })
+            .collect();
+
+        assert_eq!(decoded.len(), 5);
+        // Check approximate roundtrip (16-bit quantization)
+        assert!((decoded[0] - 0.5).abs() < 0.001);
+        assert!((decoded[1] + 0.5).abs() < 0.001);
+        assert!((decoded[2]).abs() < 0.001);
     }
 }
