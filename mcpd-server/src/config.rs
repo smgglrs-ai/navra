@@ -99,6 +99,9 @@ pub struct DiscoveryConfig {
     /// Externally-reachable URL of this server's MCP endpoint.
     /// Example: "https://tools.example.com/mcp"
     pub url: String,
+    /// Enable mDNS/DNS-SD advertising and browsing on the local network.
+    #[serde(default)]
+    pub mdns: bool,
     /// Authentication hint: "none", "pat", "apikey", "oauth2_code", "mtls".
     #[serde(default = "default_aid_auth")]
     pub auth: String,

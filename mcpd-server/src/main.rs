@@ -1,5 +1,6 @@
 mod config;
 mod discover;
+mod mdns;
 mod tray;
 
 use clap::{Parser, Subcommand};
@@ -566,6 +567,53 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         }
     }
 
+    // --- mDNS/DNS-SD LAN discovery ---
+    let mdns_enabled = cfg
+        .server
+        .discovery
+        .as_ref()
+        .map(|d| d.mdns)
+        .unwrap_or(false);
+    // Keep the daemon alive for advertising — drop stops it.
+    let mut _mdns_daemon: Option<mdns_sd::ServiceDaemon> = None;
+
+    if mdns_enabled {
+        // Browse for MCP servers on LAN (3 second scan)
+        tracing::info!("Browsing LAN for MCP servers via mDNS...");
+        let lan_servers =
+            mdns::browse(std::time::Duration::from_secs(3)).await;
+
+        for server in &lan_servers {
+            let url = server.url();
+            match mcpd_core::Upstream::http(&server.name, &url).await {
+                Ok(upstream) => match mcpd_core::UpstreamModule::discover(upstream).await {
+                    Ok(module) => {
+                        tracing::info!(
+                            name = %server.name,
+                            url = %url,
+                            "Connected LAN upstream"
+                        );
+                        builder = builder.module(module);
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            name = %server.name,
+                            error = %e,
+                            "Failed to discover LAN upstream capabilities"
+                        );
+                    }
+                },
+                Err(e) => {
+                    tracing::debug!(
+                        name = %server.name,
+                        error = %e,
+                        "Failed to connect to LAN upstream"
+                    );
+                }
+            }
+        }
+    }
+
     // --- Upstream MCP servers ---
     for upstream_cfg in &cfg.upstream {
         if !upstream_cfg.enabled.unwrap_or(true) {
@@ -684,6 +732,28 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         resources = server.resource_count(),
         "Server ready"
     );
+
+    // --- mDNS advertising ---
+    if mdns_enabled {
+        // Extract port from TCP address for advertising
+        let tcp_port = cfg
+            .server
+            .tcp
+            .as_ref()
+            .and_then(|addr| addr.rsplit(':').next())
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(9315);
+
+        match mdns::advertise(&server.server_info().name, tcp_port, "/mcp") {
+            Ok(daemon) => {
+                tracing::info!(port = tcp_port, "Advertising via mDNS on _mcp._tcp.local.");
+                _mdns_daemon = Some(daemon);
+            }
+            Err(e) => {
+                tracing::warn!("mDNS advertising failed: {e}");
+            }
+        }
+    }
 
     // --- System tray ---
     if !no_tray {
