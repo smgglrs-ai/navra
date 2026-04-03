@@ -3,9 +3,12 @@
 //! Complements the regex-based filters with contextual detection
 //! that regex can't catch (e.g., "medical records", "salary info").
 //! Uses any `ModelBackend` that supports classification.
+//!
+//! Implements the async `ModelFilter` trait — runs after sync regex
+//! filters in the pipeline.
 
 use crate::models::{ClassifyRequest, ModelBackend};
-use super::{ContentFilter, FilterContext, Finding};
+use super::{FilterContext, Finding, ModelFilter};
 use std::sync::Arc;
 
 /// ML-based content filter using a classification model.
@@ -35,44 +38,44 @@ impl MlFilter {
     }
 }
 
-impl ContentFilter for MlFilter {
+impl ModelFilter for MlFilter {
     fn name(&self) -> &str {
         "ml-safety"
     }
 
-    fn scan(&self, content: &str, _ctx: &FilterContext) -> Vec<Finding> {
-        let request = ClassifyRequest {
-            text: content.to_string(),
-        };
+    fn scan<'a>(
+        &'a self,
+        content: &'a str,
+        _ctx: &'a FilterContext<'a>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
+        Box::pin(async move {
+            let request = ClassifyRequest {
+                text: content.to_string(),
+            };
 
-        // Use block_in_place to run the async classify synchronously.
-        // ContentFilter::scan is sync; ML inference is fast (<10ms).
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.model.classify(&request))
-        });
-
-        match result {
-            Ok(response) => {
-                if response.is_unsafe(self.threshold) {
-                    vec![Finding {
-                        start: 0,
-                        end: content.len(),
-                        category: self.category.clone(),
-                        confidence: response
-                            .labels
-                            .iter()
-                            .find(|l| l.label != "safe")
-                            .map(|l| l.score)
-                            .unwrap_or(0.0),
-                    }]
-                } else {
+            match self.model.classify(&request).await {
+                Ok(response) => {
+                    if response.is_unsafe(self.threshold) {
+                        vec![Finding {
+                            start: 0,
+                            end: content.len(),
+                            category: self.category.clone(),
+                            confidence: response
+                                .labels
+                                .iter()
+                                .find(|l| l.label != "safe")
+                                .map(|l| l.score)
+                                .unwrap_or(0.0),
+                        }]
+                    } else {
+                        Vec::new()
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "ML safety filter inference failed, skipping");
                     Vec::new()
                 }
             }
-            Err(e) => {
-                tracing::warn!(error = %e, "ML safety filter inference failed, skipping");
-                Vec::new()
-            }
-        }
+        })
     }
 }
