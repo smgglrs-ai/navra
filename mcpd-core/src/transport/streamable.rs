@@ -26,6 +26,8 @@ struct AppState {
     aid_record: Option<serde_json::Value>,
     /// MCP Registry entries, served at /v0.1/servers.
     registry_entries: Vec<serde_json::Value>,
+    /// Endpoint URL for A2A Agent Card (None = A2A disabled).
+    a2a_endpoint: Option<String>,
 }
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
@@ -35,6 +37,7 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
         broadcaster: SseBroadcaster::new(),
         aid_record: None,
         registry_entries: Vec::new(),
+        a2a_endpoint: None,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -53,6 +56,7 @@ pub fn build_router_with_broadcaster(
         broadcaster,
         aid_record: None,
         registry_entries: Vec::new(),
+        a2a_endpoint: None,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -61,18 +65,20 @@ pub fn build_router_with_broadcaster(
         .with_state(state)
 }
 
-/// Build a router with full discovery: AID record, registry entries, SSE.
+/// Build a router with full discovery: AID, A2A, registry, SSE.
 pub fn build_router_with_discovery(
     server: Arc<McpServer>,
     broadcaster: SseBroadcaster,
     aid_record: Option<serde_json::Value>,
     registry_entries: Vec<serde_json::Value>,
+    a2a_endpoint: Option<String>,
 ) -> Router {
     let state = AppState {
         server,
         broadcaster,
         aid_record,
         registry_entries,
+        a2a_endpoint,
     };
     let mut router = Router::new()
         .route("/mcp", post(handle_post))
@@ -82,6 +88,9 @@ pub fn build_router_with_discovery(
 
     if state.aid_record.is_some() {
         router = router.route("/.well-known/agent", get(handle_aid_record));
+    }
+    if state.a2a_endpoint.is_some() {
+        router = router.route("/.well-known/agent-card.json", get(handle_agent_card));
     }
 
     router.with_state(state)
@@ -248,6 +257,17 @@ async fn handle_registry(
             "nextCursor": next_cursor,
         }
     }))
+}
+
+/// Serve the A2A Agent Card.
+///
+/// Available at `GET /.well-known/agent-card.json` without authentication.
+/// Describes mcpd's tools as A2A skills for agent-to-agent discovery.
+async fn handle_agent_card(State(state): State<AppState>) -> impl IntoResponse {
+    match &state.a2a_endpoint {
+        Some(url) => Json(state.server.agent_card(url)).into_response(),
+        None => (StatusCode::NOT_FOUND, "A2A not configured").into_response(),
+    }
 }
 
 /// Serve the AID (Agent Identity & Discovery) record.
@@ -885,6 +905,7 @@ mod tests {
             SseBroadcaster::new(),
             Some(aid),
             Vec::new(),
+            None,
         );
 
         let req = Request::builder()
@@ -946,6 +967,7 @@ mod tests {
             SseBroadcaster::new(),
             None,
             entries,
+            None,
         );
 
         let req = Request::builder()
@@ -979,6 +1001,7 @@ mod tests {
             SseBroadcaster::new(),
             None,
             entries,
+            None,
         );
 
         let req = Request::builder()
@@ -997,6 +1020,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn agent_card_returns_a2a_skills() {
+        let router = build_router_with_discovery(
+            test_server(),
+            SseBroadcaster::new(),
+            None,
+            Vec::new(),
+            Some("https://tools.example.com/mcp".to_string()),
+        );
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/.well-known/agent-card.json")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["name"], "test-server");
+        assert_eq!(json["version"], "0.1.0");
+        assert_eq!(json["url"], "https://tools.example.com/mcp");
+        assert!(json["capabilities"]["streaming"].as_bool().unwrap());
+
+        let skills = json["skills"].as_array().unwrap();
+        assert!(!skills.is_empty());
+        // The test server has a "ping" tool
+        let ping = skills.iter().find(|s| s["id"] == "ping").unwrap();
+        assert_eq!(ping["name"], "ping");
+        assert_eq!(ping["description"], "Returns pong");
+        assert!(ping["tags"].as_array().unwrap().contains(&serde_json::json!("ping")));
+    }
+
+    #[tokio::test]
     async fn registry_supports_pagination() {
         let entries: Vec<serde_json::Value> = (0..5)
             .map(|i| serde_json::json!({"server": {"name": format!("server-{i}"), "description": ""}}))
@@ -1006,6 +1065,7 @@ mod tests {
             SseBroadcaster::new(),
             None,
             entries,
+            None,
         );
 
         // First page

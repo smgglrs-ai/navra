@@ -318,6 +318,64 @@ impl McpServer {
         })
     }
 
+    /// Generate an A2A Agent Card describing this server's capabilities
+    /// as skills for agent-to-agent discovery.
+    ///
+    /// Served at `/.well-known/agent-card.json`. Each registered tool
+    /// becomes a skill. Tools sharing a prefix (e.g., `docs_*`) are
+    /// tagged by module name.
+    pub fn agent_card(&self, endpoint_url: &str) -> serde_json::Value {
+        let skills: Vec<_> = self
+            .tools
+            .values()
+            .map(|t| {
+                let name = &t.definition.name;
+                let tag = name.split('_').next().unwrap_or(name).to_string();
+
+                serde_json::json!({
+                    "id": name,
+                    "name": name,
+                    "description": t.definition.description,
+                    "tags": [tag],
+                })
+            })
+            .collect();
+
+        let has_voice = self.tools.keys().any(|k| k.starts_with("voice_"));
+        let mut input_modes = vec!["text"];
+        let mut output_modes = vec!["text"];
+        if has_voice {
+            input_modes.push("audio");
+            output_modes.push("audio");
+        }
+
+        serde_json::json!({
+            "name": self.name,
+            "description": format!(
+                "MCP gateway with {} tools across {} capabilities",
+                self.tools.len(),
+                self.tools.keys()
+                    .map(|k| k.split('_').next().unwrap_or(k))
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+            ),
+            "url": endpoint_url,
+            "provider": {
+                "organization": "mcpd",
+                "url": endpoint_url,
+            },
+            "version": &self.version,
+            "capabilities": {
+                "streaming": true,
+                "pushNotifications": false,
+                "stateTransitionHistory": false,
+            },
+            "defaultInputModes": input_modes,
+            "defaultOutputModes": output_modes,
+            "skills": skills,
+        })
+    }
+
     /// Returns the shared pause flag. Use this to wire pause/resume
     /// from external sources (e.g., system tray).
     pub fn pause_flag(&self) -> Arc<AtomicBool> {
