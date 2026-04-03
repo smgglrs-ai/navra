@@ -266,6 +266,58 @@ impl McpServer {
         self.tools.len()
     }
 
+    /// Generate a Server Card: static metadata about this server's
+    /// capabilities, tools, prompts, and resources.
+    ///
+    /// Served at `/.well-known/mcp.json` to enable client
+    /// autoconfiguration without a full initialize handshake.
+    pub fn server_card(&self) -> serde_json::Value {
+        let tools: Vec<_> = self
+            .tools
+            .values()
+            .map(|t| {
+                serde_json::json!({
+                    "name": t.definition.name,
+                    "description": t.definition.description,
+                })
+            })
+            .collect();
+
+        let prompts: Vec<_> = self
+            .prompts
+            .values()
+            .map(|p| {
+                serde_json::json!({
+                    "name": p.definition.name,
+                    "description": p.definition.description,
+                    "arguments": p.definition.arguments,
+                })
+            })
+            .collect();
+
+        let resources: Vec<_> = self
+            .resources
+            .values()
+            .map(|r| {
+                serde_json::json!({
+                    "uri": r.definition.uri,
+                    "name": r.definition.name,
+                    "description": r.definition.description,
+                    "mimeType": r.definition.mime_type,
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "serverInfo": self.server_info(),
+            "capabilities": self.capabilities(),
+            "protocolVersion": crate::protocol::PROTOCOL_VERSION,
+            "tools": tools,
+            "prompts": prompts,
+            "resources": resources,
+        })
+    }
+
     /// Returns the shared pause flag. Use this to wire pause/resume
     /// from external sources (e.g., system tray).
     pub fn pause_flag(&self) -> Arc<AtomicBool> {
