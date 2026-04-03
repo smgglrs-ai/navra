@@ -20,6 +20,11 @@ pub struct Config {
     /// Domains to query for AID upstream discovery at startup.
     #[serde(default)]
     pub discover: Vec<String>,
+    /// Whitelisted MCP servers to advertise in the registry.
+    /// These appear in the /v0.1/servers endpoint alongside
+    /// mcpd's own modules and connected upstream servers.
+    #[serde(default)]
+    pub registry: Vec<RegistryEntry>,
 }
 
 /// Configuration for an ONNX model.
@@ -61,6 +66,28 @@ pub struct ServerConfig {
     /// `/.well-known/agent` for the AID fallback protocol.
     #[serde(default)]
     pub discovery: Option<DiscoveryConfig>,
+}
+
+/// A whitelisted MCP server for the registry.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RegistryEntry {
+    /// Server name (unique identifier).
+    pub name: String,
+    /// Human-readable description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Transport type: "streamable-http", "sse", "stdio".
+    #[serde(default = "default_remote_type")]
+    pub remote_type: String,
+    /// Remote endpoint URL.
+    pub url: String,
+    /// Repository URL (optional).
+    #[serde(default)]
+    pub repository: Option<String>,
+}
+
+fn default_remote_type() -> String {
+    "streamable-http".to_string()
 }
 
 /// AID (Agent Identity & Discovery) configuration.
@@ -451,6 +478,7 @@ impl Default for Config {
             upstream: Vec::new(),
             models: HashMap::new(),
             discover: Vec::new(),
+            registry: Vec::new(),
         }
     }
 }

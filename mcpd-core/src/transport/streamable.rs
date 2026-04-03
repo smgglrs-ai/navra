@@ -24,6 +24,8 @@ struct AppState {
     broadcaster: SseBroadcaster,
     /// AID (Agent Identity & Discovery) record, served at /.well-known/agent.
     aid_record: Option<serde_json::Value>,
+    /// MCP Registry entries, served at /v0.1/servers.
+    registry_entries: Vec<serde_json::Value>,
 }
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
@@ -32,6 +34,7 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
         server,
         broadcaster: SseBroadcaster::new(),
         aid_record: None,
+        registry_entries: Vec::new(),
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -49,6 +52,7 @@ pub fn build_router_with_broadcaster(
         server,
         broadcaster,
         aid_record: None,
+        registry_entries: Vec::new(),
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -57,23 +61,30 @@ pub fn build_router_with_broadcaster(
         .with_state(state)
 }
 
-/// Build a router with SSE broadcaster and AID discovery record.
+/// Build a router with full discovery: AID record, registry entries, SSE.
 pub fn build_router_with_discovery(
     server: Arc<McpServer>,
     broadcaster: SseBroadcaster,
-    aid_record: serde_json::Value,
+    aid_record: Option<serde_json::Value>,
+    registry_entries: Vec<serde_json::Value>,
 ) -> Router {
     let state = AppState {
         server,
         broadcaster,
-        aid_record: Some(aid_record),
+        aid_record,
+        registry_entries,
     };
-    Router::new()
+    let mut router = Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
         .route("/.well-known/mcp.json", get(handle_server_card))
-        .route("/.well-known/agent", get(handle_aid_record))
-        .with_state(state)
+        .route("/v0.1/servers", get(handle_registry));
+
+    if state.aid_record.is_some() {
+        router = router.route("/.well-known/agent", get(handle_aid_record));
+    }
+
+    router.with_state(state)
 }
 
 async fn handle_post(
@@ -169,6 +180,74 @@ async fn handle_get(
 /// Enables client autoconfiguration without a full initialize handshake.
 async fn handle_server_card(State(state): State<AppState>) -> impl IntoResponse {
     Json(state.server.server_card())
+}
+
+/// Query parameters for the registry endpoint.
+#[derive(Debug, serde::Deserialize)]
+struct RegistryQuery {
+    #[serde(default = "default_registry_limit")]
+    limit: usize,
+    #[serde(default)]
+    cursor: Option<String>,
+    #[serde(default)]
+    search: Option<String>,
+}
+
+fn default_registry_limit() -> usize {
+    96
+}
+
+/// Serve the MCP Registry API.
+///
+/// `GET /v0.1/servers` — paginated, searchable list of MCP servers.
+/// Compatible with the official MCP Registry API format.
+async fn handle_registry(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<RegistryQuery>,
+) -> impl IntoResponse {
+    let entries = &state.registry_entries;
+
+    // Filter by search term (matches name or description)
+    let filtered: Vec<&serde_json::Value> = if let Some(ref search) = query.search {
+        let search_lower = search.to_lowercase();
+        entries
+            .iter()
+            .filter(|e| {
+                let name = e["server"]["name"].as_str().unwrap_or("");
+                let desc = e["server"]["description"].as_str().unwrap_or("");
+                name.to_lowercase().contains(&search_lower)
+                    || desc.to_lowercase().contains(&search_lower)
+            })
+            .collect()
+    } else {
+        entries.iter().collect()
+    };
+
+    // Pagination via cursor (cursor = index as string)
+    let start = query
+        .cursor
+        .as_ref()
+        .and_then(|c| c.parse::<usize>().ok())
+        .unwrap_or(0);
+
+    let page: Vec<&serde_json::Value> = filtered
+        .into_iter()
+        .skip(start)
+        .take(query.limit)
+        .collect();
+
+    let next_cursor = if start + query.limit < entries.len() {
+        Some((start + query.limit).to_string())
+    } else {
+        None
+    };
+
+    Json(serde_json::json!({
+        "servers": page,
+        "metadata": {
+            "nextCursor": next_cursor,
+        }
+    }))
 }
 
 /// Serve the AID (Agent Identity & Discovery) record.
@@ -804,7 +883,8 @@ mod tests {
         let router = build_router_with_discovery(
             test_server(),
             SseBroadcaster::new(),
-            aid,
+            Some(aid),
+            Vec::new(),
         );
 
         let req = Request::builder()
@@ -839,6 +919,125 @@ mod tests {
         let resp = router.clone().oneshot(req).await.unwrap();
         // Route doesn't exist when AID is not configured
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn registry_returns_entries() {
+        let entries = vec![
+            serde_json::json!({
+                "server": {
+                    "name": "my-tools",
+                    "description": "My MCP tools",
+                    "remotes": [{"type": "streamable-http", "url": "https://tools.example.com/mcp"}],
+                },
+                "_meta": {"source": "self"},
+            }),
+            serde_json::json!({
+                "server": {
+                    "name": "approved-server",
+                    "description": "Approved external server",
+                    "remotes": [{"type": "sse", "url": "https://external.example.com/sse"}],
+                },
+                "_meta": {"source": "whitelist"},
+            }),
+        ];
+        let router = build_router_with_discovery(
+            test_server(),
+            SseBroadcaster::new(),
+            None,
+            entries,
+        );
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v0.1/servers")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let servers = json["servers"].as_array().unwrap();
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[0]["server"]["name"], "my-tools");
+        assert_eq!(servers[1]["server"]["name"], "approved-server");
+        assert!(json["metadata"]["nextCursor"].is_null());
+    }
+
+    #[tokio::test]
+    async fn registry_supports_search() {
+        let entries = vec![
+            serde_json::json!({"server": {"name": "docs-server", "description": "Document tools"}}),
+            serde_json::json!({"server": {"name": "git-server", "description": "Git tools"}}),
+            serde_json::json!({"server": {"name": "code-helper", "description": "Code review"}}),
+        ];
+        let router = build_router_with_discovery(
+            test_server(),
+            SseBroadcaster::new(),
+            None,
+            entries,
+        );
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v0.1/servers?search=git")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let servers = json["servers"].as_array().unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0]["server"]["name"], "git-server");
+    }
+
+    #[tokio::test]
+    async fn registry_supports_pagination() {
+        let entries: Vec<serde_json::Value> = (0..5)
+            .map(|i| serde_json::json!({"server": {"name": format!("server-{i}"), "description": ""}}))
+            .collect();
+        let router = build_router_with_discovery(
+            test_server(),
+            SseBroadcaster::new(),
+            None,
+            entries,
+        );
+
+        // First page
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v0.1/servers?limit=2")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let servers = json["servers"].as_array().unwrap();
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[0]["server"]["name"], "server-0");
+        assert_eq!(json["metadata"]["nextCursor"], "2");
+
+        // Second page
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v0.1/servers?limit=2&cursor=2")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let servers = json["servers"].as_array().unwrap();
+        assert_eq!(servers.len(), 2);
+        assert_eq!(servers[0]["server"]["name"], "server-2");
     }
 
     #[tokio::test]
