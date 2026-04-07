@@ -21,4 +21,10 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
 blake3 = "1"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+bs58 = "0.5"
+ciborium = "0.2"
+base64 = "0.22"
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
