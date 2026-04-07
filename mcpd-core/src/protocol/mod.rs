@@ -1,3 +1,4 @@
+pub mod a2a;
 mod jsonrpc;
 mod mcp;
 

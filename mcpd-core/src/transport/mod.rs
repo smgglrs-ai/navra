@@ -1,3 +1,4 @@
+pub(crate) mod a2a;
 pub mod sse;
 mod streamable;
 
