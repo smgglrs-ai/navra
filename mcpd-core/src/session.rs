@@ -51,10 +51,7 @@ mod tests {
     fn test_session(id: &str) -> Session {
         Session {
             id: id.to_string(),
-            agent: AgentIdentity {
-                name: "agent".to_string(),
-                permissions: "dev".to_string(),
-            },
+            agent: AgentIdentity::new("agent", "dev"),
             client_info: ClientInfo {
                 name: "test".to_string(),
                 version: None,

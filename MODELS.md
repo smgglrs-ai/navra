@@ -53,6 +53,7 @@ accuracy loss, and halves VRAM vs Q4 integer quantization.
 | TTS (upgrade) | Voxtral TTS 4B | 4B | vLLM-Omni | CC BY-NC | ~3GB |
 | Safety (deep) | Granite Guardian 3.3 8B | 8B | vLLM / ollama | Apache 2.0 | ~3GB |
 | Vision/OCR | Granite Vision 3.3 2B | 2B | vLLM / ollama | Apache 2.0 | ~1.5GB |
+| ↳ _upgrade_ | _Granite 4.0 3B Vision_ | _3B_ | _vLLM / ollama_ | _Apache 2.0_ | _~2GB_ |
 | Visual embeddings | Granite Vision 3.3 2B Embedding | 2B | HF Transformers | Apache 2.0 | ~1.5GB |
 | Code specialist | Granite 4.0 Tiny | 7B/1B active | vLLM | Apache 2.0 | ~2GB |
 | Document parsing | Docling 258M | 258M | Python service | Apache 2.0 | CPU |
@@ -81,6 +82,31 @@ The 26B-A4B also handles vision natively (image + video input),
 reducing dependence on Granite Vision 3.3 2B for general visual QA.
 Granite Vision stays for specialized OCR/document understanding
 where it ranks #2 on OCRBench.
+
+#### Granite 4.0 3B Vision — Upgrade Path
+
+Granite 4.0 3B Vision (April 2026) replaces Granite Vision 3.3 2B
+for OCR and enterprise document data extraction. Key improvements:
+
+- 3B parameters (vs 2B) — better document extraction accuracy
+- Optimized for invoices, forms, compliance documents
+- Apache 2.0 license, same serving stack (vLLM or ollama)
+- ~2GB VRAM with NVFP4 (vs ~1.5GB for 3.3 2B) — fits budget
+
+**Current repo:** `ibm-granite/granite-vision-3.3-2b` (production).
+**Upgrade repo:** Check HuggingFace for `ibm-granite/granite-4.0-3b-vision`
+or similar when GA. Until then, use the 3.3 2B.
+
+This is a GPU-tier model served externally, not an in-process ONNX
+model. It does not belong in `mcpd model pull`. Configure as:
+
+```toml
+[models.vision]
+backend = "openai"
+base_url = "http://localhost:11434/v1"
+model = "ibm/granite3.3-vision"           # upgrade to 4.0 when GA
+locality = "local"
+```
 
 ### Why Two Tiers
 
