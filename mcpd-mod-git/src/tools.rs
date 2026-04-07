@@ -476,9 +476,39 @@ async fn handle_commit(
         return result;
     }
 
-    match run_git(&repo_path, &["commit", "-m", message]).await {
-        Ok(output) => CallToolResult::text(output),
-        Err(e) => CallToolResult::error(e),
+    // Append Signed-off-by trailer
+    let full_message = format!(
+        "{}\n\nSigned-off-by: {} (via mcpd)",
+        message, ctx.agent.name,
+    );
+
+    // Sign commits when the agent has a signing key configured
+    if let Some(ref key_path) = ctx.agent.signing_key {
+        let key = std::path::Path::new(key_path);
+        if !key.exists() {
+            return CallToolResult::error(format!(
+                "Signing key not found: {key_path}"
+            ));
+        }
+        let signing_key_arg = format!("user.signingkey={key_path}");
+        match run_git(
+            &repo_path,
+            &[
+                "-c", "gpg.format=ssh",
+                "-c", &signing_key_arg,
+                "commit", "-S", "-m", &full_message,
+            ],
+        )
+        .await
+        {
+            Ok(output) => CallToolResult::text(output),
+            Err(e) => CallToolResult::error(e),
+        }
+    } else {
+        match run_git(&repo_path, &["commit", "-m", &full_message]).await {
+            Ok(output) => CallToolResult::text(output),
+            Err(e) => CallToolResult::error(e),
+        }
     }
 }
 
@@ -494,6 +524,7 @@ mod tests {
         engine.add_permission_set(
             "developer".to_string(),
             PathAcl {
+                ring: None,
                 allow: vec![format!("{repo_path}/**")],
                 deny: vec![],
                 operations: [
@@ -515,6 +546,7 @@ mod tests {
         engine.add_permission_set(
             "readonly".to_string(),
             PathAcl {
+                ring: None,
                 allow: vec![format!("{repo_path}/**")],
                 deny: vec![],
                 operations: ["git.status", "git.diff", "git.log", "git.branch"]
@@ -528,23 +560,11 @@ mod tests {
     }
 
     fn test_ctx() -> CallContext {
-        CallContext {
-            agent: AgentIdentity {
-                name: "tester".to_string(),
-                permissions: "developer".to_string(),
-            },
-            session_id: "test-session".to_string(),
-        }
+        CallContext::new(AgentIdentity::new("tester", "developer"), "test-session")
     }
 
     fn readonly_ctx() -> CallContext {
-        CallContext {
-            agent: AgentIdentity {
-                name: "reader".to_string(),
-                permissions: "readonly".to_string(),
-            },
-            session_id: "test-session".to_string(),
-        }
+        CallContext::new(AgentIdentity::new("reader", "readonly"), "test-session")
     }
 
     /// Create a temporary git repo for testing.
@@ -846,6 +866,7 @@ mod tests {
         engine.add_permission_set(
             "developer".to_string(),
             PathAcl {
+                ring: None,
                 allow: vec!["/home/user/**".to_string()],
                 deny: vec![],
                 operations: ["git.status"].into_iter().map(String::from).collect(),

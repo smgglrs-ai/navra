@@ -70,13 +70,10 @@ async fn upstream_call_tool_through_module() {
     let tools = mcpd_core::Module::tools(&module);
     let (_def, handler) = &tools[0];
 
-    let ctx = mcpd_core::auth::CallContext {
-        agent: mcpd_core::auth::AgentIdentity {
-            name: "tester".to_string(),
-            permissions: "dev".to_string(),
-        },
-        session_id: "test".to_string(),
-    };
+    let ctx = mcpd_core::auth::CallContext::new(
+        mcpd_core::auth::AgentIdentity::new("tester", "dev"),
+        "test",
+    );
 
     let result = handler(serde_json::json!({"message": "hello"}), ctx).await;
     assert!(!result.is_error);

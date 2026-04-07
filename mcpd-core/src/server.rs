@@ -1,7 +1,13 @@
+use crate::a2a::TaskStore;
 use crate::auth::{Authenticator, CallContext};
 use crate::hooks::HookPipeline;
+use crate::process::ProcessTable;
+use crate::quota::QuotaEngine;
 use crate::module::{Module, PromptHandler, ResourceHandler};
 use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy};
+use crate::protocol::a2a::{
+    AgentCapabilities, AgentCard, AgentProvider, AgentSkill, A2A_PROTOCOL_VERSION,
+};
 use crate::protocol::{
     CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
     InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PromptDefinition,
@@ -58,6 +64,14 @@ pub struct McpServer {
     hooks: HookPipeline,
     /// Shared pause flag — when true, tool calls are rejected.
     paused: Arc<AtomicBool>,
+    /// A2A task store for tracking agent-to-agent tasks.
+    task_store: TaskStore,
+    /// Process table tracking active agent sessions.
+    process_table: ProcessTable,
+    /// Quota engine for rate limiting.
+    quota_engine: QuotaEngine,
+    /// IFC policies per permission set (tainted write handling).
+    ifc_policies: HashMap<String, crate::ifc::TaintedWritePolicy>,
 }
 
 impl McpServer {
@@ -122,7 +136,7 @@ impl McpServer {
     pub async fn handle_call_tool(
         &self,
         params: CallToolParams,
-        ctx: CallContext,
+        mut ctx: CallContext,
     ) -> CallToolResult {
         // Reject all tool calls when paused
         if self.paused.load(Ordering::Relaxed) {
@@ -131,16 +145,53 @@ impl McpServer {
             );
         }
 
-        // Per-tool permission check (before calling handler)
-        if let Some(tp) = self.tool_permissions.get(&ctx.agent.permissions) {
+        // Rate limit check (kernel-enforced)
+        if self.quota_engine.has_limits() {
+            if !self.quota_engine.check(&ctx.agent.name, &ctx.agent.permissions) {
+                return CallToolResult::error(format!(
+                    "Rate limit exceeded for agent '{}'",
+                    ctx.agent.name
+                ));
+            }
+        }
+
+        // Extract process table fields from context
+        let agent_ring = ctx.agent.capabilities.as_ref().map(|c| c.ring);
+        let agent_did = ctx.agent.did.as_deref();
+
+        // Per-tool permission check (before calling handler).
+        // Capability tokens carry their own tool globs; legacy agents
+        // use the configured ToolPermissions.
+        if let Some(ref caps) = ctx.agent.capabilities {
+            let tool_allowed = caps.tools.iter().any(|pattern| {
+                glob::Pattern::new(pattern)
+                    .map(|p| p.matches(&params.name))
+                    .unwrap_or(false)
+            });
+            if !tool_allowed {
+                self.process_table.record_denied(
+                    &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                );
+                return CallToolResult::error(format!(
+                    "Permission denied: tool '{}' not in capability token grants",
+                    params.name
+                ));
+            }
+        } else if let Some(tp) = self.tool_permissions.get(&ctx.agent.permissions) {
             match tp.check(&params.name) {
                 ToolPolicy::Deny => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                    );
                     return CallToolResult::error(format!(
                         "Permission denied: tool '{}' is blocked for permission set '{}'",
                         params.name, ctx.agent.permissions
                     ));
                 }
                 ToolPolicy::Approve => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                    );
                     return CallToolResult::error(format!(
                         "Approval required: tool '{}' requires approval for permission set '{}'",
                         params.name, ctx.agent.permissions
@@ -150,20 +201,77 @@ impl McpServer {
             }
         }
 
+        // IFC pre-check: if session is tainted and tool is a write,
+        // enforce the tainted write policy (Bell-LaPadula no-write-down).
+        if ctx.taint.is_untrusted() && crate::ifc::is_write_tool(&params.name) {
+            let policy = self.ifc_policies.get(&ctx.agent.permissions);
+            match policy {
+                Some(crate::ifc::TaintedWritePolicy::Deny) => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                    );
+                    tracing::info!(
+                        agent = %ctx.agent.name,
+                        tool = %params.name,
+                        taint = %ctx.taint.level(),
+                        "IFC: tainted write denied"
+                    );
+                    return CallToolResult::error(format!(
+                        "IFC: write tool '{}' denied — session tainted with untrusted data",
+                        params.name
+                    ));
+                }
+                Some(crate::ifc::TaintedWritePolicy::Approve) => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                    );
+                    return CallToolResult::error(format!(
+                        "IFC: write tool '{}' requires approval — session tainted with untrusted data",
+                        params.name
+                    ));
+                }
+                _ => {} // Allow or no policy
+            }
+        }
+
+        // Record tool call in process table
+        self.process_table.record_call(
+            &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring, &params.name,
+        );
+
         // Run pre-hooks (may modify arguments or block execution)
         let arguments = if self.hooks.has_hooks() {
             match self.hooks.run_pre(&params.name, params.arguments, &ctx).await {
                 Ok(args) => args,
-                Err(reason) => return CallToolResult::error(reason),
+                Err(reason) => {
+                    self.process_table.complete_call(&ctx.agent.name, &params.name);
+                    return CallToolResult::error(reason);
+                }
             }
         } else {
             params.arguments
         };
 
-        let result = match self.tools.get(&params.name) {
+        let mut result = match self.tools.get(&params.name) {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
-            None => return CallToolResult::error(format!("Unknown tool: {}", params.name)),
+            None => {
+                self.process_table.complete_call(&ctx.agent.name, &params.name);
+                return CallToolResult::error(format!("Unknown tool: {}", params.name));
+            }
         };
+
+        // IFC: auto-label external read tool outputs as Untrusted
+        if crate::ifc::is_external_read_tool(&params.name)
+            && result.label.integrity == crate::ifc::Integrity::Trusted
+        {
+            result.label = crate::ifc::DataLabel::UNTRUSTED_SENSITIVE;
+        }
+
+        // IFC: absorb tool result label into session taint
+        ctx.taint.absorb(result.label);
+
+        // Mark call complete in process table
+        self.process_table.complete_call(&ctx.agent.name, &params.name);
 
         // Run post-hooks (includes safety filtering if wired as a hook)
         if self.hooks.has_hooks() {
@@ -262,6 +370,14 @@ impl McpServer {
         self.authenticator.as_ref()
     }
 
+    pub fn task_store(&self) -> &TaskStore {
+        &self.task_store
+    }
+
+    pub fn process_table(&self) -> &ProcessTable {
+        &self.process_table
+    }
+
     pub fn tool_count(&self) -> usize {
         self.tools.len()
     }
@@ -321,59 +437,65 @@ impl McpServer {
     /// Generate an A2A Agent Card describing this server's capabilities
     /// as skills for agent-to-agent discovery.
     ///
-    /// Served at `/.well-known/agent-card.json`. Each registered tool
+    /// Served at `GET /.well-known/agent.json`. Each registered tool
     /// becomes a skill. Tools sharing a prefix (e.g., `docs_*`) are
     /// tagged by module name.
-    pub fn agent_card(&self, endpoint_url: &str) -> serde_json::Value {
-        let skills: Vec<_> = self
+    pub fn agent_card(&self, endpoint_url: &str, root_did: Option<&str>) -> AgentCard {
+        let skills: Vec<AgentSkill> = self
             .tools
             .values()
             .map(|t| {
                 let name = &t.definition.name;
                 let tag = name.split('_').next().unwrap_or(name).to_string();
-
-                serde_json::json!({
-                    "id": name,
-                    "name": name,
-                    "description": t.definition.description,
-                    "tags": [tag],
-                })
+                AgentSkill {
+                    id: name.clone(),
+                    name: name.clone(),
+                    description: t.definition.description.clone().unwrap_or_default(),
+                    tags: vec![tag],
+                    examples: vec![],
+                    input_modes: None,
+                    output_modes: None,
+                }
             })
             .collect();
 
         let has_voice = self.tools.keys().any(|k| k.starts_with("voice_"));
-        let mut input_modes = vec!["text"];
-        let mut output_modes = vec!["text"];
+        let mut input_modes = vec!["text/plain".to_string()];
+        let mut output_modes = vec!["text/plain".to_string()];
         if has_voice {
-            input_modes.push("audio");
-            output_modes.push("audio");
+            input_modes.push("audio/wav".to_string());
+            output_modes.push("audio/wav".to_string());
         }
 
-        serde_json::json!({
-            "name": self.name,
-            "description": format!(
+        AgentCard {
+            name: self.name.clone(),
+            description: format!(
                 "MCP gateway with {} tools across {} capabilities",
                 self.tools.len(),
-                self.tools.keys()
+                self.tools
+                    .keys()
                     .map(|k| k.split('_').next().unwrap_or(k))
                     .collect::<std::collections::HashSet<_>>()
                     .len()
             ),
-            "url": endpoint_url,
-            "provider": {
-                "organization": "mcpd",
-                "url": endpoint_url,
+            url: endpoint_url.to_string(),
+            version: self.version.clone(),
+            provider: Some(AgentProvider {
+                organization: "mcpd".to_string(),
+                url: endpoint_url.to_string(),
+            }),
+            did: root_did.map(String::from),
+            capabilities: AgentCapabilities {
+                streaming: Some(true),
+                push_notifications: Some(false),
+                state_transition_history: Some(false),
             },
-            "version": &self.version,
-            "capabilities": {
-                "streaming": true,
-                "pushNotifications": false,
-                "stateTransitionHistory": false,
-            },
-            "defaultInputModes": input_modes,
-            "defaultOutputModes": output_modes,
-            "skills": skills,
-        })
+            default_input_modes: input_modes,
+            default_output_modes: output_modes,
+            skills,
+            documentation_url: None,
+            protocol_version: A2A_PROTOCOL_VERSION.to_string(),
+        }
     }
 
     /// Returns the shared pause flag. Use this to wire pause/resume
@@ -410,6 +532,8 @@ pub struct McpServerBuilder {
     tool_permissions: HashMap<String, ToolPermissions>,
     hooks: Vec<Box<dyn crate::hooks::Hook>>,
     hook_timeout: std::time::Duration,
+    quota_engine: Option<QuotaEngine>,
+    ifc_policies: Option<HashMap<String, crate::ifc::TaintedWritePolicy>>,
 }
 
 impl McpServerBuilder {
@@ -425,6 +549,8 @@ impl McpServerBuilder {
             tool_permissions: HashMap::new(),
             hooks: Vec::new(),
             hook_timeout: std::time::Duration::from_secs(10),
+            quota_engine: None,
+            ifc_policies: None,
         }
     }
 
@@ -572,13 +698,28 @@ impl McpServerBuilder {
         self
     }
 
+    /// Set the quota engine for rate limiting.
+    pub fn quota_engine(mut self, engine: QuotaEngine) -> Self {
+        self.quota_engine = Some(engine);
+        self
+    }
+
+    /// Set an IFC policy for a permission set.
+    pub fn ifc_policy(
+        mut self,
+        permission_set: impl Into<String>,
+        policy: crate::ifc::TaintedWritePolicy,
+    ) -> Self {
+        self.ifc_policies
+            .get_or_insert_with(HashMap::new)
+            .insert(permission_set.into(), policy);
+        self
+    }
+
     pub fn build(self) -> McpServer {
         let authenticator = self.authenticator.unwrap_or_else(|| {
             Arc::new(crate::auth::NoAuthenticator {
-                default_identity: crate::auth::AgentIdentity {
-                    name: "anonymous".to_string(),
-                    permissions: "readonly".to_string(),
-                },
+                default_identity: crate::auth::AgentIdentity::new("anonymous", "readonly"),
             })
         });
 
@@ -599,6 +740,10 @@ impl McpServerBuilder {
             tool_permissions: self.tool_permissions,
             hooks,
             paused: Arc::new(AtomicBool::new(false)),
+            task_store: TaskStore::new(),
+            process_table: ProcessTable::new(),
+            quota_engine: self.quota_engine.unwrap_or_default(),
+            ifc_policies: self.ifc_policies.unwrap_or_default(),
         }
     }
 }
@@ -622,17 +767,11 @@ mod tests {
     }
 
     fn test_agent() -> AgentIdentity {
-        AgentIdentity {
-            name: "tester".to_string(),
-            permissions: "dev".to_string(),
-        }
+        AgentIdentity::new("tester", "dev")
     }
 
     fn test_ctx() -> CallContext {
-        CallContext {
-            agent: test_agent(),
-            session_id: "test-session".to_string(),
-        }
+        CallContext::new(test_agent(), "test-session")
     }
 
     // A test module providing one tool.
@@ -1301,6 +1440,282 @@ mod tests {
             .await;
 
         assert!(!result.is_error);
+    }
+
+    // --- Capability token tool permission tests ---
+
+    fn cap_ctx(tools: Vec<&str>) -> CallContext {
+        use crate::auth::capability::ResolvedCapabilities;
+        CallContext::new(
+            AgentIdentity {
+                name: "cap-agent".to_string(),
+                permissions: "cap:ring1".to_string(),
+                signing_key: None,
+                did: Some("did:key:z6MkTest".to_string()),
+                capabilities: Some(ResolvedCapabilities {
+                    issuer_did: "did:key:z6MkRoot".to_string(),
+                    subject_did: "did:key:z6MkTest".to_string(),
+                    ring: 1,
+                    paths: vec!["/home/user/**".to_string()],
+                    operations: ["read", "write"].into_iter().map(String::from).collect(),
+                    tools: tools.into_iter().map(String::from).collect(),
+                    credentials: vec![],
+                    expires_at: u64::MAX,
+                }),
+            },
+            "cap-session",
+        )
+    }
+
+    #[tokio::test]
+    async fn cap_token_allows_matching_tool() {
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("ok") })
+            })
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                cap_ctx(vec!["echo", "docs_*"]),
+            )
+            .await;
+
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn cap_token_allows_glob_matching_tool() {
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("ok") })
+            })
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                cap_ctx(vec!["*"]),  // wildcard grants all
+            )
+            .await;
+
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn cap_token_denies_unmatched_tool() {
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("should not reach") })
+            })
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                cap_ctx(vec!["docs_*", "git_*"]),  // no match for "echo"
+            )
+            .await;
+
+        assert!(result.is_error);
+        match &result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("not in capability token"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn cap_token_bypasses_tool_permissions() {
+        // Even if tool_permissions deny "echo", cap token with matching
+        // tool glob should allow it (cap path takes priority).
+        use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+        let server = McpServer::builder()
+            .tool(echo_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("ok") })
+            })
+            .tool_permissions(
+                "cap:ring1",
+                ToolPermissions::new(
+                    vec![ToolRule {
+                        tool: "echo".to_string(),
+                        policy: ToolPolicy::Deny,
+                    }],
+                    ToolPolicy::Allow,
+                ),
+            )
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "echo".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                cap_ctx(vec!["echo"]),
+            )
+            .await;
+
+        // Cap token allows — tool_permissions not consulted
+        assert!(!result.is_error);
+    }
+
+    // --- IFC (Information Flow Control) tests ---
+
+    fn read_tool_def() -> ToolDefinition {
+        ToolDefinition {
+            name: "docs_read".to_string(),
+            description: Some("Reads a file".to_string()),
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+        }
+    }
+
+    fn write_tool_def() -> ToolDefinition {
+        ToolDefinition {
+            name: "docs_write".to_string(),
+            description: Some("Writes a file".to_string()),
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn ifc_deny_write_after_untrusted_read() {
+        // Build server with IFC deny policy and both read + write tools
+        let server = McpServer::builder()
+            .tool(read_tool_def(), |_args, _ctx| {
+                Box::pin(async {
+                    // Simulate reading external file — handler returns trusted,
+                    // but is_external_read_tool("docs_read") auto-labels Untrusted
+                    CallToolResult::text("file contents with injected instructions")
+                })
+            })
+            .tool(write_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("should not reach") })
+            })
+            .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
+            .build();
+
+        // First call: read — taints the session
+        let mut ctx = test_ctx();
+        let read_result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_read".to_string(),
+                    arguments: serde_json::json!({"path": "/tmp/file.md"}),
+                },
+                ctx.clone(),
+            )
+            .await;
+        assert!(!read_result.is_error);
+
+        // Simulate taint propagation (in real flow, ctx is mutable across calls)
+        ctx.taint.absorb(crate::ifc::DataLabel::UNTRUSTED_SENSITIVE);
+
+        // Second call: write — should be denied by IFC
+        let write_result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_write".to_string(),
+                    arguments: serde_json::json!({"path": "/tmp/out.md", "content": "exfiltrated"}),
+                },
+                ctx,
+            )
+            .await;
+        assert!(write_result.is_error);
+        match &write_result.content[0] {
+            crate::protocol::Content::Text(t) => {
+                assert!(t.text.contains("IFC"));
+                assert!(t.text.contains("tainted"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn ifc_allow_write_without_taint() {
+        // No prior read — session is clean, write should succeed
+        let server = McpServer::builder()
+            .tool(write_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("written") })
+            })
+            .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_write".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn ifc_no_policy_allows_tainted_write() {
+        // No IFC policy configured — tainted writes pass through
+        let server = McpServer::builder()
+            .tool(write_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("written") })
+            })
+            .build();
+
+        let mut ctx = test_ctx();
+        ctx.taint.absorb(crate::ifc::DataLabel::UNTRUSTED_SENSITIVE);
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_write".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                ctx,
+            )
+            .await;
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn ifc_read_tool_auto_labels_untrusted() {
+        // docs_read output should be auto-labeled as Untrusted
+        let server = McpServer::builder()
+            .tool(read_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("file data") })
+            })
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_read".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        // The result should be labeled Untrusted+Sensitive
+        assert_eq!(result.label.integrity, crate::ifc::Integrity::Untrusted);
     }
 
     // --- Hook pipeline tests ---

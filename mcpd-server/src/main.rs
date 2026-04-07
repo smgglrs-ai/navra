@@ -5,6 +5,7 @@ mod tray;
 
 use clap::{Parser, Subcommand};
 use mcpd_core::auth::{AgentIdentity, TokenAuthenticator};
+use mcpd_core::identity::{self, CapSigner, Ed25519Signer};
 use mcpd_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use std::sync::Arc;
 
@@ -156,45 +157,237 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Bootstrap the root identity from config.
+///
+/// If `[server.identity]` specifies a `key_path`, loads or creates
+/// a file-based identity. Otherwise, uses the OS keyring.
+fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
+    if let Some(ref identity_cfg) = cfg.server.identity {
+        if let Some(ref key_path) = identity_cfg.key_path {
+            let path = std::path::Path::new(key_path);
+            return identity::load_or_create_file_identity(path);
+        }
+    }
+    // Default: try OS keyring, fall back to file
+    match identity::load_or_create_keyring_identity() {
+        Ok(signer) => Ok(signer),
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "Keyring unavailable, falling back to file identity"
+            );
+            let default_path = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("mcpd/identity.key");
+            identity::load_or_create_file_identity(&default_path)
+        }
+    }
+}
+
 /// Build the permission engine from config.
 fn build_perm_engine(cfg: &config::Config) -> PermissionEngine {
     let mut engine = PermissionEngine::new();
     for (name, pset) in &cfg.permissions {
         let acl = PathAcl {
+            ring: pset.ring,
             allow: pset.allow.clone(),
             deny: pset.deny.clone(),
             operations: pset.operations.iter().cloned().collect(),
             requires_approval: pset.approve.iter().cloned().collect(),
         };
         engine.add_permission_set(name.clone(), acl);
+
+        if let Some(ring) = pset.ring {
+            tracing::info!(
+                permission_set = %name,
+                ring = ring,
+                "Permission ring"
+            );
+        }
     }
+    engine.apply_ring_inheritance();
     engine
 }
 
 async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     tracing::info!("Starting mcpd");
 
+    // Bootstrap root identity (DID:key from Ed25519)
+    let root_signer = Arc::new(bootstrap_identity(&cfg)?);
+    tracing::info!(
+        root_did = %root_signer.did(),
+        algorithm = %root_signer.algorithm(),
+        "Root identity"
+    );
+
+    // Build credential store from config mappings
+    let credential_store = Arc::new(
+        mcpd_core::credentials::MappedCredentialStore::new(cfg.credentials.clone())
+    );
+    if !cfg.credentials.is_empty() {
+        tracing::info!(
+            count = cfg.credentials.len(),
+            "Credential mappings loaded"
+        );
+    }
+
     let perm_engine = Arc::new(build_perm_engine(&cfg));
+
+    // Build quota engine from rate limits in permission sets
+    let mut quota_engine = mcpd_core::quota::QuotaEngine::new();
+    for (name, pset) in &cfg.permissions {
+        if let Some(ref rate_limit_str) = pset.rate_limit {
+            if let Some((max_str, window_str)) = rate_limit_str.split_once('/') {
+                if let (Ok(max_calls), Ok(window_secs)) =
+                    (max_str.parse::<u64>(), window_str.parse::<u64>())
+                {
+                    quota_engine.add_limit(
+                        name.clone(),
+                        mcpd_core::quota::RateLimit {
+                            max_calls,
+                            window_secs,
+                        },
+                    );
+                    tracing::info!(
+                        permission_set = %name,
+                        max_calls = max_calls,
+                        window_secs = window_secs,
+                        "Rate limit"
+                    );
+                }
+            }
+        }
+    }
 
     // Build server, registering enabled modules
     let mut builder = mcpd_core::McpServer::builder()
         .name("mcpd")
         .version(env!("CARGO_PKG_VERSION"));
 
-    // Register token-based authenticator if agents are configured
+    // Wire IFC policies from permission sets
+    for (name, pset) in &cfg.permissions {
+        let policy = mcpd_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy);
+        if policy != mcpd_core::ifc::TaintedWritePolicy::Allow {
+            builder = builder.ifc_policy(name.clone(), policy.clone());
+            tracing::info!(
+                permission_set = %name,
+                policy = %pset.tainted_write_policy,
+                "IFC tainted write policy"
+            );
+        }
+    }
+
+    if quota_engine.has_limits() {
+        builder = builder.quota_engine(quota_engine);
+    }
+
+    // Register authenticator chain if agents are configured
     if !cfg.agents.is_empty() {
-        let mut auth = TokenAuthenticator::new();
+        let has_cap_agents = cfg.agents.iter().any(|a| a.capability_token);
+
+        // Issue capability tokens for agents that request them
+        if has_cap_agents {
+            let default_ttl = cfg
+                .server
+                .identity
+                .as_ref()
+                .map(|i| i.token_ttl)
+                .unwrap_or(3600);
+
+            for agent in &cfg.agents {
+                if !agent.capability_token {
+                    continue;
+                }
+                let pset = cfg.permissions.get(&agent.permissions);
+                let (ring, paths, ops, creds) = match pset {
+                    Some(ps) => (
+                        ps.ring.unwrap_or(0),
+                        ps.allow.clone(),
+                        ps.operations.clone(),
+                        ps.credentials.clone(),
+                    ),
+                    None => (0, vec![], vec![], vec![]),
+                };
+                let ttl = agent.token_ttl.unwrap_or(default_ttl);
+                let subject_did = agent
+                    .did
+                    .clone()
+                    .unwrap_or_else(|| format!("agent:{}", agent.name));
+
+                let cap_set = mcpd_core::auth::capability::CapabilitySet {
+                    paths,
+                    operations: ops,
+                    tools: pset
+                        .map(|ps| {
+                            ps.tool_rules
+                                .iter()
+                                .filter(|r| r.policy == "allow")
+                                .map(|r| r.tool.clone())
+                                .collect::<Vec<_>>()
+                        })
+                        .filter(|v: &Vec<String>| !v.is_empty())
+                        .unwrap_or_else(|| vec!["*".to_string()]),
+                    credentials: creds,
+                };
+
+                let payload = mcpd_core::auth::capability::build_payload(
+                    root_signer.did(),
+                    &subject_did,
+                    cap_set,
+                    ring,
+                    ttl,
+                );
+
+                match mcpd_core::auth::capability::encode_token(&payload, &root_signer) {
+                    Ok(token) => {
+                        tracing::info!(
+                            agent = %agent.name,
+                            subject_did = %subject_did,
+                            ring = ring,
+                            ttl_secs = ttl,
+                            token = %token,
+                            "Issued capability token"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            agent = %agent.name,
+                            error = %e,
+                            "Failed to issue capability token"
+                        );
+                    }
+                }
+            }
+        }
+
+        let mut blake3_auth = TokenAuthenticator::new();
         for agent in &cfg.agents {
-            auth.register_hash(
+            blake3_auth.register_hash(
                 &agent.token_hash,
                 AgentIdentity {
                     name: agent.name.clone(),
                     permissions: agent.permissions.clone(),
+                    signing_key: agent.signing_key.clone(),
+                    did: agent.did.clone(),
+                    capabilities: None,
                 },
             );
             tracing::info!(agent = %agent.name, permissions = %agent.permissions, "Registered agent");
         }
-        builder = builder.authenticator(auth);
+
+        if has_cap_agents {
+            // Build ChainAuthenticator: capability tokens first, then BLAKE3
+            let cap_auth = mcpd_core::auth::chain::CapabilityAuthenticator::new(
+                Box::new(Arc::clone(&root_signer)),
+            );
+            let chain = mcpd_core::auth::chain::ChainAuthenticator::new()
+                .add(cap_auth)
+                .add(blake3_auth);
+            builder = builder.authenticator(chain);
+            tracing::info!("Authenticator chain: capability tokens + BLAKE3");
+        } else {
+            builder = builder.authenticator(blake3_auth);
+        }
     }
 
     // --- Load models into registry ---
@@ -293,6 +486,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             "Safety profile"
         );
         builder = builder.safety_profile(name.clone(), pipeline);
+
+        // Log compliance tags for audit trail
+        if !pset.compliance.is_empty() {
+            tracing::info!(
+                permission_set = %name,
+                tags = ?pset.compliance,
+                "Compliance tags"
+            );
+        }
 
         // Build per-tool permission rules if any are configured
         if !pset.tool_rules.is_empty() {
@@ -725,6 +927,263 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         }
     }
 
+    // Register cap_delegate tool if any agent can delegate
+    if cfg
+        .permissions
+        .values()
+        .any(|ps| ps.can_delegate)
+    {
+        let delegate_signer = Arc::clone(&root_signer);
+        let delegate_permissions = cfg.permissions.clone();
+        let max_depth = cfg
+            .server
+            .identity
+            .as_ref()
+            .map(|i| i.max_delegation_depth)
+            .unwrap_or(3);
+        let default_ttl = cfg
+            .server
+            .identity
+            .as_ref()
+            .map(|i| i.token_ttl)
+            .unwrap_or(3600);
+
+        builder = builder.tool(
+            mcpd_core::protocol::ToolDefinition {
+                name: "cap_delegate".to_string(),
+                description: Some(
+                    "Issue an attenuated capability token for a sub-agent. \
+                     The new token grants a subset of the caller's capabilities."
+                        .to_string(),
+                ),
+                input_schema: mcpd_core::protocol::ToolInputSchema {
+                    schema_type: "object".to_string(),
+                    properties: {
+                        let mut props = std::collections::HashMap::new();
+                        props.insert("subject_did".to_string(), serde_json::json!({
+                            "type": "string",
+                            "description": "DID of the sub-agent receiving the token"
+                        }));
+                        props.insert("ring".to_string(), serde_json::json!({
+                            "type": "integer",
+                            "description": "Ring level (must be >= caller's ring)"
+                        }));
+                        props.insert("operations".to_string(), serde_json::json!({
+                            "type": "array", "items": { "type": "string" },
+                            "description": "Operations to grant (subset of caller's)"
+                        }));
+                        props.insert("tools".to_string(), serde_json::json!({
+                            "type": "array", "items": { "type": "string" },
+                            "description": "Tool globs to grant (subset of caller's)"
+                        }));
+                        props.insert("paths".to_string(), serde_json::json!({
+                            "type": "array", "items": { "type": "string" },
+                            "description": "Path globs to grant (subset of caller's)"
+                        }));
+                        props.insert("credentials".to_string(), serde_json::json!({
+                            "type": "array", "items": { "type": "string" },
+                            "description": "Credential labels to grant (subset of caller's)"
+                        }));
+                        props.insert("ttl".to_string(), serde_json::json!({
+                            "type": "integer",
+                            "description": "Token TTL in seconds"
+                        }));
+                        Some(props)
+                    },
+                    required: Some(vec!["subject_did".to_string()]),
+                },
+            },
+            move |args, ctx| {
+                let signer = Arc::clone(&delegate_signer);
+                let permissions = delegate_permissions.clone();
+                let max_depth = max_depth;
+                let default_ttl = default_ttl;
+                Box::pin(async move {
+                    use mcpd_core::auth::capability::{
+                        build_payload, encode_token, validate_delegation, CapabilitySet,
+                    };
+                    use mcpd_core::protocol::CallToolResult;
+
+                    // Check caller has capabilities (must be cap-token authenticated)
+                    let parent_caps = match &ctx.agent.capabilities {
+                        Some(caps) => caps,
+                        None => {
+                            // Legacy agent — check can_delegate via permission set
+                            let perm_name = &ctx.agent.permissions;
+                            let can_delegate = permissions
+                                .get(perm_name)
+                                .map(|ps| ps.can_delegate)
+                                .unwrap_or(false);
+                            if !can_delegate {
+                                return CallToolResult::error(
+                                    "Permission denied: delegation not allowed for this agent",
+                                );
+                            }
+                            // Build a pseudo-parent from permission set for validation
+                            return CallToolResult::error(
+                                "Delegation requires a capability token. \
+                                 Use a capability-token-authenticated session.",
+                            );
+                        }
+                    };
+
+                    let subject_did = args
+                        .get("subject_did")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if subject_did.is_empty() {
+                        return CallToolResult::error("subject_did is required");
+                    }
+
+                    let ring = args
+                        .get("ring")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(parent_caps.ring as u64) as u8;
+
+                    let operations: Vec<String> = args
+                        .get("operations")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| parent_caps.operations.iter().cloned().collect());
+
+                    let tools: Vec<String> = args
+                        .get("tools")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| parent_caps.tools.clone());
+
+                    let paths: Vec<String> = args
+                        .get("paths")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| parent_caps.paths.clone());
+
+                    let credentials: Vec<String> = args
+                        .get("credentials")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| parent_caps.credentials.clone());
+
+                    let ttl = args
+                        .get("ttl")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(default_ttl);
+
+                    let cap_set = CapabilitySet {
+                        paths,
+                        operations,
+                        tools,
+                        credentials,
+                    };
+
+                    let issuer_did = ctx
+                        .agent
+                        .did
+                        .clone()
+                        .unwrap_or_else(|| format!("agent:{}", ctx.agent.name));
+
+                    let mut child_payload = build_payload(
+                        &issuer_did,
+                        &subject_did,
+                        cap_set,
+                        ring,
+                        ttl,
+                    );
+
+                    // Build parent payload for validation
+                    let parent_payload =
+                        mcpd_core::auth::capability::CapabilityPayload {
+                            v: 1,
+                            iss: signer.did().to_string(),
+                            sub: issuer_did.clone(),
+                            cap: CapabilitySet {
+                                paths: parent_caps.paths.clone(),
+                                operations: parent_caps.operations.iter().cloned().collect(),
+                                tools: parent_caps.tools.clone(),
+                                credentials: parent_caps.credentials.clone(),
+                            },
+                            ring: parent_caps.ring,
+                            iat: 0,
+                            exp: parent_caps.expires_at,
+                            nonce: [0u8; 16], // placeholder
+                            parent: None,
+                        };
+
+                    // Set parent nonce reference
+                    child_payload.parent = Some(parent_payload.nonce);
+
+                    // Validate attenuation
+                    if let Err(e) = validate_delegation(&parent_payload, &child_payload, max_depth) {
+                        return CallToolResult::error(format!("Delegation denied: {e}"));
+                    }
+
+                    // Sign with root key (mcpd signs all tokens)
+                    match encode_token(&child_payload, signer.as_ref()) {
+                        Ok(token) => {
+                            tracing::info!(
+                                issuer = %issuer_did,
+                                subject = %subject_did,
+                                ring = ring,
+                                "Delegated capability token"
+                            );
+                            CallToolResult::text(token)
+                        }
+                        Err(e) => CallToolResult::error(format!("Failed to sign token: {e}")),
+                    }
+                })
+            },
+        );
+        tracing::info!("Registered cap_delegate tool");
+    }
+
+    // Register sys_status tool (process table viewer)
+    {
+        builder = builder.tool(
+            mcpd_core::protocol::ToolDefinition {
+                name: "sys_status".to_string(),
+                description: Some(
+                    "Show AI OS process table: active agents, their rings, \
+                     call counts, and active tool calls."
+                        .to_string(),
+                ),
+                input_schema: mcpd_core::protocol::ToolInputSchema {
+                    schema_type: "object".to_string(),
+                    properties: None,
+                    required: None,
+                },
+            },
+            |_args, _ctx| {
+                // The actual data comes from the server's process table,
+                // but the handler doesn't have access to &self.
+                // We return a placeholder — the real implementation
+                // will be added when we refactor tool handlers to
+                // receive a server reference.
+                Box::pin(async {
+                    mcpd_core::protocol::CallToolResult::text(
+                        "sys_status: use GET /sys/status for process table"
+                    )
+                })
+            },
+        );
+    }
+
     let server = Arc::new(builder.build());
     tracing::info!(
         tools = server.tool_count(),
@@ -840,15 +1299,32 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             if let Some(ref docs) = discovery.docs_url {
                 aid["d"] = serde_json::json!(docs);
             }
-            tracing::info!(url = %discovery.url, "AID discovery at /.well-known/agent");
+            // Populate PKA field with root Ed25519 public key
+            let pubkey_multibase = format!(
+                "z{}",
+                bs58::encode({
+                    let mut bytes = vec![0xed, 0x01];
+                    bytes.extend_from_slice(&root_signer.public_key_bytes());
+                    bytes
+                })
+                .into_string()
+            );
+            aid["k"] = serde_json::json!(pubkey_multibase);
+            aid["i"] = serde_json::json!("root-1");
+            tracing::info!(
+                url = %discovery.url,
+                did = %root_signer.did(),
+                "AID discovery at /.well-known/agent (with PKA)"
+            );
             aid
         });
         let a2a_endpoint = cfg.server.discovery.as_ref().map(|d| d.url.clone());
         if a2a_endpoint.is_some() {
-            tracing::info!("A2A Agent Card at /.well-known/agent-card.json");
+            tracing::info!("A2A Agent Card at /.well-known/agent.json");
         }
+        let root_did_str = Some(root_signer.did().to_string());
         mcpd_core::transport::build_router_with_discovery(
-            server, broadcaster, aid_record, registry_entries, a2a_endpoint,
+            server, broadcaster, aid_record, registry_entries, a2a_endpoint, root_did_str,
         )
     } else {
         mcpd_core::transport::build_router_with_broadcaster(server, broadcaster)

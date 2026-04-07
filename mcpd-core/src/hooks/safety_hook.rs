@@ -135,6 +135,7 @@ impl Hook for SafetyHook {
         let new_result = CallToolResult {
             content: filtered_content,
             is_error: result.is_error,
+            label: result.label,
         };
         // Only return ModifyResult if content actually changed
         if new_result.content.len() != result.content.len() {
@@ -159,13 +160,7 @@ mod tests {
     use crate::auth::AgentIdentity;
 
     fn test_ctx() -> CallContext {
-        CallContext {
-            agent: AgentIdentity {
-                name: "tester".to_string(),
-                permissions: "dev".to_string(),
-            },
-            session_id: "test-session".to_string(),
-        }
+        CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")
     }
 
     #[tokio::test]

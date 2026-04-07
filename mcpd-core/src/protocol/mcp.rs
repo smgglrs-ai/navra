@@ -115,6 +115,9 @@ pub struct CallToolResult {
     pub content: Vec<Content>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_error: bool,
+    /// IFC data label for this result (kernel-internal, not serialized).
+    #[serde(skip)]
+    pub label: crate::ifc::DataLabel,
 }
 
 // --- Content ---
@@ -142,6 +145,7 @@ impl CallToolResult {
         Self {
             content,
             is_error: false,
+            label: crate::ifc::DataLabel::TRUSTED_PUBLIC,
         }
     }
 
@@ -149,11 +153,18 @@ impl CallToolResult {
         Self {
             content: vec![Content::text(message)],
             is_error: true,
+            label: crate::ifc::DataLabel::TRUSTED_PUBLIC,
         }
     }
 
     pub fn text(text: impl Into<String>) -> Self {
         Self::success(vec![Content::text(text)])
+    }
+
+    /// Set the IFC data label on this result.
+    pub fn with_label(mut self, label: crate::ifc::DataLabel) -> Self {
+        self.label = label;
+        self
     }
 }
 
