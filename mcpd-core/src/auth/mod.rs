@@ -1,10 +1,20 @@
+pub mod capability;
+pub mod chain;
+
 use std::fmt;
 
 /// Identity of an authenticated agent.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct AgentIdentity {
     pub name: String,
     pub permissions: String,
+    /// Path to an Ed25519 private key for commit signing.
+    pub signing_key: Option<String>,
+    /// DID:key identifier (set when using capability tokens).
+    pub did: Option<String>,
+    /// Resolved capabilities from a verified capability token.
+    /// When `Some`, these override the PermissionEngine path.
+    pub capabilities: Option<capability::ResolvedCapabilities>,
 }
 
 impl fmt::Display for AgentIdentity {
@@ -18,6 +28,20 @@ impl fmt::Display for AgentIdentity {
 pub struct CallContext {
     pub agent: AgentIdentity,
     pub session_id: String,
+    /// IFC taint tracker for this session. Accumulates the highest
+    /// data label seen across tool calls. Taint only rises.
+    pub taint: crate::ifc::TaintTracker,
+}
+
+impl CallContext {
+    /// Create a new call context with a clean taint tracker.
+    pub fn new(agent: AgentIdentity, session_id: impl Into<String>) -> Self {
+        Self {
+            agent,
+            session_id: session_id.into(),
+            taint: crate::ifc::TaintTracker::new(),
+        }
+    }
 }
 
 /// Error returned by authentication.
@@ -99,6 +123,33 @@ pub struct NoAuthenticator {
     pub default_identity: AgentIdentity,
 }
 
+impl AgentIdentity {
+    /// Create an identity without optional fields (convenience for tests).
+    pub fn new(name: impl Into<String>, permissions: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            permissions: permissions.into(),
+            signing_key: None,
+            did: None,
+            capabilities: None,
+        }
+    }
+}
+
+// Manual PartialEq/Eq/Hash — only compare identity fields, not capabilities.
+impl PartialEq for AgentIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.permissions == other.permissions
+    }
+}
+impl Eq for AgentIdentity {}
+impl std::hash::Hash for AgentIdentity {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.permissions.hash(state);
+    }
+}
+
 impl Authenticator for NoAuthenticator {
     fn authenticate(
         &self,
@@ -114,10 +165,7 @@ mod tests {
     use axum::http::HeaderMap;
 
     fn test_identity() -> AgentIdentity {
-        AgentIdentity {
-            name: "test-agent".to_string(),
-            permissions: "developer".to_string(),
-        }
+        AgentIdentity::new("test-agent", "developer")
     }
 
     #[test]
