@@ -1070,6 +1070,7 @@ mod tests {
         engine.add_permission_set(
             "dev".to_string(),
             PathAcl {
+                ring: None,
                 allow: vec![format!("{}/**", tmpdir.path().display())],
                 deny: vec![format!("{}/.secret/**", tmpdir.path().display())],
                 operations: ["read", "write", "search", "list"]
@@ -1082,6 +1083,7 @@ mod tests {
         engine.add_permission_set(
             "readonly".to_string(),
             PathAcl {
+                ring: None,
                 allow: vec![format!("{}/**", tmpdir.path().display())],
                 deny: vec![],
                 operations: ["read", "search", "list"]
@@ -1102,23 +1104,11 @@ mod tests {
     }
 
     fn dev_ctx() -> CallContext {
-        CallContext {
-            agent: AgentIdentity {
-                name: "test-agent".to_string(),
-                permissions: "dev".to_string(),
-            },
-            session_id: "test".to_string(),
-        }
+        CallContext::new(AgentIdentity::new("test-agent", "dev"), "test")
     }
 
     fn readonly_ctx() -> CallContext {
-        CallContext {
-            agent: AgentIdentity {
-                name: "reader".to_string(),
-                permissions: "readonly".to_string(),
-            },
-            session_id: "test".to_string(),
-        }
+        CallContext::new(AgentIdentity::new("reader", "readonly"), "test")
     }
 
     fn text_of(result: &CallToolResult) -> &str {
@@ -1556,6 +1546,7 @@ mod tests {
         engine.add_permission_set(
             "needs_approval".to_string(),
             PathAcl {
+                ring: None,
                 allow: vec![format!("{}/**", tmpdir.path().display())],
                 deny: vec![],
                 operations: ["read", "write", "search", "list"]
@@ -1576,13 +1567,7 @@ mod tests {
     }
 
     fn approval_ctx() -> CallContext {
-        CallContext {
-            agent: AgentIdentity {
-                name: "approval-agent".to_string(),
-                permissions: "needs_approval".to_string(),
-            },
-            session_id: "test".to_string(),
-        }
+        CallContext::new(AgentIdentity::new("approval-agent", "needs_approval"), "test")
     }
 
     #[tokio::test]

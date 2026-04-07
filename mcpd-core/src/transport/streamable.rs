@@ -4,6 +4,7 @@ use crate::protocol::{
     JsonRpcResponse, ReadResourceParams,
 };
 use crate::server::McpServer;
+use crate::transport::a2a::A2aState;
 use crate::transport::sse::SseBroadcaster;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -28,6 +29,8 @@ struct AppState {
     registry_entries: Vec<serde_json::Value>,
     /// Endpoint URL for A2A Agent Card (None = A2A disabled).
     a2a_endpoint: Option<String>,
+    /// Root DID for Agent Card identity.
+    root_did: Option<String>,
 }
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
@@ -38,11 +41,13 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
         aid_record: None,
         registry_entries: Vec::new(),
         a2a_endpoint: None,
+        root_did: None,
     };
     Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
         .route("/.well-known/mcp.json", get(handle_server_card))
+        .route("/sys/status", get(handle_sys_status))
         .with_state(state)
 }
 
@@ -57,11 +62,13 @@ pub fn build_router_with_broadcaster(
         aid_record: None,
         registry_entries: Vec::new(),
         a2a_endpoint: None,
+        root_did: None,
     };
     Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
         .route("/.well-known/mcp.json", get(handle_server_card))
+        .route("/sys/status", get(handle_sys_status))
         .with_state(state)
 }
 
@@ -72,28 +79,55 @@ pub fn build_router_with_discovery(
     aid_record: Option<serde_json::Value>,
     registry_entries: Vec<serde_json::Value>,
     a2a_endpoint: Option<String>,
+    root_did: Option<String>,
 ) -> Router {
+    let a2a_enabled = a2a_endpoint.is_some();
+
+    // Build A2A state before moving server into AppState
+    let a2a_state = if a2a_enabled {
+        Some(A2aState {
+            server: server.clone(),
+            task_store: server.task_store().clone(),
+        })
+    } else {
+        None
+    };
+
     let state = AppState {
         server,
         broadcaster,
         aid_record,
         registry_entries,
         a2a_endpoint,
+        root_did,
     };
+
     let mut router = Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
         .route("/.well-known/mcp.json", get(handle_server_card))
-        .route("/v0.1/servers", get(handle_registry));
+        .route("/v0.1/servers", get(handle_registry))
+        .route("/sys/status", get(handle_sys_status));
 
     if state.aid_record.is_some() {
         router = router.route("/.well-known/agent", get(handle_aid_record));
     }
     if state.a2a_endpoint.is_some() {
-        router = router.route("/.well-known/agent-card.json", get(handle_agent_card));
+        router = router.route("/.well-known/agent.json", get(handle_agent_card));
     }
 
-    router.with_state(state)
+    let mut router = router.with_state(state);
+
+    // Mount A2A JSON-RPC endpoint when A2A is enabled
+    if let Some(a2a_state) = a2a_state {
+        router = router.merge(
+            Router::new()
+                .route("/a2a", post(crate::transport::a2a::handle_a2a_post))
+                .with_state(a2a_state),
+        );
+    }
+
+    router
 }
 
 async fn handle_post(
@@ -261,11 +295,11 @@ async fn handle_registry(
 
 /// Serve the A2A Agent Card.
 ///
-/// Available at `GET /.well-known/agent-card.json` without authentication.
+/// Available at `GET /.well-known/agent.json` without authentication.
 /// Describes mcpd's tools as A2A skills for agent-to-agent discovery.
 async fn handle_agent_card(State(state): State<AppState>) -> impl IntoResponse {
     match &state.a2a_endpoint {
-        Some(url) => Json(state.server.agent_card(url)).into_response(),
+        Some(url) => Json(state.server.agent_card(url, state.root_did.as_deref())).into_response(),
         None => (StatusCode::NOT_FOUND, "A2A not configured").into_response(),
     }
 }
@@ -279,6 +313,18 @@ async fn handle_aid_record(State(state): State<AppState>) -> impl IntoResponse {
         Some(record) => (StatusCode::OK, Json(record.clone())).into_response(),
         None => (StatusCode::NOT_FOUND, "AID not configured").into_response(),
     }
+}
+
+/// Serve the AI OS process table.
+///
+/// Available at `GET /sys/status`. Returns a JSON array of active
+/// agent sessions with call counts, ring levels, and active tools.
+async fn handle_sys_status(State(state): State<AppState>) -> impl IntoResponse {
+    let snapshot = state.server.process_table().snapshot();
+    Json(serde_json::json!({
+        "agents": snapshot,
+        "session_count": state.server.sessions.count(),
+    }))
 }
 
 /// Convert a broadcast receiver into an SSE event stream.
@@ -373,10 +419,7 @@ async fn dispatch(
                     );
                 }
             };
-            let ctx = CallContext {
-                agent,
-                session_id: session_id.clone().unwrap_or_default(),
-            };
+            let ctx = CallContext::new(agent, session_id.clone().unwrap_or_default());
             let result = server.handle_call_tool(params, ctx).await;
             (
                 JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
@@ -531,10 +574,7 @@ mod tests {
                 .name("test-server")
                 .version("0.1.0")
                 .authenticator(NoAuthenticator {
-                    default_identity: AgentIdentity {
-                        name: "tester".to_string(),
-                        permissions: "dev".to_string(),
-                    },
+                    default_identity: AgentIdentity::new("tester", "dev"),
                 })
                 .tool(
                     ToolDefinition {
@@ -906,6 +946,7 @@ mod tests {
             Some(aid),
             Vec::new(),
             None,
+            None,
         );
 
         let req = Request::builder()
@@ -968,6 +1009,7 @@ mod tests {
             None,
             entries,
             None,
+            None,
         );
 
         let req = Request::builder()
@@ -1002,6 +1044,7 @@ mod tests {
             None,
             entries,
             None,
+            None,
         );
 
         let req = Request::builder()
@@ -1027,11 +1070,12 @@ mod tests {
             None,
             Vec::new(),
             Some("https://tools.example.com/mcp".to_string()),
+            None,
         );
 
         let req = Request::builder()
             .method("GET")
-            .uri("/.well-known/agent-card.json")
+            .uri("/.well-known/agent.json")
             .body(Body::empty())
             .unwrap();
 
@@ -1065,6 +1109,7 @@ mod tests {
             SseBroadcaster::new(),
             None,
             entries,
+            None,
             None,
         );
 

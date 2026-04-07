@@ -379,13 +379,7 @@ mod tests {
     use mcpd_core::auth::AgentIdentity;
 
     fn test_ctx() -> CallContext {
-        CallContext {
-            agent: AgentIdentity {
-                name: "test".to_string(),
-                permissions: "dev".to_string(),
-            },
-            session_id: "test".to_string(),
-        }
+        CallContext::new(AgentIdentity::new("test", "dev"), "test")
     }
 
     #[test]

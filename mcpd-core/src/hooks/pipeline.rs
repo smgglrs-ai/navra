@@ -157,13 +157,7 @@ mod tests {
     use crate::auth::{AgentIdentity, CallContext};
 
     fn test_ctx() -> CallContext {
-        CallContext {
-            agent: AgentIdentity {
-                name: "tester".to_string(),
-                permissions: "dev".to_string(),
-            },
-            session_id: "test-session".to_string(),
-        }
+        CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")
     }
 
     /// A hook that blocks tool calls matching a specific name.
