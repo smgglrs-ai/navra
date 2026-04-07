@@ -15,6 +15,10 @@ pub struct Config {
     pub permissions: HashMap<String, PermissionSet>,
     #[serde(default)]
     pub upstream: Vec<UpstreamConfig>,
+    /// Credential label → backend source mappings.
+    /// Only credentials listed here are accessible to agents.
+    #[serde(default)]
+    pub credentials: HashMap<String, mcpd_core::credentials::CredentialMapping>,
     #[serde(default)]
     pub models: HashMap<String, ModelConfig>,
     /// Domains to query for AID upstream discovery at startup.
@@ -66,6 +70,34 @@ pub struct ServerConfig {
     /// `/.well-known/agent` for the AID fallback protocol.
     #[serde(default)]
     pub discovery: Option<DiscoveryConfig>,
+    /// Root identity configuration for DID-based auth.
+    #[serde(default)]
+    pub identity: Option<IdentityConfig>,
+}
+
+/// Root identity configuration.
+///
+/// Controls where mcpd stores its Ed25519 root keypair and how
+/// capability tokens are issued.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IdentityConfig {
+    /// Path to Ed25519 seed file. If omitted, the OS keyring is used.
+    #[serde(default)]
+    pub key_path: Option<String>,
+    /// Default capability token TTL in seconds (default: 3600 = 1 hour).
+    #[serde(default = "default_token_ttl")]
+    pub token_ttl: u64,
+    /// Maximum delegation chain depth (default: 3).
+    #[serde(default = "default_max_delegation_depth")]
+    pub max_delegation_depth: u8,
+}
+
+fn default_token_ttl() -> u64 {
+    3600
+}
+
+fn default_max_delegation_depth() -> u8 {
+    3
 }
 
 /// A whitelisted MCP server for the registry.
@@ -221,6 +253,23 @@ pub struct AgentConfig {
     pub name: String,
     pub token_hash: String,
     pub permissions: String,
+    /// Path to an Ed25519 private key for commit signing.
+    /// When set, git_commit signs commits with this key using
+    /// Git's SSH signing support (gpg.format=ssh).
+    #[serde(default)]
+    pub signing_key: Option<String>,
+    /// Path to Ed25519 public key file for capability token auth.
+    #[serde(default)]
+    pub pubkey: Option<String>,
+    /// DID:key identifier (alternative to pubkey file).
+    #[serde(default)]
+    pub did: Option<String>,
+    /// Enable capability token issuance for this agent.
+    #[serde(default)]
+    pub capability_token: bool,
+    /// Override token TTL for this agent (seconds).
+    #[serde(default)]
+    pub token_ttl: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -287,6 +336,11 @@ fn default_transport() -> String {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PermissionSet {
+    /// Privilege ring (0 = most privileged, 3 = most restricted).
+    /// When set, deny rules and approval requirements cascade from
+    /// lower-numbered rings, and operations are intersected.
+    #[serde(default)]
+    pub ring: Option<u8>,
     #[serde(default)]
     pub allow: Vec<String>,
     #[serde(default)]
@@ -301,12 +355,35 @@ pub struct PermissionSet {
     /// Custom regex patterns for content safety filtering.
     #[serde(default)]
     pub safety_patterns: Vec<SafetyPatternConfig>,
+    /// Compliance framework tags for this permission set.
+    /// Informational — logged at startup for audit trail.
+    /// Example: ["SOC2-CC6.1", "EU-AI-Act-Art-14", "HIPAA-164.312"]
+    #[serde(default)]
+    pub compliance: Vec<String>,
     /// Per-tool permission rules (evaluated before handler invocation).
     #[serde(default)]
     pub tool_rules: Vec<ToolRuleConfig>,
     /// Default policy for tools not matched by any rule: "allow", "deny", "approve"
     #[serde(default = "default_tool_policy")]
     pub default_tool_policy: String,
+    /// Credential labels this permission set can access.
+    #[serde(default)]
+    pub credentials: Vec<String>,
+    /// Whether agents with this permission set can delegate capabilities.
+    #[serde(default)]
+    pub can_delegate: bool,
+    /// Rate limit: maximum tool calls per window (e.g., "60/60" = 60 calls per 60 seconds).
+    #[serde(default)]
+    pub rate_limit: Option<String>,
+    /// IFC policy for tainted writes: "allow", "approve", or "deny".
+    /// When an agent reads external data (taint rises to Untrusted),
+    /// this policy controls whether subsequent writes are permitted.
+    #[serde(default = "default_tainted_write_policy")]
+    pub tainted_write_policy: String,
+}
+
+fn default_tainted_write_policy() -> String {
+    "allow".to_string()
 }
 
 /// A per-tool permission rule in config.
@@ -473,12 +550,14 @@ impl Default for Config {
                 socket: default_socket(),
                 tcp: None,
                 discovery: None,
+                identity: None,
             },
             modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),
             agents: Vec::new(),
             permissions: HashMap::new(),
             upstream: Vec::new(),
+            credentials: HashMap::new(),
             models: HashMap::new(),
             discover: Vec::new(),
             registry: Vec::new(),
@@ -610,5 +689,177 @@ enabled = false
         let token = generate_token();
         assert!(token.starts_with("mcd_"));
         assert!(token.len() > 10);
+    }
+
+    #[test]
+    fn parse_permission_rings() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[permissions.admin]
+ring = 0
+allow = ["/home/user/**"]
+deny = ["**/.env"]
+operations = ["read", "write", "git.status", "git.commit", "shell.exec"]
+
+[permissions.developer]
+ring = 1
+allow = ["/home/user/projects/**"]
+operations = ["read", "write", "git.status", "git.commit"]
+approve = ["git.commit"]
+
+[permissions.readonly]
+ring = 2
+allow = ["/home/user/projects/public/**"]
+operations = ["read", "search", "list"]
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+
+        assert_eq!(config.permissions["admin"].ring, Some(0));
+        assert_eq!(config.permissions["developer"].ring, Some(1));
+        assert_eq!(config.permissions["readonly"].ring, Some(2));
+    }
+
+    #[test]
+    fn ring_defaults_to_none() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[permissions.custom]
+allow = ["~/Documents/**"]
+operations = ["read"]
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.permissions["custom"].ring, None);
+    }
+
+    #[test]
+    fn parse_compliance_tags() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[permissions.audited]
+allow = ["~/Projects/**"]
+operations = ["read", "write"]
+compliance = ["SOC2-CC6.1", "EU-AI-Act-Art-14", "HIPAA-164.312"]
+
+[permissions.internal]
+allow = ["~/Internal/**"]
+operations = ["read"]
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+
+        let audited = &config.permissions["audited"];
+        assert_eq!(audited.compliance.len(), 3);
+        assert!(audited.compliance.contains(&"SOC2-CC6.1".to_string()));
+        assert!(audited.compliance.contains(&"EU-AI-Act-Art-14".to_string()));
+        assert!(audited.compliance.contains(&"HIPAA-164.312".to_string()));
+
+        // Permission set without compliance tags defaults to empty
+        let internal = &config.permissions["internal"];
+        assert!(internal.compliance.is_empty());
+    }
+
+    #[test]
+    fn parse_identity_config() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[server.identity]
+key_path = "/etc/mcpd/identity.key"
+token_ttl = 1800
+max_delegation_depth = 2
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        let identity = config.server.identity.as_ref().unwrap();
+        assert_eq!(identity.key_path.as_deref(), Some("/etc/mcpd/identity.key"));
+        assert_eq!(identity.token_ttl, 1800);
+        assert_eq!(identity.max_delegation_depth, 2);
+    }
+
+    #[test]
+    fn parse_credential_mappings() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[credentials]
+"github.pat" = { source = "keyring", path = "mcpd/github-pat" }
+"ci.token" = { source = "env", var = "GITHUB_TOKEN" }
+"gnome.github" = { source = "keyring", path = "org.gnome.OnlineAccounts/github" }
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.credentials.len(), 3);
+
+        let gh = &config.credentials["github.pat"];
+        assert_eq!(gh.source, "keyring");
+        assert_eq!(gh.path.as_deref(), Some("mcpd/github-pat"));
+
+        let ci = &config.credentials["ci.token"];
+        assert_eq!(ci.source, "env");
+        assert_eq!(ci.var.as_deref(), Some("GITHUB_TOKEN"));
+    }
+
+    #[test]
+    fn parse_agent_capability_fields() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[[agents]]
+name = "leader"
+token_hash = "abc123"
+permissions = "admin"
+pubkey = "~/.config/mcpd/agents/leader.pub"
+capability_token = true
+token_ttl = 900
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        let agent = &config.agents[0];
+        assert_eq!(agent.pubkey.as_deref(), Some("~/.config/mcpd/agents/leader.pub"));
+        assert!(agent.capability_token);
+        assert_eq!(agent.token_ttl, Some(900));
+    }
+
+    #[test]
+    fn parse_permission_credentials() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[permissions.leader]
+ring = 1
+allow = ["~/Code/**"]
+operations = ["read", "write"]
+credentials = ["github.pat", "jira.token"]
+can_delegate = true
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        let leader = &config.permissions["leader"];
+        assert_eq!(leader.credentials, vec!["github.pat", "jira.token"]);
+        assert!(leader.can_delegate);
+    }
+
+    #[test]
+    fn agent_capability_defaults() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[[agents]]
+name = "legacy"
+token_hash = "xyz"
+permissions = "dev"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        let agent = &config.agents[0];
+        assert!(agent.pubkey.is_none());
+        assert!(agent.did.is_none());
+        assert!(!agent.capability_token);
+        assert!(agent.token_ttl.is_none());
     }
 }
