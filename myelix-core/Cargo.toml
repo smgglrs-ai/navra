@@ -1,0 +1,31 @@
+[package]
+name = "myelix-core"
+description = "MCP gateway core: server, module trait, session, transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+myelix-protocol = { path = "../myelix-protocol" }
+myelix-security = { path = "../myelix-security" }
+myelix-model = { path = "../myelix-model" }
+async-trait = { workspace = true }
+axum = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+async-stream = "0.3"
+futures-util = "0.3"
+glob = "0.3"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+base64 = { workspace = true }
+reqwest = { workspace = true }

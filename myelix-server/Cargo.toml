@@ -1,0 +1,41 @@
+[package]
+name = "myelix-server"
+description = "Composable MCP server with modular architecture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "mcpd"
+path = "src/main.rs"
+
+[dependencies]
+myelix-core = { path = "../myelix-core" }
+myelix-model = { path = "../myelix-model" }
+myelix-tools-docs = { path = "../myelix-tools-docs" }
+myelix-tools-git = { path = "../myelix-tools-git" }
+myelix-rag = { path = "../myelix-rag" }
+myelix-modal-vision = { path = "../myelix-modal-vision" }
+myelix-modal-voice = { path = "../myelix-modal-voice" }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+toml = "0.8"
+reqwest = { workspace = true, features = ["stream"] }
+futures-util = "0.3"
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+anyhow = "1"
+bs58 = { workspace = true }
+ksni = "0.3"
+mdns-sd = "0.18"
+flume = "0.11"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"
