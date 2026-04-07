@@ -1987,162 +1987,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcpd"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "bs58",
- "clap",
- "dirs",
- "flume",
- "futures-util",
- "ksni",
- "mcpd-core",
- "mcpd-mod-docs",
- "mcpd-mod-git",
- "mcpd-mod-rag",
- "mcpd-mod-vision",
- "mcpd-mod-voice",
- "mcpd-model",
- "mdns-sd",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "mcpd-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "async-trait",
- "axum",
- "base64 0.22.1",
- "blake3",
- "bs58",
- "ciborium",
- "dirs",
- "ed25519-dalek",
- "futures-util",
- "glob",
- "http-body-util",
- "hyper",
- "hyper-util",
- "keyring",
- "rand 0.8.5",
- "regex-lite",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tower",
- "tracing",
- "uuid",
- "zbus 5.14.0",
-]
-
-[[package]]
-name = "mcpd-mod-docs"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "dirs",
- "mcpd-core",
- "notify",
- "rusqlite",
- "serde",
- "serde_json",
- "sqlite-vec",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
- "zerocopy",
-]
-
-[[package]]
-name = "mcpd-mod-git"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "mcpd-core",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mcpd-mod-rag"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "mcpd-core",
- "rusqlite",
- "serde",
- "serde_json",
- "sqlite-vec",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
- "zerocopy",
-]
-
-[[package]]
-name = "mcpd-mod-vision"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "dirs",
- "futures-util",
- "mcpd-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "zbus 5.14.0",
-]
-
-[[package]]
-name = "mcpd-mod-voice"
-version = "0.1.0"
-dependencies = [
- "cpal",
- "mcpd-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mcpd-model"
-version = "0.1.0"
-dependencies = [
- "mcpd-core",
- "ndarray",
- "ort",
- "reqwest",
- "serde",
- "serde_json",
- "tokenizers",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "mdns-sd"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2226,6 +2070,198 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "myelix-core"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "futures-util",
+ "glob",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "myelix-model",
+ "myelix-protocol",
+ "myelix-security",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "myelix-modal-vision"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "dirs",
+ "futures-util",
+ "myelix-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "zbus 5.14.0",
+]
+
+[[package]]
+name = "myelix-modal-voice"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "myelix-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "myelix-model"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "futures-util",
+ "ndarray",
+ "ort",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "myelix-protocol"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "myelix-rag"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "myelix-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sqlite-vec",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
+name = "myelix-security"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "blake3",
+ "bs58",
+ "ciborium",
+ "dirs",
+ "ed25519-dalek",
+ "futures-util",
+ "glob",
+ "keyring",
+ "myelix-model",
+ "myelix-protocol",
+ "rand 0.8.5",
+ "regex-lite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zbus 5.14.0",
+]
+
+[[package]]
+name = "myelix-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bs58",
+ "clap",
+ "dirs",
+ "flume",
+ "futures-util",
+ "ksni",
+ "mdns-sd",
+ "myelix-core",
+ "myelix-modal-vision",
+ "myelix-modal-voice",
+ "myelix-model",
+ "myelix-rag",
+ "myelix-tools-docs",
+ "myelix-tools-git",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "myelix-tools-docs"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "dirs",
+ "myelix-core",
+ "notify",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sqlite-vec",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
+name = "myelix-tools-git"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "myelix-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

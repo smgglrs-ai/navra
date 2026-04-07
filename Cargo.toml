@@ -1,6 +1,17 @@
 [workspace]
 resolver = "2"
-members = ["mcpd-core", "mcpd-model", "mcpd-mod-docs", "mcpd-mod-git", "mcpd-mod-rag", "mcpd-mod-vision", "mcpd-mod-voice", "mcpd-server"]
+members = [
+    "myelix-protocol",
+    "myelix-model",
+    "myelix-security",
+    "myelix-core",
+    "myelix-tools-docs",
+    "myelix-tools-git",
+    "myelix-rag",
+    "myelix-modal-voice",
+    "myelix-modal-vision",
+    "myelix-server",
+]
 
 [workspace.package]
 version = "0.1.0"

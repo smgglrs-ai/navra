@@ -20,16 +20,35 @@ package only provides shared libraries.
 
 ## Workspace
 
-| Crate | Role |
-|---|---|
-| `mcpd-core` | MCP framework, auth, permissions, safety, transports, upstream proxy |
-| `mcpd-model` | Model backend trait + ONNX/Whisper/OpenAI implementations |
-| `mcpd-mod-docs` | Document tools, SQLite FTS5 + sqlite-vec |
-| `mcpd-mod-git` | Git tools (status, diff, log, branch, commit) |
-| `mcpd-mod-rag` | Vector search, sqlite-vec, semantic chunking |
-| `mcpd-mod-voice` | Speech I/O (ASR + TTS via ONNX models) |
-| `mcpd-mod-vision` | Image/screen understanding (GPU tier) |
-| `mcpd-server` | Binary: CLI, config, module wiring, systemd, tray |
+| Crate | Category | Role |
+|---|---|---|
+| `myelix-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports |
+| `myelix-model` | Infrastructure | Model backend trait + ONNX/OpenAI implementations |
+| `myelix-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks |
+| `myelix-core` | Infrastructure | Server, module trait, session, transport, re-exports |
+| `myelix-tools-docs` | Tool | Document tools, SQLite FTS5 + sqlite-vec |
+| `myelix-tools-git` | Tool | Git tools (status, diff, log, branch, commit) |
+| `myelix-rag` | Context enrichment | Vector search, sqlite-vec, semantic chunking |
+| `myelix-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
+| `myelix-modal-vision` | Modality | Image/screen understanding (GPU tier) |
+| `myelix-server` | Binary | CLI, config, module wiring, systemd, tray (binary: `mcpd`) |
+
+### Dependency layering
+
+```
+myelix-protocol          (no myelix deps)
+myelix-model             (no myelix deps)
+    ↓
+myelix-security          (protocol + model)
+    ↓
+myelix-core              (protocol + model + security)
+    ↓
+myelix-tools-*  ─────┐
+myelix-rag      ─────┼── (core only)
+myelix-modal-*  ─────┘
+    ↓
+myelix-server            (all of the above)
+```
 
 ## Architecture
 
@@ -42,7 +61,7 @@ AI Agent (Claude Code, Myelix, etc.)
     |
     | MCP Streamable HTTP + SSE (Unix socket or TCP)
     v
-mcpd-server (gateway)
+myelix-server / mcpd (gateway)
     |-- Auth (BLAKE3 tokens)
     |-- Permission engine (path ACLs, tool rules)
     |-- Hook pipeline (pre/post tool-call)
@@ -91,8 +110,8 @@ Desktop (D-Bus notifications, system tray, systemd)
 
 ### Adding a Module
 
-1. Create crate implementing `Module` trait
-2. Add dependency in `mcpd-server/Cargo.toml`
+1. Create crate implementing `Module` trait (from `myelix-core`)
+2. Add dependency in `myelix-server/Cargo.toml`
 3. Add config struct in `config.rs`
 4. Add `if cfg.xxx_enabled() { builder = builder.module(xxx); }` in `main.rs`
 
