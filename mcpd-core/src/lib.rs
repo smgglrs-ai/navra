@@ -1,8 +1,14 @@
+pub mod a2a;
 pub mod auth;
+pub mod credentials;
 pub mod hooks;
+pub mod identity;
+pub mod ifc;
 pub mod models;
 pub mod notify;
 pub mod permissions;
+pub mod process;
+pub mod quota;
 pub mod protocol;
 pub mod safety;
 pub mod transport;
