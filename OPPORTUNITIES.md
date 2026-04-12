@@ -1,7 +1,7 @@
 # Opportunities — Industry Landscape Analysis (April 2026)
 
-Research from five industry developments and their implications
-for mcpd and Myelix.
+Research from industry developments and their implications
+for mcpd and Myelix. Updated April 10, 2026.
 
 ## Sources
 
@@ -10,6 +10,12 @@ for mcpd and Myelix.
 3. [Microsoft Agent Governance Toolkit](https://opensource.microsoft.com/blog/2026/04/02/introducing-the-agent-governance-toolkit-open-source-runtime-security-for-ai-agents/)
 4. [GitHub Copilot Cloud Agent Commit Signing](https://github.blog/changelog/2026-04-03-copilot-cloud-agent-signs-its-commits/)
 5. [IBM Granite 4.0 3B Vision](https://www.marktechpost.com/2026/04/01/ibm-releases-granite-4-0-3b-vision-a-new-vision-language-model-for-enterprise-grade-document-data-extraction/)
+6. [Coding Agent Components](https://magazine.sebastianraschka.com/p/components-of-a-coding-agent) — Raschka
+7. [AG-UI Multi-Agent Workflow](https://devblogs.microsoft.com/agent-framework/ag-ui-multi-agent-workflow-demo/)
+8. [Google SCION](https://github.com/GoogleCloudPlatform/scion) — Multi-agent orchestration
+9. [OpenVINO 2026.1](https://www.phoronix.com/news/OpenVINO-2026.1-Released)
+10. [GLM-OCR local deployment](https://theneuralmaze.substack.com/p/run-the-worlds-best-ocr-on-your-own)
+11. [RamaLama](https://github.com/containers/ramalama) — Container-native model management
 
 ## 1. Microsoft Agent Framework v1.0
 
@@ -156,7 +162,7 @@ the agent entirely.
 
 ### Relevance
 
-Directly actionable for mcpd-mod-git. When an agent commits through
+Directly actionable for myelix-tools-git. When an agent commits through
 mcpd, the commit should carry cryptographic proof of which agent
 authored it.
 
@@ -164,7 +170,7 @@ authored it.
 
 **For mcpd (high priority):**
 
-1. **Implement agent commit signing in mcpd-mod-git** — Add an
+1. **Implement agent commit signing in myelix-tools-git** — Add an
    optional `signing_key` path to agent config. When present,
    `git_commit` uses Git's SSH signing (`gpg.format=ssh`,
    `user.signingkey`) to sign with the agent's Ed25519 key.
@@ -204,7 +210,7 @@ understanding (GPU tier). Granite 4.0 3B Vision is the successor.
    available` registry.
 
 2. **Document extraction pipeline** — The enterprise document
-   focus aligns with `mcpd-mod-docs` watch directories. A future
+   focus aligns with `myelix-tools-docs` watch directories. A future
    enhancement could run Granite Vision on new PDF/image files
    in watched directories, extracting text and indexing via FTS5
    + sqlite-vec.
@@ -248,3 +254,163 @@ mcpd's architecture is well-aligned with industry direction:
 The main remaining gaps are **graduated permission rings** and
 **DID-based agent identity**. Agent commit signing, compliance
 tags, and the A2A endpoint are all implemented.
+
+## 6. Coding Agent Components (Raschka)
+
+### What It Is
+
+Sebastian Raschka's analysis of the 6 core components of a coding
+agent harness: (1) live repository context, (2) prompt cache
+separation (stable vs dynamic), (3) structured tool access with
+validation, (4) context bloat minimization (clipping + transcript
+reduction), (5) dual-layer session memory (full transcript +
+distilled working memory), (6) bounded subagent delegation.
+
+### Relevance
+
+Directly informs the design of `myelix-agent` SDK. Key insight:
+"a lot of apparent model quality is really context quality" — the
+harness matters as much as the model.
+
+### Opportunities
+
+1. **Agent SDK context management** — Implement cache-aware prompt
+   construction in myelix-agent, separating stable infrastructure
+   (tool descriptions, system prompt) from dynamic state
+   (conversation history). Enables prompt cache reuse.
+2. **Bounded subagent spawning** — When myelix-agent supports
+   delegation, constrain subagent scope via read-only modes, depth
+   limits, or explicit task boundaries rather than full access.
+3. **Resumable session state** — Store complete transcripts
+   separately from operational memory, enabling session recovery
+   and audit trails. Maps to myelix-core session management.
+
+## 7. AG-UI Multi-Agent Workflow (Microsoft)
+
+### What It Is
+
+AG-UI is an open protocol for streaming agent execution events to
+frontends via SSE. The Microsoft Agent Framework integration uses
+`HandoffBuilder` for declarative agent topology: directed edges
+with natural-language routing descriptions. Includes tool-level
+approval (`approval_mode="always_require"`) and information request
+interrupts (`HandoffAgentUserRequest`).
+
+### Relevance
+
+Two patterns directly applicable to mcpd/Myelix:
+- HandoffBuilder's declarative agent graph → flow DSL design
+- Interrupt/resume model → hook pipeline human-in-the-loop
+
+### Opportunities
+
+1. **Flow DSL design** — Adopt HandoffBuilder's pattern for the
+   declarative flow DSL (Priority 2): define agent topology as
+   directed edges with routing descriptions, not prompt-based
+   routing. Each edge carries IFC constraints.
+2. **Hook pipeline interrupts** — Extend the hook pipeline to
+   support interrupt/resume for human-in-the-loop approval,
+   similar to AG-UI's `TOOL_CALL_*` pause events. The existing
+   approval system in myelix-core already supports this; AG-UI
+   validates the event-streaming approach.
+3. **SSE event streaming** — AG-UI's event types (`RUN_STARTED`,
+   `STEP_STARTED`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `RUN_FINISHED`)
+   could inform how Myelix exposes workflow progress to UIs.
+
+## 8. Google SCION — Multi-Agent Orchestration
+
+### What It Is
+
+Experimental orchestration platform from Google Cloud that runs
+multiple AI agents (Claude Code, Gemini CLI, Codex) as isolated
+concurrent processes. Each agent gets its own container with
+separate credentials, config, and git worktrees. Agents coordinate
+via shared CLI tool + natural language. Template-based role
+specialization. OpenTelemetry observability.
+
+### Relevance
+
+Validates Myelix's multi-agent problem space. Different approach:
+SCION is decentralized (agents negotiate), mcpd/Myelix is
+centralized (gateway enforces security). SCION's container
+isolation per agent is similar to our model runtime isolation.
+
+### Opportunities
+
+1. **Per-agent isolation** — SCION's model of isolated credentials
+   per agent aligns with mcpd's capability tokens. Consider
+   whether myelix-agent should support containerized agent
+   execution (via myelix-model-runtime's Podman backend).
+2. **OpenTelemetry** — SCION's normalized telemetry across agent
+   harnesses is worth adopting for mcpd observability.
+
+## 9. OpenVINO 2026.1 — llama.cpp Backend
+
+### What It Is
+
+Intel's OpenVINO 2026.1 adds a preview backend for llama.cpp,
+enabling optimized inference on Intel CPUs, GPUs, and NPUs.
+Validated on Llama-3.2-1B, Phi-3-mini, Qwen2.5-1.5B, Mistral-7B.
+Also adds Wildcat Lake SoC support and Intel Arc Pro B70 (32GB).
+
+### Relevance
+
+This means managed-tier models served via `myelix-model-runtime`
+(which spawns llama-server) can transparently use Intel NPU
+acceleration if OpenVINO is installed. No mcpd code changes needed.
+
+### Opportunities
+
+1. **Intel NPU for managed models** — Document that llama-server
+   with OpenVINO backend enables NPU inference for managed-tier
+   models. Test with Granite models on Intel Core Ultra hardware.
+2. **OpenVINO EP for ort** — Add `OpenVINOExecutionProvider` option
+   to `OnnxBackend::load()` for in-process models (embeddings,
+   safety classifier) on Intel hardware.
+
+## 10. GLM-OCR — Local Document Understanding
+
+### What It Is
+
+0.9B parameter OCR model, #1 on OmniDocBench V1.5 (94.62 score).
+Runs locally via llama.cpp/Ollama on CPU. Outputs structured
+markdown from complex documents (tables, headers, forms).
+
+### Relevance
+
+Fills the document ingestion gap in myelix-tools-docs and
+myelix-rag. Small enough for CPU-tier via managed runtime.
+
+### Opportunities
+
+1. **Document ingestion pipeline** — Add GLM-OCR as a managed model
+   (`source = "ollama://glm-ocr"`) for converting PDFs/images to
+   searchable text. Feed output into myelix-rag for semantic indexing.
+2. **Complement Granite Vision** — GLM-OCR for CPU-tier bulk
+   ingestion, Granite Vision 3.3 2B for GPU-tier accuracy-critical OCR.
+
+## 11. RamaLama — Prior Art for Model Management
+
+### What It Is
+
+Python CLI from the Containers org (Podman/Buildah/Skopeo team)
+that treats AI models like container images. `ramalama serve`
+auto-detects GPU, pulls matching container image, runs llama.cpp
+or vLLM in rootless Podman with `--network=none` isolation.
+Supports `ollama://`, `hf://`, `oci://` URI schemes.
+
+### Relevance
+
+Direct prior art for `myelix-model-hub` and `myelix-model-runtime`.
+We reimplemented the relevant parts in Rust (URI scheme, cache,
+GPU detection, container lifecycle) as reusable crates without
+the Python dependency.
+
+### Opportunities
+
+1. **URI compatibility** — Our hub uses the same URI scheme as
+   RamaLama. If RamaLama evolves its registry format, track it.
+2. **OCI model artifacts** — RamaLama's `ramalama convert` creates
+   OCI images from models. Our OCI transport could pull these.
+3. **Security model alignment** — RamaLama's `--network=none` +
+   read-only mounts is the same pattern we use in PodmanRuntime.

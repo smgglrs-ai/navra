@@ -122,7 +122,138 @@ locality = "local"
 | **Vision** | — | Gemma 4 (general) + Granite Vision (OCR) |
 | **License** | 100% Apache 2.0 / MIT | Voxtral is CC BY-NC (personal use) |
 
+### OCR / Document Understanding Candidates
+
+Models evaluated for document ingestion in myelix-tools-docs and
+myelix-rag (landscape research, April 2026):
+
+| Model | Params | Runtime | Speed | Notes |
+|-------|--------|---------|-------|-------|
+| GLM-OCR | 0.9B | llama.cpp / Ollama | ~175s first token (CPU) | #1 OmniDocBench (94.62). Structured markdown output. Good CPU-tier candidate for doc ingestion. |
+| Nemotron OCR v2 (EN) | 54M | PyTorch (GPU) | 34.7 pages/s (A100) | Traditional detector+recognizer+relational. GPU-only. |
+| Nemotron OCR v2 (multi) | 84M | PyTorch (GPU) | 34.7 pages/s (A100) | 5 languages. 37-40GB VRAM full, 24GB with skip_relational. |
+| Granite Vision 3.3 2B | 2B | vLLM / ollama | GPU | Already in GPU tier. #2 OCRBench. |
+
+**Recommendation:** GLM-OCR for CPU-tier document ingestion (runs via
+Ollama, extracts structured markdown). Granite Vision for GPU-tier
+OCR where accuracy matters. Nemotron OCR v2 is fast but requires GPU
+and Python — doesn't fit our in-process ONNX or managed runtime model.
+
+### Safety Model Candidates
+
+Beyond the existing Guardian HAP 38M (in-process ONNX) and Guardian
+3.3 8B (GPU tier), a new option from NVIDIA:
+
+| Model | Params | Architecture | Accuracy | Modes |
+|-------|--------|-------------|----------|-------|
+| Guardian HAP 38M | 38M | BERT classifier | Good for HAP | Binary |
+| Guardian 3.3 8B | 8B | LLM (Granite) | Full taxonomy | Generative |
+| Nemotron Content Safety | 4B | Gemma-3 + adapter | ~84% multimodal | Binary + 23-cat taxonomy toggle |
+
+Nemotron Content Safety is interesting for multimodal safety (text +
+images), but at 4B parameters it must run as an external server via
+myelix-model-runtime (Podman or direct llama-server). Not suitable
+for in-process ONNX. The license (NVIDIA Open Model) should be
+evaluated against our Granite-first / Apache 2.0 preference.
+
+### Multimodal RAG Upgrade Path
+
+For visual document retrieval (charts, tables, diagrams), NVIDIA's
+embedding models (landscape research, April 2026):
+
+| Model | Params | Capability |
+|-------|--------|-----------|
+| Granite Vision 3.3 2B Embedding | 2B | Current plan. HF Transformers only. |
+| Llama Nemotron Embed VL | 1.7B | Visual-semantic embeddings, Matryoshka dimensionality. Pareto-frontier on ViDoRe V3. |
+| Llama Nemotron Rerank VL | 1.7B | Cross-encoder reranking for visual docs. Pairs with Embed VL. |
+
+The Nemotron VL pair could replace or complement Granite Vision 2B
+Embedding for visual RAG. Both are GPU-tier models. Evaluate when
+myelix-rag adds multimodal support.
+
 ## Model Serving Architecture
+
+### Two-Tier Inference Model
+
+mcpd uses two distinct inference tiers, each with its own crate:
+
+```
+┌─────────────────────────────────────────────────┐
+│  Tier 1: In-Process (< 200M params)             │
+│  myelix-model + ort (ONNX Runtime)              │
+│    ├── CPUExecutionProvider  (default)           │
+│    ├── OpenVINOExecutionProvider  (Intel NPU)    │
+│    └── CUDAExecutionProvider  (NVIDIA GPU)       │
+│  Embeddings, classification, safety, VAD, TTS   │
+│  Sub-100ms latency, no external dependencies    │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  Tier 2: Managed External (> 1B params)         │
+│  myelix-model-hub + myelix-model-runtime        │
+│    ├── direct  (spawn llama-server, no isolation)│
+│    ├── podman  (rootless container, --network=none)│
+│    └── libkrun  (microVM, future)               │
+│  LLMs, VLMs, OCR-VL, voice, deep safety         │
+│  OpenAI-compat API, managed lifecycle           │
+└─────────────────────────────────────────────────┘
+```
+
+**Why two tiers:** ONNX Runtime excels at single-pass encoder models
+(embeddings, classifiers) but lacks KV-cache management, speculative
+decoding, paged attention, and efficient quantization formats (GGUF
+Q4_K_M) needed for autoregressive LLM inference. Models > 1B params
+belong in the managed tier, served by llama.cpp or vLLM.
+
+### Model Hub (`myelix-model-hub` crate)
+
+Models are addressed by URI, following RamaLama conventions:
+
+- `ollama://granite-code:3b` — Ollama registry (default)
+- `hf://ibm-granite/granite-3.3-8b-instruct-GGUF` — HuggingFace Hub
+- `oci://quay.io/myorg/mymodel:latest` — OCI container registry
+- `file:///path/to/model.gguf` — local file (no pull needed)
+
+Content-addressed cache at `~/.local/share/myelix/models/` with
+deduplication (same content = same blob, multiple refs).
+
+### Model Runtime (`myelix-model-runtime` crate)
+
+Pluggable isolation backends (feature flags):
+
+| Backend | Isolation | GPU Passthrough | Use Case |
+|---------|-----------|-----------------|----------|
+| `direct` | None (child process) | Native | Development |
+| `podman` | Namespace/cgroup, `--network=none` | CDI (NVIDIA), DRM (AMD/Intel) | Default production |
+| `libkrun` | MicroVM (~100ms boot) | virtio-gpu | Hardened / untrusted models |
+
+GPU auto-detection via sysfs/procfs (NVIDIA `/proc/driver/nvidia/`,
+AMD/Intel `/sys/class/drm/` vendor IDs).
+
+### Managed Model Configuration
+
+```toml
+# Managed model — hub pulls, runtime serves, mcpd connects
+[models.reasoning]
+source = "ollama://granite3.3:8b"     # myelix-model-hub pulls this
+runtime = "podman"                     # or "direct" for dev
+gpu = "auto"                           # auto-detect, or "cpu", "cuda", "rocm"
+context_size = 4096
+locality = "local"
+
+# In-process model — no hub/runtime needed
+[models.embeddings]
+backend = "onnx"
+model_path = "~/.local/share/myelix/models/granite-embedding-r2-int8.onnx"
+tokenizer_path = "~/.local/share/myelix/models/granite-embedding-r2/tokenizer.json"
+device = "cpu"
+```
+
+When `source` is present, mcpd at startup:
+1. Pulls the model via `ModelHub` (if not cached)
+2. Starts a server via `ModelRuntime` (Podman or direct)
+3. Connects via `OpenAiBackend` to the local endpoint
+4. Stops the server on mcpd shutdown
 
 ### In-Process Models (CPU tier, via `ort` crate)
 
@@ -286,12 +417,24 @@ pub struct KokoroModel {
 Existing Rust implementations: `kokoro-onnx` (Python wrapper) and
 browser WASM demos. A native Rust wrapper would be needed.
 
-### External Models (GPU tier, via OpenAI-compatible API)
+### External Models (GPU tier, managed or manual)
 
-Larger models run in external serving processes. mcpd connects via
-HTTP to their OpenAI-compatible APIs.
+Larger models run as external servers. Two modes:
+
+**Managed (via `myelix-model-hub` + `myelix-model-runtime`):**
+mcpd pulls the model, starts a containerized llama-server or vLLM,
+and connects automatically. No manual setup. Model lifecycle tied
+to mcpd.
+
+**Manual (existing):** User runs vLLM/ollama separately, mcpd
+connects via `OpenAiBackend` to a pre-existing endpoint.
 
 ```
+Managed mode:
+mcpd ──starts──► Podman container (llama-server + model)
+     ──HTTP────► localhost:<auto-port>/v1
+
+Manual mode:
 mcpd ──HTTP──► vLLM instance 1 (Granite Speech 1B, Vision 2B, Guardian 8B)
            ──► vLLM-Omni instance 2 (Voxtral TTS 4B)
            ──► ollama (Granite 4 Tiny, Ministral 3)
@@ -385,7 +528,7 @@ ollama pull granite4:tiny
 ollama cannot serve Speech or TTS models, so those still need
 vLLM or the CPU tier.
 
-### Model Backend Trait (mcpd-model crate)
+### Model Backend Trait (myelix-model crate)
 
 The `ModelBackend` trait unifies both in-process (ONNX) and
 external (API) backends behind a single interface.
@@ -767,7 +910,7 @@ audio_device = "default"
 This lets users upgrade individual capabilities by uncommenting a
 line, without changing module code.
 
-### Rust Crate Dependencies (mcpd-model)
+### Rust Crate Dependencies (myelix-model)
 
 ```toml
 [dependencies]
@@ -942,7 +1085,7 @@ different concerns:
 - **Regex filters**: Less useful inbound (the agent is unlikely to
   write AWS keys), but still catch accidental secret propagation
 
-Implementation in `mcpd-core`:
+Implementation in `myelix-core`:
 
 ```rust
 pub struct FilterPipeline {
@@ -1142,15 +1285,15 @@ pub fn build_pipeline(profile: &str, models: &ModelRegistry) -> FilterPipeline {
 
 ## New Modules
 
-### mcpd-mod-rag — Vector Search & Document Intelligence
+### myelix-rag — Vector Search & Document Intelligence
 
 Upgrades document search from keyword-only (FTS5) to semantic
 similarity + visual document understanding.
 
 ```
-mcpd-mod-docs (FTS5, keyword)
+myelix-tools-docs (FTS5, keyword)
         +
-mcpd-mod-rag (vector, semantic)
+myelix-rag (vector, semantic)
         =
 Hybrid search: keyword recall + semantic precision
 ```
@@ -1161,7 +1304,7 @@ Myelix already has a RAG system (FAISS + all-MiniLM-L6-v2, 384-dim)
 in `/src/myelix/cognitive/knowledge/`. The two serve different
 purposes:
 
-| | mcpd-mod-rag | Myelix Knowledge |
+| | myelix-rag | Myelix Knowledge |
 |---|---|---|
 | **What it indexes** | User documents (~/Documents, ~/Code, ~/Notes) | Internal knowledge (heuristics, code snippets, personas) |
 | **Access control** | Path ACLs, deny-wins, approval workflow | None (internal to Myelix) |
@@ -1172,15 +1315,15 @@ purposes:
 | **Persistence** | `$XDG_DATA_HOME/mcpd/index.db` | `knowledge_index.faiss` |
 
 They are complementary: Myelix's RAG is the agent's internal memory;
-mcpd-mod-rag is the agent's view of the user's documents, mediated
+myelix-rag is the agent's view of the user's documents, mediated
 by permissions and safety filters. Myelix specialists query mcpd's
 `rag_query` tool for user documents, and their own knowledge system
 for heuristics and learned patterns.
 
 #### Dependencies
 
-- `mcpd-core` — Module trait, permissions
-- `mcpd-model` — ModelBackend for embeddings (ONNX in-process)
+- `myelix-core` — Module trait, permissions
+- `myelix-model` — ModelBackend for embeddings (ONNX in-process)
 - `sqlite-vec` — Vector storage in SQLite (aligns with DESIGN.md)
 - `tokenizers` — Text chunking
 
@@ -1237,7 +1380,7 @@ CREATE VIRTUAL TABLE page_vectors USING vec0(
 ```
 User query
     │
-    ├──► FTS5 keyword search (mcpd-mod-docs) ──► candidates_keyword
+    ├──► FTS5 keyword search (myelix-tools-docs) ──► candidates_keyword
     │
     ├──► Embed query (Granite R2 149M, in-process ONNX)
     │    └──► sqlite-vec KNN search ──► candidates_semantic
@@ -1249,15 +1392,15 @@ User query
               └──► Top-K results with scores
 ```
 
-### mcpd-mod-voice — Speech I/O
+### myelix-modal-voice — Speech I/O
 
 Desktop voice interface: microphone input → ASR → process →
 TTS → speaker output.
 
 #### Dependencies
 
-- `mcpd-core` — Module trait
-- `mcpd-model` — ModelBackend for ASR + TTS
+- `myelix-core` — Module trait
+- `myelix-model` — ModelBackend for ASR + TTS
 - `cpal` — Cross-platform audio I/O (PipeWire/PulseAudio/ALSA)
 - `hound` — WAV encoding for audio buffers
 
@@ -1323,15 +1466,15 @@ Speaker (cpal)
 - PipeWire preferred (Fedora default), fallback to PulseAudio/ALSA
 - Keyboard shortcut activation via D-Bus method call
 
-### mcpd-mod-vision — Document & Screen Understanding
+### myelix-modal-vision — Document & Screen Understanding
 
 Visual understanding for documents, screenshots, and screen capture.
 GPU tier only — no CPU-tier vision model available.
 
 #### Dependencies
 
-- `mcpd-core` — Module trait
-- `mcpd-model` — ModelBackend for vision models (OpenAI backend)
+- `myelix-core` — Module trait
+- `myelix-model` — ModelBackend for vision models (OpenAI backend)
 
 #### Tools
 
@@ -1352,33 +1495,46 @@ GPU tier only — no CPU-tier vision model available.
 - Vision model response (description text) passes through outbound
   safety filter — redacts any secrets visible on screen
 
-## Crate Structure (updated)
+## Crate Structure (updated April 2026)
 
 ```
 mcpd/
-├── mcpd-core          MCP framework, permissions, safety pipeline
-├── mcpd-model         Model backend trait + ONNX/Whisper/OpenAI impls
-├── mcpd-mod-docs      Document tools (FTS5, file I/O)
-├── mcpd-mod-rag       Vector search + visual document retrieval
-├── mcpd-mod-voice     Speech I/O (ASR + TTS)
-├── mcpd-mod-vision    Image/screen understanding (GPU tier)
-└── mcpd-server        Binary: config, module loading, tray, CLI
+├── myelix-protocol       MCP/A2A/JSON-RPC types, upstream transports
+├── myelix-model          Model backend trait + ONNX/OpenAI impls
+├── myelix-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
+├── myelix-model-runtime  Serve models (Podman, direct, libkrun)
+├── myelix-security       Auth, permissions, IFC, safety filters, hooks
+├── myelix-core           Server, module trait, session, transport
+├── myelix-tools-docs     Document tools (FTS5, file I/O)
+├── myelix-tools-git      Git tools (status, diff, log, branch, commit)
+├── myelix-rag            Vector search, sqlite-vec, semantic chunking
+├── myelix-modal-voice    Speech I/O (ASR + TTS via ONNX models)
+├── myelix-modal-vision   Image/screen understanding (GPU tier)
+└── myelix-server         Binary: CLI, config, module wiring (mcpd)
 ```
 
 ### Dependency Graph
 
 ```
-mcpd-server
-    ├── mcpd-core
-    ├── mcpd-model ──► ort, whisper-rs, reqwest, tokenizers
-    ├── mcpd-mod-docs ──► mcpd-core
-    ├── mcpd-mod-rag  ──► mcpd-core, mcpd-model
-    ├── mcpd-mod-voice ──► mcpd-core, mcpd-model, cpal
-    └── mcpd-mod-vision ──► mcpd-core, mcpd-model
+myelix-protocol          (no myelix deps)
+myelix-model             (no myelix deps) ──► ort, tokenizers, reqwest
+myelix-model-hub         (no myelix deps) ──► reqwest, sha2
+myelix-model-runtime     (no myelix deps) ──► reqwest, libc
+    ↓
+myelix-security          (protocol + model)
+    ↓
+myelix-core              (protocol + model + security)
+    ↓
+myelix-tools-*  ─────┐
+myelix-rag      ─────┼── (core only)
+myelix-modal-*  ─────┘
+    ↓
+myelix-server            (all + hub + runtime)
 ```
 
-`mcpd-mod-docs` has no model dependency — it stays pure file I/O + FTS5.
-Model-dependent modules depend on `mcpd-model`.
+The `myelix-model-*` crates form a reusable family with no myelix
+dependencies — usable by Myelix agents or any Rust project that needs
+to pull and serve AI models.
 
 ## Full Configuration Example
 
@@ -1538,8 +1694,8 @@ Myelix is at Phase 5.5+ with:
   (heuristics, code snippets) — distinct from mcpd's document RAG
 - **Validation**: Multi-judge system (9 judges, 3 dimensions),
   anti-drift detection
-- **No voice/speech** — to be provided by mcpd-mod-voice
-- **No vision** — to be provided by mcpd-mod-vision
+- **No voice/speech** — to be provided by myelix-modal-voice
+- **No vision** — to be provided by myelix-modal-vision
 
 ### Integration Architecture
 
@@ -1615,11 +1771,11 @@ secure file access.
 
 ### Phase 1 — Model backend + safety upgrade
 
-1. Create `mcpd-model` crate with `ModelBackend` trait
+1. Create `myelix-model` crate with `ModelBackend` trait
 2. Implement `OnnxBackend` (Guardian HAP 38M + Embedding R2 on CPU)
 3. Implement `WhisperBackend` (Whisper via whisper-rs)
 4. Implement `OpenAiBackend` (for GPU tier models)
-5. Add `ModelFilter` trait to `mcpd-core` safety pipeline
+5. Add `ModelFilter` trait to `myelix-core` safety pipeline
 6. Add bidirectional filtering (`process_inbound` for write-path ops)
 7. Implement `GuardianHapFilter` using in-process ONNX
 8. Add `"guardian"` and `"guardian-deep"` safety profiles
@@ -1627,17 +1783,17 @@ secure file access.
 
 ### Phase 2 — RAG module
 
-1. Create `mcpd-mod-rag` crate
+1. Create `myelix-rag` crate
 2. Add `sqlite-vec` dependency, vector tables
 3. Implement chunking (paragraph + sentence boundaries)
 4. Implement `rag_index` with pre-embedding safety filter
 5. Implement `rag_query` (embed via in-process ONNX → KNN → results)
 6. Implement hybrid search (FTS5 + vector merge)
-7. Wire into `mcpd-server`
+7. Wire into `myelix-server`
 
 ### Phase 3 — Voice module
 
-1. Create `mcpd-mod-voice` crate
+1. Create `myelix-modal-voice` crate
 2. Audio capture via `cpal`
 3. VAD via in-process silero-vad ONNX
 4. `voice_listen`: record → VAD → transcribe (Whisper or Granite)
@@ -1647,7 +1803,7 @@ secure file access.
 
 ### Phase 4 — Vision module (GPU tier)
 
-1. Create `mcpd-mod-vision` crate
+1. Create `myelix-modal-vision` crate
 2. `vision_describe` / `vision_ocr` / `vision_ask`
 3. Screen capture via XDG portal
 4. Outbound filter on vision model descriptions
@@ -1875,6 +2031,20 @@ keeps the binary small and allows distro packaging.
 `ORT_STRATEGY=download`. OpenVINO and ROCm require building ONNX
 Runtime from source or providing custom shared libraries. Plan CI/CD
 accordingly — ship platform-specific binaries.
+
+### OpenVINO 2026.1 — llama.cpp Backend (Preview)
+
+As of OpenVINO 2026.1 (April 2026), a preview OpenVINO backend for
+llama.cpp enables optimized inference on Intel CPUs, GPUs, and NPUs.
+Validated on Llama-3.2-1B, Phi-3-mini, Qwen2.5-1.5B, Mistral-7B.
+
+This means managed-tier models served via `myelix-model-runtime`
+(which spawns llama-server) can transparently use Intel NPU
+acceleration if OpenVINO is installed. No mcpd code changes needed —
+llama-server picks up the OpenVINO backend at runtime.
+
+New hardware support: Wildcat Lake SoCs, Intel Arc Pro B70 (32GB).
+Also adds Qwen3 VL support (CPU + GPU), GPT-OSS 120B (CPU).
 
 ### OpenVINO Setup (Intel Core Ultra)
 

@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "myelix-protocol",
     "myelix-model",
+    "myelix-model-hub",
+    "myelix-model-runtime",
     "myelix-security",
     "myelix-core",
     "myelix-tools-docs",
