@@ -1,0 +1,420 @@
+//! Forge: loads, validates, and indexes cognitive YAML files.
+//!
+//! Scans a cognitive core directory with the following layout:
+//!
+//! ```text
+//! cognitive_core/
+//! ├── personas/
+//! ├── directives/
+//! ├── heuristics/
+//! └── persona_specializations/
+//! ```
+
+use crate::error::CognitiveError;
+use crate::types::{Directive, HeuristicModule, HeuristicRef, Persona, Specialization};
+use std::collections::HashMap;
+use std::path::Path;
+
+/// Registry of cognitive artifacts loaded from YAML files.
+pub struct ForgeService {
+    personas: HashMap<String, Persona>,
+    heuristics: HashMap<String, HeuristicModule>,
+    directives: HashMap<String, Directive>,
+    specializations: HashMap<String, Specialization>,
+}
+
+impl ForgeService {
+    /// Load cognitive artifacts from a directory.
+    ///
+    /// Scans `personas/`, `directives/`, `heuristics/`, and
+    /// `persona_specializations/` subdirectories for YAML files.
+    /// Missing subdirectories are silently skipped.
+    pub fn load(cognitive_core_dir: &Path) -> Result<Self, CognitiveError> {
+        let personas = load_dir::<Persona>(
+            &cognitive_core_dir.join("personas"),
+            |p| p.persona_name.clone(),
+        )?;
+        let directives = load_dir::<Directive>(
+            &cognitive_core_dir.join("directives"),
+            |d| d.directive_name.clone(),
+        )?;
+        let heuristics = load_dir::<HeuristicModule>(
+            &cognitive_core_dir.join("heuristics"),
+            |h| h.heuristic_name.clone(),
+        )?;
+        let specializations = load_dir::<Specialization>(
+            &cognitive_core_dir.join("persona_specializations"),
+            |s| format!("{}_{}", s.base_persona, s.description.replace(' ', "_").to_lowercase()),
+        )?;
+
+        tracing::info!(
+            personas = personas.len(),
+            directives = directives.len(),
+            heuristics = heuristics.len(),
+            specializations = specializations.len(),
+            "Cognitive core loaded"
+        );
+
+        Ok(Self {
+            personas,
+            heuristics,
+            directives,
+            specializations,
+        })
+    }
+
+    /// Create an empty ForgeService (for testing or when no cognitive core exists).
+    pub fn empty() -> Self {
+        Self {
+            personas: HashMap::new(),
+            heuristics: HashMap::new(),
+            directives: HashMap::new(),
+            specializations: HashMap::new(),
+        }
+    }
+
+    /// Get a persona by name.
+    pub fn get_persona(&self, name: &str) -> Option<&Persona> {
+        self.personas.get(name)
+    }
+
+    /// Get a persona with a specialization merged in.
+    ///
+    /// Creates a copy of the base persona with additional heuristics,
+    /// tools, and directives from the specialization.
+    pub fn get_persona_specialized(
+        &self,
+        name: &str,
+        spec_name: &str,
+    ) -> Result<Persona, CognitiveError> {
+        let base = self
+            .personas
+            .get(name)
+            .ok_or_else(|| CognitiveError::PersonaNotFound(name.into()))?;
+        let spec = self
+            .specializations
+            .get(spec_name)
+            .ok_or_else(|| CognitiveError::SpecializationNotFound(spec_name.into()))?;
+
+        let mut merged = base.clone();
+
+        // Add specialization heuristics (format: "module.facet")
+        for href in &spec.heuristics {
+            if let Some((module, facet)) = href.split_once('.') {
+                // Check if module already referenced, add facet
+                if let Some(existing) = merged
+                    .heuristics
+                    .iter_mut()
+                    .find(|h| h.module == module)
+                {
+                    if !existing.facets.contains(&facet.to_string()) {
+                        existing.facets.push(facet.to_string());
+                    }
+                } else {
+                    merged.heuristics.push(HeuristicRef {
+                        module: module.to_string(),
+                        facets: vec![facet.to_string()],
+                    });
+                }
+            }
+        }
+
+        // Add specialization tools
+        for tool in &spec.tools {
+            if !merged.tools.contains(tool) {
+                merged.tools.push(tool.clone());
+            }
+        }
+
+        // If specialization adds directives, set loads_directives
+        if !spec.directives.is_empty() {
+            merged.loads_directives = true;
+        }
+
+        Ok(merged)
+    }
+
+    /// Get a heuristic module by name.
+    pub fn get_heuristic(&self, name: &str) -> Option<&HeuristicModule> {
+        self.heuristics.get(name)
+    }
+
+    /// Get a directive by name.
+    pub fn get_directive(&self, name: &str) -> Option<&Directive> {
+        self.directives.get(name)
+    }
+
+    /// Get all directives.
+    pub fn all_directives(&self) -> Vec<&Directive> {
+        self.directives.values().collect()
+    }
+
+    /// List all persona names.
+    pub fn persona_names(&self) -> Vec<&str> {
+        self.personas.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Get the model name for a specific phase.
+    ///
+    /// Returns planning_model for "planning", execution_model for
+    /// "execution", or model_override as fallback.
+    pub fn model_for_phase(&self, persona_name: &str, phase: &str) -> Option<String> {
+        let persona = self.personas.get(persona_name)?;
+        match phase {
+            "planning" => persona
+                .planning_model
+                .clone()
+                .or_else(|| persona.model_override.clone()),
+            "execution" => persona
+                .execution_model
+                .clone()
+                .or_else(|| persona.model_override.clone()),
+            _ => persona.model_override.clone(),
+        }
+    }
+
+    /// Number of loaded personas.
+    pub fn persona_count(&self) -> usize {
+        self.personas.len()
+    }
+
+    /// Number of loaded heuristic modules.
+    pub fn heuristic_count(&self) -> usize {
+        self.heuristics.len()
+    }
+
+    /// Number of loaded directives.
+    pub fn directive_count(&self) -> usize {
+        self.directives.len()
+    }
+}
+
+/// Load all YAML files from a directory into a HashMap.
+fn load_dir<T: serde::de::DeserializeOwned>(
+    dir: &Path,
+    key_fn: impl Fn(&T) -> String,
+) -> Result<HashMap<String, T>, CognitiveError> {
+    let mut map = HashMap::new();
+    if !dir.exists() {
+        return Ok(map);
+    }
+
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("yaml")
+            && path.extension().and_then(|e| e.to_str()) != Some("yml")
+        {
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+
+        let content = std::fs::read_to_string(&path)?;
+        let item: T = serde_yaml::from_str(&content).map_err(|e| CognitiveError::Yaml {
+            path: path.display().to_string(),
+            source: e,
+        })?;
+        let key = key_fn(&item);
+        map.insert(key, item);
+    }
+
+    Ok(map)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn setup_test_dir(dir: &Path) {
+        let personas_dir = dir.join("personas");
+        let directives_dir = dir.join("directives");
+        let heuristics_dir = dir.join("heuristics");
+        let specs_dir = dir.join("persona_specializations");
+        fs::create_dir_all(&personas_dir).unwrap();
+        fs::create_dir_all(&directives_dir).unwrap();
+        fs::create_dir_all(&heuristics_dir).unwrap();
+        fs::create_dir_all(&specs_dir).unwrap();
+
+        fs::write(
+            personas_dir.join("developer.yaml"),
+            r#"
+persona_name: developer
+display_name: "Developer"
+core_mandate: "Write code."
+heuristics:
+  - module: security
+    facets: [input_validation]
+tools: [filesystem]
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            personas_dir.join("leader.yaml"),
+            r#"
+persona_name: leader
+display_name: "Leader"
+core_mandate: "Orchestrate tasks."
+loads_directives: true
+planning_model: claude-opus-4-5
+execution_model: claude-sonnet-4-5
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            directives_dir.join("security.yaml"),
+            r#"
+directive_name: security_protocol
+description: "Security rules"
+content: |
+  All inputs must be validated.
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            heuristics_dir.join("security.yaml"),
+            r#"
+heuristic_name: security
+description: "Security heuristics"
+facets:
+  - facet_name: input_validation
+    content: "Validate all inputs."
+  - facet_name: least_privilege
+    content: "Use minimum permissions."
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            specs_dir.join("backend.yaml"),
+            r#"
+base_persona: developer
+description: "backend specialist"
+heuristics:
+  - security.least_privilege
+tools:
+  - database_profiler
+directives:
+  - security_protocol
+"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn load_from_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        assert_eq!(forge.persona_count(), 2);
+        assert_eq!(forge.heuristic_count(), 1);
+        assert_eq!(forge.directive_count(), 1);
+    }
+
+    #[test]
+    fn get_persona() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        let dev = forge.get_persona("developer").unwrap();
+        assert_eq!(dev.display_name, "Developer");
+        assert_eq!(dev.heuristics.len(), 1);
+        assert_eq!(dev.tools, vec!["filesystem"]);
+    }
+
+    #[test]
+    fn specialization_merges() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        // Find the specialization key
+        let spec_key = forge
+            .specializations
+            .keys()
+            .find(|k| k.contains("backend"))
+            .unwrap()
+            .clone();
+
+        let merged = forge
+            .get_persona_specialized("developer", &spec_key)
+            .unwrap();
+
+        // Should have original input_validation + added least_privilege
+        let sec_ref = merged
+            .heuristics
+            .iter()
+            .find(|h| h.module == "security")
+            .unwrap();
+        assert!(sec_ref.facets.contains(&"input_validation".to_string()));
+        assert!(sec_ref.facets.contains(&"least_privilege".to_string()));
+
+        // Should have added tool
+        assert!(merged.tools.contains(&"database_profiler".to_string()));
+
+        // Should have loads_directives set (specialization adds directives)
+        assert!(merged.loads_directives);
+    }
+
+    #[test]
+    fn model_for_phase() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        assert_eq!(
+            forge.model_for_phase("leader", "planning").unwrap(),
+            "claude-opus-4-5"
+        );
+        assert_eq!(
+            forge.model_for_phase("leader", "execution").unwrap(),
+            "claude-sonnet-4-5"
+        );
+        assert!(forge.model_for_phase("developer", "planning").is_none());
+    }
+
+    #[test]
+    fn empty_forge() {
+        let forge = ForgeService::empty();
+        assert_eq!(forge.persona_count(), 0);
+        assert!(forge.get_persona("anything").is_none());
+    }
+
+    #[test]
+    fn missing_directory_ok() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Don't create subdirectories — should still load with empty maps
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        assert_eq!(forge.persona_count(), 0);
+    }
+
+    #[test]
+    fn all_directives() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        let directives = forge.all_directives();
+        assert_eq!(directives.len(), 1);
+        assert!(directives[0].content.contains("validated"));
+    }
+
+    #[test]
+    fn persona_names_list() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        let names = forge.persona_names();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"developer"));
+        assert!(names.contains(&"leader"));
+    }
+}
