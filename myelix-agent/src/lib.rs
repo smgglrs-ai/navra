@@ -49,8 +49,8 @@ pub use myelix_protocol::{
 };
 pub use myelix_protocol::label::DataLabel;
 pub use myelix_model::{
-    ChatMessage, ChatRequest, ChatResponse, ChatToolDefinition, FinishReason, ModelBackend,
-    OpenAiBackend, Locality,
+    AnthropicBackend, ChatMessage, ChatRequest, ChatResponse, ChatToolDefinition, FinishReason,
+    ModelBackend, OpenAiBackend, Locality,
 };
 pub use myelix_security::identity::{CapSigner, Ed25519Signer, load_or_create_file_identity};
 pub use myelix_security::ifc::TaintTracker;
