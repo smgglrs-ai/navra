@@ -24,6 +24,8 @@ package only provides shared libraries.
 |---|---|---|
 | `myelix-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports |
 | `myelix-model` | Infrastructure | Model backend trait + ONNX/OpenAI implementations |
+| `myelix-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
+| `myelix-model-runtime` | Infrastructure | Serve models with pluggable isolation (Podman, direct, libkrun) |
 | `myelix-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks |
 | `myelix-core` | Infrastructure | Server, module trait, session, transport, re-exports |
 | `myelix-tools-docs` | Tool | Document tools, SQLite FTS5 + sqlite-vec |
@@ -38,6 +40,8 @@ package only provides shared libraries.
 ```
 myelix-protocol          (no myelix deps)
 myelix-model             (no myelix deps)
+myelix-model-hub         (no myelix deps)
+myelix-model-runtime     (no myelix deps)
     ↓
 myelix-security          (protocol + model)
     ↓
@@ -47,7 +51,7 @@ myelix-tools-*  ─────┐
 myelix-rag      ─────┼── (core only)
 myelix-modal-*  ─────┘
     ↓
-myelix-server            (all of the above)
+myelix-server            (all + hub + runtime)
 ```
 
 ## Architecture

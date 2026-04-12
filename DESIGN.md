@@ -18,20 +18,30 @@ of origin.
 
 ## Crate Structure
 
+See CLAUDE.md for the full 12-crate workspace table. Summary:
+
 ```
 mcpd/
-├── mcpd-core         MCP framework, permissions, hooks, approval, D-Bus, notify
-├── mcpd-mod-docs     Document module (search, read, write, edit, delete, list, info)
-├── mcpd-mod-git      Git module (status, diff, log, branch, commit)
-└── mcpd-server       Binary: config, module loading, system tray, CLI
+├── myelix-protocol       MCP/A2A/JSON-RPC types, upstream transports
+├── myelix-model          Model backend trait + ONNX/OpenAI impls
+├── myelix-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
+├── myelix-model-runtime  Serve models (Podman, direct, libkrun)
+├── myelix-security       Auth, permissions, IFC, safety, hooks, notify
+├── myelix-core           Server, module trait, session, transport
+├── myelix-tools-docs     Document tools (FTS5, file I/O)
+├── myelix-tools-git      Git tools (status, diff, log, branch, commit)
+├── myelix-rag            Vector search, sqlite-vec, semantic chunking
+├── myelix-modal-voice    Speech I/O (ASR + TTS via ONNX)
+├── myelix-modal-vision   Image/screen understanding (GPU tier)
+└── myelix-server         Binary: CLI, config, module wiring (mcpd)
 ```
 
 | Crate | Role |
 |-------|------|
-| `mcpd-core` | MCP protocol (JSON-RPC 2.0, Streamable HTTP + SSE, tools + prompts + resources), Module trait, permission engine (path ACLs + per-tool rules), hook pipeline, approval store, D-Bus notifier, BLAKE3 token auth, resilient transports |
-| `mcpd-mod-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
-| `mcpd-mod-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`), approval for commits |
-| `mcpd-server` | Binary that loads modules from config, system tray (ksni), CLI commands |
+| `myelix-core` | MCP protocol (JSON-RPC 2.0, Streamable HTTP + SSE, tools + prompts + resources), Module trait, permission engine (path ACLs + per-tool rules), hook pipeline, approval store, D-Bus notifier, BLAKE3 token auth, resilient transports |
+| `myelix-tools-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
+| `myelix-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`), approval for commits |
+| `myelix-server` | Binary that loads modules from config, system tray (ksni), CLI commands |
 
 ## Architecture
 
@@ -42,51 +52,51 @@ mcpd/
                              │ MCP Streamable HTTP + SSE
                              │ (Unix socket or TCP)
 ┌────────────────────────────▼─────────────────────────────────────────┐
-│                          mcpd-server (gateway)                       │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐ │
-│  │ System Tray │  │    Config    │  │      Module Loader          │ │
-│  │   (ksni)    │  │   (TOML)    │  │ DocsModule, GitModule       │ │
-│  │ Approve/Deny│  │             │  │ + upstream MCP servers       │ │
-│  │ Pause/Resume│  │             │  │                              │ │
-│  └──────┬──────┘  └─────────────┘  └──────────────┬──────────────┘ │
-│         │                                          │                │
-│  ┌──────▼──────────────────────────────────────────▼──────────────┐ │
-│  │                        mcpd-core                               │ │
-│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐  │ │
-│  │  │ JSON-RPC   │ │ MCP Proto  │ │ Streamable │ │   Auth     │  │ │
-│  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP + SSE │ │ (BLAKE3)   │  │ │
-│  │  │            │ │ tools +    │ │ (axum)     │ │            │  │ │
-│  │  │            │ │ prompts +  │ │            │ │            │  │ │
-│  │  │            │ │ resources  │ │            │ │            │  │ │
-│  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘  │ │
-│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐  │ │
-│  │  │ Permission │ │  Approval  │ │  D-Bus     │ │  Module    │  │ │
-│  │  │ Engine     │ │  Store +   │ │  Notifier  │ │  Trait     │  │ │
-│  │  │ (ACLs +    │ │  Grants    │ │            │ │            │  │ │
-│  │  │ tool rules)│ │            │ │            │ │            │  │ │
-│  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘  │ │
-│  │  ┌────────────────────────────┐ ┌────────────────────────────┐ │ │
-│  │  │ Hook Pipeline              │ │ Content Safety             │ │ │
-│  │  │ Pre/post tool-call hooks   │ │ (regex + custom + ML)      │ │ │
-│  │  │ SafetyHook (built-in)      │ │ Applied via hook pipeline  │ │ │
-│  │  └────────────────────────────┘ └────────────────────────────┘ │ │
-│  │  ┌────────────────────────────────────────────────────────┐    │ │
-│  │  │ Resilient Transports (upstream)                        │    │ │
-│  │  │ Exponential backoff, timeout, reconnection, sleep      │    │ │
-│  │  │ detection. TransportFactory for subprocess respawn.    │    │ │
-│  │  └────────────────────────────────────────────────────────┘    │ │
-│  └────────────────────────────────────────────────────────────────┘ │
+│                         myelix-server (gateway)                      │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐  │
+│  │ System Tray │  │    Config    │  │      Module Loader          │  │
+│  │   (ksni)    │  │    (TOML)    │  │ DocsModule, GitModule       │  │
+│  │ Approve/Deny│  │              │  │ + upstream MCP servers      │  │
+│  │ Pause/Resume│  │              │  │                             │  │
+│  └──────┬──────┘  └──────────────┘  └──────────────┬──────────────┘  │
+│         │                                          │                 │
+│  ┌──────▼──────────────────────────────────────────▼──────────────┐  │
+│  │                       myelix-core                              │  │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │  │
+│  │  │ JSON-RPC   │ │ MCP Proto  │ │ Streamable │ │   Auth     │   │  │
+│  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP + SSE │ │ (BLAKE3)   │   │  │
+│  │  │            │ │ tools +    │ │ (axum)     │ │            │   │  │
+│  │  │            │ │ prompts +  │ │            │ │            │   │  │
+│  │  │            │ │ resources  │ │            │ │            │   │  │
+│  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │  │
+│  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │  │
+│  │  │ Permission │ │  Approval  │ │  D-Bus     │ │  Module    │   │  │
+│  │  │ Engine     │ │  Store +   │ │  Notifier  │ │  Trait     │   │  │
+│  │  │ (ACLs +    │ │  Grants    │ │            │ │            │   │  │
+│  │  │ tool rules)│ │            │ │            │ │            │   │  │
+│  │  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │  │
+│  │  ┌────────────────────────────┐ ┌────────────────────────────┐ │  │
+│  │  │ Hook Pipeline              │ │ Content Safety             │ │  │
+│  │  │ Pre/post tool-call hooks   │ │ (regex + custom + ML)      │ │  │
+│  │  │ SafetyHook (built-in)      │ │ Applied via hook pipeline  │ │  │
+│  │  └────────────────────────────┘ └────────────────────────────┘ │  │
+│  │  ┌────────────────────────────────────────────────────────┐    │  │
+│  │  │ Resilient Transports (upstream)                        │    │  │
+│  │  │ Exponential backoff, timeout, reconnection, sleep      │    │  │
+│  │  │ detection. TransportFactory for subprocess respawn.    │    │  │
+│  │  └────────────────────────────────────────────────────────┘    │  │
+│  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
-│  ┌─ Built-in Modules ───────────────────────────────────────────┐   │
-│  │  mcpd-mod-docs: docs_search, docs_read, docs_write, ...     │   │
-│  │  mcpd-mod-git:  git_status, git_diff, git_log, git_branch,  │   │
-│  │                 git_commit (approval required)                │   │
-│  └──────────────────────────────────────────────────────────────┘   │
+│  ┌─ Built-in Modules ─────────────────────────────────────────────┐  │
+│  │  myelix-tools-docs: docs_search, docs_read, docs_write, ...    │  │
+│  │  myelix-tools-git:  git_status, git_diff, git_log, git_branch  │  │
+│  │                 git_commit (approval required)                 │  │
+│  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
-│  ┌─ Upstream MCP Servers (proxied) ─────────────────────────────┐   │
-│  │  Myelix, other MCP servers — stdio / HTTP / SSE              │   │
-│  │  Discovered at startup, registered as Module, safety-filtered│   │
-│  └───────────────────────────────────────────────────────────────┘   │
+│  ┌─ Upstream MCP Servers (proxied) ───────────────────────────────┐  │
+│  │  Myelix, other MCP servers — stdio / HTTP / SSE                │  │
+│  │  Discovered at startup, registered as Module, safety-filtered  │  │
+│  └────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────┘
 
          ┌──────────────────────────────────────────┐
@@ -147,7 +157,7 @@ enabled = true
 ### Adding a Module
 
 1. Create crate implementing `Module` → provides `(ToolDefinition, ToolHandler)` pairs
-2. Add dependency in `mcpd-server/Cargo.toml`
+2. Add dependency in `myelix-server/Cargo.toml`
 3. Add config struct in `config.rs`
 4. Add `if cfg.xxx_enabled() { builder = builder.module(xxx); }` in `main.rs`
 
@@ -393,7 +403,7 @@ is accessible via `server.pause_flag()` for external integration.
 
 ## MCP Tools
 
-### Docs Module (`mcpd-mod-docs`)
+### Docs Module (`myelix-tools-docs`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
@@ -407,7 +417,7 @@ is accessible via `server.pause_flag()` for external integration.
 | `docs_approve` | — | Approve a pending request by ID |
 | `docs_deny` | — | Deny a pending request by ID |
 
-### Git Module (`mcpd-mod-git`)
+### Git Module (`myelix-tools-git`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
@@ -941,12 +951,86 @@ watch = ["~/Documents", "~/Notes"]
 - Background processing via `spawn_blocking`
 - Uses BLAKE3 checksums for content deduplication
 
+## Agent SDK Design Notes
+
+Design inputs from landscape research (April 2026) for the
+future `myelix-agent` crate.
+
+### Coding Agent Components (Raschka)
+
+Six core components identified for effective agent harnesses:
+
+1. **Live repository context** — Collect workspace metadata upfront
+   (git status, project structure, conventions). mcpd already provides
+   this via myelix-tools-git and myelix-tools-docs.
+2. **Prompt cache separation** — Separate stable content (tool
+   descriptions, system prompt) from dynamic state (conversation
+   history). Enables prompt cache reuse across turns.
+3. **Structured tool access with validation** — Model output →
+   validation → optional approval → execution → bounded result.
+   Maps to mcpd's permission engine + hook pipeline.
+4. **Context bloat minimization** — Clip verbose outputs, compress
+   older history more aggressively than recent events. myelix-agent
+   should implement transcript reduction.
+5. **Dual-layer session memory** — Full transcript (for audit/resume)
+   + distilled working memory (for task continuity). Maps to
+   myelix-core session management.
+6. **Bounded subagent delegation** — Child agents inherit sufficient
+   context but operate within tighter constraints. Depth limits,
+   read-only modes, explicit task boundaries.
+
+Key insight: "a lot of apparent model quality is really context
+quality." The harness matters as much as the model.
+
+### AG-UI Interrupt/Resume Model
+
+AG-UI's event streaming and interrupt patterns are relevant for
+the hook pipeline:
+
+- **Tool-level approval**: `approval_mode="always_require"` pauses
+  workflow, emits interrupt event for human review. Maps to mcpd's
+  existing approval system.
+- **Information request interrupts**: Agents can pause and ask
+  users for input via `HandoffAgentUserRequest`. Could extend
+  mcpd's hook pipeline to support agent-initiated prompts.
+- **Resume mechanism**: `resume.interrupts` carries interrupt ID +
+  response payload. The approval store already supports grant
+  caching; extend to support arbitrary interrupt/resume.
+
+### HandoffBuilder for Flow DSL
+
+AG-UI's `HandoffBuilder` declares agent topology as directed edges
+with natural-language routing descriptions:
+
+```
+add_handoff(triage → refund, "customer wants a refund")
+add_handoff(triage → order, "customer asks about order status")
+```
+
+This pattern — declarative topology, not prompt-based routing —
+should inform the flow DSL design. Each edge can carry IFC
+constraints (security labels flow with the handoff).
+
+### RamaLama as Prior Art
+
+RamaLama (containers/ramalama) established the model-as-container
+pattern: URI-addressed models, GPU auto-detection, rootless Podman
+with `--network=none`. Our `myelix-model-hub` and
+`myelix-model-runtime` reimplement this in Rust with the same URI
+scheme (`ollama://`, `hf://`, `oci://`) for compatibility.
+
 ## Future Work
 
 ### Search & Indexing
 - **Vector search** — sqlite-vec with Granite Embedding R2 for
   semantic similarity (embedding model infrastructure is ready)
 - **Content extraction** — PDF, HTML, CSV pipeline
+- **GLM-OCR integration** — 0.9B OCR model for document ingestion
+  via managed runtime, feeding structured markdown into myelix-rag
 
 ### Platform
 - **Gnome Keyring** — Token storage via `org.freedesktop.secrets`
+- **OpenVINO EP** — Add `OpenVINOExecutionProvider` to OnnxBackend
+  for Intel CPU/GPU/NPU acceleration of in-process models
+- **OpenTelemetry** — Normalized observability across agent
+  harnesses (inspired by Google SCION)

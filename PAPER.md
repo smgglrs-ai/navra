@@ -918,7 +918,7 @@ See Section 8.2 for measured token sizes and latency benchmarks.
 
 We test each of the five security properties (Section 4.7) with
 concrete attack scenarios. All tests are in
-`mcpd-core/tests/security_eval.rs` (28 tests).
+`myelix-core/tests/security_eval.rs` (28 tests).
 
 #### Property 1: No Privilege Escalation (5 tests)
 

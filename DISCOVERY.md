@@ -210,7 +210,33 @@ Block, and OpenAI in December 2025.
 | goose    | Block     | Contributed      |
 | AGENTS.md| OpenAI    | Contributed      |
 
-As of March 2026, AAIF has 146 members across three tiers.
+As of April 2026, AAIF has grown to **170 members** across three tiers.
+
+### MCP Dev Summit Findings (April 2026)
+
+At the MCP Dev Summit in New York (April 6, 2026), maintainers from
+Anthropic, AWS, Microsoft, and OpenAI shared key updates:
+
+- **MCP fastest-growing standard ever**: RedMonk reports MCP achieved
+  in ~13 weeks the adoption level Docker took ~13 months to reach.
+- **Auth in active flux**: Authorization is the most actively changing
+  part of the MCP spec. Maintainers are collaborating with Okta on
+  authentication improvements.
+- **Gateway validation**: "Gateways, registries, sandboxing,
+  interceptors must evolve alongside the protocol" (David Soria Para,
+  Anthropic). This directly validates mcpd's gateway architecture.
+- **MCP should stay narrow**: Nick Cooper (OpenAI): "MCP should stay
+  narrow — connecting AI to data sources. Identity, observability,
+  and governance should come in as other projects" under AAIF.
+- **AAIF accepting new project proposals**: github.com/aaif/project-proposals
+  — first accepted projects should set the right direction.
+- **MCP + A2A**: "Not directly competing. Approaches slightly
+  different at the moment, but we are open to anything that makes the
+  industry easier to work with through open standards."
+- **Anti-pattern**: Don't just wrap 500 API endpoints as MCP tools.
+  Design the MCP interface for agents as a new consumer class, not
+  just another developer. Quality differs vastly between careful
+  designs and naive API wrappers.
 
 ## Implications for mcpd
 
