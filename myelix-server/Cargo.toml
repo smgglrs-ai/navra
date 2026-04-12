@@ -13,6 +13,8 @@ path = "src/main.rs"
 [dependencies]
 myelix-core = { path = "../myelix-core" }
 myelix-model = { path = "../myelix-model" }
+myelix-model-hub = { path = "../myelix-model-hub" }
+myelix-model-runtime = { path = "../myelix-model-runtime" }
 myelix-tools-docs = { path = "../myelix-tools-docs" }
 myelix-tools-git = { path = "../myelix-tools-git" }
 myelix-rag = { path = "../myelix-rag" }

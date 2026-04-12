@@ -31,15 +31,23 @@ pub struct Config {
     pub registry: Vec<RegistryEntry>,
 }
 
-/// Configuration for an ONNX model.
+/// Configuration for a model.
+///
+/// Models can be loaded from local files (ONNX) or pulled from registries
+/// and served via a runtime backend.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelConfig {
-    /// Path to the ONNX model file.
-    pub model_path: String,
+    /// Path to a local model file (ONNX). Used directly when no `source` is set.
+    #[serde(default)]
+    pub model_path: Option<String>,
+    /// Hub source URI (e.g. `ollama://granite3.3:8b`, `hf://org/repo`).
+    /// When set, the model is pulled and cached via myelix-model-hub.
+    #[serde(default)]
+    pub source: Option<String>,
     /// Path to the HuggingFace tokenizer.json file.
     #[serde(default)]
     pub tokenizer_path: Option<String>,
-    /// Model task: "embedding" or "classification".
+    /// Model task: "embedding", "classification", "chat", or "generate".
     #[serde(default = "default_model_task")]
     pub task: String,
     /// Embedding dimensions (for embedding models).
@@ -51,6 +59,19 @@ pub struct ModelConfig {
     /// Confidence threshold for safety classification (default: 0.5).
     #[serde(default = "default_threshold")]
     pub threshold: Option<f32>,
+    /// Runtime backend: "auto", "podman", "direct", or "none" (default).
+    /// Used for chat/generate tasks served via myelix-model-runtime.
+    #[serde(default)]
+    pub runtime: Option<String>,
+    /// Context window size for runtime-served models (default: 4096).
+    #[serde(default)]
+    pub context_size: Option<u32>,
+    /// Number of parallel request slots for runtime (default: 1).
+    #[serde(default)]
+    pub parallel: Option<u32>,
+    /// Model name for the OpenAI-compatible API. Defaults to the config key.
+    #[serde(default)]
+    pub model_name: Option<String>,
 }
 
 fn default_model_task() -> String {
