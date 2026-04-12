@@ -393,24 +393,69 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     // --- Load models into registry ---
     let mut models: std::collections::HashMap<String, Arc<dyn myelix_model::ModelBackend>> =
         std::collections::HashMap::new();
+    let mut running_endpoints: Vec<(Box<dyn myelix_model_runtime::ModelRuntime>, myelix_model_runtime::Endpoint)> =
+        Vec::new();
+
+    let hub = myelix_model_hub::ModelHub::new().ok();
 
     for (name, model_cfg) in &cfg.models {
-        let model_path = expand_tilde(&model_cfg.model_path);
-        let path = std::path::Path::new(&model_path);
+        // --- Resolve model path: hub source or local file ---
+        let resolved_path = if let Some(ref source) = model_cfg.source {
+            // Pull from hub
+            let Some(ref hub) = hub else {
+                tracing::error!(model = %name, "Model hub unavailable, skipping");
+                continue;
+            };
+            let uri = match myelix_model_hub::ModelUri::parse(source) {
+                Ok(u) => u,
+                Err(e) => {
+                    tracing::error!(model = %name, source = %source, error = %e, "Invalid model URI, skipping");
+                    continue;
+                }
+            };
+            match hub.pull(&uri).await {
+                Ok(p) => {
+                    tracing::info!(model = %name, source = %source, path = %p.display(), "Model pulled from hub");
+                    p
+                }
+                Err(e) => {
+                    tracing::error!(model = %name, source = %source, error = %e, "Failed to pull model, skipping");
+                    continue;
+                }
+            }
+        } else if let Some(ref path_str) = model_cfg.model_path {
+            let expanded = expand_tilde(path_str);
+            std::path::PathBuf::from(&expanded)
+        } else {
+            tracing::warn!(model = %name, "No source or model_path, skipping");
+            continue;
+        };
 
-        if !path.exists() {
+        if !resolved_path.exists() {
             tracing::warn!(
                 model = %name,
-                path = %model_path,
+                path = %resolved_path.display(),
                 "Model file not found, skipping"
             );
             continue;
         }
 
-        let task = match model_cfg.task.as_str() {
+        // --- Choose backend based on task ---
+        let backend: Arc<dyn myelix_model::ModelBackend> = match model_cfg.task.as_str() {
             "embedding" => {
                 let dims = model_cfg.dimensions.unwrap_or(768);
-                myelix_model::ModelTask::Embedding { dimensions: dims }
+                let task = myelix_model::ModelTask::Embedding { dimensions: dims };
+                let tokenizer_path = model_cfg
+                    .tokenizer_path
+                    .as_ref()
+                    .map(|p| std::path::PathBuf::from(expand_tilde(p)));
+                match myelix_model::OnnxBackend::load(name, &resolved_path, tokenizer_path.as_deref(), task) {
+                    Ok(model) => Arc::new(model),
+                    Err(e) => {
+                        tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
+                        continue;
+                    }
+                }
             }
             "classification" => {
                 let labels = if model_cfg.labels.is_empty() {
@@ -418,7 +463,78 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 } else {
                     model_cfg.labels.clone()
                 };
-                myelix_model::ModelTask::Classification { labels }
+                let task = myelix_model::ModelTask::Classification { labels };
+                let tokenizer_path = model_cfg
+                    .tokenizer_path
+                    .as_ref()
+                    .map(|p| std::path::PathBuf::from(expand_tilde(p)));
+                match myelix_model::OnnxBackend::load(name, &resolved_path, tokenizer_path.as_deref(), task) {
+                    Ok(model) => Arc::new(model),
+                    Err(e) => {
+                        tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
+                        continue;
+                    }
+                }
+            }
+            "chat" | "generate" => {
+                // Serve via runtime and wrap in OpenAiBackend
+                let runtime_kind = model_cfg.runtime.as_deref().unwrap_or("auto");
+                let runtime: Box<dyn myelix_model_runtime::ModelRuntime> = match runtime_kind {
+                    "auto" => match myelix_model_runtime::auto_runtime().await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::error!(model = %name, error = %e, "No runtime available, skipping");
+                            continue;
+                        }
+                    },
+                    "podman" => Box::new(myelix_model_runtime::podman::PodmanRuntime::new()),
+                    "direct" => Box::new(myelix_model_runtime::direct::DirectRuntime::new()),
+                    "none" => {
+                        tracing::warn!(model = %name, "Task is chat/generate but runtime=none, skipping");
+                        continue;
+                    }
+                    other => {
+                        tracing::warn!(model = %name, runtime = %other, "Unknown runtime, skipping");
+                        continue;
+                    }
+                };
+
+                let gpus = myelix_model_runtime::detect_gpus();
+                let serve_cfg = myelix_model_runtime::ServeConfig {
+                    model_path: resolved_path,
+                    gpus,
+                    context_size: model_cfg.context_size.unwrap_or(4096),
+                    parallel: model_cfg.parallel.unwrap_or(1),
+                    ..Default::default()
+                };
+
+                let endpoint = match runtime.serve(&serve_cfg).await {
+                    Ok(ep) => ep,
+                    Err(e) => {
+                        tracing::error!(model = %name, error = %e, "Failed to start model runtime, skipping");
+                        continue;
+                    }
+                };
+
+                tracing::info!(
+                    model = %name,
+                    url = %endpoint.url,
+                    backend = ?endpoint.backend,
+                    "Model served via runtime"
+                );
+
+                let model_id = model_cfg.model_name.clone().unwrap_or_else(|| name.clone());
+                let backend: Arc<dyn myelix_model::ModelBackend> = Arc::new(
+                    myelix_model::OpenAiBackend::new(
+                        &endpoint.url,
+                        &model_id,
+                        None,
+                        myelix_model::Locality::Local,
+                    ),
+                );
+
+                running_endpoints.push((runtime, endpoint));
+                backend
             }
             other => {
                 tracing::warn!(model = %name, task = %other, "Unknown model task, skipping");
@@ -426,20 +542,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             }
         };
 
-        let tokenizer_path = model_cfg
-            .tokenizer_path
-            .as_ref()
-            .map(|p| std::path::PathBuf::from(expand_tilde(p)));
-
-        match myelix_model::OnnxBackend::load(name, path, tokenizer_path.as_deref(), task) {
-            Ok(model) => {
-                tracing::info!(model = %name, task = %model_cfg.task, "Model loaded");
-                models.insert(name.clone(), Arc::new(model));
-            }
-            Err(e) => {
-                tracing::error!(model = %name, error = %e, "Failed to load model, skipping");
-            }
-        }
+        tracing::info!(model = %name, task = %model_cfg.task, "Model loaded");
+        models.insert(name.clone(), backend);
     }
 
     tracing::info!(count = models.len(), "Model registry ready");
@@ -1377,6 +1481,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         axum::serve(listener, router).await?;
     }
 
+    // --- Stop runtime-served models ---
+    for (runtime, endpoint) in &running_endpoints {
+        tracing::info!(url = %endpoint.url, backend = ?endpoint.backend, "Stopping model runtime");
+        if let Err(e) = runtime.stop(endpoint).await {
+            tracing::error!(error = %e, "Failed to stop model runtime");
+        }
+    }
+
     Ok(())
 }
 
@@ -1670,95 +1782,113 @@ async fn download_file(url: &str, dest: &std::path::Path) -> anyhow::Result<()> 
     Ok(())
 }
 
-/// Pull a model from HuggingFace.
+/// Pull a model by name or URI.
+///
+/// Accepts known model names (guardian-hap, granite-embed) for ONNX models,
+/// or any hub URI (ollama://, hf://, oci://, file://) for general models.
 async fn model_pull(name: &str) -> anyhow::Result<()> {
-    let model = KNOWN_MODELS
-        .iter()
-        .find(|m| m.name == name)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Unknown model: '{}'\nRun 'mcpd model available' to see supported models",
-                name
-            )
-        })?;
+    // Check if it's a known ONNX model first
+    if let Some(model) = KNOWN_MODELS.iter().find(|m| m.name == name) {
+        let model_dir = models_dir().join(model.name);
+        std::fs::create_dir_all(&model_dir)?;
 
-    let model_dir = models_dir().join(model.name);
-    std::fs::create_dir_all(&model_dir)?;
+        println!("Pulling {} ...", model.description);
 
-    println!("Pulling {} ...", model.description);
-
-    // Download ONNX model
-    let model_url = format!(
-        "https://huggingface.co/{}/resolve/main/{}",
-        model.repo, model.model_file
-    );
-    let model_dest = model_dir.join("model.onnx");
-    if model_dest.exists() {
-        println!("  model.onnx already exists, skipping");
-    } else {
-        println!("  Downloading model.onnx ...");
-        download_file(&model_url, &model_dest).await?;
-    }
-
-    // Download tokenizer if needed
-    if let Some(tok_file) = model.tokenizer_file {
-        let tok_url = format!(
+        let model_url = format!(
             "https://huggingface.co/{}/resolve/main/{}",
-            model.repo, tok_file
+            model.repo, model.model_file
         );
-        let tok_dest = model_dir.join("tokenizer.json");
-        if tok_dest.exists() {
-            println!("  tokenizer.json already exists, skipping");
+        let model_dest = model_dir.join("model.onnx");
+        if model_dest.exists() {
+            println!("  model.onnx already exists, skipping");
         } else {
-            println!("  Downloading tokenizer.json ...");
-            download_file(&tok_url, &tok_dest).await?;
+            println!("  Downloading model.onnx ...");
+            download_file(&model_url, &model_dest).await?;
         }
+
+        if let Some(tok_file) = model.tokenizer_file {
+            let tok_url = format!(
+                "https://huggingface.co/{}/resolve/main/{}",
+                model.repo, tok_file
+            );
+            let tok_dest = model_dir.join("tokenizer.json");
+            if tok_dest.exists() {
+                println!("  tokenizer.json already exists, skipping");
+            } else {
+                println!("  Downloading tokenizer.json ...");
+                download_file(&tok_url, &tok_dest).await?;
+            }
+        }
+
+        println!("\nInstalled to: {}", model_dir.display());
+        println!("\nAdd to config.toml:\n");
+        let config_snippet = model
+            .config_template
+            .replace("{model_dir}", &model_dir.to_string_lossy());
+        println!("{config_snippet}");
+        return Ok(());
     }
 
-    println!("\nInstalled to: {}", model_dir.display());
+    // Otherwise, treat as a hub URI
+    let uri = myelix_model_hub::ModelUri::parse(name)?;
+    let hub = myelix_model_hub::ModelHub::new()?;
+
+    println!("Pulling {uri} ...");
+    let path = hub.pull(&uri).await?;
+    println!("\nCached at: {}", path.display());
     println!("\nAdd to config.toml:\n");
-    let config_snippet = model
-        .config_template
-        .replace("{model_dir}", &model_dir.to_string_lossy());
-    println!("{config_snippet}");
+    println!("[models.{}]", uri.cache_key());
+    println!("source = \"{}\"", uri);
+    println!("task = \"chat\"");
+    println!("runtime = \"auto\"");
 
     Ok(())
 }
 
-/// List installed models.
+/// List installed models (ONNX + hub-cached).
 fn model_list() -> anyhow::Result<()> {
+    let mut found = false;
+
+    // ONNX models in the legacy directory
     let dir = models_dir();
-    if !dir.exists() {
-        println!("No models installed.");
-        println!("Run 'mcpd model available' to see supported models.");
-        return Ok(());
+    if dir.exists() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                let model_path = entry.path().join("model.onnx");
+                let has_model = model_path.exists();
+                let has_tokenizer = entry.path().join("tokenizer.json").exists();
+                let size = if has_model {
+                    let meta = std::fs::metadata(&model_path)?;
+                    format!("{:.1} MB", meta.len() as f64 / 1_048_576.0)
+                } else {
+                    "incomplete".to_string()
+                };
+
+                let tok_status = if has_tokenizer { "yes" } else { "no" };
+                println!("{name:<40} {size:<12} onnx  tokenizer: {tok_status}");
+                found = true;
+            }
+        }
     }
 
-    let mut found = false;
-    for entry in std::fs::read_dir(&dir)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            let model_path = entry.path().join("model.onnx");
-            let has_model = model_path.exists();
-            let has_tokenizer = entry.path().join("tokenizer.json").exists();
-            let size = if has_model {
-                let meta = std::fs::metadata(&model_path)?;
-                format!("{:.1} MB", meta.len() as f64 / 1_048_576.0)
-            } else {
-                "incomplete".to_string()
-            };
-
-            let tok_status = if has_tokenizer { "yes" } else { "no" };
-            println!("{name:<20} {size:<12} tokenizer: {tok_status}");
-            found = true;
+    // Hub-cached models
+    if let Ok(hub) = myelix_model_hub::ModelHub::new() {
+        if let Ok(cached) = hub.list() {
+            for model in cached {
+                let size = format!("{:.1} MB", model.size as f64 / 1_048_576.0);
+                println!("{:<40} {size:<12} hub", model.uri);
+                found = true;
+            }
         }
     }
 
     if !found {
         println!("No models installed.");
         println!("Run 'mcpd model available' to see supported models.");
+        println!("Or pull any model: mcpd model pull ollama://granite3.3:8b");
     }
 
     Ok(())
@@ -1766,12 +1896,17 @@ fn model_list() -> anyhow::Result<()> {
 
 /// Show available models for download.
 fn model_available() {
+    println!("Built-in ONNX models:");
     println!("{:<20} {}", "NAME", "DESCRIPTION");
     println!("{:<20} {}", "----", "-----------");
     for model in KNOWN_MODELS {
         println!("{:<20} {}", model.name, model.description);
     }
-    println!("\nPull a model: mcpd model pull <name>");
+    println!("\nPull a built-in model:  mcpd model pull <name>");
+    println!("\nYou can also pull any model by URI:");
+    println!("  mcpd model pull ollama://granite3.3:8b");
+    println!("  mcpd model pull hf://ibm-granite/granite-3.3-8b-instruct-GGUF");
+    println!("  mcpd model pull oci://quay.io/myorg/mymodel:latest");
 }
 
 /// Expand `~` to the user's home directory in a path string.
