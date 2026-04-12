@@ -28,6 +28,7 @@ package only provides shared libraries.
 | `myelix-model-runtime` | Infrastructure | Serve models with pluggable isolation (Podman, direct, libkrun) |
 | `myelix-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks |
 | `myelix-agent` | Infrastructure | Client SDK: agent builder, MCP client, tool-use loop |
+| `myelix-flow` | Orchestration | Declarative multi-agent flows with handoff routing |
 | `myelix-core` | Infrastructure | Server, module trait, session, transport, re-exports |
 | `myelix-tools-docs` | Tool | Document tools, SQLite FTS5 + sqlite-vec |
 | `myelix-tools-git` | Tool | Git tools (status, diff, log, branch, commit) |
@@ -47,6 +48,7 @@ myelix-model-runtime     (no myelix deps)
 myelix-security          (protocol + model)
     ↓
 myelix-agent             (protocol + model + security)  CLIENT
+myelix-flow              (agent)                        ORCHESTRATION
 myelix-core              (protocol + model + security)  SERVER
     ↓
 myelix-tools-*  ─────┐

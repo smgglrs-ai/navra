@@ -40,7 +40,7 @@ mod tool_loop;
 pub use agent::{Agent, AgentBuilder};
 pub use client::McpClient;
 pub use error::AgentError;
-pub use tool_loop::{run_tool_loop, ToolLoopConfig, ToolLoopResult};
+pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
 
 // Re-export key types so users don't need direct deps on protocol/model/security.
 pub use myelix_protocol::{

@@ -50,7 +50,7 @@ pub struct ToolLoopResult {
 }
 
 /// Extract text content from a [`CallToolResult`].
-fn extract_text(result: &CallToolResult) -> String {
+pub fn extract_text(result: &CallToolResult) -> String {
     let mut parts = Vec::new();
     if result.is_error {
         parts.push("Error: ".to_string());
