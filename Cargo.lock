@@ -2114,6 +2114,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "myelix-flow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "myelix-agent",
+ "myelix-model",
+ "myelix-protocol",
+ "myelix-security",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "myelix-modal-vision"
 version = "0.1.0"
 dependencies = [
