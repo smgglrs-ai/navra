@@ -21,6 +21,18 @@ pub enum FlowError {
     #[error("no entry node defined")]
     NoEntry,
 
+    #[error("cyclic dependency: {0}")]
+    CyclicDependency(String),
+
+    #[error("task '{task}' failed: {reason}")]
+    TaskFailed { task: String, reason: String },
+
+    #[error("unknown specialist: '{0}'")]
+    UnknownSpecialist(String),
+
+    #[error("unknown task dependency: '{0}'")]
+    UnknownDependency(String),
+
     #[error("TOML parse error: {0}")]
     Toml(#[from] toml::de::Error),
 

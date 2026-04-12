@@ -72,6 +72,42 @@ pub struct EdgeDefinition {
     pub description: String,
 }
 
+/// Top-level DAG definition (wraps `DagConfig` for TOML `[dag]` section).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DagDefinition {
+    pub dag: DagConfig,
+}
+
+/// DAG configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DagConfig {
+    /// DAG name.
+    #[serde(default)]
+    pub name: String,
+    /// Task definitions.
+    pub tasks: Vec<TaskDefinition>,
+}
+
+/// Definition of a task in a DAG.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TaskDefinition {
+    /// Unique task identifier.
+    pub id: String,
+    /// Specialist (persona name) to execute this task.
+    pub specialist: String,
+    /// What the specialist should accomplish.
+    pub mandate: String,
+    /// Task IDs that must complete before this task can run.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+    /// Expected output description.
+    #[serde(default)]
+    pub expected_output: Option<String>,
+    /// Success criteria.
+    #[serde(default)]
+    pub success_criteria: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,6 +173,37 @@ description = "Delegate coding tasks"
         assert_eq!(def.flow.edges[0].to, "coder");
         assert_eq!(def.flow.nodes[0].temperature, Some(0.7));
         assert_eq!(def.flow.nodes[1].max_tokens, Some(2048));
+    }
+
+    #[test]
+    fn deserialize_dag() {
+        let toml_str = r#"
+[dag]
+name = "security_audit"
+
+[[dag.tasks]]
+id = "analyze"
+specialist = "analyst"
+mandate = "Analyze the codebase for security issues"
+
+[[dag.tasks]]
+id = "fix_auth"
+specialist = "developer"
+mandate = "Fix the authentication vulnerability"
+depends_on = ["analyze"]
+success_criteria = ["Tests pass", "No regressions"]
+
+[[dag.tasks]]
+id = "review"
+specialist = "reviewer"
+mandate = "Review all fixes"
+depends_on = ["fix_auth"]
+"#;
+        let def: DagDefinition = toml::from_str(toml_str).unwrap();
+        assert_eq!(def.dag.name, "security_audit");
+        assert_eq!(def.dag.tasks.len(), 3);
+        assert_eq!(def.dag.tasks[1].depends_on, vec!["analyze"]);
+        assert_eq!(def.dag.tasks[1].success_criteria.len(), 2);
     }
 
     #[test]

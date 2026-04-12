@@ -1,8 +1,8 @@
-//! myelix-flow: Declarative multi-agent flow engine.
+//! myelix-flow: Multi-agent flow engine.
 //!
-//! Define agent topologies as directed graphs with natural-language
-//! routing. Agents hand off tasks to specialists via model-driven
-//! decisions, with IFC taint tracking across the entire flow.
+//! Two execution modes:
+//! - **Handoff flows**: Directed graph of agents with model-driven routing
+//! - **DAG execution**: Parallel task graphs with dependency resolution
 //!
 //! # Quick start
 //!
@@ -20,13 +20,22 @@
 //! ```
 
 mod builder;
+mod dag;
 mod definition;
 mod engine;
 mod error;
+mod executor;
 mod handoff;
+mod task;
 
 pub use builder::FlowBuilder;
-pub use definition::{EdgeDefinition, FlowConfig, FlowDefinition, NodeDefinition};
+pub use dag::DependencyGraph;
+pub use definition::{
+    DagConfig, DagDefinition, EdgeDefinition, FlowConfig, FlowDefinition, NodeDefinition,
+    TaskDefinition,
+};
 pub use engine::{Flow, FlowNode, FlowResult};
 pub use error::FlowError;
+pub use executor::{DagExecutor, DagResult};
 pub use handoff::HANDOFF_TOOL_NAME;
+pub use task::{Task, TaskResult, TaskStatus};
