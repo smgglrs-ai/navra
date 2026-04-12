@@ -6,6 +6,7 @@ members = [
     "myelix-model-hub",
     "myelix-model-runtime",
     "myelix-security",
+    "myelix-cognitive",
     "myelix-agent",
     "myelix-flow",
     "myelix-core",

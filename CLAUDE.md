@@ -27,6 +27,7 @@ package only provides shared libraries.
 | `myelix-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
 | `myelix-model-runtime` | Infrastructure | Serve models with pluggable isolation (Podman, direct, libkrun) |
 | `myelix-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks |
+| `myelix-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
 | `myelix-agent` | Infrastructure | Client SDK: agent builder, MCP client, tool-use loop |
 | `myelix-flow` | Orchestration | Declarative multi-agent flows with handoff routing |
 | `myelix-core` | Infrastructure | Server, module trait, session, transport, re-exports |
@@ -47,6 +48,7 @@ myelix-model-runtime     (no myelix deps)
     ↓
 myelix-security          (protocol + model)
     ↓
+myelix-cognitive         (no myelix deps)               PERSONAS
 myelix-agent             (protocol + model + security)  CLIENT
 myelix-flow              (agent)                        ORCHESTRATION
 myelix-core              (protocol + model + security)  SERVER
