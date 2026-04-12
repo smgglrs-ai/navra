@@ -142,14 +142,15 @@ See DESIGN.md for full config reference.
 
 ## Related Projects
 
-- **Myelix** (`~/Code/gitlab.cee.redhat.com/smgglrs/myelix/myelix/`):
-  Multi-agent orchestration platform. Connects to mcpd as an MCP
-  client. Each Myelix specialist maps to an mcpd agent identity.
+- **Myelix (Python)** (`~/Code/gitlab.cee.redhat.com/smgglrs/myelix/myelix/`):
+  Original multi-agent orchestration platform. Being replaced by the
+  myelix-* Rust crate family. See `ROADMAP.md` for migration status.
 - **Project Jarvis**: Voice-first local assistant combining mcpd
-  (secure tools) + Myelix (orchestration) + local models.
+  (secure tools) + myelix-flow (orchestration) + local models.
 
 ## Reference Documents
 
 - `DESIGN.md` — Full architecture, protocol, security model, config reference
+- `ROADMAP.md` — Gap analysis vs Python Myelix, phased migration plan
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)

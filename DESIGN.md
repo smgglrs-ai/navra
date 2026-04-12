@@ -18,15 +18,17 @@ of origin.
 
 ## Crate Structure
 
-See CLAUDE.md for the full 12-crate workspace table. Summary:
+See CLAUDE.md for the full 14-crate workspace table. Summary:
 
 ```
 mcpd/
 ├── myelix-protocol       MCP/A2A/JSON-RPC types, upstream transports
-├── myelix-model          Model backend trait + ONNX/OpenAI impls
+├── myelix-model          Model backend trait + ONNX/OpenAI/Anthropic impls
 ├── myelix-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
 ├── myelix-model-runtime  Serve models (Podman, direct, libkrun)
-├── myelix-security       Auth, permissions, IFC, safety, hooks, notify
+├── myelix-security       Auth, permissions, IFC, trusted paths, safety, hooks
+├── myelix-agent          Client SDK: agent builder, MCP client, tool-use loop
+├── myelix-flow           Declarative multi-agent flows with handoff routing
 ├── myelix-core           Server, module trait, session, transport
 ├── myelix-tools-docs     Document tools (FTS5, file I/O)
 ├── myelix-tools-git      Git tools (status, diff, log, branch, commit)
@@ -38,10 +40,20 @@ mcpd/
 
 | Crate | Role |
 |-------|------|
-| `myelix-core` | MCP protocol (JSON-RPC 2.0, Streamable HTTP + SSE, tools + prompts + resources), Module trait, permission engine (path ACLs + per-tool rules), hook pipeline, approval store, D-Bus notifier, BLAKE3 token auth, resilient transports |
+| `myelix-protocol` | MCP/A2A/JSON-RPC types, upstream client with stdio/HTTP/SSE + resilient transports |
+| `myelix-model` | Model backend trait with ONNX (in-process), OpenAI-compatible, and Anthropic (direct + Vertex AI) implementations |
+| `myelix-model-hub` | Pull and cache models from OCI, HuggingFace, and Ollama registries with content-addressed storage |
+| `myelix-model-runtime` | Serve models with pluggable isolation: direct (llama-server), Podman (rootless container), libkrun (microVM) |
+| `myelix-security` | BLAKE3 token auth, capability tokens (CBOR+Ed25519), DID:key identity, path ACLs, per-tool rules, IFC with trusted paths, safety filters, hook pipeline, approval store, D-Bus notifier, process table, rate limiting |
+| `myelix-agent` | Client SDK for building agents: Agent builder, McpClient (IFC taint tracking), ReAct tool-use loop |
+| `myelix-flow` | Declarative multi-agent flow engine: directed graph of agents, handoff-based routing, TOML config |
+| `myelix-core` | MCP server (JSON-RPC 2.0, Streamable HTTP + SSE), Module trait, session store, IFC value store |
 | `myelix-tools-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
-| `myelix-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`), approval for commits |
-| `myelix-server` | Binary that loads modules from config, system tray (ksni), CLI commands |
+| `myelix-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`) |
+| `myelix-rag` | Vector search with sqlite-vec, semantic chunking for context enrichment |
+| `myelix-modal-voice` | Speech I/O: ASR (Whisper) + TTS via ONNX models |
+| `myelix-modal-vision` | Image/screen understanding (GPU tier) |
+| `myelix-server` | Binary: CLI, config, module wiring, model hub/runtime integration, systemd, system tray |
 
 ## Architecture
 
