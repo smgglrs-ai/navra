@@ -26,7 +26,9 @@ mod engine;
 mod error;
 mod executor;
 mod handoff;
+mod recovery;
 mod task;
+mod validation;
 
 pub use builder::FlowBuilder;
 pub use dag::DependencyGraph;
@@ -38,4 +40,6 @@ pub use engine::{Flow, FlowNode, FlowResult};
 pub use error::FlowError;
 pub use executor::{DagExecutor, DagResult};
 pub use handoff::HANDOFF_TOOL_NAME;
-pub use task::{Task, TaskResult, TaskStatus};
+pub use recovery::{classify_failure, detect_circular_fix, FailureType, RecoveryAction, RecoveryStrategy};
+pub use task::{Attempt, Task, TaskResult, TaskStatus};
+pub use validation::{validate_mandate, ValidationResult};

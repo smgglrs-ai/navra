@@ -116,7 +116,7 @@ fn topological_sort(tasks: &HashMap<String, Task>) -> Result<Vec<String>, FlowEr
     for task in tasks.values() {
         in_degree.entry(&task.id).or_insert(0);
         for dep in &task.depends_on {
-            *in_degree.entry(dep.as_str()).or_insert(0);
+            in_degree.entry(dep.as_str()).or_insert(0);
         }
     }
     for task in tasks.values() {
@@ -177,6 +177,7 @@ mod tests {
             inputs: HashMap::new(),
             expected_output: None,
             success_criteria: Vec::new(),
+            max_retries: 2,
         }
     }
 

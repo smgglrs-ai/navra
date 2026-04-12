@@ -25,6 +25,13 @@ pub struct Task {
     /// Criteria to meet for the task to be considered successful.
     #[serde(default)]
     pub success_criteria: Vec<String>,
+    /// Maximum retry attempts on failure (default: 2).
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+}
+
+fn default_max_retries() -> u32 {
+    2
 }
 
 /// Status of a task in the execution plan.
@@ -59,6 +66,21 @@ pub struct TaskResult {
     pub completion_tokens: u32,
     /// Taint level from this task's execution.
     pub taint: DataLabel,
+    /// Mandate validation score (0.0-100.0).
+    pub validation_score: Option<f32>,
+    /// Validation notes (what criteria were missed).
+    pub validation_notes: Vec<String>,
+}
+
+/// A record of a failed attempt for circular fix detection.
+#[derive(Debug, Clone)]
+pub struct Attempt {
+    /// Error message or validation failure description.
+    pub error: String,
+    /// Classified error type (e.g., "validation_failed", "agent_error").
+    pub error_type: String,
+    /// Output produced (if any).
+    pub output: String,
 }
 
 #[cfg(test)]
