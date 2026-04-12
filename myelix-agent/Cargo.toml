@@ -1,0 +1,22 @@
+[package]
+name = "myelix-agent"
+description = "SDK for building AI agents that connect to MCP servers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+myelix-protocol = { path = "../myelix-protocol" }
+myelix-model = { path = "../myelix-model" }
+myelix-security = { path = "../myelix-security" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }

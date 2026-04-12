@@ -27,6 +27,7 @@ package only provides shared libraries.
 | `myelix-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
 | `myelix-model-runtime` | Infrastructure | Serve models with pluggable isolation (Podman, direct, libkrun) |
 | `myelix-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks |
+| `myelix-agent` | Infrastructure | Client SDK: agent builder, MCP client, tool-use loop |
 | `myelix-core` | Infrastructure | Server, module trait, session, transport, re-exports |
 | `myelix-tools-docs` | Tool | Document tools, SQLite FTS5 + sqlite-vec |
 | `myelix-tools-git` | Tool | Git tools (status, diff, log, branch, commit) |
@@ -45,7 +46,8 @@ myelix-model-runtime     (no myelix deps)
     ↓
 myelix-security          (protocol + model)
     ↓
-myelix-core              (protocol + model + security)
+myelix-agent             (protocol + model + security)  CLIENT
+myelix-core              (protocol + model + security)  SERVER
     ↓
 myelix-tools-*  ─────┐
 myelix-rag      ─────┼── (core only)
