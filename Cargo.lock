@@ -2073,6 +2073,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "myelix-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "myelix-model",
+ "myelix-protocol",
+ "myelix-security",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "myelix-core"
 version = "0.1.0"
 dependencies = [
@@ -2249,6 +2265,8 @@ dependencies = [
  "myelix-modal-vision",
  "myelix-modal-voice",
  "myelix-model",
+ "myelix-model-hub",
+ "myelix-model-runtime",
  "myelix-rag",
  "myelix-tools-docs",
  "myelix-tools-git",

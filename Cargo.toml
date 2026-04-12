@@ -6,6 +6,7 @@ members = [
     "myelix-model-hub",
     "myelix-model-runtime",
     "myelix-security",
+    "myelix-agent",
     "myelix-core",
     "myelix-tools-docs",
     "myelix-tools-git",
