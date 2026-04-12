@@ -264,7 +264,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         .name("mcpd")
         .version(env!("CARGO_PKG_VERSION"));
 
-    // Wire IFC policies from permission sets
+    // Wire IFC policies and trusted paths from permission sets
     for (name, pset) in &cfg.permissions {
         let policy = myelix_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy);
         if policy != myelix_core::ifc::TaintedWritePolicy::Allow {
@@ -274,6 +274,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 policy = %pset.tainted_write_policy,
                 "IFC tainted write policy"
             );
+        }
+        if !pset.trusted_paths.is_empty() {
+            tracing::info!(
+                permission_set = %name,
+                count = pset.trusted_paths.len(),
+                "IFC trusted paths configured"
+            );
+            builder = builder.trusted_paths(name.clone(), pset.trusted_paths.clone());
         }
     }
 

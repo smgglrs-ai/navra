@@ -401,6 +401,11 @@ pub struct PermissionSet {
     /// this policy controls whether subsequent writes are permitted.
     #[serde(default = "default_tainted_write_policy")]
     pub tainted_write_policy: String,
+    /// File paths that should keep their Trusted integrity label even
+    /// when accessed via external read tools. Supports glob patterns.
+    /// Example: ["~/Code/myproject/**", "~/Documents/**"]
+    #[serde(default)]
+    pub trusted_paths: Vec<String>,
 }
 
 fn default_tainted_write_policy() -> String {

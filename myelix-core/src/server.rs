@@ -72,6 +72,8 @@ pub struct McpServer {
     quota_engine: QuotaEngine,
     /// IFC policies per permission set (tainted write handling).
     ifc_policies: HashMap<String, crate::ifc::TaintedWritePolicy>,
+    /// Trusted path patterns per permission set (skip Untrusted labeling).
+    trusted_paths: HashMap<String, Vec<String>>,
     /// Per-value variable store for IFC tracking.
     value_stores: crate::ifc::value_store::ValueStoreMap,
 }
@@ -288,14 +290,23 @@ impl McpServer {
             }
         };
 
-        // IFC: auto-label external read tool outputs as Untrusted.
+        // IFC: auto-label external read tool outputs as Untrusted,
+        // unless the tool's path argument matches a trusted path pattern.
         // Only escalates the integrity dimension — confidentiality is
         // preserved from whatever the tool handler set (Public by default,
         // Sensitive/Secret if the handler knows the content is confidential).
         if crate::ifc::is_external_read_tool(&params.name)
             && result.label.integrity == crate::ifc::Integrity::Trusted
         {
-            result.label.integrity = crate::ifc::Integrity::Untrusted;
+            let path_arg = arguments.get("path").and_then(|v| v.as_str());
+            let is_trusted = path_arg.map_or(false, |p| {
+                self.trusted_paths
+                    .get(&ctx.agent.permissions)
+                    .map_or(false, |patterns| crate::ifc::is_trusted_path(p, patterns))
+            });
+            if !is_trusted {
+                result.label.integrity = crate::ifc::Integrity::Untrusted;
+            }
         }
 
         // IFC: absorb tool result label into session taint
@@ -582,6 +593,7 @@ pub struct McpServerBuilder {
     hook_timeout: std::time::Duration,
     quota_engine: Option<QuotaEngine>,
     ifc_policies: Option<HashMap<String, crate::ifc::TaintedWritePolicy>>,
+    trusted_paths: Option<HashMap<String, Vec<String>>>,
 }
 
 impl McpServerBuilder {
@@ -599,6 +611,7 @@ impl McpServerBuilder {
             hook_timeout: std::time::Duration::from_secs(10),
             quota_engine: None,
             ifc_policies: None,
+            trusted_paths: None,
         }
     }
 
@@ -764,6 +777,21 @@ impl McpServerBuilder {
         self
     }
 
+    /// Set trusted path patterns for a permission set.
+    ///
+    /// Files matching these glob patterns keep their Trusted integrity
+    /// label even when accessed via external read tools.
+    pub fn trusted_paths(
+        mut self,
+        permission_set: impl Into<String>,
+        paths: Vec<String>,
+    ) -> Self {
+        self.trusted_paths
+            .get_or_insert_with(HashMap::new)
+            .insert(permission_set.into(), paths);
+        self
+    }
+
     pub fn build(self) -> McpServer {
         let authenticator = self.authenticator.unwrap_or_else(|| {
             Arc::new(crate::auth::NoAuthenticator {
@@ -914,6 +942,7 @@ impl McpServerBuilder {
             process_table: ProcessTable::new(),
             quota_engine: self.quota_engine.unwrap_or_default(),
             ifc_policies: self.ifc_policies.unwrap_or_default(),
+            trusted_paths: self.trusted_paths.unwrap_or_default(),
             value_stores,
         }
     }
@@ -1900,6 +1929,119 @@ mod tests {
         // The result should be labeled Untrusted (confidentiality stays Public)
         assert_eq!(result.label.integrity, crate::ifc::Integrity::Untrusted);
         assert_eq!(result.label.confidentiality, crate::ifc::Confidentiality::Public);
+    }
+
+    #[tokio::test]
+    async fn ifc_trusted_path_keeps_trusted_label() {
+        // docs_read of a trusted path should stay Trusted
+        let server = McpServer::builder()
+            .tool(read_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("my code") })
+            })
+            .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_read".to_string(),
+                    arguments: serde_json::json!({"path": "/home/user/Code/project/main.rs"}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert_eq!(result.label.integrity, crate::ifc::Integrity::Trusted);
+    }
+
+    #[tokio::test]
+    async fn ifc_untrusted_path_still_labeled_untrusted() {
+        // docs_read of a non-trusted path should be Untrusted
+        let server = McpServer::builder()
+            .tool(read_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("external data") })
+            })
+            .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_read".to_string(),
+                    arguments: serde_json::json!({"path": "/tmp/untrusted.txt"}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert_eq!(result.label.integrity, crate::ifc::Integrity::Untrusted);
+    }
+
+    #[tokio::test]
+    async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
+        // docs_read without a path argument should default to Untrusted
+        let server = McpServer::builder()
+            .tool(read_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("data") })
+            })
+            .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
+            .build();
+
+        let result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_read".to_string(),
+                    arguments: serde_json::json!({}),
+                },
+                test_ctx(),
+            )
+            .await;
+
+        assert_eq!(result.label.integrity, crate::ifc::Integrity::Untrusted);
+    }
+
+    #[tokio::test]
+    async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
+        // Full flow: read trusted path → session stays clean → write succeeds
+        let server = McpServer::builder()
+            .tool(read_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("my code") })
+            })
+            .tool(write_tool_def(), |_args, _ctx| {
+                Box::pin(async { CallToolResult::text("written") })
+            })
+            .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
+            .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
+            .build();
+
+        // Read from trusted path — should not taint session
+        let sid = "trusted-session";
+        let ctx = CallContext::new(test_agent(), sid);
+        let _read_result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_read".to_string(),
+                    arguments: serde_json::json!({"path": "/home/user/Code/main.rs"}),
+                },
+                ctx,
+            )
+            .await;
+
+        // Write — should succeed because session is not tainted
+        let mut write_ctx = CallContext::new(test_agent(), sid);
+        let persisted = server.sessions().context_label(sid);
+        write_ctx.taint.absorb(persisted);
+
+        let write_result = server
+            .handle_call_tool(
+                CallToolParams {
+                    name: "docs_write".to_string(),
+                    arguments: serde_json::json!({"path": "/home/user/Code/out.rs", "content": "fn main() {}"}),
+                },
+                write_ctx,
+            )
+            .await;
+        assert!(!write_result.is_error);
     }
 
     // --- Hook pipeline tests ---
