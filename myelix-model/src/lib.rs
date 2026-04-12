@@ -13,9 +13,11 @@
 //! - `synthesize()` — synthesize text to audio
 
 pub mod chat;
+mod anthropic;
 mod onnx;
 mod openai;
 
+pub use anthropic::AnthropicBackend;
 pub use chat::*;
 pub use onnx::{ModelTask, OnnxBackend};
 pub use openai::OpenAiBackend;
