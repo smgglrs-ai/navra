@@ -2,7 +2,9 @@
 
 use crate::dag::DependencyGraph;
 use crate::error::FlowError;
-use crate::task::{Task, TaskResult, TaskStatus};
+use crate::recovery::{classify_failure, detect_circular_fix, get_strategy, RecoveryAction};
+use crate::task::{Attempt, Task, TaskResult, TaskStatus};
+use crate::validation::validate_mandate;
 use myelix_agent::Agent;
 use myelix_protocol::label::DataLabel;
 use myelix_security::ifc::TaintTracker;
@@ -88,78 +90,159 @@ impl DagExecutor {
                     FlowError::UnknownSpecialist(task.specialist.clone())
                 })?;
 
-                // Build prompt with dependency context
-                let prompt = build_task_prompt(task, &results);
-
                 tracing::info!(
                     task = %task.id,
                     specialist = %task.specialist,
                     "Executing DAG task"
                 );
 
-                let result = agent.run(&prompt).await;
+                let mut attempts: Vec<Attempt> = Vec::new();
+                let max_retries = task.max_retries;
+                let mut task_completed = false;
 
-                match result {
-                    Ok(tool_result) => {
-                        taint.absorb(tool_result.taint);
-                        total_prompt += tool_result.prompt_tokens;
-                        total_completion += tool_result.completion_tokens;
-
-                        results.insert(
-                            task.id.clone(),
-                            TaskResult {
-                                task_id: task.id.clone(),
-                                status: TaskStatus::Complete,
-                                output: tool_result.response,
-                                prompt_tokens: tool_result.prompt_tokens,
-                                completion_tokens: tool_result.completion_tokens,
-                                taint: tool_result.taint,
-                            },
-                        );
-                        completed.insert(task.id.clone());
+                for retry in 0..=max_retries {
+                    // Build prompt, injecting prior failure context on retries
+                    let mut prompt = build_task_prompt(task, &results);
+                    if !attempts.is_empty() {
+                        prompt = inject_retry_context(&prompt, &attempts);
                     }
-                    Err(e) => {
-                        tracing::error!(
-                            task = %task.id,
-                            error = %e,
-                            "DAG task failed"
-                        );
 
-                        results.insert(
-                            task.id.clone(),
-                            TaskResult {
-                                task_id: task.id.clone(),
-                                status: TaskStatus::Failed,
-                                output: e.to_string(),
-                                prompt_tokens: 0,
-                                completion_tokens: 0,
-                                taint: DataLabel::TRUSTED_PUBLIC,
-                            },
-                        );
+                    let result = agent.run(&prompt).await;
 
-                        // Skip all transitive dependents
-                        let to_skip = dag.all_dependents(&task.id);
-                        for skip_id in &to_skip {
-                            if !completed.contains(skip_id) {
-                                skipped.insert(skip_id.clone());
+                    match result {
+                        Ok(tool_result) => {
+                            taint.absorb(tool_result.taint);
+                            total_prompt += tool_result.prompt_tokens;
+                            total_completion += tool_result.completion_tokens;
+
+                            // Validate mandate
+                            let validation = validate_mandate(task, &tool_result.response);
+
+                            if validation.passed {
                                 results.insert(
-                                    skip_id.clone(),
+                                    task.id.clone(),
                                     TaskResult {
-                                        task_id: skip_id.clone(),
-                                        status: TaskStatus::Skipped,
-                                        output: format!(
-                                            "Skipped: dependency '{}' failed",
-                                            task.id
-                                        ),
-                                        prompt_tokens: 0,
-                                        completion_tokens: 0,
-                                        taint: DataLabel::TRUSTED_PUBLIC,
+                                        task_id: task.id.clone(),
+                                        status: TaskStatus::Complete,
+                                        output: tool_result.response,
+                                        prompt_tokens: tool_result.prompt_tokens,
+                                        completion_tokens: tool_result.completion_tokens,
+                                        taint: tool_result.taint,
+                                        validation_score: Some(validation.score),
+                                        validation_notes: validation.notes,
                                     },
                                 );
+                                completed.insert(task.id.clone());
+                                task_completed = true;
+                                break;
+                            }
+
+                            // Validation failed — record attempt and maybe retry
+                            let error_msg = format!(
+                                "Mandate validation failed (score: {:.0}): {}",
+                                validation.score,
+                                validation.notes.join("; ")
+                            );
+                            tracing::warn!(
+                                task = %task.id,
+                                score = validation.score,
+                                retry = retry,
+                                "Mandate validation failed"
+                            );
+
+                            attempts.push(Attempt {
+                                error: error_msg,
+                                error_type: "validation_failed".to_string(),
+                                output: tool_result.response,
+                            });
+
+                            if detect_circular_fix(&attempts, 3) {
+                                tracing::warn!(task = %task.id, "Circular fix detected");
+                                break;
                             }
                         }
-                        completed.insert(task.id.clone());
+                        Err(e) => {
+                            let error_str = e.to_string();
+                            let failure_type = classify_failure(&error_str, &attempts);
+                            let strategy = get_strategy(&failure_type);
+
+                            tracing::error!(
+                                task = %task.id,
+                                error = %error_str,
+                                failure_type = ?failure_type,
+                                "DAG task attempt failed"
+                            );
+
+                            attempts.push(Attempt {
+                                error: error_str,
+                                error_type: format!("{failure_type:?}").to_lowercase(),
+                                output: String::new(),
+                            });
+
+                            match strategy.action {
+                                RecoveryAction::Abort => {
+                                    return Err(FlowError::TaskFailed {
+                                        task: task.id.clone(),
+                                        reason: attempts.last().unwrap().error.clone(),
+                                    });
+                                }
+                                RecoveryAction::Skip => break,
+                                RecoveryAction::RetryWithContext => {
+                                    if detect_circular_fix(&attempts, 3) {
+                                        tracing::warn!(task = %task.id, "Circular fix detected");
+                                        break;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
                     }
+                }
+
+                if !task_completed {
+                    // Task failed after all retries — mark failed and skip dependents
+                    let last_error = attempts
+                        .last()
+                        .map(|a| a.error.clone())
+                        .unwrap_or_else(|| "unknown failure".to_string());
+
+                    results.insert(
+                        task.id.clone(),
+                        TaskResult {
+                            task_id: task.id.clone(),
+                            status: TaskStatus::Failed,
+                            output: last_error,
+                            prompt_tokens: 0,
+                            completion_tokens: 0,
+                            taint: DataLabel::TRUSTED_PUBLIC,
+                            validation_score: None,
+                            validation_notes: Vec::new(),
+                        },
+                    );
+
+                    let to_skip = dag.all_dependents(&task.id);
+                    for skip_id in &to_skip {
+                        if !completed.contains(skip_id) {
+                            skipped.insert(skip_id.clone());
+                            results.insert(
+                                skip_id.clone(),
+                                TaskResult {
+                                    task_id: skip_id.clone(),
+                                    status: TaskStatus::Skipped,
+                                    output: format!(
+                                        "Skipped: dependency '{}' failed",
+                                        task.id
+                                    ),
+                                    prompt_tokens: 0,
+                                    completion_tokens: 0,
+                                    taint: DataLabel::TRUSTED_PUBLIC,
+                                    validation_score: None,
+                                    validation_notes: Vec::new(),
+                                },
+                            );
+                        }
+                    }
+                    completed.insert(task.id.clone());
                 }
             }
         }
@@ -220,6 +303,21 @@ fn build_task_prompt(task: &Task, results: &HashMap<String, TaskResult>) -> Stri
     parts.join("")
 }
 
+/// Inject previous failure context into a retry prompt.
+fn inject_retry_context(prompt: &str, attempts: &[Attempt]) -> String {
+    let mut context = String::from("## Previous attempt(s) failed:\n\n");
+    for (i, attempt) in attempts.iter().enumerate() {
+        context.push_str(&format!(
+            "### Attempt {} — {}\n{}\n\n",
+            i + 1,
+            attempt.error_type,
+            attempt.error
+        ));
+    }
+    context.push_str("Please address the issues above and try again.\n\n---\n\n");
+    format!("{context}{prompt}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,6 +332,7 @@ mod tests {
             inputs: HashMap::new(),
             expected_output: None,
             success_criteria: Vec::new(),
+            max_retries: 2,
         }
     }
 
@@ -259,6 +358,8 @@ mod tests {
                 prompt_tokens: 0,
                 completion_tokens: 0,
                 taint: DataLabel::TRUSTED_PUBLIC,
+                validation_score: Some(100.0),
+                validation_notes: Vec::new(),
             },
         );
 
@@ -282,6 +383,7 @@ mod tests {
             },
             expected_output: None,
             success_criteria: vec!["Tests pass".to_string(), "No regressions".to_string()],
+            max_retries: 2,
         };
 
         let prompt = build_task_prompt(&task, &HashMap::new());
