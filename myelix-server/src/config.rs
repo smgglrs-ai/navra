@@ -21,6 +21,12 @@ pub struct Config {
     pub credentials: HashMap<String, myelix_core::credentials::CredentialMapping>,
     #[serde(default)]
     pub models: HashMap<String, ModelConfig>,
+    /// Path to cognitive core directory (personas, heuristics, directives).
+    #[serde(default)]
+    pub cognitive_core: Option<String>,
+    /// Directories containing flow TOML files.
+    #[serde(default)]
+    pub flow_dirs: Vec<String>,
     /// Domains to query for AID upstream discovery at startup.
     #[serde(default)]
     pub discover: Vec<String>,
@@ -585,6 +591,8 @@ impl Default for Config {
             upstream: Vec::new(),
             credentials: HashMap::new(),
             models: HashMap::new(),
+            cognitive_core: None,
+            flow_dirs: Vec::new(),
             discover: Vec::new(),
             registry: Vec::new(),
         }

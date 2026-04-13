@@ -12,6 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 myelix-core = { path = "../myelix-core" }
+myelix-cognitive = { path = "../myelix-cognitive" }
+myelix-agent = { path = "../myelix-agent" }
 myelix-model = { path = "../myelix-model" }
 myelix-model-hub = { path = "../myelix-model-hub" }
 myelix-model-runtime = { path = "../myelix-model-runtime" }
