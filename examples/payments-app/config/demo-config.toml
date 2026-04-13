@@ -1,0 +1,107 @@
+# mcpd demo configuration — security audit of a payments app
+#
+# Demonstrates:
+# - Agent authentication (BLAKE3 + capability tokens)
+# - Path ACLs with deny-wins
+# - IFC taint tracking with trusted paths
+# - Safety filtering (regex secrets + ML classifier)
+# - Human-in-the-loop approval for git commits
+# - Multi-persona agents with scoped permissions
+
+[server]
+tcp = "127.0.0.1:9315"
+
+[server.identity]
+key_path = "/tmp/mcpd-demo/identity.key"
+token_ttl = 3600
+
+[server.discovery]
+url = "http://127.0.0.1:9315/mcp"
+description = "mcpd security audit demo"
+
+[approval]
+timeout_secs = 120
+notify = "dbus"
+
+# --- Modules ---
+
+[modules.docs]
+enabled = true
+db_path = "/tmp/mcpd-demo/docs.db"
+watch = []
+
+[modules.git]
+enabled = true
+
+[modules.rag]
+enabled = true
+db_path = "/tmp/mcpd-demo/rag.db"
+
+# --- Agents ---
+# Three agents mapping to the three personas in the audit flow.
+
+[[agents]]
+name = "security-auditor"
+token_hash = "$demo-auditor-hash"
+permissions = "auditor"
+capability_token = true
+did = "did:key:demo-auditor"
+
+[[agents]]
+name = "code-specialist"
+token_hash = "$demo-coder-hash"
+permissions = "developer"
+capability_token = true
+did = "did:key:demo-coder"
+
+[[agents]]
+name = "analyst"
+token_hash = "$demo-analyst-hash"
+permissions = "analyst"
+capability_token = true
+did = "did:key:demo-analyst"
+
+# --- Permissions ---
+
+[permissions.auditor]
+ring = 2
+allow = ["examples/payments-app/**"]
+deny = ["**/.env", "**/.git/objects/**"]
+operations = ["read", "search", "list"]
+approve = []
+safety = "guardian"
+tainted_write_policy = "deny"
+trusted_paths = ["examples/payments-app/src/**"]
+# Auditor cannot write — read-only access
+
+[permissions.developer]
+ring = 3
+allow = ["examples/payments-app/src/**"]
+deny = ["**/secrets.rs", "**/.env"]
+operations = ["read", "write", "search", "list"]
+approve = ["write", "git.commit"]
+safety = "guardian"
+tainted_write_policy = "block"
+trusted_paths = ["examples/payments-app/src/**"]
+# Developer can write but needs approval for commits
+# DENIED: secrets.rs (IFC Confidential — developer shouldn't access)
+
+[[permissions.developer.tool_rules]]
+tool = "git_commit"
+policy = "approve"
+
+[permissions.analyst]
+ring = 2
+allow = ["examples/payments-app/**"]
+deny = ["**/.env"]
+operations = ["read", "search", "list"]
+approve = []
+safety = "guardian"
+tainted_write_policy = "deny"
+trusted_paths = ["examples/payments-app/src/**"]
+# Analyst has read access + memory tools
+
+# --- IFC Labels ---
+# secrets.rs is Confidential — reading it taints the agent context.
+# The tainted context cannot be forwarded to Remote model backends.
+# This demonstrates locality-aware filtering.

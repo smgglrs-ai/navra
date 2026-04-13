@@ -1,0 +1,22 @@
+{
+  "memories": [
+    {
+      "agent": "analyst",
+      "key": "previous-audit-2026-03",
+      "content": "Security audit (March 2026): Found SQL injection in handler.rs process_payment() — user_id directly interpolated into query. Ticket VULN-142 opened, status UNRESOLVED. Also found missing rate limiting on /api/v1/payment endpoint. Recommended parameterized queries and rate-limit middleware.",
+      "tags": ["audit", "sql-injection", "handler.rs", "march-2026"]
+    },
+    {
+      "agent": "analyst",
+      "key": "compliance-status",
+      "content": "PCI DSS compliance review (Q1 2026): Payment token encryption key stored in source code (secrets.rs). Flagged as PCI DSS Requirement 3.4 violation. Must move to HSM or KMS before Q2 audit deadline.",
+      "tags": ["compliance", "pci-dss", "secrets.rs", "q1-2026"]
+    },
+    {
+      "agent": "security-auditor",
+      "key": "known-patterns",
+      "content": "This codebase uses format!() for SQL queries extensively. Previous fix attempt in February replaced one query but missed get_history(). Pattern to watch: any function taking user_id: &str and building SQL with it.",
+      "tags": ["pattern", "sql-injection", "february-2026"]
+    }
+  ]
+}

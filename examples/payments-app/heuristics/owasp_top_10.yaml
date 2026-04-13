@@ -1,0 +1,44 @@
+heuristic_name: owasp_top_10
+description: OWASP Top 10 vulnerability detection patterns
+facets:
+  - facet_name: sql_injection
+    display_name: SQL Injection (A03:2021)
+    content: >
+      Look for string concatenation or interpolation in SQL queries.
+      Flag any use of format!(), concat(), or + operator to build SQL.
+      Safe patterns: parameterized queries, prepared statements, ORMs
+      with bind parameters. CWE-89.
+
+  - facet_name: broken_auth
+    display_name: Broken Authentication (A07:2021)
+    content: >
+      Check that all sensitive endpoints verify authentication before
+      processing. Look for missing auth middleware, missing session
+      validation, hardcoded credentials, and default passwords.
+      Admin endpoints must verify role-based authorization. CWE-287.
+
+  - facet_name: sensitive_data_exposure
+    display_name: Sensitive Data Exposure (A02:2021)
+    content: >
+      Find hardcoded secrets (API keys, passwords, tokens) in source.
+      Check for sensitive data in logs (PII, payment details).
+      Verify encryption at rest for stored credentials. Flag any
+      secret that appears as a string literal. CWE-200, CWE-312.
+
+  - facet_name: security_misconfiguration
+    display_name: Security Misconfiguration (A05:2021)
+    content: >
+      Check for missing security headers, disabled CSRF protection,
+      permissive CORS, missing rate limiting, verbose error messages
+      that leak internals. CWE-16.
+
+  - facet_name: idor
+    display_name: IDOR (A01:2021 - Broken Access Control)
+    content: >
+      Check that resource access verifies the authenticated user owns
+      the resource. Flag endpoints where a user ID from the URL path
+      is used without comparing to the session user. CWE-639.
+
+references:
+  - description: OWASP Top 10 2021
+    source: https://owasp.org/Top10/

@@ -1,0 +1,38 @@
+heuristic_name: secure_coding
+description: Secure coding patterns for vulnerability remediation
+facets:
+  - facet_name: input_validation
+    display_name: Input Validation
+    content: >
+      All user input must be validated before use. For numeric fields,
+      parse and range-check. For strings, limit length and character
+      set. Reject rather than sanitize when possible. Validate at
+      system boundaries, trust internal values.
+
+  - facet_name: parameterized_queries
+    display_name: Parameterized Queries
+    content: >
+      Never concatenate user input into SQL. Use parameterized queries
+      or prepared statements. In Rust with sqlx: use query!() macro
+      or .bind() method. The fix is always mechanical: replace string
+      interpolation with bind parameters.
+
+  - facet_name: auth_middleware
+    display_name: Authentication Middleware
+    content: >
+      Protect sensitive endpoints with authentication middleware that
+      runs before the handler. Extract and verify session tokens.
+      For admin endpoints, add role-based authorization after auth.
+      Pattern: middleware extracts identity, handler checks permission.
+
+  - facet_name: secret_management
+    display_name: Secret Management
+    content: >
+      Secrets must come from environment variables or a secret store
+      (Vault, AWS Secrets Manager). Never hardcode in source. Use
+      a config pattern: struct with Default that reads from env,
+      fails with clear error if missing.
+
+references:
+  - description: OWASP Secure Coding Practices
+    source: https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/
