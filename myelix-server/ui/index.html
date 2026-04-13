@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>myelix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="logo"></div>
+        <span>myelix</span>
+      </div>
+      <div class="header-status">
+        <span>
+          <span id="status-dot" class="status-dot offline"></span>
+          <span id="status-label">connecting...</span>
+        </span>
+      </div>
+    </header>
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="nav-item active" data-panel="chat">
+        <span class="nav-icon">&#9993;</span> Chat
+      </div>
+      <div class="nav-item" data-panel="flows">
+        <span class="nav-icon">&#9655;</span> Flows
+      </div>
+      <div class="nav-item" data-panel="models">
+        <span class="nav-icon">&#9881;</span> Models
+      </div>
+      <div class="nav-item" data-panel="agents">
+        <span class="nav-icon">&#9733;</span> Agents
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="main">
+
+      <!-- Chat panel -->
+      <div id="panel-chat" class="panel active">
+        <div class="chat-container">
+          <div class="chat-toolbar">
+            <label>Persona</label>
+            <select id="persona-select">
+              <option value="">default</option>
+            </select>
+            <label>Model</label>
+            <select id="model-select">
+              <option value="">auto</option>
+            </select>
+          </div>
+          <div id="chat-messages" class="chat-messages"></div>
+          <div class="chat-input-area">
+            <textarea id="chat-input" class="chat-input" placeholder="Ask something..." rows="1"></textarea>
+            <button id="chat-send" class="chat-send">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flows panel -->
+      <div id="panel-flows" class="panel">
+        <div class="flow-container">
+          <div class="flow-toolbar">
+            <span style="font-weight:600">Flows</span>
+          </div>
+          <div id="flow-list" class="models-list">
+            <p style="color:var(--text-muted);padding:20px">Loading...</p>
+          </div>
+          <div id="flow-dag" class="flow-canvas"></div>
+        </div>
+      </div>
+
+      <!-- Models panel -->
+      <div id="panel-models" class="panel">
+        <div class="flow-toolbar">
+          <span style="font-weight:600">Models</span>
+        </div>
+        <div id="models-list" class="models-list">
+          <p style="color:var(--text-muted);padding:20px">Loading...</p>
+        </div>
+      </div>
+
+      <!-- Agents panel -->
+      <div id="panel-agents" class="panel">
+        <div class="flow-toolbar">
+          <span style="font-weight:600">Agents</span>
+        </div>
+        <div id="agents-list" class="agents-grid">
+          <p style="color:var(--text-muted);padding:20px">Loading...</p>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span class="footer-tag ifc">IFC: Trusted</span>
+      <span class="footer-tag safety">Safety: guardian</span>
+      <span class="footer-tag ring">Ring 0</span>
+      <span id="footer-tokens" style="margin-left:auto">0/0 tokens</span>
+    </footer>
+  </div>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>
