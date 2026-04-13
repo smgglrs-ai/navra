@@ -16,6 +16,7 @@ members = [
     "myelix-rag",
     "myelix-modal-voice",
     "myelix-modal-vision",
+    "myelix-responses",
     "myelix-server",
 ]
 

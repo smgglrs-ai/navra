@@ -2080,6 +2080,7 @@ dependencies = [
  "async-trait",
  "myelix-model",
  "myelix-protocol",
+ "myelix-responses",
  "myelix-security",
  "serde",
  "serde_json",
@@ -2134,6 +2135,7 @@ dependencies = [
  "myelix-agent",
  "myelix-model",
  "myelix-protocol",
+ "myelix-responses",
  "myelix-security",
  "serde",
  "serde_json",
@@ -2187,6 +2189,7 @@ version = "0.1.0"
 dependencies = [
  "async-stream",
  "futures-util",
+ "myelix-responses",
  "ndarray",
  "ort",
  "reqwest",
@@ -2260,6 +2263,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "myelix-responses"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "myelix-security"
 version = "0.1.0"
 dependencies = [
@@ -2302,6 +2313,8 @@ dependencies = [
  "futures-util",
  "ksni",
  "mdns-sd",
+ "myelix-agent",
+ "myelix-cognitive",
  "myelix-core",
  "myelix-modal-vision",
  "myelix-modal-voice",
