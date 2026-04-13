@@ -1,0 +1,69 @@
+# Security audit flow — demonstrates DAG execution, parallel tasks,
+# multi-persona collaboration, IFC, mandate validation, and recovery.
+
+[flow]
+name = "security-audit"
+description = "Audit payment module for vulnerabilities, propose and review fixes"
+
+# --- Parallel scan phase (T1, T2, T3 run concurrently) ---
+
+[[tasks]]
+id = "scan-auth"
+specialist = "security_auditor"
+mandate = "Scan src/handler.rs and src/api.rs for authentication and authorization vulnerabilities. Report findings with CWE IDs."
+expected_output = "List of auth-related findings with severity and CWE classification"
+success_criteria = "At least one finding about missing authentication"
+
+[[tasks]]
+id = "scan-injection"
+specialist = "security_auditor"
+mandate = "Scan src/handler.rs for injection vulnerabilities (SQL, command, etc). Report findings with CWE IDs."
+expected_output = "List of injection findings with severity and CWE classification"
+success_criteria = "SQL injection finding with CWE-89"
+
+[[tasks]]
+id = "scan-secrets"
+specialist = "security_auditor"
+mandate = "Scan src/config.rs and src/secrets.rs for hardcoded credentials, API keys, and secrets. Report findings with CWE IDs."
+expected_output = "List of secret exposure findings with severity and CWE classification"
+success_criteria = "At least one hardcoded API key finding"
+
+# --- Synthesis phase (T4 depends on all scans) ---
+
+[[tasks]]
+id = "synthesize"
+specialist = "analyst"
+mandate = "Synthesize findings from all scan tasks into a prioritized security report. Cross-reference with past audit memory. Categorize as critical/high/medium/low."
+depends_on = ["scan-auth", "scan-injection", "scan-secrets"]
+expected_output = "Prioritized security report with remediation recommendations"
+success_criteria = "Report has at least one critical and one high finding"
+
+# --- Fix phase (T5 depends on synthesis) ---
+
+[[tasks]]
+id = "propose-fixes"
+specialist = "code_specialist"
+mandate = "Propose minimal code fixes for the top 3 findings from the security report. Show before/after diffs. Use parameterized queries for SQL injection, environment variables for secrets, auth middleware for missing auth."
+depends_on = ["synthesize"]
+expected_output = "Code patches addressing top 3 vulnerabilities"
+success_criteria = "Each fix addresses the specific CWE from the finding"
+
+# --- Review phase (T6 depends on fixes) ---
+
+[[tasks]]
+id = "review-fixes"
+specialist = "security_auditor"
+mandate = "Review the proposed fixes. Verify each fix addresses the original vulnerability without introducing new issues. Approve or request changes."
+depends_on = ["propose-fixes"]
+expected_output = "Review verdict: approved or changes-requested for each fix"
+success_criteria = "All fixes either approved or have specific change requests"
+
+# --- Commit phase (T7 depends on review) ---
+
+[[tasks]]
+id = "prepare-commit"
+specialist = "code_specialist"
+mandate = "Apply the approved fixes and prepare a git commit with a descriptive message summarizing the security remediation."
+depends_on = ["review-fixes"]
+expected_output = "Git commit with security fixes applied"
+success_criteria = "Commit message references the findings addressed"

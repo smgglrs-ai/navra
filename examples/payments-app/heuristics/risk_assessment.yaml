@@ -1,0 +1,26 @@
+heuristic_name: risk_assessment
+description: Risk assessment and vulnerability prioritization
+facets:
+  - facet_name: severity_scoring
+    display_name: Severity Scoring
+    content: >
+      Rate findings using CVSS-like categories:
+      Critical: remote code execution, auth bypass on admin, secret exposure in public repo
+      High: SQL injection, missing auth on sensitive endpoints, IDOR on payment data
+      Medium: missing rate limiting, verbose errors, logging PII
+      Low: missing security headers, informational disclosures
+
+  - facet_name: impact_analysis
+    display_name: Impact Analysis
+    content: >
+      Assess business impact: data breach potential, financial loss,
+      regulatory exposure (PCI DSS, GDPR). Payment systems amplify
+      severity — a medium finding in a blog is critical in payments.
+
+  - facet_name: remediation_priority
+    display_name: Remediation Priority
+    content: >
+      Order fixes by: severity * exploitability * blast radius.
+      Quick wins first: hardcoded secrets (easy fix, critical impact).
+      Then auth gaps. Then injection points. Deprioritize cosmetic
+      issues until security baseline is met.
