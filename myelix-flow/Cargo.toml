@@ -20,5 +20,6 @@ anyhow = { workspace = true }
 toml = "0.8"
 
 [dev-dependencies]
+myelix-responses = { path = "../myelix-responses" }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }

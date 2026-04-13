@@ -260,15 +260,17 @@ impl ModelBackend for AnthropicBackend {
         })
     }
 
-    fn chat(
+    fn respond(
         &self,
-        request: &ChatRequest,
+        request: &crate::CreateResponseRequest,
     ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<ChatResponse, ModelError>> + Send + '_>,
+        Box<dyn std::future::Future<Output = Result<crate::ModelResponse, ModelError>> + Send + '_>,
     > {
+        let chat_req = crate::responses_to_chat(request);
         let url = self.messages_url();
-        let body = self.build_body(request, false);
+        let body = self.build_body(&chat_req, false);
         let req = self.apply_auth(self.client.post(&url).json(&body));
+        let model_name = self.model.clone();
 
         Box::pin(async move {
             let resp = req
@@ -287,67 +289,8 @@ impl ModelBackend for AnthropicBackend {
                 .await
                 .map_err(|e| ModelError::Api(format!("invalid response: {e}")))?;
 
-            Self::parse_response(&json)
-        })
-    }
-
-    fn chat_stream(
-        &self,
-        request: &ChatRequest,
-    ) -> std::pin::Pin<
-        Box<dyn futures_util::stream::Stream<Item = Result<ChatChunk, ModelError>> + Send + '_>,
-    > {
-        let url = self.messages_url();
-        let body = self.build_body(request, true);
-        let req = self.apply_auth(self.client.post(&url).json(&body));
-
-        Box::pin(async_stream::stream! {
-            let resp = match req.send().await {
-                Ok(r) => r,
-                Err(e) => {
-                    yield Err(ModelError::Api(format!("request failed: {e}")));
-                    return;
-                }
-            };
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let text = resp.text().await.unwrap_or_default();
-                yield Err(ModelError::Api(format!("HTTP {status}: {text}")));
-                return;
-            }
-
-            let mut buffer = String::new();
-            let mut byte_stream = resp.bytes_stream();
-            let mut prompt_tokens: Option<u32> = None;
-
-            while let Some(chunk_result) = byte_stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(ModelError::Api(format!("stream error: {e}")));
-                        return;
-                    }
-                };
-                buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-                while let Some(newline_pos) = buffer.find('\n') {
-                    let line = buffer[..newline_pos].trim().to_string();
-                    buffer = buffer[newline_pos + 1..].to_string();
-
-                    if line.is_empty() || line.starts_with("event:") {
-                        continue;
-                    }
-
-                    if let Some(json_str) = line.strip_prefix("data: ") {
-                        match parse_anthropic_stream_event(json_str, &mut prompt_tokens) {
-                            Ok(Some(chunk)) => yield Ok(chunk),
-                            Ok(None) => {} // Event we don't need to emit
-                            Err(e) => yield Err(e),
-                        }
-                    }
-                }
-            }
+            let chat_resp = Self::parse_response(&json)?;
+            Ok(crate::chat_to_responses(&model_name, &chat_resp))
         })
     }
 }

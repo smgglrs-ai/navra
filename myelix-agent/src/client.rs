@@ -1,8 +1,6 @@
 //! MCP client with authentication and IFC taint tracking.
 
-use crate::convert::tool_def_to_chat;
 use crate::error::AgentError;
-use myelix_model::ChatToolDefinition;
 use myelix_protocol::label::{DataLabel, Integrity};
 use myelix_protocol::{
     CallToolParams, CallToolResult, GetPromptParams, GetPromptResult, PromptDefinition,
@@ -67,12 +65,6 @@ impl McpClient {
 
         self.taint.absorb(result.label);
         Ok(result)
-    }
-
-    /// List available tools converted to [`ChatToolDefinition`] for model calls.
-    pub async fn chat_tools(&mut self) -> Result<Vec<ChatToolDefinition>, AgentError> {
-        let tools = self.list_tools().await?;
-        Ok(tools.iter().map(tool_def_to_chat).collect())
     }
 
     /// List prompts from the MCP server.

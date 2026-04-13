@@ -112,8 +112,8 @@ impl DagExecutor {
                     match result {
                         Ok(tool_result) => {
                             taint.absorb(tool_result.taint);
-                            total_prompt += tool_result.prompt_tokens;
-                            total_completion += tool_result.completion_tokens;
+                            total_prompt += tool_result.input_tokens;
+                            total_completion += tool_result.output_tokens;
 
                             // Validate mandate
                             let validation = validate_mandate(task, &tool_result.response);
@@ -125,8 +125,8 @@ impl DagExecutor {
                                         task_id: task.id.clone(),
                                         status: TaskStatus::Complete,
                                         output: tool_result.response,
-                                        prompt_tokens: tool_result.prompt_tokens,
-                                        completion_tokens: tool_result.completion_tokens,
+                                        prompt_tokens: tool_result.input_tokens,
+                                        completion_tokens: tool_result.output_tokens,
                                         taint: tool_result.taint,
                                         validation_score: Some(validation.score),
                                         validation_notes: validation.notes,

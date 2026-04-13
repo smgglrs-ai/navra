@@ -2,7 +2,7 @@
 
 use crate::definition::EdgeDefinition;
 use crate::error::FlowError;
-use myelix_model::ChatToolDefinition;
+use myelix_model::ResponseTool;
 
 /// Name of the virtual handoff tool.
 pub const HANDOFF_TOOL_NAME: &str = "handoff";
@@ -16,14 +16,16 @@ pub struct HandoffRequest {
     pub task: String,
 }
 
-/// Create the virtual handoff tool definition for model chat.
-pub fn handoff_tool_def() -> ChatToolDefinition {
-    ChatToolDefinition {
+/// Create the virtual handoff tool definition for model responses.
+pub fn handoff_tool_def() -> ResponseTool {
+    ResponseTool {
+        tool_type: "function".to_string(),
         name: HANDOFF_TOOL_NAME.to_string(),
-        description: "Transfer control to another specialist agent. Use this when the task \
+        description: Some("Transfer control to another specialist agent. Use this when the task \
                       requires capabilities outside your expertise."
-            .to_string(),
-        parameters: serde_json::json!({
+            .to_string()),
+        strict: None,
+        parameters: Some(serde_json::json!({
             "type": "object",
             "properties": {
                 "target": {
@@ -37,7 +39,7 @@ pub fn handoff_tool_def() -> ChatToolDefinition {
                 }
             },
             "required": ["target", "task"]
-        }),
+        })),
     }
 }
 
@@ -87,7 +89,8 @@ mod tests {
     fn handoff_tool_has_required_params() {
         let tool = handoff_tool_def();
         assert_eq!(tool.name, "handoff");
-        let required = tool.parameters["required"].as_array().unwrap();
+        let params = tool.parameters.as_ref().unwrap();
+        let required = params["required"].as_array().unwrap();
         assert!(required.iter().any(|v| v == "target"));
         assert!(required.iter().any(|v| v == "task"));
     }

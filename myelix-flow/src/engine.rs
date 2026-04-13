@@ -5,7 +5,9 @@ use crate::error::FlowError;
 use crate::handoff::{handoff_tool_def, parse_handoff, routing_instructions, HANDOFF_TOOL_NAME};
 use myelix_agent::{extract_text, Agent};
 use myelix_model::{
-    ChatMessage, ChatRequest, ChatResponse, FinishReason, Locality, OpenAiBackend, ToolChoice,
+    CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
+    InputItem, ItemStatus, Locality, MessageItem, ModelBackend, ModelResponse, OpenAiBackend,
+    OutputItem, ResponseStatus, ResponseTool, ResponseToolChoice,
 };
 use myelix_protocol::label::DataLabel;
 use myelix_security::ifc::TaintTracker;
@@ -227,103 +229,138 @@ impl Flow {
 /// MCP tool calls, and intercepts `handoff` calls to return control
 /// to the outer flow loop.
 async fn run_node_loop(node: &mut FlowNode, user_prompt: &str) -> Result<NodeResult, FlowError> {
-    let node_id = "node"; // for error context
+    let node_id = "node";
 
     // Get MCP tools + inject virtual handoff tool
-    let mut tools = node
+    let mcp_tools = node
         .agent
         .client()
-        .chat_tools()
+        .list_tools()
         .await
         .map_err(|e| FlowError::Agent {
             node: node_id.into(),
             source: e,
         })?;
+    let mut tools: Vec<ResponseTool> = mcp_tools
+        .iter()
+        .map(|t| ResponseTool {
+            tool_type: "function".to_string(),
+            name: t.name.clone(),
+            description: t.description.clone(),
+            parameters: Some(serde_json::json!({
+                "type": t.input_schema.schema_type,
+                "properties": t.input_schema.properties,
+                "required": t.input_schema.required,
+            })),
+            strict: None,
+        })
+        .collect();
     if node.has_edges {
         tools.push(handoff_tool_def());
     }
 
-    let mut messages = Vec::new();
-    messages.push(ChatMessage::system(&node.effective_prompt));
-    messages.push(ChatMessage::user(user_prompt));
+    let mut input: Vec<InputItem> = Vec::new();
+    input.push(InputItem::system(&node.effective_prompt));
+    input.push(InputItem::user(user_prompt));
 
-    let mut total_prompt = 0u32;
-    let mut total_completion = 0u32;
+    let mut total_input = 0u32;
+    let mut total_output = 0u32;
 
     for _iteration in 0..node.max_iterations {
-        let request = ChatRequest {
-            messages: messages.clone(),
+        let request = CreateResponseRequest {
+            model: String::new(),
+            input: input.clone(),
             tools: tools.clone(),
-            tool_choice: Some(ToolChoice::Auto),
+            tool_choice: Some(ResponseToolChoice::auto()),
             temperature: node.temperature,
-            max_tokens: node.max_tokens,
+            max_output_tokens: node.max_tokens,
+            ..CreateResponseRequest::new(String::new(), vec![])
         };
 
-        let response: ChatResponse =
+        let response: ModelResponse =
             node.agent
                 .model()
-                .chat(&request)
+                .respond(&request)
                 .await
                 .map_err(|e| FlowError::Agent {
                     node: node_id.into(),
                     source: e.into(),
                 })?;
 
-        total_prompt += response.prompt_tokens.unwrap_or(0);
-        total_completion += response.completion_tokens.unwrap_or(0);
+        if let Some(ref usage) = response.usage {
+            total_input += usage.input_tokens;
+            total_output += usage.output_tokens;
+        }
 
-        match response.finish_reason {
-            FinishReason::Stop | FinishReason::Length => {
+        // Check for function calls
+        let function_calls: Vec<&FunctionCallItem> = response
+            .output
+            .iter()
+            .filter_map(|item| match item {
+                OutputItem::FunctionCall(fc) => Some(fc),
+                _ => None,
+            })
+            .collect();
+
+        if function_calls.is_empty() {
+            // Text response — done
+            let text = response.text().unwrap_or_default();
+            return Ok(NodeResult {
+                outcome: NodeOutcome::Stop(text),
+                prompt_tokens: total_input,
+                completion_tokens: total_output,
+                taint: node.agent.taint(),
+            });
+        }
+
+        // Process function calls
+        for fc in &function_calls {
+            if fc.name == HANDOFF_TOOL_NAME {
+                let handoff = parse_handoff(&fc.arguments)?;
                 return Ok(NodeResult {
-                    outcome: NodeOutcome::Stop(
-                        response.message.content.unwrap_or_default(),
-                    ),
-                    prompt_tokens: total_prompt,
-                    completion_tokens: total_completion,
+                    outcome: NodeOutcome::Handoff {
+                        target: handoff.target,
+                        task: handoff.task,
+                    },
+                    prompt_tokens: total_input,
+                    completion_tokens: total_output,
                     taint: node.agent.taint(),
                 });
             }
-            FinishReason::ToolCalls => {
-                let tool_calls = response.message.tool_calls.clone();
-                messages.push(ChatMessage::assistant_tool_calls(tool_calls.clone()));
 
-                for tc in &tool_calls {
-                    if tc.function.name == HANDOFF_TOOL_NAME {
-                        let handoff = parse_handoff(&tc.function.arguments)?;
-                        return Ok(NodeResult {
-                            outcome: NodeOutcome::Handoff {
-                                target: handoff.target,
-                                task: handoff.task,
-                            },
-                            prompt_tokens: total_prompt,
-                            completion_tokens: total_completion,
-                            taint: node.agent.taint(),
-                        });
-                    }
+            // Add function call to input
+            input.push(InputItem::FunctionCall(FunctionCallItem {
+                id: fc.id.clone(),
+                call_id: fc.call_id.clone(),
+                name: fc.name.clone(),
+                arguments: fc.arguments.clone(),
+                status: Some(ItemStatus::Completed),
+            }));
 
-                    // Regular MCP tool call
-                    let args: serde_json::Value =
-                        serde_json::from_str(&tc.function.arguments)
-                            .unwrap_or(serde_json::json!({}));
+            // Execute MCP tool call
+            let args: serde_json::Value =
+                serde_json::from_str(&fc.arguments)
+                    .unwrap_or(serde_json::json!({}));
 
-                    tracing::debug!(
-                        tool = %tc.function.name,
-                        "Flow node executing tool"
-                    );
+            tracing::debug!(tool = %fc.name, "Flow node executing tool");
 
-                    let result = node
-                        .agent
-                        .client()
-                        .call_tool(&tc.function.name, args)
-                        .await
-                        .map_err(|e| FlowError::Agent {
-                            node: node_id.into(),
-                            source: e,
-                        })?;
-                    let text = extract_text(&result);
-                    messages.push(ChatMessage::tool_result(&tc.id, text));
-                }
-            }
+            let result = node
+                .agent
+                .client()
+                .call_tool(&fc.name, args)
+                .await
+                .map_err(|e| FlowError::Agent {
+                    node: node_id.into(),
+                    source: e,
+                })?;
+            let text = extract_text(&result);
+
+            input.push(InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                id: None,
+                call_id: fc.call_id.clone(),
+                output: FunctionCallOutputContent::Text(text),
+                status: Some(ItemStatus::Completed),
+            }));
         }
     }
 
@@ -338,7 +375,8 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use myelix_model::{
-        ChatRequest, ChatResponse, FunctionCall, ModelBackend, ModelError, ToolCall,
+        CreateResponseRequest, ModelBackend, ModelError, ModelResponse,
+        FunctionCallItem, ItemStatus, MessageItem, OutputItem, ResponseStatus,
     };
     use myelix_protocol::upstream::{Transport, UpstreamError};
     use myelix_protocol::Upstream;
@@ -346,13 +384,12 @@ mod tests {
     use std::pin::Pin;
     use std::sync::Mutex;
 
-    /// Mock model returning scripted responses.
     struct MockModel {
-        responses: Mutex<Vec<ChatResponse>>,
+        responses: Mutex<Vec<ModelResponse>>,
     }
 
     impl MockModel {
-        fn new(responses: Vec<ChatResponse>) -> Self {
+        fn new(responses: Vec<ModelResponse>) -> Self {
             Self {
                 responses: Mutex::new(responses),
             }
@@ -360,10 +397,10 @@ mod tests {
     }
 
     impl ModelBackend for MockModel {
-        fn chat(
+        fn respond(
             &self,
-            _req: &ChatRequest,
-        ) -> Pin<Box<dyn Future<Output = Result<ChatResponse, ModelError>> + Send + '_>> {
+            _req: &CreateResponseRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<ModelResponse, ModelError>> + Send + '_>> {
             let response = {
                 let mut responses = self.responses.lock().unwrap();
                 if responses.is_empty() {
@@ -422,7 +459,7 @@ mod tests {
     }
 
     async fn mock_agent(
-        model_responses: Vec<ChatResponse>,
+        model_responses: Vec<ModelResponse>,
         tool_responses: Vec<serde_json::Value>,
     ) -> Agent {
         let mut transport_responses = init_responses();
@@ -445,33 +482,41 @@ mod tests {
             .unwrap()
     }
 
-    fn stop_response(text: &str) -> ChatResponse {
-        ChatResponse {
-            message: ChatMessage::assistant(text),
-            finish_reason: FinishReason::Stop,
-            prompt_tokens: Some(10),
-            completion_tokens: Some(5),
+    fn make_response(output: Vec<OutputItem>) -> ModelResponse {
+        use myelix_responses::response::Usage;
+        ModelResponse {
+            id: "resp_test".into(),
+            object: "response".into(),
+            created_at: None, completed_at: None,
+            status: ResponseStatus::Completed,
+            model: Some("test".into()),
+            output,
+            usage: Some(Usage {
+                input_tokens: 10, output_tokens: 5, total_tokens: 15,
+                input_tokens_details: None, output_tokens_details: None,
+            }),
+            error: None, previous_response_id: None, instructions: None,
+            tools: vec![], tool_choice: None, text: None, reasoning: None,
+            truncation: None, temperature: None, max_output_tokens: None,
+            metadata: Default::default(), incomplete_details: None, extra: Default::default(),
         }
     }
 
-    fn handoff_response(target: &str, task: &str) -> ChatResponse {
-        ChatResponse {
-            message: ChatMessage::assistant_tool_calls(vec![ToolCall {
-                id: "call_handoff".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: HANDOFF_TOOL_NAME.to_string(),
-                    arguments: serde_json::json!({
-                        "target": target,
-                        "task": task
-                    })
-                    .to_string(),
-                },
-            }]),
-            finish_reason: FinishReason::ToolCalls,
-            prompt_tokens: Some(10),
-            completion_tokens: Some(5),
-        }
+    fn stop_response(text: &str) -> ModelResponse {
+        make_response(vec![OutputItem::Message(MessageItem::assistant(text))])
+    }
+
+    fn handoff_response(target: &str, task: &str) -> ModelResponse {
+        make_response(vec![OutputItem::FunctionCall(FunctionCallItem {
+            id: Some("call_handoff".into()),
+            call_id: "call_handoff".into(),
+            name: HANDOFF_TOOL_NAME.to_string(),
+            arguments: serde_json::json!({
+                "target": target,
+                "task": task
+            }).to_string(),
+            status: Some(ItemStatus::Completed),
+        })])
     }
 
     #[tokio::test]
@@ -518,7 +563,7 @@ mod tests {
     }
 
     async fn mock_agent_multi(
-        model_responses: Vec<ChatResponse>,
+        model_responses: Vec<ModelResponse>,
         visits: usize,
     ) -> Agent {
         let mut transport_responses = init_responses();
