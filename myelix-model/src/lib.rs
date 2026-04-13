@@ -1,26 +1,37 @@
 //! Model inference backends for myelix.
 //!
-//! Provides a unified `ModelBackend` trait for both in-process ONNX
-//! models and external API-based models.
+//! Provides a unified `ModelBackend` trait using the
+//! [Open Responses](https://openresponses.org) specification as the
+//! canonical model I/O interface.
 //!
 //! Capabilities:
+//! - `respond()` — multi-turn completion with tools, structured output, reasoning
+//! - `respond_stream()` — streaming variant with SSE events
 //! - `embed()` — generate text embeddings (for vector search)
 //! - `classify()` — classify content (for safety filtering)
 //! - `generate()` — generate text from a prompt (simple, single-turn)
-//! - `chat()` — multi-turn chat completion with tool use
-//! - `chat_stream()` — streaming chat completion with tool use
 //! - `transcribe()` — transcribe audio to text
 //! - `synthesize()` — synthesize text to audio
 
-pub mod chat;
+// Internal modules — Chat Completions types used only for backend translation.
+pub(crate) mod chat;
 mod anthropic;
 mod onnx;
 mod openai;
 
 pub use anthropic::AnthropicBackend;
-pub use chat::*;
 pub use onnx::{ModelTask, OnnxBackend};
 pub use openai::OpenAiBackend;
+
+// Re-export Open Responses types as the public model I/O interface.
+pub use myelix_responses::{
+    self as responses,
+    CreateResponseRequest, Response as ModelResponse, ResponseFormat, ResponseStatus,
+    FunctionTool as ResponseTool, ToolChoice as ResponseToolChoice,
+    InputItem, OutputItem, MessageItem, FunctionCallItem, FunctionCallOutputItem,
+    FunctionCallOutputContent, ReasoningItem, MessageRole, ItemStatus, MessageContent,
+    InputContent, OutputContent, StreamEvent,
+};
 
 use std::future::Future;
 use std::pin::Pin;
@@ -187,10 +198,37 @@ pub enum Locality {
 
 /// Trait for model inference backends.
 ///
-/// Implementations can be in-process (ONNX) or external (API).
-/// Methods return `Err(ModelError::NotLoaded)` by default if the
-/// operation is not supported by this backend.
+/// The primary interface for LLM interaction is `respond()`, which
+/// uses the [Open Responses](https://openresponses.org) specification.
+/// This gives structured output, reasoning traces, tool governance,
+/// and stateful follow-ups for free.
+///
+/// Backends translate to their native wire format internally:
+/// - `OpenAiBackend` → Chat Completions API (Ollama, vLLM)
+/// - `AnthropicBackend` → Messages API (Claude)
+/// - Future `ResponsesBackend` → Open Responses API (native)
 pub trait ModelBackend: Send + Sync + 'static {
+    /// Create a response (Open Responses format).
+    ///
+    /// This is the primary LLM interface. Supports structured output,
+    /// reasoning traces, `previous_response_id`, and `allowed_tools`.
+    fn respond(
+        &self,
+        _request: &CreateResponseRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<ModelResponse, ModelError>> + Send + '_>> {
+        Box::pin(async { Err(ModelError::NotLoaded("respond not supported".into())) })
+    }
+
+    /// Streaming response (Open Responses format).
+    fn respond_stream(
+        &self,
+        _request: &CreateResponseRequest,
+    ) -> Pin<Box<dyn Stream<Item = Result<StreamEvent, ModelError>> + Send + '_>> {
+        Box::pin(futures_util::stream::once(async {
+            Err(ModelError::NotLoaded("respond_stream not supported".into()))
+        }))
+    }
+
     /// Generate embeddings for input text.
     fn embed(
         &self,
@@ -207,7 +245,7 @@ pub trait ModelBackend: Send + Sync + 'static {
         Box::pin(async { Err(ModelError::NotLoaded("classify not supported".into())) })
     }
 
-    /// Generate text from a prompt.
+    /// Generate text from a prompt (simple, single-turn).
     fn generate(
         &self,
         _request: &GenerateRequest,
@@ -230,22 +268,151 @@ pub trait ModelBackend: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<SynthesizeResponse, ModelError>> + Send + '_>> {
         Box::pin(async { Err(ModelError::NotLoaded("synthesize not supported".into())) })
     }
+}
 
-    /// Multi-turn chat completion with tool use.
-    fn chat(
-        &self,
-        _request: &ChatRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<ChatResponse, ModelError>> + Send + '_>> {
-        Box::pin(async { Err(ModelError::NotLoaded("chat not supported".into())) })
+// --- Internal translation helpers ---
+
+/// Convert Open Responses request to Chat Completions (used by OpenAiBackend).
+pub(crate) fn responses_to_chat(req: &CreateResponseRequest) -> chat::ChatRequest {
+    use chat::*;
+
+    let mut messages = Vec::new();
+
+    if let Some(ref instructions) = req.instructions {
+        messages.push(ChatMessage::system(instructions));
     }
 
-    /// Streaming chat completion with tool use.
-    fn chat_stream(
-        &self,
-        _request: &ChatRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<ChatChunk, ModelError>> + Send + '_>> {
-        Box::pin(futures_util::stream::once(async {
-            Err(ModelError::NotLoaded("chat_stream not supported".into()))
-        }))
+    for item in &req.input {
+        match item {
+            InputItem::Message(msg) => {
+                let text = msg.text();
+                match msg.role {
+                    MessageRole::System | MessageRole::Developer => {
+                        messages.push(ChatMessage::system(text));
+                    }
+                    MessageRole::User => messages.push(ChatMessage::user(text)),
+                    MessageRole::Assistant => messages.push(ChatMessage::assistant(&text)),
+                }
+            }
+            InputItem::FunctionCall(fc) => {
+                messages.push(ChatMessage::assistant_tool_calls(vec![ToolCall {
+                    id: fc.call_id.clone(),
+                    call_type: "function".to_string(),
+                    function: FunctionCall {
+                        name: fc.name.clone(),
+                        arguments: fc.arguments.clone(),
+                    },
+                }]));
+            }
+            InputItem::FunctionCallOutput(fco) => {
+                let text = match &fco.output {
+                    FunctionCallOutputContent::Text(t) => t.clone(),
+                    FunctionCallOutputContent::Parts(parts) => parts
+                        .iter()
+                        .filter_map(|p| match p {
+                            InputContent::Text(t) => Some(t.text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join(""),
+                };
+                messages.push(ChatMessage::tool_result(&fco.call_id, text));
+            }
+            InputItem::Reasoning(_) | InputItem::ItemReference { .. } => {}
+        }
     }
+
+    let tools: Vec<ChatToolDefinition> = req
+        .tools
+        .iter()
+        .map(|t| ChatToolDefinition {
+            name: t.name.clone(),
+            description: t.description.clone().unwrap_or_default(),
+            parameters: t.parameters.clone().unwrap_or(serde_json::json!({})),
+        })
+        .collect();
+
+    let tool_choice = req.tool_choice.as_ref().map(|tc| match tc {
+        myelix_responses::ToolChoice::Mode(mode) => match mode {
+            myelix_responses::ToolChoiceMode::Auto => ToolChoice::Auto,
+            myelix_responses::ToolChoiceMode::None => ToolChoice::None,
+            myelix_responses::ToolChoiceMode::Required => ToolChoice::Required,
+        },
+        _ => ToolChoice::Auto,
+    });
+
+    ChatRequest {
+        messages,
+        max_tokens: req.max_output_tokens,
+        temperature: req.temperature,
+        tools,
+        tool_choice,
+    }
+}
+
+/// Convert Chat Completions response to Open Responses format.
+pub(crate) fn chat_to_responses(model: &str, resp: &chat::ChatResponse) -> ModelResponse {
+    use chat::FinishReason;
+    use myelix_responses::response::Usage;
+    use std::collections::HashMap;
+
+    let mut output = Vec::new();
+
+    if resp.finish_reason == FinishReason::ToolCalls {
+        for tc in &resp.message.tool_calls {
+            output.push(OutputItem::FunctionCall(FunctionCallItem {
+                id: Some(tc.id.clone()),
+                call_id: tc.id.clone(),
+                name: tc.function.name.clone(),
+                arguments: tc.function.arguments.clone(),
+                status: Some(ItemStatus::Completed),
+            }));
+        }
+    } else if let Some(ref text) = resp.message.content {
+        output.push(OutputItem::Message(MessageItem::assistant(text)));
+    }
+
+    let status = match resp.finish_reason {
+        FinishReason::Stop | FinishReason::ToolCalls => ResponseStatus::Completed,
+        FinishReason::Length => ResponseStatus::Incomplete,
+    };
+
+    ModelResponse {
+        id: format!("resp_{:016x}", rand_id()),
+        object: "response".to_string(),
+        created_at: None,
+        completed_at: None,
+        status,
+        model: Some(model.to_string()),
+        output,
+        usage: Some(Usage {
+            input_tokens: resp.prompt_tokens.unwrap_or(0),
+            output_tokens: resp.completion_tokens.unwrap_or(0),
+            total_tokens: resp.prompt_tokens.unwrap_or(0) + resp.completion_tokens.unwrap_or(0),
+            input_tokens_details: None,
+            output_tokens_details: None,
+        }),
+        error: None,
+        previous_response_id: None,
+        instructions: None,
+        tools: Vec::new(),
+        tool_choice: None,
+        text: None,
+        reasoning: None,
+        truncation: None,
+        temperature: None,
+        max_output_tokens: None,
+        metadata: HashMap::new(),
+        incomplete_details: None,
+        extra: HashMap::new(),
+    }
+}
+
+fn rand_id() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    nanos as u64 ^ (nanos >> 64) as u64
 }

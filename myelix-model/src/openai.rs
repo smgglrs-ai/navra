@@ -9,8 +9,8 @@ use crate::{
     SynthesizeResponse, TranscribeRequest, TranscribeResponse,
 };
 use crate::chat::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatToolDefinition,
-    FinishReason, FunctionCall, ToolCall, ToolChoice, parse_stream_chunk,
+    ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatToolDefinition,
+    FinishReason, FunctionCall, ToolCall, ToolChoice,
 };
 use futures_util::StreamExt;
 
@@ -392,14 +392,17 @@ impl ModelBackend for OpenAiBackend {
         })
     }
 
-    fn chat(
+    fn respond(
         &self,
-        request: &ChatRequest,
+        request: &crate::CreateResponseRequest,
     ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<ChatResponse, ModelError>> + Send + '_>,
+        Box<dyn std::future::Future<Output = Result<crate::ModelResponse, ModelError>> + Send + '_>,
     > {
+        // Translate Open Responses → Chat Completions at the HTTP boundary
+        let chat_req = crate::responses_to_chat(request);
         let url = format!("{}/chat/completions", self.base_url);
-        let body = self.build_chat_body(request, false);
+        let body = self.build_chat_body(&chat_req, false);
+        let model_name = self.model.clone();
 
         let mut req = self.client.post(&url).json(&body);
         if let Some((header, value)) = self.auth_header() {
@@ -423,70 +426,8 @@ impl ModelBackend for OpenAiBackend {
                 .await
                 .map_err(|e| ModelError::Api(format!("invalid response: {e}")))?;
 
-            Self::parse_chat_response(&json)
-        })
-    }
-
-    fn chat_stream(
-        &self,
-        request: &ChatRequest,
-    ) -> std::pin::Pin<
-        Box<dyn futures_util::stream::Stream<Item = Result<ChatChunk, ModelError>> + Send + '_>,
-    > {
-        let url = format!("{}/chat/completions", self.base_url);
-        let body = self.build_chat_body(request, true);
-
-        let mut req = self.client.post(&url).json(&body);
-        if let Some((header, value)) = self.auth_header() {
-            req = req.header(header, value);
-        }
-
-        Box::pin(async_stream::stream! {
-            let resp = match req.send().await {
-                Ok(r) => r,
-                Err(e) => {
-                    yield Err(ModelError::Api(format!("request failed: {e}")));
-                    return;
-                }
-            };
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let text = resp.text().await.unwrap_or_default();
-                yield Err(ModelError::Api(format!("HTTP {status}: {text}")));
-                return;
-            }
-
-            let mut buffer = String::new();
-            let mut byte_stream = resp.bytes_stream();
-            while let Some(chunk_result) = byte_stream.next().await {
-                let chunk = match chunk_result {
-                    Ok(c) => c,
-                    Err(e) => {
-                        yield Err(ModelError::Api(format!("stream error: {e}")));
-                        return;
-                    }
-                };
-                buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-                while let Some(newline_pos) = buffer.find('\n') {
-                    let line = buffer[..newline_pos].trim().to_string();
-                    buffer = buffer[newline_pos + 1..].to_string();
-
-                    if line.is_empty() {
-                        continue;
-                    }
-                    if line == "data: [DONE]" {
-                        return;
-                    }
-                    if let Some(json_str) = line.strip_prefix("data: ") {
-                        match parse_stream_chunk(json_str) {
-                            Ok(chat_chunk) => yield Ok(chat_chunk),
-                            Err(e) => yield Err(e),
-                        }
-                    }
-                }
-            }
+            let chat_resp = Self::parse_chat_response(&json)?;
+            Ok(crate::chat_to_responses(&model_name, &chat_resp))
         })
     }
 }

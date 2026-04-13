@@ -1,12 +1,14 @@
-//! Agentic tool-use loop (ReAct pattern).
+//! Agentic tool-use loop (ReAct pattern) using Open Responses.
 //!
-//! Discover tools → call model → execute tool calls → feed results back
-//! → repeat until the model stops or max iterations reached.
+//! Discover tools → call model.respond() → execute function calls →
+//! feed results back → repeat until completion or max iterations.
 
 use crate::client::McpClient;
 use crate::error::AgentError;
 use myelix_model::{
-    ChatMessage, ChatRequest, ChatResponse, FinishReason, ModelBackend, ToolChoice,
+    CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
+    InputItem, ItemStatus, MessageItem, ModelBackend, ModelResponse, OutputItem,
+    ResponseStatus, ResponseTool,
 };
 use myelix_protocol::label::DataLabel;
 use myelix_protocol::{CallToolResult, Content};
@@ -17,7 +19,7 @@ pub struct ToolLoopConfig {
     pub max_iterations: usize,
     /// System prompt prepended to all conversations.
     pub system_prompt: Option<String>,
-    /// Temperature for model chat calls.
+    /// Temperature for model calls.
     pub temperature: Option<f32>,
     /// Max tokens per model response.
     pub max_tokens: Option<u32>,
@@ -41,10 +43,10 @@ pub struct ToolLoopResult {
     pub response: String,
     /// Number of tool-call iterations executed.
     pub iterations: usize,
-    /// Total prompt tokens consumed.
-    pub prompt_tokens: u32,
-    /// Total completion tokens consumed.
-    pub completion_tokens: u32,
+    /// Total input tokens consumed.
+    pub input_tokens: u32,
+    /// Total output tokens consumed.
+    pub output_tokens: u32,
     /// Final taint level of the session.
     pub taint: DataLabel,
 }
@@ -63,74 +65,117 @@ pub fn extract_text(result: &CallToolResult) -> String {
     parts.join("")
 }
 
-/// Execute the agentic tool-use loop.
+/// Execute the agentic tool-use loop using Open Responses.
 ///
-/// 1. Discover tools from `client`, convert to [`ChatToolDefinition`]
-/// 2. Build initial messages (system + user prompt)
-/// 3. Loop: call `model.chat()` → if `FinishReason::ToolCalls`, execute
-///    each tool via `client`, feed results back as tool result messages
-/// 4. Stop on `FinishReason::Stop`, `FinishReason::Length`, or max iterations
+/// 1. Discover tools from `client`, convert to [`ResponseTool`]
+/// 2. Build initial input items (system + user prompt)
+/// 3. Loop: call `model.respond()` → if output has function calls,
+///    execute each via `client`, add results as input items
+/// 4. Stop on text response, max iterations, or error
 pub async fn run_tool_loop(
     model: &dyn ModelBackend,
     client: &mut McpClient,
     user_prompt: &str,
     config: &ToolLoopConfig,
 ) -> Result<ToolLoopResult, AgentError> {
-    let tools = client.chat_tools().await?;
+    // Discover tools from MCP server
+    let mcp_tools = client.list_tools().await?;
+    let tools: Vec<ResponseTool> = mcp_tools
+        .iter()
+        .map(|t| ResponseTool {
+            tool_type: "function".to_string(),
+            name: t.name.clone(),
+            description: t.description.clone(),
+            parameters: Some(serde_json::json!({
+                "type": t.input_schema.schema_type,
+                "properties": t.input_schema.properties,
+                "required": t.input_schema.required,
+            })),
+            strict: None,
+        })
+        .collect();
 
-    let mut messages = Vec::new();
+    // Build initial input
+    let mut input: Vec<InputItem> = Vec::new();
     if let Some(system) = &config.system_prompt {
-        messages.push(ChatMessage::system(system));
+        input.push(InputItem::system(system));
     }
-    messages.push(ChatMessage::user(user_prompt));
+    input.push(InputItem::user(user_prompt));
 
-    let mut total_prompt = 0u32;
-    let mut total_completion = 0u32;
+    let mut total_input = 0u32;
+    let mut total_output = 0u32;
 
     for iteration in 0..config.max_iterations {
-        let request = ChatRequest {
-            messages: messages.clone(),
-            max_tokens: config.max_tokens,
-            temperature: config.temperature,
+        let request = CreateResponseRequest {
+            model: String::new(), // Backend knows its model
+            input: input.clone(),
+            instructions: None,
             tools: tools.clone(),
-            tool_choice: Some(ToolChoice::Auto),
+            tool_choice: Some(myelix_model::ResponseToolChoice::auto()),
+            max_output_tokens: config.max_tokens,
+            temperature: config.temperature,
+            ..CreateResponseRequest::new(String::new(), vec![])
         };
 
-        let response: ChatResponse = model.chat(&request).await?;
+        let response: ModelResponse = model.respond(&request).await?;
 
-        total_prompt += response.prompt_tokens.unwrap_or(0);
-        total_completion += response.completion_tokens.unwrap_or(0);
+        if let Some(ref usage) = response.usage {
+            total_input += usage.input_tokens;
+            total_output += usage.output_tokens;
+        }
 
-        match response.finish_reason {
-            FinishReason::Stop | FinishReason::Length => {
-                return Ok(ToolLoopResult {
-                    response: response.message.content.unwrap_or_default(),
-                    iterations: iteration,
-                    prompt_tokens: total_prompt,
-                    completion_tokens: total_completion,
-                    taint: client.taint(),
-                });
-            }
-            FinishReason::ToolCalls => {
-                let tool_calls = response.message.tool_calls.clone();
-                messages.push(ChatMessage::assistant_tool_calls(tool_calls.clone()));
+        // Check for function calls in output
+        let function_calls: Vec<&FunctionCallItem> = response
+            .output
+            .iter()
+            .filter_map(|item| match item {
+                OutputItem::FunctionCall(fc) => Some(fc),
+                _ => None,
+            })
+            .collect();
 
-                for tc in &tool_calls {
-                    let args: serde_json::Value =
-                        serde_json::from_str(&tc.function.arguments)
-                            .unwrap_or(serde_json::json!({}));
+        if function_calls.is_empty() {
+            // No tool calls — extract text response
+            let text = response.text().unwrap_or_default();
+            return Ok(ToolLoopResult {
+                response: text,
+                iterations: iteration,
+                input_tokens: total_input,
+                output_tokens: total_output,
+                taint: client.taint(),
+            });
+        }
 
-                    tracing::debug!(
-                        tool = %tc.function.name,
-                        args = %args,
-                        "executing tool call"
-                    );
+        // Execute each function call
+        for fc in &function_calls {
+            // Add the function call to input (for context)
+            input.push(InputItem::FunctionCall(FunctionCallItem {
+                id: fc.id.clone(),
+                call_id: fc.call_id.clone(),
+                name: fc.name.clone(),
+                arguments: fc.arguments.clone(),
+                status: Some(ItemStatus::Completed),
+            }));
 
-                    let result = client.call_tool(&tc.function.name, args).await?;
-                    let text = extract_text(&result);
-                    messages.push(ChatMessage::tool_result(&tc.id, text));
-                }
-            }
+            let args: serde_json::Value =
+                serde_json::from_str(&fc.arguments).unwrap_or(serde_json::json!({}));
+
+            tracing::debug!(
+                tool = %fc.name,
+                args = %args,
+                "executing tool call"
+            );
+
+            let result = client.call_tool(&fc.name, args).await?;
+            let text = extract_text(&result);
+
+            // Add the tool result to input
+            input.push(InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                id: None,
+                call_id: fc.call_id.clone(),
+                output: FunctionCallOutputContent::Text(text),
+                status: Some(ItemStatus::Completed),
+            }));
         }
     }
 
@@ -140,22 +185,20 @@ pub async fn run_tool_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use myelix_model::{
-        ChatRequest, ChatResponse, FinishReason, FunctionCall, ModelBackend, ModelError, ToolCall,
-    };
+    use myelix_model::{ModelBackend, ModelError, ModelResponse, OutputItem, MessageItem, ResponseStatus};
     use myelix_protocol::upstream::{Transport, UpstreamError};
     use std::future::Future;
     use std::pin::Pin;
     use std::sync::Mutex;
+    use async_trait::async_trait;
 
-    /// Mock model that returns a sequence of scripted responses.
+    /// Mock model that returns a sequence of scripted Open Responses.
     struct MockModel {
-        responses: Mutex<Vec<ChatResponse>>,
+        responses: Mutex<Vec<ModelResponse>>,
     }
 
     impl MockModel {
-        fn new(responses: Vec<ChatResponse>) -> Self {
+        fn new(responses: Vec<ModelResponse>) -> Self {
             Self {
                 responses: Mutex::new(responses),
             }
@@ -163,10 +206,10 @@ mod tests {
     }
 
     impl ModelBackend for MockModel {
-        fn chat(
+        fn respond(
             &self,
-            _req: &ChatRequest,
-        ) -> Pin<Box<dyn Future<Output = Result<ChatResponse, ModelError>> + Send + '_>> {
+            _req: &CreateResponseRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<ModelResponse, ModelError>> + Send + '_>> {
             let response = {
                 let mut responses = self.responses.lock().unwrap();
                 if responses.is_empty() {
@@ -212,7 +255,6 @@ mod tests {
 
     async fn mock_client(tool_responses: Vec<serde_json::Value>) -> McpClient {
         let mut all = vec![
-            // initialize
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "result": {
@@ -222,9 +264,7 @@ mod tests {
                 },
                 "id": 1
             }),
-            // notifications/initialized
             serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 2}),
-            // list_tools response (empty)
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "result": {"tools": []},
@@ -239,28 +279,75 @@ mod tests {
         McpClient::new(upstream)
     }
 
-    fn stop_response(text: &str) -> ChatResponse {
-        ChatResponse {
-            message: ChatMessage::assistant(text),
-            finish_reason: FinishReason::Stop,
-            prompt_tokens: Some(10),
-            completion_tokens: Some(5),
+    fn stop_response(text: &str) -> ModelResponse {
+        use myelix_responses::response::Usage;
+        ModelResponse {
+            id: "resp_test".into(),
+            object: "response".into(),
+            created_at: None,
+            completed_at: None,
+            status: ResponseStatus::Completed,
+            model: Some("test".into()),
+            output: vec![OutputItem::Message(MessageItem::assistant(text))],
+            usage: Some(Usage {
+                input_tokens: 10,
+                output_tokens: 5,
+                total_tokens: 15,
+                input_tokens_details: None,
+                output_tokens_details: None,
+            }),
+            error: None,
+            previous_response_id: None,
+            instructions: None,
+            tools: vec![],
+            tool_choice: None,
+            text: None,
+            reasoning: None,
+            truncation: None,
+            temperature: None,
+            max_output_tokens: None,
+            metadata: Default::default(),
+            incomplete_details: None,
+            extra: Default::default(),
         }
     }
 
-    fn tool_call_response(tool_name: &str, args: &str) -> ChatResponse {
-        ChatResponse {
-            message: ChatMessage::assistant_tool_calls(vec![ToolCall {
-                id: "call_1".to_string(),
-                call_type: "function".to_string(),
-                function: FunctionCall {
-                    name: tool_name.to_string(),
-                    arguments: args.to_string(),
-                },
-            }]),
-            finish_reason: FinishReason::ToolCalls,
-            prompt_tokens: Some(10),
-            completion_tokens: Some(5),
+    fn tool_call_response(tool_name: &str, args: &str) -> ModelResponse {
+        use myelix_responses::response::Usage;
+        ModelResponse {
+            id: "resp_test".into(),
+            object: "response".into(),
+            created_at: None,
+            completed_at: None,
+            status: ResponseStatus::Completed,
+            model: Some("test".into()),
+            output: vec![OutputItem::FunctionCall(FunctionCallItem {
+                id: Some("fc_1".into()),
+                call_id: "call_1".into(),
+                name: tool_name.to_string(),
+                arguments: args.to_string(),
+                status: Some(ItemStatus::Completed),
+            })],
+            usage: Some(Usage {
+                input_tokens: 10,
+                output_tokens: 5,
+                total_tokens: 15,
+                input_tokens_details: None,
+                output_tokens_details: None,
+            }),
+            error: None,
+            previous_response_id: None,
+            instructions: None,
+            tools: vec![],
+            tool_choice: None,
+            text: None,
+            reasoning: None,
+            truncation: None,
+            temperature: None,
+            max_output_tokens: None,
+            metadata: Default::default(),
+            incomplete_details: None,
+            extra: Default::default(),
         }
     }
 
@@ -275,8 +362,8 @@ mod tests {
             .unwrap();
         assert_eq!(result.response, "Hello!");
         assert_eq!(result.iterations, 0);
-        assert_eq!(result.prompt_tokens, 10);
-        assert_eq!(result.completion_tokens, 5);
+        assert_eq!(result.input_tokens, 10);
+        assert_eq!(result.output_tokens, 5);
     }
 
     #[tokio::test]
@@ -301,13 +388,12 @@ mod tests {
             .unwrap();
         assert_eq!(result.response, "Status is clean.");
         assert_eq!(result.iterations, 1);
-        assert_eq!(result.prompt_tokens, 20);
-        assert_eq!(result.completion_tokens, 10);
+        assert_eq!(result.input_tokens, 20);
+        assert_eq!(result.output_tokens, 10);
     }
 
     #[tokio::test]
     async fn max_iterations_error() {
-        // Model always returns tool calls, never stops
         let model = MockModel::new(vec![
             tool_call_response("git_status", "{}"),
             tool_call_response("git_status", "{}"),

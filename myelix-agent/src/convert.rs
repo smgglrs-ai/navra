@@ -1,13 +1,10 @@
-//! Conversion between MCP protocol types and model chat types.
+//! Conversion between MCP protocol types and Open Responses types.
 
-use myelix_model::ChatToolDefinition;
+use myelix_model::ResponseTool;
 use myelix_protocol::ToolDefinition;
 
-/// Convert an MCP `ToolDefinition` to a model `ChatToolDefinition`.
-///
-/// The MCP schema has typed fields (`schema_type`, `properties`, `required`)
-/// while the chat type expects a flat JSON Schema value.
-pub fn tool_def_to_chat(tool: &ToolDefinition) -> ChatToolDefinition {
+/// Convert an MCP `ToolDefinition` to an Open Responses `FunctionTool`.
+pub fn tool_def_to_response(tool: &ToolDefinition) -> ResponseTool {
     let mut schema = serde_json::Map::new();
     schema.insert(
         "type".to_string(),
@@ -26,10 +23,12 @@ pub fn tool_def_to_chat(tool: &ToolDefinition) -> ChatToolDefinition {
         );
     }
 
-    ChatToolDefinition {
+    ResponseTool {
+        tool_type: "function".to_string(),
         name: tool.name.clone(),
-        description: tool.description.clone().unwrap_or_default(),
-        parameters: serde_json::Value::Object(schema),
+        description: tool.description.clone(),
+        parameters: Some(serde_json::Value::Object(schema)),
+        strict: None,
     }
 }
 
@@ -57,15 +56,13 @@ mod tests {
             },
         };
 
-        let chat = tool_def_to_chat(&tool);
-        assert_eq!(chat.name, "docs_read");
-        assert_eq!(chat.description, "Read a document");
-        assert_eq!(chat.parameters["type"], "object");
-        assert_eq!(
-            chat.parameters["properties"]["path"]["type"],
-            "string"
-        );
-        assert_eq!(chat.parameters["required"][0], "path");
+        let response_tool = tool_def_to_response(&tool);
+        assert_eq!(response_tool.name, "docs_read");
+        assert_eq!(response_tool.description.as_deref(), Some("Read a document"));
+        let params = response_tool.parameters.unwrap();
+        assert_eq!(params["type"], "object");
+        assert_eq!(params["properties"]["path"]["type"], "string");
+        assert_eq!(params["required"][0], "path");
     }
 
     #[test]
@@ -80,11 +77,10 @@ mod tests {
             },
         };
 
-        let chat = tool_def_to_chat(&tool);
-        assert_eq!(chat.name, "ping");
-        assert_eq!(chat.description, "");
-        assert_eq!(chat.parameters["type"], "object");
-        assert!(chat.parameters.get("properties").is_none());
-        assert!(chat.parameters.get("required").is_none());
+        let response_tool = tool_def_to_response(&tool);
+        assert_eq!(response_tool.name, "ping");
+        assert!(response_tool.description.is_none());
+        let params = response_tool.parameters.unwrap();
+        assert_eq!(params["type"], "object");
     }
 }

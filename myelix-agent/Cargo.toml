@@ -18,5 +18,6 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 
 [dev-dependencies]
+myelix-responses = { path = "../myelix-responses" }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
