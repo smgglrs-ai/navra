@@ -178,6 +178,7 @@ mod tests {
             expected_output: None,
             success_criteria: Vec::new(),
             max_retries: 2,
+            back_edges: Vec::new(),
         }
     }
 

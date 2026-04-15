@@ -30,7 +30,7 @@ package only provides shared libraries.
 | `myelix-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
 | `myelix-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
 | `myelix-agent` | Infrastructure | Client SDK: agent builder, MCP client, tool-use loop |
-| `myelix-flow` | Orchestration | Declarative multi-agent flows with handoff routing |
+| `myelix-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation |
 | `myelix-core` | Infrastructure | Server, module trait, session, transport, re-exports |
 | `myelix-tools-docs` | Tool | Document tools, SQLite FTS5 + sqlite-vec |
 | `myelix-tools-git` | Tool | Git tools (status, diff, log, branch, commit) |

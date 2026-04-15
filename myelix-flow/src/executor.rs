@@ -1,5 +1,7 @@
 //! DAG executor: runs tasks with parallel execution of independent tasks.
 
+use crate::backedge::{BackEdgeTracker, ConditionalEdge};
+use crate::blackboard::Blackboard;
 use crate::dag::DependencyGraph;
 use crate::error::FlowError;
 use crate::recovery::{classify_failure, detect_circular_fix, get_strategy, RecoveryAction};
@@ -31,6 +33,7 @@ pub struct DagResult {
 pub struct DagExecutor {
     agents: HashMap<String, Agent>,
     max_concurrent: usize,
+    blackboard: Option<Blackboard>,
 }
 
 impl DagExecutor {
@@ -39,6 +42,7 @@ impl DagExecutor {
         Self {
             agents: HashMap::new(),
             max_concurrent: 4,
+            blackboard: None,
         }
     }
 
@@ -54,12 +58,27 @@ impl DagExecutor {
         self
     }
 
+    /// Enable the shared blackboard with the given entry limit.
+    pub fn enable_blackboard(mut self, capacity: usize) -> Self {
+        self.blackboard = Some(Blackboard::new(capacity));
+        self
+    }
+
     /// Execute a DAG of tasks.
     ///
     /// Tasks are run in dependency order. Independent tasks execute
     /// concurrently (limited by `max_concurrent`). When a task depends
     /// on completed tasks, their outputs are injected as context.
     pub async fn run(&mut self, tasks: Vec<Task>) -> Result<DagResult, FlowError> {
+        // Parse back-edges from task definitions before constructing the DAG
+        let mut back_edges: Vec<ConditionalEdge> = Vec::new();
+        for task in &tasks {
+            for be_def in &task.back_edges {
+                let edge = ConditionalEdge::from_definition(&task.id, be_def)?;
+                back_edges.push(edge);
+            }
+        }
+
         let dag = DependencyGraph::new(tasks)?;
 
         let mut results: HashMap<String, TaskResult> = HashMap::new();
@@ -68,6 +87,7 @@ impl DagExecutor {
         let mut taint = TaintTracker::new();
         let mut total_prompt = 0u32;
         let mut total_completion = 0u32;
+        let mut back_edge_tracker = BackEdgeTracker::new();
 
         loop {
             let ready: Vec<&Task> = dag
@@ -119,21 +139,50 @@ impl DagExecutor {
                             let validation = validate_mandate(task, &tool_result.response);
 
                             if validation.passed {
-                                results.insert(
-                                    task.id.clone(),
-                                    TaskResult {
-                                        task_id: task.id.clone(),
-                                        status: TaskStatus::Complete,
-                                        output: tool_result.response,
-                                        prompt_tokens: tool_result.input_tokens,
-                                        completion_tokens: tool_result.output_tokens,
-                                        taint: tool_result.taint,
-                                        validation_score: Some(validation.score),
-                                        validation_notes: validation.notes,
-                                    },
-                                );
+                                let task_result = TaskResult {
+                                    task_id: task.id.clone(),
+                                    status: TaskStatus::Complete,
+                                    output: tool_result.response,
+                                    prompt_tokens: tool_result.input_tokens,
+                                    completion_tokens: tool_result.output_tokens,
+                                    taint: tool_result.taint,
+                                    validation_score: Some(validation.score),
+                                    validation_notes: validation.notes,
+                                };
+
+                                // Evaluate back-edges before marking as complete
+                                let mut requeued = false;
+                                for edge in &back_edges {
+                                    if edge.from == task.id
+                                        && back_edge_tracker.should_activate(edge, &task_result)
+                                    {
+                                        let count = back_edge_tracker
+                                            .record_activation(&edge.from, &edge.to);
+                                        tracing::info!(
+                                            from = %edge.from,
+                                            to = %edge.to,
+                                            iteration = count,
+                                            "Back-edge activated"
+                                        );
+                                        // Remove target and its dependents from completed
+                                        completed.remove(&edge.to);
+                                        results.remove(&edge.to);
+                                        let dependents = dag.all_dependents(&edge.to);
+                                        for dep_id in &dependents {
+                                            completed.remove(dep_id);
+                                            results.remove(dep_id);
+                                        }
+                                        requeued = true;
+                                    }
+                                }
+
+                                results.insert(task.id.clone(), task_result);
                                 completed.insert(task.id.clone());
                                 task_completed = true;
+                                if requeued {
+                                    // Don't break — continue with the outer loop to
+                                    // re-discover ready tasks including re-queued ones
+                                }
                                 break;
                             }
 
@@ -333,6 +382,7 @@ mod tests {
             expected_output: None,
             success_criteria: Vec::new(),
             max_retries: 2,
+            back_edges: Vec::new(),
         }
     }
 
@@ -384,6 +434,7 @@ mod tests {
             expected_output: None,
             success_criteria: vec!["Tests pass".to_string(), "No regressions".to_string()],
             max_retries: 2,
+            back_edges: Vec::new(),
         };
 
         let prompt = build_task_prompt(&task, &HashMap::new());

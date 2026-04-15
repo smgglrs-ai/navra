@@ -754,7 +754,45 @@ Supported methods:
 A2A requests are authenticated with the same capability tokens as
 MCP requests.
 
-### 5.3 Discovery
+### 5.3 Intra-Flow Mesh Communication
+
+Within a multi-agent flow, agents communicate through three
+IFC-gated primitives that go beyond sequential handoffs:
+
+**Agent Mailbox.** Each agent receives an mpsc-backed mailbox.
+Agents post lateral messages via the `mesh_post` virtual tool.
+Every message carries the sender's DataLabel and delivery is
+checked against the receiver's clearance level using Bell-LaPadula
+no-write-down: a Sensitive-tainted sender cannot write to a
+Public-clearance receiver. An audit log records all deliveries
+for orchestrator inspection.
+
+**Shared Blackboard.** A flow-level key-value store where each
+entry carries a DataLabel. Agents publish via `bb_publish` and
+read via `bb_read`. The critical IFC property: reading an entry
+absorbs its label into the reader's taint tracker via lattice
+join. This means an agent that reads sensitive data becomes
+sensitive-tainted — and subsequent mailbox posts from that agent
+are subject to the higher taint level. Taint only rises, never
+drops.
+
+**Conditional Back-Edges.** DAG edges that route execution
+backward when post-completion conditions are not met (validation
+score below threshold, missing success criteria, output pattern
+matching). Back-edges are bounded by `max_iterations` to prevent
+infinite loops. They are stored separately from the
+DependencyGraph (which remains acyclic for topological sort) and
+evaluated as post-completion routing decisions. Activation
+invalidates downstream results via transitive dependent tracking.
+
+These primitives are exposed to agents as virtual tools (injected
+alongside MCP tools) and intercepted by the flow engine before
+reaching the MCP layer. The key invariant: **every communication
+path is IFC-gated**. Mailbox delivery checks `can_write_to()`,
+blackboard reads propagate taint, and back-edge re-execution
+preserves accumulated taint from prior iterations.
+
+### 5.4 Discovery
 
 Agents discover each other through four complementary mechanisms:
 
