@@ -9,6 +9,8 @@ use super::{AgentIdentity, AuthError, Authenticator};
 use crate::auth::capability;
 use crate::identity::{CapSigner, Ed25519Verifier};
 use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::Instant;
 
 /// Authenticator that verifies `mcpd_cap_v1.*` capability tokens.
 pub struct CapabilityAuthenticator {
@@ -16,6 +18,9 @@ pub struct CapabilityAuthenticator {
     root_verifier: Box<dyn CapSigner>,
     /// Known agent DIDs → verifiers (for delegation chain verification).
     agent_verifiers: HashMap<String, Ed25519Verifier>,
+    /// Seen nonces to prevent replay attacks (CWE-294).
+    /// Maps nonce → first-seen time. Pruned on access.
+    seen_nonces: Mutex<HashMap<[u8; 16], Instant>>,
 }
 
 impl CapabilityAuthenticator {
@@ -23,6 +28,7 @@ impl CapabilityAuthenticator {
         Self {
             root_verifier: root_signer,
             agent_verifiers: HashMap::new(),
+            seen_nonces: Mutex::new(HashMap::new()),
         }
     }
 
@@ -54,6 +60,19 @@ impl Authenticator for CapabilityAuthenticator {
         // Try root verifier first (mcpd-issued tokens)
         let payload = capability::decode_token(token, self.root_verifier.as_ref())
             .map_err(|_| AuthError::InvalidToken)?;
+
+        // Replay protection: reject tokens with previously seen nonces
+        {
+            let mut nonces = self.seen_nonces.lock().unwrap_or_else(|e| e.into_inner());
+            // Prune expired entries (older than 2 hours)
+            let cutoff = Instant::now() - std::time::Duration::from_secs(7200);
+            nonces.retain(|_, seen_at| *seen_at > cutoff);
+            // Check and record this nonce
+            if nonces.contains_key(&payload.nonce) {
+                return Err(AuthError::InvalidToken); // replay detected
+            }
+            nonces.insert(payload.nonce, Instant::now());
+        }
 
         let resolved = capability::resolve_capabilities(&payload);
 

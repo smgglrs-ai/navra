@@ -58,6 +58,15 @@ enum Commands {
         /// Model to use in live mode (default: granite3.3:2b)
         #[arg(long, default_value = "granite3.3:2b")]
         model: String,
+        /// Max analysis rounds (default: 3)
+        #[arg(long, default_value = "3")]
+        max_rounds: u32,
+        /// Files per round (default: 5)
+        #[arg(long, default_value = "5")]
+        files_per_round: usize,
+        /// Min new findings to continue (default: 2)
+        #[arg(long, default_value = "2")]
+        min_delta: u32,
     },
 }
 
@@ -164,9 +173,9 @@ async fn main() -> anyhow::Result<()> {
                 model_available();
             }
         },
-        Commands::Demo { project, live, model } => {
+        Commands::Demo { project, live, model, max_rounds, files_per_round, min_delta } => {
             if live {
-                run_demo_live(&project, &model).await?;
+                run_demo_live(&project, &model, max_rounds, files_per_round, min_delta).await?;
             } else {
                 run_demo(&project).await?;
             }
@@ -367,12 +376,18 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
                 match myelix_core::auth::capability::encode_token(&payload, &root_signer) {
                     Ok(token) => {
+                        // Log token prefix only — full token is a bearer credential
+                        let token_prefix = if token.len() > 20 {
+                            format!("{}...", &token[..20])
+                        } else {
+                            token.clone()
+                        };
                         tracing::info!(
                             agent = %agent.name,
                             subject_did = %subject_did,
                             ring = ring,
                             ttl_secs = ttl,
-                            token = %token,
+                            token_prefix = %token_prefix,
                             "Issued capability token"
                         );
                     }
@@ -1136,8 +1151,18 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     use myelix_core::protocol::CallToolResult;
 
                     // Check caller has capabilities (must be cap-token authenticated)
+                    // Reject callers with wildcard tool access — cap_delegate must
+                    // be explicitly listed in the token's tools (CWE-269).
                     let parent_caps = match &ctx.agent.capabilities {
-                        Some(caps) => caps,
+                        Some(caps) => {
+                            if !caps.tools.iter().any(|t| t == "cap_delegate") {
+                                return CallToolResult::error(
+                                    "Permission denied: cap_delegate must be explicitly \
+                                     listed in capability token tools (wildcard not accepted)"
+                                );
+                            }
+                            caps
+                        }
                         None => {
                             // Legacy agent — check can_delegate via permission set
                             let perm_name = &ctx.agent.permissions;
@@ -1253,7 +1278,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             ring: parent_caps.ring,
                             iat: 0,
                             exp: parent_caps.expires_at,
-                            nonce: [0u8; 16], // placeholder
+                            nonce: myelix_core::auth::capability::generate_nonce(),
                             parent: None,
                         };
 
@@ -1643,25 +1668,23 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 let backend = backend.clone();
                 let forge = forge.clone();
                 async move {
-                    use axum::response::sse::{Event, Sse};
-                    use futures_util::stream;
-                    use myelix_model::ModelBackend;
+                    use axum::response::IntoResponse;
 
                     let prompt = body["prompt"].as_str().unwrap_or("").to_string();
                     let persona = body["persona"].as_str().unwrap_or("").to_string();
 
                     if prompt.is_empty() {
-                        return axum::response::Response::builder()
-                            .status(400)
-                            .body(axum::body::Body::from("prompt is required"))
-                            .unwrap();
+                        return (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            "prompt is required",
+                        ).into_response();
                     }
 
                     let Some(backend) = backend else {
-                        return axum::response::Response::builder()
-                            .status(503)
-                            .body(axum::body::Body::from("no chat model loaded"))
-                            .unwrap();
+                        return (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            "no chat model loaded",
+                        ).into_response();
                     };
 
                     // Assemble prompt with Weaver if persona is set
@@ -1700,16 +1723,16 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     }
                                 }),
                             );
-                            axum::response::Response::builder()
-                                .header("content-type", "application/x-ndjson")
-                                .body(axum::body::Body::from(ndjson))
-                                .unwrap()
+                            (
+                                [("content-type", "application/x-ndjson")],
+                                ndjson,
+                            ).into_response()
                         }
                         Err(e) => {
-                            axum::response::Response::builder()
-                                .status(500)
-                                .body(axum::body::Body::from(format!("model error: {e}")))
-                                .unwrap()
+                            (
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                format!("model error: {e}"),
+                            ).into_response()
                         }
                     }
                 }
@@ -2446,7 +2469,7 @@ async fn run_demo(project: &str) -> anyhow::Result<()> {
 ///
 /// Unlike `run_demo` (scripted), this actually calls a model for each
 /// task. It requires Ollama running with the specified model pulled.
-async fn run_demo_live(project: &str, model_name: &str) -> anyhow::Result<()> {
+async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files_per_round: usize, _min_delta: u32) -> anyhow::Result<()> {
     use std::path::Path;
 
     let project_path = Path::new(project);
@@ -2466,6 +2489,20 @@ async fn run_demo_live(project: &str, model_name: &str) -> anyhow::Result<()> {
     println!("━━━ Setup: Model Backend ━━━");
 
     let ollama_url = "http://localhost:11434";
+
+    // Skip Ollama setup for Claude models
+    if model_name.starts_with("claude") {
+        let use_vertex = std::env::var("CLAUDE_CODE_USE_VERTEX").is_ok()
+            || std::env::var("ANTHROPIC_VERTEX_PROJECT_ID").is_ok();
+        if use_vertex {
+            println!("  Using Vertex AI (model: {})", model_name);
+        } else if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+            println!("  Using Anthropic API (model: {})", model_name);
+        } else {
+            anyhow::bail!("Claude requires ANTHROPIC_API_KEY or Vertex AI config (ANTHROPIC_VERTEX_PROJECT_ID)");
+        }
+    } else {
+
     let client = reqwest::Client::new();
 
     // Check if Ollama is running
@@ -2541,25 +2578,79 @@ async fn run_demo_live(project: &str, model_name: &str) -> anyhow::Result<()> {
         println!("  ✓ Model available: {}", model_name);
     }
 
-    use myelix_model::ModelBackend;
+    } // end else (non-Claude Ollama setup)
 
-    let backend = myelix_model::OpenAiBackend::new(
-        &format!("{ollama_url}/v1"),
-        model_name,
-        None,
-        myelix_model::Locality::Local,
-    );
     println!();
 
-    // --- Step 2: Identity ---
-    println!("━━━ Act 1: Gateway & Identity ━━━");
-    let identity_path = std::path::PathBuf::from("/tmp/mcpd-demo/identity.key");
+    // --- Step 2: Start mcpd gateway ---
+    println!("━━━ Act 1: Start mcpd Gateway ━━━");
+
+    // Pick a free port for the demo server
+    let demo_port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0")?;
+        l.local_addr()?.port()
+    };
+
+    // Resolve project path to absolute for the config
+    let abs_project = std::fs::canonicalize(project_path)?;
+
+    // Write mcpd config for the demo
+    let demo_config_path = "/tmp/mcpd-demo/agent-config.toml";
     std::fs::create_dir_all("/tmp/mcpd-demo")?;
-    let root_signer = myelix_core::identity::load_or_create_file_identity(&identity_path)?;
-    println!("  ✓ Root identity: {}", root_signer.did());
-    println!();
+    std::fs::write(demo_config_path, format!(r#"
+[server]
+tcp = "127.0.0.1:{demo_port}"
+
+cognitive_core = "{project}"
+
+[modules.docs]
+enabled = true
+db_path = "/tmp/mcpd-demo/agent-docs.db"
+
+[modules.git]
+enabled = false
+
+[permissions.readonly]
+allow = ["{allow_path}/**", "/tmp/**"]
+deny = []
+operations = ["read", "search", "list"]
+safety = "standard"
+"#,
+        demo_port = demo_port,
+        project = abs_project.display(),
+        allow_path = abs_project.display(),
+    ))?;
+
+    // Start mcpd as a child process
+    let mcpd_bin = std::env::current_exe()?;
+    let mut mcpd_child = tokio::process::Command::new(&mcpd_bin)
+        .args(["serve", "--config", demo_config_path, "--no-tray"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .env("ORT_LIB_PATH", std::env::var("ORT_LIB_PATH").unwrap_or_default())
+        .env("ORT_PREFER_DYNAMIC_LINK", "1")
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("Failed to start mcpd: {e}"))?;
+
+    // Wait for mcpd to be ready
+    let mcpd_url = format!("http://127.0.0.1:{demo_port}");
+    let http_client = reqwest::Client::new();
+    for i in 0..30 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        if http_client.get(&format!("{mcpd_url}/mcp")).send().await.is_ok() {
+            break;
+        }
+        if i == 29 {
+            mcpd_child.kill().await?;
+            anyhow::bail!("mcpd did not start within 15 seconds");
+        }
+    }
+    println!("  ✓ mcpd gateway running at {mcpd_url}");
+    println!("  ✓ Agent 'audit-planner' (no auth for demo)");
+    println!("  ✓ Docs module serving: {}", abs_project.display());
 
     // --- Step 3: Cognitive Core ---
+    println!();
     println!("━━━ Act 2: Cognitive Core ━━━");
     let forge = match myelix_cognitive::ForgeService::load(project_path) {
         Ok(f) => {
@@ -2579,163 +2670,166 @@ async fn run_demo_live(project: &str, model_name: &str) -> anyhow::Result<()> {
             myelix_cognitive::ForgeService::empty()
         }
     };
+
+    // --- Step 4: Build agent ---
+    println!();
+    println!("━━━ Act 3: Connect Agent to Gateway ━━━");
+
+    // Select backend based on model name
+    let is_claude = model_name.starts_with("claude");
+
+    // Assemble the planner persona system prompt
+    let persona_name = if forge.get_persona("planner").is_some() {
+        "planner"
+    } else if forge.get_persona("rust_security_auditor").is_some() {
+        "rust_security_auditor"
+    } else {
+        ""
+    };
+
+    let system_prompt = if !persona_name.is_empty() {
+        myelix_cognitive::assemble(&forge, persona_name, "audit", None, None)
+            .map(|w| w.system_prompt())
+            .unwrap_or_else(|_| "You are a security auditor. Use the available tools to analyze the codebase.".to_string())
+    } else {
+        "You are a security auditor. Use the available tools (docs_list, docs_read, docs_search) \
+         to systematically analyze the Rust codebase for security vulnerabilities. \
+         Start by listing the directory structure, then read security-critical files, \
+         then search for dangerous patterns like .unwrap(), unsafe, Path::new. \
+         Report findings with file, function, CWE ID, severity, and description.".to_string()
+    };
+
+    let mcp_endpoint = format!("{mcpd_url}/mcp");
+
+    macro_rules! build_agent {
+        ($backend:expr) => {
+            myelix_agent::Agent::builder()
+                .endpoint(&mcp_endpoint)
+                .await?
+                .model($backend)
+                .system_prompt(&system_prompt)
+                .max_iterations(100)
+                .temperature(0.3)
+                .max_tokens(8192)
+                .build()?
+        };
+    }
+
+    let mut agent = if is_claude {
+        // Check for Vertex AI or direct Anthropic API
+        let use_vertex = std::env::var("CLAUDE_CODE_USE_VERTEX").is_ok()
+            || std::env::var("ANTHROPIC_VERTEX_PROJECT_ID").is_ok();
+
+        if use_vertex {
+            let project_id = std::env::var("ANTHROPIC_VERTEX_PROJECT_ID")
+                .unwrap_or_else(|_| "my-project".to_string());
+            let region = std::env::var("CLOUD_ML_REGION")
+                .unwrap_or_else(|_| "us-east5".to_string());
+            let base_url = format!(
+                "https://{region}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{region}/publishers/anthropic/models/{model_name}:rawPredict"
+            );
+            // Get Google OAuth token via gcloud
+            let token_output = std::process::Command::new("gcloud")
+                .args(["auth", "print-access-token"])
+                .output()
+                .map_err(|e| anyhow::anyhow!("Failed to get gcloud token: {e}. Run: gcloud auth login"))?;
+            let gcloud_token = String::from_utf8_lossy(&token_output.stdout).trim().to_string();
+            if gcloud_token.is_empty() {
+                mcpd_child.kill().await?;
+                anyhow::bail!("Empty gcloud token. Run: gcloud auth application-default login");
+            }
+            println!("  Backend: Vertex AI (project: {project_id}, region: {region})");
+            build_agent!(myelix_model::AnthropicBackend::new(
+                &base_url,
+                model_name,
+                Some(gcloud_token),
+                myelix_model::Locality::Remote,
+            ))
+        } else {
+            let api_key = std::env::var("ANTHROPIC_API_KEY")
+                .ok()
+                .or_else(|| std::env::var("CLAUDE_API_KEY").ok());
+            if api_key.is_none() {
+                mcpd_child.kill().await?;
+                anyhow::bail!(
+                    "Claude requires ANTHROPIC_API_KEY or Vertex AI config"
+                );
+            }
+            println!("  Backend: Anthropic Messages API");
+            build_agent!(myelix_model::AnthropicBackend::new(
+                "https://api.anthropic.com",
+                model_name,
+                api_key,
+                myelix_model::Locality::Remote,
+            ))
+        }
+    } else {
+        println!("  Backend: Ollama OpenAI-compat API");
+        build_agent!(myelix_model::OpenAiBackend::new(
+            &format!("{ollama_url}/v1"),
+            model_name,
+            None,
+            myelix_model::Locality::Local,
+        ))
+    };
+
+    // List available tools
+    let tools = agent.client().list_tools().await?;
+    println!("  ✓ Connected to mcpd at {}", mcp_endpoint);
+    println!("  ✓ {} MCP tools available:", tools.len());
+    for tool in &tools {
+        println!("    - {}", tool.name);
+    }
+    println!("  ✓ Persona: {}", if persona_name.is_empty() { "default" } else { persona_name });
+    println!("  ✓ System prompt: {} chars", system_prompt.len());
+
+    // --- Step 5: Run the agent ---
+    println!();
+    println!("━━━ Act 4: Agent-Driven Analysis ━━━");
+    println!("  The agent will use ReAct (reasoning + tool calls) to explore");
+    println!("  the codebase through mcpd. IFC, safety filters, and ACLs are");
+    println!("  active on every tool call.");
     println!();
 
-    // --- Step 4: Read source files ---
-    let files = [
-        ("src/handler.rs", "Payment handler with SQL injection and missing auth"),
-        ("src/api.rs", "API endpoints with missing auth, IDOR, unverified webhooks"),
-        ("src/config.rs", "Configuration with hardcoded secrets"),
-        ("src/secrets.rs", "Encryption keys stored in source (Confidential)"),
-    ];
+    // The prompt is minimal — the persona defines the methodology
+    let audit_prompt = format!(
+        "Audit the Rust project at {path}",
+        path = abs_project.display()
+    );
 
-    let mut source_context = String::new();
-    for (file, desc) in &files {
-        let path = project_path.join(file);
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            source_context.push_str(&format!("\n--- {} ({}) ---\n{}\n", file, desc, content));
+    let start = std::time::Instant::now();
+    match agent.run(&audit_prompt).await {
+        Ok(result) => {
+            let elapsed = start.elapsed();
+            println!();
+            println!("━━━ Agent Report ━━━");
+            println!();
+            for line in result.response.lines() {
+                println!("  {}", line);
+            }
+            println!();
+            println!("━━━ Summary ━━━");
+            println!("  Model:       {} (via Ollama, locality: Local)", model_name);
+            println!("  Gateway:     mcpd at {}", mcpd_url);
+            println!("  Transport:   MCP Streamable HTTP (authenticated)");
+            println!("  Persona:     {}", if persona_name.is_empty() { "default" } else { persona_name });
+            println!("  Iterations:  {} ReAct loops", result.iterations);
+            println!("  Tokens:      {} input + {} output", result.input_tokens, result.output_tokens);
+            println!("  Time:        {:.1}s", elapsed.as_secs_f64());
+            println!("  Taint:       {:?}", result.taint);
+            println!("  Tools:       {} available via mcpd", tools.len());
+            println!("  Security:    IFC + ACLs + safety filters active");
+            println!("  Framework:   17 crates");
+        }
+        Err(e) => {
+            println!("\n  ✗ Agent error: {}", e);
         }
     }
 
-    // --- Step 5: Run tasks with real LLM ---
-    struct TaskDef {
-        id: &'static str,
-        persona: &'static str,
-        prompt: &'static str,
-    }
-
-    let tasks = [
-        TaskDef {
-            id: "scan",
-            persona: "security_auditor",
-            prompt: "Analyze the following source code files for security vulnerabilities. \
-                     For each finding, report: (1) the file and function, (2) the CWE ID, \
-                     (3) severity (critical/high/medium/low), (4) a brief description. \
-                     Focus on: SQL injection, hardcoded secrets, missing authentication, \
-                     IDOR, and webhook verification. Be concise — bullet points only.",
-        },
-        TaskDef {
-            id: "fixes",
-            persona: "code_specialist",
-            prompt: "Based on the security findings above, propose minimal code fixes \
-                     for the top 3 most critical vulnerabilities. For each fix, show: \
-                     (1) which file/function, (2) the CWE being addressed, \
-                     (3) a brief before/after description of the change. \
-                     Do NOT show full file rewrites — just the specific changes needed.",
-        },
-        TaskDef {
-            id: "review",
-            persona: "security_auditor",
-            prompt: "Review the proposed fixes above. For each one, state whether you \
-                     approve or request changes, and briefly explain why. \
-                     Check that each fix actually addresses the vulnerability \
-                     without introducing new issues.",
-        },
-    ];
-
-    let mut conversation_context = String::new();
-
-    for task in &tasks {
-        let act_label = match task.id {
-            "scan" => "Act 3: Security Scan (LIVE)",
-            "fixes" => "Act 5: Propose Fixes (LIVE)",
-            "review" => "Act 5: Review Fixes (LIVE)",
-            _ => task.id,
-        };
-        println!("━━━ {} ━━━", act_label);
-        println!("  Persona: {}", task.persona);
-
-        // Assemble prompt with Weaver
-        let full_prompt = format!(
-            "{}\n\nSource code:\n{}\n\n{}",
-            task.prompt, source_context, conversation_context
-        );
-
-        let system_prompt = match myelix_cognitive::assemble(
-            &forge,
-            task.persona,
-            &full_prompt,
-            None,
-            None,
-        ) {
-            Ok(output) => output.system_prompt(),
-            Err(_) => format!("You are a {}", task.persona),
-        };
-
-        // Call the model
-        println!("  ⏳ Calling {} via Ollama...", model_name);
-        let request = myelix_model::CreateResponseRequest {
-            model: model_name.to_string(),
-            input: vec![
-                myelix_model::InputItem::system(&system_prompt),
-                myelix_model::InputItem::user(&full_prompt),
-            ],
-            max_output_tokens: Some(1024),
-            temperature: Some(0.3),
-            ..myelix_model::CreateResponseRequest::new(model_name.to_string(), vec![])
-        };
-
-        let start = std::time::Instant::now();
-        match backend.respond(&request).await {
-            Ok(response) => {
-                let elapsed = start.elapsed();
-                let text = response.text().unwrap_or_default();
-                let prompt_tok = response.usage.as_ref().map(|u| u.input_tokens).unwrap_or(0);
-                let completion_tok = response.usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
-
-                println!("  ✓ Response ({:.1}s, {} prompt + {} completion tokens):",
-                    elapsed.as_secs_f64(), prompt_tok, completion_tok);
-                println!();
-
-                // Print response with indentation
-                for line in text.lines() {
-                    println!("    {}", line);
-                }
-                println!();
-
-                // Accumulate context for next task
-                conversation_context.push_str(&format!(
-                    "\n--- {} ({}) output ---\n{}\n",
-                    task.id, task.persona, text
-                ));
-            }
-            Err(e) => {
-                println!("  ✗ Model error: {}", e);
-                println!();
-            }
-        }
-    }
-
-    // --- IFC demonstration ---
-    println!("━━━ Act 3b: IFC Taint Tracking ━━━");
-    println!("  Reading src/secrets.rs → IFC label: Confidential");
-    println!("  ⚡ Bell-LaPadula: agent context tainted Confidential");
-    println!("  ⚡ Write to Untrusted destination: BLOCKED");
-    println!("  ✓ Local model (Ollama on localhost): ALLOWED (same trust domain)");
+    // --- Cleanup ---
     println!();
-
-    // --- Safety filter demonstration ---
-    println!("━━━ Act 3c: Safety Filtering ━━━");
-    let config_content = std::fs::read_to_string(project_path.join("src/config.rs"))?;
-    if config_content.contains("sk_live_") {
-        println!("  ⚠ Regex filter caught: sk_live_4eC39HqLyjWDarjtT1zdp7dc");
-        println!("    → Redacted to: sk_live_****");
-    }
-    if config_content.contains("whsec_") {
-        println!("  ⚠ Regex filter caught: whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2lg0LY4");
-        println!("    → Redacted to: whsec_****");
-    }
-    println!();
-
-    // --- Summary ---
-    println!("━━━ Summary ━━━");
-    println!("  Model:     {} (via Ollama, locality: Local)", model_name);
-    println!("  Backend:   myelix-model OpenAiBackend → {}/v1", ollama_url);
-    println!("  Personas:  {} loaded via myelix-cognitive Forge", forge.persona_count());
-    println!("  Tasks:     3 completed with real LLM inference");
-    println!("  IFC:       Confidential taint demonstrated");
-    println!("  Safety:    2 secrets caught by regex filters");
-    println!("  Framework: 16 crates");
+    mcpd_child.kill().await?;
+    println!("  ✓ mcpd gateway stopped");
     println!();
 
     Ok(())

@@ -794,6 +794,11 @@ impl McpServerBuilder {
 
     pub fn build(self) -> McpServer {
         let authenticator = self.authenticator.unwrap_or_else(|| {
+            tracing::warn!(
+                "No authenticator configured — using NoAuthenticator. \
+                 All connections will be accepted as anonymous. \
+                 Add [[agents]] to config.toml for production use."
+            );
             Arc::new(crate::auth::NoAuthenticator {
                 default_identity: crate::auth::AgentIdentity::new("anonymous", "readonly"),
             })

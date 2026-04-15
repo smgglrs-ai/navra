@@ -110,9 +110,28 @@ impl Authenticator for TokenAuthenticator {
             .ok_or(AuthError::InvalidToken)?;
 
         let hash = Self::hash_token(token);
-        self.agents
-            .get(&hash)
-            .cloned()
+        // Iterate all entries for constant-time behavior — prevents
+        // timing side-channel on hash prefix matching (CWE-208).
+        let mut found: Option<&AgentIdentity> = None;
+        // All BLAKE3 hashes are 64 hex chars — length check is safe but
+        // removed to maintain strict constant-time contract.
+        let hash_bytes = hash.as_bytes();
+        for (stored_hash, identity) in &self.agents {
+            let stored_bytes = stored_hash.as_bytes();
+            // Constant-time comparison: XOR all bytes, OR into accumulator
+            let equal = if stored_bytes.len() == hash_bytes.len() {
+                stored_bytes
+                    .iter()
+                    .zip(hash_bytes)
+                    .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+            } else {
+                1u8 // different lengths — always mismatch
+            };
+            if equal == 0 {
+                found = Some(identity);
+            }
+        }
+        found.cloned()
             .ok_or(AuthError::InvalidToken)
     }
 }

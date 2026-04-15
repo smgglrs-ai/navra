@@ -79,6 +79,8 @@ impl Module for DocsModule {
             make_tool(delete_tool_def(), s.clone(), handle_delete),
             make_tool(approve_tool_def(), s.clone(), handle_approve),
             make_tool(deny_tool_def(), s.clone(), handle_deny),
+            make_tool(tree_tool_def(), s.clone(), handle_tree),
+            make_tool(grep_tool_def(), s.clone(), handle_grep),
         ];
 
         // Add semantic search tool if embedding model is available
@@ -169,6 +171,67 @@ fn list_tool_def() -> ToolDefinition {
                 serde_json::json!({"type": "string", "description": "Directory path"}),
             )])),
             required: Some(vec!["path".to_string()]),
+        },
+    }
+}
+
+fn tree_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "docs_tree".to_string(),
+        description: Some(
+            "Recursively list all files under a directory. Returns the full file \
+             tree with relative paths and line counts. Use this to understand \
+             project structure in one call instead of repeated docs_list calls."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                (
+                    "path".to_string(),
+                    serde_json::json!({"type": "string", "description": "Root directory path"}),
+                ),
+                (
+                    "pattern".to_string(),
+                    serde_json::json!({"type": "string", "description": "Optional file extension filter (e.g. 'rs', 'py'). Omit for all files."}),
+                ),
+            ])),
+            required: Some(vec!["path".to_string()]),
+        },
+    }
+}
+
+fn grep_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "docs_grep".to_string(),
+        description: Some(
+            "Search for a text pattern across all files in a directory. Returns \
+             matching lines with file paths and line numbers. Use this for \
+             broad codebase searches like finding all .unwrap() calls, unsafe \
+             blocks, or specific function names across the entire project."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                (
+                    "path".to_string(),
+                    serde_json::json!({"type": "string", "description": "Root directory to search"}),
+                ),
+                (
+                    "pattern".to_string(),
+                    serde_json::json!({"type": "string", "description": "Text pattern to search for (substring match, not regex)"}),
+                ),
+                (
+                    "extension".to_string(),
+                    serde_json::json!({"type": "string", "description": "Optional file extension filter (e.g. 'rs')"}),
+                ),
+                (
+                    "max_results".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Maximum matches to return (default: 100)"}),
+                ),
+            ])),
+            required: Some(vec!["path".to_string(), "pattern".to_string()]),
         },
     }
 }
@@ -337,21 +400,38 @@ fn resolve_path(raw: &str, must_exist: bool) -> Result<PathBuf, String> {
     }
 
     if must_exist {
-        expanded
+        let canonical = expanded
             .canonicalize()
-            .map_err(|e| format!("Cannot resolve path {raw}: {e}"))
+            .map_err(|_| "Path does not exist or cannot be resolved".to_string())?;
+        // TOCTOU mitigation: verify canonical path has no symlink escape
+        if let Some(parent) = expanded.parent() {
+            let canon_parent = parent
+                .canonicalize()
+                .map_err(|_| "Cannot verify path safety: parent unresolvable".to_string())?;
+            if !canonical.starts_with(&canon_parent) {
+                return Err("Path resolves outside its parent directory".to_string());
+            }
+        }
+        Ok(canonical)
     } else {
         match expanded.parent() {
             Some(parent) => {
                 let canon_parent = parent
                     .canonicalize()
-                    .map_err(|e| format!("Parent directory does not exist for {raw}: {e}"))?;
+                    .map_err(|_| "Parent directory does not exist".to_string())?;
                 match expanded.file_name() {
-                    Some(name) => Ok(canon_parent.join(name)),
-                    None => Err(format!("Invalid path: {raw}")),
+                    Some(name) => {
+                        let name_str = name.to_string_lossy();
+                        // Reject filenames containing path separators or traversal
+                        if name_str.contains('/') || name_str.contains("..") {
+                            return Err("Invalid filename".to_string());
+                        }
+                        Ok(canon_parent.join(name))
+                    }
+                    None => Err("Invalid path".to_string()),
                 }
             }
-            None => Err(format!("Invalid path: {raw}")),
+            None => Err("Invalid path".to_string()),
         }
     }
 }
@@ -478,10 +558,10 @@ async fn maybe_embed(state: &DocsState, doc_id: i64, content: &str) {
 }
 
 fn chrono_now() -> String {
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime};
     let since_epoch = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap();
+        .unwrap_or(Duration::ZERO);
     format!("{}", since_epoch.as_secs())
 }
 
@@ -569,7 +649,7 @@ async fn handle_read(
 
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(e) => return CallToolResult::error(format!("Failed to read {}: {e}", path.display())),
+        Err(e) => return { tracing::warn!(path = %path.display(), error = %e, "File read failed"); CallToolResult::error("Read operation failed") },
     };
 
     let total_lines = content.lines().count();
@@ -644,7 +724,7 @@ async fn handle_list(
     let entries = match std::fs::read_dir(&path) {
         Ok(rd) => rd,
         Err(e) => {
-            return CallToolResult::error(format!("Failed to list {}: {e}", path.display()))
+            return { tracing::warn!(path = %path.display(), error = %e, "Directory list failed"); CallToolResult::error("List operation failed") }
         }
     };
 
@@ -727,7 +807,7 @@ async fn handle_write(
     }
 
     if let Err(e) = std::fs::write(&path, content) {
-        return CallToolResult::error(format!("Failed to write {}: {e}", path.display()));
+        return { tracing::warn!(path = %path.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
     }
 
     let size = content.len() as i64;
@@ -785,7 +865,7 @@ async fn handle_edit(
 
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(e) => return CallToolResult::error(format!("Failed to read {}: {e}", path.display())),
+        Err(e) => return { tracing::warn!(path = %path.display(), error = %e, "File read failed"); CallToolResult::error("Read operation failed") },
     };
 
     let count = content.matches(old_string).count();
@@ -806,7 +886,7 @@ async fn handle_edit(
     let new_content = content.replacen(old_string, new_string, 1);
 
     if let Err(e) = std::fs::write(&path, &new_content) {
-        return CallToolResult::error(format!("Failed to write {}: {e}", path.display()));
+        return { tracing::warn!(path = %path.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
     }
 
     // Re-index
@@ -853,10 +933,8 @@ async fn handle_info(
     let metadata = match std::fs::metadata(&path) {
         Ok(m) => m,
         Err(e) => {
-            return CallToolResult::error(format!(
-                "Failed to stat {}: {e}",
-                path.display()
-            ))
+            tracing::warn!(path = %path.display(), error = %e, "File stat failed");
+            return CallToolResult::error("Metadata read failed");
         }
     };
 
@@ -927,7 +1005,7 @@ async fn handle_delete(
     }
 
     if let Err(e) = std::fs::remove_file(&path) {
-        return CallToolResult::error(format!("Failed to delete {}: {e}", path.display()));
+        return { tracing::warn!(path = %path.display(), error = %e, "File delete failed"); CallToolResult::error("Delete operation failed") };
     }
 
     // Remove from index
@@ -939,9 +1017,192 @@ async fn handle_delete(
     CallToolResult::text(format!("Deleted {}", path.display()))
 }
 
+/// Recursively list all files under a directory with line counts.
+async fn handle_tree(
+    args: serde_json::Value,
+    ctx: CallContext,
+    state: Arc<DocsState>,
+) -> CallToolResult {
+    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
+        Some(p) => p,
+        None => return CallToolResult::error("Missing required parameter: path"),
+    };
+
+    let root = match resolve_path(raw_path, true) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(e) = check_perm(&state, &ctx, "list", &root).await {
+        return e;
+    }
+
+    let extension_filter = args
+        .get("pattern")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim_start_matches('.').to_string());
+
+    let mut entries: Vec<(String, usize)> = Vec::new();
+    collect_tree(&root, &root, &extension_filter, &mut entries);
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut output = format!("{} files found", entries.len());
+    if let Some(ref ext) = extension_filter {
+        output.push_str(&format!(" (*.{})", ext));
+    }
+    output.push('\n');
+    for (rel_path, lines) in &entries {
+        output.push_str(&format!("  {} ({} lines)\n", rel_path, lines));
+    }
+
+    CallToolResult::text(output)
+}
+
+fn collect_tree(
+    dir: &Path,
+    root: &Path,
+    ext_filter: &Option<String>,
+    entries: &mut Vec<(String, usize)>,
+) {
+    let Ok(read_dir) = std::fs::read_dir(dir) else { return };
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            // Skip hidden directories and common non-source dirs
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
+                continue;
+            }
+            collect_tree(&path, root, ext_filter, entries);
+        } else if path.is_file() {
+            // Apply extension filter
+            if let Some(ref ext) = ext_filter {
+                if path.extension().map(|e| e.to_string_lossy().to_string()) != Some(ext.clone()) {
+                    continue;
+                }
+            }
+            let rel = path.strip_prefix(root).unwrap_or(&path);
+            let lines = std::fs::read_to_string(&path)
+                .map(|c| c.lines().count())
+                .unwrap_or(0);
+            entries.push((rel.display().to_string(), lines));
+        }
+    }
+}
+
+/// Search for a text pattern across all files in a directory.
+async fn handle_grep(
+    args: serde_json::Value,
+    ctx: CallContext,
+    state: Arc<DocsState>,
+) -> CallToolResult {
+    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
+        Some(p) => p,
+        None => return CallToolResult::error("Missing required parameter: path"),
+    };
+
+    let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
+        Some(p) => p,
+        None => return CallToolResult::error("Missing required parameter: pattern"),
+    };
+
+    let root = match resolve_path(raw_path, true) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(e) = check_perm(&state, &ctx, "search", &root).await {
+        return e;
+    }
+
+    let ext_filter = args
+        .get("extension")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim_start_matches('.').to_string());
+
+    let max_results = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(100) as usize;
+
+    let mut matches: Vec<String> = Vec::new();
+    let mut files_searched = 0u32;
+    let mut files_matched = 0u32;
+    grep_recursive(&root, &root, pattern, &ext_filter, max_results, &mut matches, &mut files_searched, &mut files_matched);
+
+    let mut output = format!(
+        "{} matches in {} files (searched {} files)\n\n",
+        matches.len(),
+        files_matched,
+        files_searched
+    );
+    for m in &matches {
+        output.push_str(m);
+        output.push('\n');
+    }
+
+    CallToolResult::text(output)
+}
+
+fn grep_recursive(
+    dir: &Path,
+    root: &Path,
+    pattern: &str,
+    ext_filter: &Option<String>,
+    max_results: usize,
+    matches: &mut Vec<String>,
+    files_searched: &mut u32,
+    files_matched: &mut u32,
+) {
+    let Ok(read_dir) = std::fs::read_dir(dir) else { return };
+    for entry in read_dir.flatten() {
+        if matches.len() >= max_results {
+            return;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
+                continue;
+            }
+            grep_recursive(&path, root, pattern, ext_filter, max_results, matches, files_searched, files_matched);
+        } else if path.is_file() {
+            if let Some(ref ext) = ext_filter {
+                if path.extension().map(|e| e.to_string_lossy().to_string()) != Some(ext.clone()) {
+                    continue;
+                }
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+            *files_searched += 1;
+            let rel = path.strip_prefix(root).unwrap_or(&path);
+            let rel_str = rel.display().to_string();
+            let mut file_matched = false;
+            for (line_num, line) in content.lines().enumerate() {
+                if matches.len() >= max_results {
+                    break;
+                }
+                if line.contains(pattern) {
+                    if !file_matched {
+                        *files_matched += 1;
+                        file_matched = true;
+                    }
+                    matches.push(format!(
+                        "{}:{}: {}",
+                        rel_str,
+                        line_num + 1,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+    }
+}
+
 async fn handle_approve(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<DocsState>,
 ) -> CallToolResult {
     let request_id = match args.get("request_id").and_then(|v| v.as_str()) {
@@ -959,10 +1220,26 @@ async fn handle_approve(
         }
     };
 
+    // Security: prevent self-approval — the requesting agent cannot approve
+    // its own request. Approval must come from a different agent or human.
+    if ctx.agent.name == meta.agent_name {
+        return CallToolResult::error(
+            "Self-approval denied: a different agent or human must approve this request"
+        );
+    }
+
     state.approvals.approve(request_id);
 
     // Dismiss D-Bus notification
     let _ = state.notifier.dismiss(request_id).await;
+
+    tracing::info!(
+        request_id = request_id,
+        approved_by = %ctx.agent.name,
+        agent = %meta.agent_name,
+        operation = %meta.operation,
+        "Approval granted"
+    );
 
     CallToolResult::text(format!(
         "Approved: {} on {}\n\nYou can now retry the operation.",
@@ -972,7 +1249,7 @@ async fn handle_approve(
 
 async fn handle_deny(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<DocsState>,
 ) -> CallToolResult {
     let request_id = match args.get("request_id").and_then(|v| v.as_str()) {
@@ -989,9 +1266,24 @@ async fn handle_deny(
         }
     };
 
+    // Security: prevent self-denial for audit trail integrity
+    if ctx.agent.name == meta.agent_name {
+        return CallToolResult::error(
+            "Self-denial not allowed: a different agent or human must deny this request"
+        );
+    }
+
     state.approvals.deny(request_id);
 
     let _ = state.notifier.dismiss(request_id).await;
+
+    tracing::info!(
+        request_id = request_id,
+        denied_by = %ctx.agent.name,
+        agent = %meta.agent_name,
+        operation = %meta.operation,
+        "Approval denied"
+    );
 
     CallToolResult::text(format!(
         "Denied: {} on {}",
@@ -1435,7 +1727,9 @@ mod tests {
         assert!(names.contains(&"docs_delete"));
         assert!(names.contains(&"docs_approve"));
         assert!(names.contains(&"docs_deny"));
-        assert_eq!(tools.len(), 9);
+        assert!(names.contains(&"docs_tree"));
+        assert!(names.contains(&"docs_grep"));
+        assert_eq!(tools.len(), 11);
     }
 
     // --- roundtrips ---
@@ -1570,6 +1864,10 @@ mod tests {
         CallContext::new(AgentIdentity::new("approval-agent", "needs_approval"), "test")
     }
 
+    fn admin_ctx() -> CallContext {
+        CallContext::new(AgentIdentity::new("admin", "admin"), "test-admin")
+    }
+
     #[tokio::test]
     async fn write_needs_approval_returns_request_id() {
         let tmp = TempDir::new().unwrap();
@@ -1611,11 +1909,11 @@ mod tests {
         ).await;
         assert!(!result.is_error);
 
-        // Step 2: agent calls docs_approve
+        // Step 2: admin calls docs_approve (different agent — self-approval blocked)
         let pending = state.approvals.pending_requests();
         let result = handle_approve(
             serde_json::json!({"request_id": pending[0].id}),
-            approval_ctx(),
+            admin_ctx(),
             state.clone(),
         ).await;
         assert!(!result.is_error);
@@ -1645,11 +1943,11 @@ mod tests {
             state.clone(),
         ).await;
 
-        // Step 2: agent calls docs_deny
+        // Step 2: admin calls docs_deny (different agent — self-denial blocked)
         let pending = state.approvals.pending_requests();
         let result = handle_deny(
             serde_json::json!({"request_id": pending[0].id}),
-            approval_ctx(),
+            admin_ctx(),
             state.clone(),
         ).await;
         assert!(!result.is_error);
@@ -1672,7 +1970,7 @@ mod tests {
 
         let result = handle_approve(
             serde_json::json!({"request_id": "nonexistent"}),
-            approval_ctx(),
+            admin_ctx(),
             state,
         ).await;
         assert!(result.is_error);
@@ -1694,7 +1992,7 @@ mod tests {
         let pending = state.approvals.pending_requests();
         handle_approve(
             serde_json::json!({"request_id": pending[0].id}),
-            approval_ctx(),
+            admin_ctx(),
             state.clone(),
         ).await;
 
