@@ -1,6 +1,8 @@
 mod config;
 mod discover;
+mod flow_tools;
 mod mdns;
+mod team_tools;
 mod tray;
 
 use clap::{Parser, Subcommand};
@@ -1338,6 +1340,450 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 })
             },
         );
+    }
+
+    // Register flow orchestration tools
+    let flow_registry = Arc::new(flow_tools::FlowRegistry::new());
+    {
+        // flow_start — define and launch an async multi-agent flow
+        let registry = Arc::clone(&flow_registry);
+        builder = builder.tool(
+            flow_tools::flow_start_tool_def(),
+            move |args, _ctx| {
+                let registry = Arc::clone(&registry);
+                Box::pin(async move {
+                    use myelix_core::protocol::CallToolResult;
+
+                    let flow_toml = match args.get("flow_toml").and_then(|v| v.as_str()) {
+                        Some(t) => t,
+                        None => return CallToolResult::error("Missing required parameter: flow_toml"),
+                    };
+                    let prompt = match args.get("prompt").and_then(|v| v.as_str()) {
+                        Some(p) => p.to_string(),
+                        None => return CallToolResult::error("Missing required parameter: prompt"),
+                    };
+
+                    // Parse and validate the flow TOML
+                    let flow_def: Result<myelix_flow::FlowDefinition, _> = toml::from_str(flow_toml);
+                    let flow_name = match &flow_def {
+                        Ok(def) => def.flow.name.clone(),
+                        Err(e) => return CallToolResult::error(format!("Invalid flow TOML: {e}")),
+                    };
+
+                    let flow_id = registry.register(&flow_name);
+
+                    // Spawn the flow execution in a background task
+                    let bg_registry = Arc::clone(&registry);
+                    let bg_flow_id = flow_id.clone();
+                    let bg_flow_name = flow_name.clone();
+                    tokio::spawn(async move {
+                        // For now: mark as completed with a placeholder.
+                        // Full execution requires creating agents for each node,
+                        // which needs model backends and MCP endpoints — this will
+                        // be wired in the next iteration.
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        bg_registry.complete(
+                            &bg_flow_id,
+                            format!(
+                                "Flow '{}' accepted. Prompt: {}. \
+                                 Note: full multi-agent execution requires model backend \
+                                 wiring (next iteration).",
+                                bg_flow_name, prompt
+                            ),
+                        );
+                    });
+
+                    tracing::info!(flow_id = %flow_id, name = %flow_name, "Flow started");
+                    CallToolResult::text(format!(
+                        "Flow started.\nflow_id: {}\nname: {}\n\n\
+                         Use flow_status to monitor and flow_result to read outputs.",
+                        flow_id, flow_name
+                    ))
+                })
+            },
+        );
+
+        // flow_status — check progress of a flow
+        let registry = Arc::clone(&flow_registry);
+        builder = builder.tool(
+            flow_tools::flow_status_tool_def(),
+            move |args, _ctx| {
+                let registry = Arc::clone(&registry);
+                Box::pin(async move {
+                    use myelix_core::protocol::CallToolResult;
+                    let flow_id = match args.get("flow_id").and_then(|v| v.as_str()) {
+                        Some(id) => id,
+                        None => return CallToolResult::error("Missing required parameter: flow_id"),
+                    };
+                    match registry.get_status(flow_id) {
+                        Some(status) => CallToolResult::text(
+                            serde_json::to_string_pretty(&status).unwrap_or_default()
+                        ),
+                        None => CallToolResult::error(format!("Unknown flow: {flow_id}")),
+                    }
+                })
+            },
+        );
+
+        // flow_result — get output from a completed flow or node
+        let registry = Arc::clone(&flow_registry);
+        builder = builder.tool(
+            flow_tools::flow_result_tool_def(),
+            move |args, _ctx| {
+                let registry = Arc::clone(&registry);
+                Box::pin(async move {
+                    use myelix_core::protocol::CallToolResult;
+                    let flow_id = match args.get("flow_id").and_then(|v| v.as_str()) {
+                        Some(id) => id,
+                        None => return CallToolResult::error("Missing required parameter: flow_id"),
+                    };
+                    let node_id = args.get("node_id").and_then(|v| v.as_str());
+                    match registry.get_result(flow_id, node_id) {
+                        Some(result) => CallToolResult::text(
+                            serde_json::to_string_pretty(&result).unwrap_or_default()
+                        ),
+                        None => CallToolResult::error(format!("No results for flow: {flow_id}")),
+                    }
+                })
+            },
+        );
+
+        tracing::info!("Registered flow orchestration tools (flow_start, flow_status, flow_result)");
+    }
+
+    // Register team orchestration tools
+    {
+        use myelix_core::protocol::CallToolResult;
+        use myelix_model::ModelBackend;
+        // Build model cards from loaded models
+        let model_cards: Vec<team_tools::ModelCard> = cfg.models.iter().map(|(name, mcfg)| {
+            let locality = if mcfg.source.is_some() || mcfg.runtime.is_some() {
+                "local"
+            } else {
+                "local" // ONNX models are always local
+            };
+            let capabilities = match mcfg.task.as_str() {
+                "chat" | "generate" => vec!["reasoning".to_string(), "code".to_string()],
+                "embedding" => vec!["embedding".to_string()],
+                "classification" => vec!["safety".to_string()],
+                _ => vec![],
+            };
+            team_tools::ModelCard {
+                name: name.clone(),
+                locality: locality.to_string(),
+                capabilities,
+                context_window: mcfg.context_size,
+            }
+        }).collect();
+
+        let team_registry = Arc::new(team_tools::TeamRegistry::new().with_models(model_cards));
+
+        // team_create
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::team_create_def(), move |args, ctx| {
+            let reg = Arc::clone(&reg);
+            Box::pin(async move {
+                let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+                let desc = args.get("description").and_then(|v| v.as_str());
+                let budget = team_tools::TeamBudget {
+                    max_depth: args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(2) as u32,
+                    max_agents: args.get("max_agents").and_then(|v| v.as_u64()).unwrap_or(10) as u32,
+                    max_tokens: args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(500_000),
+                    timeout_secs: args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(600),
+                };
+                match reg.create_team(name, desc, &ctx.agent.name, 0, budget) {
+                    Ok(team_id) => {
+                        tracing::info!(team_id = %team_id, name = name, lead = %ctx.agent.name, "Team created");
+                        CallToolResult::text(format!("Team created.\nteam_id: {team_id}\nname: {name}"))
+                    }
+                    Err(e) => CallToolResult::error(e),
+                }
+            })
+        });
+
+        // team_add
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::team_add_def(), move |args, _ctx| {
+            let reg = Arc::clone(&reg);
+            Box::pin(async move {
+                let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+                    Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+                };
+                let name = match args.get("name").and_then(|v| v.as_str()) {
+                    Some(n) => n, None => return CallToolResult::error("Missing name"),
+                };
+                let persona = args.get("persona").and_then(|v| v.as_str());
+                let model = args.get("model").and_then(|v| v.as_str()).unwrap_or("auto");
+                let locality = args.get("locality").and_then(|v| v.as_str()).unwrap_or("auto");
+
+                match reg.add_teammate(team_id, name, persona, model, locality) {
+                    Ok(()) => {
+                        tracing::info!(team = team_id, name = name, persona = ?persona, model = model, locality = locality, "Teammate added");
+                        CallToolResult::text(format!("Added '{name}' to team (persona: {}, model: {model}, locality: {locality})", persona.unwrap_or("default")))
+                    }
+                    Err(e) => CallToolResult::error(e),
+                }
+            })
+        });
+
+        // team_message — async: spawns full agent teammate in background
+        // The teammate connects to mcpd via MCP, gets its own tool loop,
+        // and can use docs_tree, docs_grep, docs_read, team_bb_publish, etc.
+        let reg = Arc::clone(&team_registry);
+        let msg_mcpd_addr = cfg.server.listen_addr();
+        builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
+            let reg = Arc::clone(&reg);
+            let mcpd_addr = msg_mcpd_addr.clone();
+            Box::pin(async move {
+                let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+                    Some(id) => id.to_string(), None => return CallToolResult::error("Missing team_id"),
+                };
+                let to = match args.get("to").and_then(|v| v.as_str()) {
+                    Some(t) => t.to_string(), None => return CallToolResult::error("Missing to"),
+                };
+                let message = match args.get("message").and_then(|v| v.as_str()) {
+                    Some(m) => m.to_string(), None => return CallToolResult::error("Missing message"),
+                };
+
+                if let Err(e) = reg.send_message(&team_id, &to, &message) {
+                    return CallToolResult::error(e);
+                }
+
+                // Spawn the teammate as a full agent in a background task
+                let bg_reg = Arc::clone(&reg);
+                let bg_team_id = team_id.clone();
+                let bg_to = to.clone();
+                let bg_message = message.clone();
+                let bg_mcpd_addr = mcpd_addr.clone();
+                tokio::spawn(async move {
+                    tracing::info!(team = %bg_team_id, to = %bg_to, "Teammate agent starting (full MCP agent)");
+
+                    let mcp_url = format!("http://{bg_mcpd_addr}/mcp");
+
+                    // Build the teammate's system prompt
+                    let system_prompt = format!(
+                        "You are a specialist agent named '{}' working as part of a team.\n\n\
+                         You have access to MCP tools: docs_tree, docs_grep, docs_read \
+                         for exploring the codebase, and team_bb_publish to share \
+                         findings on the team blackboard (team_id: {}).\n\n\
+                         When you find something important, publish it to the blackboard \
+                         with team_bb_publish so other teammates can see it.\n\n\
+                         Be concise. Report findings only, don't describe code.\n\n\
+                         Your team_id is: {}",
+                        bg_to, bg_team_id, bg_team_id
+                    );
+
+                    // Get the model name from the teammate's config
+                    let teammate_model = {
+                        let teams = bg_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                        teams.get(&bg_team_id)
+                            .and_then(|t| t.teammates.get(&bg_to))
+                            .map(|tm| tm.model.clone())
+                            .unwrap_or_else(|| "granite3.3:8b".to_string())
+                    };
+
+                    let is_claude = teammate_model.starts_with("claude");
+
+                    // Connect teammate as a full MCP agent
+                    macro_rules! run_teammate {
+                        ($backend:expr) => {{
+                            let r = async {
+                                let mut agent = myelix_agent::Agent::builder()
+                                    .endpoint(&mcp_url)
+                                    .await?
+                                    .model($backend)
+                                    .system_prompt(&system_prompt)
+                                    .max_iterations(30)
+                                    .temperature(0.3)
+                                    .max_tokens(4096)
+                                    .build()?;
+                                agent.run(&bg_message).await
+                            };
+                            r.await
+                        }};
+                    }
+
+                    let agent_result = if is_claude {
+                        let use_vertex = std::env::var("CLAUDE_CODE_USE_VERTEX").is_ok()
+                            || std::env::var("ANTHROPIC_VERTEX_PROJECT_ID").is_ok();
+                        if use_vertex {
+                            let project = std::env::var("ANTHROPIC_VERTEX_PROJECT_ID")
+                                .unwrap_or_else(|_| "my-project".to_string());
+                            let region = std::env::var("CLOUD_ML_REGION")
+                                .unwrap_or_else(|_| "us-east5".to_string());
+                            let url = format!(
+                                "https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{teammate_model}:rawPredict"
+                            );
+                            // Fresh gcloud token for this teammate — short-lived, acts as natural timeout
+                            let token_output = std::process::Command::new("gcloud")
+                                .args(["auth", "print-access-token"])
+                                .output();
+                            let token = match token_output {
+                                Ok(output) if output.status.success() => {
+                                    let t = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                                    if t.is_empty() {
+                                        tracing::error!(teammate = %bg_to, "gcloud returned empty token");
+                                        bg_reg.set_failed(&bg_team_id, &bg_to, "Empty gcloud token".to_string());
+                                        return;
+                                    }
+                                    tracing::info!(teammate = %bg_to, "Got fresh gcloud token ({} chars)", t.len());
+                                    t
+                                }
+                                Ok(output) => {
+                                    let err = String::from_utf8_lossy(&output.stderr);
+                                    tracing::error!(teammate = %bg_to, error = %err, "gcloud token failed");
+                                    bg_reg.set_failed(&bg_team_id, &bg_to, format!("gcloud error: {err}"));
+                                    return;
+                                }
+                                Err(e) => {
+                                    tracing::error!(teammate = %bg_to, error = %e, "gcloud not available");
+                                    bg_reg.set_failed(&bg_team_id, &bg_to, format!("gcloud error: {e}"));
+                                    return;
+                                }
+                            };
+                            run_teammate!(myelix_model::AnthropicBackend::new(
+                                &url, &teammate_model, Some(token), myelix_model::Locality::Remote,
+                            ))
+                        } else {
+                            let key = std::env::var("ANTHROPIC_API_KEY").ok();
+                            run_teammate!(myelix_model::AnthropicBackend::new(
+                                "https://api.anthropic.com", &teammate_model, key, myelix_model::Locality::Remote,
+                            ))
+                        }
+                    } else {
+                        run_teammate!(myelix_model::OpenAiBackend::new(
+                            "http://localhost:11434/v1", &teammate_model, None, myelix_model::Locality::Local,
+                        ))
+                    };
+
+                    match agent_result {
+                        Ok(result) => {
+                            let tokens = result.input_tokens + result.output_tokens;
+                            bg_reg.add_tokens(&bg_team_id, tokens);
+                            tracing::info!(
+                                team = %bg_team_id, to = %bg_to,
+                                iterations = result.iterations,
+                                tokens = tokens,
+                                "Teammate completed (full agent)"
+                            );
+                            bg_reg.set_output(&bg_team_id, &bg_to, result.response);
+                        }
+                        Err(e) => {
+                            tracing::error!(team = %bg_team_id, to = %bg_to, error = %e, "Teammate failed");
+                            bg_reg.set_failed(&bg_team_id, &bg_to, format!("Agent error: {e}"));
+                        }
+                    }
+                });
+
+                CallToolResult::text(format!(
+                    "Task sent to '{}'. Teammate is running as a full MCP agent \
+                     with tool access (docs_tree, docs_grep, docs_read, team_bb_publish). \
+                     Use team_status to check progress, team_result to read output.",
+                    to
+                ))
+            })
+        });
+
+        // team_status
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::team_status_def(), move |args, _ctx| {
+            let reg = Arc::clone(&reg);
+            Box::pin(async move {
+                let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+                    Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+                };
+                match reg.get_status(team_id) {
+                    Some(status) => CallToolResult::text(serde_json::to_string_pretty(&status).unwrap_or_default()),
+                    None => CallToolResult::error(format!("Unknown team: {team_id}")),
+                }
+            })
+        });
+
+        // team_result
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::team_result_def(), move |args, _ctx| {
+            let reg = Arc::clone(&reg);
+            Box::pin(async move {
+                let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+                    Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+                };
+                let teammate = match args.get("teammate").and_then(|v| v.as_str()) {
+                    Some(t) => t, None => return CallToolResult::error("Missing teammate"),
+                };
+                match reg.get_result(team_id, teammate) {
+                    Some(result) => CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default()),
+                    None => CallToolResult::error(format!("No result from '{teammate}'")),
+                }
+            })
+        });
+
+        // team_shutdown
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::team_shutdown_def(), move |args, _ctx| {
+            let reg = Arc::clone(&reg);
+            Box::pin(async move {
+                let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+                    Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+                };
+                match reg.shutdown(team_id) {
+                    Ok(info) => {
+                        tracing::info!(team = team_id, "Team shut down");
+                        CallToolResult::text(serde_json::to_string_pretty(&info).unwrap_or_default())
+                    }
+                    Err(e) => CallToolResult::error(e),
+                }
+            })
+        });
+
+        // models_list
+        let cards = team_registry.model_cards.clone();
+        builder = builder.tool(team_tools::models_list_def(), move |_args, _ctx| {
+            let cards = cards.clone();
+            Box::pin(async move {
+                CallToolResult::text(serde_json::to_string_pretty(&cards).unwrap_or_default())
+            })
+        });
+
+        // team_bb_publish
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::team_bb_publish_def(), move |args, ctx| {
+            let reg = Arc::clone(&reg);
+            Box::pin(async move {
+                let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+                    Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+                };
+                let key = match args.get("key").and_then(|v| v.as_str()) {
+                    Some(k) => k, None => return CallToolResult::error("Missing key"),
+                };
+                let value = match args.get("value").and_then(|v| v.as_str()) {
+                    Some(v) => v, None => return CallToolResult::error("Missing value"),
+                };
+                reg.bb_publish(team_id, key, value, &ctx.agent.name);
+                CallToolResult::text(format!("Published '{key}' to team blackboard"))
+            })
+        });
+
+        // team_bb_read
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::team_bb_read_def(), move |args, _ctx| {
+            let reg = Arc::clone(&reg);
+            Box::pin(async move {
+                let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+                    Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+                };
+                let key = match args.get("key").and_then(|v| v.as_str()) {
+                    Some(k) => k, None => return CallToolResult::error("Missing key"),
+                };
+                match reg.bb_read(team_id, key) {
+                    Some(entry) => CallToolResult::text(
+                        serde_json::to_string_pretty(&entry).unwrap_or_default()
+                    ),
+                    None => CallToolResult::error(format!("No blackboard entry: {key}")),
+                }
+            })
+        });
+
+        tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, models_list)");
     }
 
     let server = Arc::new(builder.build());
