@@ -491,13 +491,16 @@ async fn handle_commit(
 
     // Sign commits when the agent has a signing key configured
     if let Some(ref key_path) = ctx.agent.signing_key {
-        let key = std::path::Path::new(key_path);
-        if !key.exists() {
-            return CallToolResult::error(format!(
-                "Signing key not found: {key_path}"
-            ));
-        }
-        let signing_key_arg = format!("user.signingkey={key_path}");
+        let key = match std::path::Path::new(key_path).canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                return CallToolResult::error(format!(
+                    "Signing key not found or inaccessible: {key_path}: {e}"
+                ));
+            }
+        };
+        let canonical_key = key.to_string_lossy();
+        let signing_key_arg = format!("user.signingkey={canonical_key}");
         match run_git(
             &repo_path,
             &[

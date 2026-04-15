@@ -82,7 +82,10 @@ pub(crate) async fn handle_a2a_post(
                 Ok(task) => {
                     Json(JsonRpcResponse::success(
                         id,
-                        serde_json::to_value(task).unwrap(),
+                        serde_json::to_value(task).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "A2A serialization failed");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
                     ))
                     .into_response()
                 }
@@ -142,7 +145,10 @@ pub(crate) async fn handle_a2a_post(
             match crate::a2a::handle_tasks_get(&state.task_store, params) {
                 Ok(task) => Json(JsonRpcResponse::success(
                     id,
-                    serde_json::to_value(task).unwrap(),
+                    serde_json::to_value(task).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "A2A serialization failed");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
                 ))
                 .into_response(),
                 Err(err) => Json(JsonRpcResponse::error(id, err)).into_response(),
@@ -167,7 +173,10 @@ pub(crate) async fn handle_a2a_post(
             match crate::a2a::handle_tasks_cancel(&state.task_store, params) {
                 Ok(task) => Json(JsonRpcResponse::success(
                     id,
-                    serde_json::to_value(task).unwrap(),
+                    serde_json::to_value(task).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "A2A serialization failed");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
                 ))
                 .into_response(),
                 Err(err) => Json(JsonRpcResponse::error(id, err)).into_response(),

@@ -185,7 +185,12 @@ impl PermissionEngine {
         pattern.to_string()
     }
 
-    /// Normalize a path: resolve `..` components without filesystem access.
+    /// Normalize a path: resolve `..` and `.` components without filesystem access.
+    ///
+    /// This is a **lexical-only** normalization. It does not follow symlinks
+    /// or verify that the path exists. Callers must canonicalize the path
+    /// (e.g., via `Path::canonicalize()`) before passing it to ACL checks
+    /// if symlink resolution is needed.
     fn normalize_path(path: &Path) -> PathBuf {
         let mut components = Vec::new();
         for component in path.components() {

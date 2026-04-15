@@ -11,10 +11,12 @@
 use crate::audio;
 use myelix_core::auth::CallContext;
 use myelix_core::models::ModelBackend;
+use myelix_core::permissions::{PermissionEngine, PermissionResult};
 use myelix_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
 use myelix_core::{Module, ToolHandler};
 use std::collections::HashMap;
 use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Voice module for speech I/O.
@@ -35,6 +37,7 @@ struct VoiceState {
     silence_timeout_ms: u64,
     /// Default voice for TTS.
     default_voice: Option<String>,
+    perm_engine: Arc<PermissionEngine>,
 }
 
 impl VoiceModule {
@@ -42,6 +45,7 @@ impl VoiceModule {
     pub fn new(
         asr_model: Arc<dyn ModelBackend>,
         tts_model: Arc<dyn ModelBackend>,
+        perm_engine: Arc<PermissionEngine>,
     ) -> Self {
         Self {
             state: Arc::new(VoiceState {
@@ -51,6 +55,7 @@ impl VoiceModule {
                 max_record_secs: 30,
                 silence_timeout_ms: 1500,
                 default_voice: None,
+                perm_engine,
             }),
         }
     }
@@ -63,6 +68,7 @@ impl VoiceModule {
         max_record_secs: u64,
         silence_timeout_ms: u64,
         default_voice: Option<String>,
+        perm_engine: Arc<PermissionEngine>,
     ) -> Self {
         Self {
             state: Arc::new(VoiceState {
@@ -72,6 +78,7 @@ impl VoiceModule {
                 max_record_secs,
                 silence_timeout_ms,
                 default_voice,
+                perm_engine,
             }),
         }
     }
@@ -195,6 +202,57 @@ fn status_tool_def() -> ToolDefinition {
     }
 }
 
+// --- Path helpers ---
+
+fn resolve_path(raw: &str) -> Result<PathBuf, String> {
+    let expanded = if raw.starts_with("~/") {
+        match dirs::home_dir() {
+            Some(home) => home.join(&raw[2..]),
+            None => return Err("Cannot resolve home directory".to_string()),
+        }
+    } else {
+        PathBuf::from(raw)
+    };
+
+    if !expanded.is_absolute() {
+        return Err(format!("Path must be absolute: {raw}"));
+    }
+
+    expanded
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve path {raw}: {e}"))
+}
+
+// --- Permission check ---
+
+fn check_perm(
+    state: &VoiceState,
+    ctx: &CallContext,
+    op: &str,
+    path: &Path,
+) -> Result<(), CallToolResult> {
+    match state.perm_engine.check(&ctx.agent.permissions, op, path) {
+        PermissionResult::Allowed => Ok(()),
+        PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
+            "Access denied: {}",
+            path.display()
+        ))),
+        PermissionResult::DeniedOperation => Err(CallToolResult::error(format!(
+            "Operation '{}' not permitted for agent '{}'",
+            op, ctx.agent.name
+        ))),
+        PermissionResult::DeniedUnknown => Err(CallToolResult::error(format!(
+            "Unknown permission set: {}",
+            ctx.agent.permissions
+        ))),
+        PermissionResult::NeedsApproval => Err(CallToolResult::error(format!(
+            "Approval required: {} on {}",
+            op,
+            path.display()
+        ))),
+    }
+}
+
 // --- Tool handlers ---
 
 async fn handle_listen(
@@ -287,17 +345,28 @@ async fn handle_speak(
 
 async fn handle_transcribe(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<VoiceState>,
 ) -> CallToolResult {
-    let path = match args.get("path").and_then(|v| v.as_str()) {
+    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
         None => return CallToolResult::error("Missing required parameter: path"),
     };
     let language = args.get("language").and_then(|v| v.as_str()).map(String::from);
 
+    let path = match resolve_path(raw_path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+        return e;
+    }
+
+    let path_str = path.to_string_lossy();
+
     // Read WAV file
-    let audio = match read_wav_file(path) {
+    let audio = match read_wav_file(&path_str) {
         Ok(samples) => samples,
         Err(e) => return CallToolResult::error(format!("Failed to read audio file: {e}")),
     };
@@ -307,7 +376,7 @@ async fn handle_transcribe(
     }
 
     let duration_secs = audio.len() as f64 / 16000.0;
-    tracing::info!(path, duration = duration_secs, "Transcribing audio file");
+    tracing::info!(path = %path.display(), duration = duration_secs, "Transcribing audio file");
 
     let request = myelix_core::models::TranscribeRequest { audio, language };
     match state.asr_model.transcribe(&request).await {
@@ -495,7 +564,7 @@ mod tests {
     fn module_provides_all_tools() {
         let asr: Arc<dyn ModelBackend> = Arc::new(FakeAsrModel);
         let tts: Arc<dyn ModelBackend> = Arc::new(FakeTtsModel);
-        let module = VoiceModule::new(asr, tts);
+        let module = VoiceModule::new(asr, tts, Arc::new(myelix_core::permissions::PermissionEngine::new()));
 
         assert_eq!(module.name(), "voice");
         let tools = module.tools();
@@ -518,6 +587,7 @@ mod tests {
             max_record_secs: 30,
             silence_timeout_ms: 1500,
             default_voice: None,
+            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
         });
 
         let result = handle_status(serde_json::json!({}), test_ctx(), state).await;
@@ -541,6 +611,7 @@ mod tests {
             max_record_secs: 30,
             silence_timeout_ms: 1500,
             default_voice: None,
+            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
         });
 
         let result = handle_transcribe(serde_json::json!({}), test_ctx(), state).await;
@@ -558,6 +629,7 @@ mod tests {
             max_record_secs: 30,
             silence_timeout_ms: 1500,
             default_voice: None,
+            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
         });
 
         let result = handle_speak(serde_json::json!({}), test_ctx(), state).await;

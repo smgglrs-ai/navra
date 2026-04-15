@@ -600,7 +600,12 @@ impl Default for Config {
 }
 
 pub fn generate_token() -> String {
-    format!("mcd_{}", uuid::Uuid::new_v4().as_simple())
+    let mut bytes = [0u8; 32];
+    use rand::rngs::OsRng;
+    use rand::RngCore;
+    OsRng.fill_bytes(&mut bytes);
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("mcd_{hex}")
 }
 
 #[cfg(test)]
@@ -722,7 +727,11 @@ enabled = false
     fn generate_token_format() {
         let token = generate_token();
         assert!(token.starts_with("mcd_"));
-        assert!(token.len() > 10);
+        // 4 prefix chars + 64 hex chars = 68 total
+        assert_eq!(token.len(), 68);
+        // Verify uniqueness
+        let token2 = generate_token();
+        assert_ne!(token, token2);
     }
 
     #[test]

@@ -189,6 +189,11 @@ async fn handle_get(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
+    // Authenticate before session lookup
+    if let Err(_) = state.server.authenticator().authenticate(&headers) {
+        return (StatusCode::UNAUTHORIZED, "Authentication failed").into_response();
+    }
+
     // GET is used for SSE streaming (server-to-client).
     // Requires a valid session.
     let session_id = match headers.get(SESSION_HEADER) {
@@ -379,6 +384,24 @@ async fn dispatch(
     session_id: Option<String>,
 ) -> (JsonRpcResponse, Option<String>) {
     let id = request.id.clone();
+
+    // Verify the authenticated agent matches the session's creator
+    if let Some(ref sid) = session_id {
+        if let Some(session) = server.sessions().get(sid) {
+            if session.agent.name != agent.name {
+                return (
+                    JsonRpcResponse::error(
+                        id,
+                        JsonRpcError::new(
+                            crate::protocol::ErrorCode::Custom(-32000),
+                            "Session does not belong to this agent",
+                        ),
+                    ),
+                    None,
+                );
+            }
+        }
+    }
 
     match request.method.as_str() {
         "initialize" => {

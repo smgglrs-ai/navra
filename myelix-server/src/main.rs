@@ -803,6 +803,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     let rag = myelix_rag::RagModule::new(
                         std::sync::Arc::new(store),
                         model.clone(),
+                        perm_engine.clone(),
                     );
                     tracing::info!("Module 'rag' enabled (db: {rag_db_path}, dims: {dims})");
                     builder = builder.module(rag);
@@ -831,6 +832,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     30,
                     1500,
                     voice_cfg.voice.clone(),
+                    perm_engine.clone(),
                 );
                 tracing::info!(
                     asr = %voice_cfg.asr_model,
@@ -860,7 +862,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     if cfg.vision_enabled() {
         let vision_cfg = cfg.modules.vision.as_ref().unwrap();
         if let Some(vision_model) = models.get(&vision_cfg.model).cloned() {
-            let vision = myelix_modal_vision::VisionModule::new(vision_model);
+            let vision = myelix_modal_vision::VisionModule::new(vision_model, perm_engine.clone());
             tracing::info!(model = %vision_cfg.model, "Module 'vision' enabled");
             builder = builder.module(vision);
         } else {
