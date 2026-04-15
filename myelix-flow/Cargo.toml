@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 myelix-agent = { path = "../myelix-agent" }
+myelix-cognitive = { path = "../myelix-cognitive" }
 myelix-protocol = { path = "../myelix-protocol" }
 myelix-model = { path = "../myelix-model" }
 myelix-security = { path = "../myelix-security" }
