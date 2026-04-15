@@ -201,7 +201,8 @@ pub fn load_or_create_file_identity(path: &Path) -> anyhow::Result<Ed25519Signer
                 seed_bytes.len()
             );
         }
-        let seed: [u8; 32] = seed_bytes.try_into().unwrap();
+        let seed: [u8; 32] = seed_bytes.try_into()
+            .map_err(|_| anyhow::anyhow!("seed must be exactly 32 bytes"))?;
         Ok(Ed25519Signer::from_seed(&seed))
     } else {
         let signer = Ed25519Signer::generate();
@@ -231,7 +232,8 @@ pub fn load_or_create_keyring_identity() -> anyhow::Result<Ed25519Signer> {
                     seed_bytes.len()
                 );
             }
-            let seed: [u8; 32] = seed_bytes.try_into().unwrap();
+            let seed: [u8; 32] = seed_bytes.try_into()
+            .map_err(|_| anyhow::anyhow!("seed must be exactly 32 bytes"))?;
             Ok(Ed25519Signer::from_seed(&seed))
         }
         Err(keyring::Error::NoEntry) => {

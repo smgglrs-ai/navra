@@ -222,7 +222,16 @@ async fn handle_get(
 /// Available at `GET /.well-known/mcp.json` without authentication.
 /// Enables client autoconfiguration without a full initialize handshake.
 async fn handle_server_card(State(state): State<AppState>) -> impl IntoResponse {
-    Json(state.server.server_card())
+    let mut card = state.server.server_card();
+    // Redact internal tools from public server card
+    let internal_prefixes = ["cap_delegate", "sys_", "myelix_var_"];
+    if let Some(tools) = card.get_mut("tools").and_then(|t| t.as_array_mut()) {
+        tools.retain(|t| {
+            let name = t.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            !internal_prefixes.iter().any(|p| name.starts_with(p))
+        });
+    }
+    Json(card)
 }
 
 /// Query parameters for the registry endpoint.
@@ -319,12 +328,22 @@ async fn handle_aid_record(State(state): State<AppState>) -> impl IntoResponse {
 ///
 /// Available at `GET /sys/status`. Returns a JSON array of active
 /// agent sessions with call counts, ring levels, and active tools.
-async fn handle_sys_status(State(state): State<AppState>) -> impl IntoResponse {
+async fn handle_sys_status(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    // Require authentication — process table contains sensitive operational data
+    if let Err(_) = state.server.authenticator().authenticate(&headers) {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "Authentication required for /sys/status"})),
+        ).into_response();
+    }
     let snapshot = state.server.process_table().snapshot();
     Json(serde_json::json!({
         "agents": snapshot,
         "session_count": state.server.sessions.count(),
-    }))
+    })).into_response()
 }
 
 /// Convert a broadcast receiver into an SSE event stream.
@@ -379,7 +398,10 @@ async fn dispatch(
                 }
             };
             let (result, new_session_id) = server.handle_initialize(params, agent);
-            let value = serde_json::to_value(result).unwrap();
+            let value = serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                });
             (
                 JsonRpcResponse::success(id, value),
                 Some(new_session_id),
@@ -398,7 +420,10 @@ async fn dispatch(
         "tools/list" => {
             let result = server.handle_list_tools();
             (
-                JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
+                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                })),
                 session_id,
             )
         }
@@ -419,7 +444,17 @@ async fn dispatch(
                     );
                 }
             };
-            let sid = session_id.clone().unwrap_or_default();
+            let sid = match session_id.clone() {
+                Some(s) if !s.is_empty() => s,
+                _ => {
+                    return (
+                        JsonRpcResponse::error(id, JsonRpcError::invalid_params(
+                            "Session ID required for tools/call. Send initialize first."
+                        )),
+                        session_id,
+                    );
+                }
+            };
             let mut ctx = CallContext::new(agent, sid.clone());
             // Load persisted context label from session into taint tracker
             let persisted_label = server.sessions().context_label(&sid);
@@ -428,7 +463,10 @@ async fn dispatch(
             // Persist the result's label back to the session
             server.sessions().update_context_label(&sid, result.label);
             (
-                JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
+                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                })),
                 session_id,
             )
         }
@@ -436,7 +474,10 @@ async fn dispatch(
         "resources/list" => {
             let result = server.handle_list_resources();
             (
-                JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
+                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                })),
                 session_id,
             )
         }
@@ -459,7 +500,10 @@ async fn dispatch(
             };
             let resp = match server.handle_read_resource(params).await {
                 Ok(result) => {
-                    JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                }))
                 }
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             };
@@ -469,7 +513,10 @@ async fn dispatch(
         "prompts/list" => {
             let result = server.handle_list_prompts();
             (
-                JsonRpcResponse::success(id, serde_json::to_value(result).unwrap()),
+                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                })),
                 session_id,
             )
         }
@@ -492,7 +539,10 @@ async fn dispatch(
             };
             let resp = match server.handle_get_prompt(params).await {
                 Ok(result) => {
-                    JsonRpcResponse::success(id, serde_json::to_value(result).unwrap())
+                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                }))
                 }
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             };
@@ -664,7 +714,8 @@ mod tests {
     #[tokio::test]
     async fn tools_call_invokes_handler() {
         let router = build_router(test_server());
-        let (status, json) = post_json(
+        let sid = init_session(&router).await;
+        let (status, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
@@ -675,6 +726,7 @@ mod tests {
                     "arguments": {}
                 }
             }),
+            Some(&sid),
         )
         .await;
 
@@ -701,7 +753,8 @@ mod tests {
     #[tokio::test]
     async fn call_unknown_tool_returns_tool_error() {
         let router = build_router(test_server());
-        let (_, json) = post_json(
+        let sid = init_session(&router).await;
+        let (_, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
@@ -709,6 +762,7 @@ mod tests {
                 "id": 5,
                 "params": {"name": "nonexistent", "arguments": {}}
             }),
+            Some(&sid),
         )
         .await;
 
@@ -837,6 +891,29 @@ mod tests {
             .contains("Unknown resource"));
     }
 
+    /// Initialize a session and return the session ID.
+    async fn init_session(router: &Router) -> String {
+        let (_, headers, _) = post_json_full(
+            router,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "id": 1,
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test"}
+                }
+            }),
+            None,
+        ).await;
+        headers.get(SESSION_HEADER)
+            .expect("missing session header")
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
     /// Post JSON and return status, headers, and body.
     async fn post_json_full(
         router: &Router,
@@ -916,11 +993,14 @@ mod tests {
         // Protocol version
         assert_eq!(json["protocolVersion"], "2025-03-26");
 
-        // Tools (1 user tool + 3 gateway tools)
+        // Tools — internal tools (sys_*, myelix_var_*) are redacted from public card
         let tools = json["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 4);
-        let ping = tools.iter().find(|t| t["name"] == "ping").unwrap();
-        assert_eq!(ping["description"], "Returns pong");
+        // Only user-facing tools remain (ping); internal tools are filtered
+        assert!(tools.iter().any(|t| t["name"] == "ping"), "user tool 'ping' should be in card");
+        assert!(!tools.iter().any(|t| {
+            let n = t["name"].as_str().unwrap_or("");
+            n.starts_with("sys_") || n.starts_with("myelix_var_")
+        }), "internal tools should be redacted from public card");
 
         // Prompts
         let prompts = json["prompts"].as_array().unwrap();

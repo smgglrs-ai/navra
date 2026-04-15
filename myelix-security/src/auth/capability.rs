@@ -123,7 +123,12 @@ pub fn decode_token(
 }
 
 /// Decode a token without checking expiry or signature.
-/// Used for inspection/debugging only.
+///
+/// **WARNING**: This skips signature verification. Use `decode_token()`
+/// for authentication. This function is for inspection/debugging only.
+/// **Do not use for authentication** — skips signature verification.
+/// Exposed for testing and token inspection only.
+#[doc(hidden)]
 pub fn decode_token_unchecked(token: &str) -> anyhow::Result<CapabilityPayload> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 || parts[0] != TOKEN_PREFIX {

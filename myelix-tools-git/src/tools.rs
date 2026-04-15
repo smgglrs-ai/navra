@@ -362,6 +362,13 @@ async fn handle_diff(
         git_args.push("--cached");
     }
     if let Some(r) = ref_name {
+        // Validate ref name to prevent argument injection (CWE-78).
+        // Reject anything that looks like a git flag.
+        if r.starts_with('-') {
+            return CallToolResult::error("Invalid ref: must not start with '-'");
+        }
+        // Use -- to separate flags from ref names
+        git_args.push("--");
         git_args.push(r);
     }
 
