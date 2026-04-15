@@ -1009,19 +1009,27 @@ the hook pipeline:
   response payload. The approval store already supports grant
   caching; extend to support arbitrary interrupt/resume.
 
-### HandoffBuilder for Flow DSL
+### Flow Communication Primitives
 
-AG-UI's `HandoffBuilder` declares agent topology as directed edges
-with natural-language routing descriptions:
+myelix-flow provides three execution modes (handoff flows, DAG
+execution, iterative analysis) and three IFC-gated communication
+primitives for mesh topologies:
 
-```
-add_handoff(triage → refund, "customer wants a refund")
-add_handoff(triage → order, "customer asks about order status")
-```
+**Agent Mailbox** — Lateral mpsc messaging between agents.
+Bell-LaPadula no-write-down enforced on every `mesh_post`.
+Audit log for orchestrator visibility.
 
-This pattern — declarative topology, not prompt-based routing —
-should inform the flow DSL design. Each edge can carry IFC
-constraints (security labels flow with the handoff).
+**Shared Blackboard** — Flow-level key-value store. Per-entry
+DataLabel, taint-on-read via lattice join. Agents query what
+they need instead of serializing everything into prompts.
+
+**Conditional Back-Edges** — Post-completion routing when
+validation fails. Bounded by max_iterations. Stored separately
+from DependencyGraph (DAG stays acyclic). Activation invalidates
+downstream results via `all_dependents()`.
+
+All three are exposed as virtual tools (mesh_post, mesh_recv,
+bb_publish, bb_read, bb_keys) intercepted by the flow engine.
 
 ### RamaLama as Prior Art
 

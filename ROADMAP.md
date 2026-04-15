@@ -4,9 +4,9 @@ This document tracks the evolution of the myelix-* crate family from
 an MCP gateway (mcpd) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-04-12)
+## Current state (2026-04-15)
 
-14 crates, 593 tests, ~32K LoC.
+14 crates, 705 tests, ~33K LoC.
 
 ### Infrastructure (complete)
 
@@ -25,7 +25,7 @@ platform — the Rust replacement for the Python Myelix framework.
 | Crate | Status | What it does |
 |-------|--------|-------------|
 | myelix-agent | Done | Client SDK: Agent builder, McpClient with taint tracking, ReAct tool-use loop |
-| myelix-flow | Done (v1) | Handoff-based multi-agent flows, TOML config, sequential routing |
+| myelix-flow | Done (v2) | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), IFC-gated, mandate validation |
 
 ### Tools & Modalities (scaffolded)
 
@@ -62,11 +62,12 @@ planned crate or enhancement.
 |--------------------------|----------------|-----|
 | Cognitive core (40 personas, 36 heuristics, 8 directives) | None | **Critical** |
 | Weaver (persona + context → structured prompt) | System prompt strings | **Critical** |
-| Task decomposition (recursive planning, scope partitioning) | Handoff only | **High** |
-| DAG execution (parallel tasks with dependencies) | Sequential handoffs | **High** |
+| Task decomposition (recursive planning, scope partitioning) | DAG executor + back-edges | **Partial** (scope partitioning not yet done) |
+| DAG execution (parallel tasks with dependencies) | DagExecutor with DependencyGraph | **Done** |
+| Mesh communication (lateral agent messaging) | Mailbox + Blackboard (IFC-gated) | **Done** |
 | Persistent memory (working, long-term, cases) | Session value store | **Medium** |
-| Anti-drift (mandate validation, drift detection) | None | **Medium** |
-| Failure recovery (circular fix detection, attempt history) | Max iterations | **Medium** |
+| Anti-drift (mandate validation, drift detection) | Mandate validator + success_criteria | **Done** |
+| Failure recovery (circular fix detection, attempt history) | Attempt history, circular fix detector, recovery strategies | **Done** |
 | Observability (structured metrics, monitoring) | tracing only | **Low** |
 | TUI (rich terminal interface) | CLI only | **Low** |
 
@@ -93,26 +94,32 @@ New crate: `myelix-cognitive`
 **Why first**: The cognitive core is Myelix's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
 
-### Phase 2: DAG execution (myelix-flow v2)
+### Phase 2: DAG execution & mesh communication (myelix-flow v2) ✓
 
-**Goal**: Upgrade myelix-flow from sequential handoffs to parallel
-task DAGs with dependency resolution.
+**Status**: Done.
 
-Enhance `myelix-flow`:
+Implemented in `myelix-flow`:
 
-- Task struct: id, specialist (persona), mandate, depends_on,
-  inputs, expected_output, success_criteria
-- DependencyGraph: topological sort, cycle detection, parallel level
-  analysis (replace networkx with petgraph)
-- Parallel executor: run independent tasks concurrently via
-  tokio::spawn, collect results, feed to dependents
-- Scope partitioning: predict which files/modules a task modifies,
-  detect conflicts, serialize conflicting tasks
-- Spec injection: attach reference docs to task context
+- Task struct: id, specialist, mandate, depends_on, inputs,
+  expected_output, success_criteria, back_edges
+- DependencyGraph: topological sort (Kahn's algorithm), cycle
+  detection, transitive dependent tracking
+- DagExecutor: dependency-ordered execution, parallel readiness
+  detection (true parallelism blocked by Agent `&mut self` — future work)
+- Iterative executor: scout→map→reduce with convergence detection
+- Agent mailbox: IFC-gated lateral messaging (Bell-LaPadula
+  no-write-down), per-agent mpsc channels, audit log
+- Shared blackboard: flow-level key-value store with per-entry
+  IFC labels, taint-on-read (lattice join)
+- Conditional back-edges: post-completion routing with bounded
+  iterations (ScoreBelow, CriteriaMissing, OutputContains, Always)
+- Virtual mesh tools: mesh_post, mesh_recv, bb_publish, bb_read,
+  bb_keys injected into agent tool lists
+- 112 tests including cross-primitive IFC integration tests
 
-**Why second**: The flow engine is the orchestration backbone. DAG
-execution enables the complex multi-agent workflows that Python
-Myelix uses for software engineering tasks.
+**Remaining**: Scope partitioning (predict file conflicts, serialize
+conflicting tasks) and true parallel execution across specialists
+(`Arc<Mutex<Agent>>` refactor).
 
 ### Phase 3: Persistent memory (myelix-memory)
 
@@ -129,21 +136,21 @@ New crate: `myelix-memory`
 **Why third**: Memory improves agent quality significantly but isn't
 blocking — agents work without it, just less effectively.
 
-### Phase 4: Mandate validation & failure recovery
+### Phase 4: Mandate validation & failure recovery ✓
 
-**Goal**: Ensure agents stay on task and recover from failures.
+**Status**: Done.
 
-Enhance `myelix-flow` and `myelix-agent`:
+Implemented in `myelix-flow`:
 
-- Mandate validator: check agent output against success_criteria
-  before accepting (LLM-as-judge or rule-based)
-- Drift detector: compare agent actions against mandate, flag
-  divergence
-- Failure classifier: categorize failures (timeout, wrong output,
-  circular fix, external dependency)
-- Attempt history: track fix attempts, detect circular patterns
-- Recovery strategies: retry with modified prompt, escalate to
-  human, skip and continue
+- Mandate validator: keyword + success_criteria matching with
+  scoring (0-100), expected_output length check
+- Failure classifier: categorizes agent_error, validation_failed,
+  max_iterations, circular_fix
+- Attempt history: tracks error/output per attempt
+- Circular fix detector: pattern detection across attempts
+- Recovery strategies: RetryWithContext, Skip, Abort
+- Back-edges: conditional re-execution when validation fails
+  (replaces rigid retry with graph-level feedback loops)
 
 ### Phase 5: Paper & benchmarks
 

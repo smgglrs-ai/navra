@@ -18,6 +18,12 @@ pub struct FlowConfig {
     /// Maximum number of handoff hops (default: 10).
     #[serde(default = "default_max_hops")]
     pub max_hops: usize,
+    /// Capacity for agent mailboxes (default: 64). Set to enable mesh messaging.
+    #[serde(default)]
+    pub mailbox_capacity: Option<usize>,
+    /// Capacity for the shared blackboard (default: 256). Set to enable blackboard.
+    #[serde(default)]
+    pub blackboard_capacity: Option<usize>,
     /// Agent nodes in the flow.
     pub nodes: Vec<NodeDefinition>,
     /// Edges defining handoff routes between nodes.
@@ -55,6 +61,9 @@ pub struct NodeDefinition {
     /// Max tokens per model response.
     #[serde(default)]
     pub max_tokens: Option<u32>,
+    /// IFC clearance level for this node: "public", "sensitive", or "secret" (default: "public").
+    #[serde(default)]
+    pub clearance: Option<String>,
 }
 
 fn default_max_iterations() -> usize {
@@ -86,6 +95,9 @@ pub struct DagConfig {
     pub name: String,
     /// Task definitions.
     pub tasks: Vec<TaskDefinition>,
+    /// Capacity for the shared blackboard (default: 256). Set to enable blackboard.
+    #[serde(default)]
+    pub blackboard_capacity: Option<usize>,
 }
 
 /// Definition of a task in a DAG.
@@ -106,6 +118,30 @@ pub struct TaskDefinition {
     /// Success criteria.
     #[serde(default)]
     pub success_criteria: Vec<String>,
+    /// Conditional back-edges evaluated after task completion.
+    #[serde(default)]
+    pub back_edges: Vec<BackEdgeDefinition>,
+}
+
+/// A conditional back-edge that can route execution backward in the DAG.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BackEdgeDefinition {
+    /// Target task ID to re-execute.
+    pub target: String,
+    /// Condition string: "score_below:70", "criteria_missing", "output_contains:error", "always".
+    #[serde(default = "default_back_edge_condition")]
+    pub condition: String,
+    /// Maximum number of back-edge activations (default: 3).
+    #[serde(default = "default_back_edge_max")]
+    pub max_iterations: u32,
+}
+
+fn default_back_edge_condition() -> String {
+    "always".to_string()
+}
+
+fn default_back_edge_max() -> u32 {
+    3
 }
 
 #[cfg(test)]

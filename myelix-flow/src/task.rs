@@ -1,5 +1,6 @@
 //! Task types for DAG-based execution.
 
+use crate::definition::BackEdgeDefinition;
 use myelix_protocol::label::DataLabel;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -28,6 +29,9 @@ pub struct Task {
     /// Maximum retry attempts on failure (default: 2).
     #[serde(default = "default_max_retries")]
     pub max_retries: u32,
+    /// Conditional back-edges evaluated after task completion.
+    #[serde(default)]
+    pub back_edges: Vec<BackEdgeDefinition>,
 }
 
 fn default_max_retries() -> u32 {

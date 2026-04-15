@@ -30,6 +30,29 @@ pub enum FlowError {
     #[error("unknown specialist: '{0}'")]
     UnknownSpecialist(String),
 
+    #[error("IFC violation: agent '{sender}' cannot write to agent '{target}': {reason}")]
+    IfcViolation {
+        sender: String,
+        target: String,
+        reason: String,
+    },
+
+    #[error("unknown agent: '{0}'")]
+    UnknownAgent(String),
+
+    #[error("mailbox full for agent '{0}'")]
+    MailboxFull(String),
+
+    #[error("blackboard key not found: '{0}'")]
+    BlackboardKeyNotFound(String),
+
+    #[error("back-edge exhausted: '{from}' → '{to}' after {iterations} iterations")]
+    BackEdgeExhausted {
+        from: String,
+        to: String,
+        iterations: u32,
+    },
+
     #[error("unknown task dependency: '{0}'")]
     UnknownDependency(String),
 

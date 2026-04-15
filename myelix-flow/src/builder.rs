@@ -1,9 +1,11 @@
 //! Programmatic flow construction via builder pattern.
 
+use crate::blackboard::Blackboard;
 use crate::definition::EdgeDefinition;
 use crate::engine::{Flow, FlowNode};
 use crate::error::FlowError;
 use crate::handoff::routing_instructions;
+use crate::mailbox::MailboxRegistry;
 use myelix_agent::Agent;
 use std::collections::HashMap;
 
@@ -14,6 +16,8 @@ pub struct FlowBuilder {
     max_hops: usize,
     nodes: Vec<(String, Agent, String)>, // (id, agent, system_prompt)
     edges: Vec<EdgeDefinition>,
+    mailbox_capacity: Option<usize>,
+    blackboard_capacity: Option<usize>,
 }
 
 impl FlowBuilder {
@@ -25,6 +29,8 @@ impl FlowBuilder {
             max_hops: 10,
             nodes: Vec::new(),
             edges: Vec::new(),
+            mailbox_capacity: None,
+            blackboard_capacity: None,
         }
     }
 
@@ -48,6 +54,18 @@ impl FlowBuilder {
         system_prompt: impl Into<String>,
     ) -> Self {
         self.nodes.push((id.into(), agent, system_prompt.into()));
+        self
+    }
+
+    /// Enable agent mailboxes with the given channel capacity.
+    pub fn enable_mailbox(mut self, capacity: usize) -> Self {
+        self.mailbox_capacity = Some(capacity);
+        self
+    }
+
+    /// Enable the shared blackboard with the given entry limit.
+    pub fn enable_blackboard(mut self, capacity: usize) -> Self {
+        self.blackboard_capacity = Some(capacity);
         self
     }
 
@@ -133,11 +151,21 @@ impl FlowBuilder {
             );
         }
 
+        let node_ids: Vec<String> = nodes.keys().cloned().collect();
+
+        let mailbox_registry = self
+            .mailbox_capacity
+            .map(|cap| MailboxRegistry::new(&node_ids, cap));
+
+        let blackboard = self.blackboard_capacity.map(Blackboard::new);
+
         Ok(Flow {
             name: self.name,
             entry,
             max_hops: self.max_hops,
             nodes,
+            mailbox_registry,
+            blackboard,
         })
     }
 }

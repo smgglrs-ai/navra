@@ -1,8 +1,14 @@
 //! Flow execution engine with handoff-based multi-agent routing.
 
+use crate::blackboard::Blackboard;
 use crate::definition::FlowDefinition;
 use crate::error::FlowError;
 use crate::handoff::{handoff_tool_def, parse_handoff, routing_instructions, HANDOFF_TOOL_NAME};
+use crate::mailbox::MailboxRegistry;
+use crate::mesh_tools::{
+    self, bb_keys_tool_def, bb_publish_tool_def, bb_read_tool_def, mesh_post_tool_def,
+    mesh_recv_tool_def,
+};
 use myelix_agent::{extract_text, Agent};
 use myelix_model::{
     CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
@@ -67,6 +73,8 @@ pub struct Flow {
     pub(crate) entry: String,
     pub(crate) max_hops: usize,
     pub(crate) nodes: HashMap<String, FlowNode>,
+    pub(crate) mailbox_registry: Option<MailboxRegistry>,
+    pub(crate) blackboard: Option<Blackboard>,
 }
 
 impl Flow {
@@ -144,11 +152,21 @@ impl Flow {
             );
         }
 
+        let node_ids: Vec<String> = nodes.keys().cloned().collect();
+
+        let mailbox_registry = config.mailbox_capacity.map(|cap| {
+            MailboxRegistry::new(&node_ids, cap)
+        });
+
+        let blackboard = config.blackboard_capacity.map(Blackboard::new);
+
         Ok(Flow {
             name: config.name,
             entry: config.entry,
             max_hops: config.max_hops,
             nodes,
+            mailbox_registry,
+            blackboard,
         })
     }
 
@@ -182,7 +200,14 @@ impl Flow {
                 "Running flow node"
             );
 
-            let result = run_node_loop(node, &current_prompt).await?;
+            let result = run_node_loop(
+                node,
+                &current_node_id,
+                &current_prompt,
+                self.mailbox_registry.as_ref(),
+                self.blackboard.as_ref(),
+            )
+            .await?;
 
             total_prompt += result.prompt_tokens;
             total_completion += result.completion_tokens;
@@ -223,15 +248,19 @@ impl Flow {
     }
 }
 
-/// Run a single node's agent loop with handoff interception.
+/// Run a single node's agent loop with handoff and mesh tool interception.
 ///
 /// This is the per-node ReAct loop. It calls the model, executes real
-/// MCP tool calls, and intercepts `handoff` calls to return control
-/// to the outer flow loop.
-async fn run_node_loop(node: &mut FlowNode, user_prompt: &str) -> Result<NodeResult, FlowError> {
-    let node_id = "node";
-
-    // Get MCP tools + inject virtual handoff tool
+/// MCP tool calls, and intercepts `handoff` and mesh tool calls to
+/// handle them internally.
+async fn run_node_loop(
+    node: &mut FlowNode,
+    node_id: &str,
+    user_prompt: &str,
+    mailbox: Option<&MailboxRegistry>,
+    blackboard: Option<&Blackboard>,
+) -> Result<NodeResult, FlowError> {
+    // Get MCP tools + inject virtual tools
     let mcp_tools = node
         .agent
         .client()
@@ -258,6 +287,16 @@ async fn run_node_loop(node: &mut FlowNode, user_prompt: &str) -> Result<NodeRes
     if node.has_edges {
         tools.push(handoff_tool_def());
     }
+    // Inject mesh tools when mailbox/blackboard are enabled
+    if mailbox.is_some() {
+        tools.push(mesh_post_tool_def());
+        tools.push(mesh_recv_tool_def());
+    }
+    if blackboard.is_some() {
+        tools.push(bb_publish_tool_def());
+        tools.push(bb_read_tool_def());
+        tools.push(bb_keys_tool_def());
+    }
 
     let mut input: Vec<InputItem> = Vec::new();
     input.push(InputItem::system(&node.effective_prompt));
@@ -265,6 +304,8 @@ async fn run_node_loop(node: &mut FlowNode, user_prompt: &str) -> Result<NodeRes
 
     let mut total_input = 0u32;
     let mut total_output = 0u32;
+    // Local taint tracker for blackboard reads within this node
+    let mut local_taint = TaintTracker::new();
 
     for _iteration in 0..node.max_iterations {
         let request = CreateResponseRequest {
@@ -309,7 +350,7 @@ async fn run_node_loop(node: &mut FlowNode, user_prompt: &str) -> Result<NodeRes
                 outcome: NodeOutcome::Stop(text),
                 prompt_tokens: total_input,
                 completion_tokens: total_output,
-                taint: node.agent.taint(),
+                taint: node.agent.taint().join(local_taint.level()),
             });
         }
 
@@ -324,7 +365,7 @@ async fn run_node_loop(node: &mut FlowNode, user_prompt: &str) -> Result<NodeRes
                     },
                     prompt_tokens: total_input,
                     completion_tokens: total_output,
-                    taint: node.agent.taint(),
+                    taint: node.agent.taint().join(local_taint.level()),
                 });
             }
 
@@ -337,28 +378,98 @@ async fn run_node_loop(node: &mut FlowNode, user_prompt: &str) -> Result<NodeRes
                 status: Some(ItemStatus::Completed),
             }));
 
-            // Execute MCP tool call
-            let args: serde_json::Value =
-                serde_json::from_str(&fc.arguments)
-                    .unwrap_or(serde_json::json!({}));
+            // Intercept mesh tools before falling through to MCP
+            let tool_output = match fc.name.as_str() {
+                mesh_tools::MESH_POST => {
+                    let (target, message) = mesh_tools::parse_mesh_post(&fc.arguments)?;
+                    if let Some(reg) = mailbox {
+                        let label = node.agent.taint().join(local_taint.level());
+                        match reg.post(node_id, label, &target, message) {
+                            Ok(()) => "Message delivered.".to_string(),
+                            Err(e) => format!("Error: {e}"),
+                        }
+                    } else {
+                        "Error: mailbox not enabled for this flow.".to_string()
+                    }
+                }
+                mesh_tools::MESH_RECV => {
+                    if let Some(reg) = mailbox {
+                        let msgs = reg.recv_all(node_id);
+                        let json_msgs: Vec<serde_json::Value> = msgs
+                            .iter()
+                            .map(|m| {
+                                serde_json::json!({
+                                    "sender": m.sender,
+                                    "body": m.body,
+                                })
+                            })
+                            .collect();
+                        serde_json::to_string(&json_msgs).unwrap_or_else(|_| "[]".to_string())
+                    } else {
+                        "Error: mailbox not enabled for this flow.".to_string()
+                    }
+                }
+                mesh_tools::BB_PUBLISH => {
+                    let (key, value) = mesh_tools::parse_bb_publish(&fc.arguments)?;
+                    if let Some(bb) = blackboard {
+                        let label = node.agent.taint().join(local_taint.level());
+                        match bb.publish(node_id, &key, value, label) {
+                            Ok(version) => format!("Published key '{}' (version {}).", key, version),
+                            Err(e) => format!("Error: {e}"),
+                        }
+                    } else {
+                        "Error: blackboard not enabled for this flow.".to_string()
+                    }
+                }
+                mesh_tools::BB_READ => {
+                    let key = mesh_tools::parse_bb_read(&fc.arguments)?;
+                    if let Some(bb) = blackboard {
+                        match bb.read(&key, &mut local_taint) {
+                            Ok(entry) => serde_json::json!({
+                                "key": entry.key,
+                                "value": entry.value,
+                                "author": entry.author,
+                                "version": entry.version,
+                            })
+                            .to_string(),
+                            Err(e) => format!("Error: {e}"),
+                        }
+                    } else {
+                        "Error: blackboard not enabled for this flow.".to_string()
+                    }
+                }
+                mesh_tools::BB_KEYS => {
+                    if let Some(bb) = blackboard {
+                        serde_json::to_string(&bb.keys())
+                            .unwrap_or_else(|_| "[]".to_string())
+                    } else {
+                        "Error: blackboard not enabled for this flow.".to_string()
+                    }
+                }
+                _ => {
+                    // Fall through to MCP tool call
+                    let args: serde_json::Value = serde_json::from_str(&fc.arguments)
+                        .unwrap_or(serde_json::json!({}));
 
-            tracing::debug!(tool = %fc.name, "Flow node executing tool");
+                    tracing::debug!(tool = %fc.name, "Flow node executing tool");
 
-            let result = node
-                .agent
-                .client()
-                .call_tool(&fc.name, args)
-                .await
-                .map_err(|e| FlowError::Agent {
-                    node: node_id.into(),
-                    source: e,
-                })?;
-            let text = extract_text(&result);
+                    let result = node
+                        .agent
+                        .client()
+                        .call_tool(&fc.name, args)
+                        .await
+                        .map_err(|e| FlowError::Agent {
+                            node: node_id.into(),
+                            source: e,
+                        })?;
+                    extract_text(&result)
+                }
+            };
 
             input.push(InputItem::FunctionCallOutput(FunctionCallOutputItem {
                 id: None,
                 call_id: fc.call_id.clone(),
-                output: FunctionCallOutputContent::Text(text),
+                output: FunctionCallOutputContent::Text(tool_output),
                 status: Some(ItemStatus::Completed),
             }));
         }
@@ -638,4 +749,150 @@ mod tests {
         let err = flow.run("go").await.unwrap_err();
         assert!(matches!(err, FlowError::UnknownTarget(_)));
     }
+
+    // ── Integration tests: mesh tools through the flow engine ──
+
+    fn tool_call_response(tool_name: &str, args: serde_json::Value) -> ModelResponse {
+        make_response(vec![OutputItem::FunctionCall(FunctionCallItem {
+            id: Some(format!("call_{tool_name}")),
+            call_id: format!("call_{tool_name}"),
+            name: tool_name.to_string(),
+            arguments: args.to_string(),
+            status: Some(ItemStatus::Completed),
+        })])
+    }
+
+    #[tokio::test]
+    async fn mailbox_post_and_recv_through_flow() {
+        // Agent "sender" calls mesh_post to "receiver", then hands off.
+        // Agent "receiver" calls mesh_recv, then stops with the messages.
+        let sender = mock_agent_multi(
+            vec![
+                // First: call mesh_post
+                tool_call_response(
+                    "mesh_post",
+                    serde_json::json!({"target": "receiver", "message": "hello from sender"}),
+                ),
+                // Second: handoff to receiver
+                handoff_response("receiver", "Check your mailbox"),
+            ],
+            1,
+        )
+        .await;
+
+        let receiver = mock_agent_multi(
+            vec![
+                // First: call mesh_recv
+                tool_call_response("mesh_recv", serde_json::json!({})),
+                // Second: stop with confirmation
+                stop_response("Got it!"),
+            ],
+            1,
+        )
+        .await;
+
+        let mut flow = Flow::builder("mail_test")
+            .entry("sender")
+            .node("sender", sender, "You send messages.")
+            .node("receiver", receiver, "You receive messages.")
+            .edge("sender", "receiver", "Forward to receiver")
+            .enable_mailbox(16)
+            .build()
+            .unwrap();
+
+        let result = flow.run("Send a message").await.unwrap();
+        assert_eq!(result.response, "Got it!");
+        assert_eq!(result.hops, 2);
+        assert_eq!(result.path, vec!["sender", "receiver"]);
+
+        // Verify audit log recorded the delivery
+        let audit = flow.mailbox_registry.as_ref().unwrap().audit_log();
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].sender, "sender");
+        assert_eq!(audit[0].body, "hello from sender");
+    }
+
+    #[tokio::test]
+    async fn blackboard_publish_and_read_through_flow() {
+        // Agent "writer" publishes to blackboard, hands off to "reader".
+        // Agent "reader" reads from blackboard, then stops.
+        let writer = mock_agent_multi(
+            vec![
+                tool_call_response(
+                    "bb_publish",
+                    serde_json::json!({"key": "analysis", "value": {"score": 95}}),
+                ),
+                handoff_response("reader", "Read the analysis"),
+            ],
+            1,
+        )
+        .await;
+
+        let reader = mock_agent_multi(
+            vec![
+                tool_call_response("bb_read", serde_json::json!({"key": "analysis"})),
+                stop_response("Read the analysis."),
+            ],
+            1,
+        )
+        .await;
+
+        let mut flow = Flow::builder("bb_test")
+            .entry("writer")
+            .node("writer", writer, "You write data.")
+            .node("reader", reader, "You read data.")
+            .edge("writer", "reader", "Forward to reader")
+            .enable_blackboard(64)
+            .build()
+            .unwrap();
+
+        let result = flow.run("Analyze").await.unwrap();
+        assert_eq!(result.response, "Read the analysis.");
+        assert_eq!(result.hops, 2);
+
+        // Verify blackboard has the published entry
+        let bb = flow.blackboard.as_ref().unwrap();
+        let snap = bb.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert!(snap.contains_key("analysis"));
+        assert_eq!(snap["analysis"].value["score"], 95);
+        assert_eq!(snap["analysis"].author, "writer");
+    }
+
+    #[tokio::test]
+    async fn blackboard_keys_through_flow() {
+        // Agent publishes two keys, then calls bb_keys, then stops.
+        let agent = mock_agent_multi(
+            vec![
+                tool_call_response(
+                    "bb_publish",
+                    serde_json::json!({"key": "alpha", "value": 1}),
+                ),
+                tool_call_response(
+                    "bb_publish",
+                    serde_json::json!({"key": "beta", "value": 2}),
+                ),
+                tool_call_response("bb_keys", serde_json::json!({})),
+                stop_response("Done listing."),
+            ],
+            1,
+        )
+        .await;
+
+        let mut flow = Flow::builder("keys_test")
+            .entry("main")
+            .node("main", agent, "")
+            .enable_blackboard(64)
+            .build()
+            .unwrap();
+
+        let result = flow.run("List keys").await.unwrap();
+        assert_eq!(result.response, "Done listing.");
+
+        let bb = flow.blackboard.as_ref().unwrap();
+        let mut keys = bb.keys();
+        keys.sort();
+        assert_eq!(keys, vec!["alpha", "beta"]);
+    }
+
 }
