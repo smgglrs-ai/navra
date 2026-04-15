@@ -73,7 +73,12 @@ impl AnthropicBackend {
     }
 
     fn messages_url(&self) -> String {
-        format!("{}/v1/messages", self.base_url)
+        if self.is_vertex {
+            // Vertex AI: the base URL IS the full endpoint (rawPredict)
+            self.base_url.clone()
+        } else {
+            format!("{}/v1/messages", self.base_url)
+        }
     }
 
     /// Build the Messages API request body.
@@ -103,6 +108,12 @@ impl AnthropicBackend {
             "max_tokens": max_tokens,
             "messages": messages,
         });
+
+        if self.is_vertex {
+            // Vertex AI: model is in the URL, not the body; version is required in body
+            body.as_object_mut().unwrap().remove("model");
+            body["anthropic_version"] = serde_json::json!("vertex-2023-10-16");
+        }
 
         if let Some(ref system) = system_text {
             body["system"] = serde_json::json!(system);
