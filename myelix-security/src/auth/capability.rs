@@ -218,8 +218,9 @@ fn cbor_decode(bytes: &[u8]) -> anyhow::Result<CapabilityPayload> {
 /// Generate a random 16-byte nonce.
 pub fn generate_nonce() -> [u8; 16] {
     let mut nonce = [0u8; 16];
+    use rand::rngs::OsRng;
     use rand::RngCore;
-    rand::thread_rng().fill_bytes(&mut nonce);
+    OsRng.fill_bytes(&mut nonce);
     nonce
 }
 

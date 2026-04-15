@@ -11,11 +11,12 @@ use crate::chunk::{chunk_text, ChunkConfig};
 use crate::store::ChunkStore;
 use myelix_core::auth::CallContext;
 use myelix_core::models::ModelBackend;
+use myelix_core::permissions::{PermissionEngine, PermissionResult};
 use myelix_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
 use myelix_core::{Module, ToolHandler};
 use std::collections::HashMap;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// RAG module for semantic document search.
@@ -27,6 +28,7 @@ struct RagState {
     store: Arc<ChunkStore>,
     embedding_model: Arc<dyn ModelBackend>,
     chunk_config: ChunkConfig,
+    perm_engine: Arc<PermissionEngine>,
 }
 
 impl RagModule {
@@ -34,12 +36,14 @@ impl RagModule {
     pub fn new(
         store: Arc<ChunkStore>,
         embedding_model: Arc<dyn ModelBackend>,
+        perm_engine: Arc<PermissionEngine>,
     ) -> Self {
         Self {
             state: Arc::new(RagState {
                 store,
                 embedding_model,
                 chunk_config: ChunkConfig::default(),
+                perm_engine,
             }),
         }
     }
@@ -49,12 +53,14 @@ impl RagModule {
         store: Arc<ChunkStore>,
         embedding_model: Arc<dyn ModelBackend>,
         chunk_config: ChunkConfig,
+        perm_engine: Arc<PermissionEngine>,
     ) -> Self {
         Self {
             state: Arc::new(RagState {
                 store,
                 embedding_model,
                 chunk_config,
+                perm_engine,
             }),
         }
     }
@@ -195,11 +201,41 @@ fn resolve_path(raw: &str) -> Result<PathBuf, String> {
         .map_err(|e| format!("Cannot resolve path {raw}: {e}"))
 }
 
+// --- Permission check ---
+
+fn check_perm(
+    state: &RagState,
+    ctx: &CallContext,
+    op: &str,
+    path: &Path,
+) -> Result<(), CallToolResult> {
+    match state.perm_engine.check(&ctx.agent.permissions, op, path) {
+        PermissionResult::Allowed => Ok(()),
+        PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
+            "Access denied: {}",
+            path.display()
+        ))),
+        PermissionResult::DeniedOperation => Err(CallToolResult::error(format!(
+            "Operation '{}' not permitted for agent '{}'",
+            op, ctx.agent.name
+        ))),
+        PermissionResult::DeniedUnknown => Err(CallToolResult::error(format!(
+            "Unknown permission set: {}",
+            ctx.agent.permissions
+        ))),
+        PermissionResult::NeedsApproval => Err(CallToolResult::error(format!(
+            "Approval required: {} on {}",
+            op,
+            path.display()
+        ))),
+    }
+}
+
 // --- Tool handlers ---
 
 async fn handle_index(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<RagState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
@@ -211,6 +247,10 @@ async fn handle_index(
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
+
+    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+        return e;
+    }
 
     if !path.is_file() {
         return CallToolResult::error(format!("Not a file: {}", path.display()));
@@ -310,7 +350,7 @@ async fn handle_query(
 
 async fn handle_similar(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<RagState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
@@ -326,6 +366,10 @@ async fn handle_similar(
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
+
+    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+        return e;
+    }
 
     let path_str = path.to_string_lossy().to_string();
     if !state.store.is_indexed(&path_str).unwrap_or(false) {
@@ -409,7 +453,7 @@ mod tests {
 
         let store = Arc::new(ChunkStore::open_memory(4).unwrap());
         let model: Arc<dyn ModelBackend> = Arc::new(FakeModel);
-        let module = RagModule::new(store, model);
+        let module = RagModule::new(store, model, Arc::new(myelix_core::permissions::PermissionEngine::new()));
 
         assert_eq!(module.name(), "rag");
         let tools = module.tools();
@@ -451,6 +495,7 @@ mod tests {
             store,
             embedding_model: Arc::new(FakeModel),
             chunk_config: ChunkConfig::default(),
+            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
         });
 
         let result = handle_status(serde_json::json!({}), test_ctx(), state).await;

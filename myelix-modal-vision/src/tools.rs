@@ -12,6 +12,7 @@
 use crate::screenshot;
 use myelix_core::auth::CallContext;
 use myelix_core::models::{GenerateRequest, ImageInput, ModelBackend};
+use myelix_core::permissions::{PermissionEngine, PermissionResult};
 use myelix_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
 use myelix_core::{Module, ToolHandler};
 use std::collections::HashMap;
@@ -27,12 +28,13 @@ pub struct VisionModule {
 struct VisionState {
     /// Vision model (Granite Vision, Gemma 4, etc.)
     vision_model: Arc<dyn ModelBackend>,
+    perm_engine: Arc<PermissionEngine>,
 }
 
 impl VisionModule {
-    pub fn new(vision_model: Arc<dyn ModelBackend>) -> Self {
+    pub fn new(vision_model: Arc<dyn ModelBackend>, perm_engine: Arc<PermissionEngine>) -> Self {
         Self {
-            state: Arc::new(VisionState { vision_model }),
+            state: Arc::new(VisionState { vision_model, perm_engine }),
         }
     }
 }
@@ -195,11 +197,41 @@ fn resolve_path(raw: &str) -> Result<PathBuf, String> {
         .map_err(|e| format!("Cannot resolve path {raw}: {e}"))
 }
 
+// --- Permission check ---
+
+fn check_perm(
+    state: &VisionState,
+    ctx: &CallContext,
+    op: &str,
+    path: &Path,
+) -> Result<(), CallToolResult> {
+    match state.perm_engine.check(&ctx.agent.permissions, op, path) {
+        PermissionResult::Allowed => Ok(()),
+        PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
+            "Access denied: {}",
+            path.display()
+        ))),
+        PermissionResult::DeniedOperation => Err(CallToolResult::error(format!(
+            "Operation '{}' not permitted for agent '{}'",
+            op, ctx.agent.name
+        ))),
+        PermissionResult::DeniedUnknown => Err(CallToolResult::error(format!(
+            "Unknown permission set: {}",
+            ctx.agent.permissions
+        ))),
+        PermissionResult::NeedsApproval => Err(CallToolResult::error(format!(
+            "Approval required: {} on {}",
+            op,
+            path.display()
+        ))),
+    }
+}
+
 // --- Tool handlers ---
 
 async fn handle_describe(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<VisionState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
@@ -211,6 +243,10 @@ async fn handle_describe(
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
+
+    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+        return e;
+    }
 
     let image = match load_image(&path) {
         Ok(img) => img,
@@ -233,7 +269,7 @@ async fn handle_describe(
 
 async fn handle_ocr(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<VisionState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
@@ -245,6 +281,10 @@ async fn handle_ocr(
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
+
+    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+        return e;
+    }
 
     let image = match load_image(&path) {
         Ok(img) => img,
@@ -267,7 +307,7 @@ async fn handle_ocr(
 
 async fn handle_ask(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<VisionState>,
 ) -> CallToolResult {
     let raw_path = match args.get("path").and_then(|v| v.as_str()) {
@@ -283,6 +323,10 @@ async fn handle_ask(
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
+
+    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+        return e;
+    }
 
     let image = match load_image(&path) {
         Ok(img) => img,
@@ -389,7 +433,7 @@ mod tests {
     #[test]
     fn module_provides_all_tools() {
         let model: Arc<dyn ModelBackend> = Arc::new(FakeVisionModel);
-        let module = VisionModule::new(model);
+        let module = VisionModule::new(model, Arc::new(myelix_core::permissions::PermissionEngine::new()));
 
         assert_eq!(module.name(), "vision");
         let tools = module.tools();
@@ -405,6 +449,7 @@ mod tests {
     async fn describe_rejects_missing_path() {
         let state = Arc::new(VisionState {
             vision_model: Arc::new(FakeVisionModel),
+            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
         });
         let result = handle_describe(serde_json::json!({}), test_ctx(), state).await;
         assert!(result.is_error);
@@ -414,6 +459,7 @@ mod tests {
     async fn ask_rejects_missing_question() {
         let state = Arc::new(VisionState {
             vision_model: Arc::new(FakeVisionModel),
+            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
         });
         let result = handle_ask(
             serde_json::json!({"path": "/tmp/test.png"}),
@@ -428,6 +474,7 @@ mod tests {
     async fn describe_rejects_nonexistent_file() {
         let state = Arc::new(VisionState {
             vision_model: Arc::new(FakeVisionModel),
+            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
         });
         let result = handle_describe(
             serde_json::json!({"path": "/nonexistent/image.png"}),

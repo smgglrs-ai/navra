@@ -36,6 +36,13 @@ static INIT_VEC: Once = Once::new();
 
 fn init_sqlite_vec() {
     INIT_VEC.call_once(|| {
+        // SAFETY: sqlite3_vec_init has the signature expected by sqlite3_auto_extension
+        // (i.e., it is an SQLite extension entry point: `fn(*mut sqlite3, *mut *mut c_char,
+        // *const sqlite3_api_routines) -> c_int`). The transmute casts the concrete
+        // function pointer to the generic Option<unsafe extern "C" fn()> type required
+        // by the SQLite C API. This is the documented way to register compile-time
+        // SQLite extensions and is safe as long as the function signature matches the
+        // sqlite3_auto_extension ABI contract, which sqlite-vec guarantees.
         unsafe {
             rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
                 sqlite_vec::sqlite3_vec_init as *const (),
