@@ -363,10 +363,8 @@ async fn handle_transcribe(
         return e;
     }
 
-    let path_str = path.to_string_lossy();
-
     // Read WAV file
-    let audio = match read_wav_file(&path_str) {
+    let audio = match read_wav_file(&path) {
         Ok(samples) => samples,
         Err(e) => return CallToolResult::error(format!("Failed to read audio file: {e}")),
     };
@@ -419,8 +417,8 @@ async fn handle_status(
 }
 
 /// Read a WAV file and return 16kHz mono f32 PCM samples.
-fn read_wav_file(path: &str) -> Result<Vec<f32>, String> {
-    let data = std::fs::read(path).map_err(|e| format!("Cannot read {path}: {e}"))?;
+fn read_wav_file(path: &std::path::Path) -> Result<Vec<f32>, String> {
+    let data = std::fs::read(path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
 
     // Minimal WAV parser — supports 16-bit PCM mono/stereo
     if data.len() < 44 || &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {

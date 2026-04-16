@@ -78,6 +78,62 @@ pub struct ModelConfig {
     /// Model name for the OpenAI-compatible API. Defaults to the config key.
     #[serde(default)]
     pub model_name: Option<String>,
+    /// Operator-defined agentic capabilities for model selection.
+    /// These fields help the lead agent choose the right model
+    /// for each teammate based on task requirements.
+    #[serde(default)]
+    pub agentic: Option<AgenticConfig>,
+}
+
+/// Operator-defined agentic capabilities for a model.
+///
+/// Configured in `[models.<name>.agentic]` and merged into
+/// the model card at startup.
+///
+/// ```toml
+/// [models.granite-code.agentic]
+/// strengths = ["code generation", "fast inference"]
+/// weaknesses = ["limited reasoning", "small context"]
+/// recommended_tasks = ["code review", "simple analysis"]
+/// avoid_tasks = ["multi-step planning"]
+/// tool_use = "basic"
+/// cost_tier = "free"
+/// speed_tier = "fast"
+/// ```
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct AgenticConfig {
+    #[serde(default)]
+    pub strengths: Vec<String>,
+    #[serde(default)]
+    pub weaknesses: Vec<String>,
+    #[serde(default)]
+    pub recommended_tasks: Vec<String>,
+    #[serde(default)]
+    pub avoid_tasks: Vec<String>,
+    #[serde(default)]
+    pub tool_use: Option<String>,
+    #[serde(default)]
+    pub cost_tier: Option<String>,
+    #[serde(default)]
+    pub speed_tier: Option<String>,
+    #[serde(default)]
+    pub max_agents: Option<u32>,
+}
+
+impl AgenticConfig {
+    /// Convert to the hub's AgenticMeta for merging into a model card.
+    pub fn to_agentic_meta(&self) -> myelix_model_hub::AgenticMeta {
+        myelix_model_hub::AgenticMeta {
+            strengths: self.strengths.clone(),
+            weaknesses: self.weaknesses.clone(),
+            recommended_tasks: self.recommended_tasks.clone(),
+            avoid_tasks: self.avoid_tasks.clone(),
+            tool_use: self.tool_use.clone(),
+            cost_tier: self.cost_tier.clone(),
+            speed_tier: self.speed_tier.clone(),
+            max_agents: self.max_agents,
+        }
+    }
 }
 
 fn default_model_task() -> String {
@@ -885,6 +941,34 @@ can_delegate = true
         let leader = &config.permissions["leader"];
         assert_eq!(leader.credentials, vec!["github.pat", "jira.token"]);
         assert!(leader.can_delegate);
+    }
+
+    #[test]
+    fn parse_model_agentic_config() {
+        let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[models.granite-code]
+task = "chat"
+source = "ollama://granite-code:3b"
+
+[models.granite-code.agentic]
+strengths = ["code generation", "fast inference"]
+weaknesses = ["limited reasoning"]
+recommended_tasks = ["code review"]
+avoid_tasks = ["multi-step planning"]
+tool_use = "basic"
+cost_tier = "free"
+speed_tier = "fast"
+max_agents = 4
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        let model = &config.models["granite-code"];
+        let agentic = model.agentic.as_ref().unwrap();
+        assert_eq!(agentic.strengths, vec!["code generation", "fast inference"]);
+        assert_eq!(agentic.tool_use, Some("basic".to_string()));
+        assert_eq!(agentic.max_agents, Some(4));
     }
 
     #[test]

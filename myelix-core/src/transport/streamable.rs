@@ -387,20 +387,53 @@ async fn dispatch(
 
     // Verify the authenticated agent matches the session's creator
     if let Some(ref sid) = session_id {
-        if let Some(session) = server.sessions().get(sid) {
-            if session.agent.name != agent.name {
+        match server.sessions().get(sid) {
+            Some(session) => {
+                if session.agent.name != agent.name {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::new(
+                                crate::protocol::ErrorCode::Custom(-32000),
+                                "Session does not belong to this agent",
+                            ),
+                        ),
+                        None,
+                    );
+                }
+            }
+            None => {
+                // Session ID provided but session doesn't exist (expired or invalid)
                 return (
                     JsonRpcResponse::error(
                         id,
                         JsonRpcError::new(
-                            crate::protocol::ErrorCode::Custom(-32000),
-                            "Session does not belong to this agent",
+                            crate::protocol::ErrorCode::Custom(-32001),
+                            "Session not found — it may have expired",
                         ),
                     ),
                     None,
                 );
             }
         }
+    }
+
+    // Require a valid session for all methods except initialize and notifications
+    let needs_session = !matches!(
+        request.method.as_str(),
+        "initialize" | "notifications/initialized"
+    );
+    if needs_session && session_id.is_none() {
+        return (
+            JsonRpcResponse::error(
+                id,
+                JsonRpcError::new(
+                    crate::protocol::ErrorCode::Custom(-32002),
+                    "Session required — call initialize first",
+                ),
+            ),
+            None,
+        );
     }
 
     match request.method.as_str() {
@@ -717,13 +750,15 @@ mod tests {
     #[tokio::test]
     async fn tools_list_returns_registered_tools() {
         let router = build_router(test_server());
-        let (status, json) = post_json(
+        let sid = init_session(&router).await;
+        let (status, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "method": "tools/list",
                 "id": 2
             }),
+            Some(&sid),
         )
         .await;
 
@@ -760,13 +795,15 @@ mod tests {
     #[tokio::test]
     async fn unknown_method_returns_error() {
         let router = build_router(test_server());
-        let (_, json) = post_json(
+        let sid = init_session(&router).await;
+        let (_, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "method": "unknown/method",
                 "id": 4
             }),
+            Some(&sid),
         )
         .await;
 
@@ -795,13 +832,15 @@ mod tests {
     #[tokio::test]
     async fn prompts_list_returns_registered_prompts() {
         let router = build_router(test_server());
-        let (status, json) = post_json(
+        let sid = init_session(&router).await;
+        let (status, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "method": "prompts/list",
                 "id": 6
             }),
+            Some(&sid),
         )
         .await;
 
@@ -814,7 +853,8 @@ mod tests {
     #[tokio::test]
     async fn prompts_get_invokes_handler() {
         let router = build_router(test_server());
-        let (status, json) = post_json(
+        let sid = init_session(&router).await;
+        let (status, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
@@ -825,6 +865,7 @@ mod tests {
                     "arguments": {}
                 }
             }),
+            Some(&sid),
         )
         .await;
 
@@ -837,7 +878,8 @@ mod tests {
     #[tokio::test]
     async fn prompts_get_unknown_returns_error() {
         let router = build_router(test_server());
-        let (_, json) = post_json(
+        let sid = init_session(&router).await;
+        let (_, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
@@ -845,6 +887,7 @@ mod tests {
                 "id": 8,
                 "params": {"name": "nonexistent", "arguments": {}}
             }),
+            Some(&sid),
         )
         .await;
 
@@ -857,13 +900,15 @@ mod tests {
     #[tokio::test]
     async fn resources_list_returns_registered_resources() {
         let router = build_router(test_server());
-        let (status, json) = post_json(
+        let sid = init_session(&router).await;
+        let (status, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "method": "resources/list",
                 "id": 9
             }),
+            Some(&sid),
         )
         .await;
 
@@ -876,7 +921,8 @@ mod tests {
     #[tokio::test]
     async fn resources_read_invokes_handler() {
         let router = build_router(test_server());
-        let (status, json) = post_json(
+        let sid = init_session(&router).await;
+        let (status, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
@@ -886,6 +932,7 @@ mod tests {
                     "uri": "info://version"
                 }
             }),
+            Some(&sid),
         )
         .await;
 
@@ -897,7 +944,8 @@ mod tests {
     #[tokio::test]
     async fn resources_read_unknown_returns_error() {
         let router = build_router(test_server());
-        let (_, json) = post_json(
+        let sid = init_session(&router).await;
+        let (_, _, json) = post_json_full(
             &router,
             serde_json::json!({
                 "jsonrpc": "2.0",
@@ -905,6 +953,7 @@ mod tests {
                 "id": 11,
                 "params": {"uri": "info://nonexistent"}
             }),
+            Some(&sid),
         )
         .await;
 

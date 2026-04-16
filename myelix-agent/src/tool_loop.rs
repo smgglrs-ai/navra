@@ -32,6 +32,11 @@ pub struct ToolLoopConfig {
     /// this schema (via ResponseFormat::JsonSchema). Defined by the
     /// persona, not the framework.
     pub output_json_schema: Option<serde_json::Value>,
+    /// Tools that don't count toward the iteration limit when they
+    /// are the only tools called in a round. Used for status-polling
+    /// tools (e.g. `team_status`, `team_result`) that observe state
+    /// without making progress.
+    pub non_progress_tools: Option<Vec<String>>,
 }
 
 impl Default for ToolLoopConfig {
@@ -43,6 +48,7 @@ impl Default for ToolLoopConfig {
             max_tokens: None,
             allowed_tools: None,
             output_json_schema: None,
+            non_progress_tools: None,
         }
     }
 }
@@ -129,8 +135,13 @@ pub async fn run_tool_loop(
 
     let mut total_input = 0u32;
     let mut total_output = 0u32;
+    let mut progress_iterations = 0usize;
 
-    for iteration in 0..config.max_iterations {
+    loop {
+        if progress_iterations >= config.max_iterations {
+            return Err(AgentError::MaxIterations(config.max_iterations));
+        }
+        let iteration = progress_iterations;
         // Set structured output format if persona defines a JSON schema
         let text_config = config.output_json_schema.as_ref().map(|schema| {
             myelix_model::responses::request::TextConfig {
@@ -190,6 +201,20 @@ pub async fn run_tool_loop(
             });
         }
 
+        // Check if this round is purely status-polling (non-progress)
+        let all_non_progress = config.non_progress_tools.as_ref().is_some_and(|npt| {
+            function_calls.iter().all(|fc| npt.iter().any(|t| *t == fc.name))
+        });
+
+        if all_non_progress {
+            tracing::debug!(
+                tools = ?function_calls.iter().map(|fc| fc.name.as_str()).collect::<Vec<_>>(),
+                "non-progress round, not counting toward iteration limit"
+            );
+        } else {
+            progress_iterations += 1;
+        }
+
         // Execute each function call
         for fc in &function_calls {
             // Add the function call to input (for context)
@@ -224,8 +249,6 @@ pub async fn run_tool_loop(
             }));
         }
     }
-
-    Err(AgentError::MaxIterations(config.max_iterations))
 }
 
 /// Check if text contains patterns that look like leaked secrets.
@@ -476,6 +499,83 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, AgentError::MaxIterations(3)));
+    }
+
+    #[tokio::test]
+    async fn non_progress_tools_dont_count() {
+        // 3 polling rounds (team_status) + 1 progress round (git_status) + stop
+        let model = MockModel::new(vec![
+            tool_call_response("team_status", "{}"),
+            tool_call_response("team_status", "{}"),
+            tool_call_response("team_status", "{}"),
+            tool_call_response("git_status", "{}"),
+            stop_response("Done."),
+        ]);
+
+        let tool_result = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": false
+            },
+            "id": 4
+        });
+        let mut client = mock_client(vec![
+            tool_result.clone(),
+            tool_result.clone(),
+            tool_result.clone(),
+            tool_result.clone(),
+        ])
+        .await;
+
+        let config = ToolLoopConfig {
+            max_iterations: 2, // would fail without non_progress_tools
+            non_progress_tools: Some(vec!["team_status".to_string()]),
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(&model, &mut client, "poll then act", &config)
+            .await
+            .unwrap();
+        assert_eq!(result.response, "Done.");
+        // Only 1 progress iteration (git_status), the 3 team_status don't count
+        assert_eq!(result.iterations, 1);
+    }
+
+    #[tokio::test]
+    async fn non_progress_still_limits_progress_calls() {
+        // 3 progress rounds hit max_iterations=2
+        let model = MockModel::new(vec![
+            tool_call_response("team_status", "{}"), // non-progress
+            tool_call_response("git_status", "{}"),  // progress #1
+            tool_call_response("git_status", "{}"),  // progress #2 → hits limit
+        ]);
+
+        let tool_result = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": false
+            },
+            "id": 4
+        });
+        let mut client = mock_client(vec![
+            tool_result.clone(),
+            tool_result.clone(),
+            tool_result.clone(),
+        ])
+        .await;
+
+        let config = ToolLoopConfig {
+            max_iterations: 2,
+            non_progress_tools: Some(vec!["team_status".to_string()]),
+            ..Default::default()
+        };
+
+        let err = run_tool_loop(&model, &mut client, "overflow", &config)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AgentError::MaxIterations(2)));
     }
 
     #[test]

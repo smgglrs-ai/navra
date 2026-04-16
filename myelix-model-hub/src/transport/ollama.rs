@@ -3,7 +3,11 @@
 //! Pulls GGUF models from the Ollama registry API.
 //! API: `GET https://registry.ollama.ai/v2/library/<model>/manifests/<tag>`
 //! then fetch blob layers.
+//!
+//! Metadata extraction: parses the manifest layers for model config,
+//! parameters, and quantization info.
 
+use crate::card::VendorMeta;
 use crate::error::HubError;
 use crate::uri::ModelUri;
 use super::ModelTransport;
@@ -94,5 +98,101 @@ impl ModelTransport for OllamaTransport {
 
             Ok(blob.to_vec())
         })
+    }
+
+    fn metadata<'a>(
+        &'a self,
+        uri: &'a ModelUri,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<VendorMeta, HubError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            let (model, tag) = match uri.path.split_once(':') {
+                Some((m, t)) => (m, t),
+                None => (uri.path.as_str(), "latest"),
+            };
+
+            let manifest_url = format!(
+                "{}/v2/library/{model}/manifests/{tag}",
+                self.registry_url
+            );
+
+            let resp = self
+                .client
+                .get(&manifest_url)
+                .send()
+                .await?
+                .error_for_status()
+                .map_err(|e| HubError::Registry(format!("manifest fetch failed: {e}")))?;
+
+            let manifest: serde_json::Value = resp.json().await?;
+
+            let mut meta = VendorMeta {
+                source: Some("ollama".into()),
+                format: Some("gguf".into()),
+                ..Default::default()
+            };
+
+            // Extract family from model name (e.g. "granite-code" → "granite")
+            if let Some(family) = model.split('-').next() {
+                meta.family = Some(family.to_string());
+            }
+
+            // Extract parameter count from tag (e.g. "3b", "8b-instruct")
+            if let Some(params) = tag.split('-').next() {
+                if params.ends_with('b') || params.ends_with('B') {
+                    meta.parameters = Some(params.to_uppercase());
+                }
+            }
+
+            // Parse layers for quantization info and context size
+            if let Some(layers) = manifest["layers"].as_array() {
+                for layer in layers {
+                    let media_type = layer["mediaType"].as_str().unwrap_or("");
+                    // The model config layer contains template and parameters
+                    if media_type == "application/vnd.ollama.image.params" {
+                        // Params layer may contain context window, stop tokens, etc.
+                        // We'd need to fetch and parse it, but for now extract from mediaType
+                    }
+                    // Quantization is often in the model layer mediaType
+                    if media_type.contains("model") {
+                        // The digest or size can hint at quantization
+                        if let Some(size) = layer["size"].as_u64() {
+                            meta.quantization = Some(estimate_quantization(
+                                size,
+                                meta.parameters.as_deref(),
+                            ));
+                        }
+                    }
+                }
+            }
+
+            Ok(meta)
+        })
+    }
+}
+
+/// Estimate quantization level from file size and parameter count.
+fn estimate_quantization(size_bytes: u64, params: Option<&str>) -> String {
+    let size_gb = size_bytes as f64 / 1_073_741_824.0;
+    let param_b = match params {
+        Some(p) => {
+            let p = p.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+            p.parse::<f64>().unwrap_or(0.0)
+        }
+        None => return format!("{size_gb:.1}GB"),
+    };
+    if param_b == 0.0 {
+        return format!("{size_gb:.1}GB");
+    }
+    // Rough: bytes_per_param = size / (params * 1e9)
+    let bpp = size_bytes as f64 / (param_b * 1e9);
+    match bpp {
+        x if x < 0.6 => "Q4_0".to_string(),
+        x if x < 0.7 => "Q4_K_M".to_string(),
+        x if x < 0.85 => "Q5_K_M".to_string(),
+        x if x < 1.1 => "Q8_0".to_string(),
+        x if x < 2.5 => "fp16".to_string(),
+        _ => "fp32".to_string(),
     }
 }

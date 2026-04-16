@@ -6,10 +6,17 @@
 //! Uses the OCI Distribution Spec v2 API:
 //! - `GET /v2/<name>/manifests/<reference>`
 //! - `GET /v2/<name>/blobs/<digest>`
+//!
+//! Model card support via OCI Referrers API (distribution-spec 1.1):
+//! - `GET /v2/<name>/referrers/<digest>?artifactType=application/vnd.myelix.model-card.v1+json`
 
+use crate::card::VendorMeta;
 use crate::error::HubError;
 use crate::uri::ModelUri;
 use super::ModelTransport;
+
+/// Media type for myelix model card side artifacts.
+pub const MODEL_CARD_ARTIFACT_TYPE: &str = "application/vnd.myelix.model-card.v1+json";
 
 /// Transport for OCI container registries.
 pub struct OciTransport {
@@ -89,6 +96,79 @@ impl ModelTransport for OciTransport {
                 .await?;
 
             Ok(blob.to_vec())
+        })
+    }
+
+    fn metadata<'a>(
+        &'a self,
+        uri: &'a ModelUri,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<VendorMeta, HubError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            let (name, reference) = parse_oci_ref(&uri.path)?;
+
+            let meta = VendorMeta {
+                source: Some("oci".into()),
+                ..Default::default()
+            };
+
+            // Fetch manifest to get digest for referrers query
+            let manifest_url = format!("https://{name}/v2/{name}/manifests/{reference}");
+            let resp = self
+                .client
+                .get(&manifest_url)
+                .header("Accept", "application/vnd.oci.image.manifest.v1+json")
+                .send()
+                .await?
+                .error_for_status()
+                .map_err(|e| HubError::Registry(format!("OCI manifest fetch failed: {e}")))?;
+
+            // Get the manifest digest from Docker-Content-Digest header
+            let manifest_digest = resp
+                .headers()
+                .get("docker-content-digest")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            // Try OCI Referrers API for model card side artifact
+            if let Some(digest) = manifest_digest {
+                let registry = name.split('/').next().unwrap_or(&name);
+                let repo = if name.len() > registry.len() + 1 {
+                    &name[registry.len() + 1..]
+                } else {
+                    &name
+                };
+                let referrers_url = format!(
+                    "https://{registry}/v2/{repo}/referrers/{digest}?artifactType={MODEL_CARD_ARTIFACT_TYPE}"
+                );
+
+                // Best-effort: not all registries support the Referrers API
+                if let Ok(resp) = self.client.get(&referrers_url).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(index) = resp.json::<serde_json::Value>().await {
+                            if let Some(manifests) = index["manifests"].as_array() {
+                                if let Some(card_ref) = manifests.first() {
+                                    if let Some(card_digest) = card_ref["digest"].as_str() {
+                                        // Fetch the card blob
+                                        let card_url = format!(
+                                            "https://{registry}/v2/{repo}/blobs/{card_digest}"
+                                        );
+                                        if let Ok(card_resp) = self.client.get(&card_url).send().await {
+                                            if let Ok(card_meta) = card_resp.json::<VendorMeta>().await {
+                                                return Ok(card_meta);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                tracing::debug!(uri = %uri, "No model card referrer found, returning basic metadata");
+            }
+
+            Ok(meta)
         })
     }
 }

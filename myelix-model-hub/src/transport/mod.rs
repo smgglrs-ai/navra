@@ -4,6 +4,7 @@ pub mod huggingface;
 pub mod oci;
 pub mod ollama;
 
+use crate::card::VendorMeta;
 use crate::error::HubError;
 use crate::uri::ModelUri;
 
@@ -25,4 +26,19 @@ pub trait ModelTransport: Send + Sync {
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<Vec<u8>, HubError>> + Send + 'a>,
     >;
+
+    /// Fetch vendor metadata from the registry without pulling the model.
+    ///
+    /// Returns whatever the registry can provide: family, parameters,
+    /// context window, tasks, license, etc. Default implementation
+    /// returns empty metadata.
+    fn metadata<'a>(
+        &'a self,
+        uri: &'a ModelUri,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<VendorMeta, HubError>> + Send + 'a>,
+    > {
+        let _ = uri;
+        Box::pin(async { Ok(VendorMeta::default()) })
+    }
 }

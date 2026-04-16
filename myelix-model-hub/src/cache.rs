@@ -4,11 +4,14 @@
 //! ```text
 //! ~/.local/share/myelix/models/
 //! ├── blobs/
-//! │   └── sha256-<hash>           # raw model files by content hash
-//! └── refs/
-//!     └── ollama_granite-code_3b  # symlink → ../blobs/sha256-<hash>
+//! │   └── sha256-<hash>               # raw model files by content hash
+//! ├── refs/
+//! │   └── ollama_granite-code_3b      # symlink → ../blobs/sha256-<hash>
+//! └── cards/
+//!     └── ollama_granite-code_3b.json  # composite model card
 //! ```
 
+use crate::card::ModelCard;
 use crate::error::HubError;
 use crate::uri::ModelUri;
 use crate::CachedModel;
@@ -21,6 +24,7 @@ pub struct ModelCache {
     root: PathBuf,
     blobs: PathBuf,
     refs: PathBuf,
+    cards: PathBuf,
 }
 
 impl ModelCache {
@@ -28,9 +32,11 @@ impl ModelCache {
     pub fn new(root: PathBuf) -> Result<Self, HubError> {
         let blobs = root.join("blobs");
         let refs = root.join("refs");
+        let cards = root.join("cards");
         fs::create_dir_all(&blobs)?;
         fs::create_dir_all(&refs)?;
-        Ok(Self { root, blobs, refs })
+        fs::create_dir_all(&cards)?;
+        Ok(Self { root, blobs, refs, cards })
     }
 
     /// Look up a model by URI. Returns the blob path if cached.
@@ -101,7 +107,7 @@ impl ModelCache {
         Ok(models)
     }
 
-    /// Remove a model from cache.
+    /// Remove a model and its card from cache.
     pub fn remove(&self, uri: &ModelUri) -> Result<(), HubError> {
         let ref_path = self.refs.join(uri.cache_key());
         if ref_path.exists() {
@@ -118,6 +124,61 @@ impl ModelCache {
                 }
             }
             fs::remove_file(&ref_path)?;
+        }
+        // Also remove associated card
+        self.remove_card(uri)?;
+        Ok(())
+    }
+
+    /// Load a model card from the cards/ directory.
+    pub fn load_card(&self, uri: &ModelUri) -> Result<Option<ModelCard>, HubError> {
+        let card_path = self.cards.join(format!("{}.json", uri.cache_key()));
+        if card_path.exists() {
+            let data = fs::read_to_string(&card_path)?;
+            let card: ModelCard = serde_json::from_str(&data)
+                .map_err(|e| HubError::Cache(format!("invalid card JSON: {e}")))?;
+            Ok(Some(card))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Save a model card to the cards/ directory.
+    pub fn save_card(&self, uri: &ModelUri, card: &ModelCard) -> Result<(), HubError> {
+        let card_path = self.cards.join(format!("{}.json", uri.cache_key()));
+        let json = serde_json::to_string_pretty(card)
+            .map_err(|e| HubError::Cache(format!("card serialization failed: {e}")))?;
+        // Atomic write via temp file
+        let tmp_path = self.cards.join(format!(".tmp-{}.json", uri.cache_key()));
+        fs::write(&tmp_path, json.as_bytes())?;
+        fs::rename(&tmp_path, &card_path)?;
+        Ok(())
+    }
+
+    /// List all model cards in the cache.
+    pub fn list_cards(&self) -> Result<Vec<ModelCard>, HubError> {
+        let mut cards = Vec::new();
+        for entry in fs::read_dir(&self.cards)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "json")
+                && !entry.file_name().to_string_lossy().starts_with(".tmp-")
+            {
+                if let Ok(data) = fs::read_to_string(&path) {
+                    if let Ok(card) = serde_json::from_str::<ModelCard>(&data) {
+                        cards.push(card);
+                    }
+                }
+            }
+        }
+        Ok(cards)
+    }
+
+    /// Remove a model card from the cache.
+    pub fn remove_card(&self, uri: &ModelUri) -> Result<(), HubError> {
+        let card_path = self.cards.join(format!("{}.json", uri.cache_key()));
+        if card_path.exists() {
+            fs::remove_file(&card_path)?;
         }
         Ok(())
     }
@@ -208,6 +269,55 @@ mod tests {
 
         cache.remove(&uri).unwrap();
         assert!(cache.lookup(&uri).unwrap().is_none());
+    }
+
+    #[test]
+    fn save_and_load_card() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ModelCache::new(dir.path().to_path_buf()).unwrap();
+        let uri = ModelUri::parse("ollama://granite:3b").unwrap();
+
+        // No card yet
+        assert!(cache.load_card(&uri).unwrap().is_none());
+
+        // Save a card
+        let mut card = crate::card::ModelCard::new("ollama://granite:3b");
+        card.vendor.family = Some("granite".into());
+        card.agentic.strengths = vec!["code generation".into()];
+        cache.save_card(&uri, &card).unwrap();
+
+        // Load it back
+        let loaded = cache.load_card(&uri).unwrap().unwrap();
+        assert_eq!(loaded.vendor.family, Some("granite".into()));
+        assert_eq!(loaded.agentic.strengths, vec!["code generation"]);
+    }
+
+    #[test]
+    fn list_cards() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ModelCache::new(dir.path().to_path_buf()).unwrap();
+
+        let uri1 = ModelUri::parse("ollama://model-a:latest").unwrap();
+        let uri2 = ModelUri::parse("ollama://model-b:latest").unwrap();
+        cache.save_card(&uri1, &crate::card::ModelCard::new("ollama://model-a:latest")).unwrap();
+        cache.save_card(&uri2, &crate::card::ModelCard::new("ollama://model-b:latest")).unwrap();
+
+        let cards = cache.list_cards().unwrap();
+        assert_eq!(cards.len(), 2);
+    }
+
+    #[test]
+    fn remove_also_removes_card() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ModelCache::new(dir.path().to_path_buf()).unwrap();
+        let uri = ModelUri::parse("ollama://removeme:latest").unwrap();
+
+        cache.store(&uri, b"data").unwrap();
+        cache.save_card(&uri, &crate::card::ModelCard::new("ollama://removeme:latest")).unwrap();
+
+        assert!(cache.load_card(&uri).unwrap().is_some());
+        cache.remove(&uri).unwrap();
+        assert!(cache.load_card(&uri).unwrap().is_none());
     }
 
     #[test]

@@ -28,17 +28,17 @@ impl TaskStore {
     }
 
     pub fn create(&self, task: Task) {
-        let mut tasks = self.tasks.write().unwrap();
+        let mut tasks = self.tasks.write().unwrap_or_else(|e| e.into_inner());
         tasks.insert(task.id.clone(), task);
     }
 
     pub fn get(&self, id: &str) -> Option<Task> {
-        let tasks = self.tasks.read().unwrap();
+        let tasks = self.tasks.read().unwrap_or_else(|e| e.into_inner());
         tasks.get(id).cloned()
     }
 
     pub fn update_status(&self, id: &str, status: TaskStatus) -> Option<Task> {
-        let mut tasks = self.tasks.write().unwrap();
+        let mut tasks = self.tasks.write().unwrap_or_else(|e| e.into_inner());
         if let Some(task) = tasks.get_mut(id) {
             task.status = status;
             Some(task.clone())
@@ -48,7 +48,7 @@ impl TaskStore {
     }
 
     pub fn add_artifact(&self, id: &str, artifact: Artifact) -> Option<Task> {
-        let mut tasks = self.tasks.write().unwrap();
+        let mut tasks = self.tasks.write().unwrap_or_else(|e| e.into_inner());
         if let Some(task) = tasks.get_mut(id) {
             task.artifacts.push(artifact);
             Some(task.clone())
@@ -58,7 +58,7 @@ impl TaskStore {
     }
 
     pub fn count(&self) -> usize {
-        self.tasks.read().unwrap().len()
+        self.tasks.read().unwrap_or_else(|e| e.into_inner()).len()
     }
 }
 
@@ -350,7 +350,10 @@ pub async fn handle_message_stream(
     let mut events = Vec::new();
     events.push(crate::protocol::JsonRpcResponse::success(
         request_id.clone(),
-        serde_json::to_value(&task).unwrap(),
+        serde_json::to_value(&task).unwrap_or_else(|e| {
+            tracing::error!(error = %e, "Failed to serialize task");
+            serde_json::json!({"error": "task serialization failed"})
+        }),
     ));
 
     // Event 2: Status update -> working
@@ -400,7 +403,10 @@ pub async fn handle_message_stream(
             "kind": "artifact-update",
             "taskId": task_id,
             "contextId": context_id,
-            "artifact": serde_json::to_value(&artifact).unwrap(),
+            "artifact": serde_json::to_value(&artifact).unwrap_or_else(|e| {
+                tracing::error!(error = %e, "Failed to serialize artifact");
+                serde_json::json!({"error": "artifact serialization failed"})
+            }),
             "lastChunk": true,
         }),
     ));

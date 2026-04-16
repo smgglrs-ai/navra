@@ -156,6 +156,15 @@ impl AgentBuilder {
         self
     }
 
+    /// Mark tools as non-progress (status-polling).
+    /// Rounds where ALL tool calls are non-progress tools don't count
+    /// toward the iteration limit. Use for tools like `team_status`
+    /// and `team_result` that observe state without making progress.
+    pub fn non_progress_tools(mut self, tools: Vec<String>) -> Self {
+        self.config.non_progress_tools = Some(tools);
+        self
+    }
+
     /// Build the agent. Requires endpoint and model to be set.
     pub fn build(self) -> Result<Agent, AgentError> {
         let upstream = self

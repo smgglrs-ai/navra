@@ -29,14 +29,8 @@ pub struct Teammate {
     pub created_at: Instant,
 }
 
-/// Model metadata for the lead to choose from.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ModelCard {
-    pub name: String,
-    pub locality: String,
-    pub capabilities: Vec<String>,
-    pub context_window: Option<u32>,
-}
+/// Re-export the composite model card from the hub.
+pub use myelix_model_hub::ModelCard;
 
 /// A blackboard entry shared across the team.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -525,9 +519,26 @@ pub fn models_list_def() -> ToolDefinition {
     ToolDefinition {
         name: "models_list".to_string(),
         description: Some(
-            "List available models with capabilities and locality. \
-             Local models keep data on-device (required for sensitive data). \
-             Remote models have stronger reasoning but send data to the cloud."
+            "List available models with composite model cards. Each card has three layers:\n\
+             \n\
+             **vendor**: Auto-populated from registry (family, parameters, quantization, \
+             context_window, tasks, license, format). Technical facts about the model.\n\
+             \n\
+             **agentic**: Operator-defined capabilities for agent selection:\n\
+             - strengths/weaknesses: what the model excels at or struggles with\n\
+             - recommended_tasks/avoid_tasks: task types it should or shouldn't handle\n\
+             - tool_use: 'none', 'basic', or 'advanced'\n\
+             - cost_tier: 'free' (local), 'low', 'medium', 'high'\n\
+             - speed_tier: 'fast', 'medium', 'slow'\n\
+             \n\
+             **runtime**: Learned from actual agent runs (total_calls, success_rate, \
+             avg_latency_ms, per-task breakdown). Empty until the model has been used.\n\
+             \n\
+             **Selection guidelines:**\n\
+             - For sensitive data: use models where vendor.source is 'ollama' or 'file' (local)\n\
+             - For complex reasoning: prefer models with agentic.tool_use = 'advanced'\n\
+             - For simple tasks: prefer speed_tier = 'fast' and cost_tier = 'free'\n\
+             - Check runtime.by_task if available — real data beats operator assumptions"
                 .to_string(),
         ),
         input_schema: ToolInputSchema {

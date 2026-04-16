@@ -93,7 +93,11 @@ pub fn is_write_tool(tool_name: &str) -> bool {
 /// keep its Trusted integrity label even when accessed via external
 /// read tools. Supports glob patterns with tilde expansion.
 pub fn is_trusted_path(path: &str, patterns: &[String]) -> bool {
-    let normalized = normalize_path(path);
+    // Resolve symlinks via canonicalize; fall back to lexical normalization
+    // if the path doesn't exist yet
+    let normalized = std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| normalize_path(path));
     for pattern in patterns {
         let expanded = expand_tilde(pattern);
         if glob::Pattern::new(&expanded)
