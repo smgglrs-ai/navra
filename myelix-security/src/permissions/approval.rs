@@ -77,7 +77,7 @@ impl ApprovalStore {
             operation: operation.to_string(),
             path: path.to_string(),
         };
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         pending.insert(
             id,
             PendingRequest {
@@ -90,10 +90,10 @@ impl ApprovalStore {
 
     /// Resolve a pending request. If approved, caches a grant for the retry.
     pub fn resolve(&self, id: &str, status: ApprovalStatus) -> bool {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(mut req) = pending.remove(id) {
             if status == ApprovalStatus::Approved {
-                let mut grants = self.grants.lock().unwrap();
+                let mut grants = self.grants.lock().unwrap_or_else(|e| e.into_inner());
                 grants.push(Grant {
                     agent_name: req.meta.agent_name.clone(),
                     operation: req.meta.operation.clone(),
@@ -122,7 +122,7 @@ impl ApprovalStore {
     /// Check if there's a cached grant for this (agent, operation, path).
     /// Consumes the grant if found (single-use).
     pub fn check_grant(&self, agent_name: &str, operation: &str, path: &str) -> bool {
-        let mut grants = self.grants.lock().unwrap();
+        let mut grants = self.grants.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
 
         // Clean expired grants
@@ -150,18 +150,18 @@ impl ApprovalStore {
 
     /// Get metadata for a pending request (for docs_approve to validate).
     pub fn get_pending(&self, id: &str) -> Option<ApprovalRequest> {
-        let pending = self.pending.lock().unwrap();
+        let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         pending.get(id).map(|r| r.meta.clone())
     }
 
     /// Number of pending requests.
     pub fn pending_count(&self) -> usize {
-        self.pending.lock().unwrap().len()
+        self.pending.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     /// List all pending requests.
     pub fn pending_requests(&self) -> Vec<ApprovalRequest> {
-        let pending = self.pending.lock().unwrap();
+        let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         pending.values().map(|r| r.meta.clone()).collect()
     }
 

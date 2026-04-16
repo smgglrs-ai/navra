@@ -25,6 +25,7 @@ pub struct PodmanRuntime {
 
 impl PodmanRuntime {
     pub fn new() -> Self {
+        // SAFETY: getuid() is always safe — no preconditions, cannot cause UB.
         let uid = unsafe { libc::getuid() };
         let socket_path = format!("/run/user/{uid}/podman/podman.sock");
         Self {
@@ -35,6 +36,7 @@ impl PodmanRuntime {
 
     /// Check if the Podman socket is available.
     pub async fn is_available() -> bool {
+        // SAFETY: getuid() is always safe — no preconditions, cannot cause UB.
         let uid = unsafe { libc::getuid() };
         let socket = format!("/run/user/{uid}/podman/podman.sock");
         std::path::Path::new(&socket).exists()
