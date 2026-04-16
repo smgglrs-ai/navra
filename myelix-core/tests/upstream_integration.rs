@@ -132,10 +132,11 @@ async fn upstream_registers_in_server() {
     assert_eq!(server.prompt_count(), 1);
 
     // Verify tools/list includes the upstream tool
-    let tools_result = server.handle_list_tools();
+    let agent = myelix_core::auth::AgentIdentity::new("test", "dev");
+    let tools_result = server.handle_list_tools(&agent);
     assert!(tools_result.tools.iter().any(|t| t.name == "echo"));
 
     // Verify prompts/list includes the upstream prompt
-    let prompts_result = server.handle_list_prompts();
+    let prompts_result = server.handle_list_prompts(&agent);
     assert!(prompts_result.prompts.iter().any(|p| p.name == "greeting"));
 }

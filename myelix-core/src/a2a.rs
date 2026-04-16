@@ -184,6 +184,7 @@ pub async fn handle_message_send(
         artifacts: vec![],
         metadata: None,
         kind: Default::default(),
+        creator: agent.name.clone(),
     };
     task_store.create(task);
 
@@ -240,9 +241,12 @@ pub async fn handle_message_send(
 }
 
 /// Handle `tasks/get` — retrieve an existing task by ID.
+///
+/// Only the agent that created the task can retrieve it.
 pub fn handle_tasks_get(
     task_store: &TaskStore,
     params: TaskQueryParams,
+    agent: &crate::auth::AgentIdentity,
 ) -> Result<Task, JsonRpcError> {
     let mut task = task_store.get(&params.id).ok_or_else(|| {
         JsonRpcError::new(
@@ -250,6 +254,14 @@ pub fn handle_tasks_get(
             format!("Task not found: {}", params.id),
         )
     })?;
+
+    // Ownership check: only the creator can read the task
+    if !task.creator.is_empty() && task.creator != agent.name {
+        return Err(JsonRpcError::new(
+            crate::protocol::ErrorCode::Custom(TASK_NOT_FOUND),
+            format!("Task not found: {}", params.id),
+        ));
+    }
 
     // Optionally trim history
     if let Some(len) = params.history_length {
@@ -265,10 +277,12 @@ pub fn handle_tasks_get(
 
 /// Handle `tasks/cancel` — cancel a running task.
 ///
+/// Only the agent that created the task can cancel it.
 /// Only non-terminal tasks can be canceled.
 pub fn handle_tasks_cancel(
     task_store: &TaskStore,
     params: TaskIdParams,
+    agent: &crate::auth::AgentIdentity,
 ) -> Result<Task, JsonRpcError> {
     let task = task_store.get(&params.id).ok_or_else(|| {
         JsonRpcError::new(
@@ -276,6 +290,14 @@ pub fn handle_tasks_cancel(
             format!("Task not found: {}", params.id),
         )
     })?;
+
+    // Ownership check: only the creator can cancel the task
+    if !task.creator.is_empty() && task.creator != agent.name {
+        return Err(JsonRpcError::new(
+            crate::protocol::ErrorCode::Custom(TASK_NOT_FOUND),
+            format!("Task not found: {}", params.id),
+        ));
+    }
 
     if task.status.state.is_terminal() {
         return Err(JsonRpcError::new(
@@ -344,6 +366,7 @@ pub async fn handle_message_stream(
         artifacts: vec![],
         metadata: None,
         kind: Default::default(),
+        creator: agent.name.clone(),
     };
     task_store.create(task.clone());
 
@@ -531,6 +554,7 @@ mod tests {
             artifacts: vec![],
             metadata: None,
             kind: Default::default(),
+            creator: String::new(),
         };
         store.create(task);
         assert_eq!(store.count(), 1);
@@ -553,6 +577,7 @@ mod tests {
             artifacts: vec![],
             metadata: None,
             kind: Default::default(),
+            creator: String::new(),
         });
 
         let updated = store.update_status(
@@ -581,6 +606,7 @@ mod tests {
             artifacts: vec![],
             metadata: None,
             kind: Default::default(),
+            creator: String::new(),
         });
 
         let updated = store.add_artifact(
@@ -794,6 +820,7 @@ mod tests {
             artifacts: vec![],
             metadata: None,
             kind: Default::default(),
+            creator: "tester".to_string(),
         });
 
         let result = handle_tasks_get(
@@ -803,6 +830,7 @@ mod tests {
                 history_length: None,
                 metadata: None,
             },
+            &test_agent(),
         );
         assert_eq!(result.unwrap().status.state, TaskState::Completed);
     }
@@ -817,6 +845,7 @@ mod tests {
                 history_length: None,
                 metadata: None,
             },
+            &test_agent(),
         );
         assert_eq!(result.unwrap_err().code, TASK_NOT_FOUND);
     }
@@ -838,6 +867,7 @@ mod tests {
             artifacts: vec![],
             metadata: None,
             kind: Default::default(),
+            creator: "tester".to_string(),
         });
 
         let result = handle_tasks_cancel(
@@ -846,6 +876,7 @@ mod tests {
                 id: "t-1".to_string(),
                 metadata: None,
             },
+            &test_agent(),
         );
         assert_eq!(result.unwrap().status.state, TaskState::Canceled);
     }
@@ -865,6 +896,7 @@ mod tests {
             artifacts: vec![],
             metadata: None,
             kind: Default::default(),
+            creator: "tester".to_string(),
         });
 
         let result = handle_tasks_cancel(
@@ -873,6 +905,7 @@ mod tests {
                 id: "t-1".to_string(),
                 metadata: None,
             },
+            &test_agent(),
         );
         assert_eq!(result.unwrap_err().code, TASK_NOT_CANCELABLE);
     }
@@ -886,6 +919,7 @@ mod tests {
                 id: "nope".to_string(),
                 metadata: None,
             },
+            &test_agent(),
         );
         assert_eq!(result.unwrap_err().code, TASK_NOT_FOUND);
     }
