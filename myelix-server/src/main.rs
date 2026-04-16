@@ -1570,19 +1570,60 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                          findings on the team blackboard (team_id: {}).\n\n\
                          When you find something important, publish it to the blackboard \
                          with team_bb_publish so other teammates can see it.\n\n\
-                         Be concise. Report findings only, don't describe code.\n\n\
+                         Report findings as a JSON array:\n\
+                         [{{\"file\": \"...\", \"cwe\": \"CWE-NNN\", \"severity\": \"high\", \"description\": \"...\", \"fix\": \"...\"}}]\n\
+                         If no findings, return: []\n\n\
                          Your team_id is: {}",
                         bg_to, bg_team_id, bg_team_id
                     );
 
                     // Get the model name from the teammate's config
-                    let teammate_model = {
+                    let mut teammate_model = {
                         let teams = bg_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
                         teams.get(&bg_team_id)
                             .and_then(|t| t.teammates.get(&bg_to))
                             .map(|tm| tm.model.clone())
-                            .unwrap_or_else(|| "granite3.3:8b".to_string())
+                            .unwrap_or_else(|| "auto".to_string())
                     };
+
+                    // Resolve "auto" — check what's available
+                    if teammate_model == "auto" {
+                        // Prefer Ollama if running, otherwise check for Claude
+                        let ollama_ok = reqwest::Client::new()
+                            .get("http://localhost:11434/api/tags")
+                            .send()
+                            .await
+                            .map(|r| r.status().is_success())
+                            .unwrap_or(false);
+                        if ollama_ok {
+                            // Use first available Ollama model
+                            if let Ok(resp) = reqwest::Client::new()
+                                .get("http://localhost:11434/api/tags")
+                                .send()
+                                .await
+                            {
+                                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                                    if let Some(models) = json["models"].as_array() {
+                                        if let Some(first) = models.first() {
+                                            if let Some(name) = first["name"].as_str() {
+                                                teammate_model = name.to_string();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if teammate_model == "auto" {
+                                teammate_model = "granite3.3:8b".to_string();
+                            }
+                        } else if std::env::var("ANTHROPIC_API_KEY").is_ok()
+                            || std::env::var("ANTHROPIC_VERTEX_PROJECT_ID").is_ok()
+                        {
+                            teammate_model = "claude-sonnet-4-6@default".to_string();
+                        } else {
+                            teammate_model = "granite3.3:8b".to_string();
+                        }
+                        tracing::info!(teammate = %bg_to, model = %teammate_model, "Resolved 'auto' model");
+                    }
 
                     let is_claude = teammate_model.starts_with("claude");
 
@@ -3149,6 +3190,20 @@ safety = "standard"
 
     let mcp_endpoint = format!("{mcpd_url}/mcp");
 
+    // Lead agent only gets project overview + team tools.
+    // No docs_read, no docs_grep — the lead MUST delegate all analysis.
+    let lead_tools = vec![
+        "docs_tree".to_string(),    // project structure overview only
+        "models_list".to_string(),  // see available models
+        "team_create".to_string(),
+        "team_add".to_string(),
+        "team_message".to_string(),
+        "team_status".to_string(),
+        "team_result".to_string(),
+        "team_bb_read".to_string(),
+        "team_shutdown".to_string(),
+    ];
+
     macro_rules! build_agent {
         ($backend:expr) => {
             myelix_agent::Agent::builder()
@@ -3156,6 +3211,7 @@ safety = "standard"
                 .await?
                 .model($backend)
                 .system_prompt(&system_prompt)
+                .allowed_tools(lead_tools.clone())
                 .max_iterations(100)
                 .temperature(0.3)
                 .max_tokens(8192)

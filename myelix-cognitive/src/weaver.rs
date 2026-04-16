@@ -22,6 +22,9 @@ pub struct WeaverOutput {
     pub user_prompt: String,
     /// Output schema name for validation (if persona specifies one).
     pub output_schema: Option<String>,
+    /// Inline JSON schema for structured output enforcement.
+    /// When set, the model request should use ResponseFormat::JsonSchema.
+    pub output_json_schema: Option<serde_json::Value>,
 }
 
 impl WeaverOutput {
@@ -65,12 +68,14 @@ pub fn assemble(
     let dynamic_context = build_dynamic_context(context);
     let cacheable_prefix = build_cacheable_prefix(forge, &persona);
     let output_schema = persona.output_schema.clone();
+    let output_json_schema = persona.output_json_schema.clone();
 
     Ok(WeaverOutput {
         cacheable_prefix,
         dynamic_context,
         user_prompt: format!("## My Current Request:\n{user_prompt}"),
         output_schema,
+        output_json_schema,
     })
 }
 

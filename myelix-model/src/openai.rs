@@ -404,16 +404,40 @@ impl ModelBackend for OpenAiBackend {
         let body = self.build_chat_body(&chat_req, false);
         let model_name = self.model.clone();
 
-        let mut req = self.client.post(&url).json(&body);
-        if let Some((header, value)) = self.auth_header() {
-            req = req.header(header, value);
-        }
-
         Box::pin(async move {
-            let resp = req
-                .send()
-                .await
-                .map_err(|e| ModelError::Api(format!("request failed: {e}")))?;
+            let max_retries = 3u32;
+            let mut attempt = 0u32;
+            let resp = loop {
+                let try_req = self.client.post(&url).json(&body);
+                let try_req = if let Some((header, value)) = self.auth_header() {
+                    try_req.header(header, value)
+                } else {
+                    try_req
+                };
+
+                let r = try_req
+                    .send()
+                    .await
+                    .map_err(|e| ModelError::Api(format!("request failed: {e}")))?;
+
+                if r.status() == reqwest::StatusCode::TOO_MANY_REQUESTS && attempt < max_retries {
+                    let retry_after = r
+                        .headers()
+                        .get("retry-after")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<u64>().ok());
+                    let delay = retry_after.unwrap_or(1u64 << attempt);
+                    tracing::warn!(
+                        attempt = attempt + 1,
+                        delay_secs = delay,
+                        "Rate limited (429), retrying"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                    attempt += 1;
+                    continue;
+                }
+                break r;
+            };
 
             if !resp.status().is_success() {
                 let status = resp.status();
