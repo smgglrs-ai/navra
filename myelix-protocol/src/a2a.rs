@@ -179,6 +179,10 @@ pub struct Task {
     pub metadata: Option<HashMap<String, serde_json::Value>>,
     #[serde(default)]
     pub kind: TaskKind,
+    /// Agent name that created this task (not serialized — internal tracking).
+    #[serde(skip)]
+    #[serde(default)]
+    pub creator: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -425,6 +429,7 @@ mod tests {
             artifacts: vec![],
             metadata: None,
             kind: TaskKind::Task,
+            creator: String::new(),
         };
         let json = serde_json::to_value(&task).unwrap();
         assert_eq!(json["kind"], "task");

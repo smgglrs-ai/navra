@@ -133,7 +133,7 @@ impl McpServer {
         (result, session_id)
     }
 
-    pub fn handle_list_tools(&self) -> ListToolsResult {
+    pub fn handle_list_tools(&self, _agent: &crate::auth::AgentIdentity) -> ListToolsResult {
         let tools = self.tools.values().map(|t| t.definition.clone()).collect();
         ListToolsResult { tools }
     }
@@ -379,7 +379,7 @@ impl McpServer {
         result
     }
 
-    pub fn handle_list_prompts(&self) -> ListPromptsResult {
+    pub fn handle_list_prompts(&self, _agent: &crate::auth::AgentIdentity) -> ListPromptsResult {
         let prompts = self.prompts.values().map(|p| p.definition.clone()).collect();
         ListPromptsResult { prompts }
     }
@@ -387,6 +387,7 @@ impl McpServer {
     pub async fn handle_get_prompt(
         &self,
         params: GetPromptParams,
+        _agent: &crate::auth::AgentIdentity,
     ) -> Result<GetPromptResult, String> {
         match self.prompts.get(&params.name) {
             Some(prompt) => Ok((prompt.handler)(params.arguments).await),
@@ -398,7 +399,7 @@ impl McpServer {
         self.prompts.len()
     }
 
-    pub fn handle_list_resources(&self) -> ListResourcesResult {
+    pub fn handle_list_resources(&self, _agent: &crate::auth::AgentIdentity) -> ListResourcesResult {
         let resources = self
             .resources
             .values()
@@ -410,6 +411,7 @@ impl McpServer {
     pub async fn handle_read_resource(
         &self,
         params: ReadResourceParams,
+        _agent: &crate::auth::AgentIdentity,
     ) -> Result<ReadResourceResult, String> {
         match self.resources.get(&params.uri) {
             Some(resource) => Ok((resource.handler)(params.uri).await),
@@ -1054,7 +1056,7 @@ mod tests {
             })
             .build();
 
-        let result = server.handle_list_tools();
+        let result = server.handle_list_tools(&test_agent());
         assert_eq!(result.tools.len(), 1 + GATEWAY_TOOLS);
         assert!(result.tools.iter().any(|t| t.name == "echo"));
     }
@@ -1065,7 +1067,7 @@ mod tests {
             .module(TestModule)
             .build();
 
-        let result = server.handle_list_tools();
+        let result = server.handle_list_tools(&test_agent());
         assert_eq!(result.tools.len(), 1 + GATEWAY_TOOLS);
         assert!(result.tools.iter().any(|t| t.name == "test_ping"));
     }
@@ -1361,7 +1363,7 @@ mod tests {
             .build();
 
         assert_eq!(server.prompt_count(), 1);
-        let result = server.handle_list_prompts();
+        let result = server.handle_list_prompts(&test_agent());
         assert_eq!(result.prompts.len(), 1);
         assert_eq!(result.prompts[0].name, "greeting");
     }
@@ -1376,7 +1378,7 @@ mod tests {
             .handle_get_prompt(crate::protocol::GetPromptParams {
                 name: "greeting".to_string(),
                 arguments: HashMap::from([("name".to_string(), "Alice".to_string())]),
-            })
+            }, &test_agent())
             .await;
 
         let result = result.unwrap();
@@ -1393,7 +1395,7 @@ mod tests {
             .handle_get_prompt(crate::protocol::GetPromptParams {
                 name: "nonexistent".to_string(),
                 arguments: HashMap::new(),
-            })
+            }, &test_agent())
             .await;
 
         assert!(result.is_err());
@@ -1472,7 +1474,7 @@ mod tests {
             .build();
 
         assert_eq!(server.resource_count(), 1);
-        let result = server.handle_list_resources();
+        let result = server.handle_list_resources(&test_agent());
         assert_eq!(result.resources.len(), 1);
         assert_eq!(result.resources[0].uri, "info://server/status");
     }
@@ -1486,7 +1488,7 @@ mod tests {
         let result = server
             .handle_read_resource(crate::protocol::ReadResourceParams {
                 uri: "info://server/status".to_string(),
-            })
+            }, &test_agent())
             .await;
 
         let result = result.unwrap();
@@ -1499,7 +1501,7 @@ mod tests {
         let result = server
             .handle_read_resource(crate::protocol::ReadResourceParams {
                 uri: "info://nonexistent".to_string(),
-            })
+            }, &test_agent())
             .await;
 
         assert!(result.is_err());

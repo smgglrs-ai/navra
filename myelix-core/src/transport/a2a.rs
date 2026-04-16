@@ -142,7 +142,7 @@ pub(crate) async fn handle_a2a_post(
                 }
             };
 
-            match crate::a2a::handle_tasks_get(&state.task_store, params) {
+            match crate::a2a::handle_tasks_get(&state.task_store, params, &agent) {
                 Ok(task) => Json(JsonRpcResponse::success(
                     id,
                     serde_json::to_value(task).unwrap_or_else(|e| {
@@ -170,7 +170,7 @@ pub(crate) async fn handle_a2a_post(
                 }
             };
 
-            match crate::a2a::handle_tasks_cancel(&state.task_store, params) {
+            match crate::a2a::handle_tasks_cancel(&state.task_store, params, &agent) {
                 Ok(task) => Json(JsonRpcResponse::success(
                     id,
                     serde_json::to_value(task).unwrap_or_else(|e| {

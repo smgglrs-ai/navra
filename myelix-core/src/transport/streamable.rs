@@ -474,7 +474,7 @@ async fn dispatch(
         }
 
         "tools/list" => {
-            let result = server.handle_list_tools();
+            let result = server.handle_list_tools(&agent);
             (
                 JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
                     tracing::error!(error = %e, "Failed to serialize response");
@@ -528,7 +528,7 @@ async fn dispatch(
         }
 
         "resources/list" => {
-            let result = server.handle_list_resources();
+            let result = server.handle_list_resources(&agent);
             (
                 JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
                     tracing::error!(error = %e, "Failed to serialize response");
@@ -554,7 +554,7 @@ async fn dispatch(
                     );
                 }
             };
-            let resp = match server.handle_read_resource(params).await {
+            let resp = match server.handle_read_resource(params, &agent).await {
                 Ok(result) => {
                     JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
                     tracing::error!(error = %e, "Failed to serialize response");
@@ -567,7 +567,7 @@ async fn dispatch(
         }
 
         "prompts/list" => {
-            let result = server.handle_list_prompts();
+            let result = server.handle_list_prompts(&agent);
             (
                 JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
                     tracing::error!(error = %e, "Failed to serialize response");
@@ -593,7 +593,7 @@ async fn dispatch(
                     );
                 }
             };
-            let resp = match server.handle_get_prompt(params).await {
+            let resp = match server.handle_get_prompt(params, &agent).await {
                 Ok(result) => {
                     JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
                     tracing::error!(error = %e, "Failed to serialize response");
