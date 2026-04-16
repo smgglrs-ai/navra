@@ -141,6 +141,21 @@ impl AgentBuilder {
         self
     }
 
+    /// Restrict which tools the agent can see and call.
+    /// Tools not in this list are filtered out after MCP discovery.
+    pub fn allowed_tools(mut self, tools: Vec<String>) -> Self {
+        self.config.allowed_tools = Some(tools);
+        self
+    }
+
+    /// Set a JSON schema for structured model output.
+    /// The model will be constrained to produce output matching this schema.
+    /// Typically set from the persona's `output_json_schema` field.
+    pub fn output_json_schema(mut self, schema: serde_json::Value) -> Self {
+        self.config.output_json_schema = Some(schema);
+        self
+    }
+
     /// Build the agent. Requires endpoint and model to be set.
     pub fn build(self) -> Result<Agent, AgentError> {
         let upstream = self

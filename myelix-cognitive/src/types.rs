@@ -55,6 +55,12 @@ pub struct Persona {
     /// Output schema name for validation.
     #[serde(default)]
     pub output_schema: Option<String>,
+    /// Inline JSON schema for structured model output.
+    /// When set, the model is constrained to produce output matching
+    /// this schema. The schema is passed via response_format on the
+    /// model request. Defined per persona, not by the framework.
+    #[serde(default)]
+    pub output_json_schema: Option<serde_json::Value>,
     /// Few-shot examples.
     #[serde(default)]
     pub examples: Vec<Example>,

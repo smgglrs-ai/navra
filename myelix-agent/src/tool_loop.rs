@@ -23,6 +23,15 @@ pub struct ToolLoopConfig {
     pub temperature: Option<f32>,
     /// Max tokens per model response.
     pub max_tokens: Option<u32>,
+    /// If set, only these tools are visible to the model.
+    /// Tools not in this list are filtered out after discovery.
+    /// The model cannot call tools it doesn't see.
+    pub allowed_tools: Option<Vec<String>>,
+    /// JSON schema for structured model output.
+    /// When set, the model is constrained to produce output matching
+    /// this schema (via ResponseFormat::JsonSchema). Defined by the
+    /// persona, not the framework.
+    pub output_json_schema: Option<serde_json::Value>,
 }
 
 impl Default for ToolLoopConfig {
@@ -32,6 +41,8 @@ impl Default for ToolLoopConfig {
             system_prompt: None,
             temperature: None,
             max_tokens: None,
+            allowed_tools: None,
+            output_json_schema: None,
         }
     }
 }
@@ -78,10 +89,16 @@ pub async fn run_tool_loop(
     user_prompt: &str,
     config: &ToolLoopConfig,
 ) -> Result<ToolLoopResult, AgentError> {
-    // Discover tools from MCP server
+    // Discover tools from MCP server, filtered by allowed_tools if set
     let mcp_tools = client.list_tools().await?;
     let tools: Vec<ResponseTool> = mcp_tools
         .iter()
+        .filter(|t| {
+            match &config.allowed_tools {
+                Some(allowed) => allowed.iter().any(|a| t.name == *a),
+                None => true,
+            }
+        })
         .map(|t| ResponseTool {
             tool_type: "function".to_string(),
             name: t.name.clone(),
@@ -95,6 +112,14 @@ pub async fn run_tool_loop(
         })
         .collect();
 
+    if config.allowed_tools.is_some() {
+        let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        eprintln!(
+            "  [tool-filter] {} server tools → {} allowed: {:?}",
+            mcp_tools.len(), tools.len(), tool_names
+        );
+    }
+
     // Build initial input
     let mut input: Vec<InputItem> = Vec::new();
     if let Some(system) = &config.system_prompt {
@@ -106,18 +131,37 @@ pub async fn run_tool_loop(
     let mut total_output = 0u32;
 
     for iteration in 0..config.max_iterations {
+        // Set structured output format if persona defines a JSON schema
+        let text_config = config.output_json_schema.as_ref().map(|schema| {
+            myelix_model::responses::request::TextConfig {
+                format: Some(myelix_model::ResponseFormat::JsonSchema {
+                    name: "persona_output".to_string(),
+                    description: None,
+                    schema: schema.clone(),
+                    strict: Some(true),
+                }),
+                verbosity: None,
+            }
+        });
+
         let request = CreateResponseRequest {
-            model: String::new(), // Backend knows its model
+            model: String::new(),
             input: input.clone(),
             instructions: None,
             tools: tools.clone(),
             tool_choice: Some(myelix_model::ResponseToolChoice::auto()),
             max_output_tokens: config.max_tokens,
             temperature: config.temperature,
+            text: text_config,
             ..CreateResponseRequest::new(String::new(), vec![])
         };
 
         let response: ModelResponse = model.respond(&request).await?;
+
+        // Lightweight sensitive data check on model response
+        if let Some(text) = response.text() {
+            warn_if_sensitive(&text);
+        }
 
         if let Some(ref usage) = response.usage {
             total_input += usage.input_tokens;
@@ -157,6 +201,8 @@ pub async fn run_tool_loop(
                 status: Some(ItemStatus::Completed),
             }));
 
+            warn_if_sensitive(&fc.arguments);
+
             let args: serde_json::Value =
                 serde_json::from_str(&fc.arguments).unwrap_or(serde_json::json!({}));
 
@@ -180,6 +226,17 @@ pub async fn run_tool_loop(
     }
 
     Err(AgentError::MaxIterations(config.max_iterations))
+}
+
+/// Check if text contains patterns that look like leaked secrets.
+/// Logs a warning for each match but does not block execution.
+fn warn_if_sensitive(text: &str) {
+    let patterns = ["sk_live_", "sk_test_", "AKIA", "ghp_", "-----BEGIN"];
+    for pattern in &patterns {
+        if text.contains(pattern) {
+            tracing::warn!(pattern = pattern, "Model response may contain sensitive data");
+        }
+    }
 }
 
 #[cfg(test)]
