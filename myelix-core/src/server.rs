@@ -792,12 +792,24 @@ impl McpServerBuilder {
         self
     }
 
+    /// Opt in to unauthenticated mode. Required when no authenticator
+    /// is configured — prevents silent fallback to open access.
+    pub fn allow_anonymous(mut self) -> Self {
+        if self.authenticator.is_none() {
+            self.authenticator = Some(Arc::new(crate::auth::NoAuthenticator {
+                default_identity: crate::auth::AgentIdentity::new("anonymous", "readonly"),
+            }));
+        }
+        self
+    }
+
     pub fn build(self) -> McpServer {
         let authenticator = self.authenticator.unwrap_or_else(|| {
             tracing::error!(
-                "No authenticator configured — using NoAuthenticator. \
-                 All connections will be accepted as anonymous. \
-                 Add [[agents]] to config.toml for production use."
+                "No authenticator configured and allow_anonymous() not called. \
+                 Falling back to NoAuthenticator — all connections will be \
+                 accepted as anonymous. Add [[agents]] to config.toml or \
+                 call .allow_anonymous() for intentional open access."
             );
             Arc::new(crate::auth::NoAuthenticator {
                 default_identity: crate::auth::AgentIdentity::new("anonymous", "readonly"),

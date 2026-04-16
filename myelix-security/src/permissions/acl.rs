@@ -146,7 +146,23 @@ impl PermissionEngine {
             return PermissionResult::DeniedOperation;
         }
 
-        // Canonicalize path to prevent traversal.
+        // Defense-in-depth: warn if caller forgot to canonicalize.
+        // The ACL engine still normalizes the path, but callers should
+        // canonicalize first to resolve symlinks.
+        if !path.is_absolute() {
+            tracing::warn!(
+                path = %path.display(),
+                "ACL check received non-absolute path — callers should canonicalize"
+            );
+        }
+        if path.components().any(|c| c == std::path::Component::ParentDir) {
+            tracing::warn!(
+                path = %path.display(),
+                "ACL check received path with '..' — callers should canonicalize to resolve symlinks"
+            );
+        }
+
+        // Normalize path for glob matching (lexical only).
         let canonical = Self::normalize_path(path);
 
         // Deny rules win — check first.

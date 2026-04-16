@@ -426,7 +426,18 @@ fn resolve_path(raw: &str, must_exist: bool) -> Result<PathBuf, String> {
                         if name_str.contains('/') || name_str.contains("..") {
                             return Err("Invalid filename".to_string());
                         }
-                        Ok(canon_parent.join(name))
+                        let final_path = canon_parent.join(name);
+                        // If the file already exists, verify it isn't a symlink
+                        // that escapes the ACL boundary
+                        if final_path.exists() {
+                            let resolved = final_path.canonicalize()
+                                .map_err(|_| "Cannot verify existing path safety".to_string())?;
+                            if !resolved.starts_with(&canon_parent) {
+                                return Err("Path resolves outside its parent directory".to_string());
+                            }
+                            return Ok(resolved);
+                        }
+                        Ok(final_path)
                     }
                     None => Err("Invalid path".to_string()),
                 }
@@ -1066,8 +1077,16 @@ fn collect_tree(
 ) {
     let Ok(read_dir) = std::fs::read_dir(dir) else { return };
     for entry in read_dir.flatten() {
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        // Skip symlinks to prevent escaping the ACL boundary
+        if ft.is_symlink() {
+            continue;
+        }
         let path = entry.path();
-        if path.is_dir() {
+        if ft.is_dir() {
             // Skip hidden directories and common non-source dirs
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
@@ -1075,7 +1094,7 @@ fn collect_tree(
                 continue;
             }
             collect_tree(&path, root, ext_filter, entries);
-        } else if path.is_file() {
+        } else if ft.is_file() {
             // Apply extension filter
             if let Some(ref ext) = ext_filter {
                 if path.extension().map(|e| e.to_string_lossy().to_string()) != Some(ext.clone()) {
@@ -1160,15 +1179,23 @@ fn grep_recursive(
         if matches.len() >= max_results {
             return;
         }
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        // Skip symlinks to prevent escaping the ACL boundary
+        if ft.is_symlink() {
+            continue;
+        }
         let path = entry.path();
-        if path.is_dir() {
+        if ft.is_dir() {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
             if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
                 continue;
             }
             grep_recursive(&path, root, pattern, ext_filter, max_results, matches, files_searched, files_matched);
-        } else if path.is_file() {
+        } else if ft.is_file() {
             if let Some(ref ext) = ext_filter {
                 if path.extension().map(|e| e.to_string_lossy().to_string()) != Some(ext.clone()) {
                     continue;

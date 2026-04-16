@@ -1457,25 +1457,42 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     {
         use myelix_core::protocol::CallToolResult;
         use myelix_model::ModelBackend;
-        // Build model cards from loaded models
+        // Build composite model cards from config + operator agentic metadata
         let model_cards: Vec<team_tools::ModelCard> = cfg.models.iter().map(|(name, mcfg)| {
-            let locality = if mcfg.source.is_some() || mcfg.runtime.is_some() {
-                "local"
+            // model_name overrides config key as the usable model identifier
+            let display_name = mcfg.model_name.as_deref().unwrap_or(name);
+            let uri_str = mcfg.source.as_deref().unwrap_or(display_name);
+            let mut card = myelix_model_hub::ModelCard::new(uri_str);
+
+            // Populate vendor metadata from config
+            card.vendor.source = Some(if mcfg.source.is_some() {
+                // Infer source type from URI scheme
+                match mcfg.source.as_deref() {
+                    Some(s) if s.starts_with("ollama://") => "ollama",
+                    Some(s) if s.starts_with("hf://") => "huggingface",
+                    Some(s) if s.starts_with("oci://") => "oci",
+                    _ => "local",
+                }
             } else {
-                "local" // ONNX models are always local
-            };
-            let capabilities = match mcfg.task.as_str() {
-                "chat" | "generate" => vec!["reasoning".to_string(), "code".to_string()],
-                "embedding" => vec!["embedding".to_string()],
-                "classification" => vec!["safety".to_string()],
+                "local"
+            }.into());
+            card.vendor.context_window = mcfg.context_size;
+            card.vendor.tasks = match mcfg.task.as_str() {
+                "chat" | "generate" => vec!["text-generation".into()],
+                "embedding" => vec!["feature-extraction".into()],
+                "classification" => vec!["text-classification".into()],
                 _ => vec![],
             };
-            team_tools::ModelCard {
-                name: name.clone(),
-                locality: locality.to_string(),
-                capabilities,
-                context_window: mcfg.context_size,
+            if let Some(runtime) = &mcfg.runtime {
+                card.vendor.runtime = Some(runtime.clone());
             }
+
+            // Merge operator-defined agentic metadata from config
+            if let Some(agentic_cfg) = &mcfg.agentic {
+                card.merge_agentic(&agentic_cfg.to_agentic_meta());
+            }
+
+            card
         }).collect();
 
         let team_registry = Arc::new(team_tools::TeamRegistry::new().with_models(model_cards));
@@ -3086,6 +3103,96 @@ async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files
     // Write mcpd config for the demo
     let demo_config_path = "/tmp/mcpd-demo/agent-config.toml";
     std::fs::create_dir_all("/tmp/mcpd-demo")?;
+    // Detect available models for the demo config
+    let mut model_sections = String::new();
+
+    // Check for Claude via Vertex AI or API key
+    if model_name.starts_with("claude") {
+        let model_key = model_name.replace([':', '-', '.', '@'], "_");
+        model_sections.push_str(&format!(r#"
+[models.{model_key}]
+task = "chat"
+model_name = "{model_name}"
+
+[models.{model_key}.agentic]
+strengths = ["complex reasoning", "multi-step planning", "tool use", "code analysis"]
+weaknesses = ["high cost", "rate limits"]
+recommended_tasks = ["security audit", "architecture review", "planning", "code review"]
+tool_use = "advanced"
+cost_tier = "high"
+speed_tier = "medium"
+"#, model_key = model_key));
+    }
+
+    // Check for Ollama models
+    if let Ok(resp) = reqwest::Client::new()
+        .get("http://localhost:11434/api/tags")
+        .send()
+        .await
+    {
+        if let Ok(tags) = resp.json::<serde_json::Value>().await {
+            if let Some(models) = tags["models"].as_array() {
+                for m in models {
+                    if let Some(name) = m["name"].as_str() {
+                        let model_key = name.replace([':', '-', '.', '/'], "_");
+                        let name_lower = name.to_lowercase();
+
+                        let (strengths, weaknesses, recommended, avoid, tool_use, speed) =
+                            if name_lower.contains("granite") {
+                                (
+                                    r#"["code generation", "fast inference", "IBM licensed"]"#,
+                                    r#"["limited reasoning depth", "may miss subtle issues"]"#,
+                                    r#"["code review", "simple analysis", "pattern matching"]"#,
+                                    r#"["multi-step planning", "complex synthesis"]"#,
+                                    "basic", "fast",
+                                )
+                            } else if name_lower.contains("qwen") {
+                                (
+                                    r#"["multilingual", "code generation", "good reasoning"]"#,
+                                    r#"["may hallucinate on unfamiliar patterns"]"#,
+                                    r#"["code review", "analysis", "security audit"]"#,
+                                    r#"["highly specialized domain tasks"]"#,
+                                    "basic", "medium",
+                                )
+                            } else {
+                                (
+                                    r#"["general purpose"]"#,
+                                    r#"["unknown capabilities"]"#,
+                                    r#"["general tasks"]"#,
+                                    r#"[]"#,
+                                    "basic", "medium",
+                                )
+                            };
+
+                        model_sections.push_str(&format!(r#"
+[models.{model_key}]
+task = "chat"
+model_name = "{name}"
+
+[models.{model_key}.agentic]
+strengths = {strengths}
+weaknesses = {weaknesses}
+recommended_tasks = {recommended}
+avoid_tasks = {avoid}
+tool_use = "{tool_use}"
+cost_tier = "free"
+speed_tier = "{speed}"
+"#,
+                            model_key = model_key,
+                            name = name,
+                            strengths = strengths,
+                            weaknesses = weaknesses,
+                            recommended = recommended,
+                            avoid = avoid,
+                            tool_use = tool_use,
+                            speed = speed,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
     std::fs::write(demo_config_path, format!(r#"
 [server]
 tcp = "127.0.0.1:{demo_port}"
@@ -3104,10 +3211,12 @@ allow = ["{allow_path}/**", "/tmp/**"]
 deny = []
 operations = ["read", "search", "list"]
 safety = "standard"
+{model_sections}
 "#,
         demo_port = demo_port,
         project = abs_project.display(),
         allow_path = abs_project.display(),
+        model_sections = model_sections,
     ))?;
 
     // Start mcpd as a child process
@@ -3204,6 +3313,16 @@ safety = "standard"
         "team_shutdown".to_string(),
     ];
 
+    // Observation-only tools don't count toward the iteration limit.
+    // These tools read state without changing it — the lead uses them
+    // to wait for teammates or inspect available resources.
+    let polling_tools = vec![
+        "team_status".to_string(),
+        "team_result".to_string(),
+        "team_bb_read".to_string(),
+        "models_list".to_string(),
+    ];
+
     macro_rules! build_agent {
         ($backend:expr) => {
             myelix_agent::Agent::builder()
@@ -3212,7 +3331,8 @@ safety = "standard"
                 .model($backend)
                 .system_prompt(&system_prompt)
                 .allowed_tools(lead_tools.clone())
-                .max_iterations(100)
+                .non_progress_tools(polling_tools.clone())
+                .max_iterations(50)
                 .temperature(0.3)
                 .max_tokens(8192)
                 .build()?

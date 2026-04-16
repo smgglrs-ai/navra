@@ -42,7 +42,7 @@ impl SseBroadcaster {
     /// Subscribe to SSE events for a session. Creates the channel if needed.
     /// Returns a broadcast receiver.
     pub fn subscribe(&self, session_id: &str) -> broadcast::Receiver<SseEvent> {
-        let mut channels = self.channels.lock().unwrap();
+        let mut channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
         let tx = channels
             .entry(session_id.to_string())
             .or_insert_with(|| broadcast::channel(CHANNEL_CAPACITY).0);
@@ -51,14 +51,14 @@ impl SseBroadcaster {
 
     /// Remove a session's channel (called when session ends).
     pub fn remove_session(&self, session_id: &str) {
-        let mut channels = self.channels.lock().unwrap();
+        let mut channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
         channels.remove(session_id);
     }
 
     /// Send a notification to a specific session.
     /// Returns false if the session has no active channel.
     pub fn send_to_session(&self, session_id: &str, notification: &JsonRpcNotification) -> bool {
-        let channels = self.channels.lock().unwrap();
+        let channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(tx) = channels.get(session_id) {
             let event = SseEvent {
                 event: "message".to_string(),
@@ -74,7 +74,7 @@ impl SseBroadcaster {
 
     /// Broadcast a notification to all active sessions.
     pub fn broadcast(&self, notification: &JsonRpcNotification) {
-        let channels = self.channels.lock().unwrap();
+        let channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
         let event = SseEvent {
             event: "message".to_string(),
             data: serde_json::to_string(notification).unwrap_or_default(),
@@ -86,7 +86,7 @@ impl SseBroadcaster {
 
     /// Number of active session channels.
     pub fn session_count(&self) -> usize {
-        self.channels.lock().unwrap().len()
+        self.channels.lock().unwrap_or_else(|e| e.into_inner()).len()
     }
 }
 

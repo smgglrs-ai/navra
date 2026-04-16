@@ -364,11 +364,20 @@ async fn handle_screen(
     };
 
     let path = Path::new(&screenshot_path);
-    let image = match load_image(path) {
+    // Verify screenshot is in a temp directory (prevent path injection from backend)
+    let canonical = match path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(format!("Cannot resolve screenshot path: {e}")),
+    };
+    let in_tmp = canonical.starts_with("/tmp") || canonical.starts_with(std::env::temp_dir());
+    if !in_tmp {
+        return CallToolResult::error("Screenshot path outside temp directory");
+    }
+    let image = match load_image(&canonical) {
         Ok(img) => img,
         Err(e) => {
             // Clean up screenshot file
-            let _ = std::fs::remove_file(path);
+            let _ = std::fs::remove_file(&canonical);
             return CallToolResult::error(e);
         }
     };
@@ -392,7 +401,7 @@ async fn handle_screen(
     };
 
     // Clean up screenshot file
-    let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_file(&canonical);
 
     result
 }
