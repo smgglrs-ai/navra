@@ -96,7 +96,7 @@ impl IndexStore {
     /// Creates the vec0 virtual table if it doesn't exist.
     pub fn enable_vectors(&mut self, dimensions: usize) -> rusqlite::Result<()> {
         self.embed_dimensions = dimensions;
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute_batch(&format!(
             "CREATE VIRTUAL TABLE IF NOT EXISTS doc_embeddings USING vec0(embedding float[{dimensions}])"
         ))?;
@@ -109,7 +109,7 @@ impl IndexStore {
     }
 
     fn init_schema(&self) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS documents (
@@ -146,7 +146,7 @@ impl IndexStore {
         content: &str,
     ) -> rusqlite::Result<i64> {
         let now = chrono_now();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
 
         // Delete old FTS entry if exists
         if let Ok(old_id) = conn.query_row(
@@ -191,7 +191,7 @@ impl IndexStore {
 
     /// Full-text search.
     pub fn search(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<SearchResult>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare(
             "SELECT path, title, snippet(documents_fts, 2, '<b>', '</b>', '...', 32), rank
              FROM documents_fts
@@ -216,7 +216,7 @@ impl IndexStore {
 
     /// Get document metadata by path.
     pub fn get_by_path(&self, path: &str) -> rusqlite::Result<Option<DocumentMeta>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let result = conn.query_row(
             "SELECT id, path, mime_type, size, modified_at, indexed_at, checksum
              FROM documents WHERE path = ?1",
@@ -242,13 +242,13 @@ impl IndexStore {
 
     /// Count total indexed documents.
     pub fn count(&self) -> rusqlite::Result<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
     }
 
     /// Delete a document from the index.
     pub fn delete(&self, path: &str) -> rusqlite::Result<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         if let Ok(id) = conn.query_row(
             "SELECT id FROM documents WHERE path = ?1",
             params![path],
@@ -276,7 +276,7 @@ impl IndexStore {
         if self.embed_dimensions == 0 {
             return Ok(());
         }
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         // Delete old embedding if exists
         conn.execute(
             "DELETE FROM doc_embeddings WHERE rowid = ?1",
@@ -298,7 +298,7 @@ impl IndexStore {
         if self.embed_dimensions == 0 {
             return Ok(Vec::new());
         }
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare(
             "SELECT d.path, e.distance
              FROM doc_embeddings e
@@ -329,7 +329,7 @@ fn chrono_now() -> String {
     use std::time::SystemTime;
     let since_epoch = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap();
+        .unwrap_or_default();
     format!("{}", since_epoch.as_secs())
 }
 

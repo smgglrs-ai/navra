@@ -116,7 +116,7 @@ impl super::Notifier for DbusNotifier {
                 "Sent approval notification"
             );
 
-            let mut map = self.notifications.lock().unwrap();
+            let mut map = self.notifications.lock().unwrap_or_else(|e| e.into_inner());
             map.insert(
                 notif_id,
                 NotificationEntry {
@@ -133,7 +133,7 @@ impl super::Notifier for DbusNotifier {
         let request_id = request_id.to_string();
         Box::pin(async move {
             let notif_id = {
-                let map = self.notifications.lock().unwrap();
+                let map = self.notifications.lock().unwrap_or_else(|e| e.into_inner());
                 map.iter()
                     .find(|(_, e)| e.request_id == request_id)
                     .map(|(id, _)| *id)
@@ -142,7 +142,7 @@ impl super::Notifier for DbusNotifier {
             if let Some(notif_id) = notif_id {
                 let proxy = self.proxy().await?;
                 proxy.close_notification(notif_id).await?;
-                let mut map = self.notifications.lock().unwrap();
+                let mut map = self.notifications.lock().unwrap_or_else(|e| e.into_inner());
                 map.remove(&notif_id);
             }
 
@@ -175,7 +175,7 @@ async fn listen_signals(
                     if args.reason == 2 {
                         handle_dismissed(&notifications, args.id);
                     }
-                    let mut map = notifications.lock().unwrap();
+                    let mut map = notifications.lock().unwrap_or_else(|e| e.into_inner());
                     map.remove(&args.id);
                 }
             }
@@ -185,7 +185,7 @@ async fn listen_signals(
 
 fn handle_action(notifications: &NotificationMap, notif_id: u32, action_key: &str) {
     let entry = {
-        let mut map = notifications.lock().unwrap();
+        let mut map = notifications.lock().unwrap_or_else(|e| e.into_inner());
         map.remove(&notif_id)
     };
 
@@ -202,7 +202,7 @@ fn handle_action(notifications: &NotificationMap, notif_id: u32, action_key: &st
 
 fn handle_dismissed(notifications: &NotificationMap, notif_id: u32) {
     let entry = {
-        let map = notifications.lock().unwrap();
+        let map = notifications.lock().unwrap_or_else(|e| e.into_inner());
         map.get(&notif_id).map(|e| (e.request_id.clone(), e.store.clone()))
     };
 
