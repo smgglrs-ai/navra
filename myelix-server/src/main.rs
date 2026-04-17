@@ -2097,7 +2097,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     // --- HTTP transport with SSE broadcaster ---
     let broadcaster = myelix_core::transport::SseBroadcaster::new();
     let has_discovery = cfg.server.discovery.is_some() || !registry_entries.is_empty();
-    let router = if has_discovery {
+    let (router, server) = if has_discovery {
         let aid_record = cfg.server.discovery.as_ref().map(|discovery| {
             let mut aid = serde_json::json!({
                 "v": "aid1",
@@ -2135,11 +2135,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             tracing::info!("A2A Agent Card at /.well-known/agent.json");
         }
         let root_did_str = Some(root_signer.did().to_string());
-        myelix_core::transport::build_router_with_discovery(
+        let api_server_ref = Arc::clone(&server);
+        let router = myelix_core::transport::build_router_with_discovery(
             server, broadcaster, aid_record, registry_entries, a2a_endpoint, root_did_str,
-        )
+        );
+        (router, api_server_ref)
     } else {
-        myelix_core::transport::build_router_with_broadcaster(server, broadcaster)
+        let api_server_ref = Arc::clone(&server);
+        let router = myelix_core::transport::build_router_with_broadcaster(server, broadcaster);
+        (router, api_server_ref)
     };
 
     // --- Web UI: shared state + API routes ---
@@ -2249,14 +2253,19 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             ([("content-type", "application/javascript")], include_str!("../ui/app.js"))
         }))
 
-        // --- API: Server status ---
+        // --- API: Server status (authenticated) ---
         .route("/api/status", {
             let models = ui_models.clone();
             let personas = ui_personas.clone();
-            axum::routing::get(move || {
+            let api_server = Arc::clone(&server);
+            axum::routing::get(move |headers: axum::http::HeaderMap| {
                 let models = models.clone();
                 let personas = personas.clone();
+                let api_server = Arc::clone(&api_server);
                 async move {
+                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                        return axum::Json(serde_json::json!({"error": "unauthorized"}));
+                    }
                     let model_names: Vec<&str> = models.iter()
                         .filter_map(|m| m["name"].as_str())
                         .collect();
@@ -2272,30 +2281,49 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             })
         })
 
-        // --- API: Models ---
+        // --- API: Models (authenticated) ---
         .route("/api/models", {
             let models = ui_models.clone();
-            axum::routing::get(move || {
+            let api_server = Arc::clone(&server);
+            axum::routing::get(move |headers: axum::http::HeaderMap| {
                 let models = models.clone();
-                async move { axum::Json((*models).clone()) }
+                let api_server = Arc::clone(&api_server);
+                async move {
+                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                        return axum::Json(serde_json::json!({"error": "unauthorized"}));
+                    }
+                    axum::Json(serde_json::json!(*models))
+                }
             })
         })
 
-        // --- API: Agents ---
+        // --- API: Agents (authenticated) ---
         .route("/api/agents", {
             let agents = ui_agents.clone();
-            axum::routing::get(move || {
+            let api_server = Arc::clone(&server);
+            axum::routing::get(move |headers: axum::http::HeaderMap| {
                 let agents = agents.clone();
-                async move { axum::Json((*agents).clone()) }
+                let api_server = Arc::clone(&api_server);
+                async move {
+                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                        return axum::Json(serde_json::json!({"error": "unauthorized"}));
+                    }
+                    axum::Json(serde_json::json!(*agents))
+                }
             })
         })
 
-        // --- API: Flows ---
+        // --- API: Flows (authenticated) ---
         .route("/api/flows", {
             let flows = ui_flows.clone();
-            axum::routing::get(move || {
+            let api_server = Arc::clone(&server);
+            axum::routing::get(move |headers: axum::http::HeaderMap| {
                 let flows = flows.clone();
+                let api_server = Arc::clone(&api_server);
                 async move {
+                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                        return axum::Json(serde_json::json!({"error": "unauthorized"}));
+                    }
                     let list: Vec<serde_json::Value> = flows.iter().map(|(name, path)| {
                         // Try to read the flow TOML for task count
                         let tasks = std::fs::read_to_string(path)
@@ -2311,19 +2339,24 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             "tasks": tasks,
                         })
                     }).collect();
-                    axum::Json(list)
+                    axum::Json(serde_json::json!(list))
                 }
             })
         })
 
-        // --- API: Chat (streaming) ---
+        // --- API: Chat (authenticated, streaming) ---
         .route("/api/chat", {
             let backend = ui_chat_backend.clone();
             let forge = ui_forge.clone();
-            axum::routing::post(move |body: axum::Json<serde_json::Value>| {
+            let api_server = Arc::clone(&server);
+            axum::routing::post(move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
                 let backend = backend.clone();
                 let forge = forge.clone();
+                let api_server = Arc::clone(&api_server);
                 async move {
+                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                        return axum::Json(serde_json::json!({"error": "unauthorized"})).into_response();
+                    }
                     use axum::response::IntoResponse;
 
                     let prompt = body["prompt"].as_str().unwrap_or("").to_string();
@@ -2422,6 +2455,22 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
         tracing::info!("Listening on unix:{socket_path}");
 
+        // Graceful shutdown on SIGTERM/SIGINT
+        let shutdown = async {
+            let ctrl_c = tokio::signal::ctrl_c();
+            #[cfg(unix)]
+            let mut sigterm = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            ).expect("failed to install SIGTERM handler");
+            #[cfg(unix)]
+            tokio::select! {
+                _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
+                _ = sigterm.recv() => tracing::info!("Received SIGTERM, shutting down"),
+            }
+            #[cfg(not(unix))]
+            ctrl_c.await.ok();
+        };
+
         if let Some(addr) = tcp_addr {
             // Both Unix socket and TCP
             let tcp_listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -2429,19 +2478,38 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
             let tcp_router = router.clone();
             tokio::select! {
-                result = axum::serve(unix_listener, router) => result?,
+                result = axum::serve(unix_listener, router)
+                    .with_graceful_shutdown(shutdown) => result?,
                 result = axum::serve(tcp_listener, tcp_router) => result?,
             }
         } else {
             // Unix socket only
-            axum::serve(unix_listener, router).await?;
+            axum::serve(unix_listener, router)
+                .with_graceful_shutdown(shutdown).await?;
         }
     } else {
         // TCP only (fallback)
         let addr = cfg.server.listen_addr();
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         tracing::info!("Listening on tcp:{addr}");
-        axum::serve(listener, router).await?;
+
+        let shutdown = async {
+            let ctrl_c = tokio::signal::ctrl_c();
+            #[cfg(unix)]
+            let mut sigterm = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            ).expect("failed to install SIGTERM handler");
+            #[cfg(unix)]
+            tokio::select! {
+                _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
+                _ = sigterm.recv() => tracing::info!("Received SIGTERM, shutting down"),
+            }
+            #[cfg(not(unix))]
+            ctrl_c.await.ok();
+        };
+
+        axum::serve(listener, router)
+            .with_graceful_shutdown(shutdown).await?;
     }
 
     // --- Stop runtime-served models ---

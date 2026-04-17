@@ -165,9 +165,23 @@ impl ResilientTransport {
     }
 
     /// Calculate the backoff delay for a given attempt number.
+    /// Uses exponential backoff with ±25% jitter to avoid thundering herd.
     fn backoff_delay(&self, attempt: u32) -> Duration {
-        let delay = self.config.base_delay * 2u32.saturating_pow(attempt);
-        delay.min(self.config.max_delay)
+        let base = self.config.base_delay * 2u32.saturating_pow(attempt);
+        let base = base.min(self.config.max_delay);
+        // Add ±25% jitter using system time nanos as cheap randomness
+        let base_ms = base.as_millis() as u64;
+        let jitter_range = base_ms / 4;
+        if jitter_range > 0 {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos() as u64;
+            let jitter = nanos % (jitter_range * 2);
+            Duration::from_millis(base_ms.saturating_sub(jitter_range) + jitter)
+        } else {
+            base
+        }
     }
 
     /// Attempt to reconnect by creating a new transport via the factory.
@@ -468,13 +482,21 @@ mod tests {
             last_success: Instant::now(),
         };
 
-        assert_eq!(rt.backoff_delay(0), Duration::from_secs(1));
-        assert_eq!(rt.backoff_delay(1), Duration::from_secs(2));
-        assert_eq!(rt.backoff_delay(2), Duration::from_secs(4));
-        assert_eq!(rt.backoff_delay(3), Duration::from_secs(8));
-        assert_eq!(rt.backoff_delay(4), Duration::from_secs(16));
-        assert_eq!(rt.backoff_delay(5), Duration::from_secs(30)); // capped
-        assert_eq!(rt.backoff_delay(10), Duration::from_secs(30)); // still capped
+        // Delays include ±25% jitter, so check within range
+        let check = |attempt, expected_ms: u64| {
+            let delay = rt.backoff_delay(attempt);
+            let ms = delay.as_millis() as u64;
+            let lo = expected_ms * 3 / 4;
+            let hi = expected_ms * 5 / 4;
+            assert!(ms >= lo && ms <= hi, "attempt {attempt}: {ms}ms not in [{lo}, {hi}]");
+        };
+        check(0, 1000);
+        check(1, 2000);
+        check(2, 4000);
+        check(3, 8000);
+        check(4, 16000);
+        check(5, 30000); // capped
+        check(10, 30000); // still capped
     }
 
     #[tokio::test]
