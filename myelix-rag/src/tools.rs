@@ -302,9 +302,13 @@ async fn handle_index(
 
 async fn handle_query(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<RagState>,
 ) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "search", Path::new("/")) {
+        return e;
+    }
+
     let query = match args.get("query").and_then(|v| v.as_str()) {
         Some(q) if !q.is_empty() => q,
         _ => return CallToolResult::error("Missing required parameter: query"),
@@ -402,9 +406,13 @@ async fn handle_similar(
 
 async fn handle_status(
     _args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<RagState>,
 ) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
+        return e;
+    }
+
     match state.store.stats() {
         Ok(stats) => CallToolResult::text(format!(
             "RAG Index Status:\n\
@@ -421,9 +429,29 @@ async fn handle_status(
 mod tests {
     use super::*;
     use myelix_core::auth::AgentIdentity;
+    use myelix_core::permissions::PathAcl;
+    use std::collections::HashSet;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("test", "dev"), "test")
+    }
+
+    fn test_perm_engine() -> PermissionEngine {
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "dev".to_string(),
+            PathAcl {
+                ring: None,
+                allow: vec!["/**".to_string()],
+                deny: vec![],
+                operations: ["read", "search"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine
     }
 
     #[test]
@@ -495,7 +523,7 @@ mod tests {
             store,
             embedding_model: Arc::new(FakeModel),
             chunk_config: ChunkConfig::default(),
-            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
+            perm_engine: Arc::new(test_perm_engine()),
         });
 
         let result = handle_status(serde_json::json!({}), test_ctx(), state).await;
