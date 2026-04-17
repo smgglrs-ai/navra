@@ -23,7 +23,7 @@ pub mod transport;
 
 mod module;
 mod server;
-mod session;
+pub mod session;
 mod upstream_module;
 
 pub use module::{Module, PromptHandler, ResourceHandler};

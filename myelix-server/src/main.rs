@@ -294,6 +294,39 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         .name("mcpd")
         .version(env!("CARGO_PKG_VERSION"));
 
+    // Persistent session store (SQLite) — sessions survive restarts
+    {
+        let session_db_path = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("mcpd/sessions.db");
+        if let Some(parent) = session_db_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match myelix_memory::SqliteSessionBackend::open(&session_db_path) {
+            Ok(backend) => {
+                let existing = {
+                    use myelix_core::session::SessionBackend;
+                    backend.count()
+                };
+                let store = myelix_core::session::SessionStore::with_backend(
+                    std::sync::Arc::new(backend),
+                );
+                builder = builder.session_store(store);
+                tracing::info!(
+                    path = %session_db_path.display(),
+                    sessions = existing,
+                    "Persistent session store enabled"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to open session DB, falling back to in-memory sessions"
+                );
+            }
+        }
+    }
+
     // Wire IFC policies and trusted paths from permission sets
     for (name, pset) in &cfg.permissions {
         let policy = myelix_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy);

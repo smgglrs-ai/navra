@@ -16,10 +16,12 @@
 
 mod error;
 mod knowledge;
+pub mod session_store;
 mod types;
 mod working;
 
 pub use error::MemoryError;
 pub use knowledge::KnowledgeStore;
+pub use session_store::SqliteSessionBackend;
 pub use types::{MemoryEntry, MemoryType, Message, Role, Turn};
 pub use working::WorkingMemory;
