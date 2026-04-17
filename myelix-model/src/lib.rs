@@ -15,6 +15,7 @@
 
 // Internal modules — Chat Completions types used only for backend translation.
 pub(crate) mod chat;
+pub(crate) mod http_common;
 mod anthropic;
 mod onnx;
 mod openai;
