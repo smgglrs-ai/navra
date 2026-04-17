@@ -257,9 +257,13 @@ fn check_perm(
 
 async fn handle_listen(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<VoiceState>,
 ) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
+        return e;
+    }
+
     let language = args.get("language").and_then(|v| v.as_str()).map(String::from);
     let max_secs = args
         .get("max_seconds")
@@ -306,9 +310,13 @@ async fn handle_listen(
 
 async fn handle_speak(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<VoiceState>,
 ) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "write", Path::new("/")) {
+        return e;
+    }
+
     let text = match args.get("text").and_then(|v| v.as_str()) {
         Some(t) if !t.is_empty() => t,
         _ => return CallToolResult::error("Missing required parameter: text"),
@@ -391,9 +399,13 @@ async fn handle_transcribe(
 
 async fn handle_status(
     _args: serde_json::Value,
-    _ctx: CallContext,
-    _state: Arc<VoiceState>,
+    ctx: CallContext,
+    state: Arc<VoiceState>,
 ) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
+        return e;
+    }
+
     let info = audio::device_info();
 
     let mut output = String::from("Voice Module Status:\n\n");
@@ -519,6 +531,26 @@ mod tests {
         ModelBackend, ModelError, SynthesizeRequest, SynthesizeResponse, TranscribeRequest,
         TranscribeResponse,
     };
+    use myelix_core::permissions::PathAcl;
+    use std::collections::HashSet;
+
+    fn test_perm_engine() -> PermissionEngine {
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "dev".to_string(),
+            PathAcl {
+                ring: None,
+                allow: vec!["/**".to_string()],
+                deny: vec![],
+                operations: ["read", "write"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine
+    }
 
     struct FakeAsrModel;
     impl ModelBackend for FakeAsrModel {
@@ -585,7 +617,7 @@ mod tests {
             max_record_secs: 30,
             silence_timeout_ms: 1500,
             default_voice: None,
-            perm_engine: Arc::new(myelix_core::permissions::PermissionEngine::new()),
+            perm_engine: Arc::new(test_perm_engine()),
         });
 
         let result = handle_status(serde_json::json!({}), test_ctx(), state).await;
