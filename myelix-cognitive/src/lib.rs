@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! myelix-cognitive: Cognitive core for AI agent identity.
 //!
 //! Loads persona, directive, and heuristic YAML files from a cognitive
