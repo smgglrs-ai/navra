@@ -404,7 +404,10 @@ async fn run_node_loop(
                                 })
                             })
                             .collect();
-                        serde_json::to_string(&json_msgs).unwrap_or_else(|_| "[]".to_string())
+                        serde_json::to_string(&json_msgs).unwrap_or_else(|e| {
+                            tracing::warn!(error = %e, "Failed to serialize mailbox messages");
+                            "[]".to_string()
+                        })
                     } else {
                         "Error: mailbox not enabled for this flow.".to_string()
                     }
@@ -441,7 +444,10 @@ async fn run_node_loop(
                 mesh_tools::BB_KEYS => {
                     if let Some(bb) = blackboard {
                         serde_json::to_string(&bb.keys())
-                            .unwrap_or_else(|_| "[]".to_string())
+                            .unwrap_or_else(|e| {
+                                tracing::warn!(error = %e, "Failed to serialize blackboard keys");
+                                "[]".to_string()
+                            })
                     } else {
                         "Error: blackboard not enabled for this flow.".to_string()
                     }
@@ -449,7 +455,10 @@ async fn run_node_loop(
                 _ => {
                     // Fall through to MCP tool call
                     let args: serde_json::Value = serde_json::from_str(&fc.arguments)
-                        .unwrap_or(serde_json::json!({}));
+                        .unwrap_or_else(|e| {
+                            tracing::warn!(tool = %fc.name, error = %e, "Failed to parse tool arguments as JSON");
+                            serde_json::json!({})
+                        });
 
                     tracing::debug!(tool = %fc.name, "Flow node executing tool");
 

@@ -285,19 +285,21 @@ async fn handle_registry(
         .cursor
         .as_ref()
         .and_then(|c| c.parse::<usize>().ok())
-        .unwrap_or(0);
+        .unwrap_or(0)
+        .min(filtered.len());
+
+    let limit = query.limit.min(100);
 
     let page: Vec<&serde_json::Value> = filtered
         .into_iter()
         .skip(start)
-        .take(query.limit)
+        .take(limit)
         .collect();
 
-    let next_cursor = if start + query.limit < entries.len() {
-        Some((start + query.limit).to_string())
-    } else {
-        None
-    };
+    let next_cursor = start
+        .checked_add(limit)
+        .filter(|&next| next < entries.len())
+        .map(|next| next.to_string());
 
     Json(serde_json::json!({
         "servers": page,

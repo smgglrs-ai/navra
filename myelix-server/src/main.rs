@@ -125,7 +125,7 @@ fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
                 "Keyring unavailable, falling back to file identity"
             );
             let default_path = dirs::config_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory for identity key"))?
                 .join("mcpd/identity.key");
             identity::load_or_create_file_identity(&default_path)
         }
@@ -714,6 +714,13 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         .unwrap_or_else(|| std::path::PathBuf::from(dir))
                 } else {
                     std::path::PathBuf::from(dir)
+                }
+            })
+            .filter_map(|p| match p.canonicalize() {
+                Ok(canonical) => Some(canonical),
+                Err(e) => {
+                    tracing::warn!(path = %p.display(), error = %e, "Skipping watch directory: canonicalization failed");
+                    None
                 }
             })
             .collect();
