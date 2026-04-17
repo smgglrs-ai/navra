@@ -349,9 +349,13 @@ async fn handle_ask(
 
 async fn handle_screen(
     args: serde_json::Value,
-    _ctx: CallContext,
+    ctx: CallContext,
     state: Arc<VisionState>,
 ) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
+        return e;
+    }
+
     let mode = args
         .get("mode")
         .and_then(|v| v.as_str())
