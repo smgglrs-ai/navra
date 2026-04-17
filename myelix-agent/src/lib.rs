@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! myelix-agent: SDK for building AI agents that connect to MCP servers.
 //!
 //! Provides a high-level [`Agent`] with a builder pattern, an MCP
