@@ -383,6 +383,11 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         } else {
             builder = builder.authenticator(blake3_auth);
         }
+    } else {
+        tracing::warn!(
+            "No agents configured — server accepts unauthenticated requests. \
+             Add [[agents]] sections to config.toml to enable authentication."
+        );
     }
 
     // --- Load models into registry ---
@@ -769,8 +774,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     }
 
     // --- Voice module ---
-    if cfg.voice_enabled() {
-        let voice_cfg = cfg.modules.voice.as_ref().unwrap();
+    if let Some(voice_cfg) = cfg.modules.voice.as_ref().filter(|_| cfg.voice_enabled()) {
         let asr = models.get(&voice_cfg.asr_model).cloned();
         let tts = models.get(&voice_cfg.tts_model).cloned();
 
@@ -810,8 +814,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     }
 
     // --- Vision module ---
-    if cfg.vision_enabled() {
-        let vision_cfg = cfg.modules.vision.as_ref().unwrap();
+    if let Some(vision_cfg) = cfg.modules.vision.as_ref().filter(|_| cfg.vision_enabled()) {
         if let Some(vision_model) = models.get(&vision_cfg.model).cloned() {
             let vision = myelix_modal_vision::VisionModule::new(vision_model, perm_engine.clone());
             tracing::info!(model = %vision_cfg.model, "Module 'vision' enabled");
