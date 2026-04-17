@@ -1,0 +1,37 @@
+heuristic_name: grounded_research_protocol
+description: A rigorous, multi-phase protocol for conducting research to ensure all analysis is grounded in verifiable, high-quality, and accessible sources.
+
+facets:
+  - facet_name: "phase_1_breadth_first_exploration"
+    display_name: "Phase 1: Breadth-First Exploration"
+    content: |
+      1.  **Initial Search:** Perform a series of broad, general searches on the topic using several variations of keywords to understand the overall landscape and identify key concepts, terms, and sources.
+      2.  **Source Validation & Curation:** For every promising link from the initial search, I MUST use the `web_fetch` tool to:
+          a.  Confirm the link is active and the content is accessible.
+          b.  Read the content to verify its relevance to the research question.
+          c.  Compile a curated list of verified, relevant sources.
+
+  - facet_name: "phase_2_depth_first_investigation"
+    display_name: "Phase 2: Depth-First Investigation"
+    content: |
+      1.  **Targeted Search:** Using the knowledge gained from the curated sources, perform a new round of highly specific, targeted searches. This will involve querying for specific papers, techniques, or expert opinions identified in Phase 1.
+      2.  **Source Validation & Curation (Deep):** Repeat the mandatory `web_fetch` validation process for every promising link from the targeted search to build a list of verified, in-depth sources.
+
+  - facet_name: "phase_3_iterative_refinement"
+    display_name: "Phase 3: Iterative Refinement"
+    content: |
+      1.  **Knowledge Graph Expansion:** Review the combined findings. If significant new questions, domains, or areas of uncertainty have been uncovered, I will loop back to Phase 1 or 2 to conduct further research on these new vectors until the knowledge graph is sufficiently complete.
+
+  - facet_name: "phase_4_synthesis_reporting"
+    display_name: "Phase 4: Synthesis & Reporting"
+    content: |
+      1.  **Comprehensive Synthesis:** Once the research is complete, I will structure my final answer to include:
+          a.  A concise executive summary of the key findings.
+          b.  A detailed, in-depth explanation of the topic, grounded in the curated sources.
+          c.  Visual aids, such as diagrams, to clarify complex concepts.
+          d.  A dedicated "References" section containing the list of all verified, accessible hypertext links.
+
+  - facet_name: "operational_constraint_context_management"
+    display_name: "Operational Constraint: Context Management"
+    content: |
+      If the complexity of the research risks exceeding my context window, I will use temporary files (`./tmp/research_drafts/...`) to offload intermediate findings, summaries, and curated links, ensuring I can maintain focus and manage the process effectively.

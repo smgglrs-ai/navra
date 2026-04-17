@@ -1,0 +1,114 @@
+heuristic_name: project_orchestration
+description: "Advanced heuristics for coordinating multi-specialist projects with concurrent execution and result synthesis"
+
+facets:
+  - facet_name: task_decomposition
+    display_name: "Task Decomposition"
+    content: |
+      **Task Decomposition Principles:**
+
+      1. **Identify Core Deliverables**: Break complex requests into distinct, valuable outputs
+         - Each deliverable should be independently useful
+         - Consider user's primary and secondary objectives
+         - Ensure deliverables complement each other
+
+      2. **Specialist Alignment**: Map deliverables to specialist expertise
+         - system_architect: High-level design, architecture decisions
+         - security_sentinel: Security analysis, threat modeling, compliance
+         - principal_engineer: Implementation, technical execution
+         - tech_writer: Documentation, user-facing materials
+         - researcher: Analysis, investigation, data gathering
+
+      3. **Parallelization Opportunities**: Identify concurrent work streams
+         - Which tasks can start immediately?
+         - Which tasks are independent of others?
+         - What are the natural handoff points?
+
+      4. **Granularity Balance**: Right-size each specialist task
+         - Complex enough to leverage specialist expertise
+         - Simple enough to complete in reasonable time
+         - Clear inputs and expected outputs
+
+  - facet_name: specialist_selection
+    display_name: "Specialist Selection"
+    content: |
+      **Specialist Selection Strategy:**
+
+      1. **Primary Expertise Matching**: Match task to specialist's core competency
+         - Technical implementation → principal_engineer
+         - Architecture decisions → system_architect
+         - Security concerns → security_sentinel
+         - Documentation needs → tech_writer
+         - Research/analysis → researcher
+
+      2. **Secondary Skills Consideration**: Account for specialist's additional capabilities
+         - Some specialists have overlapping skills
+         - Consider workload balancing
+         - Leverage cross-domain expertise when beneficial
+
+      3. **Task Complexity Assessment**: Match specialist to task complexity
+         - Simple tasks can use more generalist specialists
+         - Complex, critical tasks need domain experts
+         - Consider risk and impact of task failure
+
+      4. **Collaboration Potential**: Consider which specialists work well together
+         - architect + engineer: Design → implementation flow
+         - security_sentinel + engineer: Security review → secure implementation
+         - engineer + tech_writer: Implementation → documentation
+
+  - facet_name: dependency_management
+    display_name: "Dependency Management"
+    content: |
+      **Dependency Management Framework:**
+
+      1. **Dependency Classification**:
+         - **Parallel**: Tasks that can run simultaneously
+         - **Sequential**: Task B requires Task A completion
+         - **Conditional**: Task C executes based on Task A results
+         - **Optional**: Task D enhances but doesn't block others
+
+      2. **Critical Path Identification**:
+         - Which tasks are on the critical path to completion?
+         - Where are the potential bottlenecks?
+         - What tasks have the highest failure impact?
+
+      3. **Handoff Protocols**:
+         - Define clear interfaces between specialists
+         - Specify what information passes between tasks
+         - Establish quality gates and review points
+
+      4. **Fallback Strategies**:
+         - What happens if a specialist task fails?
+         - Can other specialists adapt their work?
+         - Are there alternative approaches?
+
+  - facet_name: concurrent_execution_planning
+    display_name: "Concurrent Execution Planning"
+    content: |
+      **Concurrent Execution Strategy:**
+
+      1. **Parallelization Design**:
+         - Maximize parallel work streams
+         - Minimize waiting and blocking
+         - Balance resource utilization
+
+      2. **Synchronization Points**:
+         - Where do parallel streams need to synchronize?
+         - What are the natural integration checkpoints?
+         - How to handle timing mismatches?
+
+      3. **Resource Coordination**:
+         - Are specialists working on shared resources?
+         - How to prevent conflicts and race conditions?
+         - What coordination mechanisms are needed?
+
+      4. **Progress Monitoring**:
+         - How to track progress across multiple specialists?
+         - What are the key milestones and checkpoints?
+         - When to intervene or adjust the plan?
+
+references:
+  - description: "ADR-056: Hierarchical Agent Orchestration"
+    source: "docs/architecture/decisions/ADR-056-Hierarchical-Agent-Orchestration.md"
+  - description: "ADR-044: The Myelix Cognitive Architecture"
+    source: "docs/architecture/decisions/ADR-044-The-Myelix-Cognitive-Architecture.md"

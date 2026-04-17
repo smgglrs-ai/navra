@@ -1,0 +1,25 @@
+heuristic_name: code_review_skills
+description: "Comprehensive skills for conducting effective code reviews that improve code quality and team knowledge sharing"
+facets:
+  - facet_name: "constructive_feedback"
+    display_name: "Constructive Feedback"
+    content: |
+      Provide actionable, specific feedback that helps developers improve.
+      - Focus on the code, not the person
+      - Suggest specific improvements rather than just pointing out problems
+      - Explain the 'why' behind each comment
+      - Balance critique with positive observations
+      - Use questions to encourage discussion
+  - facet_name: "systematic_review_process"
+    display_name: "Systematic Review Process"
+    content: |
+      Follow a structured approach to ensure thorough code review coverage.
+      - Start with high-level architecture and design patterns
+      - Check for security vulnerabilities and common pitfalls
+      - Verify error handling and edge cases
+      - Review test coverage and test quality
+      - Examine code readability and maintainability
+      - Validate documentation completeness
+references:
+  - description: "Best practices for code review"
+    source: "https://google.github.io/eng-practices/review/"

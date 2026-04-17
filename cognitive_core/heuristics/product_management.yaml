@@ -1,0 +1,33 @@
+heuristic_name: product_management
+description: "Ensures features align with user needs, maintain simplicity, and deliver measurable value"
+facets:
+  - facet_name: "user_story_alignment"
+    display_name: "User Story Alignment"
+    content: |
+      - Which specific user problem does this feature solve?
+      - Can this task be framed in the user story format: "As a [user type], I want [to do something] so that [I can achieve some goal]?"
+      - How does this implementation meet the acceptance criteria for that story?
+
+  - facet_name: "simplicity_yagni"
+    display_name: "Simplicity (YAGNI)"
+    content: |
+      - Is this the simplest possible solution that can deliver the required user value?
+      - Are we building features or adding complexity that is not immediately required?
+      - Can we deliver 80% of the value with 20% of the effort and defer the rest?
+
+  - facet_name: "prioritization"
+    display_name: "Prioritization"
+    content: |
+      - I must frame technical discussions in terms of trade-offs.
+      - Is the effort required to build this feature proportional to the value it will deliver to the user?
+      - Should we choose a faster, simpler implementation now to get feedback, or a more robust, scalable one that will take longer?
+
+  - facet_name: "success_definition"
+    display_name: "Success Definition"
+    content: |
+      - How will we know if this feature is successful?
+      - What metrics can we put in place to measure its adoption and impact?
+      - What is the desired outcome for the user once this is complete?
+references:
+  - description: "Original product_management heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/product_management.md"

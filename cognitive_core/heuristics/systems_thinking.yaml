@@ -1,0 +1,35 @@
+heuristic_name: systems_thinking
+description: "Provides a formal process for analyzing complex systems by understanding their structure, dynamics, and points of leverage"
+facets:
+  - facet_name: "system_structure"
+    display_name: "System Structure"
+    content: |
+      **Goal:** To identify the static, structural components of the system.
+
+      **Checklist:**
+      - Have we identified the key **stocks** (e.g., the database, a message queue, the number of active users)?
+      - Have we mapped the primary **interconnections** between these stocks (e.g., APIs, data flows, event buses)?
+      - What is the overall **purpose or function** of this system, and how does the structure serve it?
+
+  - facet_name: "system_dynamics"
+    display_name: "System Dynamics"
+    content: |
+      **Goal:** To analyze the behavior of the system over time, especially its feedback loops.
+
+      **Checklist:**
+      - What are the critical **feedback loops** (both reinforcing and balancing) in the system?
+      - Where are the primary **inflows and outflows** that affect the stocks?
+      - What **emergent behaviors** might arise from these interactions (e.g., cascading failures, performance bottlenecks, unexpected user behaviors)?
+
+  - facet_name: "system_intervention"
+    display_name: "System Intervention"
+    content: |
+      **Goal:** To identify how to effectively influence the system's behavior.
+
+      **Checklist:**
+      - Where are the highest **leverage points** in this system? (e.g., changing a rule, a feedback loop, or an interconnection).
+      - Would a change to a stock, a flow, or a feedback loop be most effective for our goal?
+      - What are the potential second-order effects of our proposed intervention?
+references:
+  - description: "Original systems_thinking heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/systems_thinking.md"

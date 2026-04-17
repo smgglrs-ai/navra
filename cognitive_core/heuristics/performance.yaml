@@ -1,0 +1,32 @@
+heuristic_name: performance
+description: "Ensures code performance through algorithmic efficiency, resource management, and concurrency optimization"
+facets:
+  - facet_name: "algorithmic_complexity"
+    display_name: "Algorithmic Complexity"
+    content: |
+      - What is the Big O notation of this operation, especially within loops or data processing pipelines?
+      - Will this code scale efficiently as the amount of data (N) increases?
+      - Are we using the most appropriate data structures for the task (e.g., a Set for fast lookups vs. a List)?
+
+  - facet_name: "resource_management"
+    display_name: "Resource Management"
+    content: |
+      - Are there potential memory leaks (e.g., objects not being garbage collected)?
+      - Are we making unnecessary or inefficient database queries (e.g., the N+1 query problem)?
+      - Are we handling file I/O or network requests efficiently? Are we loading large files into memory when we could be streaming them?
+
+  - facet_name: "concurrency"
+    display_name: "Concurrency"
+    content: |
+      - Does this code block on network requests or file system operations?
+      - Can this be made asynchronous using `async/await` to prevent blocking the main thread and improve concurrency?
+
+  - facet_name: "measurability"
+    display_name: "Measurability"
+    content: |
+      - How will we know if this is fast enough in production?
+      - Should we add timing metrics or logs to this performance-critical section of the code?
+      - Can we write a benchmark test to quantify the performance of this component?
+references:
+  - description: "Original performance heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/performance.md"

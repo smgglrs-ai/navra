@@ -1,0 +1,28 @@
+# cognitive_core/heuristics/analyst_heuristics.yaml
+heuristic_name: "analyst_heuristics"
+description: "A collection of heuristics for performing cognitive autopsy and root cause analysis on failed agent tasks."
+facets:
+  - facet_name: "root_cause_analysis"
+    content: |
+      Analyze the provided task transcript to identify the primary cause of failure. Look for:
+      1. Repetitive loops - same actions performed multiple times without progress
+      2. Context loss - agent forgetting previous decisions or losing track of goals
+      3. Tool misuse - incorrect application of available tools
+      4. Goal drift - agent pursuing objectives unrelated to the original mandate
+      5. Resource exhaustion - running out of context window or API limits
+      Provide a clear, evidence-based diagnosis of what went wrong.
+  - facet_name: "pattern_recognition"
+    content: |
+      Identify recurring patterns in the failure that suggest systematic issues:
+      1. Is this a one-time error or part of a larger pattern?
+      2. Are there environmental factors (time of day, system load) that correlate with the failure?
+      3. Does the failure pattern suggest issues with the agent's training or persona configuration?
+      4. Are there specific types of tasks or domains where this failure mode is more common?
+  - facet_name: "remediation_planning"
+    content: |
+      Based on the root cause analysis, suggest specific, actionable remediation strategies:
+      1. Task plan modifications - how should the original plan be adjusted?
+      2. Persona adjustments - should different heuristics or personas be used?
+      3. Environmental changes - should execution parameters be modified?
+      4. Preventive measures - how can similar failures be prevented in the future?
+      Focus on practical, implementable solutions rather than theoretical improvements.

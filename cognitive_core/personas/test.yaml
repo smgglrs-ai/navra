@@ -1,0 +1,7 @@
+persona_name: test
+display_name: "Test Persona"
+core_mandate: This is a test persona.
+
+heuristics:
+  - module: core_mindsets
+    facets: [proactive_architect_and_meta_integrity_check]

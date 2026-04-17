@@ -1,0 +1,15 @@
+heuristic_name: error_scrutiny
+description: "Ensures deep understanding of error root causes rather than just surface-level symptoms"
+facets:
+  - facet_name: "root_cause_analysis"
+    display_name: "Root Cause Analysis"
+    content: |
+      **Goal:** To ensure I understand the true cause of a problem, not just the surface-level symptom.
+
+      **Checklist:**
+      - Have I read the *entire* error message and traceback?
+      - Have I identified the root cause of the error?
+      - Am I fixing the underlying problem or just patching the symptom?
+references:
+  - description: "Original error scrutiny heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/error_scrutiny.md"

@@ -1,0 +1,89 @@
+heuristic_name: semantic_analysis
+description: "Decomposes natural language into semantic components for precise meaning comparison independent of surface form variations"
+facets:
+  - facet_name: "concept_extraction"
+    display_name: "Concept Extraction"
+    content: |
+      **Atomic Concept Identification:**
+      - **Noun Phrases:** Extract all entities, objects, and abstract concepts
+      - **Action Concepts:** Identify verbs and their associated processes
+      - **Attribute Concepts:** Note all descriptive properties and qualifiers
+      - **Relational Concepts:** Capture comparative, causal, and hierarchical relationships
+
+      **Concept Importance Ranking:**
+      - **Critical Concepts:** Core to the answer's meaning (removal changes intent)
+      - **Supporting Concepts:** Provide context or elaboration
+      - **Optional Concepts:** Examples or parenthetical information
+
+      **Granularity Decisions:**
+      - Decompose compound concepts when they represent multiple ideas
+      - Keep atomic concepts that form standard technical terms together
+      - Example: "Dynamic Agent Orchestration" = one concept (technical term)
+      - Example: "reads and writes files" = two concepts (read, write)
+
+  - facet_name: "relationship_mapping"
+    display_name: "Relationship Mapping"
+    content: |
+      **Relationship Types:**
+      - **Causal:** A causes/enables/triggers B
+      - **Hierarchical:** A contains/manages/supervises B
+      - **Sequential:** A happens before/after B
+      - **Conditional:** A requires/depends on B
+      - **Definitional:** A is defined as/means B
+
+      **Relationship Preservation Check:**
+      - Map relationships in canonical answer as directed graph
+      - Verify each edge exists in actual answer's graph
+      - Note any added relationships (could be errors)
+      - Flag inverted relationships (A→B became B→A)
+
+      **Implicit vs Explicit:**
+      - Canonical may have implicit relationships made explicit in actual (acceptable)
+      - Actual making explicit relationships implicit (may reduce clarity)
+      - New implicit relationships not in canonical (potential error)
+
+  - facet_name: "terminology_precision"
+    display_name: "Terminology Precision"
+    content: |
+      **Domain-Specific Terms:**
+      - **Technical Jargon:** Terms with precise meanings in the domain
+        - Examples: "protocol" (formal rules) vs "guideline" (informal suggestion)
+        - Examples: "orchestration" (coordination) vs "management" (broader control)
+      - **Action Verbs:** Specific operations vs general actions
+        - Examples: "compile" vs "process", "invoke" vs "call"
+      - **Quantifiers:** Precise vs vague quantities
+        - Examples: "all" vs "most", "must" vs "should"
+
+      **Synonym Acceptability Matrix:**
+      - **Perfect Synonyms (no penalty):** Terms that are interchangeable in this context
+      - **Near Synonyms (-0.02):** Slight connotation difference but meaning preserved
+      - **Imprecise Substitutions (-0.05):** Meaning shift but still related
+      - **Wrong Terms (-0.10):** Fundamentally different meaning
+
+      **Context Sensitivity:**
+      - Same word may have different meanings in different contexts
+      - Technical context requires technical precision
+      - Casual context allows more variation
+
+  - facet_name: "application_guidelines"
+    display_name: "Application Guidelines"
+    content: |
+      **For Benchmark Assessment:**
+      1. First pass: Extract all concepts from both answers
+      2. Second pass: Map all relationships
+      3. Third pass: Evaluate terminology choices
+      4. Combine findings using the weighted formula
+
+      **For Edge Cases:**
+      - **Empty/Missing Actual Answer:** Score = 0.0, Report = "No answer provided"
+      - **Actual Longer Than Canonical:** Check if additions are elaborations (ok) or errors (penalize)
+      - **Different Valid Approaches:** If actual uses different but correct method, focus on outcome equivalence
+
+      **For Consistency:**
+      - Document your concept extraction for reproducibility
+      - Use the same granularity across all evaluations
+      - Apply terminology strictness uniformly
+      - When in doubt, be more strict rather than lenient
+references:
+  - description: "Original semantic_analysis heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/semantic_analysis.md"

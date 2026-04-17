@@ -1,0 +1,33 @@
+directive_name: security_protocol
+description: "Security best practices and protocols for code development and system operations"
+content: |
+  # Security Protocol
+
+  This directive defines the security standards and practices that must be followed.
+
+  ## Input Validation
+
+  All external inputs must be validated:
+  - Sanitize user inputs to prevent injection attacks
+  - Validate data types, ranges, and formats
+  - Use parameterized queries for database operations
+  - Never trust client-side validation alone
+
+  ## Authentication & Authorization
+
+  Implement proper access controls:
+  - Use strong authentication mechanisms
+  - Implement principle of least privilege
+  - Validate permissions at every access point
+  - Use secure session management
+
+  ## Data Protection
+
+  Protect sensitive data:
+  - Encrypt sensitive data at rest and in transit
+  - Never log sensitive information (passwords, API keys)
+  - Use secure random generators for tokens
+  - Implement proper key management
+references:
+  - description: 'OWASP Top 10 security risks'
+    source: 'https://owasp.org/www-project-top-ten/'

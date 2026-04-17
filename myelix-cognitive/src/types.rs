@@ -67,6 +67,14 @@ pub struct Persona {
     /// Skill modules (same structure as heuristics).
     #[serde(default)]
     pub skills: Vec<String>,
+    /// Max context tokens for planning phases.
+    /// When set, the Weaver truncates retrieved context and history
+    /// to fit within this budget. System prompt is never truncated.
+    #[serde(default)]
+    pub planning_context_limit: Option<u32>,
+    /// Max context tokens for execution phases.
+    #[serde(default)]
+    pub execution_context_limit: Option<u32>,
 }
 
 /// Reference to a heuristic module and specific facets to load.

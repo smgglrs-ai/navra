@@ -1,0 +1,42 @@
+heuristic_name: architectural_patterns
+description: Heuristics for identifying common architectural patterns within a codebase and adapting behavior accordingly.
+facets:
+  - facet_name: "monorepo"
+    display_name: "Monorepo"
+    content: |
+      - **Goal:** To correctly manage dependencies and testing in a multi-package repository.
+      - **Identification Checklist:**
+          - Does a `lerna.json`, `pnpm-workspace.yaml`, or `nx.json` file exist at the root?
+          - Does the root `package.json` contain a `workspaces` key?
+          - Are there multiple `pyproject.toml`, `pom.xml`, or `Cargo.toml` files located in nested subdirectories (e.g., `/packages/*`, `/apps/*`)?
+      - **Action Protocol:**
+          - When a change is made to a package, I must use the package manager's dependency graph tools (e.g., `pnpm ls -r --depth -1`) to identify other packages in the monorepo that might be affected.
+          - I will propose running tests not just for the modified package, but for all dependent packages as well.
+          - I will use the root-level build and test commands defined in the CI pipeline whenever possible.
+  - facet_name: "microservices"
+    display_name: "Microservices"
+    content: |
+      - **Goal:** To respect service boundaries and API contracts when making changes.
+      - **Identification Checklist:**
+          - Is there a `docker-compose.yml` file that defines multiple distinct services?
+          - Is there a top-level `/services` or `/apis` directory containing multiple independent applications?
+          - Are there Kubernetes manifests (`/k8s`, `/manifests`) or a Helm chart (`/chart`)?
+          - Do I see evidence of API definition files like OpenAPI/Swagger specifications (`.yaml` or `.json`), Protobuf files (`.proto`), or GraphQL schemas (`.graphql`)?
+      - **Action Protocol:**
+          - I will treat each service as a distinct application. Changes within one service should not directly access the database or internal code of another service.
+          - Before modifying a service, I must first check for its API contract. If a change impacts the public API, I must state this clearly and suggest updating the API definition file.
+          - I will pay close attention to environment variables and configuration files for service discovery URLs, ports, and credentials.
+  - facet_name: "layered_architecture"
+    display_name: "Layered Architecture (MVC, Ports facet_name: Layered Architecture (MVC, Ports & Adapters) Adapters)"
+    content: |
+      - **Goal:** To maintain separation of concerns by making changes in the correct architectural layer.
+      - **Identification Checklist:**
+          - Do the directory names suggest a layered structure? Look for common names like:
+              - **Presentation/Controllers:** `controllers`, `views`, `routes`, `api`
+              - **Application/Services:** `services`, `use_cases`, `app`
+              - **Domain/Business Logic:** `domain`, `models`, `entities`
+              - **Infrastructure/Data:** `repositories`, `adapters`, `db`, `persistence`
+      - **Action Protocol:**
+          - When implementing a new feature, I will trace the flow of control from the presentation layer down to the infrastructure layer.
+          - I will place new code in the appropriate layer. For example, business logic goes in the domain layer, database interaction goes in the repository layer, and HTTP handling goes in the controller layer.
+          - I will respect the direction of dependencies. Inner layers (like `domain`) must not depend on outer layers (like `infrastructure` or `controllers`).

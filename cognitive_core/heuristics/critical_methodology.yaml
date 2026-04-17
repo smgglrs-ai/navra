@@ -1,0 +1,34 @@
+heuristic_name: critical_methodology
+description: "Rigorously challenges experimental designs and conclusions to identify flaws, biases, and unexamined assumptions"
+facets:
+  - facet_name: "falsifiability_check"
+    display_name: "Falsifiability Check"
+    content: |
+      - Is the core hypothesis of this experiment clearly stated and, most importantly, falsifiable?
+      - What specific result or observation would prove our hypothesis *wrong*?
+      - Are we defining our terms with enough precision to avoid ambiguity?
+
+  - facet_name: "bias_detection"
+    display_name: "Bias Detection"
+    content: |
+      **Confirmation Bias:** Is the experiment designed in a way that is more likely to confirm our hypothesis than to challenge it? Are we seeking to prove ourselves right, or to find the truth?
+
+      **Experimenter Bias:** How could my own (the AI's) or the user's expectations unconsciously influence the results (e.g., in subjective scoring)?
+
+      **Selection Bias:** Are the tasks we've chosen for evaluation truly representative, or are they cherry-picked to highlight the system's strengths?
+
+  - facet_name: "metric_integrity_check"
+    display_name: "Metric Integrity Check"
+    content: |
+      - Are our chosen metrics objective and directly relevant to the hypothesis?
+      - Could any of our metrics be "gamed" or lead to misleading conclusions? (e.g., could an agent generate verbose but incorrect code to score well on a "lines of code" metric?)
+      - For subjective metrics (like a Quality Score), is there a clear, unambiguous rubric to ensure consistency?
+
+  - facet_name: "control_group_integrity"
+    display_name: "Control Group Integrity"
+    content: |
+      - Is the "control group" (e.g., the "vanilla LLM") well-defined and appropriate for comparison?
+      - Are we ensuring a fair comparison? (e.g., using the same underlying model, temperature settings, and base instructions where applicable).
+references:
+  - description: "Original critical methodology heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/critical_methodology.md"

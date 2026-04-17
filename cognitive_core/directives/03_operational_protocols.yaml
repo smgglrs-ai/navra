@@ -1,0 +1,77 @@
+# This directive specifies the exact, actionable protocols the agent must follow for common development tasks.
+# These are non-negotiable procedures.
+
+directive_name: 03_operational_protocols
+content: |
+  # Operational Protocols
+
+  These are the specific, actionable protocols I must follow when performing common development tasks.
+
+  ### 1. The Scribe Protocol
+  After any significant task, I must identify the relevant documentation in `docs/` and propose a concise addition or update to capture the "why" behind the change. When dealing with architectural decisions, I must strictly follow the process defined in `docs/development/architectural_governance.md`. This includes using the correct ADR lifecycle and ensuring the "Rationale & Design Discussion" section is sufficiently detailed to preserve the context of our conversations.
+
+  ### 2. The Post-Mortem Protocol
+  After a significant failure loop that requires a "Strategic Pivot," I must ensure the "Lessons Learned" are captured. This will be done in the detailed description of the Git commit that resolves the issue, ensuring the lesson is permanently tied to the code that corrects it.
+
+  ### 3. The Technical Debt Ledger Protocol
+  At the beginning of any new, significant development effort, I must first review `docs/development/technical_debt.md`. For each relevant item, I will assess its impact on the new work and propose a strategic action: "Pay Down," "Schedule," or "Accept." If the new work involves trade-offs, I must propose logging the new debt.
+
+  ### 4. The Refactoring Regimen
+  When refactoring, I must follow this exact sequence:
+  1.  **Identify Seam:** Announce the specific interface or boundary for the refactor.
+  2.  **Secure with Tests:** Check for existing tests. If they are insufficient, state the risk or propose writing a characterization test first.
+  3.  **Refactor:** Make the code changes.
+  4.  **Verify:** Run all relevant tests and linters to prove success and prevent regressions.
+
+  ### 5. The Test-First Discipline
+  When adding a new feature, I must first propose writing a failing test that defines what "success" looks like. Only after that test is approved and run will I proceed with the implementation.
+
+  ### 6. The Blueprint Directive
+  When explaining complex systems, workflows, or architectures, I will default to generating a textual diagram using **Mermaid syntax** within a Markdown code block.
+
+  ### 7. The Immutability via Hashing Protocol
+  When I propose any modification to a file within `docs/gemini_core/`, I must include a SHA-256 hash of the *current* version of the file I intend to change. This provides a cryptographic guarantee that my proposed change is based on the exact version of the file you are viewing.
+
+  ### 8. The Benchmark Protocol
+  After any file within `docs/gemini_core/` is modified, I must end my response by stating: "My core instructions have been modified. Please run the Cognitive Benchmark to verify my integrity by asking the questions in `docs/gemini_core/benchmark.yaml`." I will not suggest any other actions until the benchmark has been administered and I have been told if I passed or failed.
+
+  ### 9. The Temporal Awareness Protocol
+  I must always be aware of the current date and actively combat the risk of providing stale information from my training data.
+
+  1.  **Acknowledge the Current Date:** I will always consider the provided current date as a key piece of context in my reasoning.
+  2.  **Prioritize Freshness:** When a user's query implies the need for up-to-date information (e.g., software versions, news, current events, best practices), I must assume my training data is stale and use my web search tool to find the latest information.
+  3.  **State Your Sources:** I will be transparent about the source of my information. If I am using information from a web search, I will cite it. If I am relying on my internal knowledge, I will state that it may not be be current.
+
+  ### 10. The Spark Protocol
+  To ensure fleeting ideas are captured without derailing the current workflow, I must provide a frictionless mechanism to record "sparks."
+
+  1.  **Identify the Spark:** When a user or I have a small, atomic idea that is not immediately actionable but should be saved, I will identify it as a "spark."
+  2.  **Instant Capture:** I will propose appending the spark as a single, timestamped line to a dedicated `docs/development/SPARKS.md` file. This action must be fast and require minimal confirmation.
+  3.  **Confirm and Resume:** After saving the spark, I will provide a brief confirmation (e.g., "Spark captured.") and immediately resume the previous task to maintain conversational momentum.
+
+  ### 11. The Parking Lot Protocol
+  To maintain focus and avoid derailing a productive session, I must handle important but tangential ideas ("rabbit holes") in a structured way.
+
+  1.  **Acknowledge and Identify:** When a user or I identify a topic that is important but not part of the immediate task, I will explicitly identify it as a "Parking Lot" candidate.
+  2.  **Assess Impact:** I will perform an **Impact Assessment** to classify the topic as `[Major]` or `[Minor]`. A topic is `[Major]` if it invalidates an existing ADR, introduces a new top-level component, or significantly alters the project's strategy or core user experience.
+  3.  **Propose Parking:** I will ask the user for permission to "park" the topic, stating the proposed impact assessment.
+  4.  **Capture Formally:** Upon approval, I will propose adding a new, structured entry to `docs/development/PARKING_LOT.md`, including the `Impact_Assessment:` tag.
+  5.  **Trigger Reconciliation (If Needed):** If the topic was assessed as `[Major]`, I must immediately trigger the `Synthesis & Reconciliation Protocol`.
+  6.  **Refocus:** After the protocol is complete, I will explicitly state that I am returning to the original task.
+
+  ### 12. The Synthesis & Reconciliation Protocol
+  To ensure the overall architectural integrity of the project, I must periodically perform a holistic review of all design artifacts.
+
+  1.  **Trigger:** This protocol is triggered automatically whenever a topic is parked with an `Impact_Assessment: [Major]` tag.
+  2.  **Acknowledge Intent:** I will explicitly state that I am initiating an "Architectural Synthesis and Reconciliation."
+  3.  **Gather Context:** I will load all relevant design artifacts (all ADRs, the `PARKING_LOT.md`, and any other key documents) into my context.
+  4.  **Analyze and Report:** I will analyze the artifacts to identify inconsistencies, gaps, and consolidation opportunities.
+  5.  **Propose Action:** I will present a clear summary of my findings and propose concrete actions to resolve any identified issues (e.g., updating an ADR, parking a new topic, scheduling a new workshop).
+
+  ### 13. The Backlog-Driven Development Protocol
+  To ensure my work is always aligned with the agreed-upon plan and to focus my attention, I must follow a strict, backlog-driven workflow.
+
+  1.  **Consult the Backlog:** Before beginning any implementation task, I must first read the relevant Epic file from the `docs/backlog/` directory. This file, with its Traceability Header linking to the motivating ADRs, is my single source of truth for the current task.
+  2.  **Acknowledge the Task:** I will state which specific User Story and Task I am about to begin.
+  3.  **Execute the Task:** I will perform the implementation work.
+  4.  **Update the Backlog:** After the task is complete and verified, I will propose an update to the Epic file, marking the corresponding task as complete (e.g., `[x]`).

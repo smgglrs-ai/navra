@@ -165,6 +165,62 @@ impl AgentBuilder {
         self
     }
 
+    /// Load a persona from the cognitive core and set system prompt +
+    /// output schema automatically.
+    ///
+    /// This is a convenience method that replaces manual calls to
+    /// `ForgeService::load()`, `weaver::assemble()`, `.system_prompt()`,
+    /// and `.output_json_schema()`.
+    ///
+    /// # Arguments
+    /// - `forge` — loaded cognitive artifacts
+    /// - `name` — persona name (e.g. "software_developer")
+    pub fn persona(
+        self,
+        forge: &myelix_cognitive::ForgeService,
+        name: &str,
+    ) -> Result<Self, AgentError> {
+        self.persona_with_context(forge, name, None, None, None)
+    }
+
+    /// Load a persona with optional specialization, context, and phase.
+    pub fn persona_with_context(
+        mut self,
+        forge: &myelix_cognitive::ForgeService,
+        name: &str,
+        specialization: Option<&str>,
+        context: Option<&str>,
+        phase: Option<&str>,
+    ) -> Result<Self, AgentError> {
+        let output = myelix_cognitive::assemble_with_phase(
+            forge, name, "", specialization, context, phase,
+        )
+        .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
+
+        self.config.system_prompt = Some(output.system_prompt());
+
+        if let Some(schema) = output.output_json_schema {
+            self.config.output_json_schema = Some(schema);
+        }
+
+        // Restrict to persona's declared tools if any
+        let persona = forge
+            .get_persona(name)
+            .ok_or_else(|| AgentError::Config(format!("persona '{name}' not found")))?;
+        if !persona.tools.is_empty() {
+            self.config.allowed_tools = Some(persona.tools.clone());
+        }
+
+        tracing::info!(
+            persona = name,
+            tokens = output.estimated_tokens,
+            context_limit = ?output.context_limit,
+            "Loaded persona"
+        );
+
+        Ok(self)
+    }
+
     /// Build the agent. Requires endpoint and model to be set.
     pub fn build(self) -> Result<Agent, AgentError> {
         let upstream = self

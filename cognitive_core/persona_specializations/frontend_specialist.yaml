@@ -1,0 +1,8 @@
+base_persona: software_developer
+description: "Specializes in React development, focusing on component design best practices, performance optimization, and accessibility standards."
+heuristics:
+  - "performance.algorithmic_complexity"
+  - "performance.resource_management"
+  - "accessibility.foundational_checks"
+tools: []
+directives: []

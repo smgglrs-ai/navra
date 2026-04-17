@@ -10,6 +10,7 @@ rust-version.workspace = true
 myelix-protocol = { path = "../myelix-protocol" }
 myelix-model = { path = "../myelix-model" }
 myelix-security = { path = "../myelix-security" }
+myelix-cognitive = { path = "../myelix-cognitive" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

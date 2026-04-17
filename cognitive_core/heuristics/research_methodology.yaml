@@ -1,0 +1,70 @@
+heuristic_name: research_methodology
+description: "Provides a formal process for conducting research, assessing novelty, and classifying the nature of a design task"
+facets:
+  - facet_name: "research_classification"
+    display_name: "Research Classification"
+    content: |
+      **Goal:** To classify the nature of the research task.
+
+      **Fundamental Research:**
+      - **Definition:** Aims to create a new paradigm, capability, or model that has no clear prior art. It answers the question, "Is this even possible?"
+      - **Indicators:** High risk, high potential reward, lack of established terminology, potential for patentability.
+
+      **Applied Research:**
+      - **Definition:** Aims to synthesize, integrate, or refine existing concepts to solve a specific, practical problem. It answers the question, "How can we best use what is known?"
+      - **Indicators:** Lower risk, incremental reward, focus on implementation and optimization, builds upon a foundation of existing papers and projects.
+
+  - facet_name: "literature_review_process"
+    display_name: "Literature Review Process"
+    content: |
+      **Goal:** To conduct a rigorous and auditable search for prior art.
+
+      **Process:**
+      1.  **Keyword Expansion:** Start with core concepts and expand to a wide set of related keywords and synonyms.
+      2.  **Source Prioritization:** Prioritize primary sources (e.g., arXiv, ACM, IEEE) and top-tier conference proceedings over secondary sources (e.g., blogs, articles).
+      3.  **Citation Chaining:** Follow the citation links of key papers both forwards and backwards to trace the lineage of an idea.
+      4.  **Identify State-of-the-Art:** Conclude by identifying the 1-3 key projects or papers that represent the current state-of-the-art for the problem.
+
+  - facet_name: "novelty_assessment"
+    display_name: "Novelty Assessment"
+    content: |
+      **Goal:** To formally assess the novelty of a proposed design.
+
+      **Process:**
+      1.  **Summarize the Design:** Clearly articulate the core principles of the proposed Myelix design.
+      2.  **Compare to State-of-the-Art:** Compare our design point-by-point against the identified state-of-the-art.
+      3.  **Articulate the Delta:** Conclude with a clear, defensible statement of novelty. Answer the question: "What, specifically, have we designed that is not explicitly described in the prior art?"
+  - facet_name: "experiment_lifecycle"
+    display_name: "Experiment Lifecycle"
+    content: |
+      **Goal:** To guide experiments through the formal two-stage lifecycle.
+
+      **Stage 1: Proposal**
+      - All experiments begin as proposals in `research/experiments/proposals/`.
+      - Proposals use a standardized template covering hypothesis, methodology,
+        expected outcomes, resources, and timeline.
+      - Proposals must be reviewed and approved before promotion.
+      - Use `myelix research propose <title>` to create a new proposal.
+
+      **Stage 2: Formal Experiment**
+      - Approved proposals are promoted to full experiments via
+        `myelix research promote <proposal_file>`.
+      - Each experiment gets a dedicated directory in `research/experiments/active/`
+        with the structure: `EXP-NNN-<slug>/` containing `METHODOLOGY.md`,
+        `README.md`, and subdirectories `data/`, `results/`, `analysis/`.
+      - Auto-numbered using the EXP-NNN convention (e.g., EXP-006, EXP-007).
+
+      **Discovery Commands**
+      - `myelix research list` shows all proposals and active experiments.
+      - `myelix research status <EXP-NNN>` shows experiment details.
+      - Scan `research/experiments/` to understand current research state.
+
+      **Lifecycle Guidance**
+      - Favor small, focused experiments over large multi-variable ones.
+      - Each experiment should have a single, testable hypothesis.
+      - Document negative results as thoroughly as positive ones.
+      - Link experiments to prior work using the proposal background section.
+
+references:
+  - description: "Original research_methodology heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/research_methodology.md"
