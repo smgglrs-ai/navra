@@ -1,0 +1,175 @@
+heuristic_name: python_expertise
+description: "Expert-level Python programming knowledge focusing on modern idioms and best practices"
+facets:
+  - facet_name: "modern_python_patterns"
+    display_name: "Modern Python Patterns"
+    content: |
+      **Goal:** To write clean, idiomatic Python code using modern language features.
+
+      **Python 3.13+ Features:**
+      - Type hints for all function signatures: `def func(arg: str) -> int:`
+      - Use `dataclasses` for data structures instead of dictionaries
+      - F-strings for all string formatting: `f"{variable}"`
+      - Pathlib for file operations: `Path("file.txt").read_text()`
+      - Context managers for resource management: `with open(...) as f:`
+      - List/dict comprehensions over loops when appropriate
+      - Pattern matching (match/case) for complex conditionals
+      - Walrus operator `:=` for assignment expressions when it improves readability
+
+      **Code Organization:**
+      - One class per file for major components
+      - Group related functions in modules
+      - Use `__init__.py` to expose public API
+      - Private functions/classes start with `_`
+      - Constants in UPPER_CASE at module level
+
+      **Type Hints Best Practices:**
+      ```python
+      from typing import Optional, List, Dict, Any
+      from dataclasses import dataclass
+
+      @dataclass
+      class Example:
+          name: str
+          count: int = 0
+          metadata: Optional[Dict[str, Any]] = None
+
+      def process(items: List[str]) -> Dict[str, int]:
+          ...
+      ```
+
+      **Common Patterns:**
+      - Use `enum.Enum` for fixed sets of values
+      - Use `@property` for computed attributes
+      - Use `@staticmethod` for utility functions that don't need instance state
+      - Prefer composition over inheritance
+      - Use Abstract Base Classes (ABC) for interfaces
+
+  - facet_name: "async_programming"
+    display_name: "Async Programming"
+    content: |
+      **Goal:** To correctly use async/await for non-blocking I/O operations.
+
+      **When to Use Async:**
+      - Network I/O (HTTP requests, database calls)
+      - File I/O in high-throughput scenarios
+      - Multiple concurrent operations
+      - NOT for CPU-bound tasks (use threading/multiprocessing instead)
+
+      **Core Async Patterns:**
+      ```python
+      import asyncio
+
+      async def async_function() -> str:
+          result = await other_async_function()
+          return result
+
+      # Running async code
+      asyncio.run(async_function())  # Top-level entry
+
+      # Concurrent execution
+      results = await asyncio.gather(
+          task1(), task2(), task3()
+      )
+
+      # Context managers
+      async with aiofiles.open("file.txt") as f:
+          content = await f.read()
+      ```
+
+      **Common Pitfalls to Avoid:**
+      - Don't mix sync and async: use `await` for all async calls
+      - Don't block the event loop with CPU-intensive work
+      - Don't forget to `await` async functions (they return coroutines, not values)
+      - Use `asyncio.create_task()` for fire-and-forget operations
+      - Use `async with` for async context managers
+
+      **Testing Async Code:**
+      ```python
+      import pytest
+
+      @pytest.mark.asyncio
+      async def test_async_function():
+          result = await my_async_function()
+          assert result == expected_value
+      ```
+
+      **Conversion Between Sync/Async:**
+      - To call async from sync: `asyncio.run(async_func())`
+      - To call sync from async: `await asyncio.to_thread(sync_func)` for I/O
+      - For CPU work: Use `concurrent.futures.ProcessPoolExecutor`
+
+  - facet_name: "error_handling"
+    display_name: "Error Handling"
+    content: |
+      **Goal:** To handle errors gracefully, log useful information, and fail safely.
+
+      **Exception Handling Principles:**
+      - Catch specific exceptions, not bare `except:`
+      - Handle errors at the appropriate level of abstraction
+      - Don't silence errors - log or re-raise
+      - Use custom exceptions for domain-specific errors
+      - Clean up resources in `finally` blocks or with context managers
+
+      **Exception Handling Patterns:**
+      ```python
+      # Specific exception handling
+      try:
+          result = risky_operation()
+      except ValueError as e:
+          logger.error(f"Invalid value: {e}")
+          return default_value
+      except FileNotFoundError as e:
+          logger.warning(f"File not found: {e}")
+          raise  # Re-raise if caller should handle it
+      finally:
+          cleanup_resources()
+
+      # Custom exceptions
+      class ConfigurationError(Exception):
+          """Raised when configuration is invalid."""
+          pass
+
+      # Validation with informative errors
+      if not value:
+          raise ValueError(f"Expected non-empty value, got: {value!r}")
+      ```
+
+      **Logging Best Practices:**
+      ```python
+      import logging
+
+      logger = logging.getLogger(__name__)
+
+      # Log levels
+      logger.debug("Detailed diagnostic info")
+      logger.info("Normal operation milestone")
+      logger.warning("Unexpected but handled condition")
+      logger.error("Error that requires attention")
+      logger.exception("Error with full traceback")
+
+      # Include context in log messages
+      logger.error(f"Failed to process {file_path}: {error}")
+      ```
+
+      **Defensive Programming:**
+      - Validate inputs early with clear error messages
+      - Use assertions for invariants that should never be false
+      - Provide sensible defaults where appropriate
+      - Document what exceptions functions can raise
+      - Return None or empty collections instead of raising for "not found" cases
+      - Use type hints to catch errors at development time
+
+      **Error Recovery:**
+      - For transient errors (network): implement retry logic with backoff
+      - For invalid input: raise with helpful message about what's wrong
+      - For configuration errors: fail fast at startup, not during operation
+      - For unexpected errors: log full context, then re-raise or return error state
+
+references:
+  - description: "Python 3.13 Release Notes"
+    source: "https://docs.python.org/3.13/whatsnew/3.13.html"
+  - description: "Python asyncio documentation"
+    source: "https://docs.python.org/3/library/asyncio.html"
+  - description: "Effective Python: 90 Specific Ways to Write Better Python"
+    source: "Brett Slatkin, Addison-Wesley, 2019"

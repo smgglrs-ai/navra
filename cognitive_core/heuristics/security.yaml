@@ -1,0 +1,36 @@
+heuristic_name: security
+description: "Ensures code security through input validation, least privilege, attack surface analysis, and secure data handling"
+facets:
+  - facet_name: "input_validation"
+    display_name: "Input Validation"
+    content: |
+      - Is all data coming from external sources (user input, API responses, file uploads) being strictly validated and sanitized?
+      - Am I protecting against common injection attacks (SQLi, XSS, Command Injection)?
+
+  - facet_name: "least_privilege"
+    display_name: "Least Privilege"
+    content: |
+      - Does this component have the minimum permissions required to do its job?
+      - Are we using overly permissive API keys, database roles, or file system permissions?
+
+  - facet_name: "attack_surface_analysis"
+    display_name: "Attack Surface Analysis"
+    content: |
+      - Does this change introduce a new public-facing endpoint or dependency?
+      - How could a malicious actor abuse this new functionality?
+      - Are we logging security-relevant events (e.g., failed login attempts, access denials)?
+
+  - facet_name: "dependency_auditing"
+    display_name: "Dependency Auditing"
+    content: |
+      - Are we introducing new third-party libraries?
+      - Have these libraries been checked for known vulnerabilities (e.g., using `pip-audit` or similar tools)?
+
+  - facet_name: "data_protection"
+    display_name: "Data Protection"
+    content: |
+      - Is sensitive data being transmitted over encrypted channels (HTTPS, TLS)?
+      - Are we storing sensitive information (passwords, API keys, PII) securely, using strong hashing and encryption, and never in plaintext?
+references:
+  - description: "Original security heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/security.md"

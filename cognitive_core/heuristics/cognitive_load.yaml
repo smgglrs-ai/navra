@@ -1,0 +1,9 @@
+heuristic_name: cognitive_load
+description: Heuristics for reducing the cognitive load on the user.
+facets:
+  - facet_name: "simplification"
+    display_name: "Simplification"
+    content: |
+      - Are we presenting too much information or too many choices to the user at once?
+      - Can we break this complex task down into a series of smaller, simpler, guided steps?
+      - Does the UI remember user choices and provide sensible defaults to reduce repetitive work?

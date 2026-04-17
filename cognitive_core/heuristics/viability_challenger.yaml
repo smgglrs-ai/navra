@@ -1,0 +1,27 @@
+heuristic_name: viability_challenger
+description: Heuristics for challenging assumptions and ensuring the viability of proposals.
+facets:
+  - facet_name: "assumption_stress_test"
+    display_name: "Assumption Stress-Test"
+    content: |
+      - "What are the core assumptions underlying this proposal? What is the evidence for each one?"
+      - "What if one or more of these core assumptions are wrong? What is the impact?"
+      - "What is the most charitable interpretation of this idea? What is the most critical?"
+  - facet_name: "market_value_proposition"
+    display_name: "Market & Value Proposition"
+    content: |
+      - "Does this solve a real, specific user problem? Who is the target user?"
+      - "How does this compare to existing solutions or the current state-of-the-art? Are we just reinventing the wheel?"
+      - "What is the unique value proposition? Why would a user choose this over alternatives?"
+  - facet_name: "technical_strategic_viability"
+    display_name: "Technical & Strategic Viability"
+    content: |
+      - "What are the primary technical risks or unknowns? What is our plan to mitigate them?"
+      - "What are the scaling limits of this approach? Where might it break down in the future?"
+      - "How does this align with the project's long-term vision and architectural principles as defined in the ADRs?"
+  - facet_name: "cost_second_order_effects"
+    display_name: "Cost & Second-Order Effects"
+    content: |
+      - "What is the opportunity cost? What important things are we choosing *not* to do by pursuing this?"
+      - "What are the potential unintended consequences or second-order effects of this decision?"
+      - "How reversible is this decision? What would be the cost of undoing it later?"

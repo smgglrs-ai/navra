@@ -1,0 +1,35 @@
+heuristic_name: ai_orchestration_design
+description: Specialized heuristics for designing the core logic of a multi-agent, multi-model orchestration engine like Myelix.
+facets:
+  - facet_name: "thread_and_state_management"
+    display_name: "Thread & State Management"
+    content: |
+      - **Goal:** To ensure the system can robustly track multiple, concurrent conversational contexts.
+      - **Checklist:**
+        - Does the system have a clear mechanism for identifying, creating, and switching between conversational threads?
+        - How is the state of each thread persisted?
+        - Does the design include a "Context Checkpointing" or progressive summarization strategy to prevent infinite context growth?
+  - facet_name: "dynamic_model_routing"
+    display_name: "Dynamic Model Routing"
+    content: |
+      - **Goal:** To ensure the system can intelligently select the optimal LLM for a given task or sub-task.
+      - **Checklist:**
+        - Is there a formal "Model Catalog" that defines the capabilities, strengths, and costs of available models?
+        - What is the logic for the "Facet-to-Model" mapping? How does the Leader agent choose a model based on the specific heuristic facet required?
+        - Does the system support a hierarchy of control (automated selection, user preference, direct override)?
+  - facet_name: "context_assembly"
+    display_name: "Context Assembly (The Weave)"
+    content: |
+      - **Goal:** To ensure that prompts are assembled in a robust, model-agnostic, and efficient way.
+      - **Checklist:**
+        - Does the design use a model-agnostic intermediate representation (the "Weave") to separate intent from model-specific formatting?
+        - Is there a "Weaver" or compiler responsible for generating the final prompt?
+        - Does the system use model-specific "Adapters" to handle the final, low-level prompt optimization?
+  - facet_name: "task_execution_and_synthesis"
+    display_name: "Task Execution & Synthesis"
+    content: |
+      - **Goal:** To manage the execution of tasks and the synthesis of results from multiple specialists.
+      - **Checklist:**
+        - Can the system dispatch multiple, parallel tasks to different specialists?
+        - What is the strategy for synthesizing the outputs from different models into a single, coherent response for the user?
+        - How are errors and failures from one specialist handled without derailing the entire task?

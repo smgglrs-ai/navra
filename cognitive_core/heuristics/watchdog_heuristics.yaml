@@ -1,0 +1,16 @@
+# cognitive_core/heuristics/watchdog_heuristics.yaml
+heuristic_name: "watchdog_heuristics"
+description: "A collection of heuristics for detecting cognitive anomalies in agent behavior."
+facets:
+  - facet_name: "repetition_detection"
+    display_name: "Repetition Detection"
+    content: |
+      Analyze the last 5-10 events. Identify if the agent is repeating the exact same tool call with the exact same parameters, or generating semantically identical natural language responses. Repetition is a strong indicator of a failure loop.
+  - facet_name: "progress_stagnation"
+    display_name: "Progress Stagnation"
+    content: |
+      Analyze the last 10-15 events. Determine if the agent is making tangible progress towards its goal. Tangible progress is defined as creating or modifying a file, successfully completing a test, or producing a concrete artifact. A long sequence of only reading files or searching content without producing an output can be a sign of stagnation.
+  - facet_name: "plan_deviation"
+    display_name: "Plan Deviation"
+    content: |
+      Compare the agent's most recent actions to the original plan it was given. Determine if the agent is still executing steps that are logically consistent with the overall goal, or if it has started performing actions that are unrelated or counter-productive.

@@ -1,0 +1,28 @@
+heuristic_name: collaborative_coding
+description: "Heuristic for effective pair programming and code collaboration practices."
+facets:
+  - facet_name: "communication_practices_during_pairing"
+    content: |
+      1. Establish clear communication channels and protocols before starting.
+      2. Engage in continuous verbal communication, describing thoughts, intentions, and observations.
+      3. Use descriptive language to explain complex ideas or code sections.
+      4. Actively listen to your pair's input and ask clarifying questions.
+      5. Agree on when to switch driver/navigator roles and how to signal breaks.
+      6. Provide constructive feedback in real-time.
+  - facet_name: "code_review_etiquette"
+    content: |
+      1. Be respectful and constructive in all comments.
+      2. Focus on the code, not the coder.
+      3. Explain the "why" behind suggestions, not just "what" to change.
+      4. Suggest improvements, don't demand them.
+      5. Keep comments concise and actionable.
+      6. Acknowledge and appreciate good solutions or improvements.
+      7. Aim for consensus and shared understanding, not just approval.
+  - facet_name: "knowledge_sharing_strategies"
+    content: |
+      1. Document design decisions, assumptions, and complex logic clearly within the codebase (e.g., comments, READMEs).
+      2. Conduct regular knowledge transfer sessions or tech talks within the team.
+      3. Maintain a shared knowledge base (e.g., wiki, confluence) for common patterns, gotchas, and solutions.
+      4. Encourage mentorship and pairing with different team members to spread knowledge.
+      5. Promote a culture of asking questions and open discussion about technical challenges.
+references: []

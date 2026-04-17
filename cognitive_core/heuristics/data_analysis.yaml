@@ -1,0 +1,27 @@
+heuristic_name: data_analysis
+description: Principles for analyzing and interpreting data effectively to derive meaningful insights
+facets:
+  - facet_name: "statistical_rigor"
+    display_name: "Statistical Rigor"
+    content: |
+      Apply appropriate statistical methods and verify assumptions.
+      - Choose tests suited to data distribution and sample size
+      - Check normality, independence, and homogeneity assumptions
+      - Report effect sizes and confidence intervals, not just p-values
+  - facet_name: "data_quality"
+    display_name: "Data Quality"
+    content: |
+      Validate data sources and handle missing values appropriately.
+      - Assess data completeness and representativeness
+      - Document handling of outliers and missing data
+      - Track data lineage and transformations
+  - facet_name: "visualization"
+    display_name: "Visualization"
+    content: |
+      Create clear, appropriate visualizations that tell a story.
+      - Match chart type to data and question
+      - Use appropriate scales and avoid misleading representations
+      - Include context (labels, legends, units)
+references:
+  - description: 'Classic text on visual presentation of quantitative information'
+    source: 'The Visual Display of Quantitative Information by Edward Tufte'

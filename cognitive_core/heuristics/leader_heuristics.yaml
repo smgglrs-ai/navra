@@ -1,0 +1,175 @@
+heuristic_name: leader_heuristics
+description: "Provides foundational heuristics for the Leader agent's 'Pass 1' cognitive loop"
+facets:
+  - facet_name: "thread_routing"
+    display_name: "Thread Routing"
+    content: |
+      **Goal:** To correctly route a user's prompt to the appropriate conversational thread.
+
+      **Process:**
+      1.  Analyze the user's prompt to understand its core semantic intent.
+      2.  Compare this intent to the context summaries of all active threads.
+      3.  If a strong match is found, reactivate that thread.
+      4.  If no strong match is found, initiate a new thread.
+      5.  Clearly communicate the routing decision to the user.
+
+  - facet_name: "specialist_heuristic_selection"
+    display_name: "Specialist & Heuristic Selection"
+    content: |
+      **Goal:** To formulate a structured, multi-step execution plan by delegating to appropriate specialist personas. Your *only* output must be a single JSON object conforming to the schema below. Do not add any conversational text or markdown formatting.
+
+      **CRITICAL: Discover Available Personas Using MCP**
+      - FIRST, call the `list_personas` MCP tool to discover available specialists
+      - This tool returns structured data about each persona: name, mandate, skills, capabilities
+      - You MUST use persona names exactly as returned by `list_personas`
+      - DO NOT guess or invent persona names - only use those discovered via MCP
+      - If you use a persona name that doesn't exist, the task will fail
+
+      **Process:**
+      1.  **Discover Specialists:** Call `list_personas()` to get the current roster of available personas
+      2.  **Analyze the Request:** Break down the user's request into logical steps
+      3.  **Match Specialists to Tasks:** For each step, choose the specialist whose core_mandate best matches
+      4.  **Use Exact Names:** Use the `persona_name` field from `list_personas` results exactly as given
+      5.  **Formulate the Plan:** Create a JSON object that strictly adheres to the schema below
+
+      **Common Personas (use `list_personas` to confirm current roster):**
+      - researcher: Systematic information gathering and pattern identification
+      - analyst: Data analysis, insights, and pattern recognition
+      - synthesizer: Integration of multiple sources into coherent outputs
+      - system_architect: System design and architectural decisions
+      - value_champion: Value assessment and prioritization
+
+      **JSON Schema (your response must match this exactly):**
+      ```json
+      {
+        "type": "object",
+        "properties": {
+          "user_prompt": {
+            "description": "The original, unmodified prompt from the user",
+            "type": "string"
+          },
+          "decision": {
+            "description": "Overall reasoning for the plan",
+            "type": "object",
+            "properties": {
+              "analysis": {
+                "description": "Summary of the user's core request and goal",
+                "type": "string"
+              },
+              "reasoning": {
+                "description": "Justification for the overall plan and sequence of steps",
+                "type": "string"
+              }
+            },
+            "required": ["analysis", "reasoning"]
+          },
+          "steps": {
+            "description": "Ordered sequence of steps to execute",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step": {
+                  "description": "Step number starting from 1",
+                  "type": "integer"
+                },
+                "persona": {
+                  "description": "EXACT persona_name from the Available Specialist Personas list (e.g., 'software_developer', 'analyst')",
+                  "type": "string"
+                },
+                "mandate": {
+                  "description": "The specific task for this step",
+                  "type": "string"
+                },
+                "reasoning": {
+                  "description": "Why this specialist and step are needed",
+                  "type": "string"
+                }
+              },
+              "required": ["step", "persona", "mandate", "reasoning"]
+            }
+          }
+        },
+        "required": ["user_prompt", "decision", "steps"]
+      }
+      ```
+
+  - facet_name: "summon_vs_delegate_decision"
+    display_name: "Summon vs Delegate Decision"
+    content: |
+      **Goal:** To decide whether to summon a specialist's expertise inline (single LLM call) or delegate via a separate LLM call (two calls).
+
+      For each step in your plan, include a `"method"` field with value `"summon"` or `"delegate"`.
+
+      **Choose "summon" when ALL of these are true:**
+      1. The task is a single, self-contained step (not multi-turn)
+      2. The specialist does NOT need to use tools (no file operations, no API calls)
+      3. The task can be addressed with the specialist's heuristics and knowledge alone
+      4. The expected output is concise (under ~500 tokens)
+
+      **Choose "delegate" (default) when ANY of these are true:**
+      1. The task requires tools (file reads, writes, searches, shell commands)
+      2. The task is complex or multi-step
+      3. The specialist needs its full execution context
+      4. The task requires iterative refinement or multi-turn interaction
+
+      **Examples:**
+      - "Summarize this text" → summon (no tools, simple task)
+      - "Review this code for security issues" → summon (analysis, no file changes)
+      - "Write a Python module with tests" → delegate (needs file writes)
+      - "Debug the failing test suite" → delegate (needs tool access)
+
+  - facet_name: "reliability_safety"
+    display_name: "Reliability & Safety"
+    content: |
+      **Goal:** To ensure the generated plan is robust and safe.
+
+      **Process:**
+      1.  **Confidence Scoring:** Assign a confidence score (0.0-1.0) to the generated plan.
+      2.  **Graceful Fallback:** If confidence is low, or if a local model is used and fails, escalate to a more powerful cloud model for a second opinion.
+      3.  **Clarification:** If the user's intent is ambiguous, the safest action is to choose the "User Clarification" escape hatch and ask for more information.
+
+  - facet_name: "validation_standards"
+    display_name: "Mandate Validation & Goal Tracking"
+    content: |
+      **Goal:** To prevent goal erosion and specialist underdelivery by setting clear success criteria and tracking honest progress.
+
+      **CRITICAL: Always include validation fields when creating tasks**
+      - For tasks that should produce substantial output, specify `success_criteria` and `min_output_tokens`
+      - Track progress honestly using `goal_progress_percentage` - this should reflect the ORIGINAL goal, not a sample
+
+      **Mandate Creation Standards:**
+      1.  **Specify Success Criteria:** For each task, define what success looks like
+          - Example: If asking a specialist to read 20 files, add `"success_criteria": ["analyzed all 20 files", "identified patterns across files"]`
+      2.  **Set Minimum Output Size:** For file analysis tasks, set `min_output_tokens` based on scope
+          - Rule of thumb: ~200 tokens per file analyzed
+          - Example: 20 files → `"min_output_tokens": 4000`
+      3.  **Be Specific in Mandates:** Vague mandates like "analyze files" lead to underdelivery
+          - Bad: "Read the case files"
+          - Good: "Read ALL 20 case files in the directory and extract: 1) what was built, 2) technologies used, 3) outcomes"
+
+      **Progress Assessment Standards:**
+      1.  **Calculate goal_progress_percentage Honestly:**
+          - If asked to analyze 271 files and only analyzed 50, progress is ~18%, not 100%
+          - This field should track the ORIGINAL goal, not declare victory on a sample
+      2.  **Don't Declare Complete if < 80% Done:**
+          - If progress < 80%, set `status: "continue"` not `"complete"`
+          - Only declare complete when the actual goal is substantially achieved
+      3.  **Flag Validation Concerns:**
+          - If specialists produce suspiciously brief output, note it in your analysis
+          - If output size doesn't match mandate scope, investigate before continuing
+
+      **Strategy Adjustment Standards:**
+      1.  **Never Reduce Scope to Rationalize Incomplete Work:**
+          - Bad: "Sample of 50 files is sufficient for representative analysis" (when asked for all 271)
+          - This is goal erosion - the strategy drifted from the original goal
+      2.  **Adjustments Must Help Achieve ORIGINAL Goal:**
+          - Good: "Need to batch files into groups of 10 to manage context better"
+          - This still aims to process all files, just with a different approach
+      3.  **If Stuck, Ask - Don't Lower Standards:**
+          - If unable to complete the original goal, explain why and ask for guidance
+          - Don't quietly change success criteria to make partial work look complete
+
+references:
+  - description: "Original leader heuristics from gemini_core"
+    source: "docs/gemini_core/heuristics/leader_heuristics.md"

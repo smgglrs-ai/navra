@@ -1,0 +1,9 @@
+heuristic_name: accessibility
+description: Heuristics for ensuring the application is accessible to all users.
+facets:
+  - facet_name: "foundational_checks"
+    display_name: "Foundational Checks"
+    content: |
+      - Can this interface be navigated and used with only a keyboard?
+      - Is there sufficient color contrast between text and its background?
+      - Are all interactive elements clearly labeled?

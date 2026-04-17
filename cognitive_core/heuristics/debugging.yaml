@@ -1,0 +1,193 @@
+heuristic_name: debugging
+description: "Systematic approaches to identifying, analyzing, and fixing bugs"
+facets:
+  - facet_name: "test_failure_analysis"
+    content: |
+      **Goal:** To efficiently diagnose and fix failing tests through systematic analysis.
+
+      **Step 1: Read the Failure Message**
+      - Identify WHAT failed: assertion error, exception, timeout?
+      - Note WHERE it failed: file, line number, function
+      - Understand WHY it failed: what was expected vs actual?
+
+      **Step 2: Reproduce Locally**
+      ```bash
+      # Run the specific failing test
+      pytest path/to/test_file.py::test_function_name -v
+
+      # Run with more detailed output
+      pytest path/to/test_file.py::test_function_name -vv -s
+
+      # Run with debugger on failure
+      pytest path/to/test_file.py::test_function_name --pdb
+      ```
+
+      **Step 3: Analyze the Failure**
+      - **AssertionError:** What values were compared? Are they the right values to test?
+      - **AttributeError/TypeError:** Is an object None when it shouldn't be? Wrong type?
+      - **ImportError:** Missing dependency? Circular import?
+      - **Timeout:** Infinite loop? Waiting for something that never happens?
+
+      **Step 4: Form a Hypothesis**
+      - Based on the error, what could cause this behavior?
+      - What recent changes might have introduced this?
+      - Is this a regression (was it working before)?
+
+      **Step 5: Test the Hypothesis**
+      - Add print statements or logging to verify assumptions
+      - Check the actual values at the point of failure
+      - Verify preconditions are met before the failing line
+
+      **Step 6: Fix and Verify**
+      - Implement the fix
+      - Run the failing test to confirm it passes
+      - Run the full test suite to ensure no regressions
+      - Consider if similar issues exist elsewhere
+
+      **Common Test Failure Patterns:**
+      - **Flaky tests:** Add proper async await, increase timeouts, fix race conditions
+      - **Environment-specific:** Check for hardcoded paths, missing test fixtures
+      - **Test isolation:** Ensure tests clean up after themselves, don't depend on execution order
+
+  - facet_name: "systematic_debugging"
+    content: |
+      **Goal:** To use a methodical approach to isolate and fix bugs in production code.
+
+      **The Scientific Method for Debugging:**
+      1. **Observe:** What is the unexpected behavior?
+      2. **Question:** What should be happening instead?
+      3. **Hypothesize:** What could cause this discrepancy?
+      4. **Predict:** If my hypothesis is correct, what else should be true?
+      5. **Test:** Check if the prediction holds
+      6. **Iterate:** Refine hypothesis based on results
+
+      **Debugging Techniques:**
+
+      **Binary Search Debugging:**
+      - Cut the problem space in half
+      - Add a checkpoint in the middle of the execution
+      - Determine if the bug occurs before or after the checkpoint
+      - Repeat until you find the exact line
+
+      **Delta Debugging:**
+      - Find the minimal change that causes the bug
+      - Use git bisect to find the commit that introduced it
+      - Compare working version to broken version
+
+      **Rubber Duck Debugging:**
+      - Explain the code line-by-line out loud
+      - Often reveals the logical error in your assumptions
+      - Force yourself to be explicit about what each line does
+
+      **Print Statement Debugging:**
+      ```python
+      print(f"DEBUG: variable_name = {variable_name!r}")
+      print(f"DEBUG: type = {type(variable_name)}")
+      print(f"DEBUG: at line {__file__}:{sys._getframe().f_lineno}")
+      ```
+
+      **Debugger Usage (pdb):**
+      ```python
+      import pdb; pdb.set_trace()  # Add breakpoint
+
+      # Or with better debugger
+      import ipdb; ipdb.set_trace()
+      ```
+
+      **Logging for Debugging:**
+      ```python
+      logger.debug(f"Entering function with args: {args}")
+      logger.debug(f"Intermediate result: {result}")
+      logger.debug(f"Returning: {return_value}")
+      ```
+
+      **Common Bug Patterns:**
+      - **Off-by-one:** Check loop boundaries, list indices
+      - **Null/None:** Add null checks, use Optional type hints
+      - **Race conditions:** Add proper locking, use async/await correctly
+      - **State mutation:** Check for unintended side effects
+      - **Type mismatches:** Verify types with isinstance() or type hints
+
+  - facet_name: "error_investigation"
+    content: |
+      **Goal:** To efficiently diagnose errors in production or during development.
+
+      **Reading Stack Traces:**
+      ```
+      Most recent call last:        <- Start here
+        File "a.py", line 10, in <module>
+          result = function()        <- The call that failed
+        File "b.py", line 5, in function
+          x = 1 / 0                  <- The actual error
+      ZeroDivisionError: division by zero  <- Error type and message
+      ```
+
+      **Stack Trace Analysis:**
+      1. Read from bottom up to find the actual error
+      2. Identify which part is your code vs library code
+      3. Look for the first frame in your code (often the bug location)
+      4. Check the values that led to the error
+
+      **Error Investigation Workflow:**
+
+      **Step 1: Understand the Error Type**
+      - `ValueError`: Invalid value passed to function
+      - `TypeError`: Wrong type used
+      - `AttributeError`: Accessing attribute that doesn't exist (often None)
+      - `KeyError`: Dictionary key doesn't exist
+      - `IndexError`: List index out of range
+      - `FileNotFoundError`: File doesn't exist at path
+      - `ImportError`: Module can't be imported
+      - `RuntimeError`: Generic runtime error (check message)
+
+      **Step 2: Check the Error Context**
+      - What values were involved? (print them)
+      - What was the state of the system? (check logs)
+      - Can you reproduce it consistently?
+      - Does it only happen in certain conditions?
+
+      **Step 3: Search for Known Issues**
+      - Check test output for similar failures
+      - Search codebase for similar error handling
+      - Look at recent changes that might have introduced it
+      - Check if error is mentioned in ADRs or documentation
+
+      **Step 4: Add Diagnostic Information**
+      ```python
+      try:
+          risky_operation(value)
+      except Exception as e:
+          logger.error(
+              f"Operation failed with value={value!r}, "
+              f"type={type(value)}, "
+              f"error={e!r}"
+          )
+          raise
+      ```
+
+      **Step 5: Fix and Prevent**
+      - Implement the fix
+      - Add a test that would catch this error in the future
+      - Consider if similar issues could exist elsewhere
+      - Document the issue and fix if it's non-obvious
+
+      **Performance Debugging:**
+      - Use `time.time()` for basic timing
+      - Use `cProfile` for detailed profiling
+      - Use `line_profiler` for line-by-line analysis
+      - Check for O(n²) algorithms, unnecessary loops
+      - Look for blocking I/O in async code
+
+      **Memory Debugging:**
+      - Use `tracemalloc` to find memory leaks
+      - Check for circular references
+      - Look for unbounded caches or collections
+      - Verify resources are properly cleaned up (context managers)
+
+references:
+  - description: "Why Programs Fail: A Guide to Systematic Debugging"
+    source: "Andreas Zeller, Morgan Kaufmann, 2009"
+  - description: "Python Debugging With Pdb"
+    source: "https://realpython.com/python-debugging-pdb/"
+  - description: "Pytest documentation"
+    source: "https://docs.pytest.org/"

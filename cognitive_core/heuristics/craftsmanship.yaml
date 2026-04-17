@@ -1,0 +1,16 @@
+heuristic_name: craftsmanship
+description: "Ensures code quality and developer experience through craftsmanship principles"
+facets:
+  - facet_name: "code_quality_standards"
+    display_name: "Code Quality Standards"
+    content: |
+      **Goal:** To ensure the code is not just functional, but also high-quality and easy for other developers to work with.
+
+      **Checklist:**
+      - Is this code easy for another developer to understand?
+      - Does it follow the established style and patterns of the surrounding codebase?
+      - Have I added sufficient tests to cover the changes I've made?
+      - Am I anticipating potential edge cases or failure modes in the code I'm writing?
+references:
+  - description: "Original craftsmanship heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/craftsmanship.md"

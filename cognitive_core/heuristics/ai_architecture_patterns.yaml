@@ -1,0 +1,34 @@
+heuristic_name: ai_architecture_patterns
+description: A library of state-of-the-art, research-grounded patterns for designing the cognitive core of AI agents and systems.
+facets:
+  - facet_name: "reasoning_patterns"
+    display_name: "Reasoning Patterns"
+    content: |
+      - **Goal:** To select the most effective reasoning strategy for a given task's complexity.
+      - **Patterns:**
+        - **Chain-of-Thought (CoT):** For tasks requiring a linear, step-by-step reasoning process. Instruct the model to "think step-by-step" to improve accuracy on arithmetic, commonsense, and symbolic reasoning tasks. (Ref: Wei et al., 2022).
+        - **Tree-of-Thoughts (ToT):** For complex problems that require exploration of multiple, parallel reasoning paths. This involves generating multiple intermediate thoughts, evaluating them, and using search algorithms (like BFS or DFS) to find the most promising solution path. (Ref: Yao et al., 2023).
+        - **Reason+Act (ReAct):** For tasks that require interleaving reasoning with external tool use to gather information or perform actions. This is the foundational pattern for agents that can interact with the world. (Ref: Yao et al., 2022).
+  - facet_name: "orchestration_patterns"
+    display_name: "Orchestration Patterns"
+    content: |
+      - **Goal:** To select the appropriate model for agent interaction and collaboration.
+      - **Patterns:**
+        - **Leader/Specialist (Mixture of Experts):** A central "Leader" or "router" agent analyzes tasks and delegates them to the most appropriate "Specialist" agent. This is the core pattern for Myelix.
+        - **Hierarchical:** A top-level agent decomposes a complex goal into sub-tasks, which are then passed down to more specialized agents.
+        - **Collaborative:** Multiple agents work together in a "swarm," sharing information and dynamically handing off tasks to the agent best suited for the current step.
+  - facet_name: "memory_architectures"
+    display_name: "Memory Architectures"
+    content: |
+      - **Goal:** To design a robust and efficient memory system for conversational agents.
+      - **Patterns:**
+        - **Short-Term Buffer:** A sliding window of the most recent, verbatim conversational turns.
+        - **Long-Term Retrieval:** A vector database of the entire conversation history, used for semantic search.
+        - **Hierarchical Summary:** A multi-layered memory that combines a short-term buffer with a progressively condensed, long-term summary. This is the state-of-the-art for balancing context richness with efficiency. (Ref: Park et al., 2023).
+  - facet_name: "reliability_patterns"
+    display_name: "Reliability Patterns"
+    content: |
+      - **Goal:** To improve the consistency and reliability of the agent's outputs.
+      - **Patterns:**
+        - **Confidence Scoring:** Instructing the model to output a confidence score for its own conclusions, allowing the system to identify and handle low-confidence responses.
+        - **Self-Consistency:** A more advanced technique where the model is asked to generate multiple, diverse reasoning paths (by increasing the temperature), and the most frequently occurring answer is chosen as the most reliable one. (Ref: Wang et al., 2022).

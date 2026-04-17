@@ -1490,7 +1490,45 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     {
         use myelix_core::protocol::CallToolResult;
         use myelix_model::ModelBackend;
-        // Build composite model cards from config + operator agentic metadata
+
+        // Pre-fetch Ollama model metadata for all locally running models.
+        // This populates vendor fields (family, parameters, context_window)
+        // so the lead agent can make informed model selection decisions.
+        let mut ollama_meta: std::collections::HashMap<String, serde_json::Value> =
+            std::collections::HashMap::new();
+        if let Ok(resp) = reqwest::Client::new()
+            .get("http://localhost:11434/api/tags")
+            .send()
+            .await
+        {
+            if let Ok(tags) = resp.json::<serde_json::Value>().await {
+                if let Some(models) = tags["models"].as_array() {
+                    for m in models {
+                        if let Some(name) = m["name"].as_str() {
+                            // Query /api/show for detailed model info
+                            if let Ok(show_resp) = reqwest::Client::new()
+                                .post("http://localhost:11434/api/show")
+                                .json(&serde_json::json!({"name": name}))
+                                .send()
+                                .await
+                            {
+                                if let Ok(info) = show_resp.json::<serde_json::Value>().await {
+                                    ollama_meta.insert(name.to_string(), info);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !ollama_meta.is_empty() {
+            tracing::info!(
+                models = ollama_meta.len(),
+                "Fetched Ollama model metadata for model cards"
+            );
+        }
+
+        // Build composite model cards from config + vendor metadata + operator agentic metadata
         let model_cards: Vec<team_tools::ModelCard> = cfg.models.iter().map(|(name, mcfg)| {
             // model_name overrides config key as the usable model identifier
             let display_name = mcfg.model_name.as_deref().unwrap_or(name);
@@ -1499,7 +1537,6 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
             // Populate vendor metadata from config
             card.vendor.source = Some(if mcfg.source.is_some() {
-                // Infer source type from URI scheme
                 match mcfg.source.as_deref() {
                     Some(s) if s.starts_with("ollama://") => "ollama",
                     Some(s) if s.starts_with("hf://") => "huggingface",
@@ -1518,6 +1555,84 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             };
             if let Some(runtime) = &mcfg.runtime {
                 card.vendor.runtime = Some(runtime.clone());
+            }
+
+            // Enrich with Ollama /api/show metadata if available
+            if let Some(info) = ollama_meta.get(display_name) {
+                card.vendor.source = Some("ollama".into());
+                // model_info contains parameter count, architecture, etc.
+                if let Some(model_info) = info.get("model_info") {
+                    // Extract context window from model metadata
+                    for (key, val) in model_info.as_object().into_iter().flatten() {
+                        if key.ends_with(".context_length") {
+                            if let Some(ctx) = val.as_u64() {
+                                card.vendor.context_window = Some(ctx as u32);
+                            }
+                        }
+                        if key.ends_with(".embedding_length") {
+                            if let Some(dim) = val.as_u64() {
+                                card.vendor.custom.insert(
+                                    "embedding_dim".into(),
+                                    serde_json::json!(dim),
+                                );
+                            }
+                        }
+                    }
+                    // Parameter count from general.parameter_count
+                    if let Some(params) = model_info.get("general.parameter_count") {
+                        if let Some(p) = params.as_u64() {
+                            let label = if p >= 1_000_000_000 {
+                                format!("{}B", p / 1_000_000_000)
+                            } else if p >= 1_000_000 {
+                                format!("{}M", p / 1_000_000)
+                            } else {
+                                format!("{p}")
+                            };
+                            card.vendor.parameters = Some(label);
+                        }
+                    }
+                    // Architecture / family
+                    if let Some(arch) = model_info.get("general.architecture") {
+                        if let Some(a) = arch.as_str() {
+                            card.vendor.family = Some(a.to_string());
+                        }
+                    }
+                }
+                // Quantization from details
+                if let Some(details) = info.get("details") {
+                    if let Some(quant) = details.get("quantization_level") {
+                        if let Some(q) = quant.as_str() {
+                            card.vendor.quantization = Some(q.to_string());
+                        }
+                    }
+                    if let Some(family) = details.get("family") {
+                        if card.vendor.family.is_none() {
+                            card.vendor.family = family.as_str().map(|s| s.to_string());
+                        }
+                    }
+                }
+                // License from license field
+                if let Some(license) = info.get("license") {
+                    if let Some(l) = license.as_str() {
+                        // Take first line as the license identifier
+                        card.vendor.license = l.lines().next().map(|s| s.to_string());
+                    }
+                }
+                card.vendor.format = Some("gguf".into());
+            }
+
+            // Detect Claude/Anthropic models
+            if display_name.starts_with("claude") {
+                card.vendor.source = Some("anthropic".into());
+                card.vendor.family = Some("claude".into());
+                // Extract parameter hint from model name (e.g. "sonnet", "opus")
+                if display_name.contains("sonnet") {
+                    card.vendor.parameters = Some("medium".into());
+                } else if display_name.contains("opus") {
+                    card.vendor.parameters = Some("large".into());
+                } else if display_name.contains("haiku") {
+                    card.vendor.parameters = Some("small".into());
+                }
             }
 
             // Merge operator-defined agentic metadata from config
@@ -1674,6 +1789,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         }
                         tracing::info!(teammate = %bg_to, model = %teammate_model, "Resolved 'auto' model");
                     }
+
+                    eprintln!("  [teammate] {} → model: {}", bg_to, teammate_model);
 
                     let is_claude = teammate_model.starts_with("claude");
 
@@ -3136,28 +3253,23 @@ async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files
     // Write mcpd config for the demo
     let demo_config_path = "/tmp/mcpd-demo/agent-config.toml";
     std::fs::create_dir_all("/tmp/mcpd-demo")?;
-    // Detect available models for the demo config
+    // Detect available models for the demo config.
+    // Only register model names — no hardcoded agentic metadata.
+    // The lead agent reads model cards via models_list and makes
+    // its own selection decisions. Operators add [models.*.agentic]
+    // in config.toml for their deployment.
     let mut model_sections = String::new();
 
-    // Check for Claude via Vertex AI or API key
+    // Register the lead's own model
     if model_name.starts_with("claude") {
         let model_key = model_name.replace([':', '-', '.', '@'], "_");
-        model_sections.push_str(&format!(r#"
-[models.{model_key}]
-task = "chat"
-model_name = "{model_name}"
-
-[models.{model_key}.agentic]
-strengths = ["complex reasoning", "multi-step planning", "tool use", "code analysis"]
-weaknesses = ["high cost", "rate limits"]
-recommended_tasks = ["security audit", "architecture review", "planning", "code review"]
-tool_use = "advanced"
-cost_tier = "high"
-speed_tier = "medium"
-"#, model_key = model_key));
+        model_sections.push_str(&format!(
+            "\n[models.{model_key}]\ntask = \"chat\"\nmodel_name = \"{model_name}\"\n",
+            model_key = model_key, model_name = model_name,
+        ));
     }
 
-    // Check for Ollama models
+    // Register all locally available Ollama models
     if let Ok(resp) = reqwest::Client::new()
         .get("http://localhost:11434/api/tags")
         .send()
@@ -3168,57 +3280,9 @@ speed_tier = "medium"
                 for m in models {
                     if let Some(name) = m["name"].as_str() {
                         let model_key = name.replace([':', '-', '.', '/'], "_");
-                        let name_lower = name.to_lowercase();
-
-                        let (strengths, weaknesses, recommended, avoid, tool_use, speed) =
-                            if name_lower.contains("granite") {
-                                (
-                                    r#"["code generation", "fast inference", "IBM licensed"]"#,
-                                    r#"["limited reasoning depth", "may miss subtle issues"]"#,
-                                    r#"["code review", "simple analysis", "pattern matching"]"#,
-                                    r#"["multi-step planning", "complex synthesis"]"#,
-                                    "basic", "fast",
-                                )
-                            } else if name_lower.contains("qwen") {
-                                (
-                                    r#"["multilingual", "code generation", "good reasoning"]"#,
-                                    r#"["may hallucinate on unfamiliar patterns"]"#,
-                                    r#"["code review", "analysis", "security audit"]"#,
-                                    r#"["highly specialized domain tasks"]"#,
-                                    "basic", "medium",
-                                )
-                            } else {
-                                (
-                                    r#"["general purpose"]"#,
-                                    r#"["unknown capabilities"]"#,
-                                    r#"["general tasks"]"#,
-                                    r#"[]"#,
-                                    "basic", "medium",
-                                )
-                            };
-
-                        model_sections.push_str(&format!(r#"
-[models.{model_key}]
-task = "chat"
-model_name = "{name}"
-
-[models.{model_key}.agentic]
-strengths = {strengths}
-weaknesses = {weaknesses}
-recommended_tasks = {recommended}
-avoid_tasks = {avoid}
-tool_use = "{tool_use}"
-cost_tier = "free"
-speed_tier = "{speed}"
-"#,
-                            model_key = model_key,
-                            name = name,
-                            strengths = strengths,
-                            weaknesses = weaknesses,
-                            recommended = recommended,
-                            avoid = avoid,
-                            tool_use = tool_use,
-                            speed = speed,
+                        model_sections.push_str(&format!(
+                            "\n[models.{model_key}]\ntask = \"chat\"\nmodel_name = \"{name}\"\n",
+                            model_key = model_key, name = name,
                         ));
                     }
                 }
@@ -3257,7 +3321,7 @@ safety = "standard"
     let mut mcpd_child = tokio::process::Command::new(&mcpd_bin)
         .args(["serve", "--config", demo_config_path, "--no-tray"])
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
         .env("ORT_LIB_PATH", std::env::var("ORT_LIB_PATH").unwrap_or_default())
         .env("ORT_PREFER_DYNAMIC_LINK", "1")
         .spawn()

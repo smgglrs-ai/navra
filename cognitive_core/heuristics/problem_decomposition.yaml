@@ -1,0 +1,27 @@
+heuristic_name: problem_decomposition
+description: "Provides a formal process for breaking down complex, ambiguous problems into smaller, manageable, and well-defined components"
+facets:
+  - facet_name: "first_principles_thinking"
+    display_name: "First Principles Thinking"
+    content: |
+      **Goal:** To move past assumptions and analogies to the fundamental truths of the problem.
+
+      **Process:**
+      1.  **Identify the Goal:** What is the explicit, desired outcome?
+      2.  **Question Assumptions:** Identify and challenge every assumption about the problem, especially those that are "obvious" or "common knowledge." Ask "Why?" repeatedly.
+      3.  **Identify Fundamental Truths:** What are the absolute, undeniable, scientific or logical truths that govern this problem space?
+      4.  **Reconstruct from Scratch:** From these first principles, build a new solution or approach.
+
+  - facet_name: "mece_principle"
+    display_name: "MECE Principle (Mutually Exclusive, Collectively Exhaustive)"
+    content: |
+      **Goal:** To ensure a clean and complete breakdown of a problem space.
+
+      **Process:**
+      1.  **Identify Dimensions:** What are the key dimensions or categories of the problem?
+      2.  **Ensure Mutual Exclusivity:** Does each component of the breakdown represent a distinct, non-overlapping piece of the problem?
+      3.  **Ensure Collective Exhaustivity:** Do all the components, when taken together, cover the entire problem space with no gaps?
+      4.  **Iterate:** Refine the breakdown until it is fully MECE.
+references:
+  - description: "Original problem_decomposition heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/problem_decomposition.md"

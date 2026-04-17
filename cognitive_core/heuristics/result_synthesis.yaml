@@ -1,0 +1,84 @@
+heuristic_name: result_synthesis
+description: "Heuristics for integrating and synthesizing results from multiple specialist agents into coherent, unified outcomes"
+
+facets:
+  - facet_name: integration_strategies
+    display_name: "Integration Strategies"
+    content: |
+      **Result Integration Approaches:**
+
+      1. **Layered Integration**: Build upon foundational results
+         - Architecture → Implementation → Documentation
+         - Research → Analysis → Recommendations
+         - Design → Security Review → Final Specification
+
+      2. **Parallel Synthesis**: Combine concurrent work streams
+         - Merge independent components into unified system
+         - Reconcile different perspectives on same problem
+         - Create comprehensive solutions from partial results
+
+      3. **Cross-Validation**: Use specialist results to validate each other
+         - Security review validates implementation
+         - Documentation confirms design clarity
+         - Testing validates implementation quality
+
+      4. **Gap Analysis**: Identify missing pieces or conflicts
+         - What essential elements are missing?
+         - Where do specialist results conflict?
+         - What additional work is needed for completeness?
+
+  - facet_name: quality_assurance
+    display_name: "Quality Assurance"
+    content: |
+      **Quality Validation Framework:**
+
+      1. **Completeness Check**:
+         - Do results address all aspects of the original request?
+         - Are there any obvious gaps or omissions?
+         - Have all deliverables been produced as planned?
+
+      2. **Consistency Validation**:
+         - Are specialist results consistent with each other?
+         - Do technical decisions align across specialists?
+         - Are there conflicting recommendations?
+
+      3. **Integration Feasibility**:
+         - Can the specialist results actually be combined?
+         - Are there technical or logical conflicts?
+         - Is the integrated solution practical?
+
+      4. **User Value Assessment**:
+         - Does the integrated result meet user needs?
+         - Is it actionable and useful?
+         - Does it provide clear next steps?
+
+  - facet_name: coherence_validation
+    display_name: "Coherence Validation"
+    content: |
+      **Coherence and Unity Standards:**
+
+      1. **Narrative Flow**: Create logical progression
+         - Results should tell a coherent story
+         - Each element should build upon previous ones
+         - Transitions between specialist results should be smooth
+
+      2. **Technical Consistency**: Ensure technical harmony
+         - Technical decisions should be aligned
+         - Implementation approaches should be compatible
+         - Standards and conventions should be consistent
+
+      3. **Communication Clarity**: Present unified perspective
+         - Use consistent terminology and concepts
+         - Avoid conflicting or confusing messages
+         - Present integrated recommendations clearly
+
+      4. **Actionability**: Ensure practical utility
+         - User should understand what to do next
+         - Implementation steps should be clear
+         - Resources and dependencies should be identified
+
+references:
+  - description: "ADR-056: Hierarchical Agent Orchestration"
+    source: "docs/architecture/decisions/ADR-056-Hierarchical-Agent-Orchestration.md"
+  - description: "Systems Thinking principles"
+    source: "General systems theory and integration methodologies"

@@ -1,0 +1,9 @@
+heuristic_name: clarity
+description: Heuristics for ensuring the user interface is clear and intuitive.
+facets:
+  - facet_name: "intuitiveness"
+    display_name: "Intuitiveness"
+    content: |
+      - Is the purpose of each UI element (button, input field, table) immediately obvious?
+      - Is the language used in the UI free of technical jargon and easy for a non-expert to understand?
+      - Is the next logical step in a workflow clear to a user who has never seen this interface before?

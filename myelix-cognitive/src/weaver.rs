@@ -2,7 +2,12 @@
 //!
 //! The output is split into a cacheable prefix (stable within a session)
 //! and dynamic context (changes per invocation) to support prompt caching.
+//!
+//! When a context budget is provided, the Weaver truncates retrieved
+//! context to fit within the budget. The system prompt (cacheable prefix)
+//! is never truncated — it defines agent identity.
 
+use crate::budget::{self, ContextBudget};
 use crate::error::CognitiveError;
 use crate::forge::ForgeService;
 use crate::types::Persona;
@@ -25,6 +30,10 @@ pub struct WeaverOutput {
     /// Inline JSON schema for structured output enforcement.
     /// When set, the model request should use ResponseFormat::JsonSchema.
     pub output_json_schema: Option<serde_json::Value>,
+    /// Estimated token count for the full system prompt.
+    pub estimated_tokens: u32,
+    /// Context limit from the persona (if set).
+    pub context_limit: Option<u32>,
 }
 
 impl WeaverOutput {
@@ -38,6 +47,12 @@ impl WeaverOutput {
             parts.push(self.cacheable_prefix.as_str());
         }
         parts.join("\n\n")
+    }
+
+    /// Tokens remaining for conversation history and model output,
+    /// given a total context window size.
+    pub fn remaining_tokens(&self, context_window: u32) -> u32 {
+        context_window.saturating_sub(self.estimated_tokens)
     }
 }
 
@@ -56,6 +71,21 @@ pub fn assemble(
     specialization: Option<&str>,
     context: Option<&str>,
 ) -> Result<WeaverOutput, CognitiveError> {
+    assemble_with_phase(forge, persona_name, user_prompt, specialization, context, None)
+}
+
+/// Assemble with an explicit phase for context limit selection.
+///
+/// When `phase` is `Some("planning")` or `Some("execution")`, the
+/// persona's per-phase context limit is used to budget retrieved context.
+pub fn assemble_with_phase(
+    forge: &ForgeService,
+    persona_name: &str,
+    user_prompt: &str,
+    specialization: Option<&str>,
+    context: Option<&str>,
+    phase: Option<&str>,
+) -> Result<WeaverOutput, CognitiveError> {
     let persona = if let Some(spec_name) = specialization {
         forge.get_persona_specialized(persona_name, spec_name)?
     } else {
@@ -65,10 +95,46 @@ pub fn assemble(
             .clone()
     };
 
-    let dynamic_context = build_dynamic_context(context);
     let cacheable_prefix = build_cacheable_prefix(forge, &persona);
     let output_schema = persona.output_schema.clone();
     let output_json_schema = persona.output_json_schema.clone();
+
+    // Select context limit based on phase
+    let context_limit = match phase {
+        Some("planning") => persona.planning_context_limit,
+        Some("execution") => persona.execution_context_limit,
+        _ => persona.planning_context_limit.or(persona.execution_context_limit),
+    };
+
+    // Budget-aware context truncation
+    let dynamic_context = if let (Some(limit), Some(ctx)) = (context_limit, context) {
+        let mut budget = ContextBudget::new(limit);
+        budget.set_system_prompt(&cacheable_prefix);
+        let (_, context_budget) = budget.split();
+
+        let raw_context = build_dynamic_context(Some(ctx));
+        if budget::estimate_tokens(&raw_context) > context_budget {
+            tracing::info!(
+                persona = persona_name,
+                limit = limit,
+                context_tokens = budget::estimate_tokens(&raw_context),
+                context_budget = context_budget,
+                "Truncating retrieved context to fit budget"
+            );
+            budget::truncate_to_budget(&raw_context, context_budget)
+        } else {
+            raw_context
+        }
+    } else {
+        build_dynamic_context(context)
+    };
+
+    let full_prompt = if dynamic_context.is_empty() {
+        cacheable_prefix.clone()
+    } else {
+        format!("{dynamic_context}\n\n{cacheable_prefix}")
+    };
+    let estimated_tokens = budget::estimate_tokens(&full_prompt);
 
     Ok(WeaverOutput {
         cacheable_prefix,
@@ -76,6 +142,8 @@ pub fn assemble(
         user_prompt: format!("## My Current Request:\n{user_prompt}"),
         output_schema,
         output_json_schema,
+        estimated_tokens,
+        context_limit,
     })
 }
 

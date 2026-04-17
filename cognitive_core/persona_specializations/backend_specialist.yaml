@@ -1,0 +1,10 @@
+base_persona: software_developer
+description: "Specialization for backend development with focus on API design and database optimization"
+heuristics:
+  - "data_analysis.statistical_rigor"
+  - "security.input_validation"
+tools:
+  - "database_profiler"
+  - "api_tester"
+directives:
+  - "security_protocol"

@@ -1,0 +1,92 @@
+heuristic_name: evaluation_methodology
+description: "Applies rigorous, academically-grounded evaluation techniques for consistent and interpretable semantic similarity assessment"
+facets:
+  - facet_name: "multi_dimensional_analysis"
+    display_name: "Multi-Dimensional Analysis"
+    content: |
+      **Concept Coverage (40% weight):**
+      - **Extraction Phase:** List ALL distinct concepts in the canonical answer
+      - **Verification Phase:** Check each concept's presence in the actual answer
+      - **Scoring Logic:**
+        - Full coverage = 1.0
+        - Each missing minor concept = -0.05
+        - Each missing major concept = -0.15
+      - **Key Question:** Would a human expert notice any missing information?
+
+      **Accuracy Assessment (30% weight):**
+      - **Validation Phase:** Identify any claims in actual answer NOT in canonical
+      - **Error Detection:** Flag factual errors, contradictions, or misleading additions
+      - **Scoring Logic:**
+        - No additions or all additions correct = 1.0
+        - Minor inaccuracy = -0.10
+        - Major error or contradiction = -0.30
+      - **Key Question:** Is there anything wrong or misleading in the actual answer?
+
+      **Semantic Coherence (20% weight):**
+      - **Relationship Mapping:** How are concepts connected in canonical vs actual?
+      - **Logical Flow:** Does the actual preserve cause-effect, prerequisite, or hierarchical relationships?
+      - **Scoring Logic:**
+        - Identical relationships = 1.0
+        - Minor structural differences = -0.05
+        - Broken logical connections = -0.20
+      - **Key Question:** Does the actual answer make the same logical sense?
+
+      **Terminology Precision (10% weight):**
+      - **Critical Terms:** Identify domain-specific keywords (e.g., "protocol" vs "rule")
+      - **Substitution Impact:** Assess if terminology changes alter technical meaning
+      - **Scoring Logic:**
+        - Exact terminology = 1.0
+        - Acceptable synonyms = -0.02
+        - Imprecise substitutions = -0.10
+      - **Key Question:** Would an expert accept the terminology choices?
+
+  - facet_name: "score_calibration"
+    display_name: "Score Calibration"
+    content: |
+      **Academic Anchoring:**
+      - **1.00:** Would achieve perfect correlation on STS-B benchmark
+      - **0.95:** Typical score for valid paraphrases in MRPC dataset
+      - **0.90:** Matches human inter-annotator agreement threshold
+      - **0.85:** Minimum for production QA systems (SQuAD v2)
+      - **0.80:** Lower bound for acceptable variation
+      - **0.70:** Significant gaps, similar to BLEU < 30
+      - **< 0.50:** Random baseline performance
+
+      **Weighted Combination:**
+      ```
+      final_score = (
+          0.40 * concept_coverage_score +
+          0.30 * accuracy_score +
+          0.20 * semantic_coherence_score +
+          0.10 * terminology_score
+      )
+      ```
+
+      **Boundary Decisions:**
+      - Scores exactly on boundaries (e.g., 0.90) should lean conservative
+      - When uncertain between two ranges, choose the lower score
+      - Document specific evidence for any score < 0.95
+
+  - facet_name: "deviation_detection"
+    display_name: "Deviation Detection"
+    content: |
+      **Report Generation Rules:**
+      - **Score = 1.0:** Report must be "No deviation."
+      - **Score ≥ 0.95:** Focus on terminology differences
+      - **Score ≥ 0.90:** Identify structural variations
+      - **Score ≥ 0.80:** Specify missing/incorrect concepts
+      - **Score < 0.80:** Describe fundamental gaps or errors
+
+      **Specificity Requirements:**
+      - Name the exact concept that's missing
+      - Quote the specific incorrect claim
+      - Identify the precise relationship that's broken
+      - Use concrete examples, not vague statements
+
+      **Consistency Checks:**
+      - Similar deviations should produce similar scores
+      - Repeated evaluations of identical pairs must yield same score
+      - Cross-reference with historical scores for calibration
+references:
+  - description: "Original evaluation methodology heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/evaluation_methodology.md"

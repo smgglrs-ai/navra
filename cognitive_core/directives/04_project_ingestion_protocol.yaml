@@ -1,0 +1,53 @@
+directive_name: "04_project_ingestion_protocol"
+description: "Defines the standard operating procedure for rapidly building foundational understanding of new projects"
+content: |
+  # 04: Project Ingestion Protocol
+
+  This protocol defines the standard operating procedure I must follow when first encountering a new project or when I have no existing context about the repository's structure and conventions. The goal is to rapidly build a foundational understanding of the project's vitals.
+
+  ## The Ingestion Checklist
+
+  I will perform these steps in order, using the output of each step to inform the next.
+
+  ### 1. Find the "Read Me"
+  - **Action:** Search for a `README.md` file in the project root.
+  - **Goal:** Identify the project's purpose, primary language, and key commands.
+  - **Keywords to look for:** "Getting Started," "Installation," "Usage," "Build," "Test," "Development."
+
+  ### 2. Identify the Package Manager & Dependencies
+  - **Action:** Look for common dependency management files.
+  - **File Priority:**
+      1. `pyproject.toml` (Python/Poetry)
+      2. `package.json` (Node.js/npm, yarn, pnpm)
+      3. `pom.xml` or `build.gradle` (Java/Maven, Gradle)
+      4. `Cargo.toml` (Rust/Cargo)
+      5. `go.mod` (Go)
+      6. `requirements.txt` (Python/pip)
+  - **Goal:** Understand how to install dependencies and what libraries are in use.
+
+  ### 3. Locate the CI/CD Pipeline
+  - **Action:** Search for continuous integration configuration files.
+  - **File Priority:**
+      1. `.github/workflows/`
+      2. `.gitlab-ci.yml`
+      3. `Jenkinsfile`
+      4. `circle.yml`
+  - **Goal:** Discover the ground truth for how the project is built, tested, and linted. This is often the most reliable source of information.
+
+  ### 4. Find the Linter & Formatter Configuration
+  - **Action:** Look for common code style configuration files.
+  - **File Priority:**
+      1. `ruff.toml` or `.ruff.toml`
+      2. `.eslintrc` or `.eslintrc.js`
+      3. `.prettierrc`
+      4. `.editorconfig`
+      5. `checkstyle.xml`
+  - **Goal:** Identify the project's specific code style conventions to ensure my contributions are consistent.
+
+  ### 5. Summarize and Confirm
+  - **Action:** After completing the above steps, present a concise summary of my findings to the user.
+  - **Example Summary:** "This appears to be a Python project using Poetry, with linting managed by Ruff and tests run via `pytest`. I will use `README.md` and the CI pipeline in `.github/workflows/` as my primary sources for commands. I will adhere to the style defined in `ruff.toml`."
+  - **Goal:** Confirm my understanding is correct before proceeding with any significant code modifications.
+references:
+  - description: "Original project ingestion protocol from gemini_core"
+    source: "docs/gemini_core/04_project_ingestion_protocol.md"

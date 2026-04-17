@@ -1,0 +1,101 @@
+heuristic_name: development_workflow
+description: "Guides the complete software development workflow from requirements to deployment"
+facets:
+  - facet_name: "test_driven_development"
+    content: |
+      **Goal:** To ensure code correctness and maintainability through rigorous test-first development.
+
+      **The TDD Cycle:**
+      1. **Red:** Write a failing test that defines desired behavior
+      2. **Green:** Write minimal code to make the test pass
+      3. **Refactor:** Improve code quality while keeping tests green
+
+      **Principles:**
+      - Write tests BEFORE implementation code
+      - Tests document expected behavior and serve as living specifications
+      - Run tests frequently (after every small change)
+      - Each test should focus on a single behavior
+      - Aim for comprehensive coverage: happy paths, edge cases, error conditions
+      - Use descriptive test names that explain what is being tested
+
+      **When fixing bugs:**
+      1. First write a test that reproduces the bug
+      2. Verify the test fails
+      3. Fix the bug
+      4. Verify the test now passes
+      5. Check that existing tests still pass
+
+  - facet_name: "iterative_development"
+    content: |
+      **Goal:** To deliver working software incrementally through small, validated steps.
+
+      **The Iteration Cycle:**
+      1. Understand the requirement or problem
+      2. Plan a small, testable increment
+      3. Implement the increment (using TDD)
+      4. Run all tests to verify nothing broke
+      5. Review and refactor if needed
+      6. Commit the working change
+      7. Repeat for next increment
+
+      **Principles:**
+      - Make small, atomic changes that can be tested independently
+      - Each iteration should leave the codebase in a working state
+      - Prefer many small commits over large, monolithic changes
+      - If stuck, break the problem into smaller pieces
+      - Validate assumptions early through running tests
+      - Don't write "TODO" code - finish what you start
+
+      **Integration with tests:**
+      - Run `pytest -m "not llm" -n auto` for fast feedback during development
+      - Run full suite `pytest` before committing significant changes
+      - Fix failures immediately - don't accumulate technical debt
+
+  - facet_name: "git_workflow"
+    content: |
+      **Goal:** To maintain clean, traceable version history and enable collaboration.
+
+      **Workflow Steps:**
+      1. **Before starting:** Check git status to understand current state
+      2. **During development:** Stage related changes together
+      3. **Before committing:** Review changes with `git diff` to verify intent
+      4. **Commit message:** Write clear, descriptive messages explaining WHY
+      5. **After committing:** Verify with `git status` that working directory is clean
+
+      **Commit Message Format:**
+      ```
+      <type>: <short summary>
+
+      <optional detailed explanation of the change and its rationale>
+
+      🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+      Co-Authored-By: Claude <noreply@anthropic.com>
+      ```
+
+      **Commit Types:**
+      - `feat:` - New feature or capability
+      - `fix:` - Bug fix
+      - `refactor:` - Code restructuring without behavior change
+      - `test:` - Adding or improving tests
+      - `docs:` - Documentation changes
+      - `chore:` - Maintenance tasks (dependencies, tooling)
+
+      **Principles:**
+      - Each commit should represent a logical, complete change
+      - Commit messages should explain WHY, not just WHAT
+      - Don't commit broken code - all tests should pass
+      - Review changes before staging to avoid committing unintended files
+      - Use `.gitignore` to avoid tracking generated files, credentials, etc.
+
+      **Safety Rules:**
+      - NEVER commit files containing secrets or credentials
+      - NEVER use `git commit --amend` unless explicitly requested
+      - NEVER force push to main/master branches
+      - Always run tests before committing
+
+references:
+  - description: "Test-Driven Development: By Example"
+    source: "Kent Beck, Addison-Wesley, 2002"
+  - description: "Git commit best practices"
+    source: "https://github.com/conventional-commits/conventionalcommits.org"

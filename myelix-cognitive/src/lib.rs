@@ -15,15 +15,17 @@
 //! println!("{}", output.system_prompt());
 //! ```
 
+pub mod budget;
 mod error;
 mod forge;
 mod types;
 mod weaver;
 
+pub use budget::{compact_history, estimate_tokens, truncate_to_budget, ContextBudget};
 pub use error::CognitiveError;
 pub use forge::ForgeService;
 pub use types::{
     Directive, Example, Facet, HeuristicModule, HeuristicRef, Persona, Reference, Scope,
     Specialization,
 };
-pub use weaver::{assemble, WeaverOutput};
+pub use weaver::{assemble, assemble_with_phase, WeaverOutput};

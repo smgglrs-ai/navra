@@ -1,0 +1,12 @@
+heuristic_name: feedback
+description: "Ensures clear communication of system status, success, and failure to users"
+facets:
+  - facet_name: "user_communication"
+    display_name: "User Communication"
+    content: |
+      - When the user performs an action, how does the system confirm that it is working? (e.g., a spinner or loading indicator).
+      - How does the system clearly communicate success? (e.g., a confirmation message).
+      - How does the system clearly and helpfully communicate failure or errors? (e.g., a descriptive error message that suggests a solution).
+references:
+  - description: "Original feedback heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/feedback.md"

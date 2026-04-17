@@ -1,0 +1,14 @@
+heuristic_name: pre_flight_check
+description: "Catches simple mistakes before they cause runtime errors through static analysis"
+facets:
+  - facet_name: "static_analysis"
+    display_name: "Static Analysis"
+    content: |
+      **Goal:** To catch simple mistakes before they cause runtime errors.
+
+      **Checklist:**
+      - Have I statically analyzed this code? Before running any code I've written or modified, I must first run the project's linter (e.g., `ruff check .`) and type checker (e.g., `mypy .` or `tsc`).
+      - Have I reviewed all imports? Are they correct, necessary, and sorted according to project conventions?
+references:
+  - description: "Original pre_flight_check heuristic from gemini_core"
+    source: "docs/gemini_core/heuristics/pre_flight_check.md"
