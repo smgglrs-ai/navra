@@ -10,11 +10,16 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
     use std::path::Path;
     use std::time::Duration;
 
-    let project_path = Path::new(project);
-    if !project_path.exists() {
-        anyhow::bail!(
-            "Demo project not found at '{}'. Run from the repo root.",
+    let project_path = std::fs::canonicalize(Path::new(project)).map_err(|e| {
+        anyhow::anyhow!(
+            "Demo project not found at '{}': {e}. Run from the repo root.",
             project
+        )
+    })?;
+    if !project_path.is_dir() {
+        anyhow::bail!(
+            "Demo project path '{}' is not a directory.",
+            project_path.display()
         );
     }
 
@@ -70,7 +75,7 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
     println!("━━━ Act 2: Cognitive Core ━━━");
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let _forge = match myelix_cognitive::ForgeService::load(project_path) {
+    let _forge = match myelix_cognitive::ForgeService::load(&project_path) {
         Ok(f) => {
             for name in f.persona_names() {
                 if let Some(persona) = f.get_persona(name) {
@@ -257,9 +262,11 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
 pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files_per_round: usize, _min_delta: u32) -> anyhow::Result<()> {
     use std::path::Path;
 
-    let project_path = Path::new(project);
-    if !project_path.exists() {
-        anyhow::bail!("Demo project not found at '{}'. Run from the repo root.", project);
+    let project_path = std::fs::canonicalize(Path::new(project)).map_err(|e| {
+        anyhow::anyhow!("Demo project not found at '{}': {e}. Run from the repo root.", project)
+    })?;
+    if !project_path.is_dir() {
+        anyhow::bail!("Demo project path '{}' is not a directory.", project_path.display());
     }
 
     println!();
@@ -376,8 +383,8 @@ pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: 
         l.local_addr()?.port()
     };
 
-    // Resolve project path to absolute for the config
-    let abs_project = std::fs::canonicalize(project_path)?;
+    // project_path is already canonicalized above
+    let abs_project = &project_path;
 
     // Write mcpd config for the demo
     let demo_config_path = "/tmp/mcpd-demo/agent-config.toml";
@@ -476,7 +483,7 @@ safety = "standard"
     // --- Step 3: Cognitive Core ---
     println!();
     println!("━━━ Act 2: Cognitive Core ━━━");
-    let forge = match myelix_cognitive::ForgeService::load(project_path) {
+    let forge = match myelix_cognitive::ForgeService::load(&project_path) {
         Ok(f) => {
             for name in f.persona_names() {
                 if let Some(persona) = f.get_persona(name) {
