@@ -1101,7 +1101,10 @@ fn collect_tree(
                     continue;
                 }
             }
-            let rel = path.strip_prefix(root).unwrap_or(&path);
+            let rel = match path.strip_prefix(root) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
             let lines = std::fs::read_to_string(&path)
                 .map(|c| c.lines().count())
                 .unwrap_or(0);
@@ -1203,7 +1206,10 @@ fn grep_recursive(
             }
             let Ok(content) = std::fs::read_to_string(&path) else { continue };
             *files_searched += 1;
-            let rel = path.strip_prefix(root).unwrap_or(&path);
+            let rel = match path.strip_prefix(root) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
             let rel_str = rel.display().to_string();
             let mut file_matched = false;
             for (line_num, line) in content.lines().enumerate() {
