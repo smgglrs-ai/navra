@@ -9,7 +9,9 @@ use serde::Deserialize;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Scope {
+    /// Visible to all agents.
     Public,
+    /// Visible only within the same organization.
     Internal,
 }
 
@@ -89,11 +91,16 @@ pub struct HeuristicRef {
 /// A few-shot example for a persona.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Example {
+    /// Short title describing the example scenario.
     pub title: String,
+    /// Example input/request.
     pub input: String,
+    /// Expected output/response.
     pub output: String,
+    /// Optional chain-of-thought reasoning.
     #[serde(default)]
     pub thought_process: Option<String>,
+    /// Optional domain tag for filtering examples.
     #[serde(default)]
     pub domain: Option<String>,
 }
@@ -160,7 +167,9 @@ pub struct Specialization {
 /// A reference to a source or justification.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Reference {
+    /// Human-readable description of the reference.
     pub description: String,
+    /// URL or identifier for the source material.
     pub source: String,
 }
 

@@ -12,9 +12,13 @@ use std::fmt;
 /// Which registry a model comes from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Registry {
+    /// Ollama model registry.
     Ollama,
+    /// HuggingFace Hub.
     HuggingFace,
+    /// OCI-compliant container registry.
     Oci,
+    /// Local file path (no pull needed).
     File,
 }
 
