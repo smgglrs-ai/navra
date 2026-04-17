@@ -232,7 +232,7 @@ impl DagExecutor {
                                 RecoveryAction::Abort => {
                                     return Err(FlowError::TaskFailed {
                                         task: task.id.clone(),
-                                        reason: attempts.last().unwrap().error.clone(),
+                                        reason: attempts.last().map(|a| a.error.clone()).unwrap_or_else(|| "unknown error".into()),
                                     });
                                 }
                                 RecoveryAction::Skip => break,

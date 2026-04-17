@@ -1332,9 +1332,7 @@ async fn handle_semantic_search(
         .and_then(|v| v.as_u64())
         .unwrap_or(5) as usize;
 
-    if let Err(result) = check_perm(&state, &ctx, "search", std::path::Path::new("/")).await {
-        return result;
-    }
+    // ACL is checked per-result below (not against "/" which is too permissive)
 
     let model = match &state.embedding_model {
         Some(m) => m,
@@ -1356,12 +1354,22 @@ async fn handle_semantic_search(
         .search_similar(&embed_response.embedding, limit)
     {
         Ok(results) => {
-            if results.is_empty() {
+            // Filter results through per-path ACL check
+            use myelix_core::permissions::PermissionResult;
+            let filtered: Vec<_> = results.iter().filter(|r| {
+                let path = std::path::Path::new(&r.path);
+                matches!(
+                    state.perm_engine.check(&ctx.agent.permissions, "search", path),
+                    PermissionResult::Allowed | PermissionResult::NeedsApproval
+                )
+            }).collect();
+
+            if filtered.is_empty() {
                 return CallToolResult::text("No similar documents found.".to_string());
             }
 
-            let mut output = format!("Found {} similar documents:\n\n", results.len());
-            for (i, result) in results.iter().enumerate() {
+            let mut output = format!("Found {} similar documents:\n\n", filtered.len());
+            for (i, result) in filtered.iter().enumerate() {
                 output.push_str(&format!(
                     "{}. {} (distance: {:.4})\n",
                     i + 1,

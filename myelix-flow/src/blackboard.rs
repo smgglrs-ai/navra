@@ -55,7 +55,7 @@ impl Blackboard {
         value: Value,
         label: DataLabel,
     ) -> Result<u64, FlowError> {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = self.entries.write().unwrap_or_else(|e| e.into_inner());
 
         let version = if let Some(existing) = entries.get(key) {
             existing.version + 1
@@ -100,7 +100,7 @@ impl Blackboard {
         key: &str,
         reader_taint: &mut TaintTracker,
     ) -> Result<BlackboardEntry, FlowError> {
-        let entries = self.entries.read().unwrap();
+        let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
         let entry = entries
             .get(key)
             .ok_or_else(|| FlowError::BlackboardKeyNotFound(key.to_string()))?;
@@ -117,7 +117,7 @@ impl Blackboard {
         key: &str,
         reader_taint: &mut TaintTracker,
     ) -> Option<BlackboardEntry> {
-        let entries = self.entries.read().unwrap();
+        let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
         entries.get(key).map(|entry| {
             reader_taint.absorb(entry.label);
             entry.clone()
@@ -126,25 +126,25 @@ impl Blackboard {
 
     /// Returns all key names. No taint propagation (just metadata).
     pub fn keys(&self) -> Vec<String> {
-        let entries = self.entries.read().unwrap();
+        let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
         entries.keys().cloned().collect()
     }
 
     /// Clones all entries for orchestrator inspection.
     pub fn snapshot(&self) -> HashMap<String, BlackboardEntry> {
-        let entries = self.entries.read().unwrap();
+        let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
         entries.clone()
     }
 
     /// Returns the number of entries.
     pub fn len(&self) -> usize {
-        let entries = self.entries.read().unwrap();
+        let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
         entries.len()
     }
 
     /// Returns true if the blackboard is empty.
     pub fn is_empty(&self) -> bool {
-        let entries = self.entries.read().unwrap();
+        let entries = self.entries.read().unwrap_or_else(|e| e.into_inner());
         entries.is_empty()
     }
 }

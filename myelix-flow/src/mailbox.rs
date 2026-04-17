@@ -100,7 +100,7 @@ impl MailboxRegistry {
             .try_send(msg.clone())
             .map_err(|_| FlowError::MailboxFull(target.agent_id.clone()))?;
 
-        let mut log = self.audit_log.lock().expect("audit log poisoned");
+        let mut log = self.audit_log.lock().unwrap_or_else(|e| e.into_inner());
         log.push(msg);
 
         Ok(())
@@ -109,7 +109,7 @@ impl MailboxRegistry {
     /// Non-blocking receive of the next pending message for an agent.
     pub fn recv(&self, agent_id: &str) -> Option<MailboxMessage> {
         let mailbox = self.mailboxes.get(agent_id)?;
-        let mut rx = mailbox.rx.lock().expect("mailbox rx poisoned");
+        let mut rx = mailbox.rx.lock().unwrap_or_else(|e| e.into_inner());
         rx.try_recv().ok()
     }
 
@@ -118,7 +118,7 @@ impl MailboxRegistry {
         let Some(mailbox) = self.mailboxes.get(agent_id) else {
             return Vec::new();
         };
-        let mut rx = mailbox.rx.lock().expect("mailbox rx poisoned");
+        let mut rx = mailbox.rx.lock().unwrap_or_else(|e| e.into_inner());
         let mut msgs = Vec::new();
         while let Ok(msg) = rx.try_recv() {
             msgs.push(msg);
@@ -135,7 +135,7 @@ impl MailboxRegistry {
 
     /// Clone the audit log for inspection.
     pub fn audit_log(&self) -> Vec<MailboxMessage> {
-        let log = self.audit_log.lock().expect("audit log poisoned");
+        let log = self.audit_log.lock().unwrap_or_else(|e| e.into_inner());
         log.clone()
     }
 }

@@ -55,12 +55,12 @@ impl HookPipeline {
             )
             .await
             .unwrap_or_else(|_| {
-                tracing::warn!(
+                tracing::error!(
                     hook = hook.name(),
                     tool = tool_name,
-                    "Pre-hook timed out, continuing"
+                    "Pre-hook timed out — blocking (fail-closed)"
                 );
-                HookDecision::Continue
+                HookDecision::Block("hook timed out: security check failed".into())
             });
 
             match decision {
@@ -111,12 +111,12 @@ impl HookPipeline {
             )
             .await
             .unwrap_or_else(|_| {
-                tracing::warn!(
+                tracing::error!(
                     hook = hook.name(),
                     tool = tool_name,
-                    "Post-hook timed out, continuing"
+                    "Post-hook timed out — blocking (fail-closed)"
                 );
-                HookDecision::Continue
+                HookDecision::Block("hook timed out: security check failed".into())
             });
 
             match decision {
@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn timeout_continues_on_slow_hook() {
+    async fn timeout_blocks_on_slow_hook() {
         let mut pipeline = HookPipeline::new(Duration::from_millis(50));
         pipeline.add(SlowHook);
 
@@ -371,7 +371,7 @@ mod tests {
             .run_pre("echo", serde_json::json!({}), &test_ctx())
             .await;
 
-        // Slow hook times out, pipeline continues (returns Ok)
-        assert!(result.is_ok());
+        // Slow hook times out — fail-closed (blocks the tool call)
+        assert!(result.is_err());
     }
 }

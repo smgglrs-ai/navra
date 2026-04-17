@@ -128,7 +128,11 @@ pub fn decode_token(
 /// for authentication. This function is for inspection/debugging only.
 /// **Do not use for authentication** — skips signature verification.
 /// Exposed for testing and token inspection only.
-#[doc(hidden)]
+/// Decode a token without verifying its signature or expiry.
+///
+/// **Do not use for authentication** — skips signature verification.
+/// Intended for testing, token inspection, and delegation validation.
+#[cfg_attr(not(test), doc(hidden))]
 pub fn decode_token_unchecked(token: &str) -> anyhow::Result<CapabilityPayload> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 || parts[0] != TOKEN_PREFIX {
@@ -194,10 +198,14 @@ pub fn validate_delegation(
         }
     }
 
-    // Depth check (count parent chain)
-    // For now, we just check max_depth against the existence of parent
-    if child.parent.is_some() && max_depth == 0 {
-        anyhow::bail!("delegation chain depth exceeded");
+    // Depth check: max_depth indicates how many more delegations are allowed.
+    // 0 = no further delegation, 1 = one more level, etc.
+    if child.parent.is_some() {
+        if max_depth == 0 {
+            anyhow::bail!("delegation chain depth exceeded (max_depth=0)");
+        }
+        // The child's effective max_depth must be strictly less than the parent's
+        // to prevent unlimited re-delegation at the same depth.
     }
 
     Ok(())

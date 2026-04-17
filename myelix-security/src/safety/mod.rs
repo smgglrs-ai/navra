@@ -102,16 +102,16 @@ impl FilterPipeline {
 
     /// Filter inbound content (agent → tool write operations).
     ///
-    /// Runs only model filters (not regex secret/PII filters, which
-    /// are irrelevant for content an agent is writing). Used for
-    /// write, edit, and voice.speak operations.
+    /// Runs the full pipeline (regex + model filters). Regex filters
+    /// catch injection patterns and prompt injection in agent-written
+    /// content. Used for write, edit, and voice.speak operations.
     /// Returns `Ok(content)` or `Err(reason)` if blocked.
     pub async fn process_inbound(
         &self,
         content: &str,
         ctx: &FilterContext<'_>,
     ) -> Result<String, String> {
-        self.run_pipeline(content, ctx, false).await
+        self.run_pipeline(content, ctx, true).await
     }
 
     /// Backward-compatible sync process (for callers that don't have
@@ -398,14 +398,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_inbound_skips_regex() {
-        // Inbound filtering skips regex (sync) filters — only model filters run
+    async fn process_inbound_catches_secrets() {
+        // Inbound filtering now runs the full pipeline (regex + model filters)
         let mut pipeline = FilterPipeline::new(FilterAction::Block);
         pipeline.add_filter(SecretFilter::new());
-        // No model filters, so inbound should pass even with a secret
         let result = pipeline
             .process_inbound("key = AKIAIOSFODNN7EXAMPLE", &ctx())
             .await;
-        assert!(result.is_ok());
+        // Secret should be caught and blocked
+        assert!(result.is_err());
     }
 }
