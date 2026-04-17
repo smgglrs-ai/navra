@@ -1643,7 +1643,28 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 let bg_message = message.clone();
                 let bg_mcpd_addr = mcpd_addr.clone();
                 let bg_signer = Arc::clone(&signer);
-                tokio::spawn(async move {
+
+                // Get the team's timeout for the deadline
+                let timeout_secs = {
+                    let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                    teams.get(&team_id)
+                        .map(|t| {
+                            let elapsed = t.created_at.elapsed().as_secs();
+                            let budget = t.budget.timeout_secs;
+                            if elapsed >= budget { 0 } else { budget - elapsed }
+                        })
+                        .unwrap_or(600)
+                };
+
+                let handle_reg = Arc::clone(&reg);
+                let handle_team_id = team_id.clone();
+                let handle_to = to.clone();
+                let handle = tokio::spawn(async move {
+                    let deadline = std::time::Duration::from_secs(timeout_secs);
+                    let timeout_team_id = bg_team_id.clone();
+                    let timeout_to = bg_to.clone();
+                    let timeout_reg = bg_reg.clone();
+                    let result = tokio::time::timeout(deadline, async move {
                     tracing::info!(team = %bg_team_id, to = %bg_to, "Teammate agent starting (full MCP agent)");
 
                     let mcp_url = format!("http://{bg_mcpd_addr}/mcp");
@@ -1843,7 +1864,16 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             bg_reg.set_failed(&bg_team_id, &bg_to, format!("Agent error: {e}"));
                         }
                     }
+                    }).await; // end of timeout future
+
+                    if result.is_err() {
+                        tracing::warn!(team = %timeout_team_id, to = %timeout_to, "Teammate timed out after {timeout_secs}s");
+                        timeout_reg.set_failed(&timeout_team_id, &timeout_to, format!("Timed out after {timeout_secs}s"));
+                    }
                 });
+
+                // Store the handle so it can be aborted on team shutdown
+                handle_reg.store_handle(&handle_team_id, &handle_to, handle);
 
                 CallToolResult::text(format!(
                     "Task sent to '{}'. Teammate is running as a full MCP agent \
