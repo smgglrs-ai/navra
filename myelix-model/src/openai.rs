@@ -405,39 +405,15 @@ impl ModelBackend for OpenAiBackend {
         let model_name = self.model.clone();
 
         Box::pin(async move {
-            let max_retries = 3u32;
-            let mut attempt = 0u32;
-            let resp = loop {
+            let resp = crate::http_common::send_with_retry(|| {
                 let try_req = self.client.post(&url).json(&body);
-                let try_req = if let Some((header, value)) = self.auth_header() {
+                if let Some((header, value)) = self.auth_header() {
                     try_req.header(header, value)
                 } else {
                     try_req
-                };
-
-                let r = try_req
-                    .send()
-                    .await
-                    .map_err(|e| ModelError::Api(format!("request failed: {e}")))?;
-
-                if r.status() == reqwest::StatusCode::TOO_MANY_REQUESTS && attempt < max_retries {
-                    let retry_after = r
-                        .headers()
-                        .get("retry-after")
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.parse::<u64>().ok());
-                    let delay = retry_after.unwrap_or(1u64 << attempt);
-                    tracing::warn!(
-                        attempt = attempt + 1,
-                        delay_secs = delay,
-                        "Rate limited (429), retrying"
-                    );
-                    tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-                    attempt += 1;
-                    continue;
                 }
-                break r;
-            };
+            })
+            .await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
