@@ -15,6 +15,7 @@ use myelix_core::protocol::{ToolDefinition, ToolInputSchema};
 use std::collections::HashMap;
 use std::sync::{atomic::{AtomicU32, Ordering}, Mutex};
 use std::time::Instant;
+use tokio::task::JoinHandle;
 
 /// A teammate in the team.
 #[derive(Debug, Clone)]
@@ -78,6 +79,8 @@ pub struct Team {
     pub blackboard: Vec<BlackboardEntry>,
     pub tokens_used: AtomicU32,
     pub created_at: Instant,
+    /// Abort handles for running teammate tasks.
+    pub task_handles: HashMap<String, JoinHandle<()>>,
 }
 
 /// Registry of active teams.
@@ -140,6 +143,7 @@ impl TeamRegistry {
             blackboard: Vec::new(),
             tokens_used: AtomicU32::new(0),
             created_at: Instant::now(),
+            task_handles: HashMap::new(),
         };
 
         self.teams
@@ -253,6 +257,33 @@ impl TeamRegistry {
             .unwrap_or_default()
     }
 
+    /// Store a task handle for a running teammate.
+    pub fn store_handle(&self, team_id: &str, teammate: &str, handle: JoinHandle<()>) {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(team) = teams.get_mut(team_id) {
+            // Abort any previous handle for this teammate
+            if let Some(old) = team.task_handles.insert(teammate.to_string(), handle) {
+                old.abort();
+            }
+        }
+    }
+
+    /// Check if the team's timeout has expired and abort all tasks if so.
+    /// Returns true if the team timed out.
+    pub fn check_timeout(&self, team_id: &str) -> bool {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(team) = teams.get_mut(team_id) {
+            if team.created_at.elapsed().as_secs() > team.budget.timeout_secs {
+                for (name, handle) in team.task_handles.drain() {
+                    tracing::warn!(team = team_id, teammate = %name, "Aborting timed-out teammate task");
+                    handle.abort();
+                }
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn set_output(&self, team_id: &str, teammate: &str, output: String) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(team) = teams.get_mut(team_id) {
@@ -333,9 +364,18 @@ impl TeamRegistry {
 
     pub fn shutdown(&self, team_id: &str) -> Result<serde_json::Value, String> {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        let team = teams
+        let mut team = teams
             .remove(team_id)
             .ok_or_else(|| format!("Unknown team: {team_id}"))?;
+
+        // Abort all running teammate tasks
+        let aborted: Vec<String> = team.task_handles.drain()
+            .map(|(name, handle)| {
+                tracing::info!(team = team_id, teammate = %name, "Aborting teammate task on shutdown");
+                handle.abort();
+                name
+            })
+            .collect();
 
         let agent_count = team.teammates.len() as u32;
         self.total_agents.fetch_sub(agent_count, Ordering::Relaxed);
@@ -344,6 +384,7 @@ impl TeamRegistry {
             "team_id": team_id,
             "name": team.name,
             "members_removed": team.teammates.keys().collect::<Vec<_>>(),
+            "tasks_aborted": aborted,
             "tokens_used": team.tokens_used.load(Ordering::Relaxed),
             "blackboard_entries": team.blackboard.len(),
             "duration_secs": team.created_at.elapsed().as_secs(),
