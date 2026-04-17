@@ -219,8 +219,11 @@ pub struct RuntimeMeta {
 /// Statistics for a specific task type.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TaskStats {
+    /// Total calls for this task type.
     pub calls: u64,
+    /// Number of successful calls.
     pub successes: u64,
+    /// Success rate (0.0 to 1.0).
     pub success_rate: f64,
 }
 

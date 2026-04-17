@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! Pull and cache AI models from OCI, HuggingFace, and Ollama registries.
 //!
 //! Models are addressed by URI:
