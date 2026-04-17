@@ -1616,9 +1616,11 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         // and can use docs_tree, docs_grep, docs_read, team_bb_publish, etc.
         let reg = Arc::clone(&team_registry);
         let msg_mcpd_addr = cfg.server.listen_addr();
+        let msg_signer = Arc::clone(&root_signer);
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let reg = Arc::clone(&reg);
             let mcpd_addr = msg_mcpd_addr.clone();
+            let signer = Arc::clone(&msg_signer);
             Box::pin(async move {
                 let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
                     Some(id) => id.to_string(), None => return CallToolResult::error("Missing team_id"),
@@ -1640,10 +1642,49 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 let bg_to = to.clone();
                 let bg_message = message.clone();
                 let bg_mcpd_addr = mcpd_addr.clone();
+                let bg_signer = Arc::clone(&signer);
                 tokio::spawn(async move {
                     tracing::info!(team = %bg_team_id, to = %bg_to, "Teammate agent starting (full MCP agent)");
 
                     let mcp_url = format!("http://{bg_mcpd_addr}/mcp");
+
+                    // Build a scoped capability token so the teammate only
+                    // has access to docs_tree, docs_grep, docs_read, and
+                    // team_bb_publish — not the full tool surface.
+                    let teammate_cap = myelix_core::auth::capability::CapabilitySet {
+                        paths: vec!["**".to_string()],
+                        operations: vec![
+                            "read".to_string(),
+                            "search".to_string(),
+                            "list".to_string(),
+                        ],
+                        tools: vec![
+                            "docs_tree".to_string(),
+                            "docs_grep".to_string(),
+                            "docs_read".to_string(),
+                            "team_bb_publish".to_string(),
+                        ],
+                        credentials: vec![],
+                    };
+                    let teammate_did = format!("did:teammate:{}:{}", bg_team_id, bg_to);
+                    let teammate_payload = myelix_core::auth::capability::build_payload(
+                        bg_signer.did(),
+                        &teammate_did,
+                        teammate_cap,
+                        2, // ring 2: less privileged than root
+                        3600,
+                    );
+                    let teammate_token = match myelix_core::auth::capability::encode_token(
+                        &teammate_payload,
+                        bg_signer.as_ref(),
+                    ) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            tracing::error!(team = %bg_team_id, to = %bg_to, error = %e, "Failed to mint teammate token");
+                            bg_reg.set_failed(&bg_team_id, &bg_to, format!("Token error: {e}"));
+                            return;
+                        }
+                    };
 
                     // Build the teammate's system prompt
                     let system_prompt = format!(
@@ -1712,13 +1753,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
                     let is_claude = teammate_model.starts_with("claude");
 
-                    // Connect teammate as a full MCP agent
+                    // Connect teammate as a scoped MCP agent
                     macro_rules! run_teammate {
                         ($backend:expr) => {{
                             let r = async {
                                 let mut agent = myelix_agent::Agent::builder()
                                     .endpoint(&mcp_url)
                                     .await?
+                                    .auth_token(&teammate_token)
                                     .model($backend)
                                     .system_prompt(&system_prompt)
                                     .max_iterations(30)
