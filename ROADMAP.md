@@ -80,14 +80,31 @@ planned crate or enhancement.
 **Goal**: Load persona/directive/heuristic YAML files, compile them
 into structured system prompts, and integrate with myelix-agent.
 
-New crate: `myelix-cognitive`
+New crate: `myelix-cognitive` (**Status**: Forge + Weaver done,
+specializations done, output schema done, per-phase model done.
+Missing: context management, token budgeting, per-phase context limits.)
 
-- YAML schema for personas (name, mandate, heuristics, skills)
-- YAML schema for directives (rules, constraints, output format)
-- YAML schema for heuristics (domain-specific reasoning patterns)
-- Forge: loader, compiler, validator, cache
-- Weaver: assemble persona + directives + heuristics + context →
-  structured system prompt (with cache-friendly prefix splitting)
+#### 1a. Context management and token budgeting (NEW)
+
+Add to the Weaver:
+
+- **Token budget allocator**: Slot-based system with priority order:
+  system prompt (fixed) > conversation history (reserved) > retrieved
+  docs (remaining). Prevents silent overflow and coherence collapse.
+- **Context compaction**: Auto-summarize old conversation turns when
+  approaching token limit (triggered at configurable threshold,
+  default 80%). Summarize tool outputs older than N calls.
+- **Per-phase context limits**: Add `planning_context_limit` and
+  `execution_context_limit` fields to Persona YAML schema, alongside
+  existing `planning_model` / `execution_model`.
+- **Extractive compression**: Query-aware sentence selection within
+  budget, returned in document order (not relevance order).
+
+Reference: Goose auto-compaction model, tech watch article on
+context layers (2026-04-17).
+
+#### 1b. Remaining cognitive items
+
 - Integration with myelix-agent: `Agent::builder().persona("analyst")`
 - Port the 40 personas, 8 directives, 36 heuristics from Python
 
@@ -96,7 +113,7 @@ agents are generic. Every other feature builds on top of personas.
 
 ### Phase 2: DAG execution & mesh communication (myelix-flow v2) ✓
 
-**Status**: Done.
+**Status**: Core done. Enhancements planned.
 
 Implemented in `myelix-flow`:
 
@@ -121,17 +138,91 @@ Implemented in `myelix-flow`:
 conflicting tasks) and true parallel execution across specialists
 (`Arc<Mutex<Agent>>` refactor).
 
+#### 2a. YAML flow definitions and shareable format (NEW)
+
+Switch flow definitions from TOML-only to YAML-primary (keep TOML
+support via file extension detection — same serde structs):
+
+- Add fields to flow/DAG definitions: `parameters` (Jinja-style
+  template variables), `output_json_schema`, `retry` policy,
+  `required_extensions` (MCP servers needed to run the flow).
+- `myelix flow import-goose <recipe.yaml>` CLI command to convert
+  Goose recipes into Myelix flow definitions (with human review).
+- YAML is consistent with cognitive core (personas/heuristics).
+
+#### 2b. Dynamic subflow spawning from tool loop (NEW)
+
+Add a `spawn_subflow` virtual tool to the agent tool loop. An agent
+inside a tool-use loop can create a single-node DAG on the fly and
+execute it as a subflow (uses existing DagExecutor, no new engine).
+This gives ad-hoc delegation without requiring static flow files.
+
+- Max depth: 1 (subflows cannot spawn sub-subflows)
+- Max concurrent: 10 (configurable)
+- Timeout: 5 minutes default
+- Isolated context (no shared conversation history)
+
 ### Phase 3: Persistent memory (myelix-memory)
 
-**Goal**: Working memory that survives sessions, backed by SQLite.
+**Goal**: Working memory that survives sessions, knowledge
+distillation pipeline, case-based reasoning. Backed by SQLite.
 
-New crate: `myelix-memory`
+New crate: `myelix-memory` (**Status**: WorkingMemory (SQLite turns)
+and KnowledgeStore (FTS5 with categories) done. Missing: session
+persistence, distillation pipeline, case extraction, memory decay.)
 
-- Working memory: key-value store scoped to agent + session
-- Long-term memory: semantic search over past interactions (RAG)
-- Case-based reasoning: index of past problem→solution pairs
+#### 3a. Session persistence (NEW — implement now)
+
+Unify session metadata with working memory in SQLite:
+
+- Add `sessions` table to existing WorkingMemory SQLite database
+  (id, agent_identity, client_info, context_label, created_at,
+  last_active, initialized)
+- `SessionStore` delegates to `WorkingMemory` instead of in-memory
+  HashMap. Sessions survive server restarts.
+- Session resume: load session + recent turns on reconnect.
+- Session expiry: configurable TTL with automatic cleanup.
+
+#### 3b. Knowledge distillation pipeline (port from Python)
+
+Port the 4-stage Knowledge Cultivation Pipeline from Python Myelix
+(`memory/cases/pipeline.py`, ADR-049):
+
+1. **Ingestion**: Load session transcripts + external corpus
+   (with `manifest.yaml` authority levels)
+2. **Synthesis**: AI extracts StructuredCase from conversation
+   segments (goal, actions, outcome, lessons_learned)
+3. **Reconciliation**: Deduplication, conflict resolution by
+   authority level
+4. **Forging & Review**: Human-in-the-loop approval before
+   promotion to Tier 2b cases or Tier 3 skills
+
+Port data models: StructuredCase, CaseContext, Action, CaseOutcome,
+CaseMetadata, CaseSearchResult. Port extractors, reconcilers,
+transcript parsers, session segmenters.
+
+This is DIFFERENT from context compaction (Phase 1a). Compaction
+is runtime context management. Distillation is offline knowledge
+extraction — turning experience into reusable wisdom.
+
+#### 3c. Memory decay and working memory management (NEW)
+
+- Exponential decay for working memory turns:
+  `effective = importance * e^(-decay * age) * freshness + relevance_boost`
+- Auto-importance scoring on ingestion (domain keywords, length,
+  query-token overlap)
+- Deduplication via token-overlap similarity threshold (≥0.72)
+- Configurable decay rate per agent/session
+
+Reference: Baddeley's episodic buffer model, tech watch article
+on context layers (2026-04-17).
+
+#### 3d. Remaining memory items
+
 - Memory MCP tools: `memory_store`, `memory_recall`, `memory_search`
 - Integration: agents auto-load relevant memory into context
+- Semantic query caching (paraphrase detection to avoid redundant
+  retrieval, ~76% savings on duplicate queries)
 
 **Why third**: Memory improves agent quality significantly but isn't
 blocking — agents work without it, just less effectively.
@@ -152,12 +243,108 @@ Implemented in `myelix-flow`:
 - Back-edges: conditional re-execution when validation fails
   (replaces rigid retry with graph-level feedback loops)
 
-### Phase 5: Paper & benchmarks
+### Phase 5: Ecosystem integration
+
+#### 5a. ACP transport (NEW)
+
+Add Agent Client Protocol support to myelix-server:
+
+- ACP is JSON-RPC 2.0 over Streamable HTTP (single `POST /acp`
+  endpoint) — same transport as MCP, different method set.
+- Methods: `initialize`, `authenticate`, `session/new`,
+  `session/load`, `session/prompt` (streaming responses).
+- Enables Myelix agents to appear in Zed and JetBrains IDEs
+  without building editor plugins.
+- Reuses existing Axum HTTP infrastructure from myelix-server.
+
+Reference: ACP spec (github.com/i-am-bee/acp), Goose's
+goose-acp crate, JetBrains AI Assistant ACP support.
+
+#### 5b. MCP permission negotiation (NEW — AAIF contribution)
+
+Design and implement a permission negotiation extension for MCP:
+
+- New MCP method: `permissions/request` — an MCP server can request
+  elevated permissions from the client (e.g., write access to a path).
+- Client-side: present permission request to user, relay decision
+  back to server via `permissions/grant` / `permissions/deny`.
+- Server-side (mcpd): update ACLs dynamically based on granted
+  permissions. Scoped to session, with optional persistence.
+- Integrate with Goose's approval model: when Goose is the client,
+  its permission prompt maps to `permissions/request`.
+- Propose as MCP specification extension to AAIF.
+
+This bridges the gap between Goose's UI-level permission prompts
+and mcpd's infrastructure-level ACLs.
+
+#### 5c. Goose-as-frontend integration (NEW — quick build)
+
+Enable Goose desktop app to connect to mcpd as a single MCP
+extension over Streamable HTTP:
+
+- mcpd already speaks MCP over HTTP — Goose can connect today.
+- Build a Goose extension config snippet and test end-to-end:
+  Goose UI → mcpd gateway → downstream tools with full
+  auth/ACL/IFC/safety.
+- Document the setup for users.
+- Capture feedback on: permission flow UX, latency, tool
+  discovery, error messages.
+- Stretch: build a Goose deeplink (`goose://extension?...`)
+  for one-click mcpd installation.
+
+#### 5d. LLM backend expansion (NEW)
+
+Add missing model backends to myelix-model:
+
+| Backend | Transport | Priority |
+|---------|-----------|----------|
+| **BedockBackend** | AWS SDK (SigV4 auth) | High (enterprise) |
+| **SageMakerBackend** | AWS SDK (custom endpoint) | High (enterprise) |
+| **MistralBackend** | Mistral API (separate format) | Medium |
+| **CliBackend** | Subprocess stdio | Medium |
+
+**CliBackend architecture:**
+- Spawn CLI as subprocess: `Command::new("gemini").args(...)`.
+- Pipe prompt via stdin or args, capture stdout as response.
+- Supports: `claude` (Claude Code), `gemini` (Gemini CLI),
+  `codex` (OpenAI Codex), `goose`, any custom CLI command.
+- Optional Podman isolation: `--network=none` container wrapping
+  the CLI subprocess (reuses myelix-model-runtime isolation).
+- Config: `cli_command`, `cli_args_template`, `isolation: "none" |
+  "podman"`, `timeout_secs`.
+
+This enables meta-agent orchestration — an agent can delegate to
+another agent runtime as a "model backend."
+
+### Phase 6: RAG enhancements
+
+#### 6a. Two-stage retrieval with cross-encoder reranking (NEW)
+
+Add reranking stage to myelix-rag after sqlite-vec retrieval:
+
+- ColBERT-style late interaction (preferred: preindexable, low
+  latency, fits ONNX in-process strategy)
+- Fallback: MiniLM-L6-v2 cross-encoder as ONNX model
+- Domain fine-tuning with hard negatives (~70 examples for
+  significant improvement)
+- Knowledge distillation: train fast bi-encoder from cross-encoder
+  scores for domain-specific use
+
+#### 6b. Semantic query caching (NEW)
+
+Paraphrase-detection model to identify duplicate queries at
+retrieval time. ~76% savings on redundant ranking operations.
+Particularly valuable in multi-agent flows where agents rephrase
+similar queries.
+
+### Phase 7: Paper & benchmarks
 
 - Final LoC counts for all crates
 - Latency benchmarks (IFC overhead, hook pipeline, permission checks)
 - Comparison with MS Governance Toolkit
 - Security evaluation: attack surface, threat model
+- Use Goose as baseline: "agent without infrastructure security"
+  vs mcpd as "security microkernel"
 - Peer review
 
 ---
@@ -186,12 +373,36 @@ myelix-modal-*  ─────┘
 myelix-server            (all + hub + runtime)
 ```
 
+## Ecosystem positioning
+
+mcpd is infrastructure, not an end-user agent. Desktop agents
+(Goose, Claude Code, etc.) connect to mcpd as an MCP server.
+mcpd provides the security layer; the agent provides the UX.
+
+```
+Goose (desktop)  ──┐              ┌── downstream MCP servers
+Claude Code      ──┼── MCP/ACP ──> mcpd ──┼── built-in modules
+Zed/JetBrains    ──┘              └── local ONNX models
+```
+
+### Goose relationship (April 2026 analysis)
+
+- Goose: Rust agent runtime (~v1.30, Apache-2.0, AAIF/Linux Foundation)
+- Different layer: Goose = end-user agent, mcpd = security gateway
+- Goose has NO auth tokens, NO ACLs, NO IFC, NO content filtering
+- Goose connects to MCP servers directly (no proxy/filter)
+- Contribution targets: MCP interceptor pattern (SEP-1763),
+  Linux extension sandboxing, safety hook pipeline, ACL engine
+- ACP adoption gives Myelix agents IDE integration for free
+
 ## Non-goals
 
 These capabilities from Python Myelix are intentionally NOT replicated:
 
 - **Docker deployment**: Rust binary is self-contained
 - **Python engine wrappers**: replaced by ModelBackend trait
-- **Rich TUI**: CLI is sufficient; TUI can be a separate project
+- **Rich TUI**: CLI is sufficient; Goose or GNOME shell provides UX
 - **A2A server**: mcpd already serves Agent Cards; A2A orchestration
   belongs in myelix-flow, not as a separate service
+- **Desktop app**: Goose (or similar) serves as the frontend;
+  mcpd handles GNOME integration (D-Bus notifications, tray)

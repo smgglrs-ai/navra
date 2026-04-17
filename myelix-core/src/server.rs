@@ -116,12 +116,18 @@ impl McpServer {
     /// Handle an initialize request. Returns the result and the session ID.
     pub fn handle_initialize(&self, params: InitializeParams, agent_identity: crate::auth::AgentIdentity) -> (InitializeResult, String) {
         let session_id = uuid::Uuid::new_v4().to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
         let session = Session {
             id: session_id.clone(),
             agent: agent_identity,
             client_info: params.client_info,
             initialized: true,
             context_label: crate::ifc::DataLabel::TRUSTED_PUBLIC,
+            created_at: now,
+            last_accessed: now,
         };
         self.sessions.create(session);
 
@@ -596,6 +602,7 @@ pub struct McpServerBuilder {
     quota_engine: Option<QuotaEngine>,
     ifc_policies: Option<HashMap<String, crate::ifc::TaintedWritePolicy>>,
     trusted_paths: Option<HashMap<String, Vec<String>>>,
+    session_store: Option<SessionStore>,
 }
 
 impl McpServerBuilder {
@@ -614,6 +621,7 @@ impl McpServerBuilder {
             quota_engine: None,
             ifc_policies: None,
             trusted_paths: None,
+            session_store: None,
         }
     }
 
@@ -794,6 +802,13 @@ impl McpServerBuilder {
         self
     }
 
+    /// Use a custom session store backend (e.g. SQLite for persistence).
+    /// If not set, sessions are stored in memory (lost on restart).
+    pub fn session_store(mut self, store: SessionStore) -> Self {
+        self.session_store = Some(store);
+        self
+    }
+
     /// Opt in to unauthenticated mode. Required when no authenticator
     /// is configured — prevents silent fallback to open access.
     pub fn allow_anonymous(mut self) -> Self {
@@ -824,7 +839,7 @@ impl McpServerBuilder {
         }
 
         let value_stores = crate::ifc::value_store::ValueStoreMap::new();
-        let sessions = SessionStore::new();
+        let sessions = self.session_store.unwrap_or_default();
         let mut tools = self.tools;
 
         // Register gateway IFC tools

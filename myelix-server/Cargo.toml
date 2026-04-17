@@ -15,6 +15,7 @@ myelix-core = { path = "../myelix-core" }
 myelix-cognitive = { path = "../myelix-cognitive" }
 myelix-agent = { path = "../myelix-agent" }
 myelix-flow = { path = "../myelix-flow" }
+myelix-memory = { path = "../myelix-memory" }
 myelix-model = { path = "../myelix-model" }
 myelix-model-hub = { path = "../myelix-model-hub" }
 myelix-model-runtime = { path = "../myelix-model-runtime" }
