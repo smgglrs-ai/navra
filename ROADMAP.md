@@ -4,9 +4,9 @@ This document tracks the evolution of the myelix-* crate family from
 an MCP gateway (mcpd) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-04-15)
+## Current state (2026-04-19)
 
-14 crates, 705 tests, ~33K LoC.
+17 crates, 788 tests, ~46K LoC. 43 personas, 36 heuristics, 7 directives.
 
 ### Infrastructure (complete)
 
@@ -14,7 +14,7 @@ platform — the Rust replacement for the Python Myelix framework.
 |-------|--------|-------------|
 | myelix-protocol | Done | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry) |
 | myelix-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
-| myelix-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries |
+| myelix-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
 | myelix-model-runtime | Done | Serve models via llama-server, Podman, or libkrun (stub) |
 | myelix-security | Done | Auth (BLAKE3, capability tokens, DID:key), ACLs, IFC with trusted paths, safety filters, hooks |
 | myelix-core | Done | MCP server, module trait, session, IFC value store, transport |
@@ -24,7 +24,7 @@ platform — the Rust replacement for the Python Myelix framework.
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| myelix-agent | Done | Client SDK: Agent builder, McpClient with taint tracking, ReAct tool-use loop |
+| myelix-agent | Done | Client SDK: Agent builder with `.persona()`, McpClient with taint tracking, ReAct tool-use loop, non-progress iterations, scoped capability tokens |
 | myelix-flow | Done (v2) | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), IFC-gated, mandate validation |
 
 ### Tools & Modalities (scaffolded)
@@ -36,6 +36,65 @@ platform — the Rust replacement for the Python Myelix framework.
 | myelix-rag | Done | Vector search, semantic chunking |
 | myelix-modal-voice | Scaffolded | ASR + TTS via ONNX (Whisper, Piper) |
 | myelix-modal-vision | Scaffolded | Image understanding (GPU tier) |
+
+---
+
+## Code health (2026-04-19 audit)
+
+Verified findings from static analysis. These are pre-requisites
+for sustainable development and should be addressed before adding
+new features.
+
+### Immediate (< 1 day)
+
+| Item | Detail | Effort |
+|------|--------|--------|
+| `rust-toolchain.toml` + `rustfmt.toml` | Pin toolchain, enforce formatting | 10 min |
+| Fix 88 clippy warnings | ~60 auto-fixable; rest manual (dead code, unused imports, `if let Err(_)` → `.is_err()`, `saturating_sub`) | 30 min |
+| Add `justfile` | Targets: `build`, `test`, `clippy`, `fmt` — all set `ORT_LIB_PATH` and `ORT_PREFER_DYNAMIC_LINK` automatically | 30 min |
+| ~~Replace `.lock().unwrap()`~~ | ~~Done~~ — all converted to `.unwrap_or_else(\|e\| e.into_inner())` across store, dbus, approval, blackboard, mailbox, SSE, TaskStore, SessionStore | ✅ |
+
+### Short-term (1-2 days)
+
+| Item | Detail | Effort |
+|------|--------|--------|
+| Extract auth middleware in `ui.rs` | 5 `authenticate(&headers)` blocks added (was missing entirely). Refactor to middleware layer | 1h |
+| GitHub Actions CI | `cargo check` + `clippy -D warnings` + `fmt --check` + `test`. Needs ONNX in CI (system package or download-binaries feature) | 1-2h |
+| ~~Split `main.rs`~~ | ~~Done~~ — extracted `cli.rs` (304), `demo.rs` (700+), `ui.rs` (296). main.rs now ~2400 lines | ✅ |
+| Make hardcoded values configurable | Approval TTL (fixed 5 min in `approval.rs`), file watcher skip-list (hardcoded in `watcher.rs`) → config.toml | 1h |
+
+### Security fixes completed (2026-04-17 through 2026-04-19)
+
+50+ findings fixed across 6 self-audit rounds:
+
+- Hook timeout fail-closed (was fail-open)
+- /api/* routes require authentication
+- Session enforcement for all MCP methods
+- A2A task ownership checks
+- Scoped capability tokens for teammates
+- JoinHandle tracking with abort on shutdown/timeout
+- Graceful shutdown (SIGTERM/SIGINT)
+- Symlink skipping in recursive walkers
+- IFC canonicalize before glob matching
+- Permission checks added to RAG, vision, voice handlers
+- Pagination overflow protection
+- Identity key CWD fallback → error
+- Path leak via strip_prefix → skip
+- Retry jitter (±25%) to prevent thundering herd
+- Model adapter dedup (shared http_common module)
+- Missing docs warnings on 3 crates
+
+### Remaining
+
+| Item | Detail | Effort |
+|------|--------|--------|
+| `rust-toolchain.toml` + `rustfmt.toml` | Pin toolchain, enforce formatting | 10 min |
+| Fix clippy warnings | Auto-fixable dead code, unused imports | 30 min |
+| Add `justfile` | Targets: build, test, clippy, fmt with ORT env vars | 30 min |
+| Extract auth middleware in `ui.rs` | 5 inline auth checks → single Axum layer | 1h |
+| Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive; revisit when CI is live |
+| GitHub Actions CI | cargo check + clippy + fmt + test | 1-2h |
+| Per-teammate operation scoping | `team_add` accepts operations/tools per teammate, token minted accordingly | Design needed |
 
 ---
 
@@ -60,12 +119,12 @@ planned crate or enhancement.
 
 | Python Myelix capability | Rust equivalent | Gap |
 |--------------------------|----------------|-----|
-| Cognitive core (40 personas, 36 heuristics, 8 directives) | None | **Critical** |
-| Weaver (persona + context → structured prompt) | System prompt strings | **Critical** |
+| Cognitive core (40 personas, 36 heuristics, 8 directives) | 43 personas, 36 heuristics, 7 directives + Forge + Weaver | **Done** |
+| Weaver (persona + context → structured prompt) | Weaver with budget-aware context, per-phase limits | **Done** |
 | Task decomposition (recursive planning, scope partitioning) | DAG executor + back-edges | **Partial** (scope partitioning not yet done) |
 | DAG execution (parallel tasks with dependencies) | DagExecutor with DependencyGraph | **Done** |
 | Mesh communication (lateral agent messaging) | Mailbox + Blackboard (IFC-gated) | **Done** |
-| Persistent memory (working, long-term, cases) | Session value store | **Medium** |
+| Persistent memory (working, long-term, cases) | SQLite session store + working memory | **Partial** (knowledge distillation pipeline missing) |
 | Anti-drift (mandate validation, drift detection) | Mandate validator + success_criteria | **Done** |
 | Failure recovery (circular fix detection, attempt history) | Attempt history, circular fix detector, recovery strategies | **Done** |
 | Observability (structured metrics, monitoring) | tracing only | **Low** |
@@ -80,9 +139,10 @@ planned crate or enhancement.
 **Goal**: Load persona/directive/heuristic YAML files, compile them
 into structured system prompts, and integrate with myelix-agent.
 
-New crate: `myelix-cognitive` (**Status**: Forge + Weaver done,
-specializations done, output schema done, per-phase model done.
-Missing: context management, token budgeting, per-phase context limits.)
+New crate: `myelix-cognitive` (**Status**: Complete.
+Forge + Weaver, specializations, output schema, per-phase model,
+token budgeting, context compaction, per-phase context limits,
+43 personas (38 from Python + 5 general-purpose), agent `.persona()` builder.)
 
 #### 1a. Context management and token budgeting (NEW)
 
@@ -183,7 +243,50 @@ Unify session metadata with working memory in SQLite:
 - Session resume: load session + recent turns on reconnect.
 - Session expiry: configurable TTL with automatic cleanup.
 
-#### 3b. Knowledge distillation pipeline (port from Python)
+#### 3b. Memory type classification and keyed supersession (NEW)
+
+Classify memories into typed categories with distinct lifecycle
+semantics, inspired by Cloudflare Agent Memory and the Memory
+Transfer Learning paper (arXiv 2604.14004):
+
+- **4 memory types**: Facts (keyed, supersede on update), Events
+  (timestamped, append-only), Instructions (procedural, versioned),
+  Insights (abstract behavioral principles, highest transfer value).
+- **Keyed supersession**: Facts and Instructions use content-addressed
+  keys (SHA-256). New versions supersede old ones in a version chain,
+  preserving history but surfacing latest.
+- **Abstraction over traces**: Store high-level Insights ("always
+  validate patches before applying") rather than raw action
+  trajectories. The MTL paper proves 431 abstract memories outperform
+  5.8k raw traces, and raw trajectories cause negative transfer
+  (domain-mismatched anchoring, false validation confidence).
+- **Ingestion pipeline**: Content-addressed ID → parallel full+detail
+  extraction → 8 verification checks → classification → async
+  vectorization.
+
+Reference: Cloudflare Agent Memory (2026-04-19), KAIST/NYU Memory
+Transfer Learning (arXiv 2604.14004).
+
+#### 3c. Multi-channel retrieval with RRF fusion (NEW)
+
+Replace single-channel vector search with fused multi-channel
+retrieval using Reciprocal Rank Fusion:
+
+- **5 retrieval channels** (run in parallel):
+  1. Full-text search (existing FTS5)
+  2. Fact-key lookup (exact match on keyed facts)
+  3. Raw message search (substring match on stored turns)
+  4. Direct vector search (existing sqlite-vec)
+  5. HyDE — Hypothetical Document Embedding (generate ideal answer,
+     embed that, search for similar stored memories)
+- **RRF fusion**: Merge ranked lists from all channels using
+  `score = Σ 1/(k + rank_i)` with k=60. No per-channel weight
+  tuning needed.
+- Top-N results after fusion feed into context.
+
+Reference: Cloudflare Agent Memory RRF design (2026-04-19).
+
+#### 3d. Knowledge distillation pipeline (port from Python)
 
 Port the 4-stage Knowledge Cultivation Pipeline from Python Myelix
 (`memory/cases/pipeline.py`, ADR-049):
@@ -205,7 +308,7 @@ This is DIFFERENT from context compaction (Phase 1a). Compaction
 is runtime context management. Distillation is offline knowledge
 extraction — turning experience into reusable wisdom.
 
-#### 3c. Memory decay and working memory management (NEW)
+#### 3e. Memory decay and working memory management (NEW)
 
 - Exponential decay for working memory turns:
   `effective = importance * e^(-decay * age) * freshness + relevance_boost`
@@ -217,7 +320,30 @@ extraction — turning experience into reusable wisdom.
 Reference: Baddeley's episodic buffer model, tech watch article
 on context layers (2026-04-17).
 
-#### 3d. Remaining memory items
+#### 3f. Model-aware context compaction strategies (NEW)
+
+Different models respond best to different compaction strategies.
+Instead of a fixed approach, support multiple strategies with
+adaptive selection:
+
+- **3 candidate strategies**: Keep-Last-N, Summary, Discard-All
+- **Model-aware defaults**: Configure preferred strategy per model
+  backend (e.g., summary-heavy for DeepSeek, aggressive discard
+  for GPT-class models).
+- **Optional lookahead routing**: At compaction trigger points, run
+  K=3 additional turns with each strategy in parallel, select the
+  branch with best continuation quality. Trade token cost for
+  precision.
+- **Efficiency-precision decomposition**: Aggressive compaction
+  hurts search efficiency but boosts terminal precision;
+  conservative approaches do the opposite. Make this tradeoff
+  configurable per flow/agent.
+
+Reference: AgentSwing (Alibaba, arXiv 2603.27490). Their
+probabilistic framework: Pass@1 = search_efficiency ×
+terminal_precision.
+
+#### 3g. Remaining memory items
 
 - Memory MCP tools: `memory_store`, `memory_recall`, `memory_search`
 - Integration: agents auto-load relevant memory into context
@@ -316,6 +442,39 @@ Add missing model backends to myelix-model:
 This enables meta-agent orchestration — an agent can delegate to
 another agent runtime as a "model backend."
 
+#### 5e. A2UI generative UI for approval dialogs (NEW)
+
+Use Google's A2UI v0.9 standard for agent-generated UI in tray
+notifications, approval dialogs, and permission prompts:
+
+- A2UI is framework-agnostic, transport-agnostic (supports MCP,
+  WebSocket, REST, A2A), with renderers for React, Flutter, Lit.
+- Agents select from schema catalogs with version negotiation —
+  reduces hallucination vs free-form HTML generation.
+- Use case: permission prompts (`permissions/request` from 5b)
+  rendered as A2UI widgets in Goose/Zed/GNOME tray.
+- Lower priority — only relevant once 5a-5c are in place.
+
+Reference: Google A2UI v0.9 (developers.googleblog.com, 2026-04-19).
+
+#### 5f. Multi-agent cross-validation in flows (NEW)
+
+Add cross-validation pattern to myelix-flow for high-stakes
+agent outputs:
+
+- After an agent produces a result, spawn N verifier agents in
+  parallel to independently assess the output.
+- Verifiers flag issues with severity ranking; only surface
+  findings that survive cross-validation (consensus or
+  majority agreement).
+- Anti-hallucination: agents validate each other's claims before
+  surfacing to user. Claude Code Review achieves <1% false
+  positive rate with this pattern.
+- Configurable per-task: `verification: { agents: 2, threshold: "majority" }`
+
+Reference: Claude Code Review multi-agent architecture
+(claude.com/blog/code-review, 2026-04-19).
+
 ### Phase 6: RAG enhancements
 
 #### 6a. Two-stage retrieval with cross-encoder reranking (NEW)
@@ -345,6 +504,12 @@ similar queries.
 - Security evaluation: attack surface, threat model
 - Use Goose as baseline: "agent without infrastructure security"
   vs mcpd as "security microkernel"
+- Cite "The Agent Tier" pattern (InfoWorld, Nitesh Varma) as
+  independent validation of mcpd's two-lane architecture
+  (deterministic ACL/hook enforcement + contextual agent reasoning
+  through governed tool catalogs). Maps 1:1 to mcpd's design.
+- ZeroClaw as additional competitive baseline (Rust trait-based
+  agent, similar permission model, but flat runtime vs gateway)
 - Peer review
 
 ---
@@ -394,6 +559,18 @@ Zed/JetBrains    ──┘              └── local ONNX models
 - Contribution targets: MCP interceptor pattern (SEP-1763),
   Linux extension sandboxing, safety hook pipeline, ACL engine
 - ACP adoption gives Myelix agents IDE integration for free
+
+### ZeroClaw (April 2026 analysis)
+
+- ZeroClaw: Rust agent runtime (<5MB memory, <10ms startup, 8.8MB binary)
+- Trait-based architecture, TOML config, 3-tier autonomy
+  (ReadOnly/Supervised/Full) — similar permission model to mcpd
+- 70+ tools, 25+ messaging channels, hardware peripheral traits
+  (ESP32/Arduino/RPi) — targets embedded/IoT
+- Key difference: flat agent runtime vs mcpd's security gateway
+- Potential collaboration: transport adapters, tool interface traits
+- Watch for convergence — similar Rust + trait patterns, different layers
+- Migrating OpenClaw users (positions as next-gen replacement)
 
 ## Non-goals
 
