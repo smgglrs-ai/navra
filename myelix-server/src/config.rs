@@ -118,6 +118,12 @@ pub struct AgenticConfig {
     pub speed_tier: Option<String>,
     #[serde(default)]
     pub max_agents: Option<u32>,
+    #[serde(default)]
+    pub reasoning: Option<String>,
+    #[serde(default)]
+    pub json_compliance: Option<String>,
+    #[serde(default)]
+    pub locality: Option<String>,
 }
 
 impl AgenticConfig {
@@ -132,6 +138,9 @@ impl AgenticConfig {
             cost_tier: self.cost_tier.clone(),
             speed_tier: self.speed_tier.clone(),
             max_agents: self.max_agents,
+            reasoning: self.reasoning.clone(),
+            json_compliance: self.json_compliance.clone(),
+            locality: self.locality.clone(),
         }
     }
 }
