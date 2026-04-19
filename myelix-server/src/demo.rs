@@ -514,9 +514,11 @@ safety = "standard"
     // Select backend based on model name
     let is_claude = model_name.starts_with("claude");
 
-    // Assemble the planner persona system prompt
+    // Select the best available lead persona
     let persona_name = if forge.get_persona("planner").is_some() {
         "planner"
+    } else if forge.get_persona("leader").is_some() {
+        "leader"
     } else if forge.get_persona("rust_security_auditor").is_some() {
         "rust_security_auditor"
     } else {
@@ -524,15 +526,14 @@ safety = "standard"
     };
 
     let system_prompt = if !persona_name.is_empty() {
-        myelix_cognitive::assemble(&forge, persona_name, "audit", None, None)
+        myelix_cognitive::assemble(&forge, persona_name, "", None, None)
             .map(|w| w.system_prompt())
-            .unwrap_or_else(|_| "You are a security auditor. Use the available tools to analyze the codebase.".to_string())
+            .unwrap_or_else(|_| "You are a team lead. Use the available tools to analyze the project and delegate to specialists.".to_string())
     } else {
-        "You are a security auditor. Use the available tools (docs_list, docs_read, docs_search) \
-         to systematically analyze the Rust codebase for security vulnerabilities. \
-         Start by listing the directory structure, then read security-critical files, \
-         then search for dangerous patterns like .unwrap(), unsafe, Path::new. \
-         Report findings with file, function, CWE ID, severity, and description.".to_string()
+        "You are a team lead. Use docs_tree to understand the project structure, \
+         models_list to see available models, then create a team of specialists \
+         to analyze the project. Delegate all file reading to teammates. \
+         Synthesize their findings into a final report.".to_string()
     };
 
     let mcp_endpoint = format!("{mcpd_url}/mcp");
