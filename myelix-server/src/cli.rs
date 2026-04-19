@@ -64,6 +64,12 @@ pub(crate) enum Commands {
         /// Allow write operations in the project directory
         #[arg(long)]
         writable: bool,
+        /// Additional directories to allow reading (can be repeated)
+        #[arg(long = "allow-read")]
+        allow_read: Vec<String>,
+        /// Additional directories to allow writing (can be repeated)
+        #[arg(long = "allow-write")]
+        allow_write: Vec<String>,
     },
 }
 
