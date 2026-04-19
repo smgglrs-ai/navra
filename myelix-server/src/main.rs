@@ -93,9 +93,9 @@ async fn main() -> anyhow::Result<()> {
                 cli::model_available();
             }
         },
-        Commands::Demo { project, live, model, max_rounds, files_per_round, min_delta, prompt, writable } => {
+        Commands::Demo { project, live, model, max_rounds, files_per_round, min_delta, prompt, writable, allow_read, allow_write } => {
             if live {
-                demo::run_demo_live(&project, &model, max_rounds, files_per_round, min_delta, prompt.as_deref(), writable).await?;
+                demo::run_demo_live(&project, &model, max_rounds, files_per_round, min_delta, prompt.as_deref(), writable, &allow_read, &allow_write).await?;
             } else {
                 demo::run_demo(&project).await?;
             }

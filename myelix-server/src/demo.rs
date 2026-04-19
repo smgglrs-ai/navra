@@ -259,7 +259,7 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
 ///
 /// Unlike `run_demo` (scripted), this actually calls a model for each
 /// task. It requires Ollama running with the specified model pulled.
-pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files_per_round: usize, _min_delta: u32, custom_prompt: Option<&str>, writable: bool) -> anyhow::Result<()> {
+pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files_per_round: usize, _min_delta: u32, custom_prompt: Option<&str>, writable: bool, allow_read: &[String], allow_write: &[String]) -> anyhow::Result<()> {
     use std::path::Path;
 
     let project_path = std::fs::canonicalize(Path::new(project)).map_err(|e| {
@@ -440,7 +440,7 @@ db_path = "/tmp/mcpd-demo/agent-docs.db"
 enabled = false
 
 [permissions.readonly]
-allow = ["{allow_path}/**", "/tmp/**"]
+allow = ["{allow_path}/**", "/tmp/**"{extra_read_paths}{extra_write_paths}]
 deny = []
 operations = [{operations}]
 safety = "standard"
@@ -449,11 +449,13 @@ safety = "standard"
         demo_port = demo_port,
         project = abs_project.display(),
         allow_path = abs_project.display(),
-        operations = if writable {
+        operations = if writable || !allow_write.is_empty() {
             r#""read", "write", "search", "list""#
         } else {
             r#""read", "search", "list""#
         },
+        extra_read_paths = canonicalize_allow_paths(allow_read),
+        extra_write_paths = canonicalize_allow_paths(allow_write),
         model_sections = model_sections,
     ))?;
 
@@ -695,4 +697,17 @@ safety = "standard"
     println!();
 
     Ok(())
+}
+
+fn canonicalize_allow_paths(paths: &[String]) -> String {
+    if paths.is_empty() {
+        return String::new();
+    }
+    paths.iter()
+        .map(|p| {
+            let canonical = std::fs::canonicalize(p)
+                .unwrap_or_else(|_| std::path::PathBuf::from(p));
+            format!(", \"{}/**\"", canonical.display())
+        })
+        .collect::<String>()
 }
