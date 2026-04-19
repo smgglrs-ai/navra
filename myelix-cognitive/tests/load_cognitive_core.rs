@@ -21,7 +21,7 @@ fn cognitive_core_path() -> std::path::PathBuf {
 #[test]
 fn load_all_artifacts() {
     let forge = ForgeService::load(&cognitive_core_path()).unwrap();
-    assert!(forge.persona_count() >= 38, "expected ≥38 personas, got {}", forge.persona_count());
+    assert!(forge.persona_count() >= 43, "expected ≥43 personas, got {}", forge.persona_count());
     assert!(forge.heuristic_count() >= 36, "expected ≥36 heuristics, got {}", forge.heuristic_count());
     assert!(forge.directive_count() >= 7, "expected ≥7 directives, got {}", forge.directive_count());
 }
