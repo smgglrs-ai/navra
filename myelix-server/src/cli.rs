@@ -58,6 +58,12 @@ pub(crate) enum Commands {
         /// Min new findings to continue (default: 2)
         #[arg(long, default_value = "2")]
         min_delta: u32,
+        /// Custom prompt (overrides the default audit prompt)
+        #[arg(long)]
+        prompt: Option<String>,
+        /// Allow write operations in the project directory
+        #[arg(long)]
+        writable: bool,
     },
 }
 

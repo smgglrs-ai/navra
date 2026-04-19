@@ -259,7 +259,7 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
 ///
 /// Unlike `run_demo` (scripted), this actually calls a model for each
 /// task. It requires Ollama running with the specified model pulled.
-pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files_per_round: usize, _min_delta: u32) -> anyhow::Result<()> {
+pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files_per_round: usize, _min_delta: u32, custom_prompt: Option<&str>, writable: bool) -> anyhow::Result<()> {
     use std::path::Path;
 
     let project_path = std::fs::canonicalize(Path::new(project)).map_err(|e| {
@@ -442,13 +442,18 @@ enabled = false
 [permissions.readonly]
 allow = ["{allow_path}/**", "/tmp/**"]
 deny = []
-operations = ["read", "search", "list"]
+operations = [{operations}]
 safety = "standard"
 {model_sections}
 "#,
         demo_port = demo_port,
         project = abs_project.display(),
         allow_path = abs_project.display(),
+        operations = if writable {
+            r#""read", "write", "search", "list""#
+        } else {
+            r#""read", "search", "list""#
+        },
         model_sections = model_sections,
     ))?;
 
@@ -648,11 +653,10 @@ safety = "standard"
     println!("  active on every tool call.");
     println!();
 
-    // The prompt is minimal — the persona defines the methodology
-    let audit_prompt = format!(
-        "Audit the Rust project at {path}",
-        path = abs_project.display()
-    );
+    let audit_prompt = match custom_prompt {
+        Some(p) => p.replace("{path}", &abs_project.display().to_string()),
+        None => format!("Audit the Rust project at {path}", path = abs_project.display()),
+    };
 
     let start = std::time::Instant::now();
     match agent.run(&audit_prompt).await {
