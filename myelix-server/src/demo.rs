@@ -392,20 +392,30 @@ pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: 
     // Detect available models for the demo config.
     // Only register model names — no hardcoded agentic metadata.
     // The lead agent reads model cards via models_list and makes
-    // its own selection decisions. Operators add [models.*.agentic]
-    // in config.toml for their deployment.
+    // Register available models with operator-level agentic metadata.
+    // The agentic fields are derived from factual properties (source,
+    // parameter count) — not from model name heuristics.
     let mut model_sections = String::new();
 
-    // Register the lead's own model
+    // Register the lead's own model (remote/cloud)
     if model_name.starts_with("claude") {
         let model_key = model_name.replace([':', '-', '.', '@'], "_");
-        model_sections.push_str(&format!(
-            "\n[models.{model_key}]\ntask = \"chat\"\nmodel_name = \"{model_name}\"\n",
-            model_key = model_key, model_name = model_name,
-        ));
+        model_sections.push_str(&format!(r#"
+[models.{model_key}]
+task = "chat"
+model_name = "{model_name}"
+
+[models.{model_key}.agentic]
+cost_tier = "high"
+speed_tier = "medium"
+tool_use = "advanced"
+reasoning = "extended"
+json_compliance = "strict"
+locality = "remote"
+"#, model_key = model_key, model_name = model_name));
     }
 
-    // Register all locally available Ollama models
+    // Register locally available Ollama models with metadata from /api/show
     if let Ok(resp) = reqwest::Client::new()
         .get("http://localhost:11434/api/tags")
         .send()
@@ -416,10 +426,23 @@ pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: 
                 for m in models {
                     if let Some(name) = m["name"].as_str() {
                         let model_key = name.replace([':', '-', '.', '/'], "_");
-                        model_sections.push_str(&format!(
-                            "\n[models.{model_key}]\ntask = \"chat\"\nmodel_name = \"{name}\"\n",
-                            model_key = model_key, name = name,
-                        ));
+                        let size_gb = m["size"].as_u64().unwrap_or(0) as f64 / 1e9;
+
+                        // Derive speed tier from model size
+                        let speed = if size_gb < 5.0 { "fast" }
+                            else if size_gb < 12.0 { "medium" }
+                            else { "slow" };
+
+                        model_sections.push_str(&format!(r#"
+[models.{model_key}]
+task = "chat"
+model_name = "{name}"
+
+[models.{model_key}.agentic]
+cost_tier = "free"
+speed_tier = "{speed}"
+locality = "local"
+"#, model_key = model_key, name = name, speed = speed));
                     }
                 }
             }

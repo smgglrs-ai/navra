@@ -571,14 +571,19 @@ pub fn models_list_def() -> ToolDefinition {
              - tool_use: 'none', 'basic', or 'advanced'\n\
              - cost_tier: 'free' (local), 'low', 'medium', 'high'\n\
              - speed_tier: 'fast', 'medium', 'slow'\n\
+             - reasoning: 'basic' or 'extended' (chain-of-thought)\n\
+             - json_compliance: 'strict' or 'best-effort'\n\
+             - locality: 'local' (on-device) or 'remote' (cloud API)\n\
              \n\
              **runtime**: Learned from actual agent runs (total_calls, success_rate, \
              avg_latency_ms, per-task breakdown). Empty until the model has been used.\n\
              \n\
              **Selection guidelines:**\n\
-             - For sensitive data: use models where vendor.source is 'ollama' or 'file' (local)\n\
-             - For complex reasoning: prefer models with agentic.tool_use = 'advanced'\n\
-             - For simple tasks: prefer speed_tier = 'fast' and cost_tier = 'free'\n\
+             - For file reading, data gathering: prefer locality='local' and cost_tier='free'\n\
+             - For synthesis, complex reasoning: use reasoning='extended' or tool_use='advanced'\n\
+             - For sensitive data: MUST use locality='local' (data stays on device)\n\
+             - For simple tasks: prefer speed_tier='fast' and cost_tier='free'\n\
+             - Minimize use of cost_tier='high' models — use only when task requires it\n\
              - Check runtime.by_task if available — real data beats operator assumptions"
                 .to_string(),
         ),

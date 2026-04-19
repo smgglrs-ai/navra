@@ -76,6 +76,15 @@ impl ModelCard {
         if other.max_agents.is_some() {
             self.agentic.max_agents = other.max_agents;
         }
+        if other.reasoning.is_some() {
+            self.agentic.reasoning = other.reasoning.clone();
+        }
+        if other.json_compliance.is_some() {
+            self.agentic.json_compliance = other.json_compliance.clone();
+        }
+        if other.locality.is_some() {
+            self.agentic.locality = other.locality.clone();
+        }
     }
 
     /// Record a completed tool-use run, updating runtime stats.
@@ -194,6 +203,15 @@ pub struct AgenticMeta {
     /// Max concurrent agents recommended for this model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agents: Option<u32>,
+    /// Reasoning depth: "basic", "extended" (chain-of-thought/thinking mode).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    /// JSON schema compliance: "strict" (guaranteed), "best-effort".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_compliance: Option<String>,
+    /// Locality: "local" (data stays on device), "remote" (cloud API).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locality: Option<String>,
 }
 
 /// Runtime statistics learned from actual agent executions.
