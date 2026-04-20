@@ -1317,20 +1317,55 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 Box::pin(async move {
                     use myelix_core::protocol::CallToolResult;
 
-                    let flow_toml = match args.get("flow_toml").and_then(|v| v.as_str()) {
+                    let flow_def_str = match args.get("flow_definition").and_then(|v| v.as_str()) {
                         Some(t) => t,
-                        None => return CallToolResult::error("Missing required parameter: flow_toml"),
+                        None => return CallToolResult::error(
+                            "Missing required parameter: flow_definition"
+                        ),
                     };
                     let prompt = match args.get("prompt").and_then(|v| v.as_str()) {
                         Some(p) => p.to_string(),
                         None => return CallToolResult::error("Missing required parameter: prompt"),
                     };
+                    let format = args
+                        .get("format")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("toml");
 
-                    // Parse and validate the flow TOML
-                    let flow_def: Result<myelix_flow::FlowDefinition, _> = toml::from_str(flow_toml);
-                    let flow_name = match &flow_def {
-                        Ok(def) => def.flow.name.clone(),
-                        Err(e) => return CallToolResult::error(format!("Invalid flow TOML: {e}")),
+                    let flow_name = match format {
+                        "yaml" => {
+                            // Collect parameters from the JSON object
+                            let params: std::collections::HashMap<String, String> = args
+                                .get("parameters")
+                                .and_then(|v| v.as_object())
+                                .map(|obj| {
+                                    obj.iter()
+                                        .filter_map(|(k, v)| {
+                                            v.as_str().map(|s| (k.clone(), s.to_string()))
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+
+                            match myelix_flow::yaml_loader::load_flow_yaml(
+                                flow_def_str, &params,
+                            ) {
+                                Ok(dag) => dag.name,
+                                Err(e) => return CallToolResult::error(
+                                    format!("Invalid YAML flow: {e}")
+                                ),
+                            }
+                        }
+                        "toml" | _ => {
+                            let flow_def: Result<myelix_flow::FlowDefinition, _> =
+                                toml::from_str(flow_def_str);
+                            match flow_def {
+                                Ok(def) => def.flow.name.clone(),
+                                Err(e) => return CallToolResult::error(
+                                    format!("Invalid flow TOML: {e}")
+                                ),
+                            }
+                        }
                     };
 
                     let flow_id = registry.register(&flow_name);
@@ -1411,7 +1446,85 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             },
         );
 
-        tracing::info!("Registered flow orchestration tools (flow_start, flow_status, flow_result)");
+        // flow_list — list available YAML flows from configured directories
+        let flow_dirs = cfg.flow_dirs.clone();
+        builder = builder.tool(
+            flow_tools::flow_list_tool_def(),
+            move |_args, _ctx| {
+                let flow_dirs = flow_dirs.clone();
+                Box::pin(async move {
+                    use myelix_core::protocol::CallToolResult;
+
+                    if flow_dirs.is_empty() {
+                        return CallToolResult::text(
+                            "No flow directories configured. \
+                             Set flow_dirs in config.toml to list available flows."
+                        );
+                    }
+
+                    let mut flows = Vec::new();
+                    for dir in &flow_dirs {
+                        let expanded = if dir.starts_with('~') {
+                            if let Some(home) = dirs::home_dir() {
+                                dir.replacen('~', &home.display().to_string(), 1)
+                            } else {
+                                dir.clone()
+                            }
+                        } else {
+                            dir.clone()
+                        };
+                        let path = std::path::Path::new(&expanded);
+                        let entries = match std::fs::read_dir(path) {
+                            Ok(e) => e,
+                            Err(e) => {
+                                tracing::warn!(dir = %expanded, error = %e, "Cannot read flow dir");
+                                continue;
+                            }
+                        };
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            let ext = p.extension().and_then(|e| e.to_str());
+                            if !matches!(ext, Some("yml" | "yaml")) {
+                                continue;
+                            }
+                            let content = match std::fs::read_to_string(&p) {
+                                Ok(c) => c,
+                                Err(_) => continue,
+                            };
+                            if let Ok(envelope) = serde_yaml::from_str::<
+                                myelix_flow::yaml_loader::FlowFile,
+                            >(&content) {
+                                let params: Vec<serde_json::Value> = envelope
+                                    .parameters
+                                    .iter()
+                                    .map(|(k, v)| {
+                                        serde_json::json!({
+                                            "name": k,
+                                            "type": v.param_type,
+                                            "description": v.description,
+                                            "default": v.default,
+                                        })
+                                    })
+                                    .collect();
+                                flows.push(serde_json::json!({
+                                    "name": envelope.name,
+                                    "kind": envelope.kind,
+                                    "description": envelope.description,
+                                    "file": p.display().to_string(),
+                                    "parameters": params,
+                                }));
+                            }
+                        }
+                    }
+
+                    CallToolResult::text(
+                        serde_json::to_string_pretty(&flows).unwrap_or_default()
+                    )
+                })
+            },
+        );
+
+        tracing::info!("Registered flow orchestration tools (flow_start, flow_status, flow_result, flow_list)");
     }
 
     // Register team orchestration tools
