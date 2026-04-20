@@ -167,9 +167,10 @@ pub fn flow_start_tool_def() -> ToolDefinition {
     ToolDefinition {
         name: "flow_start".to_string(),
         description: Some(
-            "Start a multi-agent flow. Define the flow inline as TOML with \
-             nodes (personas), edges (handoffs), and optional mesh config \
-             (mailbox, blackboard). Returns a flow_id for tracking. \
+            "Start a multi-agent flow. Define the flow inline as TOML or YAML. \
+             TOML uses [flow], [[flow.nodes.*]], [[flow.edges]]. \
+             YAML uses kind/name/tasks with {{ param }} placeholders and \
+             optional parameters. Returns a flow_id for tracking. \
              Use flow_status to monitor and flow_result to read outputs."
                 .to_string(),
         ),
@@ -177,10 +178,10 @@ pub fn flow_start_tool_def() -> ToolDefinition {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
                 (
-                    "flow_toml".to_string(),
+                    "flow_definition".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "TOML flow definition with [flow], [[flow.nodes.*]], [[flow.edges]]"
+                        "description": "Flow definition string in TOML or YAML format"
                     }),
                 ),
                 (
@@ -190,8 +191,41 @@ pub fn flow_start_tool_def() -> ToolDefinition {
                         "description": "The task prompt to give the entry node"
                     }),
                 ),
+                (
+                    "format".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": ["toml", "yaml"],
+                        "default": "toml",
+                        "description": "Format of the flow definition: \"toml\" (default) or \"yaml\""
+                    }),
+                ),
+                (
+                    "parameters".to_string(),
+                    serde_json::json!({
+                        "type": "object",
+                        "description": "Optional parameter values for YAML flows (keys map to {{ key }} placeholders)",
+                        "additionalProperties": { "type": "string" }
+                    }),
+                ),
             ])),
-            required: Some(vec!["flow_toml".to_string(), "prompt".to_string()]),
+            required: Some(vec!["flow_definition".to_string(), "prompt".to_string()]),
+        },
+    }
+}
+
+pub fn flow_list_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "flow_list".to_string(),
+        description: Some(
+            "List available YAML flow files from configured flow directories. \
+             Returns flow names, descriptions, and parameter definitions."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::new()),
+            required: None,
         },
     }
 }
