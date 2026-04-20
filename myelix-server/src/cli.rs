@@ -38,6 +38,11 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: ModelAction,
     },
+    /// Query the audit log
+    Audit {
+        #[command(subcommand)]
+        action: AuditAction,
+    },
     /// Run the end-to-end security audit demo
     Demo {
         /// Path to the demo project (default: examples/payments-app)
@@ -84,6 +89,28 @@ pub(crate) enum ModelAction {
     List,
     /// Show available models for download
     Available,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AuditAction {
+    /// List recent audit runs
+    Runs {
+        /// Max number of runs to show
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
+    /// Show tool calls for a specific run
+    Tools {
+        /// Run ID
+        run_id: String,
+    },
+    /// Show summary for a specific run
+    Summary {
+        /// Run ID
+        run_id: String,
+    },
+    /// Show the last run's tool calls
+    Last,
 }
 
 #[derive(Subcommand)]
