@@ -107,7 +107,7 @@ impl ModelCard {
             .runtime
             .by_task
             .entry(task_type.to_string())
-            .or_insert_with(TaskStats::default);
+            .or_default();
         task_stats.calls += 1;
         if success {
             task_stats.successes += 1;

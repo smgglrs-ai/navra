@@ -71,6 +71,12 @@ pub struct TokenAuthenticator {
     agents: std::collections::HashMap<String, AgentIdentity>,
 }
 
+impl Default for TokenAuthenticator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TokenAuthenticator {
     pub fn new() -> Self {
         Self {

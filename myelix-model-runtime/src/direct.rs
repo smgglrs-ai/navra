@@ -15,6 +15,12 @@ pub struct DirectRuntime {
     children: Mutex<HashMap<String, Child>>,
 }
 
+impl Default for DirectRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DirectRuntime {
     pub fn new() -> Self {
         Self {

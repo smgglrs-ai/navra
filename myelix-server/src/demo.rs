@@ -246,9 +246,8 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
     println!("  Memory:    3 items recalled, 1 new item stored");
     println!("  Personas:  3 active (security_auditor, code_specialist, analyst)");
     println!();
-    println!("  Framework: {} crates, {} tests",
-        16, // workspace crate count
-        "668+", // test count
+    println!("  Framework: {} crates, 668+ tests",
+        16, // test count
     );
     println!();
 
@@ -299,7 +298,7 @@ pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: 
 
     // Check if Ollama is running
     let ollama_running = client
-        .get(&format!("{ollama_url}/api/tags"))
+        .get(format!("{ollama_url}/api/tags"))
         .send()
         .await
         .map(|r| r.status().is_success())
@@ -318,7 +317,7 @@ pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: 
         for i in 0..30 {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             if client
-                .get(&format!("{ollama_url}/api/tags"))
+                .get(format!("{ollama_url}/api/tags"))
                 .send()
                 .await
                 .map(|r| r.status().is_success())
@@ -337,7 +336,7 @@ pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: 
 
     // Check if model is pulled
     let tags_resp = client
-        .get(&format!("{ollama_url}/api/tags"))
+        .get(format!("{ollama_url}/api/tags"))
         .send()
         .await?
         .json::<serde_json::Value>()
@@ -498,7 +497,7 @@ safety = "standard"
     let http_client = reqwest::Client::new();
     for i in 0..30 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        if http_client.get(&format!("{mcpd_url}/mcp")).send().await.is_ok() {
+        if http_client.get(format!("{mcpd_url}/mcp")).send().await.is_ok() {
             break;
         }
         if i == 29 {
@@ -654,7 +653,7 @@ safety = "standard"
     } else {
         println!("  Backend: Ollama OpenAI-compat API");
         build_agent!(myelix_model::OpenAiBackend::new(
-            &format!("{ollama_url}/v1"),
+            format!("{ollama_url}/v1"),
             model_name,
             None,
             myelix_model::Locality::Local,

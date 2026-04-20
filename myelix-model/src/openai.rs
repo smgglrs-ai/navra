@@ -9,7 +9,7 @@ use crate::{
     SynthesizeResponse, TranscribeRequest, TranscribeResponse,
 };
 use crate::chat::{
-    ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatToolDefinition,
+    ChatMessage, ChatRequest, ChatResponse, ChatRole,
     FinishReason, FunctionCall, ToolCall, ToolChoice,
 };
 use futures_util::StreamExt;

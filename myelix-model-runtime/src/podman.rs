@@ -23,6 +23,12 @@ pub struct PodmanRuntime {
     socket_path: String,
 }
 
+impl Default for PodmanRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PodmanRuntime {
     pub fn new() -> Self {
         // SAFETY: getuid() is always safe — no preconditions, cannot cause UB.

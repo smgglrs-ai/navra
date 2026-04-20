@@ -4,9 +4,9 @@
 //! so a planner agent can define, launch, monitor, and read results from
 //! multi-agent flows — all through standard MCP tool calls.
 
-use myelix_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
+use myelix_core::protocol::{ToolDefinition, ToolInputSchema};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::Instant;
 
 /// Status of a flow execution.

@@ -157,14 +157,13 @@ impl McpServer {
         }
 
         // Rate limit check (kernel-enforced)
-        if self.quota_engine.has_limits() {
-            if !self.quota_engine.check(&ctx.agent.name, &ctx.agent.permissions) {
+        if self.quota_engine.has_limits()
+            && !self.quota_engine.check(&ctx.agent.name, &ctx.agent.permissions) {
                 return CallToolResult::error(format!(
                     "Rate limit exceeded for agent '{}'",
                     ctx.agent.name
                 ));
             }
-        }
 
         // Extract process table fields from context
         let agent_ring = ctx.agent.capabilities.as_ref().map(|c| c.ring);
@@ -305,10 +304,10 @@ impl McpServer {
             && result.label.integrity == crate::ifc::Integrity::Trusted
         {
             let path_arg = arguments.get("path").and_then(|v| v.as_str());
-            let is_trusted = path_arg.map_or(false, |p| {
+            let is_trusted = path_arg.is_some_and(|p| {
                 self.trusted_paths
                     .get(&ctx.agent.permissions)
-                    .map_or(false, |patterns| crate::ifc::is_trusted_path(p, patterns))
+                    .is_some_and(|patterns| crate::ifc::is_trusted_path(p, patterns))
             });
             if !is_trusted {
                 result.label.integrity = crate::ifc::Integrity::Untrusted;
@@ -845,7 +844,7 @@ impl McpServerBuilder {
         // Register gateway IFC tools
         {
             use crate::protocol::{ToolDefinition, ToolInputSchema};
-            use crate::ifc::value_store;
+            
 
             // myelix_var_list — list all variables in the session
             let vs = value_stores.clone();

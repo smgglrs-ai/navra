@@ -7,8 +7,7 @@ use crate::client::McpClient;
 use crate::error::AgentError;
 use myelix_model::{
     CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
-    InputItem, ItemStatus, MessageItem, ModelBackend, ModelResponse, OutputItem,
-    ResponseStatus, ResponseTool,
+    InputItem, ItemStatus, ModelBackend, ModelResponse, OutputItem, ResponseTool,
 };
 use myelix_protocol::label::DataLabel;
 use myelix_protocol::{CallToolResult, Content};
@@ -101,7 +100,7 @@ pub async fn run_tool_loop(
         .iter()
         .filter(|t| {
             match &config.allowed_tools {
-                Some(allowed) => allowed.iter().any(|a| t.name == *a),
+                Some(allowed) => allowed.contains(&t.name),
                 None => true,
             }
         })
@@ -203,7 +202,7 @@ pub async fn run_tool_loop(
 
         // Check if this round is purely status-polling (non-progress)
         let all_non_progress = config.non_progress_tools.as_ref().is_some_and(|npt| {
-            function_calls.iter().all(|fc| npt.iter().any(|t| *t == fc.name))
+            function_calls.iter().all(|fc| npt.contains(&fc.name))
         });
 
         if all_non_progress {

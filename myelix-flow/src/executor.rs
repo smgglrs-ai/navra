@@ -36,6 +36,12 @@ pub struct DagExecutor {
     blackboard: Option<Blackboard>,
 }
 
+impl Default for DagExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DagExecutor {
     /// Create a new executor.
     pub fn new() -> Self {
