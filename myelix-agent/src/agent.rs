@@ -2,7 +2,7 @@
 
 use crate::client::McpClient;
 use crate::error::AgentError;
-use crate::tool_loop::{run_tool_loop, ToolLoopConfig, ToolLoopResult};
+use crate::tool_loop::{run_tool_loop, AuditCallback, ToolLoopConfig, ToolLoopResult};
 use myelix_model::ModelBackend;
 use myelix_protocol::label::DataLabel;
 use myelix_protocol::Upstream;
@@ -26,8 +26,12 @@ impl Agent {
     }
 
     /// Run a task: send the user prompt through the tool-use loop.
+    ///
+    /// Each call generates a unique `run_id` (UUID v4) that is included
+    /// in the returned [`ToolLoopResult`] and passed to the audit callback.
     pub async fn run(&mut self, prompt: &str) -> Result<ToolLoopResult, AgentError> {
-        run_tool_loop(self.model.as_ref(), &mut self.client, prompt, &self.config).await
+        let run_id = uuid::Uuid::new_v4().to_string();
+        run_tool_loop(self.model.as_ref(), &mut self.client, prompt, &self.config, run_id).await
     }
 
     /// Direct access to the MCP client.
@@ -162,6 +166,15 @@ impl AgentBuilder {
     /// and `team_result` that observe state without making progress.
     pub fn non_progress_tools(mut self, tools: Vec<String>) -> Self {
         self.config.non_progress_tools = Some(tools);
+        self
+    }
+
+    /// Set an audit callback to record tool and model calls.
+    /// The callback receives structured events for each tool invocation
+    /// and model response without introducing a dependency on any
+    /// specific audit storage backend.
+    pub fn audit(mut self, callback: Arc<dyn AuditCallback>) -> Self {
+        self.config.audit = Some(callback);
         self
     }
 
