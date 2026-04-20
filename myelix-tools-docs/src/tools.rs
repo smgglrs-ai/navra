@@ -22,6 +22,7 @@ struct DocsState {
     approvals: Arc<ApprovalStore>,
     notifier: Arc<dyn Notifier>,
     embedding_model: Option<Arc<dyn ModelBackend>>,
+    default_root: Option<String>,
 }
 
 impl DocsModule {
@@ -38,6 +39,7 @@ impl DocsModule {
                 approvals,
                 notifier,
                 embedding_model: None,
+                default_root: None,
             }),
         }
     }
@@ -57,8 +59,23 @@ impl DocsModule {
                 approvals,
                 notifier,
                 embedding_model: Some(embedding_model),
+                default_root: None,
             }),
         }
+    }
+
+    /// Set the default root path for docs_tree when no path is specified.
+    pub fn set_default_root(&mut self, path: String) {
+        // Replace the Arc entirely to avoid Arc::get_mut issues
+        let old = &*self.state;
+        self.state = Arc::new(DocsState {
+            perm_engine: old.perm_engine.clone(),
+            index: old.index.clone(),
+            approvals: old.approvals.clone(),
+            notifier: old.notifier.clone(),
+            embedding_model: old.embedding_model.clone(),
+            default_root: Some(path),
+        });
     }
 }
 
@@ -181,7 +198,7 @@ fn tree_tool_def() -> ToolDefinition {
         description: Some(
             "Recursively list all files under a directory. Returns the full file \
              tree with relative paths and line counts. Use this to understand \
-             project structure in one call instead of repeated docs_list calls."
+             project structure. Call with no arguments to list the project root."
                 .to_string(),
         ),
         input_schema: ToolInputSchema {
@@ -189,14 +206,14 @@ fn tree_tool_def() -> ToolDefinition {
             properties: Some(HashMap::from([
                 (
                     "path".to_string(),
-                    serde_json::json!({"type": "string", "description": "Root directory path"}),
+                    serde_json::json!({"type": "string", "description": "Directory path (optional — defaults to project root)"}),
                 ),
                 (
                     "pattern".to_string(),
                     serde_json::json!({"type": "string", "description": "Optional file extension filter (e.g. 'rs', 'py'). Omit for all files."}),
                 ),
             ])),
-            required: Some(vec!["path".to_string()]),
+            required: None,
         },
     }
 }
@@ -1034,10 +1051,10 @@ async fn handle_tree(
     ctx: CallContext,
     state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
+    let raw_path = args.get("path")
+        .and_then(|v| v.as_str())
+        .or(state.default_root.as_deref())
+        .unwrap_or("/");
 
     let root = match resolve_path(raw_path, true) {
         Ok(p) => p,
@@ -1433,6 +1450,7 @@ mod tests {
             approvals: Arc::new(ApprovalStore::new(300)),
             notifier: Arc::new(NoopNotifier),
             embedding_model: None,
+            default_root: None,
         })
     }
 
@@ -1898,6 +1916,7 @@ mod tests {
             approvals: Arc::new(ApprovalStore::new(5)),
             notifier: Arc::new(NoopNotifier),
             embedding_model: None,
+            default_root: None,
         })
     }
 

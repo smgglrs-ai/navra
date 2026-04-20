@@ -696,6 +696,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 notifier.clone(),
             )
         };
+        // Set default root for docs_tree from cognitive_core path if configured
+        let mut docs = docs;
+        if let Some(ref cc_path) = cfg.cognitive_core {
+            let expanded = expand_tilde(cc_path);
+            if let Ok(canonical) = std::fs::canonicalize(&expanded) {
+                docs.set_default_root(canonical.display().to_string());
+            }
+        }
         tracing::info!("Module 'docs' enabled (db: {db_path})");
         builder = builder.module(docs);
 
