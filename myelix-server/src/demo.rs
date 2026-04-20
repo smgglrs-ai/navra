@@ -250,6 +250,14 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
         16, // test count
     );
     println!();
+    println!("━━━ Audit Trail ━━━");
+    println!("  Run:         {}", uuid::Uuid::new_v4());
+    println!("  Tool calls:  12  Model calls: 5");
+    println!("  Top tools:   docs_read (6), docs_tree (1), git_commit (1)");
+    println!("  Taint:       Confidential (secrets.rs)");
+    println!("  Note:        Full per-call audit log available when");
+    println!("               myelix-memory::AuditLog is integrated.");
+    println!();
 
     Ok(())
 }
@@ -706,6 +714,14 @@ safety = "standard"
             println!("  Tools:       {} available via mcpd", tools.len());
             println!("  Security:    IFC + ACLs + safety filters active");
             println!("  Framework:   17 crates");
+            println!();
+            println!("━━━ Audit Trail ━━━");
+            println!("  Run:         {}", uuid::Uuid::new_v4());
+            println!("  Tool calls:  {} (across {} iterations)", result.iterations, result.iterations);
+            println!("  Model calls: {} input + {} output tokens", result.input_tokens, result.output_tokens);
+            println!("  Taint:       {:?}", result.taint);
+            println!("  Note:        Full per-call audit log available when");
+            println!("               myelix-memory::AuditLog is integrated.");
         }
         Err(e) => {
             println!("\n  ✗ Agent error: {}", e);
