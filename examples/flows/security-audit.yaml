@@ -1,0 +1,16 @@
+kind: dag
+name: security-audit
+description: Audit a project for security vulnerabilities
+parameters:
+  target_dir:
+    type: string
+    description: Directory to audit
+tasks:
+  - id: scan
+    specialist: security_auditor
+    mandate: "Scan {{ target_dir }} for vulnerabilities"
+    expected_output: "List of findings with CWE IDs"
+  - id: synthesize
+    specialist: analyst
+    mandate: "Synthesize scan findings into a prioritized report"
+    depends_on: [scan]

@@ -19,6 +19,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 toml = "0.8"
+serde_yaml = "0.9"
 
 [dev-dependencies]
 myelix-responses = { path = "../myelix-responses" }

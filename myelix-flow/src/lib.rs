@@ -34,6 +34,7 @@ mod mesh_tools;
 mod recovery;
 mod task;
 mod validation;
+pub mod yaml_loader;
 
 pub use backedge::{BackEdgeTracker, ConditionalEdge, EdgeCondition};
 pub use blackboard::{Blackboard, BlackboardEntry};
@@ -41,7 +42,7 @@ pub use builder::FlowBuilder;
 pub use dag::DependencyGraph;
 pub use definition::{
     BackEdgeDefinition, DagConfig, DagDefinition, EdgeDefinition, FlowConfig, FlowDefinition,
-    NodeDefinition, TaskDefinition,
+    NodeDefinition, ParameterDef, TaskDefinition,
 };
 pub use engine::{Flow, FlowNode, FlowResult};
 pub use error::FlowError;
