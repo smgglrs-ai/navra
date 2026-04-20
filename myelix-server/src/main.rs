@@ -1611,10 +1611,23 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 let model = args.get("model").and_then(|v| v.as_str()).unwrap_or("auto");
                 let locality = args.get("locality").and_then(|v| v.as_str()).unwrap_or("auto");
 
-                match reg.add_teammate(team_id, name, persona, model, locality) {
+                let operations: Vec<String> = args.get("operations")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_else(|| team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect());
+
+                let tools: Vec<String> = args.get("tools")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_else(|| team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect());
+
+                match reg.add_teammate(team_id, name, persona, model, locality, operations.clone(), tools.clone()) {
                     Ok(()) => {
-                        tracing::info!(team = team_id, name = name, persona = ?persona, model = model, locality = locality, "Teammate added");
-                        CallToolResult::text(format!("Added '{name}' to team (persona: {}, model: {model}, locality: {locality})", persona.unwrap_or("default")))
+                        tracing::info!(team = team_id, name = name, persona = ?persona, model = model, locality = locality, operations = ?operations, tools = ?tools, "Teammate added");
+                        CallToolResult::text(format!(
+                            "Added '{name}' to team (persona: {}, model: {model}, locality: {locality}, operations: {operations:?}, tools: {tools:?})",
+                            persona.unwrap_or("default"),
+                        ))
                     }
                     Err(e) => CallToolResult::error(e),
                 }
@@ -1679,22 +1692,23 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
                     let mcp_url = format!("http://{bg_mcpd_addr}/mcp");
 
-                    // Build a scoped capability token so the teammate only
-                    // has access to docs_tree, docs_grep, docs_read, and
-                    // team_bb_publish — not the full tool surface.
+                    // Build a scoped capability token from the teammate's
+                    // configured operations and tools.
+                    let (tm_operations, tm_tools) = {
+                        let teams = bg_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                        teams.get(&bg_team_id)
+                            .and_then(|t| t.teammates.get(&bg_to))
+                            .map(|tm| (tm.operations.clone(), tm.tools.clone()))
+                            .unwrap_or_else(|| (
+                                team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                                team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                            ))
+                    };
+                    let tm_tools_desc = tm_tools.join(", ");
                     let teammate_cap = myelix_core::auth::capability::CapabilitySet {
                         paths: vec!["**".to_string()],
-                        operations: vec![
-                            "read".to_string(),
-                            "search".to_string(),
-                            "list".to_string(),
-                        ],
-                        tools: vec![
-                            "docs_tree".to_string(),
-                            "docs_grep".to_string(),
-                            "docs_read".to_string(),
-                            "team_bb_publish".to_string(),
-                        ],
+                        operations: tm_operations,
+                        tools: tm_tools,
                         credentials: vec![],
                     };
                     let teammate_did = format!("did:teammate:{}:{}", bg_team_id, bg_to);
@@ -1720,16 +1734,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     // Build the teammate's system prompt
                     let system_prompt = format!(
                         "You are a specialist agent named '{}' working as part of a team.\n\n\
-                         You have access to MCP tools: docs_tree, docs_grep, docs_read \
-                         for exploring the codebase, and team_bb_publish to share \
-                         findings on the team blackboard (team_id: {}).\n\n\
-                         When you find something important, publish it to the blackboard \
-                         with team_bb_publish so other teammates can see it.\n\n\
+                         You have access to MCP tools: {}.\n\
+                         Use these tools to complete your task. If team_bb_publish \
+                         is available, publish important findings to the team \
+                         blackboard (team_id: {}).\n\n\
                          Report findings as a JSON array:\n\
                          [{{\"file\": \"...\", \"cwe\": \"CWE-NNN\", \"severity\": \"high\", \"description\": \"...\", \"fix\": \"...\"}}]\n\
                          If no findings, return: []\n\n\
                          Your team_id is: {}",
-                        bg_to, bg_team_id, bg_team_id
+                        bg_to, tm_tools_desc, bg_team_id, bg_team_id
                     );
 
                     // Get the model name from the teammate's config
