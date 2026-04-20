@@ -2122,6 +2122,74 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, models_list)");
     }
 
+    // Register audit_query tool (stub — full wiring when myelix-memory audit module lands)
+    {
+        builder = builder.tool(
+            myelix_core::protocol::ToolDefinition {
+                name: "audit_query".to_string(),
+                description: Some(
+                    "Query the structured audit log for past agent runs, tool calls, \
+                     and model calls."
+                        .to_string(),
+                ),
+                input_schema: myelix_core::protocol::ToolInputSchema {
+                    schema_type: "object".to_string(),
+                    properties: {
+                        let mut props = std::collections::HashMap::new();
+                        props.insert("run_id".to_string(), serde_json::json!({
+                            "type": "string",
+                            "description": "Filter by run ID"
+                        }));
+                        props.insert("agent_id".to_string(), serde_json::json!({
+                            "type": "string",
+                            "description": "Filter by agent ID"
+                        }));
+                        props.insert("tool_name".to_string(), serde_json::json!({
+                            "type": "string",
+                            "description": "Filter by tool name"
+                        }));
+                        props.insert("limit".to_string(), serde_json::json!({
+                            "type": "integer",
+                            "description": "Maximum number of entries to return (default 50)"
+                        }));
+                        Some(props)
+                    },
+                    required: None,
+                },
+            },
+            |args, _ctx| {
+                Box::pin(async move {
+                    use myelix_core::protocol::CallToolResult;
+
+                    let run_id = args.get("run_id").and_then(|v| v.as_str());
+                    let agent_id = args.get("agent_id").and_then(|v| v.as_str());
+                    let tool_name = args.get("tool_name").and_then(|v| v.as_str());
+                    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50);
+
+                    // Stub: the AuditLog backend is not wired yet.
+                    // When myelix-memory::AuditLog lands, this handler will
+                    // query it and return real entries.
+                    let response = serde_json::json!({
+                        "status": "not_wired",
+                        "message": "Audit log storage is not yet connected. \
+                                    The audit_query tool will return real data \
+                                    once myelix-memory::AuditLog is integrated.",
+                        "filters": {
+                            "run_id": run_id,
+                            "agent_id": agent_id,
+                            "tool_name": tool_name,
+                            "limit": limit,
+                        }
+                    });
+                    CallToolResult::text(
+                        serde_json::to_string_pretty(&response).unwrap_or_default()
+                    )
+                })
+            },
+        );
+        tracing::info!("Registered audit_query tool");
+    }
+
     let server = Arc::new(builder.build());
     tracing::info!(
         tools = server.tool_count(),
