@@ -14,6 +14,7 @@
 //! let knowledge = KnowledgeStore::open(Path::new("knowledge.db")).unwrap();
 //! ```
 
+pub mod audit;
 mod error;
 mod knowledge;
 pub mod pipeline;
@@ -28,4 +29,5 @@ pub use pipeline::DistillationPipeline;
 pub use retrieval::{MemoryRetriever, ScoredEntry};
 pub use session_store::SqliteSessionBackend;
 pub use types::{DistilledEntry, MemoryEntry, MemoryType, Message, Role, Turn};
+pub use audit::{AuditLog, AuditModelCall, AuditRun, AuditSummary, AuditToolCall};
 pub use working::WorkingMemory;
