@@ -17,14 +17,22 @@ use std::sync::{atomic::{AtomicU32, Ordering}, Mutex};
 use std::time::Instant;
 use tokio::task::JoinHandle;
 
+/// Default operations granted to teammates.
+pub const DEFAULT_OPERATIONS: &[&str] = &["read", "search", "list"];
+
+/// Default tools granted to teammates.
+pub const DEFAULT_TOOLS: &[&str] = &["docs_tree", "docs_grep", "docs_read", "team_bb_publish"];
+
 /// A teammate in the team.
 #[derive(Debug, Clone)]
 pub struct Teammate {
     pub name: String,
     pub persona: Option<String>,
     pub model: String,
-    pub locality: String, // "local", "remote", "auto"
-    pub status: String,   // "idle", "working", "done", "failed"
+    pub locality: String,   // "local", "remote", "auto"
+    pub operations: Vec<String>, // allowed operations for capability token
+    pub tools: Vec<String>,      // allowed tools for capability token
+    pub status: String,     // "idle", "working", "done", "failed"
     pub task: Option<String>,
     pub output: Option<String>,
     pub created_at: Instant,
@@ -161,6 +169,8 @@ impl TeamRegistry {
         persona: Option<&str>,
         model: &str,
         locality: &str,
+        operations: Vec<String>,
+        tools: Vec<String>,
     ) -> Result<(), String> {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         let team = teams
@@ -187,6 +197,8 @@ impl TeamRegistry {
                 persona: persona.map(String::from),
                 model: model.to_string(),
                 locality: locality.to_string(),
+                operations,
+                tools,
                 status: "idle".to_string(),
                 task: None,
                 output: None,
@@ -324,6 +336,8 @@ impl TeamRegistry {
                     "persona": tm.persona,
                     "model": tm.model,
                     "locality": tm.locality,
+                    "operations": tm.operations,
+                    "tools": tm.tools,
                     "status": tm.status,
                     "has_output": tm.output.is_some(),
                 })
@@ -424,10 +438,15 @@ pub fn team_add_def() -> ToolDefinition {
         name: "team_add".to_string(),
         description: Some(
             "Add a teammate to a team. Teammates are full agents with \
-             tool access (docs_tree, docs_grep, docs_read) and can \
-             publish findings to the shared blackboard. Specify locality: \
-             'local' for sensitive data (on-device model), 'remote' for \
-             complex reasoning (cloud API), 'auto' for IFC-based selection."
+             scoped tool access and can publish findings to the shared \
+             blackboard. Specify locality: 'local' for sensitive data \
+             (on-device model), 'remote' for complex reasoning (cloud API), \
+             'auto' for IFC-based selection.\n\n\
+             Use 'operations' and 'tools' to control what the teammate \
+             can do. Operations are capability-level permissions (e.g. \
+             'read', 'search', 'list', 'write', 'git.commit'). Tools \
+             are the specific MCP tools the teammate can call. Both \
+             default to a safe read-only set if omitted."
                 .to_string(),
         ),
         input_schema: ToolInputSchema {
@@ -438,6 +457,8 @@ pub fn team_add_def() -> ToolDefinition {
                 ("persona".to_string(), serde_json::json!({"type": "string", "description": "Persona name from cognitive core"})),
                 ("model".to_string(), serde_json::json!({"type": "string", "description": "Model name or 'auto'"})),
                 ("locality".to_string(), serde_json::json!({"type": "string", "enum": ["local", "remote", "auto"], "description": "'local' = data stays on device, 'remote' = cloud API, 'auto' = IFC decides"})),
+                ("operations".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed operations (default: ['read', 'search', 'list'])"})),
+                ("tools".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: ['docs_tree', 'docs_grep', 'docs_read', 'team_bb_publish'])"})),
             ])),
             required: Some(vec!["team_id".to_string(), "name".to_string()]),
         },
