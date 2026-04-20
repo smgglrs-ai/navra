@@ -1,0 +1,14 @@
+# Goose extension config for mcpd
+# Copy to ~/.config/goose/extensions/mcpd.yaml
+#
+# Generate a token first:
+#   mcpd token generate --name goose --permissions developer
+
+name: mcpd
+transport: streamable-http
+url: http://127.0.0.1:9315/mcp
+headers:
+  Authorization: "Bearer <your-mcpd-token>"
+
+# To connect via Unix socket instead of TCP, replace the url above:
+# url: unix:///run/user/1000/mcpd/mcpd.sock
