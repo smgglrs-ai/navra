@@ -1,7 +1,27 @@
 use std::sync::Arc;
 
+use axum::response::IntoResponse;
+
 use crate::config;
 use crate::expand_tilde;
+
+/// Axum middleware that authenticates requests against the MCP server's
+/// authenticator. Applied as a route layer on all `/api/*` routes.
+async fn auth_middleware(
+    axum::extract::State(server): axum::extract::State<Arc<myelix_core::McpServer>>,
+    headers: axum::http::HeaderMap,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    if server.authenticator().authenticate(&headers).is_err() {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            axum::Json(serde_json::json!({"error": "unauthorized"})),
+        )
+            .into_response();
+    }
+    next.run(request).await
+}
 
 /// Build the web UI routes and attach them to the given router.
 ///
@@ -107,31 +127,16 @@ pub(crate) fn attach_ui_routes(
     let ui_chat_backend = chat_backend;
     let ui_flows = Arc::new(flow_files);
 
-    router
-        // --- Static assets ---
-        .route("/", axum::routing::get(|| async {
-            ([("content-type", "text/html")], include_str!("../ui/index.html"))
-        }))
-        .route("/ui/style.css", axum::routing::get(|| async {
-            ([("content-type", "text/css")], include_str!("../ui/style.css"))
-        }))
-        .route("/ui/app.js", axum::routing::get(|| async {
-            ([("content-type", "application/javascript")], include_str!("../ui/app.js"))
-        }))
-
-        // --- API: Server status (authenticated) ---
-        .route("/api/status", {
+    // Build the API router with auth middleware applied to all routes
+    let api_router = axum::Router::new()
+        // --- API: Server status ---
+        .route("/status", {
             let models = ui_models.clone();
             let personas = ui_personas.clone();
-            let api_server = Arc::clone(server);
-            axum::routing::get(move |headers: axum::http::HeaderMap| {
+            axum::routing::get(move || {
                 let models = models.clone();
                 let personas = personas.clone();
-                let api_server = Arc::clone(&api_server);
                 async move {
-                    if api_server.authenticator().authenticate(&headers).is_err() {
-                        return axum::Json(serde_json::json!({"error": "unauthorized"}));
-                    }
                     let model_names: Vec<&str> = models.iter()
                         .filter_map(|m| m["name"].as_str())
                         .collect();
@@ -147,49 +152,34 @@ pub(crate) fn attach_ui_routes(
             })
         })
 
-        // --- API: Models (authenticated) ---
-        .route("/api/models", {
+        // --- API: Models ---
+        .route("/models", {
             let models = ui_models.clone();
-            let api_server = Arc::clone(server);
-            axum::routing::get(move |headers: axum::http::HeaderMap| {
+            axum::routing::get(move || {
                 let models = models.clone();
-                let api_server = Arc::clone(&api_server);
                 async move {
-                    if api_server.authenticator().authenticate(&headers).is_err() {
-                        return axum::Json(serde_json::json!({"error": "unauthorized"}));
-                    }
                     axum::Json(serde_json::json!(*models))
                 }
             })
         })
 
-        // --- API: Agents (authenticated) ---
-        .route("/api/agents", {
+        // --- API: Agents ---
+        .route("/agents", {
             let agents = ui_agents.clone();
-            let api_server = Arc::clone(server);
-            axum::routing::get(move |headers: axum::http::HeaderMap| {
+            axum::routing::get(move || {
                 let agents = agents.clone();
-                let api_server = Arc::clone(&api_server);
                 async move {
-                    if api_server.authenticator().authenticate(&headers).is_err() {
-                        return axum::Json(serde_json::json!({"error": "unauthorized"}));
-                    }
                     axum::Json(serde_json::json!(*agents))
                 }
             })
         })
 
-        // --- API: Flows (authenticated) ---
-        .route("/api/flows", {
+        // --- API: Flows ---
+        .route("/flows", {
             let flows = ui_flows.clone();
-            let api_server = Arc::clone(server);
-            axum::routing::get(move |headers: axum::http::HeaderMap| {
+            axum::routing::get(move || {
                 let flows = flows.clone();
-                let api_server = Arc::clone(&api_server);
                 async move {
-                    if api_server.authenticator().authenticate(&headers).is_err() {
-                        return axum::Json(serde_json::json!({"error": "unauthorized"}));
-                    }
                     let list: Vec<serde_json::Value> = flows.iter().map(|(name, path)| {
                         // Try to read the flow TOML for task count
                         let tasks = std::fs::read_to_string(path)
@@ -210,21 +200,14 @@ pub(crate) fn attach_ui_routes(
             })
         })
 
-        // --- API: Chat (authenticated, streaming) ---
-        .route("/api/chat", {
+        // --- API: Chat (streaming) ---
+        .route("/chat", {
             let backend = ui_chat_backend.clone();
             let forge = ui_forge.clone();
-            let api_server = Arc::clone(server);
-            axum::routing::post(move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
+            axum::routing::post(move |body: axum::Json<serde_json::Value>| {
                 let backend = backend.clone();
                 let forge = forge.clone();
-                let api_server = Arc::clone(&api_server);
                 async move {
-                    if api_server.authenticator().authenticate(&headers).is_err() {
-                        return axum::Json(serde_json::json!({"error": "unauthorized"})).into_response();
-                    }
-                    use axum::response::IntoResponse;
-
                     let prompt = body["prompt"].as_str().unwrap_or("").to_string();
                     let persona = body["persona"].as_str().unwrap_or("").to_string();
 
@@ -293,4 +276,24 @@ pub(crate) fn attach_ui_routes(
                 }
             })
         })
+
+        .route_layer(axum::middleware::from_fn_with_state(
+            Arc::clone(server),
+            auth_middleware,
+        ));
+
+    router
+        // --- Static assets (no auth) ---
+        .route("/", axum::routing::get(|| async {
+            ([("content-type", "text/html")], include_str!("../ui/index.html"))
+        }))
+        .route("/ui/style.css", axum::routing::get(|| async {
+            ([("content-type", "text/css")], include_str!("../ui/style.css"))
+        }))
+        .route("/ui/app.js", axum::routing::get(|| async {
+            ([("content-type", "application/javascript")], include_str!("../ui/app.js"))
+        }))
+
+        // --- Authenticated API routes ---
+        .nest("/api", api_router)
 }
