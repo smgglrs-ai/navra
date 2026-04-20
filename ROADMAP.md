@@ -4,7 +4,7 @@ This document tracks the evolution of the myelix-* crate family from
 an MCP gateway (mcpd) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-04-19)
+## Current state (2026-04-20)
 
 17 crates, 788 tests, ~46K LoC. 43 personas, 36 heuristics, 7 directives.
 
@@ -168,6 +168,49 @@ context layers (2026-04-17).
 - Integration with myelix-agent: `Agent::builder().persona("analyst")`
 - Port the 40 personas, 8 directives, 36 heuristics from Python
 
+#### 1c. Persona evolution via momentum-based adaptation (NEW)
+
+Add dynamic persona adaptation inspired by PersonaVLM's Personality
+Evolving Mechanism (PEM). Personas accumulate interaction-derived
+traits over time rather than staying static YAML:
+
+- **Trait vector**: Each persona maintains a vector of behavioral
+  scores (e.g., verbosity, formality, risk tolerance) alongside
+  its YAML definition.
+- **Momentum update**: After each session, extract observed behavioral
+  signals and update the trait vector with exponential moving average:
+  `trait_new = α * observed + (1 - α) * trait_old` (α configurable,
+  default 0.1 for slow adaptation).
+- **Prompt injection**: Weaver reads the trait vector and adjusts
+  prompt emphasis (e.g., a persona that evolves toward conciseness
+  gets stronger brevity instructions).
+- **Reset/freeze**: Users can freeze a persona's evolution or reset
+  to YAML defaults. Trait history stored in SQLite for auditability.
+- **Scope**: Per-user persona evolution (same persona can evolve
+  differently for different users).
+
+This is NOT personality simulation — it's adaptive calibration of
+agent behavior based on accumulated feedback signals.
+
+Reference: PersonaVLM (arXiv 2604.13074), Personality Evolving
+Mechanism with Big Five momentum-based updates.
+
+#### 1d. Lazy-loading persona specializations (NEW)
+
+Inactive persona specializations are represented as name +
+description only. Full specialization content (prompts, heuristics,
+output schemas) is loaded into context only when the Weaver
+activates that specialization:
+
+- **Catalog**: On startup, index all specialization YAML files
+  but store only metadata (name, description, trigger conditions).
+- **On-demand loading**: When the Weaver selects a specialization
+  for prompt assembly, load the full YAML content.
+- **Context savings**: Reduces baseline context overhead for personas
+  with many specializations (some personas have 5+ specializations).
+
+Reference: SemaClaw skill lazy-loading (arXiv 2604.11548).
+
 **Why first**: The cognitive core is Myelix's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
 
@@ -272,19 +315,27 @@ Transfer Learning (arXiv 2604.14004).
 Replace single-channel vector search with fused multi-channel
 retrieval using Reciprocal Rank Fusion:
 
-- **5 retrieval channels** (run in parallel):
+- **6 retrieval channels** (run in parallel):
   1. Full-text search (existing FTS5)
   2. Fact-key lookup (exact match on keyed facts)
   3. Raw message search (substring match on stored turns)
   4. Direct vector search (existing sqlite-vec)
   5. HyDE — Hypothetical Document Embedding (generate ideal answer,
      embed that, search for similar stored memories)
+  6. Temporal retrieval — time-based filtering and recency weighting
+     for queries with temporal cues ("this morning", "last week",
+     "before the refactor"). Parse temporal expressions into time
+     ranges, filter memories by timestamp, boost recency.
 - **RRF fusion**: Merge ranked lists from all channels using
   `score = Σ 1/(k + rank_i)` with k=60. No per-channel weight
   tuning needed.
+- **Temporal weighting**: When a query contains temporal expressions,
+  the temporal channel gets elevated rank contribution in the RRF
+  fusion (effectively k=30 instead of k=60 for temporal results).
 - Top-N results after fusion feed into context.
 
-Reference: Cloudflare Agent Memory RRF design (2026-04-19).
+Reference: Cloudflare Agent Memory RRF design (2026-04-19),
+PersonaVLM temporal-aware retrieval (arXiv 2604.13074).
 
 #### 3d. Knowledge distillation pipeline (port from Python)
 
@@ -303,6 +354,15 @@ Port the 4-stage Knowledge Cultivation Pipeline from Python Myelix
 Port data models: StructuredCase, CaseContext, Action, CaseOutcome,
 CaseMetadata, CaseSearchResult. Port extractors, reconcilers,
 transcript parsers, session segmenters.
+
+**Output format**: Distilled knowledge stored as plain Markdown
+files with YAML frontmatter (type, name, description, source,
+created_at). Directory hierarchy represents topic taxonomy.
+User-editable, version-controllable, locally inspectable —
+no proprietary database intermediation.
+
+Reference: SemaClaw wiki-based knowledge infrastructure
+(arXiv 2604.11548).
 
 This is DIFFERENT from context compaction (Phase 1a). Compaction
 is runtime context management. Distillation is offline knowledge
@@ -457,7 +517,31 @@ notifications, approval dialogs, and permission prompts:
 
 Reference: Google A2UI v0.9 (developers.googleblog.com, 2026-04-19).
 
-#### 5f. Multi-agent cross-validation in flows (NEW)
+#### 5f. Registry proxy module (NEW)
+
+Add a `RegistryModule` to mcpd that aggregates external agent/tool
+discovery registries behind the gateway's unified security layer:
+
+- **Proxy to external registries**: AWS Agent Registry, Azure Agent
+  Registry, MCP Registry — agents behind mcpd get unified discovery
+  without needing provider-specific SDK access.
+- **Registry as MCP server**: Expose discovery as MCP tools
+  (`registry_search`, `registry_list`, `registry_describe`).
+- **Hybrid search**: Forward keyword + semantic queries to upstream
+  registries, merge results, apply mcpd's ACLs to filter what the
+  requesting agent is allowed to discover.
+- **Caching**: Cache registry responses locally with configurable
+  TTL (default 1h). Avoid hammering external APIs.
+- **Multilingual awareness**: Test non-English semantic search
+  quality (AWS registry fails 33% of Japanese queries). Use local
+  embedding model as fallback for non-English queries.
+
+This fits the gateway pattern — mcpd aggregates discovery sources
+just like it aggregates upstream MCP servers.
+
+Reference: AWS Agent Registry (InfoQ, 2026-04-20), DISCOVERY.md.
+
+#### 5g. Multi-agent cross-validation in flows (NEW)
 
 Add cross-validation pattern to myelix-flow for high-stakes
 agent outputs:
@@ -474,6 +558,30 @@ agent outputs:
 
 Reference: Claude Code Review multi-agent architecture
 (claude.com/blog/code-review, 2026-04-19).
+
+### Phase 5h. Module trait taxonomy review (NEW)
+
+Review whether myelix-core's flat `Module` trait should be split
+into a richer taxonomy, inspired by SemaClaw's 4-layer plugin
+architecture:
+
+| Layer | SemaClaw | mcpd equivalent | Example |
+|-------|----------|-----------------|---------|
+| **Action** | MCP Tools | Tool modules (docs, git) | `myelix-tools-*` |
+| **Thought** | Subagents | Cognitive specializations | `myelix-cognitive` |
+| **Context** | Skills (lazy-loaded) | Context injectors (RAG, memory) | `myelix-rag`, `myelix-memory` |
+| **Harness** | Lifecycle hooks | Hook pipeline, safety filters | `myelix-security` |
+
+Currently all modules implement the same `Module` trait regardless
+of their role. Distinguishing tool-providers from context-injectors
+from lifecycle hooks could improve composability and make the
+architecture self-documenting.
+
+**Decision needed**: Is the added type complexity worth it, or is
+the flat trait + convention sufficient? Evaluate when implementing
+Phase 3 (memory as context injector vs memory as tool).
+
+Reference: SemaClaw 4-layer plugin taxonomy (arXiv 2604.11548).
 
 ### Phase 6: RAG enhancements
 
@@ -510,6 +618,26 @@ similar queries.
   through governed tool catalogs). Maps 1:1 to mcpd's design.
 - ZeroClaw as additional competitive baseline (Rust trait-based
   agent, similar permission model, but flat runtime vs gateway)
+- SemaClaw as harness-layer peer comparison: same problems
+  (permissions, DAG orchestration, memory, context management)
+  solved at a different architectural layer. mcpd = gateway
+  (secures any framework), SemaClaw = harness (wraps one
+  framework). Their PermissionBridge is binary vs our IFC taint
+  propagation. Cite as validation that harness engineering is an
+  emerging discipline (arXiv 2604.11548).
+- LangChain Agentic Engineering: cite Worker/Leader pattern as
+  industry convergence on multi-agent teams. Note absence of
+  security enforcement — validates mcpd's niche.
+- AWS Agent Registry: cite as governance-layer complement to
+  mcpd's runtime-security layer. Discovery + governance + runtime
+  security as three orthogonal concerns.
+- PersonaVLM: cite memory type convergence (4-type taxonomy
+  independently arrived at by Cloudflare, PersonaVLM, SemaClaw,
+  and our Phase 3b). Cite temporal retrieval and persona evolution.
+- BLD cross-tokenizer distillation (arXiv 2604.07466): cite if
+  discussing heterogeneous model ensemble strategies.
+- OpenMythos / RDT architecture: cite if Recurrent Depth
+  Transformers validate for CPU-tier model sizing claims.
 - Peer review
 
 ---
@@ -571,6 +699,50 @@ Zed/JetBrains    ──┘              └── local ONNX models
 - Potential collaboration: transport adapters, tool interface traits
 - Watch for convergence — similar Rust + trait patterns, different layers
 - Migrating OpenClaw users (positions as next-gen replacement)
+
+### SemaClaw relationship (April 2026 analysis)
+
+- SemaClaw: Open-source two-layer agent framework (arXiv 2604.11548)
+- sema-code-core (Node.js agent runtime) + SemaClaw (application harness)
+- Closest architectural parallel to myelix-* crate family
+- Same problems: permissions, DAG orchestration, memory with hybrid
+  retrieval, structured context injection, persona identity
+- Key differences (our advantages):
+  - **Layer**: SemaClaw is a harness (wraps one framework).
+    mcpd is a gateway (secures any framework that speaks MCP).
+  - **Security depth**: Their PermissionBridge is binary
+    (internal=allow, external=approve). Our IFC propagates taint
+    labels through tool chains; deny-wins ACLs are more granular.
+  - **Language**: Node.js vs Rust (type safety, no runtime, WASM,
+    in-process ONNX).
+  - **Model lifecycle**: No model management (external APIs only).
+    We have hub → runtime → backend.
+- What we borrowed: 4-layer plugin taxonomy (Phase 5h Module trait
+  review), wiki-format knowledge output (Phase 3d), skill
+  lazy-loading (Phase 1d).
+
+### LangChain Agentic Engineering (April 2026 analysis)
+
+- LangChain reframes multi-agent systems as "agentic engineering"
+- Worker agents (ICs) + Leader agents (PMs) with shared memory
+  and tooling. A2A for agent comms, MCP for tools.
+- 93% debugging time reduction, 65% dev time reduction in pilot
+- No security enforcement whatsoever — their "tool gateway" is an
+  API aggregator, not a security layer
+- Validates our architecture: their Worker/Leader = our DAG
+  orchestrator/specialists, their tool gateway = mcpd (minus security)
+- Human PR review as bottleneck supports cross-validation (Phase 5g)
+
+### AWS Agent Registry (April 2026 analysis)
+
+- Centralized agent/tool/MCP server catalog in Amazon Bedrock AgentCore
+- MCP + A2A native, hybrid keyword+semantic search, governance workflow
+- The registry itself is an MCP server (queryable by Kiro, Claude Code)
+- Governance layer (who owns what, is it approved) complements mcpd's
+  runtime security layer (what can it access, is the content safe)
+- Non-English semantic search fails 33% of tests — test our local
+  embeddings for multilingual quality
+- Consider RegistryModule to proxy external registries (Phase 5f)
 
 ## Non-goals
 
