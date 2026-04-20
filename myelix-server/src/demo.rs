@@ -594,6 +594,38 @@ safety = "standard"
         "models_list".to_string(),
     ];
 
+    // Set up audit log
+    let audit_path = std::path::PathBuf::from("/tmp/mcpd-demo/audit.db");
+    let audit_log = std::sync::Arc::new(
+        myelix_memory::audit::AuditLog::open(&audit_path)
+            .unwrap_or_else(|_| myelix_memory::audit::AuditLog::open_memory().unwrap())
+    );
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let audit_bridge = std::sync::Arc::new(
+        crate::audit_bridge::AuditBridge::new(
+            std::sync::Arc::clone(&audit_log),
+            &run_id,
+            "lead",
+        )
+    );
+
+    // Begin audit run
+    let _ = audit_log.begin_run(&myelix_memory::audit::AuditRun {
+        run_id: run_id.clone(),
+        agent_id: "lead".to_string(),
+        prompt: custom_prompt.unwrap_or("default audit").to_string(),
+        persona: Some(persona_name.to_string()),
+        model: model_name.to_string(),
+        started_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64,
+        ended_at: None,
+        teammates: vec![],
+        final_report: None,
+        exit_reason: None,
+    });
+
     macro_rules! build_agent {
         ($backend:expr) => {
             myelix_agent::Agent::builder()
@@ -603,6 +635,7 @@ safety = "standard"
                 .system_prompt(&system_prompt)
                 .allowed_tools(lead_tools.clone())
                 .non_progress_tools(polling_tools.clone())
+                .audit(audit_bridge.clone())
                 .max_iterations(50)
                 .temperature(0.3)
                 .max_tokens(8192)
@@ -715,15 +748,43 @@ safety = "standard"
             println!("  Security:    IFC + ACLs + safety filters active");
             println!("  Framework:   17 crates");
             println!();
+            // End audit run
+            let _ = audit_log.end_run(
+                &run_id,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64,
+                Some(&result.response),
+                Some("completed"),
+            );
+
             println!("━━━ Audit Trail ━━━");
-            println!("  Run:         {}", uuid::Uuid::new_v4());
-            println!("  Tool calls:  {} (across {} iterations)", result.iterations, result.iterations);
-            println!("  Model calls: {} input + {} output tokens", result.input_tokens, result.output_tokens);
+            println!("  Run:         {}", run_id);
+            if let Ok(summary) = audit_log.get_summary(&run_id) {
+                println!("  Tool calls:  {}", summary.tool_call_count);
+                println!("  Model calls: {}", summary.model_call_count);
+                if !summary.top_tools.is_empty() {
+                    let top: Vec<String> = summary.top_tools.iter()
+                        .take(5)
+                        .map(|(name, count)| format!("{name} ({count})")
+                    ).collect();
+                    println!("  Top tools:   {}", top.join(", "));
+                }
+            }
             println!("  Taint:       {:?}", result.taint);
-            println!("  Note:        Full per-call audit log available when");
-            println!("               myelix-memory::AuditLog is integrated.");
+            println!("  Stored at:   /tmp/mcpd-demo/audit.db");
         }
         Err(e) => {
+            let _ = audit_log.end_run(
+                &run_id,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64,
+                None,
+                Some(&format!("error: {e}")),
+            );
             println!("\n  ✗ Agent error: {}", e);
         }
     }

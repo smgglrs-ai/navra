@@ -1,3 +1,4 @@
+mod audit_bridge;
 mod cli;
 mod config;
 mod demo;
@@ -14,7 +15,7 @@ use myelix_core::identity::{self, CapSigner, Ed25519Signer};
 use myelix_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use std::sync::Arc;
 
-use cli::{Cli, Commands, ModelAction, TokenAction};
+use cli::{AuditAction, Cli, Commands, ModelAction, TokenAction};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -93,6 +94,9 @@ async fn main() -> anyhow::Result<()> {
                 cli::model_available();
             }
         },
+        Commands::Audit { action } => {
+            audit_command(action)?;
+        }
         Commands::Demo { project, live, model, max_rounds, files_per_round, min_delta, prompt, writable, allow_read, allow_write } => {
             if live {
                 demo::run_demo_live(&project, &model, max_rounds, files_per_round, min_delta, prompt.as_deref(), writable, &allow_read, &allow_write).await?;
@@ -2130,14 +2134,34 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, models_list)");
     }
 
-    // Register audit_query tool (stub — full wiring when myelix-memory audit module lands)
+    // Register audit_query tool
     {
+        let audit_db_path = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("mcpd/audit.db");
+        if let Some(parent) = audit_db_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let audit_log = match myelix_memory::audit::AuditLog::open(&audit_db_path) {
+            Ok(log) => {
+                tracing::info!(path = %audit_db_path.display(), "Audit log enabled");
+                Arc::new(log)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to open audit DB, using in-memory");
+                Arc::new(myelix_memory::audit::AuditLog::open_memory().unwrap())
+            }
+        };
+
+        let audit = Arc::clone(&audit_log);
         builder = builder.tool(
             myelix_core::protocol::ToolDefinition {
                 name: "audit_query".to_string(),
                 description: Some(
-                    "Query the structured audit log for past agent runs, tool calls, \
-                     and model calls."
+                    "Query the structured audit log. Returns tool calls, model calls, \
+                     and run summaries from past agent executions. Use to inspect \
+                     what tools were called, with what arguments, and what results \
+                     were returned."
                         .to_string(),
                 ),
                 input_schema: myelix_core::protocol::ToolInputSchema {
@@ -2146,52 +2170,50 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         let mut props = std::collections::HashMap::new();
                         props.insert("run_id".to_string(), serde_json::json!({
                             "type": "string",
-                            "description": "Filter by run ID"
+                            "description": "Filter by run ID (returns tool calls for that run)"
                         }));
-                        props.insert("agent_id".to_string(), serde_json::json!({
-                            "type": "string",
-                            "description": "Filter by agent ID"
-                        }));
-                        props.insert("tool_name".to_string(), serde_json::json!({
-                            "type": "string",
-                            "description": "Filter by tool name"
-                        }));
-                        props.insert("limit".to_string(), serde_json::json!({
-                            "type": "integer",
-                            "description": "Maximum number of entries to return (default 50)"
+                        props.insert("summary".to_string(), serde_json::json!({
+                            "type": "boolean",
+                            "description": "If true, return a summary instead of individual entries"
                         }));
                         Some(props)
                     },
                     required: None,
                 },
             },
-            |args, _ctx| {
+            move |args, _ctx| {
+                let audit = Arc::clone(&audit);
                 Box::pin(async move {
                     use myelix_core::protocol::CallToolResult;
 
                     let run_id = args.get("run_id").and_then(|v| v.as_str());
-                    let agent_id = args.get("agent_id").and_then(|v| v.as_str());
-                    let tool_name = args.get("tool_name").and_then(|v| v.as_str());
-                    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50);
 
-                    // Stub: the AuditLog backend is not wired yet.
-                    // When myelix-memory::AuditLog lands, this handler will
-                    // query it and return real entries.
-                    let response = serde_json::json!({
-                        "status": "not_wired",
-                        "message": "Audit log storage is not yet connected. \
-                                    The audit_query tool will return real data \
-                                    once myelix-memory::AuditLog is integrated.",
-                        "filters": {
-                            "run_id": run_id,
-                            "agent_id": agent_id,
-                            "tool_name": tool_name,
-                            "limit": limit,
+                    if let Some(rid) = run_id {
+                        let summary = args.get("summary").and_then(|v| v.as_bool()).unwrap_or(false);
+                        if summary {
+                            match audit.get_summary(rid) {
+                                Ok(s) => CallToolResult::text(
+                                    serde_json::to_string_pretty(&s).unwrap_or_default()
+                                ),
+                                Err(e) => CallToolResult::error(format!("Audit query failed: {e}")),
+                            }
+                        } else {
+                            match audit.get_tool_calls(rid) {
+                                Ok(calls) => CallToolResult::text(
+                                    serde_json::to_string_pretty(&calls).unwrap_or_default()
+                                ),
+                                Err(e) => CallToolResult::error(format!("Audit query failed: {e}")),
+                            }
                         }
-                    });
-                    CallToolResult::text(
-                        serde_json::to_string_pretty(&response).unwrap_or_default()
-                    )
+                    } else {
+                        // No run_id — list recent runs
+                        match audit.get_run("latest") {
+                            Ok(run) => CallToolResult::text(
+                                serde_json::to_string_pretty(&run).unwrap_or_default()
+                            ),
+                            Err(_) => CallToolResult::text("No audit runs found. Run a demo first.".to_string()),
+                        }
+                    }
                 })
             },
         );
@@ -2655,4 +2677,107 @@ pub(crate) fn expand_tilde(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+fn audit_command(action: AuditAction) -> anyhow::Result<()> {
+    // Check both demo and server audit DBs
+    let demo_path = std::path::PathBuf::from("/tmp/mcpd-demo/audit.db");
+    let server_path = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("mcpd/audit.db");
+
+    let db_path = if demo_path.exists() { &demo_path } else { &server_path };
+
+    if !db_path.exists() {
+        anyhow::bail!("No audit log found. Run a demo first, or start the server.");
+    }
+
+    let log = myelix_memory::audit::AuditLog::open(db_path)?;
+    println!("Audit log: {}", db_path.display());
+    println!();
+
+    match action {
+        AuditAction::Runs { limit } => {
+            // List recent runs from audit_runs table
+            let db = rusqlite::Connection::open(db_path)?;
+            let mut stmt = db.prepare(
+                "SELECT run_id, agent_id, model, exit_reason, \
+                 substr(prompt, 1, 60) as prompt_preview \
+                 FROM audit_runs ORDER BY started_at DESC LIMIT ?1"
+            )?;
+            let rows = stmt.query_map([limit], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })?;
+
+            println!("{:<38} {:<8} {:<20} {:<12} {}", "RUN ID", "AGENT", "MODEL", "EXIT", "PROMPT");
+            println!("{}", "-".repeat(100));
+            for row in rows {
+                let (run_id, agent, model, exit, prompt) = row?;
+                println!("{:<38} {:<8} {:<20} {:<12} {}", run_id, agent, model, exit.unwrap_or_default(), prompt);
+            }
+        }
+        AuditAction::Tools { run_id } => {
+            let calls = log.get_tool_calls(&run_id)?;
+            if calls.is_empty() {
+                println!("No tool calls found for run {run_id}");
+                return Ok(());
+            }
+            println!("{:<5} {:<20} {:<8} {}", "ITER", "TOOL", "MS", "ARGS → RESULT");
+            println!("{}", "-".repeat(100));
+            for c in &calls {
+                let args_short = if c.tool_args.len() > 40 { &c.tool_args[..40] } else { &c.tool_args };
+                let result_short = if c.tool_result.len() > 40 { &c.tool_result[..40] } else { &c.tool_result };
+                println!("{:<5} {:<20} {:<8} {} → {}",
+                    c.iteration, c.tool_name, c.duration_ms, args_short, result_short);
+            }
+            println!("\n{} tool calls total", calls.len());
+        }
+        AuditAction::Summary { run_id } => {
+            let summary = log.get_summary(&run_id)?;
+            println!("Run:         {}", summary.run_id);
+            println!("Tool calls:  {}", summary.tool_call_count);
+            println!("Model calls: {}", summary.model_call_count);
+            if let Some(ms) = summary.duration_ms {
+                println!("Duration:    {:.1}s", ms as f64 / 1000.0);
+            }
+            if !summary.top_tools.is_empty() {
+                println!("Top tools:");
+                for (name, count) in &summary.top_tools {
+                    println!("  {:<20} {}", name, count);
+                }
+            }
+        }
+        AuditAction::Last => {
+            // Get the most recent run
+            let db = rusqlite::Connection::open(db_path)?;
+            let run_id: String = db.query_row(
+                "SELECT run_id FROM audit_runs ORDER BY started_at DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            ).map_err(|_| anyhow::anyhow!("No audit runs found"))?;
+
+            println!("Latest run: {run_id}\n");
+
+            let calls = log.get_tool_calls(&run_id)?;
+            println!("{:<5} {:<20} {:<8} {}", "ITER", "TOOL", "MS", "ARGS → RESULT");
+            println!("{}", "-".repeat(100));
+            for c in &calls {
+                let args_short = if c.tool_args.len() > 40 { &c.tool_args[..40] } else { &c.tool_args };
+                let result_short = if c.tool_result.len() > 40 { &c.tool_result[..40] } else { &c.tool_result };
+                println!("{:<5} {:<20} {:<8} {} → {}",
+                    c.iteration, c.tool_name, c.duration_ms, args_short, result_short);
+            }
+
+            println!();
+            let summary = log.get_summary(&run_id)?;
+            println!("{} tool calls, {} model calls", summary.tool_call_count, summary.model_call_count);
+        }
+    }
+    Ok(())
 }
