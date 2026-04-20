@@ -1,7 +1,7 @@
 //! Knowledge store: persistent key-value entries with FTS5 search.
 
 use crate::error::MemoryError;
-use crate::types::{MemoryEntry, MemoryType};
+use crate::types::{DistilledEntry, MemoryEntry, MemoryType};
 use rusqlite::{params, Connection};
 use std::path::Path;
 
@@ -61,6 +61,42 @@ impl KnowledgeStore {
                 INSERT INTO memory_knowledge_fts(rowid, title, content)
                 VALUES (new.rowid, new.title, new.content);
             END;",
+        )?;
+        self.migrate_distillation_columns()?;
+        Ok(())
+    }
+
+    /// Add distillation columns if they don't already exist.
+    fn migrate_distillation_columns(&self) -> Result<(), MemoryError> {
+        let columns = [
+            ("content_key", "TEXT"),
+            ("importance", "REAL DEFAULT 0.0"),
+            ("access_count", "INTEGER DEFAULT 0"),
+            ("last_accessed", "INTEGER DEFAULT 0"),
+            ("version", "INTEGER DEFAULT 1"),
+            ("source_session", "TEXT DEFAULT ''"),
+            ("confidence", "REAL DEFAULT 1.0"),
+        ];
+        for (name, typ) in &columns {
+            // SQLite doesn't support IF NOT EXISTS on ALTER TABLE,
+            // so we check the table_info pragma instead.
+            let exists: bool = self.db.query_row(
+                &format!(
+                    "SELECT COUNT(*) > 0 FROM pragma_table_info('memory_knowledge') WHERE name = '{name}'"
+                ),
+                [],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                self.db.execute_batch(&format!(
+                    "ALTER TABLE memory_knowledge ADD COLUMN {name} {typ};"
+                ))?;
+            }
+        }
+        // Index for content_key lookups.
+        self.db.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_content_key
+                ON memory_knowledge(content_key) WHERE content_key IS NOT NULL;",
         )?;
         Ok(())
     }
@@ -158,6 +194,116 @@ impl KnowledgeStore {
             .query_row("SELECT COUNT(*) FROM memory_knowledge", [], |row| row.get(0))?;
         Ok(count as usize)
     }
+
+    /// Store a distilled entry, upserting by content_key (supersession).
+    ///
+    /// If an entry with the same content_key exists, its content is updated
+    /// and the version is incremented. Otherwise a new entry is inserted.
+    pub fn store_distilled(&self, entry: &DistilledEntry) -> Result<(), MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
+
+        // Check if content_key already exists
+        let existing: Option<(String, i64)> = self
+            .db
+            .query_row(
+                "SELECT id, version FROM memory_knowledge WHERE content_key = ?1",
+                params![entry.content_key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+
+        if let Some((id, version)) = existing {
+            self.db.execute(
+                "UPDATE memory_knowledge SET
+                    title = ?1,
+                    content = ?2,
+                    tags_json = ?3,
+                    updated_at = ?4,
+                    version = ?5,
+                    confidence = ?6,
+                    source_session = ?7
+                 WHERE id = ?8",
+                params![
+                    entry.title,
+                    entry.content,
+                    tags_json,
+                    now,
+                    version + 1,
+                    entry.confidence,
+                    entry.source_session,
+                    id,
+                ],
+            )?;
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            self.db.execute(
+                "INSERT INTO memory_knowledge
+                    (id, memory_type, title, content, tags_json, created_at,
+                     content_key, version, confidence, source_session,
+                     importance, access_count, last_accessed)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, 0.0, 0, 0)",
+                params![
+                    id,
+                    entry.kind.as_str(),
+                    entry.title,
+                    entry.content,
+                    tags_json,
+                    now,
+                    entry.content_key,
+                    entry.confidence,
+                    entry.source_session,
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Look up a memory entry by its content-addressed key.
+    pub fn query_by_key(&self, content_key: &str) -> Result<Option<MemoryEntry>, MemoryError> {
+        let mut stmt = self.db.prepare(
+            "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
+             FROM memory_knowledge WHERE content_key = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![content_key], row_to_entry)?;
+        match rows.next() {
+            Some(entry) => Ok(Some(entry?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get the version of an entry by content_key. Returns None if not found.
+    pub fn version_of(&self, content_key: &str) -> Result<Option<i64>, MemoryError> {
+        let result = self.db.query_row(
+            "SELECT version FROM memory_knowledge WHERE content_key = ?1",
+            params![content_key],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Update access_count and last_accessed timestamp for an entry.
+    pub fn touch(&self, id: &str) -> Result<(), MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        self.db.execute(
+            "UPDATE memory_knowledge SET
+                access_count = access_count + 1,
+                last_accessed = ?1
+             WHERE id = ?2",
+            params![now, id],
+        )?;
+        Ok(())
+    }
 }
 
 fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryEntry> {
@@ -165,7 +311,7 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryEntry> {
     let tags_json: String = row.get(4)?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let memory_type = MemoryType::from_str(&memory_type_str)
-        .unwrap_or(MemoryType::Reference);
+        .unwrap_or(MemoryType::Fact);
 
     Ok(MemoryEntry {
         id: row.get(0)?,
@@ -315,5 +461,72 @@ mod tests {
     fn get_nonexistent() {
         let store = KnowledgeStore::open_memory().unwrap();
         assert!(store.get("nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn store_distilled_and_query_by_key() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let entry = DistilledEntry::new(
+            MemoryType::Fact,
+            "Rust ownership".to_string(),
+            "Rust uses ownership for memory safety".to_string(),
+            vec!["rust".to_string()],
+            0.9,
+            "session-1".to_string(),
+        );
+        store.store_distilled(&entry).unwrap();
+
+        let retrieved = store.query_by_key(&entry.content_key).unwrap().unwrap();
+        assert_eq!(retrieved.title, "Rust ownership");
+        assert_eq!(retrieved.content, "Rust uses ownership for memory safety");
+    }
+
+    #[test]
+    fn supersession_increments_version() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let entry = DistilledEntry::new(
+            MemoryType::Fact,
+            "Favorite color".to_string(),
+            "Blue".to_string(),
+            vec![],
+            0.8,
+            "s1".to_string(),
+        );
+        store.store_distilled(&entry).unwrap();
+        assert_eq!(store.version_of(&entry.content_key).unwrap(), Some(1));
+
+        // Store again with same content_key but updated content
+        let updated = DistilledEntry {
+            content: "Green".to_string(),
+            confidence: 0.95,
+            source_session: "s2".to_string(),
+            ..entry.clone()
+        };
+        store.store_distilled(&updated).unwrap();
+        assert_eq!(store.version_of(&entry.content_key).unwrap(), Some(2));
+
+        // Only one entry should exist
+        assert_eq!(store.count().unwrap(), 1);
+        let retrieved = store.query_by_key(&entry.content_key).unwrap().unwrap();
+        assert_eq!(retrieved.content, "Green");
+    }
+
+    #[test]
+    fn touch_updates_access() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e = entry("e1", MemoryType::User, "Title", "Content");
+        store.store(&e).unwrap();
+
+        // Touch twice
+        store.touch("e1").unwrap();
+        store.touch("e1").unwrap();
+
+        // Verify access_count via raw query
+        let count: i64 = store.db.query_row(
+            "SELECT access_count FROM memory_knowledge WHERE id = 'e1'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 2);
     }
 }
