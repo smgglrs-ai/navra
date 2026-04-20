@@ -3,13 +3,20 @@
 //! Channels:
 //! - FTS5: full-text search on title + content
 //! - Key: exact content_key lookup
-//! - Vector: semantic similarity (stub — returns empty)
+//! - Vector: semantic similarity via `myelix-rag` ChunkStore (requires `rag` feature)
 //! - HyDE: hypothetical document embeddings (stub — returns empty)
+//!
+//! The vector channel requires a pre-computed query embedding. Use
+//! [`MemoryRetriever::retrieve_with_embedding`] to supply one, or
+//! [`MemoryRetriever::retrieve`] which skips the vector channel.
 
 use crate::error::MemoryError;
 use crate::knowledge::KnowledgeStore;
 use crate::types::MemoryEntry;
 use std::collections::HashMap;
+
+#[cfg(feature = "rag")]
+use {crate::types::MemoryType, std::sync::Arc};
 
 /// A scored retrieval result.
 #[derive(Debug, Clone)]
@@ -21,25 +28,66 @@ pub struct ScoredEntry {
 /// Multi-channel retriever with Reciprocal Rank Fusion.
 pub struct MemoryRetriever<'a> {
     store: &'a KnowledgeStore,
+    #[cfg(feature = "rag")]
+    chunk_store: Option<Arc<myelix_rag::ChunkStore>>,
 }
 
 impl<'a> MemoryRetriever<'a> {
     pub fn new(store: &'a KnowledgeStore) -> Self {
-        Self { store }
+        Self {
+            store,
+            #[cfg(feature = "rag")]
+            chunk_store: None,
+        }
+    }
+
+    /// Attach a `ChunkStore` for vector similarity search.
+    ///
+    /// When set, the vector channel will query the chunk store using
+    /// embeddings passed to [`Self::retrieve_with_embedding`].
+    #[cfg(feature = "rag")]
+    pub fn with_chunk_store(mut self, chunk_store: Arc<myelix_rag::ChunkStore>) -> Self {
+        self.chunk_store = Some(chunk_store);
+        self
     }
 
     /// Retrieve top-N entries by fusing results from all channels with RRF.
     ///
+    /// The vector channel is skipped (no embedding provided). Use
+    /// [`Self::retrieve_with_embedding`] to include vector results.
+    ///
     /// RRF score = sum(1 / (k + rank)) across channels, where k = 60.
     pub fn retrieve(&self, query: &str, top_n: usize) -> Result<Vec<ScoredEntry>, MemoryError> {
+        self.retrieve_inner(query, None, top_n)
+    }
+
+    /// Retrieve top-N entries, including vector similarity via `query_embedding`.
+    ///
+    /// The caller is responsible for computing the embedding from the query
+    /// text using whatever model is appropriate (e.g. via `myelix-model`).
+    pub fn retrieve_with_embedding(
+        &self,
+        query: &str,
+        query_embedding: &[f32],
+        top_n: usize,
+    ) -> Result<Vec<ScoredEntry>, MemoryError> {
+        self.retrieve_inner(query, Some(query_embedding), top_n)
+    }
+
+    fn retrieve_inner(
+        &self,
+        query: &str,
+        query_embedding: Option<&[f32]>,
+        top_n: usize,
+    ) -> Result<Vec<ScoredEntry>, MemoryError> {
         let k = 60.0_f64;
 
         // Channel 1: FTS5
         let fts_results = self.store.search(query)?;
         // Channel 2: exact key lookup (treat query as potential content_key)
         let key_results = self.channel_key(query)?;
-        // Channel 3: vector (stub)
-        let vector_results = self.channel_vector(query)?;
+        // Channel 3: vector
+        let vector_results = self.channel_vector(query_embedding)?;
         // Channel 4: HyDE (stub)
         let hyde_results = self.channel_hyde(query)?;
 
@@ -80,8 +128,38 @@ impl<'a> MemoryRetriever<'a> {
         }
     }
 
-    /// Stub: vector similarity channel. Returns empty until embeddings are wired.
-    fn channel_vector(&self, _query: &str) -> Result<Vec<MemoryEntry>, MemoryError> {
+    /// Vector similarity channel.
+    ///
+    /// When the `rag` feature is enabled and a `ChunkStore` is attached,
+    /// searches for chunks similar to `query_embedding` and converts them
+    /// to `MemoryEntry` values. Each chunk becomes a `MemoryType::Fact`
+    /// entry with the chunk path as title and chunk content as content.
+    ///
+    /// Returns empty if no chunk store is set, no embedding is provided,
+    /// or the `rag` feature is disabled.
+    fn channel_vector(
+        &self,
+        _query_embedding: Option<&[f32]>,
+    ) -> Result<Vec<MemoryEntry>, MemoryError> {
+        #[cfg(feature = "rag")]
+        if let (Some(cs), Some(embedding)) = (&self.chunk_store, _query_embedding) {
+            let results = cs.search(embedding, 20).map_err(|e| {
+                MemoryError::Other(format!("vector search failed: {e}"))
+            })?;
+            let entries = results
+                .into_iter()
+                .map(|r| MemoryEntry {
+                    id: format!("rag:{}:{}", r.path, r.chunk_index),
+                    memory_type: MemoryType::Fact,
+                    title: r.path,
+                    content: r.content,
+                    tags: vec![],
+                    created_at: 0,
+                    updated_at: None,
+                })
+                .collect();
+            return Ok(entries);
+        }
         Ok(vec![])
     }
 
