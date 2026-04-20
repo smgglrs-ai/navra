@@ -135,6 +135,7 @@ pub async fn run_tool_loop(
     let mut total_input = 0u32;
     let mut total_output = 0u32;
     let mut progress_iterations = 0usize;
+    let mut empty_retries = 0u8;
 
     loop {
         if progress_iterations >= config.max_iterations {
@@ -189,8 +190,20 @@ pub async fn run_tool_loop(
             .collect();
 
         if function_calls.is_empty() {
-            // No tool calls — extract text response
             let text = response.text().unwrap_or_default();
+
+            // If the model returns empty text after tool calls were made,
+            // prompt it once more to produce a synthesis (max 1 retry).
+            if text.trim().is_empty() && progress_iterations > 0 && empty_retries == 0 {
+                empty_retries += 1;
+                tracing::info!("Empty response after tool use — prompting for synthesis");
+                input.push(InputItem::user(
+                    "Synthesize your findings into a final report. \
+                     Do not call any more tools."
+                ));
+                continue;
+            }
+
             return Ok(ToolLoopResult {
                 response: text,
                 iterations: iteration,

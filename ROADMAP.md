@@ -97,6 +97,20 @@ acting on them. The stale copy is intentional — it tests the
 framework's ability to find real issues, not our discipline in
 keeping the copy fresh.
 
+### Audit trail gap (2026-04-20 finding)
+
+Current demo runs produce only: final report text, teammate model
+assignments, iteration count, token usage. Missing for debug and
+legal audit:
+
+- Tool call log (name, args, result, duration, agent, iteration)
+- Model reasoning between tool calls (decision trace)
+- ACL decisions (allowed/denied per tool call)
+- Per-teammate tool call traces
+- Provenance chain (what data each agent saw, what it decided, why)
+
+This is addressed by Phase 3h (Structured Audit Log) below.
+
 ---
 
 ## Code health (updated 2026-04-20)
@@ -433,6 +447,57 @@ terminal_precision.
 - Integration: agents auto-load relevant memory into context
 - Semantic query caching (paraphrase detection to avoid redundant
   retrieval, ~76% savings on duplicate queries)
+
+#### 3h. Structured audit log (NEW — priority)
+
+Every agent action must be recorded for debugging, compliance,
+and legal audit. Without this, multi-agent failures are opaque
+and AI decisions have no provenance.
+
+**What to record per tool call:**
+- `run_id`: UUID for the entire run (lead + all teammates)
+- `agent_id`: which agent (lead, teammate name)
+- `iteration`: which ReAct loop iteration
+- `timestamp`: wall clock
+- `tool_name`: which MCP tool was called
+- `tool_args`: arguments passed (redacted for sensitive fields)
+- `tool_result`: result returned (truncated to max 4K chars)
+- `tool_duration_ms`: how long the call took
+- `acl_decision`: allowed/denied/needs_approval
+- `ifc_label`: data label after the call
+
+**What to record per model call:**
+- `model_name`: which model was used
+- `input_tokens`, `output_tokens`: token usage
+- `response_type`: "text", "tool_calls", "empty"
+- `reasoning_text`: model's text output between tool calls
+  (the decision trace — why it chose this tool)
+
+**What to record per run:**
+- `run_id`, `prompt`, `persona`, `model`
+- `start_time`, `end_time`, `duration`
+- `total_iterations`, `total_tokens`
+- `teammates`: list of {name, model, persona, operations, tools}
+- `final_report`: the synthesis text
+- `exit_reason`: "completed", "max_iterations", "error"
+
+**Storage:**
+- SQLite table `audit_log` in WorkingMemory DB
+- Indexed by `run_id`, `agent_id`, `timestamp`
+- Queryable via MCP tool `audit_query` (filter by run, agent, tool)
+- Retained indefinitely (no decay — audit logs are immutable)
+
+**Implementation:**
+- Add `AuditLog` struct to `myelix-memory`
+- `ToolLoopResult` gains `audit_entries: Vec<AuditEntry>`
+- Tool loop records each call as it executes
+- Demo prints audit summary alongside the report
+- `audit_query` MCP tool for retrospective analysis
+
+**Compliance value:**
+- EU AI Act Article 14 (human oversight) requires decision traceability
+- SOC2 CC6.1 requires audit trails for system operations
+- ISO 42001 requires records of AI system decisions
 
 **Why third**: Memory improves agent quality significantly but isn't
 blocking — agents work without it, just less effectively.
