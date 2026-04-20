@@ -2236,6 +2236,7 @@ name = "myelix-memory"
 version = "0.1.0"
 dependencies = [
  "myelix-core",
+ "myelix-rag",
  "rusqlite",
  "serde",
  "serde_json",
