@@ -129,7 +129,7 @@ pub(crate) fn attach_ui_routes(
                 let personas = personas.clone();
                 let api_server = Arc::clone(&api_server);
                 async move {
-                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                    if api_server.authenticator().authenticate(&headers).is_err() {
                         return axum::Json(serde_json::json!({"error": "unauthorized"}));
                     }
                     let model_names: Vec<&str> = models.iter()
@@ -155,7 +155,7 @@ pub(crate) fn attach_ui_routes(
                 let models = models.clone();
                 let api_server = Arc::clone(&api_server);
                 async move {
-                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                    if api_server.authenticator().authenticate(&headers).is_err() {
                         return axum::Json(serde_json::json!({"error": "unauthorized"}));
                     }
                     axum::Json(serde_json::json!(*models))
@@ -171,7 +171,7 @@ pub(crate) fn attach_ui_routes(
                 let agents = agents.clone();
                 let api_server = Arc::clone(&api_server);
                 async move {
-                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                    if api_server.authenticator().authenticate(&headers).is_err() {
                         return axum::Json(serde_json::json!({"error": "unauthorized"}));
                     }
                     axum::Json(serde_json::json!(*agents))
@@ -187,7 +187,7 @@ pub(crate) fn attach_ui_routes(
                 let flows = flows.clone();
                 let api_server = Arc::clone(&api_server);
                 async move {
-                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                    if api_server.authenticator().authenticate(&headers).is_err() {
                         return axum::Json(serde_json::json!({"error": "unauthorized"}));
                     }
                     let list: Vec<serde_json::Value> = flows.iter().map(|(name, path)| {
@@ -220,7 +220,7 @@ pub(crate) fn attach_ui_routes(
                 let forge = forge.clone();
                 let api_server = Arc::clone(&api_server);
                 async move {
-                    if let Err(_) = api_server.authenticator().authenticate(&headers) {
+                    if api_server.authenticator().authenticate(&headers).is_err() {
                         return axum::Json(serde_json::json!({"error": "unauthorized"})).into_response();
                     }
                     use axum::response::IntoResponse;

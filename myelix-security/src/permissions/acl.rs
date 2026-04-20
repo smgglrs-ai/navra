@@ -41,6 +41,12 @@ pub struct PermissionEngine {
     permission_sets: HashMap<String, PathAcl>,
 }
 
+impl Default for PermissionEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PermissionEngine {
     pub fn new() -> Self {
         Self {

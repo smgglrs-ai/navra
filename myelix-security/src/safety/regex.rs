@@ -10,6 +10,12 @@ struct SecretPattern {
     regex: regex_lite::Regex,
 }
 
+impl Default for SecretFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SecretFilter {
     pub fn new() -> Self {
         Self {
@@ -117,6 +123,12 @@ struct PiiPattern {
     category: &'static str,
     regex: regex_lite::Regex,
     validator: Option<fn(&str) -> bool>,
+}
+
+impl Default for PiiFilter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PiiFilter {

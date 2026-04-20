@@ -8,18 +8,15 @@ use serde::Deserialize;
 /// Visibility scope for a persona.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Scope {
     /// Visible to all agents.
+    #[default]
     Public,
     /// Visible only within the same organization.
     Internal,
 }
 
-impl Default for Scope {
-    fn default() -> Self {
-        Self::Public
-    }
-}
 
 /// A persona defines an agent's identity, capabilities, and behavior.
 #[derive(Debug, Clone, Deserialize)]

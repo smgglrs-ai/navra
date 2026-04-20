@@ -12,8 +12,8 @@ use crate::mesh_tools::{
 use myelix_agent::{extract_text, Agent};
 use myelix_model::{
     CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
-    InputItem, ItemStatus, Locality, MessageItem, ModelBackend, ModelResponse, OpenAiBackend,
-    OutputItem, ResponseStatus, ResponseTool, ResponseToolChoice,
+    InputItem, ItemStatus, Locality, ModelBackend, ModelResponse, OpenAiBackend,
+    OutputItem, ResponseTool, ResponseToolChoice,
 };
 use myelix_protocol::label::DataLabel;
 use myelix_security::ifc::TaintTracker;

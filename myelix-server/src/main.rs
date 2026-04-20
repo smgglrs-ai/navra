@@ -1417,7 +1417,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     // Register team orchestration tools
     {
         use myelix_core::protocol::CallToolResult;
-        use myelix_model::ModelBackend;
+        
 
         // Pre-fetch Ollama model metadata for all locally running models.
         // This populates vendor fields (family, parameters, context_window)
@@ -1661,7 +1661,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         .map(|t| {
                             let elapsed = t.created_at.elapsed().as_secs();
                             let budget = t.budget.timeout_secs;
-                            if elapsed >= budget { 0 } else { budget - elapsed }
+                            budget.saturating_sub(elapsed)
                         })
                         .unwrap_or(600)
                 };

@@ -190,7 +190,7 @@ async fn handle_get(
     headers: HeaderMap,
 ) -> impl IntoResponse {
     // Authenticate before session lookup
-    if let Err(_) = state.server.authenticator().authenticate(&headers) {
+    if state.server.authenticator().authenticate(&headers).is_err() {
         return (StatusCode::UNAUTHORIZED, "Authentication failed").into_response();
     }
 
@@ -340,7 +340,7 @@ async fn handle_sys_status(
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     // Require authentication — process table contains sensitive operational data
-    if let Err(_) = state.server.authenticator().authenticate(&headers) {
+    if state.server.authenticator().authenticate(&headers).is_err() {
         return (
             axum::http::StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": "Authentication required for /sys/status"})),

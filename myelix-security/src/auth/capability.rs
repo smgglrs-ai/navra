@@ -200,13 +200,12 @@ pub fn validate_delegation(
 
     // Depth check: max_depth indicates how many more delegations are allowed.
     // 0 = no further delegation, 1 = one more level, etc.
-    if child.parent.is_some() {
-        if max_depth == 0 {
+    if child.parent.is_some()
+        && max_depth == 0 {
             anyhow::bail!("delegation chain depth exceeded (max_depth=0)");
         }
         // The child's effective max_depth must be strictly less than the parent's
         // to prevent unlimited re-delegation at the same depth.
-    }
 
     Ok(())
 }

@@ -87,7 +87,7 @@ impl ModelUri {
             Registry::Oci => "oci",
             Registry::File => "file",
         };
-        let safe_path = self.path.replace('/', "_").replace(':', "_");
+        let safe_path = self.path.replace(['/', ':'], "_");
         format!("{prefix}_{safe_path}")
     }
 }

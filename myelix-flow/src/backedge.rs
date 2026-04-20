@@ -81,6 +81,12 @@ impl ConditionalEdge {
     }
 }
 
+impl Default for BackEdgeTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BackEdgeTracker {
     pub fn new() -> Self {
         Self {

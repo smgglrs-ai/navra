@@ -121,7 +121,7 @@ impl TeamRegistry {
 
         // Check agent limit
         let current = self.total_agents.load(Ordering::Relaxed);
-        if current >= budget.max_agents as u32 {
+        if current >= budget.max_agents {
             return Err(format!(
                 "Maximum agents exceeded ({}/{})",
                 current, budget.max_agents
@@ -173,7 +173,7 @@ impl TeamRegistry {
 
         // Check agent budget
         let current = self.total_agents.load(Ordering::Relaxed);
-        if current >= team.budget.max_agents as u32 {
+        if current >= team.budget.max_agents {
             return Err(format!(
                 "Agent budget exceeded ({}/{})",
                 current, team.budget.max_agents

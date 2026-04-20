@@ -65,7 +65,7 @@ impl Hook for SafetyHook {
         ctx: &CallContext,
     ) -> HookDecision {
         // Only filter write-path operations
-        if !WRITE_OPS.iter().any(|op| *op == tool_name) {
+        if !WRITE_OPS.contains(&tool_name) {
             return HookDecision::Continue;
         }
 

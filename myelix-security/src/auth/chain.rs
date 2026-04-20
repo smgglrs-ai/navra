@@ -94,6 +94,12 @@ pub struct ChainAuthenticator {
     authenticators: Vec<Box<dyn Authenticator>>,
 }
 
+impl Default for ChainAuthenticator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChainAuthenticator {
     pub fn new() -> Self {
         Self {

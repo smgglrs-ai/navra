@@ -303,8 +303,8 @@ pub(crate) fn model_list() -> anyhow::Result<()> {
 /// Show available models for download.
 pub(crate) fn model_available() {
     println!("Built-in ONNX models:");
-    println!("{:<20} {}", "NAME", "DESCRIPTION");
-    println!("{:<20} {}", "----", "-----------");
+    println!("{:<20} DESCRIPTION", "NAME");
+    println!("{:<20} -----------", "----");
     for model in KNOWN_MODELS {
         println!("{:<20} {}", model.name, model.description);
     }

@@ -13,23 +13,19 @@ use myelix_protocol::label::DataLabel;
 use myelix_security::ifc::TaintTracker;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// How the scout phase selects files to analyze.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ScoutMode {
     /// Model picks files (original behavior). Can miss files.
     Model,
     /// Cycle through ALL files in batches. Full coverage guaranteed.
+    #[default]
     Exhaustive,
 }
 
-impl Default for ScoutMode {
-    fn default() -> Self {
-        Self::Exhaustive
-    }
-}
 
 /// Configuration for an iterative analysis.
 #[derive(Debug, Clone, Deserialize)]
@@ -114,6 +110,12 @@ pub struct RoundMetric {
 /// Executor for iterative scout → map → reduce analysis.
 pub struct IterativeExecutor {
     agents: HashMap<String, Agent>,
+}
+
+impl Default for IterativeExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl IterativeExecutor {
