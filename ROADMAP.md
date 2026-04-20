@@ -39,62 +39,88 @@ platform — the Rust replacement for the Python Myelix framework.
 
 ---
 
-## Code health (2026-04-19 audit)
+## Self-analysis protocol
 
-Verified findings from static analysis. These are pre-requisites
-for sustainable development and should be addressed before adding
-new features.
+The framework can analyze its own codebase through its own gateway.
+This protocol ensures consistent, reproducible self-analysis runs.
 
-### Immediate (< 1 day)
+### Setup
 
-| Item | Detail | Effort |
-|------|--------|--------|
-| `rust-toolchain.toml` + `rustfmt.toml` | Pin toolchain, enforce formatting | 10 min |
-| Fix 88 clippy warnings | ~60 auto-fixable; rest manual (dead code, unused imports, `if let Err(_)` → `.is_err()`, `saturating_sub`) | 30 min |
-| Add `justfile` | Targets: `build`, `test`, `clippy`, `fmt` — all set `ORT_LIB_PATH` and `ORT_PREFER_DYNAMIC_LINK` automatically | 30 min |
-| ~~Replace `.lock().unwrap()`~~ | ~~Done~~ — all converted to `.unwrap_or_else(\|e\| e.into_inner())` across store, dbus, approval, blackboard, mailbox, SSE, TaskStore, SessionStore | ✅ |
+```bash
+# 1. Refresh the analysis copy (ALWAYS do this first)
+rm -rf /tmp/mcpd-self-audit
+mkdir -p /tmp/mcpd-self-audit
+cp -r myelix-*/src /tmp/mcpd-self-audit/
+cp -r cognitive_core /tmp/mcpd-self-audit/
+cp CLAUDE.md DESIGN.md ROADMAP.md MODELS.md /tmp/mcpd-self-audit/
 
-### Short-term (1-2 days)
+# 2. Copy self-audit personas (planner, rust_security_auditor, etc.)
+cp -r examples/payments-app/personas /tmp/mcpd-self-audit/ 2>/dev/null
+# Or use the leader persona from cognitive_core (general-purpose)
+```
 
-| Item | Detail | Effort |
-|------|--------|--------|
-| Extract auth middleware in `ui.rs` | 5 `authenticate(&headers)` blocks added (was missing entirely). Refactor to middleware layer | 1h |
-| GitHub Actions CI | `cargo check` + `clippy -D warnings` + `fmt --check` + `test`. Needs ONNX in CI (system package or download-binaries feature) | 1-2h |
-| ~~Split `main.rs`~~ | ~~Done~~ — extracted `cli.rs` (304), `demo.rs` (700+), `ui.rs` (296). main.rs now ~2400 lines | ✅ |
-| Make hardcoded values configurable | Approval TTL (fixed 5 min in `approval.rs`), file watcher skip-list (hardcoded in `watcher.rs`) → config.toml | 1h |
+### Running
 
-### Security fixes completed (2026-04-17 through 2026-04-19)
+```bash
+# Security audit (default)
+just demo --live --model gemma4:26b --project /tmp/mcpd-self-audit
 
-50+ findings fixed across 6 self-audit rounds:
+# Custom analysis with additional read access
+just demo --live --model gemma4:26b --project cognitive_core \
+  --allow-read /tmp \
+  --prompt "Read /tmp/mcpd-analysis.md and verify against reality."
 
-- Hook timeout fail-closed (was fail-open)
-- /api/* routes require authentication
-- Session enforcement for all MCP methods
-- A2A task ownership checks
-- Scoped capability tokens for teammates
-- JoinHandle tracking with abort on shutdown/timeout
-- Graceful shutdown (SIGTERM/SIGINT)
-- Symlink skipping in recursive walkers
-- IFC canonicalize before glob matching
-- Permission checks added to RAG, vision, voice handlers
-- Pagination overflow protection
-- Identity key CWD fallback → error
-- Path leak via strip_prefix → skip
-- Retry jitter (±25%) to prevent thundering herd
-- Model adapter dedup (shared http_common module)
-- Missing docs warnings on 3 crates
+# Business analysis
+just demo --live --model gemma4:26b --project cognitive_core \
+  --prompt "A company wants to license this. Should we pursue?"
+```
+
+### Model selection
+
+The lead selects teammate models from model cards (via `models_list`).
+Operator sets `[models.*.agentic]` in config.toml with:
+- `cost_tier`: "free" (local Ollama) or "high" (cloud API)
+- `speed_tier`: "fast", "medium", "slow" (derived from model size)
+- `locality`: "local" (on-device) or "remote" (cloud)
+- `reasoning`: "basic" or "extended"
+- `tool_use`: "basic" or "advanced"
+
+The lead prefers `locality=local` + `cost_tier=free` for data
+gathering, and reserves expensive remote models for synthesis.
+
+### Interpreting results
+
+Many findings from self-analysis of `/tmp/mcpd-self-audit` are
+re-discoveries of issues already fixed in the live codebase.
+Always cross-reference findings against recent commits before
+acting on them. The stale copy is intentional — it tests the
+framework's ability to find real issues, not our discipline in
+keeping the copy fresh.
+
+---
+
+## Code health (updated 2026-04-20)
+
+### Completed ✅
+
+| Item | When |
+|------|------|
+| `rust-toolchain.toml` + `rustfmt.toml` + `justfile` | 2026-04-20 |
+| Clippy auto-fix (103 → 53 warnings) | 2026-04-20 |
+| Mutex poison recovery (all `.lock().unwrap()`) | 2026-04-17 |
+| main.rs decomposition (cli, demo, ui modules) | 2026-04-17 |
+| 50+ security findings across 6 audit rounds | 2026-04-17–20 |
 
 ### Remaining
 
 | Item | Detail | Effort |
 |------|--------|--------|
-| `rust-toolchain.toml` + `rustfmt.toml` | Pin toolchain, enforce formatting | 10 min |
-| Fix clippy warnings | Auto-fixable dead code, unused imports | 30 min |
-| Add `justfile` | Targets: build, test, clippy, fmt with ORT env vars | 30 min |
 | Extract auth middleware in `ui.rs` | 5 inline auth checks → single Axum layer | 1h |
+| GitHub Actions CI | `just check` in CI. Needs ONNX in CI (system package or feature-gate) | 1-2h |
 | Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive; revisit when CI is live |
-| GitHub Actions CI | cargo check + clippy + fmt + test | 1-2h |
+| Make hardcoded values configurable | Approval TTL, file watcher skip-list → config.toml | 1h |
 | Per-teammate operation scoping | `team_add` accepts operations/tools per teammate, token minted accordingly | Design needed |
+| Remaining 53 clippy warnings | MSRV, method naming, scaffolded dead code — address when CI enforces `-D warnings` | 1h |
 
 ---
 
@@ -124,7 +150,7 @@ planned crate or enhancement.
 | Task decomposition (recursive planning, scope partitioning) | DAG executor + back-edges | **Partial** (scope partitioning not yet done) |
 | DAG execution (parallel tasks with dependencies) | DagExecutor with DependencyGraph | **Done** |
 | Mesh communication (lateral agent messaging) | Mailbox + Blackboard (IFC-gated) | **Done** |
-| Persistent memory (working, long-term, cases) | SQLite session store + working memory | **Partial** (knowledge distillation pipeline missing) |
+| Persistent memory (working, long-term, cases) | SQLite sessions + working memory + FTS5 knowledge store | **Partial** (distillation pipeline designed, not implemented) |
 | Anti-drift (mandate validation, drift detection) | Mandate validator + success_criteria | **Done** |
 | Failure recovery (circular fix detection, attempt history) | Attempt history, circular fix detector, recovery strategies | **Done** |
 | Observability (structured metrics, monitoring) | tracing only | **Low** |
@@ -144,7 +170,7 @@ Forge + Weaver, specializations, output schema, per-phase model,
 token budgeting, context compaction, per-phase context limits,
 43 personas (38 from Python + 5 general-purpose), agent `.persona()` builder.)
 
-#### 1a. Context management and token budgeting (NEW)
+#### 1a. Context management and token budgeting ✅
 
 Add to the Weaver:
 
@@ -163,10 +189,11 @@ Add to the Weaver:
 Reference: Goose auto-compaction model, tech watch article on
 context layers (2026-04-17).
 
-#### 1b. Remaining cognitive items
+#### 1b. Persona porting and agent integration ✅
 
-- Integration with myelix-agent: `Agent::builder().persona("analyst")`
-- Port the 40 personas, 8 directives, 36 heuristics from Python
+- `Agent::builder().persona(forge, name)` — done
+- 43 personas (38 from Python + 5 general-purpose), 36 heuristics,
+  7 directives — done
 
 #### 1c. Persona evolution via momentum-based adaptation (NEW)
 
@@ -241,7 +268,7 @@ Implemented in `myelix-flow`:
 conflicting tasks) and true parallel execution across specialists
 (`Arc<Mutex<Agent>>` refactor).
 
-#### 2a. YAML flow definitions and shareable format (NEW)
+#### 2a. YAML flow definitions and shareable format (design complete)
 
 Switch flow definitions from TOML-only to YAML-primary (keep TOML
 support via file extension detection — same serde structs):
@@ -270,23 +297,20 @@ This gives ad-hoc delegation without requiring static flow files.
 **Goal**: Working memory that survives sessions, knowledge
 distillation pipeline, case-based reasoning. Backed by SQLite.
 
-New crate: `myelix-memory` (**Status**: WorkingMemory (SQLite turns)
-and KnowledgeStore (FTS5 with categories) done. Missing: session
-persistence, distillation pipeline, case extraction, memory decay.)
+New crate: `myelix-memory` (**Status**: WorkingMemory (SQLite turns),
+KnowledgeStore (FTS5), SqliteSessionBackend done. Missing:
+distillation pipeline, case extraction, memory decay. Designs
+for 3b and 3d complete.)
 
-#### 3a. Session persistence (NEW — implement now)
+#### 3a. Session persistence ✅
 
-Unify session metadata with working memory in SQLite:
+- `SessionBackend` trait in myelix-core, `SqliteSessionBackend`
+  in myelix-memory. Sessions survive server restarts.
+- Wired in myelix-server at `~/.local/share/mcpd/sessions.db`.
+- No auto-expiry (sessions persist indefinitely to preserve context
+  across long work sessions). `expire()` available for manual use.
 
-- Add `sessions` table to existing WorkingMemory SQLite database
-  (id, agent_identity, client_info, context_label, created_at,
-  last_active, initialized)
-- `SessionStore` delegates to `WorkingMemory` instead of in-memory
-  HashMap. Sessions survive server restarts.
-- Session resume: load session + recent turns on reconnect.
-- Session expiry: configurable TTL with automatic cleanup.
-
-#### 3b. Memory type classification and keyed supersession (NEW)
+#### 3b. Memory type classification and keyed supersession (design complete)
 
 Classify memories into typed categories with distinct lifecycle
 semantics, inspired by Cloudflare Agent Memory and the Memory
