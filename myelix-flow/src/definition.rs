@@ -1,6 +1,7 @@
 //! TOML-deserializable flow definitions.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Top-level flow definition (wraps `FlowConfig` for TOML `[flow]` section).
 #[derive(Debug, Clone, Deserialize)]
@@ -93,11 +94,31 @@ pub struct DagConfig {
     /// DAG name.
     #[serde(default)]
     pub name: String,
+    /// Optional description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Flow parameters (name → definition). Used by YAML loader for `{{ key }}` substitution.
+    #[serde(default)]
+    pub parameters: HashMap<String, ParameterDef>,
     /// Task definitions.
     pub tasks: Vec<TaskDefinition>,
     /// Capacity for the shared blackboard (default: 256). Set to enable blackboard.
     #[serde(default)]
     pub blackboard_capacity: Option<usize>,
+}
+
+/// Definition of a flow parameter for YAML-based flows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParameterDef {
+    /// Parameter type (e.g. "string", "integer", "boolean").
+    #[serde(rename = "type")]
+    pub param_type: String,
+    /// Human-readable description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Default value (if absent, parameter is required).
+    #[serde(default)]
+    pub default: Option<String>,
 }
 
 /// Definition of a task in a DAG.
