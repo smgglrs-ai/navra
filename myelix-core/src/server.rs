@@ -76,6 +76,8 @@ pub struct McpServer {
     trusted_paths: HashMap<String, Vec<String>>,
     /// Per-value variable store for IFC tracking.
     value_stores: crate::ifc::value_store::ValueStoreMap,
+    /// Gateway-level audit blackbox — records every tool call.
+    blackbox: Option<crate::blackbox::Blackbox>,
 }
 
 impl McpServer {
@@ -287,13 +289,22 @@ impl McpServer {
             resolved.arguments
         };
 
+        let tool_start = std::time::Instant::now();
         let mut result = match self.tools.get(&params.name) {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => {
                 self.process_table.complete_call(&ctx.agent.name, &params.name);
+                if let Some(ref bb) = self.blackbox {
+                    bb.record(
+                        &ctx.agent.name, &ctx.agent.permissions, &ctx.session_id,
+                        &params.name, &arguments.to_string(), "Unknown tool",
+                        "error", 0, "N/A",
+                    );
+                }
                 return CallToolResult::error(format!("Unknown tool: {}", params.name));
             }
         };
+        let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
 
         // IFC: auto-label external read tool outputs as Untrusted,
         // unless the tool's path argument matches a trusted path pattern.
@@ -336,6 +347,22 @@ impl McpServer {
 
         // Mark call complete in process table
         self.process_table.complete_call(&ctx.agent.name, &params.name);
+
+        // Record in blackbox
+        if let Some(ref bb) = self.blackbox {
+            let result_text = result.content.iter().map(|c| match c {
+                crate::protocol::Content::Text(t) => t.text.as_str(),
+            }).collect::<Vec<_>>().join("");
+            let result_trunc = if result_text.len() > 4096 { &result_text[..4096] } else { &result_text };
+            bb.record(
+                &ctx.agent.name, &ctx.agent.permissions, &ctx.session_id,
+                &params.name, &arguments.to_string(),
+                result_trunc,
+                if result.is_error { "error" } else { "allowed" },
+                tool_duration_ms,
+                &format!("{:?}", result.label),
+            );
+        }
 
         // Run post-hooks (includes safety filtering if wired as a hook)
         if self.hooks.has_hooks() {
@@ -602,6 +629,7 @@ pub struct McpServerBuilder {
     ifc_policies: Option<HashMap<String, crate::ifc::TaintedWritePolicy>>,
     trusted_paths: Option<HashMap<String, Vec<String>>>,
     session_store: Option<SessionStore>,
+    blackbox: Option<crate::blackbox::Blackbox>,
 }
 
 impl McpServerBuilder {
@@ -621,6 +649,7 @@ impl McpServerBuilder {
             ifc_policies: None,
             trusted_paths: None,
             session_store: None,
+            blackbox: None,
         }
     }
 
@@ -801,6 +830,12 @@ impl McpServerBuilder {
         self
     }
 
+    /// Enable the gateway-level blackbox (audit recorder).
+    pub fn blackbox(mut self, bb: crate::blackbox::Blackbox) -> Self {
+        self.blackbox = Some(bb);
+        self
+    }
+
     /// Use a custom session store backend (e.g. SQLite for persistence).
     /// If not set, sessions are stored in memory (lost on restart).
     pub fn session_store(mut self, store: SessionStore) -> Self {
@@ -977,6 +1012,7 @@ impl McpServerBuilder {
             ifc_policies: self.ifc_policies.unwrap_or_default(),
             trusted_paths: self.trusted_paths.unwrap_or_default(),
             value_stores,
+            blackbox: self.blackbox,
         }
     }
 }
