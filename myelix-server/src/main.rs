@@ -2083,6 +2083,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 // Store the handle so it can be aborted on team shutdown
                 handle_reg.store_handle(&handle_team_id, &handle_to, handle);
 
+                // Stagger teammate spawns to avoid concurrent rate limit hits
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
                 CallToolResult::text(format!(
                     "Task sent to '{}'. Teammate is running as a full MCP agent \
                      with tool access (docs_tree, docs_grep, docs_read, team_bb_publish). \
