@@ -551,7 +551,7 @@ safety = "standard"
         ""
     };
 
-    let system_prompt = if !persona_name.is_empty() {
+    let base_prompt = if !persona_name.is_empty() {
         myelix_cognitive::assemble(&forge, persona_name, "", None, None)
             .map(|w| w.system_prompt())
             .unwrap_or_else(|_| "You are a team lead. Use the available tools to analyze the project and delegate to specialists.".to_string())
@@ -562,6 +562,8 @@ safety = "standard"
          Synthesize their findings into a final report.".to_string()
     };
 
+    let system_prompt = base_prompt;
+
     let mcp_endpoint = format!("{mcpd_url}/mcp");
 
     // Lead agent only gets project overview + team tools.
@@ -569,6 +571,7 @@ safety = "standard"
     let lead_tools = vec![
         "docs_tree".to_string(),    // project structure overview only
         "models_list".to_string(),  // see available models
+        "personas_list".to_string(),// see available specialist personas
         "team_create".to_string(),
         "team_add".to_string(),
         "team_message".to_string(),
@@ -586,6 +589,7 @@ safety = "standard"
         "team_result".to_string(),
         "team_bb_read".to_string(),
         "models_list".to_string(),
+        "personas_list".to_string(),
     ];
 
     macro_rules! build_agent {

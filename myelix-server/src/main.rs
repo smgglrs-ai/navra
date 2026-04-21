@@ -2117,6 +2117,33 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             })
         });
 
+        // personas_list
+        let persona_data: Vec<serde_json::Value> = if let Some(ref cc_path) = cfg.cognitive_core {
+            let expanded = expand_tilde(cc_path);
+            match myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded)) {
+                Ok(forge) => {
+                    forge.persona_names().iter().filter_map(|name| {
+                        forge.get_persona(name).map(|p| serde_json::json!({
+                            "name": p.persona_name,
+                            "display_name": p.display_name,
+                            "mandate": p.core_mandate.lines().next().unwrap_or(""),
+                            "heuristics": p.heuristics.len(),
+                            "tools": p.tools,
+                        }))
+                    }).collect()
+                }
+                Err(_) => vec![],
+            }
+        } else {
+            vec![]
+        };
+        builder = builder.tool(team_tools::personas_list_def(), move |_args, _ctx| {
+            let data = persona_data.clone();
+            Box::pin(async move {
+                CallToolResult::text(serde_json::to_string_pretty(&data).unwrap_or_default())
+            })
+        });
+
         // team_bb_publish
         let reg = Arc::clone(&team_registry);
         builder = builder.tool(team_tools::team_bb_publish_def(), move |args, ctx| {
