@@ -56,6 +56,26 @@ pub(crate) enum Commands {
         #[arg(long)]
         verify: bool,
     },
+    /// Run an agent task against a running mcpd instance
+    Run {
+        /// Prompt for the agent
+        prompt: String,
+        /// Model to use (default: auto-detect from Ollama)
+        #[arg(short, long)]
+        model: Option<String>,
+        /// Persona to use (default: leader)
+        #[arg(long, default_value = "leader")]
+        persona: String,
+        /// mcpd endpoint URL
+        #[arg(long, default_value = "http://127.0.0.1:9315/mcp")]
+        endpoint: String,
+        /// Auth token (reads from MCPD_TOKEN env if not set)
+        #[arg(long)]
+        token: Option<String>,
+        /// Max iterations
+        #[arg(long, default_value = "50")]
+        max_iterations: usize,
+    },
     /// Run the end-to-end security audit demo
     Demo {
         /// Path to the demo project (default: examples/payments-app)

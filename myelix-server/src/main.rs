@@ -93,6 +93,9 @@ async fn main() -> anyhow::Result<()> {
                 cli::model_available();
             }
         },
+        Commands::Run { prompt, model, persona, endpoint, token, max_iterations } => {
+            run_agent(&prompt, model.as_deref(), &persona, &endpoint, token.as_deref(), max_iterations).await?;
+        }
         Commands::Audit { limit, detail, agent, tool, verify } => {
             audit_command(limit, detail, agent, tool, verify)?;
         }
@@ -2760,6 +2763,121 @@ fn uninstall_systemd_units() -> anyhow::Result<()> {
 }
 
 /// Expand `~` to the user's home directory in a path string.
+async fn run_agent(
+    prompt: &str,
+    model_name: Option<&str>,
+    persona_name: &str,
+    endpoint: &str,
+    token: Option<&str>,
+    max_iterations: usize,
+) -> anyhow::Result<()> {
+    // Auto-detect model from Ollama if not specified
+    let model_name = if let Some(m) = model_name {
+        m.to_string()
+    } else {
+        // Pick first available Ollama model
+        let resp = reqwest::Client::new()
+            .get("http://localhost:11434/api/tags")
+            .send()
+            .await
+            .ok()
+            .and_then(|r| futures_util::FutureExt::now_or_never(r.json::<serde_json::Value>()));
+        match resp {
+            Some(Ok(tags)) => {
+                tags["models"].as_array()
+                    .and_then(|m| m.first())
+                    .and_then(|m| m["name"].as_str())
+                    .unwrap_or("gemma4:26b")
+                    .to_string()
+            }
+            _ => "gemma4:26b".to_string(),
+        }
+    };
+
+    eprintln!("Model:    {model_name}");
+    eprintln!("Persona:  {persona_name}");
+    eprintln!("Endpoint: {endpoint}");
+    eprintln!();
+
+    // Build model backend
+    let backend = myelix_model::OpenAiBackend::new(
+        "http://localhost:11434/v1",
+        &model_name,
+        None,
+        myelix_model::Locality::Local,
+    );
+
+    // Load persona if cognitive_core exists
+    let forge = myelix_cognitive::ForgeService::load(std::path::Path::new("cognitive_core"))
+        .ok()
+        .or_else(|| {
+            // Try common locations
+            for p in ["../cognitive_core", "/etc/mcpd/cognitive_core"] {
+                if let Ok(f) = myelix_cognitive::ForgeService::load(std::path::Path::new(p)) {
+                    return Some(f);
+                }
+            }
+            None
+        });
+
+    // Build agent
+    let mut builder = myelix_agent::Agent::builder()
+        .endpoint(endpoint)
+        .await?
+        .model(backend)
+        .max_iterations(max_iterations)
+        .temperature(0.0)
+        .max_tokens(8192)
+        .force_tool_iterations(5);
+
+    // Apply auth token
+    let auth_token = token
+        .map(String::from)
+        .or_else(|| std::env::var("MCPD_TOKEN").ok());
+    if let Some(t) = auth_token {
+        builder = builder.auth_token(t);
+    }
+
+    // Apply persona
+    if let Some(ref forge) = forge {
+        if forge.get_persona(persona_name).is_some() {
+            builder = builder.persona(forge, persona_name)?;
+            eprintln!("Loaded persona: {persona_name}");
+        }
+    }
+
+    let mut agent = builder.build()?;
+
+    // List tools
+    let tools = agent.client().list_tools().await?;
+    eprintln!("{} tools available", tools.len());
+    eprintln!();
+
+    // Run
+    let start = std::time::Instant::now();
+    match agent.run(prompt).await {
+        Ok(result) => {
+            // Print report to stdout (pipeable)
+            println!("{}", result.response);
+
+            // Print stats to stderr
+            eprintln!();
+            eprintln!("---");
+            eprintln!("Iterations: {}", result.iterations);
+            eprintln!("Tokens:     {} in + {} out", result.input_tokens, result.output_tokens);
+            eprintln!("Time:       {:.1}s", start.elapsed().as_secs_f64());
+            eprintln!("Taint:      {:?}", result.taint);
+            eprintln!("Blackbox:   mcpd audit");
+        }
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
 pub(crate) fn expand_tilde(path: &str) -> String {
     if path.starts_with("~/") {
         if let Some(home) = dirs::home_dir() {
