@@ -1790,12 +1790,18 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let reg = Arc::clone(&team_registry);
         let msg_mcpd_addr = cfg.server.listen_addr();
         let msg_signer = Arc::clone(&root_signer);
-        let msg_cognitive_core = cfg.cognitive_core.clone();
+        // Load ForgeService once and share across all teammate spawns
+        let msg_forge: Option<Arc<myelix_cognitive::ForgeService>> = cfg.cognitive_core.as_ref().and_then(|p| {
+            let expanded = expand_tilde(p);
+            myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded))
+                .map(Arc::new)
+                .ok()
+        });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let reg = Arc::clone(&reg);
             let mcpd_addr = msg_mcpd_addr.clone();
             let signer = Arc::clone(&msg_signer);
-            let cognitive_core = msg_cognitive_core.clone();
+            let forge = msg_forge.clone();
             Box::pin(async move {
                 let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
                     Some(id) => id.to_string(), None => return CallToolResult::error("Missing team_id"),
@@ -1892,11 +1898,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     };
 
                     let system_prompt = if let Some(ref persona_name) = tm_persona {
-                        // Load persona from cognitive core
-                        let persona_prompt = cognitive_core.as_ref().and_then(|p| {
-                            let expanded = crate::expand_tilde(p);
-                            let forge = myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded)).ok()?;
-                            let output = myelix_cognitive::assemble(&forge, persona_name, "", None, None).ok()?;
+                        // Use cached ForgeService
+                        let persona_prompt = forge.as_ref().and_then(|f| {
+                            let output = myelix_cognitive::assemble(f, persona_name, "", None, None).ok()?;
                             Some(output.system_prompt())
                         });
 
