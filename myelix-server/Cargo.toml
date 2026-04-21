@@ -48,3 +48,5 @@ flume = "0.11"
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

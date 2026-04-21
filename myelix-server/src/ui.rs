@@ -436,3 +436,109 @@ pub(crate) fn attach_ui_routes(
         // --- Authenticated API routes ---
         .nest("/api", api_router)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::util::ServiceExt;
+
+    fn test_config() -> config::Config {
+        let mut cfg = config::Config::default();
+        cfg.cognitive_core = None;
+        cfg
+    }
+
+    fn test_server() -> Arc<myelix_core::McpServer> {
+        Arc::new(myelix_core::McpServer::builder().allow_anonymous().build())
+    }
+
+    fn test_models() -> std::collections::HashMap<String, Arc<dyn myelix_model::ModelBackend>> {
+        std::collections::HashMap::new()
+    }
+
+    fn build_test_router() -> axum::Router {
+        let server = test_server();
+        let models = test_models();
+        let cfg = test_config();
+        let base = axum::Router::new();
+        attach_ui_routes(base, &cfg, &server, &models)
+    }
+
+    async fn post_json(
+        router: &axum::Router,
+        path: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
+        (status, json)
+    }
+
+    async fn get_json(
+        router: &axum::Router,
+        path: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder()
+            .method("GET")
+            .uri(path)
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
+        (status, json)
+    }
+
+    #[tokio::test]
+    async fn v1_chat_completions_returns_openai_format() {
+        let router = build_test_router();
+        let (status, json) = post_json(&router, "/v1/chat/completions", serde_json::json!({
+            "model": "test",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 5
+        })).await;
+
+        // Should return 200 with OpenAI format (even if model returns empty)
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["object"], "chat.completion");
+        assert!(json["choices"].is_array());
+        assert_eq!(json["choices"][0]["message"]["role"], "assistant");
+        assert!(json["usage"].is_object());
+    }
+
+    #[tokio::test]
+    async fn api_status_returns_server_info() {
+        let router = build_test_router();
+        let (status, json) = get_json(&router, "/api/status").await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["name"], "mcpd");
+        assert_eq!(json["status"], "running");
+    }
+
+    #[tokio::test]
+    async fn static_assets_no_auth() {
+        let router = build_test_router();
+
+        let req = Request::builder()
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        let resp = router.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+}
