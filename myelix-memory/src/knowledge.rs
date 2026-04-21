@@ -14,6 +14,11 @@ pub struct KnowledgeStore {
 }
 
 impl KnowledgeStore {
+    /// Borrow the underlying database connection (crate-internal).
+    pub(crate) fn db(&self) -> &Connection {
+        &self.db
+    }
+
     /// Open knowledge store from a file path.
     pub fn open(path: &Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
