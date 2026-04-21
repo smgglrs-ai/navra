@@ -5,8 +5,11 @@
 //! LLM-based knowledge extraction. Without a model it falls back
 //! to extracting user messages as low-confidence facts.
 
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 
+use chrono::Utc;
 use myelix_model::{GenerateRequest, ModelBackend};
 
 use crate::error::MemoryError;
@@ -225,6 +228,79 @@ impl<'a> DistillationPipeline<'a> {
             stored += 1;
         }
         Ok(stored)
+    }
+
+    /// Export distilled entries as Markdown files with YAML frontmatter.
+    /// Creates one file per entry in the output directory.
+    pub fn export_markdown(
+        &self,
+        entries: &[DistilledEntry],
+        output_dir: &Path,
+    ) -> Result<usize, MemoryError> {
+        fs::create_dir_all(output_dir)
+            .map_err(|e| MemoryError::Other(format!("failed to create output dir: {e}")))?;
+
+        let mut written = 0;
+        for entry in entries {
+            let filename = Self::sanitize_filename(entry);
+            let path = output_dir.join(&filename);
+
+            let tags_yaml = if entry.tags.is_empty() {
+                "[]".to_string()
+            } else {
+                format!(
+                    "[{}]",
+                    entry
+                        .tags
+                        .iter()
+                        .map(|t| t.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+
+            let today = Utc::now().format("%Y-%m-%d");
+
+            let content = format!(
+                "---\ntype: {}\nname: \"{}\"\nsource_session: \"{}\"\nconfidence: {:.2}\ntags: {}\ncreated_at: {}\n---\n\n{}\n",
+                entry.kind.as_str(),
+                entry.title.replace('"', "\\\""),
+                entry.source_session,
+                entry.confidence,
+                tags_yaml,
+                today,
+                entry.content,
+            );
+
+            fs::write(&path, &content)
+                .map_err(|e| MemoryError::Other(format!("failed to write {}: {e}", path.display())))?;
+
+            written += 1;
+        }
+
+        Ok(written)
+    }
+
+    /// Build a sanitized filename from a distilled entry.
+    ///
+    /// Format: `{type}_{sanitized_title}.md` where spaces become
+    /// underscores and the total length is capped at 60 characters.
+    fn sanitize_filename(entry: &DistilledEntry) -> String {
+        let sanitized: String = entry
+            .title
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+            .collect::<String>()
+            .to_lowercase();
+
+        let prefix = format!("{}_{}", entry.kind.as_str(), sanitized);
+        let truncated = if prefix.len() > 60 {
+            prefix[..60].to_string()
+        } else {
+            prefix
+        };
+
+        format!("{}.md", truncated)
     }
 
     /// Run the full 4-stage pipeline for a session.
@@ -490,6 +566,111 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].kind, MemoryType::Fact);
         assert!((entries[0].confidence - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn export_markdown_creates_files() {
+        let wm = WorkingMemory::open_memory().unwrap();
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let pipeline = DistillationPipeline::new(&wm, &ks);
+
+        let entries = vec![
+            DistilledEntry::new(
+                MemoryType::Fact,
+                "Project uses PostgreSQL 16".to_string(),
+                "Project uses PostgreSQL 16 for the main data store.\nThe connection pool is configured with max 20 connections.".to_string(),
+                vec!["database".to_string(), "infrastructure".to_string()],
+                0.85,
+                "sess-abc123".to_string(),
+            ),
+            DistilledEntry::new(
+                MemoryType::Insight,
+                "User prefers Rust".to_string(),
+                "The user consistently chooses Rust for new projects.".to_string(),
+                vec!["preference".to_string()],
+                0.9,
+                "sess-def456".to_string(),
+            ),
+        ];
+
+        let dir = tempfile::tempdir().unwrap();
+        let count = pipeline.export_markdown(&entries, dir.path()).unwrap();
+        assert_eq!(count, 2);
+
+        let files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(files.len(), 2);
+
+        // Check that expected filenames exist
+        let names: Vec<String> = files.iter().map(|f| f.file_name().to_string_lossy().to_string()).collect();
+        assert!(names.iter().any(|n| n.starts_with("fact_")));
+        assert!(names.iter().any(|n| n.starts_with("insight_")));
+    }
+
+    #[test]
+    fn export_markdown_frontmatter_is_valid_yaml() {
+        let wm = WorkingMemory::open_memory().unwrap();
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let pipeline = DistillationPipeline::new(&wm, &ks);
+
+        let entries = vec![DistilledEntry::new(
+            MemoryType::Fact,
+            "Sky is blue".to_string(),
+            "The sky appears blue due to Rayleigh scattering.".to_string(),
+            vec!["science".to_string(), "nature".to_string()],
+            0.95,
+            "sess-001".to_string(),
+        )];
+
+        let dir = tempfile::tempdir().unwrap();
+        pipeline.export_markdown(&entries, dir.path()).unwrap();
+
+        let file_path = dir.path().join("fact_sky_is_blue.md");
+        let content = std::fs::read_to_string(&file_path).unwrap();
+
+        // Extract frontmatter between --- delimiters
+        let parts: Vec<&str> = content.splitn(3, "---").collect();
+        assert_eq!(parts.len(), 3, "expected YAML frontmatter delimiters");
+
+        let frontmatter = parts[1].trim();
+        // Parse as YAML to verify validity
+        let yaml: serde_json::Value = serde_yaml::from_str(frontmatter).unwrap();
+        assert_eq!(yaml["type"], "fact");
+        assert_eq!(yaml["name"], "Sky is blue");
+        assert_eq!(yaml["source_session"], "sess-001");
+        assert_eq!(yaml["confidence"], 0.95);
+        assert_eq!(yaml["tags"][0], "science");
+        assert_eq!(yaml["tags"][1], "nature");
+    }
+
+    #[test]
+    fn export_markdown_content_matches_entry() {
+        let wm = WorkingMemory::open_memory().unwrap();
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let pipeline = DistillationPipeline::new(&wm, &ks);
+
+        let body = "PostgreSQL 16 is the primary database.\nMax pool size is 20.";
+        let entries = vec![DistilledEntry::new(
+            MemoryType::Event,
+            "DB migration done".to_string(),
+            body.to_string(),
+            vec![],
+            0.7,
+            "sess-xyz".to_string(),
+        )];
+
+        let dir = tempfile::tempdir().unwrap();
+        pipeline.export_markdown(&entries, dir.path()).unwrap();
+
+        let file_path = dir.path().join("event_db_migration_done.md");
+        let content = std::fs::read_to_string(&file_path).unwrap();
+
+        // Body appears after the closing ---
+        let parts: Vec<&str> = content.splitn(3, "---").collect();
+        let markdown_body = parts[2].trim();
+        assert_eq!(markdown_body, body);
     }
 
     #[tokio::test]
