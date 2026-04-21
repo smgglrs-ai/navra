@@ -23,7 +23,10 @@ mod forge;
 mod types;
 mod weaver;
 
-pub use budget::{compact_history, estimate_tokens, truncate_to_budget, ContextBudget};
+pub use budget::{
+    apply_compaction, compact_history, estimate_tokens, recommended_strategy, truncate_to_budget,
+    CompactionStrategy, ContextBudget,
+};
 pub use error::CognitiveError;
 pub use evolution::{TraitStore, TraitVector};
 pub use forge::{ForgeService, SpecializationMeta};
