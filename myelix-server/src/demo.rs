@@ -457,10 +457,10 @@ locality = "local"
     }
 
     std::fs::write(demo_config_path, format!(r#"
+cognitive_core = "{project}"
+
 [server]
 tcp = "127.0.0.1:{demo_port}"
-
-cognitive_core = "{project}"
 
 [modules.docs]
 enabled = true

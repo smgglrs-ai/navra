@@ -1053,6 +1053,7 @@ async fn handle_tree(
 ) -> CallToolResult {
     let raw_path = args.get("path")
         .and_then(|v| v.as_str())
+        .filter(|p| !p.is_empty() && *p != "." && *p != "./")
         .or(state.default_root.as_deref())
         .unwrap_or("/");
 
