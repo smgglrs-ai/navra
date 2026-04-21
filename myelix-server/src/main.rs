@@ -1790,10 +1790,12 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let reg = Arc::clone(&team_registry);
         let msg_mcpd_addr = cfg.server.listen_addr();
         let msg_signer = Arc::clone(&root_signer);
+        let msg_cognitive_core = cfg.cognitive_core.clone();
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let reg = Arc::clone(&reg);
             let mcpd_addr = msg_mcpd_addr.clone();
             let signer = Arc::clone(&msg_signer);
+            let cognitive_core = msg_cognitive_core.clone();
             Box::pin(async move {
                 let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
                     Some(id) => id.to_string(), None => return CallToolResult::error("Missing team_id"),
@@ -1881,19 +1883,48 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         }
                     };
 
-                    // Build the teammate's system prompt
-                    let system_prompt = format!(
-                        "You are a specialist agent named '{}' working as part of a team.\n\n\
-                         You have access to MCP tools: {}.\n\
-                         Use these tools to complete your task. If team_bb_publish \
-                         is available, publish important findings to the team \
-                         blackboard (team_id: {}).\n\n\
-                         Report findings as a JSON array:\n\
-                         [{{\"file\": \"...\", \"cwe\": \"CWE-NNN\", \"severity\": \"high\", \"description\": \"...\", \"fix\": \"...\"}}]\n\
-                         If no findings, return: []\n\n\
-                         Your team_id is: {}",
-                        bg_to, tm_tools_desc, bg_team_id, bg_team_id
-                    );
+                    // Build the teammate's system prompt from persona if available
+                    let tm_persona = {
+                        let teams = bg_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                        teams.get(&bg_team_id)
+                            .and_then(|t| t.teammates.get(&bg_to))
+                            .and_then(|tm| tm.persona.clone())
+                    };
+
+                    let system_prompt = if let Some(ref persona_name) = tm_persona {
+                        // Load persona from cognitive core
+                        let persona_prompt = cognitive_core.as_ref().and_then(|p| {
+                            let expanded = crate::expand_tilde(p);
+                            let forge = myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded)).ok()?;
+                            let output = myelix_cognitive::assemble(&forge, persona_name, "", None, None).ok()?;
+                            Some(output.system_prompt())
+                        });
+
+                        match persona_prompt {
+                            Some(prompt) => format!(
+                                "{prompt}\n\n\
+                                 You are working as part of a team.\n\
+                                 You have access to MCP tools: {tools}.\n\
+                                 If team_bb_publish is available, publish findings to the \
+                                 blackboard (team_id: {team_id}).\n\
+                                 Your team_id is: {team_id}",
+                                tools = tm_tools_desc, team_id = bg_team_id
+                            ),
+                            None => format!(
+                                "You are a specialist agent named '{}' (persona: {}).\n\n\
+                                 You have access to MCP tools: {}.\n\
+                                 Your team_id is: {}",
+                                bg_to, persona_name, tm_tools_desc, bg_team_id
+                            ),
+                        }
+                    } else {
+                        format!(
+                            "You are a specialist agent named '{}'.\n\n\
+                             You have access to MCP tools: {}.\n\
+                             Your team_id is: {}",
+                            bg_to, tm_tools_desc, bg_team_id
+                        )
+                    };
 
                     // Get the model name from the teammate's config
                     let mut teammate_model = {
