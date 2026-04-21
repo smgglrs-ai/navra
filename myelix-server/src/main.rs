@@ -249,6 +249,30 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         }
     }
 
+    // Gateway blackbox — always on, append-only, hash-chained
+    {
+        let bb_path = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("mcpd/blackbox.db");
+        if let Some(parent) = bb_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match myelix_core::blackbox::Blackbox::open(&bb_path) {
+            Ok(bb) => {
+                let count = bb.count();
+                builder = builder.blackbox(bb);
+                tracing::info!(
+                    path = %bb_path.display(),
+                    entries = count,
+                    "Blackbox enabled (append-only, hash-chained)"
+                );
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to open blackbox — tool calls will NOT be recorded");
+            }
+        }
+    }
+
     // Wire IFC policies and trusted paths from permission sets
     for (name, pset) in &cfg.permissions {
         let policy = myelix_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy);
@@ -2779,6 +2803,41 @@ fn audit_command(action: AuditAction) -> anyhow::Result<()> {
             println!();
             let summary = log.get_summary(&run_id)?;
             println!("{} tool calls, {} model calls", summary.tool_call_count, summary.model_call_count);
+        }
+        AuditAction::Blackbox { limit } => {
+            let bb_path = dirs::data_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("mcpd/blackbox.db");
+            if !bb_path.exists() {
+                anyhow::bail!("No blackbox found at {}", bb_path.display());
+            }
+            let bb = myelix_core::blackbox::Blackbox::open(&bb_path)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            println!("Blackbox: {} ({} entries)\n", bb_path.display(), bb.count());
+            let entries = bb.recent(limit);
+            println!("{:<6} {:<10} {:<12} {:<20} {:<10} {}", "SEQ", "AGENT", "OUTCOME", "TOOL", "MS", "IFC");
+            println!("{}", "-".repeat(80));
+            for e in entries.iter().rev() {
+                println!("{:<6} {:<10} {:<12} {:<20} {:<10} {}",
+                    e.seq, e.agent_name, e.outcome, e.tool_name, e.duration_ms, e.ifc_label);
+            }
+        }
+        AuditAction::Verify => {
+            let bb_path = dirs::data_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("mcpd/blackbox.db");
+            if !bb_path.exists() {
+                anyhow::bail!("No blackbox found at {}", bb_path.display());
+            }
+            let bb = myelix_core::blackbox::Blackbox::open(&bb_path)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            let (valid, broken) = bb.verify_chain();
+            match broken {
+                None => println!("Blackbox integrity: OK ({valid} entries, chain valid)"),
+                Some(seq) => println!("Blackbox integrity: BROKEN at seq {seq} ({valid} valid entries before break)"),
+            }
         }
     }
     Ok(())

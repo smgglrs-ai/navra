@@ -111,6 +111,14 @@ pub(crate) enum AuditAction {
     },
     /// Show the last run's tool calls
     Last,
+    /// Show recent blackbox entries (gateway-level)
+    Blackbox {
+        /// Number of entries to show
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
+    },
+    /// Verify blackbox hash chain integrity
+    Verify,
 }
 
 #[derive(Subcommand)]

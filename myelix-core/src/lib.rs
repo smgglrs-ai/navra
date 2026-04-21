@@ -19,6 +19,7 @@ pub use myelix_model as models;
 
 // Core modules (owned by this crate)
 pub mod a2a;
+pub mod blackbox;
 pub mod transport;
 
 mod module;
