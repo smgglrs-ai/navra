@@ -26,7 +26,7 @@ mod weaver;
 pub use budget::{compact_history, estimate_tokens, truncate_to_budget, ContextBudget};
 pub use error::CognitiveError;
 pub use evolution::{TraitStore, TraitVector};
-pub use forge::ForgeService;
+pub use forge::{ForgeService, SpecializationMeta};
 pub use types::{
     Directive, Example, Facet, HeuristicModule, HeuristicRef, Persona, Reference, Scope,
     Specialization,

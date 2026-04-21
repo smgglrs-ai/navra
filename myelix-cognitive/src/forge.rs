@@ -16,11 +16,27 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// Registry of cognitive artifacts loaded from YAML files.
+/// Metadata for a specialization — loaded at startup without full content.
+#[derive(Debug, Clone)]
+pub struct SpecializationMeta {
+    /// Key used to look up this specialization.
+    pub key: String,
+    /// Base persona this extends.
+    pub base_persona: String,
+    /// Description of the specialization.
+    pub description: String,
+    /// Path to the YAML file for lazy loading.
+    pub path: PathBuf,
+}
+
 pub struct ForgeService {
     personas: HashMap<String, Persona>,
     heuristics: HashMap<String, HeuristicModule>,
     directives: HashMap<String, Directive>,
+    /// Eagerly loaded specializations (backward compat).
     specializations: HashMap<String, Specialization>,
+    /// Lazy catalog: metadata only, full YAML loaded on demand.
+    specialization_catalog: Vec<SpecializationMeta>,
 }
 
 impl ForgeService {
@@ -42,16 +58,21 @@ impl ForgeService {
             &cognitive_core_dir.join("heuristics"),
             |h| h.heuristic_name.clone(),
         )?;
+        // Load specializations eagerly (backward compat) and build lazy catalog
+        let spec_dir = cognitive_core_dir.join("persona_specializations");
         let specializations = load_dir::<Specialization>(
-            &cognitive_core_dir.join("persona_specializations"),
+            &spec_dir,
             |s| format!("{}_{}", s.base_persona, s.description.replace(' ', "_").to_lowercase()),
         )?;
+
+        let specialization_catalog = build_catalog(&spec_dir);
 
         tracing::info!(
             personas = personas.len(),
             directives = directives.len(),
             heuristics = heuristics.len(),
             specializations = specializations.len(),
+            catalog = specialization_catalog.len(),
             "Cognitive core loaded"
         );
 
@@ -60,17 +81,37 @@ impl ForgeService {
             heuristics,
             directives,
             specializations,
+            specialization_catalog,
         })
     }
 
     /// Create an empty ForgeService (for testing or when no cognitive core exists).
     pub fn empty() -> Self {
+        #[allow(clippy::default_trait_access)]
         Self {
             personas: HashMap::new(),
             heuristics: HashMap::new(),
             directives: HashMap::new(),
             specializations: HashMap::new(),
+            specialization_catalog: Vec::new(),
         }
+    }
+
+    /// List available specializations (metadata only — no content loaded).
+    pub fn specialization_catalog(&self) -> &[SpecializationMeta] {
+        &self.specialization_catalog
+    }
+
+    /// Load a specialization on demand from its YAML file.
+    pub fn load_specialization(&self, key: &str) -> Option<Specialization> {
+        // Check eagerly loaded first
+        if let Some(spec) = self.specializations.get(key) {
+            return Some(spec.clone());
+        }
+        // Fall back to catalog (lazy load from disk)
+        let meta = self.specialization_catalog.iter().find(|m| m.key == key)?;
+        let content = std::fs::read_to_string(&meta.path).ok()?;
+        serde_yaml::from_str(&content).ok()
     }
 
     /// Get a persona by name.
@@ -92,8 +133,7 @@ impl ForgeService {
             .get(name)
             .ok_or_else(|| CognitiveError::PersonaNotFound(name.into()))?;
         let spec = self
-            .specializations
-            .get(spec_name)
+            .load_specialization(spec_name)
             .ok_or_else(|| CognitiveError::SpecializationNotFound(spec_name.into()))?;
 
         let mut merged = base.clone();
@@ -187,6 +227,40 @@ impl ForgeService {
     pub fn directive_count(&self) -> usize {
         self.directives.len()
     }
+}
+
+/// Build a lazy catalog of specialization metadata from YAML files.
+/// Only reads `base_persona` and `description` fields — full content
+/// is loaded on demand by `load_specialization()`.
+fn build_catalog(dir: &Path) -> Vec<SpecializationMeta> {
+    let mut catalog = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else { return catalog };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("yaml")
+            && path.extension().and_then(|e| e.to_str()) != Some("yml")
+        {
+            continue;
+        }
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            // Parse just enough to get metadata
+            if let Ok(spec) = serde_yaml::from_str::<Specialization>(&content) {
+                let key = format!(
+                    "{}_{}",
+                    spec.base_persona,
+                    spec.description.replace(' ', "_").to_lowercase()
+                );
+                catalog.push(SpecializationMeta {
+                    key,
+                    base_persona: spec.base_persona,
+                    description: spec.description,
+                    path: path.clone(),
+                });
+            }
+        }
+    }
+    catalog
 }
 
 /// Load all YAML files from a directory into a HashMap.
