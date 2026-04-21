@@ -511,6 +511,27 @@ safety = "standard"
     println!("  ✓ Agent 'audit-planner' (no auth for demo)");
     println!("  ✓ Docs module serving: {}", abs_project.display());
 
+    // Verify model proxy endpoint
+    let v1_check = http_client.post(format!("{mcpd_url}/v1/chat/completions"))
+        .json(&serde_json::json!({
+            "model": "default",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 5
+        }))
+        .send()
+        .await;
+    match v1_check {
+        Ok(resp) if resp.status().is_success() => {
+            println!("  ✓ Model proxy at {mcpd_url}/v1/chat/completions");
+        }
+        Ok(resp) => {
+            println!("  ⚠ Model proxy returned {}", resp.status());
+        }
+        Err(e) => {
+            println!("  ⚠ Model proxy not available: {e}");
+        }
+    }
+
     // --- Step 3: Cognitive Core ---
     println!();
     println!("━━━ Act 2: Cognitive Core ━━━");

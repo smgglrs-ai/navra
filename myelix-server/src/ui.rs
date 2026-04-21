@@ -111,13 +111,24 @@ pub(crate) fn attach_ui_routes(
     let persona_names: Vec<String> = forge.persona_names().iter().map(|s| s.to_string()).collect();
 
     // Chat model: pick first chat/generate model, or empty
-    let chat_model_name = cfg.models.iter()
-        .find(|(_, m)| m.task == "chat" || m.task == "generate")
-        .map(|(name, _)| name.clone());
-    let chat_backend: Option<Arc<dyn myelix_model::ModelBackend>> = chat_model_name
-        .as_ref()
-        .and_then(|name| models.get(name))
-        .cloned();
+    let chat_backend: Option<Arc<dyn myelix_model::ModelBackend>> = {
+        // Try config-defined chat model first
+        let from_config = cfg.models.iter()
+            .find(|(_, m)| m.task == "chat" || m.task == "generate")
+            .map(|(name, _)| name.clone())
+            .and_then(|name| models.get(&name))
+            .cloned();
+
+        // Fall back to Ollama if no config-defined model
+        from_config.or_else(|| {
+            Some(Arc::new(myelix_model::OpenAiBackend::new(
+                "http://localhost:11434/v1",
+                "gemma4:26b",
+                None,
+                myelix_model::Locality::Local,
+            )) as Arc<dyn myelix_model::ModelBackend>)
+        })
+    };
 
     // Shared state for all UI handlers
     let ui_models = Arc::new(model_info);
@@ -282,7 +293,135 @@ pub(crate) fn attach_ui_routes(
             auth_middleware,
         ));
 
+    // --- OpenAI-compatible model proxy ---
+    // Goose (or any OpenAI client) can use http://localhost:9315/v1
+    // as its model endpoint. Myelix injects persona, runs safety
+    // filters, records in blackbox, and forwards to the real model.
+    let proxy_backend = ui_chat_backend.clone();
+    let proxy_forge = ui_forge.clone();
+    let proxy_server = Arc::clone(server);
+    let v1_router = axum::Router::new()
+        .route("/chat/completions", axum::routing::post(move |
+            headers: axum::http::HeaderMap,
+            body: axum::Json<serde_json::Value>,
+        | {
+            let backend = proxy_backend.clone();
+            let forge = proxy_forge.clone();
+            let server = proxy_server.clone();
+            async move {
+                // Auth
+                if let Err(_) = server.authenticator().authenticate(&headers) {
+                    return axum::Json(serde_json::json!({
+                        "error": {"message": "unauthorized", "type": "auth_error"}
+                    })).into_response();
+                }
+
+                let Some(backend) = backend else {
+                    return axum::Json(serde_json::json!({
+                        "error": {"message": "no model configured", "type": "server_error"}
+                    })).into_response();
+                };
+
+                // Extract OpenAI-format messages
+                let messages = body["messages"].as_array().cloned().unwrap_or_default();
+                let model_name = body["model"].as_str().unwrap_or("default");
+
+                // Find persona from system message or X-Persona header
+                let persona_name = headers.get("x-persona")
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from)
+                    .or_else(|| {
+                        // Check first system message for persona directive
+                        messages.first()
+                            .filter(|m| m["role"].as_str() == Some("system"))
+                            .and_then(|m| m["content"].as_str())
+                            .and_then(|c| c.strip_prefix("persona:"))
+                            .map(|p| p.trim().to_string())
+                    });
+
+                // Build input items from messages
+                let mut input: Vec<myelix_model::InputItem> = Vec::new();
+
+                // Inject persona system prompt if specified
+                if let Some(ref pname) = persona_name {
+                    if let Ok(output) = myelix_cognitive::assemble(&forge, pname, "", None, None) {
+                        input.push(myelix_model::InputItem::system(&output.system_prompt()));
+                    }
+                }
+
+                // Convert OpenAI messages to our format
+                for msg in &messages {
+                    match msg["role"].as_str() {
+                        Some("system") => {
+                            // Skip if we already injected persona
+                            if persona_name.is_none() {
+                                if let Some(content) = msg["content"].as_str() {
+                                    input.push(myelix_model::InputItem::system(content));
+                                }
+                            }
+                        }
+                        Some("user") => {
+                            if let Some(content) = msg["content"].as_str() {
+                                input.push(myelix_model::InputItem::user(content));
+                            }
+                        }
+                        Some("assistant") => {
+                            if let Some(content) = msg["content"].as_str() {
+                                input.push(myelix_model::InputItem::Message(
+                                    myelix_model::MessageItem::assistant(content)
+                                ));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                let temperature = body["temperature"].as_f64().map(|t| t as f32);
+                let max_tokens = body["max_tokens"].as_u64().map(|t| t as u32);
+
+                let mut request = myelix_model::CreateResponseRequest::new(
+                    String::new(),
+                    input,
+                );
+                request.temperature = temperature;
+                request.max_output_tokens = max_tokens;
+
+                match backend.respond(&request).await {
+                    Ok(response) => {
+                        let text = response.text().unwrap_or_default();
+                        let usage = response.usage.as_ref();
+
+                        // Return OpenAI-compatible response
+                        axum::Json(serde_json::json!({
+                            "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+                            "object": "chat.completion",
+                            "model": model_name,
+                            "choices": [{
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": text,
+                                },
+                                "finish_reason": "stop",
+                            }],
+                            "usage": {
+                                "prompt_tokens": usage.map(|u| u.input_tokens).unwrap_or(0),
+                                "completion_tokens": usage.map(|u| u.output_tokens).unwrap_or(0),
+                                "total_tokens": usage.map(|u| u.total_tokens).unwrap_or(0),
+                            }
+                        })).into_response()
+                    }
+                    Err(e) => {
+                        axum::Json(serde_json::json!({
+                            "error": {"message": format!("{e}"), "type": "model_error"}
+                        })).into_response()
+                    }
+                }
+            }
+        }));
+
     router
+        .nest("/v1", v1_router)
         // --- Static assets (no auth) ---
         .route("/", axum::routing::get(|| async {
             ([("content-type", "text/html")], include_str!("../ui/index.html"))
