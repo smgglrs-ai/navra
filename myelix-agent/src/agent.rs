@@ -2,7 +2,7 @@
 
 use crate::client::McpClient;
 use crate::error::AgentError;
-use crate::tool_loop::{run_tool_loop, AuditCallback, ToolLoopConfig, ToolLoopResult};
+use crate::tool_loop::{run_tool_loop, ToolLoopConfig, ToolLoopResult};
 use myelix_model::ModelBackend;
 use myelix_protocol::label::DataLabel;
 use myelix_protocol::Upstream;
@@ -166,15 +166,6 @@ impl AgentBuilder {
     /// and `team_result` that observe state without making progress.
     pub fn non_progress_tools(mut self, tools: Vec<String>) -> Self {
         self.config.non_progress_tools = Some(tools);
-        self
-    }
-
-    /// Set an audit callback to record tool and model calls.
-    /// The callback receives structured events for each tool invocation
-    /// and model response without introducing a dependency on any
-    /// specific audit storage backend.
-    pub fn audit(mut self, callback: Arc<dyn AuditCallback>) -> Self {
-        self.config.audit = Some(callback);
         self
     }
 
