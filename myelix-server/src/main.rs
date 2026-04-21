@@ -4,6 +4,7 @@ mod demo;
 mod discover;
 mod flow_tools;
 mod mdns;
+mod memory_tools;
 mod team_tools;
 mod tray;
 mod ui;
@@ -2225,6 +2226,161 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         });
 
         tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, models_list)");
+    }
+
+    // --- Knowledge memory tools ---
+    let knowledge_store: Option<Arc<std::sync::Mutex<myelix_memory::KnowledgeStore>>> = {
+        let kb_path = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("mcpd/knowledge.db");
+        if let Some(parent) = kb_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match myelix_memory::KnowledgeStore::open(&kb_path) {
+            Ok(store) => {
+                tracing::info!(path = %kb_path.display(), "Knowledge store opened");
+                Some(Arc::new(std::sync::Mutex::new(store)))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to open knowledge store, memory tools disabled");
+                None
+            }
+        }
+    };
+
+    if knowledge_store.is_some() {
+        let ks = knowledge_store.clone().unwrap();
+
+        let ks_store = Arc::clone(&ks);
+        builder = builder.tool(memory_tools::memory_store_def(), move |args, _ctx| {
+            let ks = Arc::clone(&ks_store);
+            Box::pin(async move {
+                use myelix_core::protocol::CallToolResult;
+
+                let kind_str = match args.get("kind").and_then(|v| v.as_str()) {
+                    Some(k) => k,
+                    None => return CallToolResult::error("Missing required parameter: kind"),
+                };
+                let title = match args.get("title").and_then(|v| v.as_str()) {
+                    Some(t) => t,
+                    None => return CallToolResult::error("Missing required parameter: title"),
+                };
+                let content = match args.get("content").and_then(|v| v.as_str()) {
+                    Some(c) => c,
+                    None => return CallToolResult::error("Missing required parameter: content"),
+                };
+
+                let memory_type = match myelix_memory::MemoryType::from_str(kind_str) {
+                    Ok(mt) => mt,
+                    Err(_) => return CallToolResult::error(
+                        format!("Invalid kind: {kind_str}. Use: fact, event, instruction, insight")
+                    ),
+                };
+
+                let tags: Vec<String> = args
+                    .get("tags")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+
+                let id = uuid::Uuid::new_v4().to_string();
+                let entry = myelix_memory::MemoryEntry {
+                    id: id.clone(),
+                    memory_type,
+                    title: title.to_string(),
+                    content: content.to_string(),
+                    tags,
+                    created_at: now,
+                    updated_at: None,
+                };
+
+                let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+                match store.store(&entry) {
+                    Ok(()) => CallToolResult::text(
+                        serde_json::json!({"id": id, "status": "stored"}).to_string()
+                    ),
+                    Err(e) => CallToolResult::error(format!("Failed to store entry: {e}")),
+                }
+            })
+        });
+
+        let ks_query = Arc::clone(&ks);
+        builder = builder.tool(memory_tools::memory_query_def(), move |args, _ctx| {
+            let ks = Arc::clone(&ks_query);
+            Box::pin(async move {
+                use myelix_core::protocol::CallToolResult;
+
+                let query = match args.get("query").and_then(|v| v.as_str()) {
+                    Some(q) => q,
+                    None => return CallToolResult::error("Missing required parameter: query"),
+                };
+
+                let limit = args.get("limit")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(10) as usize;
+
+                let kind_filter = args.get("kind")
+                    .and_then(|v| v.as_str())
+                    .and_then(|k| myelix_memory::MemoryType::from_str(k).ok());
+
+                let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+                match store.search(query) {
+                    Ok(entries) => {
+                        let mut results: Vec<&myelix_memory::MemoryEntry> = entries.iter()
+                            .filter(|e| {
+                                kind_filter.as_ref().map_or(true, |k| e.memory_type == *k)
+                            })
+                            .collect();
+                        results.truncate(limit);
+
+                        let output: Vec<serde_json::Value> = results.iter().map(|e| {
+                            serde_json::json!({
+                                "id": e.id,
+                                "kind": e.memory_type.as_str(),
+                                "title": e.title,
+                                "content": e.content,
+                                "tags": e.tags,
+                                "created_at": e.created_at,
+                            })
+                        }).collect();
+
+                        CallToolResult::text(
+                            serde_json::to_string_pretty(&output).unwrap_or_default()
+                        )
+                    }
+                    Err(e) => CallToolResult::error(format!("Search failed: {e}")),
+                }
+            })
+        });
+
+        let ks_forget = Arc::clone(&ks);
+        builder = builder.tool(memory_tools::memory_forget_def(), move |args, _ctx| {
+            let ks = Arc::clone(&ks_forget);
+            Box::pin(async move {
+                use myelix_core::protocol::CallToolResult;
+
+                let id = match args.get("id").and_then(|v| v.as_str()) {
+                    Some(id) => id,
+                    None => return CallToolResult::error("Missing required parameter: id"),
+                };
+
+                let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+                match store.delete(id) {
+                    Ok(true) => CallToolResult::text(
+                        serde_json::json!({"id": id, "status": "deleted"}).to_string()
+                    ),
+                    Ok(false) => CallToolResult::error(format!("No entry found with id: {id}")),
+                    Err(e) => CallToolResult::error(format!("Failed to delete entry: {e}")),
+                }
+            })
+        });
+
+        tracing::info!("Registered memory tools (memory_store, memory_query, memory_forget)");
     }
 
     // Register audit_query tool
