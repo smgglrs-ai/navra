@@ -2804,7 +2804,7 @@ fn audit_command(action: AuditAction) -> anyhow::Result<()> {
             let summary = log.get_summary(&run_id)?;
             println!("{} tool calls, {} model calls", summary.tool_call_count, summary.model_call_count);
         }
-        AuditAction::Blackbox { limit } => {
+        AuditAction::Blackbox { limit, detail } => {
             let bb_path = dirs::data_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("mcpd/blackbox.db");
@@ -2816,11 +2816,26 @@ fn audit_command(action: AuditAction) -> anyhow::Result<()> {
 
             println!("Blackbox: {} ({} entries)\n", bb_path.display(), bb.count());
             let entries = bb.recent(limit);
-            println!("{:<6} {:<10} {:<12} {:<20} {:<10} {}", "SEQ", "AGENT", "OUTCOME", "TOOL", "MS", "IFC");
-            println!("{}", "-".repeat(80));
-            for e in entries.iter().rev() {
-                println!("{:<6} {:<10} {:<12} {:<20} {:<10} {}",
-                    e.seq, e.agent_name, e.outcome, e.tool_name, e.duration_ms, e.ifc_label);
+
+            if detail {
+                for e in entries.iter().rev() {
+                    println!("seq={} agent={} tool={} outcome={} duration={}us",
+                        e.seq, e.agent_name, e.tool_name, e.outcome, e.duration_us);
+                    let args_short = if e.tool_args.len() > 80 { &e.tool_args[..80] } else { &e.tool_args };
+                    let result_short = if e.tool_result.len() > 80 { &e.tool_result[..80] } else { &e.tool_result };
+                    println!("  args:   {}", args_short);
+                    println!("  result: {}", result_short);
+                    println!("  ifc:    {}", e.ifc_label);
+                    println!();
+                }
+            } else {
+                println!("{:<6} {:<10} {:<12} {:<20} {:<10} {}", "SEQ", "AGENT", "OUTCOME", "TOOL", "US", "IFC");
+                println!("{}", "-".repeat(90));
+                for e in entries.iter().rev() {
+                    let ifc_short = e.ifc_label.replace("DataLabel { integrity: ", "").replace(", confidentiality: ", "/").replace(" }", "");
+                    println!("{:<6} {:<10} {:<12} {:<20} {:<10} {}",
+                        e.seq, e.agent_name, e.outcome, e.tool_name, e.duration_us, ifc_short);
+                }
             }
         }
         AuditAction::Verify => {
