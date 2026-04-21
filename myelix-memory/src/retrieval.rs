@@ -214,6 +214,48 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "rag")]
+    fn rrf_vector_channel_with_chunk_store() {
+        use std::sync::Arc;
+
+        let store = KnowledgeStore::open_memory().unwrap();
+        // Insert an FTS entry so we can verify vector results merge in
+        store
+            .store(&make_entry("fts1", "Rust language", "Rust is a systems programming language"))
+            .unwrap();
+
+        // Set up a ChunkStore with 4-dimensional embeddings
+        let chunk_store = Arc::new(myelix_rag::ChunkStore::open_memory(4).unwrap());
+        let chunks = vec![myelix_rag::chunk::Chunk {
+            content: "Vector chunk about Rust".to_string(),
+            start_byte: 0,
+            end_byte: 22,
+            index: 0,
+        }];
+        let embeddings = vec![vec![1.0_f32, 0.0, 0.0, 0.0]];
+        chunk_store
+            .index_document("/rust.md", &chunks, &embeddings)
+            .unwrap();
+
+        let retriever = MemoryRetriever::new(&store).with_chunk_store(chunk_store);
+
+        // Query with an embedding close to the indexed chunk
+        let query_embedding = vec![0.9_f32, 0.1, 0.0, 0.0];
+        let results = retriever
+            .retrieve_with_embedding("Rust", &query_embedding, 10)
+            .unwrap();
+
+        // Should have the FTS entry plus the vector entry
+        assert!(results.len() >= 2);
+        let ids: Vec<&str> = results.iter().map(|r| r.entry.id.as_str()).collect();
+        assert!(ids.contains(&"fts1"), "FTS entry should be present");
+        assert!(
+            ids.iter().any(|id| id.starts_with("rag:")),
+            "Vector entry should be present with rag: prefix"
+        );
+    }
+
+    #[test]
     fn rrf_respects_top_n() {
         let store = KnowledgeStore::open_memory().unwrap();
         for i in 0..10 {
