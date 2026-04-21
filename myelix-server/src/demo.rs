@@ -602,7 +602,8 @@ safety = "standard"
                 .allowed_tools(lead_tools.clone())
                 .non_progress_tools(polling_tools.clone())
                 .max_iterations(50)
-                .temperature(0.3)
+                .temperature(0.0) // deterministic tool-calling for orchestration
+                .force_tool_iterations(5) // must call tools for first 5 progress iterations
                 .max_tokens(8192)
                 .build()?
         };

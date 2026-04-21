@@ -169,6 +169,13 @@ impl AgentBuilder {
         self
     }
 
+    /// Force tool calls for the first N progress iterations.
+    /// Prevents the model from producing text responses prematurely.
+    pub fn force_tool_iterations(mut self, n: usize) -> Self {
+        self.config.force_tool_iterations = Some(n);
+        self
+    }
+
     /// Load a persona from the cognitive core and set system prompt +
     /// output schema automatically.
     ///

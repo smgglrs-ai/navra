@@ -13,7 +13,7 @@
 use crate::error::CognitiveError;
 use crate::types::{Directive, HeuristicModule, HeuristicRef, Persona, Specialization};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Registry of cognitive artifacts loaded from YAML files.
 /// Metadata for a specialization — loaded at startup without full content.

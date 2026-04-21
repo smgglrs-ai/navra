@@ -35,6 +35,11 @@ pub struct ToolLoopConfig {
     /// tools (e.g. `team_status`, `team_result`) that observe state
     /// without making progress.
     pub non_progress_tools: Option<Vec<String>>,
+    /// Force tool calls for the first N progress iterations.
+    /// Uses tool_choice="required" instead of "auto" to prevent
+    /// the model from producing text responses prematurely.
+    /// After N iterations, switches to "auto" to allow synthesis.
+    pub force_tool_iterations: Option<usize>,
 }
 
 impl Default for ToolLoopConfig {
@@ -47,6 +52,7 @@ impl Default for ToolLoopConfig {
             allowed_tools: None,
             output_json_schema: None,
             non_progress_tools: None,
+            force_tool_iterations: None,
         }
     }
 }
@@ -162,7 +168,11 @@ pub async fn run_tool_loop(
             input: input.clone(),
             instructions: None,
             tools: tools.clone(),
-            tool_choice: Some(myelix_model::ResponseToolChoice::auto()),
+            tool_choice: Some(if config.force_tool_iterations.is_some_and(|n| progress_iterations < n) {
+                myelix_model::ResponseToolChoice::required()
+            } else {
+                myelix_model::ResponseToolChoice::auto()
+            }),
             max_output_tokens: config.max_tokens,
             temperature: config.temperature,
             text: text_config,
