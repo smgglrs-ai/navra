@@ -2177,6 +2177,7 @@ dependencies = [
 name = "myelix-cognitive"
 version = "0.1.0"
 dependencies = [
+ "rusqlite",
  "serde",
  "serde_json",
  "serde_yaml",
