@@ -705,7 +705,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         if let Some(ref cc_path) = cfg.cognitive_core {
             let expanded = expand_tilde(cc_path);
             if let Ok(canonical) = std::fs::canonicalize(&expanded) {
-                docs.set_default_root(canonical.display().to_string());
+                let root = canonical.display().to_string();
+                tracing::info!(default_root = %root, "Setting docs_tree default root");
+                docs.set_default_root(root);
             }
         }
         tracing::info!("Module 'docs' enabled (db: {db_path})");
