@@ -116,6 +116,9 @@ pub(crate) enum AuditAction {
         /// Number of entries to show
         #[arg(short, long, default_value = "20")]
         limit: usize,
+        /// Show full args and results
+        #[arg(short, long)]
+        detail: bool,
     },
     /// Verify blackbox hash chain integrity
     Verify,

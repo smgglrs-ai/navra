@@ -23,7 +23,7 @@ pub struct BlackboxEntry {
     pub tool_args: String,
     pub tool_result: String,
     pub outcome: String, // "allowed", "denied_acl", "denied_ifc", "denied_rate", "error"
-    pub duration_ms: u64,
+    pub duration_us: u64,
     pub ifc_label: String,
     pub prev_hash: String, // SHA-256 of previous entry
     pub hash: String,      // SHA-256 of this entry
@@ -53,7 +53,7 @@ impl Blackbox {
                 tool_args     TEXT NOT NULL,
                 tool_result   TEXT NOT NULL,
                 outcome       TEXT NOT NULL,
-                duration_ms   INTEGER NOT NULL,
+                duration_us   INTEGER NOT NULL,
                 ifc_label     TEXT NOT NULL,
                 prev_hash     TEXT NOT NULL,
                 hash          TEXT NOT NULL
@@ -90,7 +90,7 @@ impl Blackbox {
         tool_args: &str,
         tool_result: &str,
         outcome: &str,
-        duration_ms: u64,
+        duration_us: u64,
         ifc_label: &str,
     ) {
         let mut seq = self.seq.lock().unwrap_or_else(|e| e.into_inner());
@@ -119,11 +119,11 @@ impl Blackbox {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let _ = db.execute(
             "INSERT INTO blackbox (seq, timestamp_ms, agent_name, agent_perms, session_id, \
-             tool_name, tool_args, tool_result, outcome, duration_ms, ifc_label, prev_hash, hash) \
+             tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 *seq, now, agent_name, agent_permissions, session_id,
-                tool_name, args_trunc, result_trunc, outcome, duration_ms as i64,
+                tool_name, args_trunc, result_trunc, outcome, duration_us as i64,
                 ifc_label, *prev_hash, hash,
             ],
         );
@@ -185,7 +185,7 @@ impl Blackbox {
         let mut stmt = db
             .prepare(
                 "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
-                 tool_name, tool_args, tool_result, outcome, duration_ms, \
+                 tool_name, tool_args, tool_result, outcome, duration_us, \
                  ifc_label, prev_hash, hash \
                  FROM blackbox ORDER BY seq DESC LIMIT ?1",
             )
@@ -202,7 +202,7 @@ impl Blackbox {
                 tool_args: row.get(6)?,
                 tool_result: row.get(7)?,
                 outcome: row.get(8)?,
-                duration_ms: row.get(9)?,
+                duration_us: row.get(9)?,
                 ifc_label: row.get(10)?,
                 prev_hash: row.get(11)?,
                 hash: row.get(12)?,

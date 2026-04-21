@@ -304,7 +304,7 @@ impl McpServer {
                 return CallToolResult::error(format!("Unknown tool: {}", params.name));
             }
         };
-        let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
+        let tool_duration_us = tool_start.elapsed().as_micros() as u64;
 
         // IFC: auto-label external read tool outputs as Untrusted,
         // unless the tool's path argument matches a trusted path pattern.
@@ -359,7 +359,7 @@ impl McpServer {
                 &params.name, &arguments.to_string(),
                 result_trunc,
                 if result.is_error { "error" } else { "allowed" },
-                tool_duration_ms,
+                tool_duration_us,
                 &format!("{:?}", result.label),
             );
         }
