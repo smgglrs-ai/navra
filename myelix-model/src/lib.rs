@@ -15,6 +15,7 @@
 
 // Internal modules — Chat Completions types used only for backend translation.
 pub(crate) mod chat;
+pub mod safe_backend;
 pub(crate) mod http_common;
 mod anthropic;
 mod onnx;
@@ -23,6 +24,7 @@ mod openai;
 pub use anthropic::AnthropicBackend;
 pub use onnx::{ModelTask, OnnxBackend};
 pub use openai::OpenAiBackend;
+pub use safe_backend::{ModelSafetyFilter, SafeModelBackend};
 
 // Re-export Open Responses types as the public model I/O interface.
 pub use myelix_responses::{
