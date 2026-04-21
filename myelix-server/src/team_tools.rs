@@ -615,3 +615,21 @@ pub fn models_list_def() -> ToolDefinition {
         },
     }
 }
+
+pub fn personas_list_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "personas_list".to_string(),
+        description: Some(
+            "List available specialist personas from the cognitive core. \
+             Each persona has a name, display name, core mandate, and \
+             heuristic modules. Use persona names in the `persona` field \
+             of team_add to assign specialist behavior to teammates."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: None,
+            required: None,
+        },
+    }
+}
