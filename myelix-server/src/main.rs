@@ -15,7 +15,7 @@ use myelix_core::identity::{self, CapSigner, Ed25519Signer};
 use myelix_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use std::sync::Arc;
 
-use cli::{AuditAction, Cli, Commands, ModelAction, TokenAction};
+use cli::{Cli, Commands, ModelAction, TokenAction};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -94,8 +94,8 @@ async fn main() -> anyhow::Result<()> {
                 cli::model_available();
             }
         },
-        Commands::Audit { action } => {
-            audit_command(action)?;
+        Commands::Audit { limit, detail, agent, tool, verify } => {
+            audit_command(limit, detail, agent, tool, verify)?;
         }
         Commands::Demo { project, live, model, max_rounds, files_per_round, min_delta, prompt, writable, allow_read, allow_write } => {
             if live {
@@ -2705,155 +2705,57 @@ pub(crate) fn expand_tilde(path: &str) -> String {
     path.to_string()
 }
 
-fn audit_command(action: AuditAction) -> anyhow::Result<()> {
-    // Check both demo and server audit DBs
-    let demo_path = std::path::PathBuf::from("/tmp/mcpd-demo/audit.db");
-    let server_path = dirs::data_dir()
+fn audit_command(limit: usize, detail: bool, agent: Option<String>, tool: Option<String>, verify: bool) -> anyhow::Result<()> {
+    let bb_path = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("mcpd/audit.db");
+        .join("mcpd/blackbox.db");
+    if !bb_path.exists() {
+        anyhow::bail!("No blackbox found at {}. Start the server first.", bb_path.display());
+    }
+    let bb = myelix_core::blackbox::Blackbox::open(&bb_path)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let db_path = if demo_path.exists() { &demo_path } else { &server_path };
-
-    if !db_path.exists() {
-        anyhow::bail!("No audit log found. Run a demo first, or start the server.");
+    if verify {
+        let (valid, broken) = bb.verify_chain();
+        match broken {
+            None => println!("Blackbox integrity: OK ({valid} entries, chain valid)"),
+            Some(seq) => println!("Blackbox integrity: BROKEN at seq {seq} ({valid} valid entries before break)"),
+        }
+        return Ok(());
     }
 
-    let log = myelix_memory::audit::AuditLog::open(db_path)?;
-    println!("Audit log: {}", db_path.display());
-    println!();
+    println!("Blackbox: {} ({} entries)\n", bb_path.display(), bb.count());
 
-    match action {
-        AuditAction::Runs { limit } => {
-            // List recent runs from audit_runs table
-            let db = rusqlite::Connection::open(db_path)?;
-            let mut stmt = db.prepare(
-                "SELECT run_id, agent_id, model, exit_reason, \
-                 substr(prompt, 1, 60) as prompt_preview \
-                 FROM audit_runs ORDER BY started_at DESC LIMIT ?1"
-            )?;
-            let rows = stmt.query_map([limit], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, String>(4)?,
-                ))
-            })?;
+    let entries = bb.recent(limit);
+    let filtered: Vec<_> = entries.iter().rev()
+        .filter(|e| agent.as_ref().map_or(true, |a| e.agent_name == *a))
+        .filter(|e| tool.as_ref().map_or(true, |t| e.tool_name == *t))
+        .collect();
 
-            println!("{:<38} {:<8} {:<20} {:<12} {}", "RUN ID", "AGENT", "MODEL", "EXIT", "PROMPT");
-            println!("{}", "-".repeat(100));
-            for row in rows {
-                let (run_id, agent, model, exit, prompt) = row?;
-                println!("{:<38} {:<8} {:<20} {:<12} {}", run_id, agent, model, exit.unwrap_or_default(), prompt);
-            }
-        }
-        AuditAction::Tools { run_id } => {
-            let calls = log.get_tool_calls(&run_id)?;
-            if calls.is_empty() {
-                println!("No tool calls found for run {run_id}");
-                return Ok(());
-            }
-            println!("{:<5} {:<20} {:<8} {}", "ITER", "TOOL", "MS", "ARGS → RESULT");
-            println!("{}", "-".repeat(100));
-            for c in &calls {
-                let args_short = if c.tool_args.len() > 40 { &c.tool_args[..40] } else { &c.tool_args };
-                let result_short = if c.tool_result.len() > 40 { &c.tool_result[..40] } else { &c.tool_result };
-                println!("{:<5} {:<20} {:<8} {} → {}",
-                    c.iteration, c.tool_name, c.duration_ms, args_short, result_short);
-            }
-            println!("\n{} tool calls total", calls.len());
-        }
-        AuditAction::Summary { run_id } => {
-            let summary = log.get_summary(&run_id)?;
-            println!("Run:         {}", summary.run_id);
-            println!("Tool calls:  {}", summary.tool_call_count);
-            println!("Model calls: {}", summary.model_call_count);
-            if let Some(ms) = summary.duration_ms {
-                println!("Duration:    {:.1}s", ms as f64 / 1000.0);
-            }
-            if !summary.top_tools.is_empty() {
-                println!("Top tools:");
-                for (name, count) in &summary.top_tools {
-                    println!("  {:<20} {}", name, count);
-                }
-            }
-        }
-        AuditAction::Last => {
-            // Get the most recent run
-            let db = rusqlite::Connection::open(db_path)?;
-            let run_id: String = db.query_row(
-                "SELECT run_id FROM audit_runs ORDER BY started_at DESC LIMIT 1",
-                [],
-                |row| row.get(0),
-            ).map_err(|_| anyhow::anyhow!("No audit runs found"))?;
-
-            println!("Latest run: {run_id}\n");
-
-            let calls = log.get_tool_calls(&run_id)?;
-            println!("{:<5} {:<20} {:<8} {}", "ITER", "TOOL", "MS", "ARGS → RESULT");
-            println!("{}", "-".repeat(100));
-            for c in &calls {
-                let args_short = if c.tool_args.len() > 40 { &c.tool_args[..40] } else { &c.tool_args };
-                let result_short = if c.tool_result.len() > 40 { &c.tool_result[..40] } else { &c.tool_result };
-                println!("{:<5} {:<20} {:<8} {} → {}",
-                    c.iteration, c.tool_name, c.duration_ms, args_short, result_short);
-            }
-
+    if detail {
+        for e in &filtered {
+            println!("seq={} agent={} tool={} outcome={} duration={}us",
+                e.seq, e.agent_name, e.tool_name, e.outcome, e.duration_us);
+            let args_short = if e.tool_args.len() > 120 { &e.tool_args[..120] } else { &e.tool_args };
+            let result_short = if e.tool_result.len() > 120 { &e.tool_result[..120] } else { &e.tool_result };
+            println!("  args:   {}", args_short);
+            println!("  result: {}", result_short);
+            println!("  ifc:    {}", e.ifc_label);
             println!();
-            let summary = log.get_summary(&run_id)?;
-            println!("{} tool calls, {} model calls", summary.tool_call_count, summary.model_call_count);
         }
-        AuditAction::Blackbox { limit, detail } => {
-            let bb_path = dirs::data_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("mcpd/blackbox.db");
-            if !bb_path.exists() {
-                anyhow::bail!("No blackbox found at {}", bb_path.display());
-            }
-            let bb = myelix_core::blackbox::Blackbox::open(&bb_path)
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-            println!("Blackbox: {} ({} entries)\n", bb_path.display(), bb.count());
-            let entries = bb.recent(limit);
-
-            if detail {
-                for e in entries.iter().rev() {
-                    println!("seq={} agent={} tool={} outcome={} duration={}us",
-                        e.seq, e.agent_name, e.tool_name, e.outcome, e.duration_us);
-                    let args_short = if e.tool_args.len() > 80 { &e.tool_args[..80] } else { &e.tool_args };
-                    let result_short = if e.tool_result.len() > 80 { &e.tool_result[..80] } else { &e.tool_result };
-                    println!("  args:   {}", args_short);
-                    println!("  result: {}", result_short);
-                    println!("  ifc:    {}", e.ifc_label);
-                    println!();
-                }
-            } else {
-                println!("{:<6} {:<10} {:<12} {:<20} {:<10} {}", "SEQ", "AGENT", "OUTCOME", "TOOL", "US", "IFC");
-                println!("{}", "-".repeat(90));
-                for e in entries.iter().rev() {
-                    let ifc_short = e.ifc_label.replace("DataLabel { integrity: ", "").replace(", confidentiality: ", "/").replace(" }", "");
-                    println!("{:<6} {:<10} {:<12} {:<20} {:<10} {}",
-                        e.seq, e.agent_name, e.outcome, e.tool_name, e.duration_us, ifc_short);
-                }
-            }
-        }
-        AuditAction::Verify => {
-            let bb_path = dirs::data_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("mcpd/blackbox.db");
-            if !bb_path.exists() {
-                anyhow::bail!("No blackbox found at {}", bb_path.display());
-            }
-            let bb = myelix_core::blackbox::Blackbox::open(&bb_path)
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-            let (valid, broken) = bb.verify_chain();
-            match broken {
-                None => println!("Blackbox integrity: OK ({valid} entries, chain valid)"),
-                Some(seq) => println!("Blackbox integrity: BROKEN at seq {seq} ({valid} valid entries before break)"),
-            }
+    } else {
+        println!("{:<6} {:<12} {:<12} {:<20} {:<8} {}", "SEQ", "AGENT", "OUTCOME", "TOOL", "US", "IFC");
+        println!("{}", "-".repeat(80));
+        for e in &filtered {
+            let ifc_short = e.ifc_label
+                .replace("DataLabel { integrity: ", "")
+                .replace(", confidentiality: ", "/")
+                .replace(" }", "");
+            println!("{:<6} {:<12} {:<12} {:<20} {:<8} {}",
+                e.seq, e.agent_name, e.outcome, e.tool_name, e.duration_us, ifc_short);
         }
     }
+
+    println!("\n{} entries shown", filtered.len());
     Ok(())
 }

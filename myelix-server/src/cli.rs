@@ -38,10 +38,23 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: ModelAction,
     },
-    /// Query the audit log
+    /// Query the gateway audit blackbox
     Audit {
-        #[command(subcommand)]
-        action: AuditAction,
+        /// Number of entries to show (default 20)
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
+        /// Show full args and results
+        #[arg(short, long)]
+        detail: bool,
+        /// Filter by agent name
+        #[arg(long)]
+        agent: Option<String>,
+        /// Filter by tool name
+        #[arg(long)]
+        tool: Option<String>,
+        /// Verify hash chain integrity instead of listing
+        #[arg(long)]
+        verify: bool,
     },
     /// Run the end-to-end security audit demo
     Demo {
@@ -89,39 +102,6 @@ pub(crate) enum ModelAction {
     List,
     /// Show available models for download
     Available,
-}
-
-#[derive(Subcommand)]
-pub(crate) enum AuditAction {
-    /// List recent audit runs
-    Runs {
-        /// Max number of runs to show
-        #[arg(short, long, default_value = "10")]
-        limit: usize,
-    },
-    /// Show tool calls for a specific run
-    Tools {
-        /// Run ID
-        run_id: String,
-    },
-    /// Show summary for a specific run
-    Summary {
-        /// Run ID
-        run_id: String,
-    },
-    /// Show the last run's tool calls
-    Last,
-    /// Show recent blackbox entries (gateway-level)
-    Blackbox {
-        /// Number of entries to show
-        #[arg(short, long, default_value = "20")]
-        limit: usize,
-        /// Show full args and results
-        #[arg(short, long)]
-        detail: bool,
-    },
-    /// Verify blackbox hash chain integrity
-    Verify,
 }
 
 #[derive(Subcommand)]
