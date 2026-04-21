@@ -165,6 +165,29 @@ fn default_back_edge_max() -> u32 {
     3
 }
 
+/// Create a single-task DAG for inline subflow delegation.
+///
+/// This produces a minimal `DagConfig` containing exactly one task
+/// with no dependencies, suitable for `spawn_subflow`-style execution
+/// where an agent delegates a focused mandate to a specialist on the fly.
+pub fn single_task_dag(specialist: &str, mandate: &str) -> DagConfig {
+    DagConfig {
+        name: format!("subflow-{specialist}"),
+        description: Some(format!("Single-task subflow delegated to {specialist}")),
+        parameters: HashMap::new(),
+        tasks: vec![TaskDefinition {
+            id: "main".to_string(),
+            specialist: specialist.to_string(),
+            mandate: mandate.to_string(),
+            depends_on: Vec::new(),
+            expected_output: None,
+            success_criteria: Vec::new(),
+            back_edges: Vec::new(),
+        }],
+        blackboard_capacity: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,6 +284,36 @@ depends_on = ["fix_auth"]
         assert_eq!(def.dag.tasks.len(), 3);
         assert_eq!(def.dag.tasks[1].depends_on, vec!["analyze"]);
         assert_eq!(def.dag.tasks[1].success_criteria.len(), 2);
+    }
+
+    #[test]
+    fn single_task_dag_creates_valid_config() {
+        let dag = single_task_dag("analyst", "Review the security posture");
+        assert_eq!(dag.name, "subflow-analyst");
+        assert_eq!(
+            dag.description.as_deref(),
+            Some("Single-task subflow delegated to analyst")
+        );
+        assert!(dag.parameters.is_empty());
+        assert_eq!(dag.tasks.len(), 1);
+        assert_eq!(dag.tasks[0].id, "main");
+        assert_eq!(dag.tasks[0].specialist, "analyst");
+        assert_eq!(dag.tasks[0].mandate, "Review the security posture");
+        assert!(dag.tasks[0].depends_on.is_empty());
+        assert!(dag.tasks[0].expected_output.is_none());
+        assert!(dag.tasks[0].success_criteria.is_empty());
+        assert!(dag.tasks[0].back_edges.is_empty());
+        assert!(dag.blackboard_capacity.is_none());
+    }
+
+    #[test]
+    fn single_task_dag_preserves_specialist_and_mandate() {
+        let dag = single_task_dag("code-reviewer", "Check for SQL injection in auth module");
+        assert_eq!(dag.tasks[0].specialist, "code-reviewer");
+        assert_eq!(
+            dag.tasks[0].mandate,
+            "Check for SQL injection in auth module"
+        );
     }
 
     #[test]
