@@ -104,6 +104,60 @@ pub fn truncate_to_budget(text: &str, max_tokens: u32) -> String {
     format!("{truncated}\n[truncated — {remaining} more chars]")
 }
 
+/// Strategy for compacting conversation history when over budget.
+///
+/// Different models respond best to different compaction strategies.
+/// Small-context models need aggressive pruning, while large-context
+/// models can afford to keep more turns verbatim.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CompactionStrategy {
+    /// Keep last N turns verbatim, drop the rest entirely.
+    KeepLastN(usize),
+    /// Replace old turns with a one-line summary each (via `compact_history`).
+    Summary,
+    /// Drop all old turns, keep only the latest.
+    DiscardAll,
+}
+
+/// Apply a compaction strategy to conversation turns.
+///
+/// `keep_recent` controls how many of the most recent turns are always
+/// preserved verbatim (in addition to any strategy-specific behavior).
+pub fn apply_compaction(
+    turns: &[String],
+    strategy: &CompactionStrategy,
+    keep_recent: usize,
+) -> Vec<String> {
+    if turns.is_empty() {
+        return Vec::new();
+    }
+
+    match strategy {
+        CompactionStrategy::KeepLastN(n) => {
+            let keep = (*n).min(turns.len());
+            turns[turns.len() - keep..].to_vec()
+        }
+        CompactionStrategy::Summary => compact_history(turns, keep_recent),
+        CompactionStrategy::DiscardAll => {
+            vec![turns[turns.len() - 1].clone()]
+        }
+    }
+}
+
+/// Return a recommended compaction strategy based on model family.
+///
+/// Model families with smaller context windows get more aggressive
+/// strategies. Models known for good summarization use the Summary
+/// strategy. Large-context models keep more history.
+pub fn recommended_strategy(model_family: &str) -> CompactionStrategy {
+    match model_family.to_lowercase().as_str() {
+        "granite" | "qwen" => CompactionStrategy::KeepLastN(5),
+        "gemma" => CompactionStrategy::Summary,
+        "claude" | "gpt" => CompactionStrategy::KeepLastN(10),
+        _ => CompactionStrategy::Summary,
+    }
+}
+
 /// Compact conversation history by summarizing old turns.
 ///
 /// Keeps the most recent `keep_recent` turns verbatim and replaces
@@ -214,5 +268,108 @@ mod tests {
         let budget = ContextBudget::new(10000);
         assert!(!budget.needs_compaction(7000));
         assert!(budget.needs_compaction(8500));
+    }
+
+    #[test]
+    fn keep_last_n_drops_old_turns() {
+        let turns: Vec<String> = (0..10)
+            .map(|i| format!("Turn {i}: content"))
+            .collect();
+        let result = apply_compaction(&turns, &CompactionStrategy::KeepLastN(3), 3);
+        assert_eq!(result.len(), 3);
+        assert!(result[0].contains("Turn 7"));
+        assert!(result[2].contains("Turn 9"));
+    }
+
+    #[test]
+    fn keep_last_n_more_than_available() {
+        let turns = vec!["a".to_string(), "b".to_string()];
+        let result = apply_compaction(&turns, &CompactionStrategy::KeepLastN(5), 2);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn summary_uses_compact_history() {
+        let turns: Vec<String> = (0..8)
+            .map(|i| format!("Turn {i}: some content here"))
+            .collect();
+        let result = apply_compaction(&turns, &CompactionStrategy::Summary, 3);
+        // compact_history produces 1 summary block + 3 recent = 4
+        assert_eq!(result.len(), 4);
+        assert!(result[0].contains("Prior conversation summary"));
+        assert!(result[3].contains("Turn 7"));
+    }
+
+    #[test]
+    fn discard_all_keeps_only_last() {
+        let turns: Vec<String> = (0..10)
+            .map(|i| format!("Turn {i}: content"))
+            .collect();
+        let result = apply_compaction(&turns, &CompactionStrategy::DiscardAll, 3);
+        assert_eq!(result.len(), 1);
+        assert!(result[0].contains("Turn 9"));
+    }
+
+    #[test]
+    fn apply_compaction_empty_turns() {
+        let result = apply_compaction(&[], &CompactionStrategy::Summary, 3);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn recommended_strategy_granite() {
+        assert_eq!(
+            recommended_strategy("granite"),
+            CompactionStrategy::KeepLastN(5)
+        );
+    }
+
+    #[test]
+    fn recommended_strategy_qwen() {
+        assert_eq!(
+            recommended_strategy("qwen"),
+            CompactionStrategy::KeepLastN(5)
+        );
+    }
+
+    #[test]
+    fn recommended_strategy_gemma() {
+        assert_eq!(recommended_strategy("gemma"), CompactionStrategy::Summary);
+    }
+
+    #[test]
+    fn recommended_strategy_claude() {
+        assert_eq!(
+            recommended_strategy("claude"),
+            CompactionStrategy::KeepLastN(10)
+        );
+    }
+
+    #[test]
+    fn recommended_strategy_gpt() {
+        assert_eq!(
+            recommended_strategy("gpt"),
+            CompactionStrategy::KeepLastN(10)
+        );
+    }
+
+    #[test]
+    fn recommended_strategy_unknown_defaults_to_summary() {
+        assert_eq!(
+            recommended_strategy("some-unknown-model"),
+            CompactionStrategy::Summary
+        );
+    }
+
+    #[test]
+    fn recommended_strategy_case_insensitive() {
+        assert_eq!(
+            recommended_strategy("GRANITE"),
+            CompactionStrategy::KeepLastN(5)
+        );
+        assert_eq!(
+            recommended_strategy("Claude"),
+            CompactionStrategy::KeepLastN(10)
+        );
     }
 }
