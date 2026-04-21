@@ -11,48 +11,6 @@ use myelix_model::{
 };
 use myelix_protocol::label::DataLabel;
 use myelix_protocol::{CallToolResult, Content};
-use std::sync::Arc;
-use std::time::Instant;
-
-/// Callback trait for recording audit entries during the tool loop.
-///
-/// Implement this to capture tool calls and model calls without
-/// introducing a dependency on `myelix-memory` or any specific
-/// audit storage backend.
-pub trait AuditCallback: Send + Sync {
-    /// Called after each tool invocation completes.
-    fn on_tool_call(
-        &self,
-        iteration: u32,
-        tool_name: &str,
-        args: &str,
-        result: &str,
-        duration_ms: u64,
-    );
-
-    /// Called after each model response is received.
-    fn on_model_call(
-        &self,
-        iteration: u32,
-        input_tokens: u32,
-        output_tokens: u32,
-        response_type: &str,
-        reasoning: Option<&str>,
-    );
-}
-
-/// Truncate a string to at most `max_bytes` bytes on a char boundary.
-fn truncate_str(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
-}
-
 /// Configuration for the tool-use loop.
 pub struct ToolLoopConfig {
     /// Maximum number of model→tool round-trips (default: 10).
@@ -77,11 +35,6 @@ pub struct ToolLoopConfig {
     /// tools (e.g. `team_status`, `team_result`) that observe state
     /// without making progress.
     pub non_progress_tools: Option<Vec<String>>,
-    /// Optional audit callback for recording tool and model calls.
-    /// When set, the loop calls `on_tool_call` and `on_model_call`
-    /// at the appropriate points. Does not introduce any dependency
-    /// on a specific audit backend.
-    pub audit: Option<Arc<dyn AuditCallback>>,
 }
 
 impl Default for ToolLoopConfig {
@@ -94,7 +47,6 @@ impl Default for ToolLoopConfig {
             allowed_tools: None,
             output_json_schema: None,
             non_progress_tools: None,
-            audit: None,
         }
     }
 }
@@ -229,45 +181,6 @@ pub async fn run_tool_loop(
             total_output += usage.output_tokens;
         }
 
-        // Audit: record model call
-        if let Some(ref audit) = config.audit {
-            let (in_tok, out_tok) = response
-                .usage
-                .as_ref()
-                .map(|u| (u.input_tokens, u.output_tokens))
-                .unwrap_or((0, 0));
-            let has_tool_calls = response
-                .output
-                .iter()
-                .any(|o| matches!(o, OutputItem::FunctionCall(_)));
-            let response_type = if has_tool_calls {
-                "function_call"
-            } else {
-                "message"
-            };
-            // Extract reasoning summary text from output items
-            let reasoning_parts: Vec<String> = response
-                .reasoning()
-                .iter()
-                .flat_map(|r| r.summary.iter())
-                .filter_map(|c| match c {
-                    myelix_model::InputContent::Text(t) => Some(t.text.clone()),
-                    _ => None,
-                })
-                .collect();
-            let reasoning_text = if reasoning_parts.is_empty() {
-                None
-            } else {
-                Some(reasoning_parts.join("\n"))
-            };
-            audit.on_model_call(
-                iteration as u32,
-                in_tok,
-                out_tok,
-                response_type,
-                reasoning_text.as_deref(),
-            );
-        }
 
         // Check for function calls in output
         let function_calls: Vec<&FunctionCallItem> = response
@@ -340,23 +253,8 @@ pub async fn run_tool_loop(
                 "executing tool call"
             );
 
-            let tool_start = Instant::now();
             let result = client.call_tool(&fc.name, args).await?;
-            let tool_duration = tool_start.elapsed();
             let text = extract_text(&result);
-
-            // Audit: record tool call
-            if let Some(ref audit) = config.audit {
-                let truncated_args = truncate_str(&fc.arguments, 4096);
-                let truncated_result = truncate_str(&text, 4096);
-                audit.on_tool_call(
-                    iteration as u32,
-                    &fc.name,
-                    truncated_args,
-                    truncated_result,
-                    tool_duration.as_millis() as u64,
-                );
-            }
 
             // Add the tool result to input
             input.push(InputItem::FunctionCallOutput(FunctionCallOutputItem {

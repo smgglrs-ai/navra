@@ -1,4 +1,3 @@
-mod audit_bridge;
 mod cli;
 mod config;
 mod demo;
