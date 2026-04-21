@@ -323,6 +323,175 @@ mod tests {
         assert_eq!(ks.count().unwrap(), 2);
     }
 
+    /// A mock model backend that returns a fixed JSON response
+    /// for the `generate` method, simulating LLM-based extraction.
+    struct MockModelBackend {
+        response_json: String,
+    }
+
+    impl MockModelBackend {
+        fn new(json: &str) -> Self {
+            Self {
+                response_json: json.to_string(),
+            }
+        }
+    }
+
+    impl myelix_model::ModelBackend for MockModelBackend {
+        fn generate(
+            &self,
+            _request: &myelix_model::GenerateRequest,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<myelix_model::GenerateResponse, myelix_model::ModelError>> + Send + '_>,
+        > {
+            let text = self.response_json.clone();
+            Box::pin(async move {
+                Ok(myelix_model::GenerateResponse {
+                    text,
+                    prompt_tokens: Some(100),
+                    completion_tokens: Some(50),
+                })
+            })
+        }
+    }
+
+    /// A mock model that always returns an error.
+    struct FailingModelBackend;
+
+    impl myelix_model::ModelBackend for FailingModelBackend {
+        fn generate(
+            &self,
+            _request: &myelix_model::GenerateRequest,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<myelix_model::GenerateResponse, myelix_model::ModelError>> + Send + '_>,
+        > {
+            Box::pin(async {
+                Err(myelix_model::ModelError::Inference("mock failure".into()))
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn synthesize_with_model_extracts_fact_and_insight() {
+        let model_json = r#"[
+            {
+                "kind": "Fact",
+                "title": "Rust memory safety",
+                "content": "Rust provides memory safety without garbage collection",
+                "tags": ["rust", "memory"],
+                "confidence": 0.95
+            },
+            {
+                "kind": "Insight",
+                "title": "User prefers Rust",
+                "content": "The user shows a strong preference for Rust-based tooling",
+                "tags": ["preference"],
+                "confidence": 0.8
+            }
+        ]"#;
+
+        let wm = WorkingMemory::open_memory().unwrap();
+        wm.add_turn(&make_turn("s1", "I love Rust for its memory safety", 1000))
+            .unwrap();
+        wm.add_turn(&make_turn("s1", "I always choose Rust for new projects", 2000))
+            .unwrap();
+
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let model: Arc<dyn myelix_model::ModelBackend> =
+            Arc::new(MockModelBackend::new(model_json));
+        let pipeline = DistillationPipeline::new(&wm, &ks).with_model(model);
+
+        let segments = pipeline.ingest("s1").unwrap();
+        assert_eq!(segments.len(), 1);
+
+        let entries = pipeline.synthesize(&segments[0]).await.unwrap();
+        assert_eq!(entries.len(), 2);
+
+        assert_eq!(entries[0].kind, MemoryType::Fact);
+        assert_eq!(entries[0].title, "Rust memory safety");
+        assert_eq!(
+            entries[0].content,
+            "Rust provides memory safety without garbage collection"
+        );
+        assert_eq!(entries[0].tags, vec!["rust", "memory"]);
+        assert!((entries[0].confidence - 0.95).abs() < f64::EPSILON);
+
+        assert_eq!(entries[1].kind, MemoryType::Insight);
+        assert_eq!(entries[1].title, "User prefers Rust");
+        assert!((entries[1].confidence - 0.8).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn full_pipeline_with_model_stores_entries() {
+        let model_json = r#"[
+            {
+                "kind": "Fact",
+                "title": "Sky color",
+                "content": "The sky is blue due to Rayleigh scattering",
+                "tags": ["science"],
+                "confidence": 0.9
+            },
+            {
+                "kind": "Insight",
+                "title": "User curious about science",
+                "content": "The user asks about natural phenomena",
+                "tags": ["interest"],
+                "confidence": 0.75
+            }
+        ]"#;
+
+        let wm = WorkingMemory::open_memory().unwrap();
+        wm.add_turn(&make_turn("s1", "Why is the sky blue?", 1000))
+            .unwrap();
+
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let model: Arc<dyn myelix_model::ModelBackend> =
+            Arc::new(MockModelBackend::new(model_json));
+        let pipeline = DistillationPipeline::new(&wm, &ks).with_model(model);
+
+        let stored = pipeline.run("s1").await.unwrap();
+        assert_eq!(stored, 2);
+        assert_eq!(ks.count().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn synthesize_with_failing_model_falls_back_to_stub() {
+        let wm = WorkingMemory::open_memory().unwrap();
+        wm.add_turn(&make_turn("s1", "Hello world", 1000)).unwrap();
+
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let model: Arc<dyn myelix_model::ModelBackend> = Arc::new(FailingModelBackend);
+        let pipeline = DistillationPipeline::new(&wm, &ks).with_model(model);
+
+        let segments = pipeline.ingest("s1").unwrap();
+        let entries = pipeline.synthesize(&segments[0]).await.unwrap();
+
+        // Should fall back to stub: one Fact per user message
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, MemoryType::Fact);
+        assert!((entries[0].confidence - 0.5).abs() < f64::EPSILON);
+        assert_eq!(entries[0].content, "Hello world");
+    }
+
+    #[tokio::test]
+    async fn synthesize_with_invalid_json_falls_back_to_stub() {
+        let wm = WorkingMemory::open_memory().unwrap();
+        wm.add_turn(&make_turn("s1", "Test message", 1000)).unwrap();
+
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let model: Arc<dyn myelix_model::ModelBackend> =
+            Arc::new(MockModelBackend::new("not valid json"));
+        let pipeline = DistillationPipeline::new(&wm, &ks).with_model(model);
+
+        let segments = pipeline.ingest("s1").unwrap();
+        let entries = pipeline.synthesize(&segments[0]).await.unwrap();
+
+        // Should fall back to stub
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, MemoryType::Fact);
+        assert!((entries[0].confidence - 0.5).abs() < f64::EPSILON);
+    }
+
     #[tokio::test]
     async fn synthesize_without_model_uses_stub() {
         let wm = WorkingMemory::open_memory().unwrap();
