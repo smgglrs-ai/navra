@@ -4,9 +4,10 @@ This document tracks the evolution of the myelix-* crate family from
 an MCP gateway (mcpd) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-04-20)
+## Current state (2026-04-21)
 
-17 crates, 788 tests, ~46K LoC. 43 personas, 36 heuristics, 7 directives.
+17 crates, ~49K LoC. 43 personas, 36 heuristics, 7 directives.
+Gateway blackbox audit. 4 paper outlines. Fully local multi-agent demos.
 
 ### Infrastructure (complete)
 
@@ -164,7 +165,7 @@ planned crate or enhancement.
 | Task decomposition (recursive planning, scope partitioning) | DAG executor + back-edges | **Partial** (scope partitioning not yet done) |
 | DAG execution (parallel tasks with dependencies) | DagExecutor with DependencyGraph | **Done** |
 | Mesh communication (lateral agent messaging) | Mailbox + Blackboard (IFC-gated) | **Done** |
-| Persistent memory (working, long-term, cases) | SQLite sessions + working memory + FTS5 knowledge store | **Partial** (distillation pipeline designed, not implemented) |
+| Persistent memory (working, long-term, cases) | SQLite sessions + working memory + FTS5 + distillation pipeline + RRF retrieval | **Partial** (memory decay and MCP tools remaining) |
 | Anti-drift (mandate validation, drift detection) | Mandate validator + success_criteria | **Done** |
 | Failure recovery (circular fix detection, attempt history) | Attempt history, circular fix detector, recovery strategies | **Done** |
 | Observability (structured metrics, monitoring) | tracing only | **Low** |
@@ -209,7 +210,7 @@ context layers (2026-04-17).
 - 43 personas (38 from Python + 5 general-purpose), 36 heuristics,
   7 directives — done
 
-#### 1c. Persona evolution via momentum-based adaptation (NEW)
+#### 1c. Persona evolution via momentum-based adaptation ✅
 
 Add dynamic persona adaptation inspired by PersonaVLM's Personality
 Evolving Mechanism (PEM). Personas accumulate interaction-derived
@@ -294,7 +295,7 @@ support via file extension detection — same serde structs):
   Goose recipes into Myelix flow definitions (with human review).
 - YAML is consistent with cognitive core (personas/heuristics).
 
-#### 2b. Dynamic subflow spawning from tool loop (NEW)
+#### 2b. Dynamic subflow spawning from tool loop ✅
 
 Add a `spawn_subflow` virtual tool to the agent tool loop. An agent
 inside a tool-use loop can create a single-node DAG on the fly and
@@ -311,10 +312,10 @@ This gives ad-hoc delegation without requiring static flow files.
 **Goal**: Working memory that survives sessions, knowledge
 distillation pipeline, case-based reasoning. Backed by SQLite.
 
-New crate: `myelix-memory` (**Status**: WorkingMemory (SQLite turns),
-KnowledgeStore (FTS5), SqliteSessionBackend done. Missing:
-distillation pipeline, case extraction, memory decay. Designs
-for 3b and 3d complete.)
+New crate: `myelix-memory` (**Status**: WorkingMemory, KnowledgeStore,
+SqliteSessionBackend, distillation pipeline (with mock model tests),
+RRF retrieval (4 channels), audit log storage — all done. Missing:
+wire RRF vector channel, memory decay, MCP memory tools.)
 
 #### 3a. Session persistence ✅
 
@@ -448,7 +449,7 @@ terminal_precision.
 - Semantic query caching (paraphrase detection to avoid redundant
   retrieval, ~76% savings on duplicate queries)
 
-#### 3h. Structured audit log (NEW — priority)
+#### 3h. Structured audit log ✅ (gateway blackbox)
 
 Every agent action must be recorded for debugging, compliance,
 and legal audit. Without this, multi-agent failures are opaque
@@ -520,7 +521,7 @@ Implemented in `myelix-flow`:
 
 ### Phase 5: Ecosystem integration
 
-#### 5a. ACP transport (NEW)
+#### 5a. ACP transport (skeleton ✅, prompt streaming TODO)
 
 Add Agent Client Protocol support to myelix-server:
 
@@ -552,7 +553,7 @@ Design and implement a permission negotiation extension for MCP:
 This bridges the gap between Goose's UI-level permission prompts
 and mcpd's infrastructure-level ACLs.
 
-#### 5c. Goose-as-frontend integration (NEW — quick build)
+#### 5c. Goose-as-frontend integration ✅ (docs + config examples)
 
 Enable Goose desktop app to connect to mcpd as a single MCP
 extension over Streamable HTTP:
