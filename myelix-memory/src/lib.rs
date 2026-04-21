@@ -15,6 +15,7 @@
 //! ```
 
 pub mod audit;
+pub mod decay;
 mod error;
 mod knowledge;
 pub mod pipeline;
@@ -30,4 +31,5 @@ pub use retrieval::{MemoryRetriever, ScoredEntry};
 pub use session_store::SqliteSessionBackend;
 pub use types::{DistilledEntry, MemoryEntry, MemoryType, Message, Role, Turn};
 pub use audit::{AuditLog, AuditModelCall, AuditRun, AuditSummary, AuditToolCall};
+pub use decay::{cleanup_decayed, effective_score};
 pub use working::WorkingMemory;
