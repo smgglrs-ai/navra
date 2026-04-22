@@ -1,6 +1,6 @@
 //! Task types for DAG-based execution.
 
-use crate::definition::BackEdgeDefinition;
+use crate::definition::{BackEdgeDefinition, TaskDefinition};
 use myelix_protocol::label::DataLabel;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -12,6 +12,9 @@ pub struct Task {
     pub id: String,
     /// Specialist (persona name or agent ID) to execute this task.
     pub specialist: String,
+    /// Model override for this task (e.g. "granite3.3:8b"). If absent, uses the default.
+    #[serde(default)]
+    pub model: Option<String>,
     /// What the specialist should accomplish.
     pub mandate: String,
     /// Task IDs that must complete before this task can run.
@@ -36,6 +39,23 @@ pub struct Task {
 
 fn default_max_retries() -> u32 {
     2
+}
+
+impl From<TaskDefinition> for Task {
+    fn from(def: TaskDefinition) -> Self {
+        Self {
+            id: def.id,
+            specialist: def.specialist,
+            model: def.model,
+            mandate: def.mandate,
+            depends_on: def.depends_on,
+            inputs: HashMap::new(),
+            expected_output: def.expected_output,
+            success_criteria: def.success_criteria,
+            max_retries: default_max_retries(),
+            back_edges: def.back_edges,
+        }
+    }
 }
 
 /// Status of a task in the execution plan.

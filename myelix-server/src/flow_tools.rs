@@ -35,6 +35,7 @@ pub struct FlowRun {
     pub started_at: Instant,
     pub node_statuses: Vec<NodeStatus>,
     pub final_output: Option<String>,
+    pub team_id: Option<String>,
 }
 
 /// Registry of active and completed flows.
@@ -62,6 +63,7 @@ impl FlowRegistry {
             started_at: Instant::now(),
             node_statuses: Vec::new(),
             final_output: None,
+            team_id: None,
         };
 
         self.flows
@@ -81,6 +83,35 @@ impl FlowRegistry {
             .get_mut(flow_id)
         {
             run.node_statuses = nodes;
+        }
+    }
+
+    /// Associate a team with a flow.
+    pub fn set_team_id(&self, flow_id: &str, team_id: &str) {
+        if let Some(run) = self
+            .flows
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(flow_id)
+        {
+            run.team_id = Some(team_id.to_string());
+        }
+    }
+
+    /// Update a single node's status and output.
+    pub fn update_node_status(&self, flow_id: &str, node_id: &str, status: &str, output: Option<String>) {
+        if let Some(run) = self
+            .flows
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(flow_id)
+        {
+            if let Some(node) = run.node_statuses.iter_mut().find(|n| n.id == node_id) {
+                node.status = status.to_string();
+                if output.is_some() {
+                    node.output = output;
+                }
+            }
         }
     }
 
@@ -167,28 +198,36 @@ pub fn flow_start_tool_def() -> ToolDefinition {
     ToolDefinition {
         name: "flow_start".to_string(),
         description: Some(
-            "Start a multi-agent flow. Define the flow inline as TOML or YAML. \
-             TOML uses [flow], [[flow.nodes.*]], [[flow.edges]]. \
-             YAML uses kind/name/tasks with {{ param }} placeholders and \
-             optional parameters. Returns a flow_id for tracking. \
-             Use flow_status to monitor and flow_result to read outputs."
+            "Start a multi-agent flow. Either specify flow_name to run a \
+             predefined template (from flow_list), or flow_definition to \
+             define inline. Templates are recommended — they encode proven \
+             orchestration patterns (e.g. scout → planner → specialists → \
+             synthesizer). Returns a flow_id for tracking via flow_status \
+             and flow_result."
                 .to_string(),
         ),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
                 (
+                    "flow_name".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Name of a flow template from flow_list (e.g. 'security-audit'). Preferred over inline definition."
+                    }),
+                ),
+                (
                     "flow_definition".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "Flow definition string in TOML or YAML format"
+                        "description": "Inline flow definition in TOML or YAML format (alternative to flow_name)"
                     }),
                 ),
                 (
                     "prompt".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "The task prompt to give the entry node"
+                        "description": "The task prompt (context for the flow execution)"
                     }),
                 ),
                 (
@@ -196,20 +235,20 @@ pub fn flow_start_tool_def() -> ToolDefinition {
                     serde_json::json!({
                         "type": "string",
                         "enum": ["toml", "yaml"],
-                        "default": "toml",
-                        "description": "Format of the flow definition: \"toml\" (default) or \"yaml\""
+                        "default": "yaml",
+                        "description": "Format of inline flow_definition"
                     }),
                 ),
                 (
                     "parameters".to_string(),
                     serde_json::json!({
                         "type": "object",
-                        "description": "Optional parameter values for YAML flows (keys map to {{ key }} placeholders)",
+                        "description": "Parameter values for the flow (e.g. {\"target_dir\": \"/app\"})",
                         "additionalProperties": { "type": "string" }
                     }),
                 ),
             ])),
-            required: Some(vec!["flow_definition".to_string(), "prompt".to_string()]),
+            required: Some(vec!["prompt".to_string()]),
         },
     }
 }

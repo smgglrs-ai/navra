@@ -16,7 +16,7 @@ Gateway blackbox audit. 4 paper outlines. Fully local multi-agent demos.
 | myelix-protocol | Done | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry) |
 | myelix-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
 | myelix-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
-| myelix-model-runtime | Done | Serve models via llama-server, Podman, or libkrun (stub) |
+| myelix-model-runtime | Done | Serve models via llama-server or Podman. libkrun delegated to OpenShell (see OPENSHELL.md) |
 | myelix-security | Done | Auth (BLAKE3, capability tokens, DID:key), ACLs, IFC with trusted paths, safety filters, hooks |
 | myelix-core | Done | MCP server, module trait, session, IFC value store, transport |
 | myelix-server | Done | Gateway binary (mcpd), config, model hub/runtime integration, CLI |
@@ -306,6 +306,43 @@ This gives ad-hoc delegation without requiring static flow files.
 - Max concurrent: 10 (configurable)
 - Timeout: 5 minutes default
 - Isolated context (no shared conversation history)
+
+#### 2c. Flow-template-driven orchestration (NEW)
+
+Replace ad-hoc team orchestration (leader manually calling
+team_create/team_add/team_message) with template-driven flows
+exposed via MCP:
+
+- **Flow templates as YAML**: Parameterized flow definitions for
+  common patterns (security audit, code review, research, analysis).
+  Each template defines stages (triage → deep review → synthesis),
+  model selection hints per stage, and file grouping strategies.
+- **Planner as flow selector**: Instead of designing work
+  decomposition from scratch, the planner calls `flow_list` to
+  discover available templates, picks one, and parameterizes it
+  (target directory, depth, focus areas).
+- **Leader executes flows**: `flow_start` with parameters replaces
+  the manual 12-step team workflow. The flow engine handles
+  teammate spawning, dependency ordering, and result collection.
+- **Task-specific decomposition**: Audit flows use triage-first
+  (fast agent reads all files, flags interesting ones, then
+  specialists do deep review). Research flows use parallel
+  investigation. Analysis flows use sequential refinement.
+- **Model hints per stage**: Templates specify model requirements
+  per stage (speed_tier=fast for triage, reasoning=extended for
+  synthesis). The flow engine resolves to actual models via
+  model cards at runtime.
+
+This bridges the existing `myelix-flow` DAG engine with the
+team orchestration tools. The pieces exist (YAML loader with
+`{{ param }}` substitution, `ParameterDef`, `single_task_dag()`,
+flow MCP tools) — they need to be composed.
+
+**Why**: Ad-hoc team orchestration wastes leader iterations on
+boilerplate (create team, add 5 specialists, message each, poll).
+Flow templates encode orchestration expertise once and reuse it.
+The planner's domain knowledge goes into choosing the right
+template and parameters, not reinventing the workflow each time.
 
 ### Phase 3: Persistent memory (myelix-memory)
 
@@ -674,7 +711,70 @@ Phase 3 (memory as context injector vs memory as tool).
 
 Reference: SemaClaw 4-layer plugin taxonomy (arXiv 2604.11548).
 
-### Phase 6: RAG enhancements
+### Phase 6: OpenShell integration
+
+See OPENSHELL.md for full design.
+
+**Goal**: Integrate with OpenShell (Red Hat/NVIDIA secure sandbox
+platform) for identity federation, A2A teammate mesh, sandbox
+delegation, and gRPC module architecture.
+
+#### 6a. OpenShell-provided identity (NEW)
+
+Add `OpenShellAuthenticator` to myelix-security that accepts
+identity tokens from the OpenShell supervisor (SPIFFE SVIDs,
+OIDC JWTs, or gateway-signed tokens). Slots into
+`ChainAuthenticator` between capability and legacy auth.
+No impact on standalone mcpd.
+
+#### 6b. A2A client and teammate mesh (NEW)
+
+Add `A2aClient` to myelix-protocol for outbound A2A calls.
+Currently mcpd can only receive A2A tasks — it cannot call
+other agents. The flow engine needs an A2A client to build
+teammate meshes where agents communicate via A2A instead of
+in-process channels.
+
+The planner persona defines the flow; mcpd builds the A2A mesh
+on its behalf:
+1. Each teammate gets an A2A endpoint on mcpd
+2. Teammate Agent Cards registered in local directory
+3. Scoped capability tokens minted per teammate
+4. IFC enforcement on all A2A messages
+
+In-process mode (current mailbox/blackboard) remains the default
+for single-node. A2A mode enables multi-node and OpenShell
+sandbox deployments.
+
+#### 6c. Sandbox delegation to OpenShell (NEW)
+
+Remove the aspirational libkrun feature flag from
+myelix-model-runtime (it has zero code behind it). Add an
+`openshell` runtime backend that delegates sandbox creation to
+OpenShell's compute driver via gRPC.
+
+mcpd requests a sandbox with labels (`gpu=required`,
+`isolation=microvm`); OpenShell's driver handles the rest
+(Podman, libkrun, K8s, whatever). Direct and Podman backends
+remain for standalone mcpd with no OpenShell dependency.
+
+#### 6d. gRPC module architecture (NEW)
+
+Add `GrpcModule` adapter that implements the Module trait by
+forwarding calls to gRPC services. Same pattern as
+`UpstreamModule` (MCP adapter) but for gRPC. Enables:
+
+- Modules as separate processes (crash isolation)
+- Modules on separate nodes (multi-node scaling)
+- Modules in any language (language-independent interface)
+- Independent module deployment and versioning
+
+Follows OpenShell's driver model: separate binaries, gRPC over
+Unix sockets, per-component lifecycle management.
+
+New dependency: `tonic` + `prost` for gRPC.
+
+### Phase 7: RAG enhancements
 
 #### 6a. Two-stage retrieval with cross-encoder reranking (NEW)
 
@@ -695,7 +795,7 @@ retrieval time. ~76% savings on redundant ranking operations.
 Particularly valuable in multi-agent flows where agents rephrase
 similar queries.
 
-### Phase 7: Paper & benchmarks
+### Phase 8: Paper & benchmarks
 
 - Final LoC counts for all crates
 - Latency benchmarks (IFC overhead, hook pipeline, permission checks)

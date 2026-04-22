@@ -1366,98 +1366,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     // Register flow orchestration tools
     let flow_registry = Arc::new(flow_tools::FlowRegistry::new());
     {
-        // flow_start — define and launch an async multi-agent flow
-        let registry = Arc::clone(&flow_registry);
-        builder = builder.tool(
-            flow_tools::flow_start_tool_def(),
-            move |args, _ctx| {
-                let registry = Arc::clone(&registry);
-                Box::pin(async move {
-                    use myelix_core::protocol::CallToolResult;
-
-                    let flow_def_str = match args.get("flow_definition").and_then(|v| v.as_str()) {
-                        Some(t) => t,
-                        None => return CallToolResult::error(
-                            "Missing required parameter: flow_definition"
-                        ),
-                    };
-                    let prompt = match args.get("prompt").and_then(|v| v.as_str()) {
-                        Some(p) => p.to_string(),
-                        None => return CallToolResult::error("Missing required parameter: prompt"),
-                    };
-                    let format = args
-                        .get("format")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("toml");
-
-                    let flow_name = match format {
-                        "yaml" => {
-                            // Collect parameters from the JSON object
-                            let params: std::collections::HashMap<String, String> = args
-                                .get("parameters")
-                                .and_then(|v| v.as_object())
-                                .map(|obj| {
-                                    obj.iter()
-                                        .filter_map(|(k, v)| {
-                                            v.as_str().map(|s| (k.clone(), s.to_string()))
-                                        })
-                                        .collect()
-                                })
-                                .unwrap_or_default();
-
-                            match myelix_flow::yaml_loader::load_flow_yaml(
-                                flow_def_str, &params,
-                            ) {
-                                Ok(dag) => dag.name,
-                                Err(e) => return CallToolResult::error(
-                                    format!("Invalid YAML flow: {e}")
-                                ),
-                            }
-                        }
-                        "toml" | _ => {
-                            let flow_def: Result<myelix_flow::FlowDefinition, _> =
-                                toml::from_str(flow_def_str);
-                            match flow_def {
-                                Ok(def) => def.flow.name.clone(),
-                                Err(e) => return CallToolResult::error(
-                                    format!("Invalid flow TOML: {e}")
-                                ),
-                            }
-                        }
-                    };
-
-                    let flow_id = registry.register(&flow_name);
-
-                    // Spawn the flow execution in a background task
-                    let bg_registry = Arc::clone(&registry);
-                    let bg_flow_id = flow_id.clone();
-                    let bg_flow_name = flow_name.clone();
-                    tokio::spawn(async move {
-                        // For now: mark as completed with a placeholder.
-                        // Full execution requires creating agents for each node,
-                        // which needs model backends and MCP endpoints — this will
-                        // be wired in the next iteration.
-                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                        bg_registry.complete(
-                            &bg_flow_id,
-                            format!(
-                                "Flow '{}' accepted. Prompt: {}. \
-                                 Note: full multi-agent execution requires model backend \
-                                 wiring (next iteration).",
-                                bg_flow_name, prompt
-                            ),
-                        );
-                    });
-
-                    tracing::info!(flow_id = %flow_id, name = %flow_name, "Flow started");
-                    CallToolResult::text(format!(
-                        "Flow started.\nflow_id: {}\nname: {}\n\n\
-                         Use flow_status to monitor and flow_result to read outputs.",
-                        flow_id, flow_name
-                    ))
-                })
-            },
-        );
+        // flow_start — registered later, after team_registry is created
 
         // flow_status — check progress of a flow
         let registry = Arc::clone(&flow_registry);
@@ -1505,7 +1414,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         );
 
         // flow_list — list available YAML flows from configured directories
-        let flow_dirs = cfg.flow_dirs.clone();
+        let mut flow_dirs = cfg.flow_dirs.clone();
+        if flow_dirs.is_empty() {
+            for candidate in &["examples/flows", "flows"] {
+                if std::path::Path::new(candidate).is_dir() {
+                    flow_dirs.push(candidate.to_string());
+                }
+            }
+        }
         builder = builder.tool(
             flow_tools::flow_list_tool_def(),
             move |_args, _ctx| {
@@ -1961,9 +1877,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             .unwrap_or_else(|| "auto".to_string())
                     };
 
-                    // Resolve "auto" — check what's available
+                    // Resolve "auto" — prefer smallest local model for speed
                     if teammate_model == "auto" {
-                        // Prefer Ollama if running, otherwise check for Claude
                         let ollama_ok = reqwest::Client::new()
                             .get("http://localhost:11434/api/tags")
                             .send()
@@ -1971,7 +1886,6 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             .map(|r| r.status().is_success())
                             .unwrap_or(false);
                         if ollama_ok {
-                            // Use first available Ollama model
                             if let Ok(resp) = reqwest::Client::new()
                                 .get("http://localhost:11434/api/tags")
                                 .send()
@@ -1979,10 +1893,16 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             {
                                 if let Ok(json) = resp.json::<serde_json::Value>().await {
                                     if let Some(models) = json["models"].as_array() {
-                                        if let Some(first) = models.first() {
-                                            if let Some(name) = first["name"].as_str() {
-                                                teammate_model = name.to_string();
-                                            }
+                                        // Pick the smallest model by file size
+                                        let smallest = models.iter()
+                                            .filter_map(|m| {
+                                                let name = m["name"].as_str()?;
+                                                let size = m["size"].as_u64().unwrap_or(u64::MAX);
+                                                Some((name, size))
+                                            })
+                                            .min_by_key(|(_, size)| *size);
+                                        if let Some((name, _)) = smallest {
+                                            teammate_model = name.to_string();
                                         }
                                     }
                                 }
@@ -2244,6 +2164,398 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         });
 
         tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, models_list)");
+
+        // flow_start — now that team_registry exists, wire real execution
+        let fs_flow_registry = Arc::clone(&flow_registry);
+        let fs_team_registry = Arc::clone(&team_registry);
+        let fs_flow_dirs = cfg.flow_dirs.clone();
+        let fs_mcpd_addr = cfg.server.listen_addr();
+        let fs_signer = Arc::clone(&root_signer);
+        let fs_forge: Option<Arc<myelix_cognitive::ForgeService>> = cfg.cognitive_core.as_ref().and_then(|p| {
+            let expanded = expand_tilde(p);
+            myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded)).ok().map(Arc::new)
+        });
+        builder = builder.tool(
+            flow_tools::flow_start_tool_def(),
+            move |args, ctx| {
+                let flow_reg = Arc::clone(&fs_flow_registry);
+                let team_reg = Arc::clone(&fs_team_registry);
+                let flow_dirs = fs_flow_dirs.clone();
+                let mcpd_addr = fs_mcpd_addr.clone();
+                let signer = Arc::clone(&fs_signer);
+                let forge = fs_forge.clone();
+                Box::pin(async move {
+                    use myelix_core::protocol::CallToolResult;
+
+                    let prompt = match args.get("prompt").and_then(|v| v.as_str()) {
+                        Some(p) => p.to_string(),
+                        None => return CallToolResult::error("Missing required parameter: prompt"),
+                    };
+
+                    let params: std::collections::HashMap<String, String> = args
+                        .get("parameters")
+                        .and_then(|v| v.as_object())
+                        .map(|obj| {
+                            obj.iter()
+                                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    // Resolve the flow YAML: either by name (from flow_dirs) or inline
+                    let yaml_content = if let Some(name) = args.get("flow_name").and_then(|v| v.as_str()) {
+                        // Find the flow file by name
+                        let mut found = None;
+                        for dir in &flow_dirs {
+                            let expanded = crate::expand_tilde(dir);
+                            let path = std::path::Path::new(&expanded);
+                            for ext in &["yaml", "yml"] {
+                                let file = path.join(format!("{name}.{ext}"));
+                                if file.exists() {
+                                    match std::fs::read_to_string(&file) {
+                                        Ok(c) => { found = Some(c); break; }
+                                        Err(e) => {
+                                            tracing::warn!(path = %file.display(), error = %e, "Cannot read flow file");
+                                        }
+                                    }
+                                }
+                            }
+                            if found.is_some() { break; }
+                        }
+                        match found {
+                            Some(c) => c,
+                            None => return CallToolResult::error(
+                                format!("Flow '{name}' not found in flow_dirs. Use flow_list to see available flows.")
+                            ),
+                        }
+                    } else if let Some(def) = args.get("flow_definition").and_then(|v| v.as_str()) {
+                        def.to_string()
+                    } else {
+                        return CallToolResult::error(
+                            "Provide either flow_name (from flow_list) or flow_definition (inline YAML)"
+                        );
+                    };
+
+                    // Parse the YAML flow
+                    let dag_config = match myelix_flow::yaml_loader::load_flow_yaml(&yaml_content, &params) {
+                        Ok(d) => d,
+                        Err(e) => return CallToolResult::error(format!("Invalid flow YAML: {e}")),
+                    };
+
+                    let flow_id = flow_reg.register(&dag_config.name);
+
+                    // Initialize node statuses
+                    let nodes: Vec<flow_tools::NodeStatus> = dag_config.tasks.iter().map(|t| {
+                        flow_tools::NodeStatus {
+                            id: t.id.clone(),
+                            specialist: t.specialist.clone(),
+                            status: "pending".to_string(),
+                            output: None,
+                        }
+                    }).collect();
+                    flow_reg.update_nodes(&flow_id, nodes);
+
+                    // Create a team for this flow
+                    let team_budget = team_tools::TeamBudget {
+                        max_agents: dag_config.tasks.len() as u32 + 2,
+                        max_iterations: 50,
+                        timeout_secs: 1200,
+                        ..Default::default()
+                    };
+                    let team_id = match team_reg.create_team(
+                        &dag_config.name, dag_config.description.as_deref(),
+                        &ctx.agent.name, 0, team_budget,
+                    ) {
+                        Ok(id) => id,
+                        Err(e) => {
+                            flow_reg.fail(&flow_id, e.clone());
+                            return CallToolResult::error(format!("Failed to create flow team: {e}"));
+                        }
+                    };
+                    flow_reg.set_team_id(&flow_id, &team_id);
+
+                    // Spawn the DAG execution in a background task
+                    let bg_flow_reg = Arc::clone(&flow_reg);
+                    let bg_team_reg = Arc::clone(&team_reg);
+                    let bg_signer = Arc::clone(&signer);
+                    let bg_forge = forge.clone();
+                    let bg_mcpd_addr = mcpd_addr.clone();
+                    let bg_flow_id = flow_id.clone();
+                    let bg_team_id = team_id.clone();
+                    let bg_prompt = prompt.clone();
+                    tokio::spawn(async move {
+                        let task_defs = dag_config.tasks;
+                        let mut completed: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+                        let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
+                        let total = task_defs.len();
+
+                        loop {
+                            // Find ready tasks: dependencies satisfied, not yet completed/failed
+                            let ready: Vec<&myelix_flow::TaskDefinition> = task_defs.iter()
+                                .filter(|t| {
+                                    !completed.contains_key(&t.id) && !failed.contains(&t.id)
+                                    && t.depends_on.iter().all(|dep| completed.contains_key(dep))
+                                })
+                                .collect();
+
+                            if ready.is_empty() {
+                                if completed.len() + failed.len() >= total {
+                                    break;
+                                }
+                                // Check for deadlock (remaining tasks have unsatisfied deps)
+                                let remaining: Vec<&str> = task_defs.iter()
+                                    .filter(|t| !completed.contains_key(&t.id) && !failed.contains(&t.id))
+                                    .map(|t| t.id.as_str())
+                                    .collect();
+                                if !remaining.is_empty() {
+                                    let msg = format!("Flow deadlocked: tasks {:?} blocked by failed dependencies", remaining);
+                                    tracing::error!(flow_id = %bg_flow_id, "{msg}");
+                                    bg_flow_reg.fail(&bg_flow_id, msg);
+                                    bg_team_reg.shutdown(&bg_team_id);
+                                    return;
+                                }
+                                break;
+                            }
+
+                            // Spawn ready tasks as teammates
+                            for task in &ready {
+                                let model = task.model.clone().unwrap_or_else(|| "auto".to_string());
+                                let persona = if task.specialist.is_empty() { None } else { Some(task.specialist.clone()) };
+
+                                if let Err(e) = bg_team_reg.add_teammate(
+                                    &bg_team_id, &task.id, persona.as_deref(),
+                                    &model, "local",
+                                    team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                                    team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                                ) {
+                                    tracing::error!(task = %task.id, error = %e, "Failed to add teammate for flow task");
+                                    failed.insert(task.id.clone());
+                                    bg_flow_reg.update_node_status(&bg_flow_id, &task.id, "failed", Some(e));
+                                    continue;
+                                }
+
+                                // Build the task message with dependency context
+                                let mut message = task.mandate.clone();
+                                if !task.depends_on.is_empty() {
+                                    message.push_str("\n\n--- Context from prior stages ---\n");
+                                    for dep_id in &task.depends_on {
+                                        if let Some(output) = completed.get(dep_id) {
+                                            message.push_str(&format!("\n## {dep_id}\n{output}\n"));
+                                        }
+                                    }
+                                }
+                                if !bg_prompt.is_empty() {
+                                    message.push_str(&format!("\n\n--- Original request ---\n{}\n", bg_prompt));
+                                }
+
+                                if let Err(e) = bg_team_reg.send_message(&bg_team_id, &task.id, &message) {
+                                    tracing::error!(task = %task.id, error = %e, "Failed to send message to flow task");
+                                    failed.insert(task.id.clone());
+                                    bg_flow_reg.update_node_status(&bg_flow_id, &task.id, "failed", Some(e));
+                                    continue;
+                                }
+
+                                // Spawn the teammate agent (same logic as team_message handler)
+                                let spawn_reg = Arc::clone(&bg_team_reg);
+                                let spawn_signer = Arc::clone(&bg_signer);
+                                let spawn_forge = bg_forge.clone();
+                                let spawn_addr = bg_mcpd_addr.clone();
+                                let spawn_team_id = bg_team_id.clone();
+                                let spawn_task_id = task.id.clone();
+                                let spawn_message = message.clone();
+                                let spawn_max_iter = 50usize;
+                                let spawn_timeout = 600u64;
+                                let handle = tokio::spawn(async move {
+                                    let deadline = std::time::Duration::from_secs(spawn_timeout);
+                                    let timeout_reg = spawn_reg.clone();
+                                    let timeout_team = spawn_team_id.clone();
+                                    let timeout_task = spawn_task_id.clone();
+                                    let result = tokio::time::timeout(deadline, async move {
+                                        let mcp_url = format!("http://{spawn_addr}/mcp");
+
+                                        let (tm_ops, tm_tools) = {
+                                            let teams = spawn_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                                            teams.get(&spawn_team_id)
+                                                .and_then(|t| t.teammates.get(&spawn_task_id))
+                                                .map(|tm| (tm.operations.clone(), tm.tools.clone()))
+                                                .unwrap_or_else(|| (
+                                                    team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                                                    team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                                                ))
+                                        };
+                                        let cap = myelix_core::auth::capability::CapabilitySet {
+                                            paths: vec!["**".to_string()],
+                                            operations: tm_ops,
+                                            tools: tm_tools.clone(),
+                                            credentials: vec![],
+                                        };
+                                        let did = format!("did:flow:{}:{}", spawn_team_id, spawn_task_id);
+                                        let payload = myelix_core::auth::capability::build_payload(
+                                            spawn_signer.did(), &did, cap, 2, 3600,
+                                        );
+                                        let token = match myelix_core::auth::capability::encode_token(&payload, spawn_signer.as_ref()) {
+                                            Ok(t) => t,
+                                            Err(e) => {
+                                                spawn_reg.set_failed(&spawn_team_id, &spawn_task_id, format!("Token error: {e}"));
+                                                return;
+                                            }
+                                        };
+
+                                        let tm_persona = {
+                                            let teams = spawn_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                                            teams.get(&spawn_team_id)
+                                                .and_then(|t| t.teammates.get(&spawn_task_id))
+                                                .and_then(|tm| tm.persona.clone())
+                                        };
+
+                                        let system_prompt = if let Some(ref pn) = tm_persona {
+                                            spawn_forge.as_ref()
+                                                .and_then(|f| myelix_cognitive::assemble(f, pn, "", None, None).ok())
+                                                .map(|w| format!("{}\n\nYou are working as part of a flow.\nYou have access to MCP tools: {}.",
+                                                    w.system_prompt(), tm_tools.join(", ")))
+                                                .unwrap_or_else(|| format!("You are a specialist (persona: {pn}).\nTools: {}.", tm_tools.join(", ")))
+                                        } else {
+                                            format!("You are a specialist agent.\nTools: {}.", tm_tools.join(", "))
+                                        };
+
+                                        let mut teammate_model = {
+                                            let teams = spawn_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                                            teams.get(&spawn_team_id)
+                                                .and_then(|t| t.teammates.get(&spawn_task_id))
+                                                .map(|tm| tm.model.clone())
+                                                .unwrap_or_else(|| "auto".to_string())
+                                        };
+                                        if teammate_model == "auto" {
+                                            if let Ok(resp) = reqwest::Client::new().get("http://localhost:11434/api/tags").send().await {
+                                                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                                                    if let Some(models) = json["models"].as_array() {
+                                                        if let Some((name, _)) = models.iter()
+                                                            .filter_map(|m| Some((m["name"].as_str()?, m["size"].as_u64().unwrap_or(u64::MAX))))
+                                                            .min_by_key(|(_, s)| *s) {
+                                                            teammate_model = name.to_string();
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            if teammate_model == "auto" { teammate_model = "granite3.3:8b".to_string(); }
+                                        }
+                                        eprintln!("  [flow-task] {} → model: {}", spawn_task_id, teammate_model);
+
+                                        let r: Result<myelix_agent::ToolLoopResult, myelix_agent::AgentError> = async {
+                                            let mut agent = myelix_agent::Agent::builder()
+                                                .endpoint(&mcp_url).await?
+                                                .auth_token(&token)
+                                                .model(myelix_model::OpenAiBackend::new(
+                                                    "http://localhost:11434/v1", &teammate_model, None, myelix_model::Locality::Local,
+                                                ))
+                                                .system_prompt(&system_prompt)
+                                                .max_iterations(spawn_max_iter)
+                                                .temperature(0.3)
+                                                .max_tokens(4096)
+                                                .build()?;
+                                            agent.run(&spawn_message).await
+                                        }.await;
+
+                                        match r {
+                                            Ok(result) => {
+                                                spawn_reg.add_tokens(&spawn_team_id, result.input_tokens + result.output_tokens);
+                                                spawn_reg.set_output(&spawn_team_id, &spawn_task_id, result.response);
+                                            }
+                                            Err(e) => {
+                                                spawn_reg.set_failed(&spawn_team_id, &spawn_task_id, format!("{e}"));
+                                            }
+                                        }
+                                    }).await;
+                                    if result.is_err() {
+                                        timeout_reg.set_failed(&timeout_team, &timeout_task, format!("Timed out after {spawn_timeout}s"));
+                                    }
+                                });
+                                bg_team_reg.store_handle(&bg_team_id, &task.id, handle);
+
+                                bg_flow_reg.update_node_status(&bg_flow_id, &task.id, "running", None);
+                                tracing::info!(flow_id = %bg_flow_id, task = %task.id, model = %model, "Flow task started");
+
+                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            }
+
+                            // Poll until all currently running tasks complete
+                            let running_ids: Vec<String> = ready.iter().map(|t| t.id.clone()).collect();
+                            loop {
+                                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                                let mut all_done = true;
+                                for task_id in &running_ids {
+                                    if completed.contains_key(task_id) || failed.contains(task_id) {
+                                        continue;
+                                    }
+                                    let status = bg_team_reg.get_teammate_status(&bg_team_id, task_id);
+                                    match status.as_deref() {
+                                        Some("done") => {
+                                            let output = bg_team_reg.get_teammate_output(&bg_team_id, task_id)
+                                                .unwrap_or_else(|| "(no output)".to_string());
+                                            completed.insert(task_id.clone(), output.clone());
+                                            bg_flow_reg.update_node_status(&bg_flow_id, task_id, "done", Some(output));
+                                            tracing::info!(flow_id = %bg_flow_id, task = %task_id, "Flow task completed");
+                                        }
+                                        Some("failed") => {
+                                            let output = bg_team_reg.get_teammate_output(&bg_team_id, task_id)
+                                                .unwrap_or_else(|| "(no output)".to_string());
+                                            failed.insert(task_id.clone());
+                                            bg_flow_reg.update_node_status(&bg_flow_id, task_id, "failed", Some(output));
+                                            tracing::warn!(flow_id = %bg_flow_id, task = %task_id, "Flow task failed");
+                                        }
+                                        _ => { all_done = false; }
+                                    }
+                                }
+                                if all_done { break; }
+
+                                // Check flow-level timeout (20 minutes)
+                                if bg_flow_reg.get_status(&bg_flow_id)
+                                    .and_then(|s| s["elapsed_secs"].as_u64())
+                                    .unwrap_or(0) > 1200
+                                {
+                                    tracing::warn!(flow_id = %bg_flow_id, "Flow timed out");
+                                    bg_flow_reg.fail(&bg_flow_id, "Flow timed out after 1200 seconds".to_string());
+                                    bg_team_reg.shutdown(&bg_team_id);
+                                    return;
+                                }
+                            }
+                        }
+
+                        // Flow complete — find the last task's output as the final result
+                        let last_task_id = task_defs.last().map(|t| t.id.as_str()).unwrap_or("");
+                        let final_output = completed.get(last_task_id)
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                format!("Flow completed. {} tasks done, {} failed.",
+                                    completed.len(), failed.len())
+                            });
+
+                        if failed.is_empty() {
+                            bg_flow_reg.complete(&bg_flow_id, final_output);
+                        } else {
+                            bg_flow_reg.complete(&bg_flow_id, format!(
+                                "{final_output}\n\n[Warning: {} of {} tasks failed: {:?}]",
+                                failed.len(), total, failed
+                            ));
+                        }
+                        bg_team_reg.shutdown(&bg_team_id);
+                        tracing::info!(
+                            flow_id = %bg_flow_id,
+                            completed = completed.len(),
+                            failed = failed.len(),
+                            "Flow execution finished"
+                        );
+                    });
+
+                    tracing::info!(flow_id = %flow_id, name = %dag_config.name, team_id = %team_id, "Flow started");
+                    CallToolResult::text(format!(
+                        "Flow started.\nflow_id: {flow_id}\nteam_id: {team_id}\n\n\
+                         Use flow_status to monitor and flow_result to read outputs."
+                    ))
+                })
+            },
+        );
     }
 
     // --- Knowledge memory tools ---

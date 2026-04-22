@@ -172,6 +172,7 @@ mod tests {
         Task {
             id: id.to_string(),
             specialist: "dev".to_string(),
+            model: None,
             mandate: format!("Do {id}"),
             depends_on: deps.iter().map(|s| s.to_string()).collect(),
             inputs: HashMap::new(),

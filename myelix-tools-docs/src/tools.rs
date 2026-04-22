@@ -196,9 +196,11 @@ fn tree_tool_def() -> ToolDefinition {
     ToolDefinition {
         name: "docs_tree".to_string(),
         description: Some(
-            "Recursively list all files under a directory. Returns the full file \
-             tree with relative paths and line counts. Use this to understand \
-             project structure. Call with no arguments to list the project root."
+            "List files under a directory. Returns relative paths and line counts. \
+             For large projects, use max_depth to get a high-level overview first, \
+             then drill into specific directories. Default max_files is 500 — if \
+             the project has more, increase it or use max_depth=2 to get the \
+             directory structure without listing every file."
                 .to_string(),
         ),
         input_schema: ToolInputSchema {
@@ -210,7 +212,15 @@ fn tree_tool_def() -> ToolDefinition {
                 ),
                 (
                     "pattern".to_string(),
-                    serde_json::json!({"type": "string", "description": "Optional file extension filter (e.g. 'rs', 'py'). Omit for all files."}),
+                    serde_json::json!({"type": "string", "description": "Optional file extension filter (e.g. 'rs', 'py')"}),
+                ),
+                (
+                    "max_depth".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Max directory depth to recurse (default: unlimited)"}),
+                ),
+                (
+                    "max_files".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Max files to return (default: 500). Truncated results show total count."}),
                 ),
             ])),
             required: None,
@@ -1087,13 +1097,31 @@ async fn handle_tree(
         .and_then(|v| v.as_str())
         .map(|s| s.trim_start_matches('.').to_string());
 
+    let max_depth = args.get("max_depth")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
+
+    let max_files = args.get("max_files")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize)
+        .unwrap_or(500);
+
     let mut entries: Vec<(String, usize)> = Vec::new();
-    collect_tree(&root, &root, &extension_filter, &mut entries);
+    collect_tree(&root, &root, &extension_filter, max_depth, 0, &mut entries);
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let mut output = format!("{} files found", entries.len());
+    let total = entries.len();
+    let truncated = total > max_files;
+    if truncated {
+        entries.truncate(max_files);
+    }
+
+    let mut output = format!("{} files found", total);
     if let Some(ref ext) = extension_filter {
         output.push_str(&format!(" (*.{})", ext));
+    }
+    if truncated {
+        output.push_str(&format!(" — showing first {max_files}, use max_depth or path to narrow"));
     }
     output.push('\n');
     for (rel_path, lines) in &entries {
@@ -1107,27 +1135,32 @@ fn collect_tree(
     dir: &Path,
     root: &Path,
     ext_filter: &Option<String>,
+    max_depth: Option<usize>,
+    current_depth: usize,
     entries: &mut Vec<(String, usize)>,
 ) {
+    if let Some(max) = max_depth {
+        if current_depth >= max {
+            return;
+        }
+    }
     let Ok(read_dir) = std::fs::read_dir(dir) else { return };
     for entry in read_dir.flatten() {
         let ft = match entry.file_type() {
             Ok(ft) => ft,
             Err(_) => continue,
         };
-        // Skip symlinks to prevent escaping the ACL boundary
         if ft.is_symlink() {
             continue;
         }
         let path = entry.path();
         if ft.is_dir() {
-            // Skip hidden directories and common non-source dirs
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
             if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
                 continue;
             }
-            collect_tree(&path, root, ext_filter, entries);
+            collect_tree(&path, root, ext_filter, max_depth, current_depth + 1, entries);
         } else if ft.is_file() {
             // Apply extension filter
             if let Some(ref ext) = ext_filter {

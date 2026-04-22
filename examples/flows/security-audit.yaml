@@ -1,16 +1,94 @@
 kind: dag
 name: security-audit
-description: Audit a project for security vulnerabilities
+description: |
+  Multi-stage security audit with progressive exploration.
+  Stage 1: Scout explores project structure (fast model).
+  Stage 2: Planner designs targeted review tasks from the summary.
+  Stage 3: Specialists review code in parallel (one per concern).
+  Stage 4: Synthesizer merges findings into a prioritized report.
+
 parameters:
   target_dir:
     type: string
-    description: Directory to audit
+    description: Root directory of the project to audit
+  depth:
+    type: string
+    description: Exploration depth for scout (default 2)
+    default: "2"
+
 tasks:
-  - id: scan
-    specialist: security_auditor
-    mandate: "Scan {{ target_dir }} for vulnerabilities"
-    expected_output: "List of findings with CWE IDs"
-  - id: synthesize
+  - id: scout
+    specialist: security_sentinel
+    model: granite3.3:8b
+    mandate: |
+      Explore the project at {{ target_dir }} using docs_tree.
+      Start with max_depth={{ depth }} for an overview, then drill
+      into key directories (src/, cmd/, internal/, pkg/, config/).
+      Return a structured summary: languages used, subprojects,
+      key source files, config files, entry points, and anything
+      that looks security-relevant (auth, secrets, API endpoints).
+      Be concise — this summary feeds the planning stage.
+    expected_output: Structured project summary with security-relevant highlights
+    success_criteria:
+      - Lists at least 3 key source files
+      - Identifies the primary language
+      - Notes any config or secrets files
+
+  - id: planner
     specialist: analyst
-    mandate: "Synthesize scan findings into a prioritized report"
-    depends_on: [scan]
+    model: gemma4:26b
+    mandate: |
+      Based on the project summary from the scout, design a
+      targeted security review plan. For each review task specify:
+      - Task ID (short, descriptive)
+      - Files to review together (group related files)
+      - What to look for (specific vulnerability classes)
+      - Persona to assign
+      - Model to use (granite3.3:8b for file reading, gemma4:26b
+        for complex reasoning like auth flow tracing)
+      Keep the plan to 3-4 tasks maximum. Prioritize by risk.
+    depends_on: [scout]
+    expected_output: Structured review plan with 3-4 tasks
+    success_criteria:
+      - Each task specifies files and vulnerability focus
+      - Model selection is justified
+
+  - id: credential_scan
+    specialist: security_sentinel
+    model: granite3.3:8b
+    mandate: |
+      Read the config and secrets files identified by the planner.
+      Search for: hardcoded credentials, API keys, connection
+      strings, encryption keys, tokens. Use docs_read and docs_grep.
+      Report exact file paths, line numbers, and what was found.
+      Publish findings to the blackboard via team_bb_publish.
+    depends_on: [planner]
+    expected_output: List of credential exposure findings with file paths and line numbers
+
+  - id: code_review
+    specialist: security_sentinel
+    model: gemma4:26b
+    mandate: |
+      Review the source files identified by the planner for:
+      SQL injection, command injection, XSS, IDOR, missing auth,
+      broken access control, insecure deserialization.
+      Read the actual source code with docs_read. Trace data flow
+      from input to sensitive operations. Report specific line
+      numbers and CWE codes. Publish to the blackboard.
+    depends_on: [planner]
+    expected_output: List of code-level vulnerabilities with CWEs, line numbers, and evidence
+
+  - id: synthesize
+    specialist: synthesizer
+    model: gemma4:26b
+    mandate: |
+      Combine all findings from the credential scan and code review
+      into a professional security audit report. Structure it as:
+      1. Executive summary (2-3 sentences)
+      2. Critical findings (with remediation steps)
+      3. High findings
+      4. Medium/Low findings
+      5. Remediation roadmap (prioritized table)
+      Include confidence scores per finding.
+    depends_on: [credential_scan, code_review]
+    expected_output: Professional security audit report with severity ratings and remediation steps

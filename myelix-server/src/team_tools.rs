@@ -21,7 +21,10 @@ use tokio::task::JoinHandle;
 pub const DEFAULT_OPERATIONS: &[&str] = &["read", "search", "list"];
 
 /// Default tools granted to teammates.
-pub const DEFAULT_TOOLS: &[&str] = &["docs_tree", "docs_grep", "docs_read", "team_bb_publish"];
+pub const DEFAULT_TOOLS: &[&str] = &[
+    "docs_tree", "docs_grep", "docs_read", "team_bb_publish",
+    "models_list", "personas_list",
+];
 
 /// A teammate in the team.
 #[derive(Debug, Clone)]
@@ -367,6 +370,20 @@ impl TeamRegistry {
         }))
     }
 
+    pub fn get_teammate_status(&self, team_id: &str, teammate: &str) -> Option<String> {
+        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        teams.get(team_id)
+            .and_then(|t| t.teammates.get(teammate))
+            .map(|tm| tm.status.clone())
+    }
+
+    pub fn get_teammate_output(&self, team_id: &str, teammate: &str) -> Option<String> {
+        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        teams.get(team_id)
+            .and_then(|t| t.teammates.get(teammate))
+            .and_then(|tm| tm.output.clone())
+    }
+
     pub fn get_result(&self, team_id: &str, teammate: &str) -> Option<serde_json::Value> {
         let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         let team = teams.get(team_id)?;
@@ -459,7 +476,7 @@ pub fn team_add_def() -> ToolDefinition {
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
                 ("name".to_string(), serde_json::json!({"type": "string", "description": "Teammate name (unique within team)"})),
                 ("persona".to_string(), serde_json::json!({"type": "string", "description": "Persona name from cognitive core"})),
-                ("model".to_string(), serde_json::json!({"type": "string", "description": "Model name or 'auto'"})),
+                ("model".to_string(), serde_json::json!({"type": "string", "description": "Model name from models_list (e.g. 'granite3.3:8b'). Use fast/small models for file reading tasks, large models only for synthesis. Defaults to 'auto' (smallest available)."})),
                 ("locality".to_string(), serde_json::json!({"type": "string", "enum": ["local", "remote", "auto"], "description": "'local' = data stays on device, 'remote' = cloud API, 'auto' = IFC decides"})),
                 ("operations".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed operations (default: ['read', 'search', 'list'])"})),
                 ("tools".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: ['docs_tree', 'docs_grep', 'docs_read', 'team_bb_publish'])"})),

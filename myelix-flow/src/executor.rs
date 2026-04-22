@@ -382,6 +382,7 @@ mod tests {
         Task {
             id: id.to_string(),
             specialist: specialist.to_string(),
+            model: None,
             mandate: format!("Do task {id}"),
             depends_on: deps.iter().map(|s| s.to_string()).collect(),
             inputs: HashMap::new(),
@@ -430,6 +431,7 @@ mod tests {
         let task = Task {
             id: "t".to_string(),
             specialist: "dev".to_string(),
+            model: None,
             mandate: "Fix the bug".to_string(),
             depends_on: Vec::new(),
             inputs: {
