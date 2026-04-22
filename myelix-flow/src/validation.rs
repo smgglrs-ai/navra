@@ -86,6 +86,7 @@ mod tests {
         Task {
             id: "t".to_string(),
             specialist: "dev".to_string(),
+            model: None,
             mandate: "Do work".to_string(),
             depends_on: Vec::new(),
             inputs: HashMap::new(),

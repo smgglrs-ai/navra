@@ -151,6 +151,9 @@ See DESIGN.md for full config reference.
   myelix-* Rust crate family. See `ROADMAP.md` for migration status.
 - **Project Jarvis**: Voice-first local assistant combining mcpd
   (secure tools) + myelix-flow (orchestration) + local models.
+- **OpenShell** (Red Hat/NVIDIA): Secure sandbox platform for
+  autonomous agents. mcpd integrates as the tool access layer
+  inside OpenShell sandboxes. See `OPENSHELL.md` for design.
 
 ## Reference Documents
 
@@ -158,3 +161,4 @@ See DESIGN.md for full config reference.
 - `ROADMAP.md` — Gap analysis vs Python Myelix, phased migration plan
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)
+- `OPENSHELL.md` — OpenShell integration: identity federation, A2A mesh, gRPC modules

@@ -128,6 +128,9 @@ pub struct TaskDefinition {
     pub id: String,
     /// Specialist (persona name) to execute this task.
     pub specialist: String,
+    /// Model override for this task (e.g. "granite3.3:8b"). If absent, uses the default.
+    #[serde(default)]
+    pub model: Option<String>,
     /// What the specialist should accomplish.
     pub mandate: String,
     /// Task IDs that must complete before this task can run.
@@ -178,6 +181,7 @@ pub fn single_task_dag(specialist: &str, mandate: &str) -> DagConfig {
         tasks: vec![TaskDefinition {
             id: "main".to_string(),
             specialist: specialist.to_string(),
+            model: None,
             mandate: mandate.to_string(),
             depends_on: Vec::new(),
             expected_output: None,
