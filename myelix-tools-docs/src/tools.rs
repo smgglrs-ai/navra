@@ -403,6 +403,10 @@ fn semantic_search_tool_def() -> ToolDefinition {
 // --- Path security ---
 
 fn resolve_path(raw: &str, must_exist: bool) -> Result<PathBuf, String> {
+    resolve_path_with_root(raw, must_exist, None)
+}
+
+fn resolve_path_with_root(raw: &str, must_exist: bool, default_root: Option<&str>) -> Result<PathBuf, String> {
     let expanded = if raw.starts_with("~/") {
         match dirs::home_dir() {
             Some(home) => home.join(&raw[2..]),
@@ -412,9 +416,14 @@ fn resolve_path(raw: &str, must_exist: bool) -> Result<PathBuf, String> {
         PathBuf::from(raw)
     };
 
-    if !expanded.is_absolute() {
-        return Err(format!("Path must be absolute: {raw}"));
-    }
+    let expanded = if !expanded.is_absolute() {
+        match default_root {
+            Some(root) => PathBuf::from(root).join(&expanded),
+            None => return Err(format!("Path must be absolute: {raw}")),
+        }
+    } else {
+        expanded
+    };
 
     if must_exist {
         let canonical = expanded
@@ -669,7 +678,7 @@ async fn handle_read(
         None => return CallToolResult::error("Missing required parameter: path"),
     };
 
-    let path = match resolve_path(raw_path, true) {
+    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
@@ -743,7 +752,7 @@ async fn handle_list(
         None => return CallToolResult::error("Missing required parameter: path"),
     };
 
-    let path = match resolve_path(raw_path, true) {
+    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
@@ -832,7 +841,7 @@ async fn handle_write(
         None => return CallToolResult::error("Missing required parameter: content"),
     };
 
-    let path = match resolve_path(raw_path, false) {
+    let path = match resolve_path_with_root(raw_path, false, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
@@ -885,7 +894,7 @@ async fn handle_edit(
         None => return CallToolResult::error("Missing required parameter: new_string"),
     };
 
-    let path = match resolve_path(raw_path, true) {
+    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
@@ -956,7 +965,7 @@ async fn handle_info(
         None => return CallToolResult::error("Missing required parameter: path"),
     };
 
-    let path = match resolve_path(raw_path, true) {
+    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
@@ -1026,7 +1035,7 @@ async fn handle_delete(
         None => return CallToolResult::error("Missing required parameter: path"),
     };
 
-    let path = match resolve_path(raw_path, true) {
+    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
@@ -1064,7 +1073,7 @@ async fn handle_tree(
         .or(state.default_root.as_deref())
         .unwrap_or("/");
 
-    let root = match resolve_path(raw_path, true) {
+    let root = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
@@ -1154,7 +1163,7 @@ async fn handle_grep(
         None => return CallToolResult::error("Missing required parameter: pattern"),
     };
 
-    let root = match resolve_path(raw_path, true) {
+    let root = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };

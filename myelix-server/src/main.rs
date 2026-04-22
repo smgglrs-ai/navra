@@ -3002,7 +3002,14 @@ async fn run_agent(
         .max_iterations(max_iterations)
         .temperature(0.0)
         .max_tokens(8192)
-        .force_tool_iterations(5);
+        .force_tool_iterations(5)
+        .non_progress_tools(vec![
+            "team_status".to_string(),
+            "team_result".to_string(),
+            "team_bb_read".to_string(),
+            "models_list".to_string(),
+            "personas_list".to_string(),
+        ]);
 
     // Apply auth token
     let auth_token = token
