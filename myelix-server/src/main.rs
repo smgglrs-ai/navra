@@ -1363,6 +1363,19 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         );
     }
 
+    // Resolve flow directories (auto-discover if not configured)
+    let resolved_flow_dirs = {
+        let mut dirs = cfg.flow_dirs.clone();
+        if dirs.is_empty() {
+            for candidate in &["examples/flows", "flows"] {
+                if std::path::Path::new(candidate).is_dir() {
+                    dirs.push(candidate.to_string());
+                }
+            }
+        }
+        dirs
+    };
+
     // Register flow orchestration tools
     let flow_registry = Arc::new(flow_tools::FlowRegistry::new());
     {
@@ -1414,14 +1427,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         );
 
         // flow_list — list available YAML flows from configured directories
-        let mut flow_dirs = cfg.flow_dirs.clone();
-        if flow_dirs.is_empty() {
-            for candidate in &["examples/flows", "flows"] {
-                if std::path::Path::new(candidate).is_dir() {
-                    flow_dirs.push(candidate.to_string());
-                }
-            }
-        }
+        let flow_dirs = resolved_flow_dirs.clone();
         builder = builder.tool(
             flow_tools::flow_list_tool_def(),
             move |_args, _ctx| {
@@ -2168,7 +2174,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         // flow_start — now that team_registry exists, wire real execution
         let fs_flow_registry = Arc::clone(&flow_registry);
         let fs_team_registry = Arc::clone(&team_registry);
-        let fs_flow_dirs = cfg.flow_dirs.clone();
+        let fs_flow_dirs = resolved_flow_dirs.clone();
         let fs_mcpd_addr = cfg.server.listen_addr();
         let fs_signer = Arc::clone(&root_signer);
         let fs_forge: Option<Arc<myelix_cognitive::ForgeService>> = cfg.cognitive_core.as_ref().and_then(|p| {
