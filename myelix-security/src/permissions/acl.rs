@@ -134,6 +134,58 @@ impl PermissionEngine {
             .unwrap_or(false)
     }
 
+    /// Check permissions using inline capabilities as fallback.
+    ///
+    /// When an agent authenticates via a capability token, its
+    /// permission set name (e.g. "cap:ring2") won't exist in the
+    /// engine. In that case, the token's embedded capabilities
+    /// (paths, operations) are used as an inline ACL.
+    pub fn check_with_capabilities(
+        &self,
+        permission_set: &str,
+        operation: &str,
+        path: &Path,
+        capabilities: Option<&crate::auth::capability::ResolvedCapabilities>,
+    ) -> PermissionResult {
+        // Try the named permission set first
+        if self.permission_sets.contains_key(permission_set) {
+            return self.check(permission_set, operation, path);
+        }
+
+        // Fall back to inline capabilities from the token
+        let caps = match capabilities {
+            Some(c) => c,
+            None => {
+                tracing::warn!(
+                    permission_set,
+                    operation,
+                    path = %path.display(),
+                    "Permission set not found and no inline capabilities — add [permissions.{ps}] to config",
+                    ps = permission_set,
+                );
+                return PermissionResult::DeniedUnknown;
+            }
+        };
+
+        // Check operation
+        if !caps.operations.contains(operation) {
+            return PermissionResult::DeniedOperation;
+        }
+
+        // Check path against capability token's allowed paths
+        let canonical = Self::normalize_path(path);
+        let allowed = caps.paths.iter().any(|pattern| {
+            let expanded = Self::expand_tilde(pattern);
+            Self::glob_matches(&expanded, &canonical)
+        });
+
+        if allowed {
+            PermissionResult::Allowed
+        } else {
+            PermissionResult::DeniedPath
+        }
+    }
+
     /// Check if an agent with the given permission set can perform
     /// the operation on the given path.
     pub fn check(
@@ -144,7 +196,16 @@ impl PermissionEngine {
     ) -> PermissionResult {
         let acl = match self.permission_sets.get(permission_set) {
             Some(acl) => acl,
-            None => return PermissionResult::DeniedUnknown,
+            None => {
+                tracing::warn!(
+                    permission_set,
+                    operation,
+                    path = %path.display(),
+                    "Permission set not found — add [permissions.{ps}] to config",
+                    ps = permission_set,
+                );
+                return PermissionResult::DeniedUnknown;
+            }
         };
 
         // Check operation permission first (cheapest check).
@@ -630,5 +691,48 @@ mod tests {
         // "custom" has no ring — should NOT inherit denies from "ringed"
         let result = engine.check("custom", "read", Path::new("/tmp/.secret"));
         assert_eq!(result, PermissionResult::Allowed);
+    }
+
+    #[test]
+    fn glob_star_star_matches_absolute_path() {
+        assert!(PermissionEngine::glob_matches("**", &PathBuf::from("/home/user/file.txt")));
+    }
+
+    #[test]
+    fn capability_fallback_allows_matching_path() {
+        let engine = PermissionEngine::new();
+        let caps = crate::auth::capability::ResolvedCapabilities {
+            issuer_did: "did:key:root".to_string(),
+            subject_did: "did:teammate:t1".to_string(),
+            ring: 2,
+            paths: vec!["**".to_string()],
+            operations: ["read", "list", "search"].into_iter().map(String::from).collect(),
+            tools: vec![],
+            credentials: vec![],
+            expires_at: u64::MAX,
+        };
+        let result = engine.check_with_capabilities(
+            "cap:ring2", "read", Path::new("/home/user/project/file.rs"), Some(&caps),
+        );
+        assert_eq!(result, PermissionResult::Allowed);
+    }
+
+    #[test]
+    fn capability_fallback_denies_missing_operation() {
+        let engine = PermissionEngine::new();
+        let caps = crate::auth::capability::ResolvedCapabilities {
+            issuer_did: "did:key:root".to_string(),
+            subject_did: "did:teammate:t1".to_string(),
+            ring: 2,
+            paths: vec!["**".to_string()],
+            operations: ["read"].into_iter().map(String::from).collect(),
+            tools: vec![],
+            credentials: vec![],
+            expires_at: u64::MAX,
+        };
+        let result = engine.check_with_capabilities(
+            "cap:ring2", "write", Path::new("/home/user/file.rs"), Some(&caps),
+        );
+        assert_eq!(result, PermissionResult::DeniedOperation);
     }
 }

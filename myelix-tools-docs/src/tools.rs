@@ -475,7 +475,9 @@ async fn check_perm(
     op: &str,
     path: &Path,
 ) -> Result<(), CallToolResult> {
-    match state.perm_engine.check(&ctx.agent.permissions, op, path) {
+    match state.perm_engine.check_with_capabilities(
+        &ctx.agent.permissions, op, path, ctx.agent.capabilities.as_ref(),
+    ) {
         PermissionResult::Allowed => Ok(()),
         PermissionResult::NeedsApproval => {
             let path_str = path.display().to_string();
@@ -613,7 +615,9 @@ async fn handle_search(
         .and_then(|v| v.as_u64())
         .unwrap_or(10) as usize;
 
-    if !state.perm_engine.has_operation(&ctx.agent.permissions, "search") {
+    if !state.perm_engine.has_operation(&ctx.agent.permissions, "search")
+        && !ctx.agent.capabilities.as_ref().map_or(false, |c| c.operations.contains("search"))
+    {
         return CallToolResult::error(format!(
             "Operation 'search' not permitted for agent '{}'",
             ctx.agent.name
@@ -630,7 +634,10 @@ async fn handle_search(
         .filter(|r| {
             state
                 .perm_engine
-                .check(&ctx.agent.permissions, "read", Path::new(&r.path))
+                .check_with_capabilities(
+                    &ctx.agent.permissions, "read", Path::new(&r.path),
+                    ctx.agent.capabilities.as_ref(),
+                )
                 == PermissionResult::Allowed
         })
         .collect();
@@ -1383,7 +1390,10 @@ async fn handle_semantic_search(
             let filtered: Vec<_> = results.iter().filter(|r| {
                 let path = std::path::Path::new(&r.path);
                 matches!(
-                    state.perm_engine.check(&ctx.agent.permissions, "search", path),
+                    state.perm_engine.check_with_capabilities(
+                        &ctx.agent.permissions, "search", path,
+                        ctx.agent.capabilities.as_ref(),
+                    ),
                     PermissionResult::Allowed | PermissionResult::NeedsApproval
                 )
             }).collect();

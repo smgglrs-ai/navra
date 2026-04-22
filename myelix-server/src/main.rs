@@ -160,6 +160,19 @@ fn build_perm_engine(cfg: &config::Config) -> PermissionEngine {
             );
         }
     }
+
+    // When no agents are configured, anonymous access uses the "readonly"
+    // permission set. If it's missing, tools will fail with DeniedUnknown.
+    // Warn loudly at startup so the operator knows why.
+    if cfg.agents.is_empty() && !cfg.permissions.contains_key("readonly") {
+        tracing::warn!(
+            "No [permissions.readonly] in config. Anonymous agents use the \
+             'readonly' permission set — without it, all path-based tools \
+             (docs_read, docs_tree, etc.) will be denied. Add a \
+             [permissions.readonly] section to grant access."
+        );
+    }
+
     engine.apply_ring_inheritance();
     engine
 }
@@ -727,10 +740,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 notifier.clone(),
             )
         };
-        // Set default root for docs_tree from cognitive_core path if configured
+        // Set default root for docs_tree.
+        // Priority: [modules.docs] default_root > top-level cognitive_core
         let mut docs = docs;
-        if let Some(ref cc_path) = cfg.cognitive_core {
-            let expanded = expand_tilde(cc_path);
+        let docs_root = cfg.modules.docs.as_ref()
+            .and_then(|d| d.default_root.as_deref())
+            .or(cfg.cognitive_core.as_deref());
+        if let Some(root_path) = docs_root {
+            let expanded = expand_tilde(root_path);
             if let Ok(canonical) = std::fs::canonicalize(&expanded) {
                 let root = canonical.display().to_string();
                 tracing::info!(default_root = %root, "Setting docs_tree default root");
@@ -1739,6 +1756,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     max_agents: args.get("max_agents").and_then(|v| v.as_u64()).unwrap_or(10) as u32,
                     max_tokens: args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(500_000),
                     timeout_secs: args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(600),
+                    max_iterations: args.get("max_iterations").and_then(|v| v.as_u64()).unwrap_or(50) as usize,
                 };
                 match reg.create_team(name, desc, &ctx.agent.name, 0, budget) {
                     Ok(team_id) => {
@@ -1829,16 +1847,16 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 let bg_mcpd_addr = mcpd_addr.clone();
                 let bg_signer = Arc::clone(&signer);
 
-                // Get the team's timeout for the deadline
-                let timeout_secs = {
+                // Get the team's timeout and iteration budget
+                let (timeout_secs, teammate_max_iterations) = {
                     let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
                     teams.get(&team_id)
                         .map(|t| {
                             let elapsed = t.created_at.elapsed().as_secs();
-                            let budget = t.budget.timeout_secs;
-                            budget.saturating_sub(elapsed)
+                            let remaining = t.budget.timeout_secs.saturating_sub(elapsed);
+                            (remaining, t.budget.max_iterations)
                         })
-                        .unwrap_or(600)
+                        .unwrap_or((600, 50))
                 };
 
                 let handle_reg = Arc::clone(&reg);
@@ -1996,7 +2014,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     .auth_token(&teammate_token)
                                     .model($backend)
                                     .system_prompt(&system_prompt)
-                                    .max_iterations(30)
+                                    .max_iterations(teammate_max_iterations)
                                     .temperature(0.3)
                                     .max_tokens(4096)
                                     .build()?;

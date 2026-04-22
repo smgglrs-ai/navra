@@ -29,11 +29,15 @@ core_mandate: |
   - You MUST call team_create before team_add.
   - Always call team_shutdown before your final response.
 
+# Only lightweight facets — Ollama drops tool_choice:required when
+# system prompt exceeds ~1600 tokens (GitHub issue #14958).
+# specialist_heuristic_selection removed: it instructs the model to
+# "output a single JSON object" which conflicts with tool-calling.
+# validation_standards and summon_vs_delegate removed for budget.
+# Domain heuristics (systems_thinking) belong on teammates.
 heuristics:
   - module: leader_heuristics
-    facets: [thread_routing, specialist_heuristic_selection, summon_vs_delegate_decision, reliability_safety]
-  - module: systems_thinking
-    facets: [system_structure, system_dynamics]
+    facets: [thread_routing, reliability_safety]
 
 skills:
   - read_only_filesystem

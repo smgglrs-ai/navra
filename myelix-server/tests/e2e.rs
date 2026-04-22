@@ -76,6 +76,57 @@ tcp = "127.0.0.1:{port}"
 enabled = true
 "#;
 
+/// Initialize an MCP session, return the session ID.
+async fn init_session(client: &reqwest::Client, url: &str) -> String {
+    let resp = client.post(format!("{url}/mcp"))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "id": 1,
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "e2e-test"}
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    resp.headers()
+        .get("mcp-session-id")
+        .expect("missing session header")
+        .to_str().unwrap()
+        .to_string()
+}
+
+/// Call an MCP tool, return the JSON-RPC response.
+async fn call_tool(
+    client: &reqwest::Client,
+    url: &str,
+    session_id: &str,
+    tool_name: &str,
+    args: serde_json::Value,
+    request_id: u64,
+) -> serde_json::Value {
+    let resp = client.post(format!("{url}/mcp"))
+        .header("mcp-session-id", session_id)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "id": request_id,
+            "params": {
+                "name": tool_name,
+                "arguments": args
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    resp.json().await.unwrap()
+}
+
 // --- MCP Protocol Tests ---
 
 #[tokio::test]
@@ -308,6 +359,170 @@ async fn tool_call_recorded_in_blackbox() {
     let json: serde_json::Value = resp.json().await.unwrap();
     // audit_query should return something (even if no run_id filter)
     assert!(json["result"].is_object());
+
+    child.kill().await.ok();
+}
+
+// --- Memory Tool Tests ---
+
+#[tokio::test]
+async fn memory_store_and_query_roundtrip() {
+    let (mut child, _port, url) = spawn_mcpd(BASIC_CONFIG).await;
+    let client = reqwest::Client::new();
+    let session_id = init_session(&client, &url).await;
+
+    // Store a fact
+    let json = call_tool(&client, &url, &session_id, "memory_store", serde_json::json!({
+        "kind": "fact",
+        "title": "Rust workspace has 17 crates",
+        "content": "The mcpd project is organized as a Rust workspace with 17 crates covering protocol, model, security, cognitive, memory, and server layers.",
+        "tags": ["architecture", "rust"]
+    }), 10).await;
+
+    let result_text = json["result"]["content"][0]["text"].as_str()
+        .expect("expected text result from memory_store");
+    let stored: serde_json::Value = serde_json::from_str(result_text).unwrap();
+    assert_eq!(stored["status"], "stored");
+    let entry_id = stored["id"].as_str().unwrap().to_string();
+
+    // Query it back
+    let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
+        "query": "Rust workspace crates"
+    }), 11).await;
+
+    let result_text = json["result"]["content"][0]["text"].as_str()
+        .expect("expected text result from memory_query");
+    let results: Vec<serde_json::Value> = serde_json::from_str(result_text).unwrap();
+    assert!(!results.is_empty(), "query should return the stored entry");
+    assert!(results.iter().any(|r| r["id"] == entry_id));
+
+    child.kill().await.ok();
+}
+
+#[tokio::test]
+async fn memory_store_query_forget_lifecycle() {
+    let (mut child, _port, url) = spawn_mcpd(BASIC_CONFIG).await;
+    let client = reqwest::Client::new();
+    let session_id = init_session(&client, &url).await;
+
+    // Store an insight
+    let json = call_tool(&client, &url, &session_id, "memory_store", serde_json::json!({
+        "kind": "insight",
+        "title": "Local models reduce latency",
+        "content": "Running models locally on GPU eliminates network round-trip and API rate limits, reducing p99 latency by 10x for multi-agent workflows."
+    }), 20).await;
+
+    let result_text = json["result"]["content"][0]["text"].as_str().unwrap();
+    let stored: serde_json::Value = serde_json::from_str(result_text).unwrap();
+    let entry_id = stored["id"].as_str().unwrap().to_string();
+
+    // Verify it exists via query
+    let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
+        "query": "local models latency"
+    }), 21).await;
+    let results: Vec<serde_json::Value> = serde_json::from_str(
+        json["result"]["content"][0]["text"].as_str().unwrap()
+    ).unwrap();
+    assert!(results.iter().any(|r| r["id"] == entry_id));
+
+    // Forget it
+    let json = call_tool(&client, &url, &session_id, "memory_forget", serde_json::json!({
+        "id": entry_id
+    }), 22).await;
+    let result_text = json["result"]["content"][0]["text"].as_str().unwrap();
+    let deleted: serde_json::Value = serde_json::from_str(result_text).unwrap();
+    assert_eq!(deleted["status"], "deleted");
+
+    // Verify it's gone — query should not find it
+    let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
+        "query": "local models latency"
+    }), 23).await;
+    let results: Vec<serde_json::Value> = serde_json::from_str(
+        json["result"]["content"][0]["text"].as_str().unwrap()
+    ).unwrap();
+    assert!(!results.iter().any(|r| r["id"] == entry_id), "entry should be gone after forget");
+
+    child.kill().await.ok();
+}
+
+#[tokio::test]
+async fn memory_query_with_kind_filter() {
+    let (mut child, _port, url) = spawn_mcpd(BASIC_CONFIG).await;
+    let client = reqwest::Client::new();
+    let session_id = init_session(&client, &url).await;
+
+    // Store a fact and an event with similar content
+    call_tool(&client, &url, &session_id, "memory_store", serde_json::json!({
+        "kind": "fact",
+        "title": "Database uses PostgreSQL",
+        "content": "The production database runs PostgreSQL 16 with connection pooling."
+    }), 30).await;
+
+    call_tool(&client, &url, &session_id, "memory_store", serde_json::json!({
+        "kind": "event",
+        "title": "Database migration completed",
+        "content": "PostgreSQL migration to version 16 completed successfully at 2026-04-21."
+    }), 31).await;
+
+    // Query filtering by kind=fact only
+    let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
+        "query": "PostgreSQL database",
+        "kind": "fact"
+    }), 32).await;
+
+    let results: Vec<serde_json::Value> = serde_json::from_str(
+        json["result"]["content"][0]["text"].as_str().unwrap()
+    ).unwrap();
+    assert!(results.iter().all(|r| r["kind"] == "fact"), "kind filter should exclude events");
+
+    child.kill().await.ok();
+}
+
+#[tokio::test]
+async fn memory_forget_nonexistent_returns_error() {
+    let (mut child, _port, url) = spawn_mcpd(BASIC_CONFIG).await;
+    let client = reqwest::Client::new();
+    let session_id = init_session(&client, &url).await;
+
+    let json = call_tool(&client, &url, &session_id, "memory_forget", serde_json::json!({
+        "id": "nonexistent-uuid-12345"
+    }), 40).await;
+
+    // Should return an error (isError: true)
+    let is_error = json["result"]["isError"].as_bool().unwrap_or(false);
+    let text = json["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(is_error || text.contains("No entry found"),
+        "forgetting nonexistent entry should indicate failure: {json}");
+
+    child.kill().await.ok();
+}
+
+#[tokio::test]
+async fn memory_tools_visible_in_tools_list() {
+    let (mut child, _port, url) = spawn_mcpd(BASIC_CONFIG).await;
+    let client = reqwest::Client::new();
+    let session_id = init_session(&client, &url).await;
+
+    let resp = client.post(format!("{url}/mcp"))
+        .header("mcp-session-id", &session_id)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "tools/list",
+            "id": 50
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let json: serde_json::Value = resp.json().await.unwrap();
+    let tools = json["result"]["tools"].as_array().unwrap();
+    let tool_names: Vec<&str> = tools.iter()
+        .filter_map(|t| t["name"].as_str())
+        .collect();
+
+    assert!(tool_names.contains(&"memory_store"), "memory_store not in tools list");
+    assert!(tool_names.contains(&"memory_query"), "memory_query not in tools list");
+    assert!(tool_names.contains(&"memory_forget"), "memory_forget not in tools list");
 
     child.kill().await.ok();
 }
