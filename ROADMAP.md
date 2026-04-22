@@ -312,10 +312,11 @@ This gives ad-hoc delegation without requiring static flow files.
 **Goal**: Working memory that survives sessions, knowledge
 distillation pipeline, case-based reasoning. Backed by SQLite.
 
-New crate: `myelix-memory` (**Status**: WorkingMemory, KnowledgeStore,
-SqliteSessionBackend, distillation pipeline (with mock model tests),
-RRF retrieval (4 channels), audit log storage — all done. Missing:
-wire RRF vector channel, memory decay, MCP memory tools.)
+New crate: `myelix-memory` (**Status**: All phases complete —
+WorkingMemory, KnowledgeStore, SqliteSessionBackend, distillation
+pipeline with Markdown export, RRF retrieval (4 channels + vector
+integration test), memory decay with exponential scoring, model-aware
+compaction strategies, MCP memory tools, audit log storage.)
 
 #### 3a. Session persistence ✅
 
@@ -349,7 +350,7 @@ Transfer Learning paper (arXiv 2604.14004):
 Reference: Cloudflare Agent Memory (2026-04-19), KAIST/NYU Memory
 Transfer Learning (arXiv 2604.14004).
 
-#### 3c. Multi-channel retrieval with RRF fusion (NEW)
+#### 3c. Multi-channel retrieval with RRF fusion ✅
 
 Replace single-channel vector search with fused multi-channel
 retrieval using Reciprocal Rank Fusion:
@@ -376,7 +377,7 @@ retrieval using Reciprocal Rank Fusion:
 Reference: Cloudflare Agent Memory RRF design (2026-04-19),
 PersonaVLM temporal-aware retrieval (arXiv 2604.13074).
 
-#### 3d. Knowledge distillation pipeline (port from Python)
+#### 3d. Knowledge distillation pipeline ✅
 
 Port the 4-stage Knowledge Cultivation Pipeline from Python Myelix
 (`memory/cases/pipeline.py`, ADR-049):
@@ -407,7 +408,7 @@ This is DIFFERENT from context compaction (Phase 1a). Compaction
 is runtime context management. Distillation is offline knowledge
 extraction — turning experience into reusable wisdom.
 
-#### 3e. Memory decay and working memory management (NEW)
+#### 3e. Memory decay and working memory management ✅
 
 - Exponential decay for working memory turns:
   `effective = importance * e^(-decay * age) * freshness + relevance_boost`
@@ -419,7 +420,7 @@ extraction — turning experience into reusable wisdom.
 Reference: Baddeley's episodic buffer model, tech watch article
 on context layers (2026-04-17).
 
-#### 3f. Model-aware context compaction strategies (NEW)
+#### 3f. Model-aware context compaction strategies ✅
 
 Different models respond best to different compaction strategies.
 Instead of a fixed approach, support multiple strategies with
@@ -442,12 +443,12 @@ Reference: AgentSwing (Alibaba, arXiv 2603.27490). Their
 probabilistic framework: Pass@1 = search_efficiency ×
 terminal_precision.
 
-#### 3g. Remaining memory items
+#### 3g. Memory MCP tools ✅
 
-- Memory MCP tools: `memory_store`, `memory_recall`, `memory_search`
-- Integration: agents auto-load relevant memory into context
-- Semantic query caching (paraphrase detection to avoid redundant
-  retrieval, ~76% savings on duplicate queries)
+- `memory_store`, `memory_query`, `memory_forget` MCP tools implemented
+- Wired into main.rs module registration
+- Remaining: agents auto-load relevant memory into context,
+  semantic query caching (paraphrase detection, ~76% savings)
 
 #### 3h. Structured audit log ✅ (gateway blackbox)
 

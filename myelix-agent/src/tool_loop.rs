@@ -145,9 +145,23 @@ pub async fn run_tool_loop(
     let mut progress_iterations = 0usize;
     let mut empty_retries = 0u8;
 
+    let mut budget_exhausted = false;
+
     loop {
         if progress_iterations >= config.max_iterations {
-            return Err(AgentError::MaxIterations(config.max_iterations));
+            if budget_exhausted {
+                return Err(AgentError::MaxIterations(config.max_iterations));
+            }
+            budget_exhausted = true;
+            tracing::info!(
+                iterations = progress_iterations,
+                "Iteration budget exhausted — requesting final synthesis"
+            );
+            input.push(InputItem::user(
+                "You have used all available iterations. Summarize your findings \
+                 so far based on the work you have already done. Do not call any \
+                 more tools — produce your best answer with the information you have."
+            ));
         }
         let iteration = progress_iterations;
         // Set structured output format if persona defines a JSON schema
@@ -167,8 +181,10 @@ pub async fn run_tool_loop(
             model: String::new(),
             input: input.clone(),
             instructions: None,
-            tools: tools.clone(),
-            tool_choice: Some(if config.force_tool_iterations.is_some_and(|n| progress_iterations < n) {
+            tools: if budget_exhausted { vec![] } else { tools.clone() },
+            tool_choice: Some(if budget_exhausted {
+                myelix_model::ResponseToolChoice::none()
+            } else if config.force_tool_iterations.is_some_and(|n| progress_iterations < n) {
                 myelix_model::ResponseToolChoice::required()
             } else {
                 myelix_model::ResponseToolChoice::auto()
@@ -499,11 +515,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn max_iterations_error() {
+    async fn max_iterations_forces_synthesis() {
         let model = MockModel::new(vec![
             tool_call_response("git_status", "{}"),
             tool_call_response("git_status", "{}"),
             tool_call_response("git_status", "{}"),
+            stop_response("Partial findings from 3 iterations."),
         ]);
 
         let tool_result = serde_json::json!({
@@ -521,10 +538,11 @@ mod tests {
             ..Default::default()
         };
 
-        let err = run_tool_loop(&model, &mut client, "loop forever", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "loop forever", &config, "test-run".into())
             .await
-            .unwrap_err();
-        assert!(matches!(err, AgentError::MaxIterations(3)));
+            .unwrap();
+        assert_eq!(result.response, "Partial findings from 3 iterations.");
+        assert_eq!(result.iterations, 3);
     }
 
     #[tokio::test]
@@ -570,11 +588,12 @@ mod tests {
 
     #[tokio::test]
     async fn non_progress_still_limits_progress_calls() {
-        // 3 progress rounds hit max_iterations=2
+        // 2 progress rounds hit max_iterations=2, then synthesis
         let model = MockModel::new(vec![
             tool_call_response("team_status", "{}"), // non-progress
             tool_call_response("git_status", "{}"),  // progress #1
-            tool_call_response("git_status", "{}"),  // progress #2 → hits limit
+            tool_call_response("git_status", "{}"),  // progress #2 → budget exhausted
+            stop_response("Synthesized from partial work."), // forced synthesis
         ]);
 
         let tool_result = serde_json::json!({
@@ -598,10 +617,10 @@ mod tests {
             ..Default::default()
         };
 
-        let err = run_tool_loop(&model, &mut client, "overflow", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "overflow", &config, "test-run".into())
             .await
-            .unwrap_err();
-        assert!(matches!(err, AgentError::MaxIterations(2)));
+            .unwrap();
+        assert_eq!(result.response, "Synthesized from partial work.");
     }
 
     #[test]

@@ -231,7 +231,9 @@ fn check_perm(
     op: &str,
     path: &Path,
 ) -> Result<(), CallToolResult> {
-    match state.perm_engine.check(&ctx.agent.permissions, op, path) {
+    match state.perm_engine.check_with_capabilities(
+        &ctx.agent.permissions, op, path, ctx.agent.capabilities.as_ref(),
+    ) {
         PermissionResult::Allowed => Ok(()),
         PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
             "Access denied: {}",

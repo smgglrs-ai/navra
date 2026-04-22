@@ -327,6 +327,10 @@ pub struct DocsModuleConfig {
     pub enabled: bool,
     #[serde(default = "default_db_path")]
     pub db: String,
+    /// Default root path for docs_tree when no path argument is given.
+    /// Overrides the top-level `cognitive_core` setting for docs routing.
+    #[serde(default)]
+    pub default_root: Option<String>,
     /// Directories to watch for auto-reindexing.
     #[serde(default)]
     pub watch: Vec<String>,
@@ -539,6 +543,7 @@ impl Default for DocsModuleConfig {
         Self {
             enabled: true,
             db: default_db_path(),
+            default_root: None,
             watch: Vec::new(),
         }
     }

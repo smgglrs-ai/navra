@@ -61,6 +61,8 @@ pub struct TeamBudget {
     pub max_tokens: u64,
     /// Timeout in seconds for the entire team.
     pub timeout_secs: u64,
+    /// Maximum ReAct iterations per teammate.
+    pub max_iterations: usize,
 }
 
 impl Default for TeamBudget {
@@ -70,6 +72,7 @@ impl Default for TeamBudget {
             max_agents: 10,
             max_tokens: 500_000,
             timeout_secs: 600,
+            max_iterations: 50,
         }
     }
 }
@@ -427,6 +430,7 @@ pub fn team_create_def() -> ToolDefinition {
                 ("max_agents".to_string(), serde_json::json!({"type": "integer", "description": "Max total agents across team tree (default: 10)"})),
                 ("max_tokens".to_string(), serde_json::json!({"type": "integer", "description": "Max total tokens across team tree (default: 500000)"})),
                 ("timeout_secs".to_string(), serde_json::json!({"type": "integer", "description": "Team timeout in seconds (default: 600)"})),
+                ("max_iterations".to_string(), serde_json::json!({"type": "integer", "description": "Max ReAct iterations per teammate (default: 50)"})),
             ])),
             required: Some(vec!["name".to_string()]),
         },
