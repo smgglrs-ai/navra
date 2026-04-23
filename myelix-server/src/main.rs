@@ -2180,6 +2180,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let fs_mcpd_addr = cfg.server.listen_addr();
         let fs_signer = Arc::clone(&root_signer);
         let fs_budget_cfg = cfg.budget.clone();
+        let fs_docs_root: Option<String> = cfg.modules.docs.as_ref()
+            .and_then(|d| d.default_root.clone())
+            .or_else(|| cfg.cognitive_core.clone());
         let fs_forge: Option<Arc<myelix_cognitive::ForgeService>> = cfg.cognitive_core.as_ref().and_then(|p| {
             let expanded = expand_tilde(p);
             myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded)).ok().map(Arc::new)
@@ -2194,6 +2197,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 let signer = Arc::clone(&fs_signer);
                 let forge = fs_forge.clone();
                 let budget_cfg = fs_budget_cfg.clone();
+                let docs_root = fs_docs_root.clone();
                 Box::pin(async move {
                     use myelix_core::protocol::CallToolResult;
 
@@ -2295,11 +2299,50 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     let bg_flow_id = flow_id.clone();
                     let bg_team_id = team_id.clone();
                     let bg_prompt = prompt.clone();
+                    let docs_default_root = docs_root.clone();
+
                     tokio::spawn(async move {
                         let mut task_defs = dag_config.tasks;
                         let mut completed: std::collections::HashMap<String, String> = std::collections::HashMap::new();
                         let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
                         let mut total = task_defs.len();
+
+                        // Pre-compute project file tree so specialists always
+                        // have real paths, independent of scout quality.
+                        let project_file_tree: String = if let Some(ref root) = docs_default_root {
+                            let root_path = std::path::Path::new(root);
+                            if root_path.is_dir() {
+                                let mut files = Vec::new();
+                                fn collect(dir: &std::path::Path, root: &std::path::Path, files: &mut Vec<String>) {
+                                    let Ok(entries) = std::fs::read_dir(dir) else { return };
+                                    for entry in entries.flatten() {
+                                        let path = entry.path();
+                                        let name = entry.file_name();
+                                        let name_str = name.to_string_lossy();
+                                        if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
+                                            continue;
+                                        }
+                                        if path.is_dir() {
+                                            collect(&path, root, files);
+                                        } else if path.is_file() {
+                                            if let Ok(rel) = path.strip_prefix(root) {
+                                                let lines = std::fs::read_to_string(&path)
+                                                    .map(|c| c.lines().count())
+                                                    .unwrap_or(0);
+                                                files.push(format!("  {} ({} lines)", rel.display(), lines));
+                                            }
+                                        }
+                                    }
+                                }
+                                collect(root_path, root_path, &mut files);
+                                files.sort();
+                                format!("{} files:\n{}", files.len(), files.join("\n"))
+                            } else {
+                                String::new()
+                            }
+                        } else {
+                            String::new()
+                        };
 
                         // Capture blackbox seq before flow starts for summary queries
                         let bb_start_seq = {
@@ -2382,6 +2425,13 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                 }
                                 if !bg_prompt.is_empty() {
                                     message.push_str(&format!("\n\n--- Original request ---\n{}\n", bg_prompt));
+                                }
+                                // Inject verified file tree into every task
+                                if !project_file_tree.is_empty() && !task.generates_tasks {
+                                    message.push_str(&format!(
+                                        "\n\n--- Project files (verified) ---\n{}\n\nUse ONLY paths from this list with docs_read.",
+                                        project_file_tree
+                                    ));
                                 }
 
                                 if let Err(e) = bg_team_reg.send_message(&bg_team_id, &task.id, &message) {
@@ -2477,7 +2527,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                         eprintln!("  [flow-task] {} → model: {}", spawn_task_id, teammate_model);
 
                                         let r: Result<myelix_agent::ToolLoopResult, myelix_agent::AgentError> = async {
-                                            let mut agent = myelix_agent::Agent::builder()
+                                            let mut builder = myelix_agent::Agent::builder()
                                                 .endpoint(&mcp_url).await?
                                                 .auth_token(&token)
                                                 .model(myelix_model::OpenAiBackend::new(
@@ -2487,8 +2537,12 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 .max_iterations(spawn_max_iter)
                                                 .force_tool_iterations(if spawn_generates_tasks { 0 } else { 1 })
                                                 .temperature(0.3)
-                                                .max_tokens(4096)
-                                                .build().await?;
+                                                .max_tokens(4096);
+                                            // Planner tasks output text (JSON), not tool calls
+                                            if spawn_generates_tasks {
+                                                builder = builder.allowed_tools(vec![]);
+                                            }
+                                            let mut agent = builder.build().await?;
                                             agent.run(&spawn_message).await
                                         }.await;
 
@@ -2587,6 +2641,12 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                 for mut new_task in new_tasks {
                                     if new_task.depends_on.is_empty() {
                                         new_task.depends_on.push(task.id.clone());
+                                    }
+                                    // Append real file tree so specialist has verified paths
+                                    if !project_file_tree.is_empty() {
+                                        new_task.mandate.push_str(
+                                            &format!("\n\n--- Project files (verified) ---\n{project_file_tree}\n\nUse ONLY paths from this list with docs_read.")
+                                        );
                                     }
                                     // Register as flow node
                                     bg_flow_reg.update_nodes(&bg_flow_id, vec![
