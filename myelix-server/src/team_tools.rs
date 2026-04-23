@@ -23,7 +23,7 @@ pub const DEFAULT_OPERATIONS: &[&str] = &["read", "search", "list"];
 /// Default tools granted to teammates.
 pub const DEFAULT_TOOLS: &[&str] = &[
     "docs_tree", "docs_grep", "docs_read", "team_bb_publish",
-    "models_list", "personas_list",
+    "models_list", "personas_list", "flow_escalate",
 ];
 
 /// A teammate in the team.

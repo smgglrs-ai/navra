@@ -1504,7 +1504,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             },
         );
 
-        tracing::info!("Registered flow orchestration tools (flow_start, flow_status, flow_result, flow_list)");
+        tracing::info!("Registered flow orchestration tools (flow_start, flow_status, flow_result, flow_list, flow_escalate)");
     }
 
     // Register team orchestration tools
@@ -2414,14 +2414,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 .and_then(|tm| tm.persona.clone())
                                         };
 
+                                        let escalate_hint = "\nIf your task is too complex for direct execution, call flow_escalate with a clear mandate. Only escalate if truly needed.";
                                         let system_prompt = if let Some(ref pn) = tm_persona {
                                             spawn_forge.as_ref()
                                                 .and_then(|f| myelix_cognitive::assemble(f, pn, "", None, None).ok())
-                                                .map(|w| format!("{}\n\nYou are working as part of a flow.\nYou have access to MCP tools: {}.",
-                                                    w.system_prompt(), tm_tools.join(", ")))
-                                                .unwrap_or_else(|| format!("You are a specialist (persona: {pn}).\nTools: {}.", tm_tools.join(", ")))
+                                                .map(|w| format!("{}\n\nYou are working as part of a flow.\nYou have access to MCP tools: {}.{}",
+                                                    w.system_prompt(), tm_tools.join(", "), escalate_hint))
+                                                .unwrap_or_else(|| format!("You are a specialist (persona: {pn}).\nTools: {}.{}", tm_tools.join(", "), escalate_hint))
                                         } else {
-                                            format!("You are a specialist agent.\nTools: {}.", tm_tools.join(", "))
+                                            format!("You are a specialist agent.\nTools: {}.{}", tm_tools.join(", "), escalate_hint)
                                         };
 
                                         let mut teammate_model = {
@@ -2562,6 +2563,445 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 })
             },
         );
+
+        // flow_escalate — synchronous subflow execution for recursive agent escalation
+        let fe_flow_registry = Arc::clone(&flow_registry);
+        let fe_team_registry = Arc::clone(&team_registry);
+        let fe_mcpd_addr = cfg.server.listen_addr();
+        let fe_signer = Arc::clone(&root_signer);
+        let fe_forge: Option<Arc<myelix_cognitive::ForgeService>> = cfg.cognitive_core.as_ref().and_then(|p| {
+            let expanded = expand_tilde(p);
+            myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded)).ok().map(Arc::new)
+        });
+        builder = builder.tool(
+            flow_tools::flow_escalate_tool_def(),
+            move |args, ctx| {
+                let flow_reg = Arc::clone(&fe_flow_registry);
+                let team_reg = Arc::clone(&fe_team_registry);
+                let mcpd_addr = fe_mcpd_addr.clone();
+                let signer = Arc::clone(&fe_signer);
+                let forge = fe_forge.clone();
+                Box::pin(async move {
+                    use myelix_core::protocol::CallToolResult;
+
+                    let mandate = match args.get("mandate").and_then(|v| v.as_str()) {
+                        Some(m) => m.to_string(),
+                        None => return CallToolResult::error("Missing required parameter: mandate"),
+                    };
+                    let context = args.get("context").and_then(|v| v.as_str()).map(String::from);
+
+                    // Extract depth from calling agent's DID (format: did:flow:{team_id}:{name} or did:teammate:{team_id}:{name})
+                    let caller_did = &ctx.agent.name;
+                    let current_depth: u32 = {
+                        // Try to find the team this caller belongs to and get its depth
+                        let teams = team_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut depth = 0u32;
+                        for team in teams.values() {
+                            if team.teammates.contains_key(caller_did)
+                                || team.lead == *caller_did
+                                || caller_did.contains(&team.team_id)
+                            {
+                                depth = team.depth;
+                                break;
+                            }
+                        }
+                        depth
+                    };
+
+                    // Check depth limit from team budget
+                    let max_depth = {
+                        let teams = team_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                        teams.values()
+                            .find(|t| {
+                                t.teammates.contains_key(caller_did)
+                                    || t.lead == *caller_did
+                                    || caller_did.contains(&t.team_id)
+                            })
+                            .map(|t| t.budget.max_depth)
+                            .unwrap_or(2)
+                    };
+
+                    let new_depth = current_depth + 1;
+                    if new_depth > max_depth {
+                        return CallToolResult::error(format!(
+                            "Escalation depth limit reached ({new_depth}/{max_depth}). \
+                             Cannot create deeper subflows. Handle this task directly."
+                        ));
+                    }
+
+                    // Build the DagConfig: from inline tasks if provided, or via generic_flow_dag
+                    let dag_config = if let Some(tasks_val) = args.get("tasks").and_then(|v| v.as_array()) {
+                        let mut task_defs = Vec::new();
+                        for t in tasks_val {
+                            let id = match t.get("id").and_then(|v| v.as_str()) {
+                                Some(id) => id.to_string(),
+                                None => return CallToolResult::error("Each task must have an 'id'"),
+                            };
+                            let specialist = match t.get("specialist").and_then(|v| v.as_str()) {
+                                Some(s) => s.to_string(),
+                                None => return CallToolResult::error("Each task must have a 'specialist'"),
+                            };
+                            let task_mandate = match t.get("mandate").and_then(|v| v.as_str()) {
+                                Some(m) => m.to_string(),
+                                None => return CallToolResult::error("Each task must have a 'mandate'"),
+                            };
+                            let model = t.get("model").and_then(|v| v.as_str()).map(String::from);
+                            let depends_on: Vec<String> = t.get("depends_on")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                                .unwrap_or_default();
+                            task_defs.push(myelix_flow::TaskDefinition {
+                                id,
+                                specialist,
+                                model,
+                                mandate: task_mandate,
+                                depends_on,
+                                expected_output: None,
+                                success_criteria: Vec::new(),
+                                back_edges: Vec::new(),
+                            });
+                        }
+                        myelix_flow::DagConfig {
+                            name: format!("escalation-depth{new_depth}"),
+                            description: Some(format!("Escalation subflow for: {mandate}")),
+                            parameters: std::collections::HashMap::new(),
+                            tasks: task_defs,
+                            blackboard_capacity: None,
+                        }
+                    } else {
+                        myelix_flow::generic_flow_dag(&mandate, context.as_deref())
+                    };
+
+                    // Register subflow
+                    // Find parent flow ID from caller context
+                    let parent_flow_id = {
+                        let flows = flow_reg.flows.lock().unwrap_or_else(|e| e.into_inner());
+                        flows.values()
+                            .find(|f| {
+                                if let Some(ref tid) = f.team_id {
+                                    caller_did.contains(tid)
+                                } else {
+                                    false
+                                }
+                            })
+                            .map(|f| f.flow_id.clone())
+                            .unwrap_or_else(|| "unknown".to_string())
+                    };
+                    let flow_id = flow_reg.register_subflow(&dag_config.name, &parent_flow_id, new_depth);
+
+                    // Initialize node statuses
+                    let nodes: Vec<flow_tools::NodeStatus> = dag_config.tasks.iter().map(|t| {
+                        flow_tools::NodeStatus {
+                            id: t.id.clone(),
+                            specialist: t.specialist.clone(),
+                            status: "pending".to_string(),
+                            output: None,
+                        }
+                    }).collect();
+                    flow_reg.update_nodes(&flow_id, nodes);
+
+                    // Create a sub-team for this subflow
+                    let team_budget = team_tools::TeamBudget {
+                        max_depth,
+                        max_agents: dag_config.tasks.len() as u32 + 2,
+                        max_iterations: 50,
+                        timeout_secs: 900,
+                        ..Default::default()
+                    };
+                    let team_id = match team_reg.create_team(
+                        &dag_config.name, dag_config.description.as_deref(),
+                        caller_did, new_depth, team_budget,
+                    ) {
+                        Ok(id) => id,
+                        Err(e) => {
+                            flow_reg.fail(&flow_id, e.clone());
+                            return CallToolResult::error(format!("Failed to create subflow team: {e}"));
+                        }
+                    };
+                    flow_reg.set_team_id(&flow_id, &team_id);
+
+                    tracing::info!(
+                        flow_id = %flow_id,
+                        parent = %parent_flow_id,
+                        depth = new_depth,
+                        name = %dag_config.name,
+                        team_id = %team_id,
+                        "Subflow escalation started"
+                    );
+
+                    // Execute the DAG synchronously (same logic as flow_start but awaited)
+                    let task_defs = dag_config.tasks;
+                    let mut completed: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+                    let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    let total = task_defs.len();
+
+                    loop {
+                        let ready: Vec<&myelix_flow::TaskDefinition> = task_defs.iter()
+                            .filter(|t| {
+                                !completed.contains_key(&t.id) && !failed.contains(&t.id)
+                                && t.depends_on.iter().all(|dep| completed.contains_key(dep))
+                            })
+                            .collect();
+
+                        if ready.is_empty() {
+                            if completed.len() + failed.len() >= total {
+                                break;
+                            }
+                            let remaining: Vec<&str> = task_defs.iter()
+                                .filter(|t| !completed.contains_key(&t.id) && !failed.contains(&t.id))
+                                .map(|t| t.id.as_str())
+                                .collect();
+                            if !remaining.is_empty() {
+                                let msg = format!("Subflow deadlocked: tasks {:?} blocked by failed dependencies", remaining);
+                                tracing::error!(flow_id = %flow_id, "{msg}");
+                                flow_reg.fail(&flow_id, msg.clone());
+                                team_reg.shutdown(&team_id);
+                                return CallToolResult::error(msg);
+                            }
+                            break;
+                        }
+
+                        // Spawn ready tasks as teammates
+                        for task in &ready {
+                            let model = task.model.clone().unwrap_or_else(|| "auto".to_string());
+                            let persona = if task.specialist.is_empty() { None } else { Some(task.specialist.clone()) };
+
+                            if let Err(e) = team_reg.add_teammate(
+                                &team_id, &task.id, persona.as_deref(),
+                                &model, "local",
+                                team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                                team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                            ) {
+                                tracing::error!(task = %task.id, error = %e, "Failed to add teammate for subflow task");
+                                failed.insert(task.id.clone());
+                                flow_reg.update_node_status(&flow_id, &task.id, "failed", Some(e));
+                                continue;
+                            }
+
+                            let mut message = task.mandate.clone();
+                            if !task.depends_on.is_empty() {
+                                message.push_str("\n\n--- Context from prior stages ---\n");
+                                for dep_id in &task.depends_on {
+                                    if let Some(output) = completed.get(dep_id) {
+                                        message.push_str(&format!("\n## {dep_id}\n{output}\n"));
+                                    }
+                                }
+                            }
+
+                            if let Err(e) = team_reg.send_message(&team_id, &task.id, &message) {
+                                tracing::error!(task = %task.id, error = %e, "Failed to send message to subflow task");
+                                failed.insert(task.id.clone());
+                                flow_reg.update_node_status(&flow_id, &task.id, "failed", Some(e));
+                                continue;
+                            }
+
+                            // Spawn the teammate agent
+                            let spawn_reg = Arc::clone(&team_reg);
+                            let spawn_signer = Arc::clone(&signer);
+                            let spawn_forge = forge.clone();
+                            let spawn_addr = mcpd_addr.clone();
+                            let spawn_team_id = team_id.clone();
+                            let spawn_task_id = task.id.clone();
+                            let spawn_message = message.clone();
+                            let spawn_max_iter = 50usize;
+                            let spawn_timeout = 600u64;
+                            let handle = tokio::spawn(async move {
+                                let deadline = std::time::Duration::from_secs(spawn_timeout);
+                                let timeout_reg = spawn_reg.clone();
+                                let timeout_team = spawn_team_id.clone();
+                                let timeout_task = spawn_task_id.clone();
+                                let result = tokio::time::timeout(deadline, async move {
+                                    let mcp_url = format!("http://{spawn_addr}/mcp");
+
+                                    let (tm_ops, tm_tools) = {
+                                        let teams = spawn_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                                        teams.get(&spawn_team_id)
+                                            .and_then(|t| t.teammates.get(&spawn_task_id))
+                                            .map(|tm| (tm.operations.clone(), tm.tools.clone()))
+                                            .unwrap_or_else(|| (
+                                                team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                                                team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                                            ))
+                                    };
+                                    let cap = myelix_core::auth::capability::CapabilitySet {
+                                        paths: vec!["**".to_string()],
+                                        operations: tm_ops,
+                                        tools: tm_tools.clone(),
+                                        credentials: vec![],
+                                    };
+                                    let did = format!("did:flow:{}:{}", spawn_team_id, spawn_task_id);
+                                    let payload = myelix_core::auth::capability::build_payload(
+                                        spawn_signer.did(), &did, cap, 2, 3600,
+                                    );
+                                    let token = match myelix_core::auth::capability::encode_token(&payload, spawn_signer.as_ref()) {
+                                        Ok(t) => t,
+                                        Err(e) => {
+                                            spawn_reg.set_failed(&spawn_team_id, &spawn_task_id, format!("Token error: {e}"));
+                                            return;
+                                        }
+                                    };
+
+                                    let tm_persona = {
+                                        let teams = spawn_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                                        teams.get(&spawn_team_id)
+                                            .and_then(|t| t.teammates.get(&spawn_task_id))
+                                            .and_then(|tm| tm.persona.clone())
+                                    };
+
+                                    let escalate_hint = "\nIf your task is too complex for direct execution, call flow_escalate with a clear mandate. Only escalate if truly needed.";
+                                    let system_prompt = if let Some(ref pn) = tm_persona {
+                                        spawn_forge.as_ref()
+                                            .and_then(|f| myelix_cognitive::assemble(f, pn, "", None, None).ok())
+                                            .map(|w| format!("{}\n\nYou are working as part of a subflow (depth {}).\nYou have access to MCP tools: {}.{}",
+                                                w.system_prompt(), new_depth, tm_tools.join(", "), escalate_hint))
+                                            .unwrap_or_else(|| format!("You are a specialist (persona: {pn}).\nTools: {}.{}", tm_tools.join(", "), escalate_hint))
+                                    } else {
+                                        format!("You are a specialist agent in a subflow (depth {}).\nTools: {}.{}", new_depth, tm_tools.join(", "), escalate_hint)
+                                    };
+
+                                    let mut teammate_model = {
+                                        let teams = spawn_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                                        teams.get(&spawn_team_id)
+                                            .and_then(|t| t.teammates.get(&spawn_task_id))
+                                            .map(|tm| tm.model.clone())
+                                            .unwrap_or_else(|| "auto".to_string())
+                                    };
+                                    if teammate_model == "auto" {
+                                        if let Ok(resp) = reqwest::Client::new().get("http://localhost:11434/api/tags").send().await {
+                                            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                                                if let Some(models) = json["models"].as_array() {
+                                                    if let Some((name, _)) = models.iter()
+                                                        .filter_map(|m| Some((m["name"].as_str()?, m["size"].as_u64().unwrap_or(u64::MAX))))
+                                                        .min_by_key(|(_, s)| *s) {
+                                                        teammate_model = name.to_string();
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if teammate_model == "auto" { teammate_model = "granite3.3:8b".to_string(); }
+                                    }
+                                    eprintln!("  [subflow-task] {} (depth {}) → model: {}", spawn_task_id, new_depth, teammate_model);
+
+                                    let r: Result<myelix_agent::ToolLoopResult, myelix_agent::AgentError> = async {
+                                        let mut agent = myelix_agent::Agent::builder()
+                                            .endpoint(&mcp_url).await?
+                                            .auth_token(&token)
+                                            .model(myelix_model::OpenAiBackend::new(
+                                                "http://localhost:11434/v1", &teammate_model, None, myelix_model::Locality::Local,
+                                            ))
+                                            .system_prompt(&system_prompt)
+                                            .max_iterations(spawn_max_iter)
+                                            .temperature(0.3)
+                                            .max_tokens(4096)
+                                            .build()?;
+                                        agent.run(&spawn_message).await
+                                    }.await;
+
+                                    match r {
+                                        Ok(result) => {
+                                            spawn_reg.add_tokens(&spawn_team_id, result.input_tokens + result.output_tokens);
+                                            spawn_reg.set_output(&spawn_team_id, &spawn_task_id, result.response);
+                                        }
+                                        Err(e) => {
+                                            spawn_reg.set_failed(&spawn_team_id, &spawn_task_id, format!("{e}"));
+                                        }
+                                    }
+                                }).await;
+                                if result.is_err() {
+                                    timeout_reg.set_failed(&timeout_team, &timeout_task, format!("Timed out after {spawn_timeout}s"));
+                                }
+                            });
+                            team_reg.store_handle(&team_id, &task.id, handle);
+
+                            flow_reg.update_node_status(&flow_id, &task.id, "running", None);
+                            tracing::info!(flow_id = %flow_id, task = %task.id, model = %model, "Subflow task started");
+
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        }
+
+                        // Poll until all currently running tasks complete
+                        let running_ids: Vec<String> = ready.iter().map(|t| t.id.clone()).collect();
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                            let mut all_done = true;
+                            for task_id in &running_ids {
+                                if completed.contains_key(task_id) || failed.contains(task_id) {
+                                    continue;
+                                }
+                                let status = team_reg.get_teammate_status(&team_id, task_id);
+                                match status.as_deref() {
+                                    Some("done") => {
+                                        let output = team_reg.get_teammate_output(&team_id, task_id)
+                                            .unwrap_or_else(|| "(no output)".to_string());
+                                        completed.insert(task_id.clone(), output.clone());
+                                        flow_reg.update_node_status(&flow_id, task_id, "done", Some(output));
+                                        tracing::info!(flow_id = %flow_id, task = %task_id, "Subflow task completed");
+                                    }
+                                    Some("failed") => {
+                                        let output = team_reg.get_teammate_output(&team_id, task_id)
+                                            .unwrap_or_else(|| "(no output)".to_string());
+                                        failed.insert(task_id.clone());
+                                        flow_reg.update_node_status(&flow_id, task_id, "failed", Some(output));
+                                        tracing::warn!(flow_id = %flow_id, task = %task_id, "Subflow task failed");
+                                    }
+                                    _ => { all_done = false; }
+                                }
+                            }
+                            if all_done { break; }
+
+                            // Check subflow-level timeout (15 minutes)
+                            if flow_reg.get_status(&flow_id)
+                                .and_then(|s| s["elapsed_secs"].as_u64())
+                                .unwrap_or(0) > 900
+                            {
+                                tracing::warn!(flow_id = %flow_id, "Subflow timed out");
+                                flow_reg.fail(&flow_id, "Subflow timed out after 900 seconds".to_string());
+                                team_reg.shutdown(&team_id);
+                                return CallToolResult::error("Subflow timed out after 900 seconds");
+                            }
+                        }
+                    }
+
+                    // Subflow complete — return the last task's output
+                    let last_task_id = task_defs.last().map(|t| t.id.as_str()).unwrap_or("");
+                    let final_output = completed.get(last_task_id)
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            format!("Subflow completed. {} tasks done, {} failed.",
+                                completed.len(), failed.len())
+                        });
+
+                    if failed.is_empty() {
+                        flow_reg.complete(&flow_id, final_output.clone());
+                    } else {
+                        let output_with_warning = format!(
+                            "{final_output}\n\n[Warning: {} of {} tasks failed: {:?}]",
+                            failed.len(), total, failed
+                        );
+                        flow_reg.complete(&flow_id, output_with_warning.clone());
+                        team_reg.shutdown(&team_id);
+                        tracing::info!(
+                            flow_id = %flow_id,
+                            completed = completed.len(),
+                            failed_count = failed.len(),
+                            "Subflow finished with failures"
+                        );
+                        return CallToolResult::text(output_with_warning);
+                    }
+
+                    team_reg.shutdown(&team_id);
+                    tracing::info!(
+                        flow_id = %flow_id,
+                        completed = completed.len(),
+                        "Subflow execution finished successfully"
+                    );
+                    CallToolResult::text(final_output)
+                })
+            },
+        );
+
+        tracing::info!("Registered flow escalation tool (flow_escalate)");
     }
 
     // --- Knowledge memory tools ---
