@@ -2414,7 +2414,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 .and_then(|tm| tm.persona.clone())
                                         };
 
-                                        let escalate_hint = "\nIf your task is too complex for direct execution, call flow_escalate with a clear mandate. Only escalate if truly needed.";
+                                        let escalate_hint = "\nIf your task requires reviewing more than 5 files or covers multiple distinct concern areas, call flow_escalate to spawn a sub-team. Provide the mandate and any context you have gathered so far.";
                                         let system_prompt = if let Some(ref pn) = tm_persona {
                                             spawn_forge.as_ref()
                                                 .and_then(|f| myelix_cognitive::assemble(f, pn, "", None, None).ok())
@@ -2848,7 +2848,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                             .and_then(|tm| tm.persona.clone())
                                     };
 
-                                    let escalate_hint = "\nIf your task is too complex for direct execution, call flow_escalate with a clear mandate. Only escalate if truly needed.";
+                                    let escalate_hint = "\nIf your task requires reviewing more than 5 files or covers multiple distinct concern areas, call flow_escalate to spawn a sub-team. Provide the mandate and any context you have gathered so far.";
                                     let system_prompt = if let Some(ref pn) = tm_persona {
                                         spawn_forge.as_ref()
                                             .and_then(|f| myelix_cognitive::assemble(f, pn, "", None, None).ok())
