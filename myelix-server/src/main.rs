@@ -1563,33 +1563,42 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             );
         }
 
-        // Build composite model cards from config + vendor metadata + operator agentic metadata
-        let model_cards: Vec<team_tools::ModelCard> = cfg.models.iter().map(|(name, mcfg)| {
-            // model_name overrides config key as the usable model identifier
-            let display_name = mcfg.model_name.as_deref().unwrap_or(name);
-            let uri_str = mcfg.source.as_deref().unwrap_or(display_name);
+        // Build composite model cards from config + vendor metadata + operator agentic metadata.
+        // If no [models.*] configured, auto-discover from Ollama.
+        let model_keys: Vec<(String, Option<&config::ModelConfig>)> = if cfg.models.is_empty() {
+            ollama_meta.keys().map(|name| (name.clone(), None)).collect()
+        } else {
+            cfg.models.iter().map(|(k, v)| (k.clone(), Some(v))).collect()
+        };
+
+        let model_cards: Vec<team_tools::ModelCard> = model_keys.iter().map(|(name, mcfg_opt)| {
+            let mcfg_ref = mcfg_opt.as_ref();
+            let display_name = mcfg_ref.and_then(|m| m.model_name.as_deref()).unwrap_or(name);
+            let uri_str = mcfg_ref.and_then(|m| m.source.as_deref()).unwrap_or(display_name);
             let mut card = myelix_model_hub::ModelCard::new(uri_str);
 
-            // Populate vendor metadata from config
-            card.vendor.source = Some(if mcfg.source.is_some() {
-                match mcfg.source.as_deref() {
-                    Some(s) if s.starts_with("ollama://") => "ollama",
-                    Some(s) if s.starts_with("hf://") => "huggingface",
-                    Some(s) if s.starts_with("oci://") => "oci",
-                    _ => "local",
+            // Populate vendor metadata from config (if available)
+            if let Some(mcfg) = mcfg_ref {
+                card.vendor.source = Some(if mcfg.source.is_some() {
+                    match mcfg.source.as_deref() {
+                        Some(s) if s.starts_with("ollama://") => "ollama",
+                        Some(s) if s.starts_with("hf://") => "huggingface",
+                        Some(s) if s.starts_with("oci://") => "oci",
+                        _ => "local",
+                    }
+                } else {
+                    "local"
+                }.into());
+                card.vendor.context_window = mcfg.context_size;
+                card.vendor.tasks = match mcfg.task.as_str() {
+                    "chat" | "generate" => vec!["text-generation".into()],
+                    "embedding" => vec!["feature-extraction".into()],
+                    "classification" => vec!["text-classification".into()],
+                    _ => vec![],
+                };
+                if let Some(runtime) = &mcfg.runtime {
+                    card.vendor.runtime = Some(runtime.clone());
                 }
-            } else {
-                "local"
-            }.into());
-            card.vendor.context_window = mcfg.context_size;
-            card.vendor.tasks = match mcfg.task.as_str() {
-                "chat" | "generate" => vec!["text-generation".into()],
-                "embedding" => vec!["feature-extraction".into()],
-                "classification" => vec!["text-classification".into()],
-                _ => vec![],
-            };
-            if let Some(runtime) = &mcfg.runtime {
-                card.vendor.runtime = Some(runtime.clone());
             }
 
             // Enrich with Ollama /api/show metadata if available
@@ -1671,8 +1680,10 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             }
 
             // Merge operator-defined agentic metadata from config
-            if let Some(agentic_cfg) = &mcfg.agentic {
-                card.merge_agentic(&agentic_cfg.to_agentic_meta());
+            if let Some(mcfg) = mcfg_ref {
+                if let Some(agentic_cfg) = &mcfg.agentic {
+                    card.merge_agentic(&agentic_cfg.to_agentic_meta());
+                }
             }
 
             card
@@ -1899,39 +1910,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             .unwrap_or_else(|| "auto".to_string())
                     };
 
-                    // Resolve "auto" — prefer smallest local model for speed
+                    // Resolve "auto" — match model to task requirements
                     if teammate_model == "auto" {
-                        let ollama_ok = reqwest::Client::new()
-                            .get("http://localhost:11434/api/tags")
-                            .send()
-                            .await
-                            .map(|r| r.status().is_success())
-                            .unwrap_or(false);
-                        if ollama_ok {
-                            if let Ok(resp) = reqwest::Client::new()
-                                .get("http://localhost:11434/api/tags")
-                                .send()
-                                .await
-                            {
-                                if let Ok(json) = resp.json::<serde_json::Value>().await {
-                                    if let Some(models) = json["models"].as_array() {
-                                        // Pick the smallest model by file size
-                                        let smallest = models.iter()
-                                            .filter_map(|m| {
-                                                let name = m["name"].as_str()?;
-                                                let size = m["size"].as_u64().unwrap_or(u64::MAX);
-                                                Some((name, size))
-                                            })
-                                            .min_by_key(|(_, size)| *size);
-                                        if let Some((name, _)) = smallest {
-                                            teammate_model = name.to_string();
-                                        }
-                                    }
-                                }
-                            }
-                            if teammate_model == "auto" {
-                                teammate_model = "granite3.3:8b".to_string();
-                            }
+                        if let Some(selected) = team_tools::select_model_for_task(
+                            &bg_reg.model_cards,
+                            tm_persona.as_deref(),
+                            &bg_message,
+                        ) {
+                            teammate_model = selected;
                         } else if std::env::var("ANTHROPIC_API_KEY").is_ok()
                             || std::env::var("ANTHROPIC_VERTEX_PROJECT_ID").is_ok()
                         {
@@ -1939,7 +1925,6 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         } else {
                             teammate_model = "granite3.3:8b".to_string();
                         }
-                        tracing::info!(teammate = %bg_to, model = %teammate_model, "Resolved 'auto' model");
                     }
 
                     eprintln!("  [teammate] {} → model: {}", bg_to, teammate_model);
@@ -2311,10 +2296,10 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     let bg_team_id = team_id.clone();
                     let bg_prompt = prompt.clone();
                     tokio::spawn(async move {
-                        let task_defs = dag_config.tasks;
+                        let mut task_defs = dag_config.tasks;
                         let mut completed: std::collections::HashMap<String, String> = std::collections::HashMap::new();
                         let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
-                        let total = task_defs.len();
+                        let mut total = task_defs.len();
 
                         // Capture blackbox seq before flow starts for summary queries
                         let bb_start_seq = {
@@ -2333,20 +2318,22 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             }).unwrap_or(0)
                         };
 
+                        let max_parallel = budget_cfg.max_parallel;
+
                         loop {
                             // Find ready tasks: dependencies satisfied, not yet completed/failed
-                            let ready: Vec<&myelix_flow::TaskDefinition> = task_defs.iter()
+                            let mut ready: Vec<myelix_flow::TaskDefinition> = task_defs.iter()
                                 .filter(|t| {
                                     !completed.contains_key(&t.id) && !failed.contains(&t.id)
                                     && t.depends_on.iter().all(|dep| completed.contains_key(dep))
                                 })
+                                .cloned()
                                 .collect();
 
                             if ready.is_empty() {
                                 if completed.len() + failed.len() >= total {
                                     break;
                                 }
-                                // Check for deadlock (remaining tasks have unsatisfied deps)
                                 let remaining: Vec<&str> = task_defs.iter()
                                     .filter(|t| !completed.contains_key(&t.id) && !failed.contains(&t.id))
                                     .map(|t| t.id.as_str())
@@ -2359,6 +2346,11 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     return;
                                 }
                                 break;
+                            }
+
+                            // Throttle: limit concurrent tasks
+                            if max_parallel > 0 && ready.len() > max_parallel {
+                                ready.truncate(max_parallel);
                             }
 
                             // Spawn ready tasks as teammates
@@ -2407,6 +2399,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                 let spawn_team_id = bg_team_id.clone();
                                 let spawn_task_id = task.id.clone();
                                 let spawn_message = message.clone();
+                                let spawn_generates_tasks = task.generates_tasks;
                                 let spawn_max_iter = bg_budget_cfg.max_iterations;
                                 let spawn_timeout = bg_budget_cfg.timeout_secs;
                                 let handle = tokio::spawn(async move {
@@ -2471,18 +2464,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 .unwrap_or_else(|| "auto".to_string())
                                         };
                                         if teammate_model == "auto" {
-                                            if let Ok(resp) = reqwest::Client::new().get("http://localhost:11434/api/tags").send().await {
-                                                if let Ok(json) = resp.json::<serde_json::Value>().await {
-                                                    if let Some(models) = json["models"].as_array() {
-                                                        if let Some((name, _)) = models.iter()
-                                                            .filter_map(|m| Some((m["name"].as_str()?, m["size"].as_u64().unwrap_or(u64::MAX))))
-                                                            .min_by_key(|(_, s)| *s) {
-                                                            teammate_model = name.to_string();
-                                                        }
-                                                    }
-                                                }
+                                            if let Some(selected) = team_tools::select_model_for_task(
+                                                &spawn_reg.model_cards,
+                                                tm_persona.as_deref(),
+                                                &spawn_message,
+                                            ) {
+                                                teammate_model = selected;
+                                            } else {
+                                                teammate_model = "granite3.3:8b".to_string();
                                             }
-                                            if teammate_model == "auto" { teammate_model = "granite3.3:8b".to_string(); }
                                         }
                                         eprintln!("  [flow-task] {} → model: {}", spawn_task_id, teammate_model);
 
@@ -2495,7 +2485,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 ))
                                                 .system_prompt(&system_prompt)
                                                 .max_iterations(spawn_max_iter)
-                                                .force_tool_iterations(2)
+                                                .force_tool_iterations(if spawn_generates_tasks { 0 } else { 2 })
                                                 .temperature(0.3)
                                                 .max_tokens(4096)
                                                 .build().await?;
@@ -2565,6 +2555,63 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     bg_team_reg.shutdown(&bg_team_id);
                                     return;
                                 }
+                            }
+
+                            // Dynamic task injection: if any completed task
+                            // has generates_tasks=true, parse its output as
+                            // a task array and inject into the DAG.
+                            for task in &ready {
+                                if !task.generates_tasks { continue; }
+                                let output = match completed.get(&task.id) {
+                                    Some(o) => o.clone(),
+                                    None => continue,
+                                };
+                                let new_tasks = myelix_flow::parse_planner_tasks(&output);
+                                if new_tasks.is_empty() {
+                                    tracing::warn!(
+                                        flow_id = %bg_flow_id, task = %task.id,
+                                        "Planner task has generates_tasks but output has no parseable tasks"
+                                    );
+                                    continue;
+                                }
+                                let new_ids: Vec<String> = new_tasks.iter().map(|t| t.id.clone()).collect();
+                                tracing::info!(
+                                    flow_id = %bg_flow_id,
+                                    planner = %task.id,
+                                    injected = new_ids.len(),
+                                    tasks = ?new_ids,
+                                    "Injecting dynamic tasks from planner"
+                                );
+
+                                // Inject tasks — they depend on the planner
+                                for mut new_task in new_tasks {
+                                    if new_task.depends_on.is_empty() {
+                                        new_task.depends_on.push(task.id.clone());
+                                    }
+                                    // Register as flow node
+                                    bg_flow_reg.update_nodes(&bg_flow_id, vec![
+                                        flow_tools::NodeStatus {
+                                            id: new_task.id.clone(),
+                                            specialist: new_task.specialist.clone(),
+                                            status: "pending".to_string(),
+                                            output: None,
+                                        },
+                                    ]);
+                                    task_defs.push(new_task);
+                                }
+
+                                // Rewrite synthesizer to depend on all injected tasks
+                                for td in task_defs.iter_mut() {
+                                    if td.id == "synthesize" || td.id == "synthesizer" {
+                                        for nid in &new_ids {
+                                            if !td.depends_on.contains(nid) {
+                                                td.depends_on.push(nid.clone());
+                                            }
+                                        }
+                                    }
+                                }
+
+                                total = task_defs.len();
                             }
                         }
 
@@ -2638,22 +2685,24 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     };
                     let context = args.get("context").and_then(|v| v.as_str()).map(String::from);
 
-                    // Extract depth from calling agent's DID (format: did:flow:{team_id}:{name} or did:teammate:{team_id}:{name})
+                    // Extract depth and model from calling agent's team
                     let caller_did = &ctx.agent.name;
-                    let current_depth: u32 = {
-                        // Try to find the team this caller belongs to and get its depth
+                    let (current_depth, caller_model): (u32, Option<String>) = {
                         let teams = team_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
                         let mut depth = 0u32;
+                        let mut model = None;
                         for team in teams.values() {
-                            if team.teammates.contains_key(caller_did)
-                                || team.lead == *caller_did
-                                || caller_did.contains(&team.team_id)
-                            {
+                            if let Some(tm) = team.teammates.get(caller_did) {
+                                depth = team.depth;
+                                model = Some(tm.model.clone());
+                                break;
+                            }
+                            if team.lead == *caller_did || caller_did.contains(&team.team_id) {
                                 depth = team.depth;
                                 break;
                             }
                         }
-                        depth
+                        (depth, model)
                     };
 
                     // Check depth limit from team budget
@@ -2693,7 +2742,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                 Some(m) => m.to_string(),
                                 None => return CallToolResult::error("Each task must have a 'mandate'"),
                             };
-                            let model = t.get("model").and_then(|v| v.as_str()).map(String::from);
+                            let model = t.get("model").and_then(|v| v.as_str()).map(String::from)
+                                .or_else(|| caller_model.clone());
                             let depends_on: Vec<String> = t.get("depends_on")
                                 .and_then(|v| v.as_array())
                                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
@@ -2707,6 +2757,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                 expected_output: None,
                                 success_criteria: Vec::new(),
                                 back_edges: Vec::new(),
+                                generates_tasks: false,
                             });
                         }
                         myelix_flow::DagConfig {
@@ -2932,18 +2983,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                             .unwrap_or_else(|| "auto".to_string())
                                     };
                                     if teammate_model == "auto" {
-                                        if let Ok(resp) = reqwest::Client::new().get("http://localhost:11434/api/tags").send().await {
-                                            if let Ok(json) = resp.json::<serde_json::Value>().await {
-                                                if let Some(models) = json["models"].as_array() {
-                                                    if let Some((name, _)) = models.iter()
-                                                        .filter_map(|m| Some((m["name"].as_str()?, m["size"].as_u64().unwrap_or(u64::MAX))))
-                                                        .min_by_key(|(_, s)| *s) {
-                                                        teammate_model = name.to_string();
-                                                    }
-                                                }
-                                            }
+                                        if let Some(selected) = team_tools::select_model_for_task(
+                                            &spawn_reg.model_cards,
+                                            tm_persona.as_deref(),
+                                            &spawn_message,
+                                        ) {
+                                            teammate_model = selected;
+                                        } else {
+                                            teammate_model = "granite3.3:8b".to_string();
                                         }
-                                        if teammate_model == "auto" { teammate_model = "granite3.3:8b".to_string(); }
                                     }
                                     eprintln!("  [subflow-task] {} (depth {}) → model: {}", spawn_task_id, new_depth, teammate_model);
 

@@ -654,3 +654,126 @@ pub fn personas_list_def() -> ToolDefinition {
         },
     }
 }
+
+/// Determine required model capabilities from task context.
+fn task_requirements(persona: Option<&str>, mandate: &str) -> (bool, bool) {
+    let mandate_lower = mandate.to_lowercase();
+
+    let needs_reasoning = mandate_lower.contains("analyz")
+        || mandate_lower.contains("trace")
+        || mandate_lower.contains("reason")
+        || mandate_lower.contains("synthesiz")
+        || mandate_lower.contains("review")
+        || mandate_lower.contains("assess")
+        || mandate_lower.contains("cross-file")
+        || mandate_lower.contains("cross-cutting")
+        || matches!(persona, Some("analyst" | "synthesizer" | "principal_engineer"
+            | "strategic_advisor" | "devils_advocate"));
+
+    let needs_tools = mandate_lower.contains("read")
+        || mandate_lower.contains("docs_read")
+        || mandate_lower.contains("docs_tree")
+        || mandate_lower.contains("scan")
+        || mandate_lower.contains("search")
+        || mandate_lower.contains("explore")
+        || mandate_lower.contains("review")
+        || mandate_lower.contains("audit");
+
+    (needs_tools, needs_reasoning)
+}
+
+/// Select the best model from available cards for a task.
+///
+/// Matches task requirements (tool use, reasoning) to model
+/// capabilities, preferring local and free models as tiebreakers.
+pub fn select_model_for_task(
+    cards: &[ModelCard],
+    persona: Option<&str>,
+    mandate: &str,
+) -> Option<String> {
+    if cards.is_empty() {
+        return None;
+    }
+
+    let (needs_tools, needs_reasoning) = task_requirements(persona, mandate);
+
+    let mut scored: Vec<(&ModelCard, i32)> = cards.iter().map(|card| {
+        let a = &card.agentic;
+        let mut score: i32 = 0;
+
+        // Use explicit agentic metadata if available
+        let has_agentic = a.tool_use.is_some() || a.reasoning.is_some();
+
+        if has_agentic {
+            if needs_tools {
+                match a.tool_use.as_deref() {
+                    Some("advanced") => score += 10,
+                    Some("basic") => score += 5,
+                    _ => {}
+                }
+            }
+
+            if needs_reasoning {
+                match a.reasoning.as_deref() {
+                    Some("extended") => score += 20,
+                    Some("basic") => score += 5,
+                    _ => {}
+                }
+            } else {
+                match a.speed_tier.as_deref() {
+                    Some("fast") => score += 8,
+                    Some("medium") => score += 4,
+                    _ => {}
+                }
+            }
+        } else {
+            // No agentic metadata — infer from model size.
+            // Larger models generally have better reasoning and tool use.
+            let param_b = card.vendor.parameters.as_deref()
+                .and_then(|p| {
+                    let p = p.to_uppercase();
+                    p.trim_end_matches('B').parse::<f64>().ok()
+                })
+                .unwrap_or(0.0);
+
+            if needs_reasoning || needs_tools {
+                // Prefer larger models for complex tasks
+                if param_b >= 20.0 { score += 20; }
+                else if param_b >= 10.0 { score += 10; }
+                else if param_b >= 5.0 { score += 3; }
+            } else {
+                // Simple task — prefer smaller/faster
+                if param_b <= 10.0 { score += 8; }
+                else if param_b <= 20.0 { score += 4; }
+            }
+        }
+
+        if a.locality.as_deref() == Some("local") {
+            score += 5;
+        }
+
+        match a.cost_tier.as_deref() {
+            Some("free") => score += 3,
+            Some("low") => score += 1,
+            _ => {}
+        }
+
+        (card, score)
+    }).collect();
+
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+    if let Some((best, score)) = scored.first() {
+        tracing::info!(
+            model = %best.model_uri,
+            score = score,
+            needs_tools = needs_tools,
+            needs_reasoning = needs_reasoning,
+            persona = persona.unwrap_or("none"),
+            "Auto-selected model for task"
+        );
+        Some(best.model_uri.clone())
+    } else {
+        None
+    }
+}

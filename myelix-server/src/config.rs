@@ -63,6 +63,10 @@ pub struct BudgetConfig {
     pub timeout_secs: u64,
     #[serde(default = "default_budget_max_iterations")]
     pub max_iterations: usize,
+    /// Maximum tasks running simultaneously (GPU throttling).
+    /// 0 means no limit.
+    #[serde(default = "default_budget_max_parallel")]
+    pub max_parallel: usize,
 }
 
 impl Default for BudgetConfig {
@@ -72,6 +76,7 @@ impl Default for BudgetConfig {
             max_depth: default_budget_max_depth(),
             timeout_secs: default_budget_timeout(),
             max_iterations: default_budget_max_iterations(),
+            max_parallel: default_budget_max_parallel(),
         }
     }
 }
@@ -86,6 +91,10 @@ fn default_budget_max_depth() -> u32 {
 
 fn default_budget_timeout() -> u64 {
     600
+}
+
+fn default_budget_max_parallel() -> usize {
+    4
 }
 
 fn default_budget_max_iterations() -> usize {

@@ -145,6 +145,52 @@ pub struct TaskDefinition {
     /// Conditional back-edges evaluated after task completion.
     #[serde(default)]
     pub back_edges: Vec<BackEdgeDefinition>,
+    /// If true, this task's output is parsed as a JSON array of
+    /// TaskDefinitions and injected into the DAG. The synthesizer
+    /// task automatically depends on all injected tasks.
+    #[serde(default)]
+    pub generates_tasks: bool,
+}
+
+/// Parse a planner's text output into task definitions.
+///
+/// Expects a JSON array in the output (possibly wrapped in markdown
+/// code fences). Each element must have at least `id`, `specialist`,
+/// and `mandate`.
+pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
+    let trimmed = output.trim();
+
+    // Strip markdown code fences if present
+    let json_str = if trimmed.starts_with("```") {
+        let lines: Vec<&str> = trimmed.lines().collect();
+        let start = if lines.first().map_or(false, |l| l.starts_with("```")) { 1 } else { 0 };
+        let end = if lines.last().map_or(false, |l| l.trim() == "```") { lines.len() - 1 } else { lines.len() };
+        lines[start..end].join("\n")
+    } else {
+        trimmed.to_string()
+    };
+
+    // Try to find a JSON array in the text
+    let array_str = if let Some(start) = json_str.find('[') {
+        if let Some(end) = json_str.rfind(']') {
+            &json_str[start..=end]
+        } else {
+            return Vec::new();
+        }
+    } else {
+        return Vec::new();
+    };
+
+    match serde_json::from_str::<Vec<TaskDefinition>>(array_str) {
+        Ok(tasks) => {
+            tracing::info!(count = tasks.len(), "Parsed planner tasks");
+            tasks
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse planner task output as JSON");
+            Vec::new()
+        }
+    }
 }
 
 /// A conditional back-edge that can route execution backward in the DAG.
@@ -187,6 +233,7 @@ pub fn single_task_dag(specialist: &str, mandate: &str) -> DagConfig {
             expected_output: None,
             success_criteria: Vec::new(),
             back_edges: Vec::new(),
+            generates_tasks: false,
         }],
         blackboard_capacity: None,
     }
@@ -228,6 +275,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 expected_output: Some("Complete file list with exact paths from docs_tree".to_string()),
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
+                generates_tasks: false,
             },
             TaskDefinition {
                 id: "planner".to_string(),
@@ -243,11 +291,12 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 expected_output: Some("Task list with exact file paths from scout".to_string()),
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
+                generates_tasks: false,
             },
             TaskDefinition {
                 id: "worker".to_string(),
                 specialist: "analyst".to_string(),
-                model: None,
+                model: Some("gemma4:26b".to_string()),
                 mandate: format!(
                     "Read EACH file listed in the planner's tasks using docs_read \
                      with the exact paths. Analyze for: {mandate}\n\
@@ -257,6 +306,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 expected_output: Some("Detailed analysis results".to_string()),
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
+                generates_tasks: false,
             },
             TaskDefinition {
                 id: "synthesize".to_string(),
@@ -269,6 +319,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 expected_output: Some("Final synthesized report".to_string()),
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
+                generates_tasks: false,
             },
         ],
         blackboard_capacity: None,
