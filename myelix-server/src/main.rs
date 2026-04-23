@@ -1957,6 +1957,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     .model($backend)
                                     .system_prompt(&system_prompt)
                                     .max_iterations(teammate_max_iterations)
+                                    .force_tool_iterations(2)
                                     .temperature(0.3)
                                     .max_tokens(4096)
                                     .build().await?;
@@ -2494,6 +2495,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 ))
                                                 .system_prompt(&system_prompt)
                                                 .max_iterations(spawn_max_iter)
+                                                .force_tool_iterations(2)
                                                 .temperature(0.3)
                                                 .max_tokens(4096)
                                                 .build().await?;
@@ -2954,6 +2956,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                             ))
                                             .system_prompt(&system_prompt)
                                             .max_iterations(spawn_max_iter)
+                                            .force_tool_iterations(2)
                                             .temperature(0.3)
                                             .max_tokens(4096)
                                             .build().await?;
