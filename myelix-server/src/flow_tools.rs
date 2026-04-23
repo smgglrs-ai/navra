@@ -224,6 +224,177 @@ impl FlowRegistry {
     }
 }
 
+/// Build a structured run summary for a completed flow or subflow.
+///
+/// Queries team state for timing/token data and the blackbox sqlite
+/// for tool call counts. Returns a markdown block to append to the
+/// flow's final output.
+pub fn build_run_summary(
+    team_reg: &crate::team_tools::TeamRegistry,
+    team_id: &str,
+    flow_reg: &FlowRegistry,
+    flow_id: &str,
+    task_defs: &[myelix_flow::TaskDefinition],
+    completed: &std::collections::HashMap<String, String>,
+    failed: &std::collections::HashSet<String>,
+    bb_start_seq: i64,
+) -> String {
+    let mut summary = String::from("\n\n---\n## Run Metrics\n");
+
+    // Total elapsed time
+    let elapsed_secs = flow_reg
+        .flows
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(flow_id)
+        .map(|f| f.started_at.elapsed().as_secs_f64())
+        .unwrap_or(0.0);
+    summary.push_str(&format!("- Total time: {:.1}s\n", elapsed_secs));
+
+    // Agent and token counts from team
+    let teams = team_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+    let (agent_count, tokens_used, depth, budget) = if let Some(team) = teams.get(team_id) {
+        let count = team.teammates.len();
+        let tokens = team.tokens_used.load(std::sync::atomic::Ordering::Relaxed);
+        (count, tokens, team.depth, team.budget.clone())
+    } else {
+        (0, 0, 0, crate::team_tools::TeamBudget::default())
+    };
+
+    // Count subflow agents (flows parented to this flow)
+    let flows = flow_reg.flows.lock().unwrap_or_else(|e| e.into_inner());
+    let subflow_count = flows
+        .values()
+        .filter(|f| f.parent_flow_id.as_deref() == Some(flow_id))
+        .count();
+    drop(flows);
+
+    let flow_agents = task_defs.len();
+    if subflow_count > 0 {
+        summary.push_str(&format!(
+            "- Agents spawned: {} ({} flow + {} subflow)\n",
+            agent_count, flow_agents, agent_count.saturating_sub(flow_agents)
+        ));
+    } else {
+        summary.push_str(&format!("- Agents spawned: {}\n", agent_count));
+    }
+    summary.push_str(&format!("- Total tokens: {}\n", tokens_used));
+
+    // Query blackbox for tool call stats
+    let bb_path = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("mcpd/blackbox.db");
+    let (total_tool_calls, files_read, tool_breakdown) = if let Ok(db) =
+        rusqlite::Connection::open_with_flags(&bb_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    {
+        let total: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM blackbox WHERE seq > ?1",
+                [bb_start_seq],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let files: i64 = db
+            .query_row(
+                "SELECT COUNT(DISTINCT tool_args) FROM blackbox WHERE seq > ?1 AND tool_name = 'docs_read'",
+                [bb_start_seq],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let mut breakdown: Vec<(String, i64)> = Vec::new();
+        if let Ok(mut stmt) = db.prepare(
+            "SELECT tool_name, COUNT(*) as cnt FROM blackbox WHERE seq > ?1 GROUP BY tool_name ORDER BY cnt DESC",
+        ) {
+            if let Ok(rows) = stmt.query_map([bb_start_seq], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            }) {
+                for row in rows.flatten() {
+                    breakdown.push(row);
+                }
+            }
+        }
+
+        (total, files, breakdown)
+    } else {
+        (0, 0, Vec::new())
+    };
+
+    if files_read > 0 {
+        summary.push_str(&format!("- Files read: {} (via docs_read)\n", files_read));
+    }
+    summary.push_str(&format!("- Tool calls: {}\n", total_tool_calls));
+
+    // Budget usage
+    summary.push_str(&format!(
+        "- Budget: {}/{} agents, depth {}/{}\n",
+        agent_count, budget.max_agents, depth, budget.max_depth
+    ));
+
+    // Escalations
+    let flows = flow_reg.flows.lock().unwrap_or_else(|e| e.into_inner());
+    let escalations: Vec<_> = flows
+        .values()
+        .filter(|f| f.parent_flow_id.as_deref() == Some(flow_id))
+        .map(|f| (f.name.clone(), f.depth))
+        .collect();
+    drop(flows);
+
+    if !escalations.is_empty() {
+        let esc_list: Vec<String> = escalations
+            .iter()
+            .map(|(name, d)| format!("{} at depth {}", name, d))
+            .collect();
+        summary.push_str(&format!(
+            "- Escalations: {} ({})\n",
+            escalations.len(),
+            esc_list.join(", ")
+        ));
+    }
+
+    // Per-stage timing table
+    summary.push_str("\n### Per-stage timing\n");
+    summary.push_str("| Stage | Model | Time | Tokens | Status |\n");
+    summary.push_str("|-------|-------|------|--------|--------|\n");
+
+    // Collect per-teammate data from team
+    if let Some(team) = teams.get(team_id) {
+        for task_def in task_defs {
+            let status = if completed.contains_key(&task_def.id) {
+                "done"
+            } else if failed.contains(&task_def.id) {
+                "failed"
+            } else {
+                "pending"
+            };
+
+            let (model, time_str) = if let Some(tm) = team.teammates.get(&task_def.id) {
+                let elapsed = tm.created_at.elapsed().as_secs_f64();
+                (tm.model.as_str(), format!("{:.1}s", elapsed))
+            } else {
+                ("?", "-".to_string())
+            };
+
+            summary.push_str(&format!(
+                "| {} | {} | {} | - | {} |\n",
+                task_def.id, model, time_str, status
+            ));
+        }
+    }
+    drop(teams);
+
+    // Tool breakdown
+    if !tool_breakdown.is_empty() {
+        summary.push_str("\n### Tool usage\n");
+        for (tool, count) in &tool_breakdown {
+            summary.push_str(&format!("- {}: {}\n", tool, count));
+        }
+    }
+
+    summary
+}
+
 // --- Tool definitions ---
 
 pub fn flow_start_tool_def() -> ToolDefinition {

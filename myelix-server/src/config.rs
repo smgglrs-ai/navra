@@ -35,6 +35,61 @@ pub struct Config {
     /// mcpd's own modules and connected upstream servers.
     #[serde(default)]
     pub registry: Vec<RegistryEntry>,
+    /// Default resource budget for teams and flows.
+    #[serde(default)]
+    pub budget: BudgetConfig,
+}
+
+/// Default resource budget for teams and flows.
+///
+/// Configured in `[budget]` and used as defaults when creating teams
+/// (team_create) and flows (flow_start). Individual calls can override
+/// these values via their own parameters.
+///
+/// ```toml
+/// [budget]
+/// max_agents = 30
+/// max_depth = 3
+/// timeout_secs = 600
+/// max_iterations = 50
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct BudgetConfig {
+    #[serde(default = "default_budget_max_agents")]
+    pub max_agents: u32,
+    #[serde(default = "default_budget_max_depth")]
+    pub max_depth: u32,
+    #[serde(default = "default_budget_timeout")]
+    pub timeout_secs: u64,
+    #[serde(default = "default_budget_max_iterations")]
+    pub max_iterations: usize,
+}
+
+impl Default for BudgetConfig {
+    fn default() -> Self {
+        Self {
+            max_agents: default_budget_max_agents(),
+            max_depth: default_budget_max_depth(),
+            timeout_secs: default_budget_timeout(),
+            max_iterations: default_budget_max_iterations(),
+        }
+    }
+}
+
+fn default_budget_max_agents() -> u32 {
+    30
+}
+
+fn default_budget_max_depth() -> u32 {
+    3
+}
+
+fn default_budget_timeout() -> u64 {
+    600
+}
+
+fn default_budget_max_iterations() -> usize {
+    50
 }
 
 /// Configuration for a model.
@@ -665,6 +720,7 @@ impl Default for Config {
             flow_dirs: Vec::new(),
             discover: Vec::new(),
             registry: Vec::new(),
+            budget: BudgetConfig::default(),
         }
     }
 }

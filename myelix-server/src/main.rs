@@ -1682,17 +1682,19 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
         // team_create
         let reg = Arc::clone(&team_registry);
+        let tc_budget_cfg = cfg.budget.clone();
         builder = builder.tool(team_tools::team_create_def(), move |args, ctx| {
             let reg = Arc::clone(&reg);
+            let budget_cfg = tc_budget_cfg.clone();
             Box::pin(async move {
                 let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
                 let desc = args.get("description").and_then(|v| v.as_str());
                 let budget = team_tools::TeamBudget {
-                    max_depth: args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(2) as u32,
-                    max_agents: args.get("max_agents").and_then(|v| v.as_u64()).unwrap_or(10) as u32,
+                    max_depth: args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_depth as u64) as u32,
+                    max_agents: args.get("max_agents").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_agents as u64) as u32,
                     max_tokens: args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(500_000),
-                    timeout_secs: args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(600),
-                    max_iterations: args.get("max_iterations").and_then(|v| v.as_u64()).unwrap_or(50) as usize,
+                    timeout_secs: args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.timeout_secs),
+                    max_iterations: args.get("max_iterations").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_iterations as u64) as usize,
                 };
                 match reg.create_team(name, desc, &ctx.agent.name, 0, budget) {
                     Ok(team_id) => {
@@ -2191,6 +2193,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let fs_flow_dirs = resolved_flow_dirs.clone();
         let fs_mcpd_addr = cfg.server.listen_addr();
         let fs_signer = Arc::clone(&root_signer);
+        let fs_budget_cfg = cfg.budget.clone();
         let fs_forge: Option<Arc<myelix_cognitive::ForgeService>> = cfg.cognitive_core.as_ref().and_then(|p| {
             let expanded = expand_tilde(p);
             myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded)).ok().map(Arc::new)
@@ -2204,6 +2207,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 let mcpd_addr = fs_mcpd_addr.clone();
                 let signer = Arc::clone(&fs_signer);
                 let forge = fs_forge.clone();
+                let budget_cfg = fs_budget_cfg.clone();
                 Box::pin(async move {
                     use myelix_core::protocol::CallToolResult;
 
@@ -2277,9 +2281,10 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
                     // Create a team for this flow
                     let team_budget = team_tools::TeamBudget {
-                        max_agents: dag_config.tasks.len() as u32 + 2,
-                        max_iterations: 50,
-                        timeout_secs: 1200,
+                        max_agents: budget_cfg.max_agents.max(dag_config.tasks.len() as u32 + 2),
+                        max_depth: budget_cfg.max_depth,
+                        max_iterations: budget_cfg.max_iterations,
+                        timeout_secs: budget_cfg.timeout_secs.max(600),
                         ..Default::default()
                     };
                     let team_id = match team_reg.create_team(
@@ -2299,6 +2304,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     let bg_team_reg = Arc::clone(&team_reg);
                     let bg_signer = Arc::clone(&signer);
                     let bg_forge = forge.clone();
+                    let bg_budget_cfg = budget_cfg.clone();
                     let bg_mcpd_addr = mcpd_addr.clone();
                     let bg_flow_id = flow_id.clone();
                     let bg_team_id = team_id.clone();
@@ -2308,6 +2314,23 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         let mut completed: std::collections::HashMap<String, String> = std::collections::HashMap::new();
                         let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
                         let total = task_defs.len();
+
+                        // Capture blackbox seq before flow starts for summary queries
+                        let bb_start_seq = {
+                            let bb_path = dirs::data_dir()
+                                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                                .join("mcpd/blackbox.db");
+                            rusqlite::Connection::open_with_flags(
+                                &bb_path,
+                                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+                            ).ok().and_then(|db| {
+                                db.query_row(
+                                    "SELECT COALESCE(MAX(seq), 0) FROM blackbox",
+                                    [],
+                                    |row| row.get::<_, i64>(0),
+                                ).ok()
+                            }).unwrap_or(0)
+                        };
 
                         loop {
                             // Find ready tasks: dependencies satisfied, not yet completed/failed
@@ -2383,8 +2406,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                 let spawn_team_id = bg_team_id.clone();
                                 let spawn_task_id = task.id.clone();
                                 let spawn_message = message.clone();
-                                let spawn_max_iter = 50usize;
-                                let spawn_timeout = 600u64;
+                                let spawn_max_iter = bg_budget_cfg.max_iterations;
+                                let spawn_timeout = bg_budget_cfg.timeout_secs;
                                 let handle = tokio::spawn(async move {
                                     let deadline = std::time::Duration::from_secs(spawn_timeout);
                                     let timeout_reg = spawn_reg.clone();
@@ -2545,21 +2568,28 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
                         // Flow complete — find the last task's output as the final result
                         let last_task_id = task_defs.last().map(|t| t.id.as_str()).unwrap_or("");
-                        let final_output = completed.get(last_task_id)
+                        let mut final_output = completed.get(last_task_id)
                             .cloned()
                             .unwrap_or_else(|| {
                                 format!("Flow completed. {} tasks done, {} failed.",
                                     completed.len(), failed.len())
                             });
 
-                        if failed.is_empty() {
-                            bg_flow_reg.complete(&bg_flow_id, final_output);
-                        } else {
-                            bg_flow_reg.complete(&bg_flow_id, format!(
-                                "{final_output}\n\n[Warning: {} of {} tasks failed: {:?}]",
+                        if !failed.is_empty() {
+                            final_output.push_str(&format!(
+                                "\n\n[Warning: {} of {} tasks failed: {:?}]",
                                 failed.len(), total, failed
                             ));
                         }
+
+                        // Build run summary
+                        let summary = flow_tools::build_run_summary(
+                            &bg_team_reg, &bg_team_id, &bg_flow_reg, &bg_flow_id,
+                            &task_defs, &completed, &failed, bb_start_seq,
+                        );
+                        final_output.push_str(&summary);
+
+                        bg_flow_reg.complete(&bg_flow_id, final_output);
                         bg_team_reg.shutdown(&bg_team_id);
                         tracing::info!(
                             flow_id = %bg_flow_id,
@@ -2583,6 +2613,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let fe_team_registry = Arc::clone(&team_registry);
         let fe_mcpd_addr = cfg.server.listen_addr();
         let fe_signer = Arc::clone(&root_signer);
+        let fe_budget_cfg = cfg.budget.clone();
         let fe_forge: Option<Arc<myelix_cognitive::ForgeService>> = cfg.cognitive_core.as_ref().and_then(|p| {
             let expanded = expand_tilde(p);
             myelix_cognitive::ForgeService::load(std::path::Path::new(&expanded)).ok().map(Arc::new)
@@ -2594,6 +2625,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 let team_reg = Arc::clone(&fe_team_registry);
                 let mcpd_addr = fe_mcpd_addr.clone();
                 let signer = Arc::clone(&fe_signer);
+                let budget_cfg = fe_budget_cfg.clone();
                 let forge = fe_forge.clone();
                 Box::pin(async move {
                     use myelix_core::protocol::CallToolResult;
@@ -2717,9 +2749,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     // Create a sub-team for this subflow
                     let team_budget = team_tools::TeamBudget {
                         max_depth,
-                        max_agents: dag_config.tasks.len() as u32 + 2,
-                        max_iterations: 50,
-                        timeout_secs: 900,
+                        max_agents: budget_cfg.max_agents.max(dag_config.tasks.len() as u32 + 2),
+                        max_iterations: budget_cfg.max_iterations,
+                        timeout_secs: budget_cfg.timeout_secs.max(600),
                         ..Default::default()
                     };
                     let team_id = match team_reg.create_team(
@@ -2748,6 +2780,23 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     let mut completed: std::collections::HashMap<String, String> = std::collections::HashMap::new();
                     let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
                     let total = task_defs.len();
+
+                    // Capture blackbox seq before subflow starts
+                    let bb_start_seq = {
+                        let bb_path = dirs::data_dir()
+                            .unwrap_or_else(|| std::path::PathBuf::from("."))
+                            .join("mcpd/blackbox.db");
+                        rusqlite::Connection::open_with_flags(
+                            &bb_path,
+                            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+                        ).ok().and_then(|db| {
+                            db.query_row(
+                                "SELECT COALESCE(MAX(seq), 0) FROM blackbox",
+                                [],
+                                |row| row.get::<_, i64>(0),
+                            ).ok()
+                        }).unwrap_or(0)
+                    };
 
                     loop {
                         let ready: Vec<&myelix_flow::TaskDefinition> = task_defs.iter()
@@ -2817,8 +2866,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             let spawn_team_id = team_id.clone();
                             let spawn_task_id = task.id.clone();
                             let spawn_message = message.clone();
-                            let spawn_max_iter = 50usize;
-                            let spawn_timeout = 600u64;
+                            let spawn_max_iter = budget_cfg.max_iterations;
+                            let spawn_timeout = budget_cfg.timeout_secs;
                             let handle = tokio::spawn(async move {
                                 let deadline = std::time::Duration::from_secs(spawn_timeout);
                                 let timeout_reg = spawn_reg.clone();
@@ -2979,36 +3028,34 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
                     // Subflow complete — return the last task's output
                     let last_task_id = task_defs.last().map(|t| t.id.as_str()).unwrap_or("");
-                    let final_output = completed.get(last_task_id)
+                    let mut final_output = completed.get(last_task_id)
                         .cloned()
                         .unwrap_or_else(|| {
                             format!("Subflow completed. {} tasks done, {} failed.",
                                 completed.len(), failed.len())
                         });
 
-                    if failed.is_empty() {
-                        flow_reg.complete(&flow_id, final_output.clone());
-                    } else {
-                        let output_with_warning = format!(
-                            "{final_output}\n\n[Warning: {} of {} tasks failed: {:?}]",
+                    if !failed.is_empty() {
+                        final_output.push_str(&format!(
+                            "\n\n[Warning: {} of {} tasks failed: {:?}]",
                             failed.len(), total, failed
-                        );
-                        flow_reg.complete(&flow_id, output_with_warning.clone());
-                        team_reg.shutdown(&team_id);
-                        tracing::info!(
-                            flow_id = %flow_id,
-                            completed = completed.len(),
-                            failed_count = failed.len(),
-                            "Subflow finished with failures"
-                        );
-                        return CallToolResult::text(output_with_warning);
+                        ));
                     }
 
+                    // Build run summary
+                    let summary = flow_tools::build_run_summary(
+                        &team_reg, &team_id, &flow_reg, &flow_id,
+                        &task_defs, &completed, &failed, bb_start_seq,
+                    );
+                    final_output.push_str(&summary);
+
+                    flow_reg.complete(&flow_id, final_output.clone());
                     team_reg.shutdown(&team_id);
                     tracing::info!(
                         flow_id = %flow_id,
                         completed = completed.len(),
-                        "Subflow execution finished successfully"
+                        failed_count = failed.len(),
+                        "Subflow execution finished"
                     );
                     CallToolResult::text(final_output)
                 })
