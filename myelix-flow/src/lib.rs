@@ -41,8 +41,9 @@ pub use blackboard::{Blackboard, BlackboardEntry};
 pub use builder::FlowBuilder;
 pub use dag::DependencyGraph;
 pub use definition::{
-    generic_flow_dag, single_task_dag, BackEdgeDefinition, DagConfig, DagDefinition,
-    EdgeDefinition, FlowConfig, FlowDefinition, NodeDefinition, ParameterDef, TaskDefinition,
+    generic_flow_dag, parse_planner_tasks, single_task_dag, BackEdgeDefinition, DagConfig,
+    DagDefinition, EdgeDefinition, FlowConfig, FlowDefinition, NodeDefinition, ParameterDef,
+    TaskDefinition,
 };
 pub use engine::{Flow, FlowNode, FlowResult};
 pub use error::FlowError;
