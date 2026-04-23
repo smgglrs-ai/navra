@@ -22,46 +22,56 @@ tasks:
     model: granite3.3:8b
     mandate: |
       Explore the project at {{ target_dir }} using docs_tree.
-      Start with max_depth={{ depth }} for an overview, then drill
-      into key directories (src/, cmd/, internal/, pkg/, config/).
-      Return a structured summary: languages used, subprojects,
-      key source files, config files, entry points, and anything
-      that looks security-relevant (auth, secrets, API endpoints).
-      Be concise — this summary feeds the planning stage.
-    expected_output: Structured project summary with security-relevant highlights
+      Return a structured list of ALL source files with their
+      exact relative paths as shown by docs_tree. Group them by
+      security relevance:
+
+      1. HIGH RISK: auth, secrets, config, API handlers, crypto
+      2. MEDIUM RISK: data processing, middleware, validation
+      3. LOW RISK: tests, docs, utilities
+
+      Include the exact path for each file (e.g. "src/handler.rs").
+      The planner will use these paths verbatim — do not abbreviate.
+    expected_output: Categorized file list with exact relative paths
     success_criteria:
-      - Lists at least 3 key source files
-      - Identifies the primary language
-      - Notes any config or secrets files
+      - Lists ALL source files with exact paths from docs_tree
+      - Categorizes by security risk level
 
   - id: planner
     specialist: analyst
     model: gemma4:26b
     mandate: |
-      Based on the project summary from the scout, design a
-      targeted security review plan. For each review task specify:
+      Design a targeted security review plan using ONLY the file
+      paths listed in the scout output above. Do NOT invent paths.
+
+      For each review task specify:
       - Task ID (short, descriptive)
-      - Files to review together (group related files)
+      - Exact file paths to review (copy from the scout output)
       - What to look for (specific vulnerability classes)
       - Persona to assign
       - Model to use (granite3.3:8b for file reading, gemma4:26b
-        for complex reasoning like auth flow tracing)
-      Keep the plan to 3-4 tasks maximum. Prioritize by risk.
+        for cross-file reasoning like auth flow tracing)
+
+      Group files that should be reviewed together (e.g. API
+      handler + its auth middleware). Keep to 3-4 tasks max.
     depends_on: [scout]
-    expected_output: Structured review plan with 3-4 tasks
+    expected_output: Structured review plan with exact file paths from scout
     success_criteria:
-      - Each task specifies files and vulnerability focus
-      - Model selection is justified
+      - Every file path exists in the scout output
+      - Each task specifies vulnerability focus
 
   - id: credential_scan
     specialist: security_sentinel
     model: granite3.3:8b
     mandate: |
-      Read the config and secrets files identified by the planner.
-      Search for: hardcoded credentials, API keys, connection
-      strings, encryption keys, tokens. Use docs_read and docs_grep.
-      Report exact file paths, line numbers, and what was found.
-      Publish findings to the blackboard via team_bb_publish.
+      Read EACH file listed in the planner's credential/secrets task
+      using docs_read with the exact paths from the plan. For each
+      file, search for: hardcoded credentials, API keys, connection
+      strings, encryption keys, tokens.
+
+      You MUST call docs_read for every file. Do not guess what files
+      contain — read them. Report exact file paths, line numbers, and
+      the actual code snippet containing the issue.
     depends_on: [planner]
     expected_output: List of credential exposure findings with file paths and line numbers
 
@@ -69,17 +79,17 @@ tasks:
     specialist: security_sentinel
     model: gemma4:26b
     mandate: |
-      Review the source files identified by the planner for:
-      SQL injection, command injection, XSS, IDOR, missing auth,
-      broken access control, insecure deserialization.
-      Read the actual source code with docs_read. Trace data flow
-      from input to sensitive operations. Report specific line
-      numbers and CWE codes. Publish to the blackboard.
+      Read EACH source file listed in the planner's code review
+      task using docs_read with the exact paths from the plan.
+      For each file, look for: SQL injection, command injection,
+      XSS, IDOR, missing auth, broken access control.
 
-      IMPORTANT: If the planner identified more than 5 files to review,
-      call flow_escalate to spawn a sub-team. Pass the file list and
-      vulnerability focus areas as the mandate. This lets multiple
-      specialists review files in parallel.
+      You MUST call docs_read for every file. Trace data flow from
+      input to sensitive operations. Report specific file paths,
+      line numbers, CWE codes, and the actual vulnerable code.
+
+      If the planner identified more than 5 files, call flow_escalate
+      to spawn a sub-team for parallel review.
     depends_on: [planner]
     expected_output: List of code-level vulnerabilities with CWEs, line numbers, and evidence
 
@@ -95,5 +105,11 @@ tasks:
       4. Medium/Low findings
       5. Remediation roadmap (prioritized table)
       Include confidence scores per finding.
+
+      IMPORTANT: Only include findings that cite actual code from
+      docs_read output. Discard any finding that references a file
+      path not present in the scout's file list — those are
+      hallucinated. Mark findings with code evidence as HIGH
+      confidence and those without as LOW.
     depends_on: [credential_scan, code_review]
-    expected_output: Professional security audit report with severity ratings and remediation steps
+    expected_output: Professional security audit report with only verified findings
