@@ -1942,7 +1942,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     .model($backend)
                                     .system_prompt(&system_prompt)
                                     .max_iterations(teammate_max_iterations)
-                                    .force_tool_iterations(2)
+                                    .force_tool_iterations(1)
                                     .temperature(0.3)
                                     .max_tokens(4096)
                                     .build().await?;
@@ -2485,7 +2485,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 ))
                                                 .system_prompt(&system_prompt)
                                                 .max_iterations(spawn_max_iter)
-                                                .force_tool_iterations(if spawn_generates_tasks { 0 } else { 2 })
+                                                .force_tool_iterations(if spawn_generates_tasks { 0 } else { 1 })
                                                 .temperature(0.3)
                                                 .max_tokens(4096)
                                                 .build().await?;
@@ -3004,7 +3004,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                             ))
                                             .system_prompt(&system_prompt)
                                             .max_iterations(spawn_max_iter)
-                                            .force_tool_iterations(2)
+                                            .force_tool_iterations(1)
                                             .temperature(0.3)
                                             .max_tokens(4096)
                                             .build().await?;
@@ -3927,6 +3927,24 @@ async fn run_agent(
     }
 
     Ok(())
+}
+
+/// Check if a model name indicates a large model (≥20B parameters).
+/// Large models follow tool-calling instructions naturally and don't
+/// need force_tool_iterations — which actually hurts them by wasting
+/// iterations on exploration instead of targeted docs_read calls.
+fn is_large_model(model_name: &str) -> bool {
+    let name = model_name.to_lowercase();
+    // Match patterns like "26b", "35b", "70b", "gemma4:26b", "qwen3.6:35b-a3b"
+    for segment in name.split(&[':', '-', '_'][..]) {
+        if let Some(num_str) = segment.strip_suffix('b') {
+            if let Ok(size) = num_str.parse::<f64>() {
+                return size >= 20.0;
+            }
+        }
+    }
+    // Claude models are always large
+    name.contains("claude") || name.contains("opus") || name.contains("sonnet")
 }
 
 pub(crate) fn expand_tilde(path: &str) -> String {
