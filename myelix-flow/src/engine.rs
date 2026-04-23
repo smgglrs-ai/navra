@@ -123,6 +123,7 @@ impl Flow {
                 .model(model)
                 .max_iterations(node_def.max_iterations)
                 .build()
+                .await
                 .map_err(|e| FlowError::Agent {
                     node: node_def.id.clone(),
                     source: e,
@@ -599,6 +600,7 @@ mod tests {
             .upstream(upstream)
             .model(model)
             .build()
+            .await
             .unwrap()
     }
 
@@ -704,6 +706,7 @@ mod tests {
             .upstream(upstream)
             .model(model)
             .build()
+            .await
             .unwrap()
     }
 

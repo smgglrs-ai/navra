@@ -13,6 +13,7 @@ pub struct HttpTransport {
     url: String,
     client: reqwest::Client,
     session_id: Option<String>,
+    auth_token: Option<String>,
 }
 
 impl HttpTransport {
@@ -25,7 +26,14 @@ impl HttpTransport {
             url: url.to_string(),
             client: reqwest::Client::new(),
             session_id: None,
+            auth_token: None,
         }
+    }
+
+    /// Set an authentication token (sent as `Authorization: Bearer <token>`).
+    pub fn with_auth(mut self, token: impl Into<String>) -> Self {
+        self.auth_token = Some(token.into());
+        self
     }
 }
 
@@ -44,6 +52,11 @@ impl Transport for HttpTransport {
         // Include session header if we have one (from a previous initialize)
         if let Some(ref sid) = self.session_id {
             req = req.header("mcp-session-id", sid);
+        }
+
+        // Include auth token if set
+        if let Some(ref token) = self.auth_token {
+            req = req.header("authorization", format!("Bearer {token}"));
         }
 
         let resp = req.send().await.map_err(|e| UpstreamError::Protocol {

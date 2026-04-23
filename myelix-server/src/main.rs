@@ -428,9 +428,23 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             builder = builder.authenticator(blake3_auth);
         }
     } else {
+        // No agents configured, but flow tasks and teammates use capability
+        // tokens minted by the server. Register CapabilityAuthenticator so
+        // those tokens are verified (with proper DID identity), falling back
+        // to anonymous for external clients.
+        let cap_auth = myelix_core::auth::chain::CapabilityAuthenticator::new(
+            Box::new(Arc::clone(&root_signer)),
+        );
+        let no_auth = myelix_core::auth::NoAuthenticator {
+            default_identity: AgentIdentity::new("anonymous", "readonly"),
+        };
+        let chain = myelix_core::auth::chain::ChainAuthenticator::new()
+            .add(cap_auth)
+            .add(no_auth);
+        builder = builder.authenticator(chain);
         tracing::warn!(
-            "No agents configured — server accepts unauthenticated requests. \
-             Add [[agents]] sections to config.toml to enable authentication."
+            "No agents configured — external requests accepted as anonymous. \
+             Flow tasks and teammates authenticate via capability tokens."
         );
     }
 
@@ -1943,7 +1957,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     .max_iterations(teammate_max_iterations)
                                     .temperature(0.3)
                                     .max_tokens(4096)
-                                    .build()?;
+                                    .build().await?;
                                 agent.run(&bg_message).await
                             };
                             r.await
@@ -2459,7 +2473,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 .max_iterations(spawn_max_iter)
                                                 .temperature(0.3)
                                                 .max_tokens(4096)
-                                                .build()?;
+                                                .build().await?;
                                             agent.run(&spawn_message).await
                                         }.await;
 
@@ -2893,7 +2907,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                             .max_iterations(spawn_max_iter)
                                             .temperature(0.3)
                                             .max_tokens(4096)
-                                            .build()?;
+                                            .build().await?;
                                         agent.run(&spawn_message).await
                                     }.await;
 
@@ -3785,7 +3799,7 @@ async fn run_agent(
         }
     }
 
-    let mut agent = builder.build()?;
+    let mut agent = builder.build().await?;
 
     // List tools
     let tools = agent.client().list_tools().await?;
