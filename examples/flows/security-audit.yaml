@@ -75,6 +75,11 @@ tasks:
       Read the actual source code with docs_read. Trace data flow
       from input to sensitive operations. Report specific line
       numbers and CWE codes. Publish to the blackboard.
+
+      IMPORTANT: If the planner identified more than 5 files to review,
+      call flow_escalate to spawn a sub-team. Pass the file list and
+      vulnerability focus areas as the mandate. This lets multiple
+      specialists review files in parallel.
     depends_on: [planner]
     expected_output: List of code-level vulnerabilities with CWEs, line numbers, and evidence
 
