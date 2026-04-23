@@ -371,12 +371,15 @@ async fn memory_store_and_query_roundtrip() {
     let client = reqwest::Client::new();
     let session_id = init_session(&client, &url).await;
 
-    // Store a fact
+    // Store a fact with a unique marker to avoid FTS5 collisions
+    // with entries from other test/demo runs sharing the same knowledge.db.
+    // Use hex (no hyphens) since FTS5 tokenizes at hyphens.
+    let marker = uuid::Uuid::new_v4().simple().to_string();
     let json = call_tool(&client, &url, &session_id, "memory_store", serde_json::json!({
         "kind": "fact",
-        "title": "Rust workspace has 17 crates",
-        "content": "The mcpd project is organized as a Rust workspace with 17 crates covering protocol, model, security, cognitive, memory, and server layers.",
-        "tags": ["architecture", "rust"]
+        "title": format!("roundtrip{marker}"),
+        "content": format!("Unique test content for roundtrip verification {marker}"),
+        "tags": ["e2e-roundtrip"]
     }), 10).await;
 
     let result_text = json["result"]["content"][0]["text"].as_str()
@@ -385,9 +388,9 @@ async fn memory_store_and_query_roundtrip() {
     assert_eq!(stored["status"], "stored");
     let entry_id = stored["id"].as_str().unwrap().to_string();
 
-    // Query it back
+    // Query it back using the unique marker
     let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
-        "query": "Rust workspace crates"
+        "query": marker
     }), 11).await;
 
     let result_text = json["result"]["content"][0]["text"].as_str()
@@ -395,6 +398,11 @@ async fn memory_store_and_query_roundtrip() {
     let results: Vec<serde_json::Value> = serde_json::from_str(result_text).unwrap();
     assert!(!results.is_empty(), "query should return the stored entry");
     assert!(results.iter().any(|r| r["id"] == entry_id));
+
+    // Clean up
+    call_tool(&client, &url, &session_id, "memory_forget", serde_json::json!({
+        "id": entry_id
+    }), 12).await;
 
     child.kill().await.ok();
 }
