@@ -111,6 +111,12 @@ impl Upstream {
         Self::connect(name, transport).await
     }
 
+    /// Connect via HTTP with an authentication token and initialize.
+    pub async fn http_with_auth(name: &str, url: &str, token: &str) -> Result<Self, UpstreamError> {
+        let transport = http::HttpTransport::new(name, url).with_auth(token);
+        Self::connect(name, transport).await
+    }
+
     /// Connect via SSE and initialize.
     pub async fn sse(name: &str, url: &str) -> Result<Self, UpstreamError> {
         let transport = sse::SseTransport::new(name, url);

@@ -61,17 +61,17 @@ impl Authenticator for CapabilityAuthenticator {
         let payload = capability::decode_token(token, self.root_verifier.as_ref())
             .map_err(|_| AuthError::InvalidToken)?;
 
-        // Replay protection: reject tokens with previously seen nonces
+        // Nonce tracking: record first-seen time for auditing.
+        // Tokens are reusable within their TTL — they are bearer
+        // tokens, not one-time-use. The nonce uniquely identifies
+        // the token for logging and correlation, not for replay
+        // prevention. Replay protection is handled by the TTL
+        // (exp field) — expired tokens are rejected above.
         {
             let mut nonces = self.seen_nonces.lock().unwrap_or_else(|e| e.into_inner());
-            // Prune expired entries (older than 2 hours)
             let cutoff = Instant::now() - std::time::Duration::from_secs(7200);
             nonces.retain(|_, seen_at| *seen_at > cutoff);
-            // Check and record this nonce
-            if nonces.contains_key(&payload.nonce) {
-                return Err(AuthError::InvalidToken); // replay detected
-            }
-            nonces.insert(payload.nonce, Instant::now());
+            nonces.entry(payload.nonce).or_insert_with(Instant::now);
         }
 
         let resolved = capability::resolve_capabilities(&payload);

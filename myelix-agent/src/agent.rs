@@ -58,6 +58,7 @@ impl Agent {
 /// Builder for constructing an [`Agent`].
 pub struct AgentBuilder {
     upstream: Option<Upstream>,
+    endpoint_url: Option<String>,
     auth_token: Option<String>,
     model: Option<Box<dyn ModelBackend>>,
     signer: Option<Arc<dyn CapSigner>>,
@@ -68,6 +69,7 @@ impl AgentBuilder {
     fn new() -> Self {
         Self {
             upstream: None,
+            endpoint_url: None,
             auth_token: None,
             model: None,
             signer: None,
@@ -75,9 +77,10 @@ impl AgentBuilder {
         }
     }
 
-    /// Connect to an MCP server via HTTP (streamable-http transport).
+    /// Set the MCP server endpoint URL (HTTP streamable-http transport).
+    /// Connection is deferred to `build()` so auth tokens are included.
     pub async fn endpoint(mut self, url: &str) -> Result<Self, AgentError> {
-        self.upstream = Some(Upstream::http("agent", url).await?);
+        self.endpoint_url = Some(url.to_string());
         Ok(self)
     }
 
@@ -233,18 +236,24 @@ impl AgentBuilder {
     }
 
     /// Build the agent. Requires endpoint and model to be set.
-    pub fn build(self) -> Result<Agent, AgentError> {
-        let upstream = self
-            .upstream
-            .ok_or_else(|| AgentError::Config("endpoint not set".into()))?;
+    pub async fn build(self) -> Result<Agent, AgentError> {
+        let upstream = if let Some(upstream) = self.upstream {
+            upstream
+        } else if let Some(ref url) = self.endpoint_url {
+            if let Some(ref token) = self.auth_token {
+                Upstream::http_with_auth("agent", url, token).await?
+            } else {
+                Upstream::http("agent", url).await?
+            }
+        } else {
+            return Err(AgentError::Config("endpoint not set".into()));
+        };
+
         let model = self
             .model
             .ok_or_else(|| AgentError::Config("model not set".into()))?;
 
-        let mut client = McpClient::new(upstream);
-        if let Some(token) = self.auth_token {
-            client = client.with_auth(token);
-        }
+        let client = McpClient::new(upstream);
 
         Ok(Agent {
             client,
@@ -259,19 +268,18 @@ impl AgentBuilder {
 mod tests {
     use super::*;
 
-    #[test]
-    fn build_fails_without_endpoint() {
-        let result = Agent::builder().build();
+    #[tokio::test]
+    async fn build_fails_without_endpoint() {
+        let result = Agent::builder().build().await;
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert!(matches!(err, AgentError::Config(_)));
         assert!(err.to_string().contains("endpoint"));
     }
 
-    #[test]
-    fn build_fails_without_model() {
-        // endpoint is checked first, so this also returns the endpoint error
-        let result = Agent::builder().build();
+    #[tokio::test]
+    async fn build_fails_without_model() {
+        let result = Agent::builder().build().await;
         assert!(result.err().unwrap().to_string().contains("endpoint"));
     }
 }
