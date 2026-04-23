@@ -36,12 +36,16 @@ pub struct FlowRun {
     pub node_statuses: Vec<NodeStatus>,
     pub final_output: Option<String>,
     pub team_id: Option<String>,
+    /// Parent flow ID for subflows (None for top-level flows).
+    pub parent_flow_id: Option<String>,
+    /// Nesting depth (0 for top-level flows).
+    pub depth: u32,
 }
 
 /// Registry of active and completed flows.
 #[derive(Default)]
 pub struct FlowRegistry {
-    flows: Mutex<HashMap<String, FlowRun>>,
+    pub(crate) flows: Mutex<HashMap<String, FlowRun>>,
     next_id: Mutex<u64>,
 }
 
@@ -64,6 +68,34 @@ impl FlowRegistry {
             node_statuses: Vec::new(),
             final_output: None,
             team_id: None,
+            parent_flow_id: None,
+            depth: 0,
+        };
+
+        self.flows
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(flow_id.clone(), run);
+
+        flow_id
+    }
+
+    /// Register a subflow with parent linkage and depth tracking.
+    pub fn register_subflow(&self, name: &str, parent_flow_id: &str, depth: u32) -> String {
+        let mut id_counter = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
+        *id_counter += 1;
+        let flow_id = format!("flow-{}", *id_counter);
+
+        let run = FlowRun {
+            flow_id: flow_id.clone(),
+            name: name.to_string(),
+            status: FlowRunStatus::Running,
+            started_at: Instant::now(),
+            node_statuses: Vec::new(),
+            final_output: None,
+            team_id: None,
+            parent_flow_id: Some(parent_flow_id.to_string()),
+            depth,
         };
 
         self.flows
@@ -311,6 +343,61 @@ pub fn flow_result_tool_def() -> ToolDefinition {
                 ),
             ])),
             required: Some(vec!["flow_id".to_string()]),
+        },
+    }
+}
+
+pub fn flow_escalate_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "flow_escalate".to_string(),
+        description: Some(
+            "Escalate a complex task by spawning a sub-leader. Use when your \
+             task requires multiple specialists or parallel investigation. \
+             Returns the synthesized result. This call blocks until the \
+             subflow completes."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                (
+                    "mandate".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "What the sub-leader should accomplish"
+                    }),
+                ),
+                (
+                    "context".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Additional context from your current investigation (optional)"
+                    }),
+                ),
+                (
+                    "tasks".to_string(),
+                    serde_json::json!({
+                        "type": "array",
+                        "description": "Optional explicit task list. If omitted, a generic scout-planner-worker-synthesize DAG is used.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string", "description": "Unique task identifier"},
+                                "specialist": {"type": "string", "description": "Persona name for the task"},
+                                "model": {"type": "string", "description": "Model override (optional)"},
+                                "mandate": {"type": "string", "description": "What the specialist should accomplish"},
+                                "depends_on": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Task IDs that must complete first"
+                                }
+                            },
+                            "required": ["id", "specialist", "mandate"]
+                        }
+                    }),
+                ),
+            ])),
+            required: Some(vec!["mandate".to_string()]),
         },
     }
 }
