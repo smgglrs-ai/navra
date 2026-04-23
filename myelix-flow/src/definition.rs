@@ -192,6 +192,84 @@ pub fn single_task_dag(specialist: &str, mandate: &str) -> DagConfig {
     }
 }
 
+/// Create a generic 4-stage DAG for when no YAML template matches
+/// or when a specialist escalates without providing specific tasks.
+///
+/// Stages: scout → planner → worker → synthesize
+/// - scout: explores project structure (fast model)
+/// - planner: identifies 2-3 specific tasks based on scout findings
+/// - worker: executes the analysis (depends on planner)
+/// - synthesize: merges findings into a coherent report (depends on worker)
+pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
+    let scout_mandate = if let Some(ctx) = context {
+        format!(
+            "Explore the project structure and gather relevant context for the following task.\n\n\
+             Mandate: {mandate}\n\n\
+             Additional context:\n{ctx}"
+        )
+    } else {
+        format!(
+            "Explore the project structure and gather relevant context for the following task.\n\n\
+             Mandate: {mandate}"
+        )
+    };
+
+    DagConfig {
+        name: "generic-escalation".to_string(),
+        description: Some(format!("Generic 4-stage escalation flow for: {mandate}")),
+        parameters: HashMap::new(),
+        tasks: vec![
+            TaskDefinition {
+                id: "scout".to_string(),
+                specialist: "scout".to_string(),
+                model: Some("granite3.3:8b".to_string()),
+                mandate: scout_mandate,
+                depends_on: Vec::new(),
+                expected_output: Some("Project structure overview and relevant file locations".to_string()),
+                success_criteria: Vec::new(),
+                back_edges: Vec::new(),
+            },
+            TaskDefinition {
+                id: "planner".to_string(),
+                specialist: "planner".to_string(),
+                model: Some("gemma4:26b".to_string()),
+                mandate: format!(
+                    "Based on the scout's findings, identify 2-3 specific tasks needed to accomplish: {mandate}"
+                ),
+                depends_on: vec!["scout".to_string()],
+                expected_output: Some("List of 2-3 specific tasks with clear scope".to_string()),
+                success_criteria: Vec::new(),
+                back_edges: Vec::new(),
+            },
+            TaskDefinition {
+                id: "worker".to_string(),
+                specialist: "analyst".to_string(),
+                model: None,
+                mandate: format!(
+                    "Execute the analysis tasks identified by the planner for: {mandate}"
+                ),
+                depends_on: vec!["planner".to_string()],
+                expected_output: Some("Detailed analysis results".to_string()),
+                success_criteria: Vec::new(),
+                back_edges: Vec::new(),
+            },
+            TaskDefinition {
+                id: "synthesize".to_string(),
+                specialist: "synthesizer".to_string(),
+                model: Some("gemma4:26b".to_string()),
+                mandate: format!(
+                    "Merge all findings into a coherent final report for: {mandate}"
+                ),
+                depends_on: vec!["worker".to_string()],
+                expected_output: Some("Final synthesized report".to_string()),
+                success_criteria: Vec::new(),
+                back_edges: Vec::new(),
+            },
+        ],
+        blackboard_capacity: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,6 +395,64 @@ depends_on = ["fix_auth"]
         assert_eq!(
             dag.tasks[0].mandate,
             "Check for SQL injection in auth module"
+        );
+    }
+
+    #[test]
+    fn generic_flow_dag_creates_four_stages() {
+        let dag = generic_flow_dag("Audit the authentication module", None);
+        assert_eq!(dag.name, "generic-escalation");
+        assert_eq!(dag.tasks.len(), 4);
+
+        let ids: Vec<&str> = dag.tasks.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, vec!["scout", "planner", "worker", "synthesize"]);
+
+        // scout has no dependencies
+        assert!(dag.tasks[0].depends_on.is_empty());
+        assert_eq!(dag.tasks[0].model.as_deref(), Some("granite3.3:8b"));
+
+        // planner depends on scout
+        assert_eq!(dag.tasks[1].depends_on, vec!["scout"]);
+        assert_eq!(dag.tasks[1].model.as_deref(), Some("gemma4:26b"));
+
+        // worker depends on planner
+        assert_eq!(dag.tasks[2].depends_on, vec!["planner"]);
+        assert!(dag.tasks[2].model.is_none()); // uses default
+
+        // synthesize depends on worker
+        assert_eq!(dag.tasks[3].depends_on, vec!["worker"]);
+        assert_eq!(dag.tasks[3].model.as_deref(), Some("gemma4:26b"));
+    }
+
+    #[test]
+    fn generic_flow_dag_includes_mandate_in_tasks() {
+        let dag = generic_flow_dag("Review security posture", None);
+        assert!(dag.tasks[0].mandate.contains("Review security posture"));
+        assert!(dag.tasks[1].mandate.contains("Review security posture"));
+        assert!(dag.tasks[2].mandate.contains("Review security posture"));
+        assert!(dag.tasks[3].mandate.contains("Review security posture"));
+    }
+
+    #[test]
+    fn generic_flow_dag_injects_context_into_scout() {
+        let dag = generic_flow_dag("Check auth", Some("Focus on OAuth module"));
+        assert!(dag.tasks[0].mandate.contains("Focus on OAuth module"));
+        // Context should only be in scout, not other tasks
+        assert!(!dag.tasks[1].mandate.contains("Focus on OAuth module"));
+    }
+
+    #[test]
+    fn generic_flow_dag_without_context() {
+        let dag = generic_flow_dag("Analyze deps", None);
+        assert!(!dag.tasks[0].mandate.contains("Additional context"));
+    }
+
+    #[test]
+    fn generic_flow_dag_description_includes_mandate() {
+        let dag = generic_flow_dag("Fix the bug", None);
+        assert_eq!(
+            dag.description.as_deref(),
+            Some("Generic 4-stage escalation flow for: Fix the bug")
         );
     }
 
