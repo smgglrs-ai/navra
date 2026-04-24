@@ -154,43 +154,87 @@ pub struct TaskDefinition {
 
 /// Parse a planner's text output into task definitions.
 ///
-/// Expects a JSON array in the output (possibly wrapped in markdown
-/// code fences). Each element must have at least `id`, `specialist`,
-/// and `mandate`.
+/// Multi-strategy extraction:
+/// 1. Strip markdown code fences (```json ... ```)
+/// 2. Find outermost `[` ... `]` in the text
+/// 3. Try parsing as JSON array of TaskDefinition
+/// 4. If parse fails, try each `{...}` block individually
+///
+/// Returns empty vec only if no JSON-like content found at all.
 pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
     let trimmed = output.trim();
 
-    // Strip markdown code fences if present
-    let json_str = if trimmed.starts_with("```") {
-        let lines: Vec<&str> = trimmed.lines().collect();
-        let start = if lines.first().map_or(false, |l| l.starts_with("```")) { 1 } else { 0 };
-        let end = if lines.last().map_or(false, |l| l.trim() == "```") { lines.len() - 1 } else { lines.len() };
-        lines[start..end].join("\n")
-    } else {
-        trimmed.to_string()
-    };
+    // Strip ALL markdown code fences (there may be multiple)
+    let mut cleaned = String::new();
+    let mut in_fence = false;
+    for line in trimmed.lines() {
+        if line.trim().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        cleaned.push_str(line);
+        cleaned.push('\n');
+    }
+    let json_str = if cleaned.trim().is_empty() { trimmed.to_string() } else { cleaned };
 
-    // Try to find a JSON array in the text
+    // Find outermost [ ... ]
     let array_str = if let Some(start) = json_str.find('[') {
         if let Some(end) = json_str.rfind(']') {
             &json_str[start..=end]
         } else {
+            tracing::warn!("Found '[' but no matching ']' in planner output");
             return Vec::new();
         }
     } else {
+        tracing::warn!("No JSON array found in planner output ({} chars)", trimmed.len());
         return Vec::new();
     };
 
+    // Strategy 1: parse the whole array
     match serde_json::from_str::<Vec<TaskDefinition>>(array_str) {
-        Ok(tasks) => {
+        Ok(tasks) if !tasks.is_empty() => {
             tracing::info!(count = tasks.len(), "Parsed planner tasks");
-            tasks
+            return tasks;
         }
+        Ok(_) => {}
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to parse planner task output as JSON");
-            Vec::new()
+            tracing::debug!(error = %e, "Array parse failed, trying individual objects");
         }
     }
+
+    // Strategy 2: extract individual {...} blocks and parse each
+    let mut tasks = Vec::new();
+    let mut depth = 0i32;
+    let mut obj_start = None;
+    for (i, ch) in array_str.char_indices() {
+        match ch {
+            '{' => {
+                if depth == 0 { obj_start = Some(i); }
+                depth += 1;
+            }
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(start) = obj_start {
+                        let obj_str = &array_str[start..=i];
+                        match serde_json::from_str::<TaskDefinition>(obj_str) {
+                            Ok(task) => tasks.push(task),
+                            Err(e) => tracing::debug!(error = %e, "Skipping unparseable task object"),
+                        }
+                    }
+                    obj_start = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !tasks.is_empty() {
+        tracing::info!(count = tasks.len(), "Parsed planner tasks (individual objects)");
+    } else {
+        tracing::warn!("No parseable task objects in planner output");
+    }
+    tasks
 }
 
 /// A conditional back-edge that can route execution backward in the DAG.
@@ -473,7 +517,7 @@ depends_on = ["fix_auth"]
 
         // worker depends on planner
         assert_eq!(dag.tasks[2].depends_on, vec!["planner"]);
-        assert!(dag.tasks[2].model.is_none()); // uses default
+        assert_eq!(dag.tasks[2].model.as_deref(), Some("gemma4:26b")); // worker needs reasoning
 
         // synthesize depends on worker
         assert_eq!(dag.tasks[3].depends_on, vec!["worker"]);

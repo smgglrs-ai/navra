@@ -656,7 +656,8 @@ pub fn personas_list_def() -> ToolDefinition {
 }
 
 /// Determine required model capabilities from task context.
-fn task_requirements(persona: Option<&str>, mandate: &str) -> (bool, bool) {
+/// Returns (needs_tools, needs_reasoning, needs_json).
+fn task_requirements(persona: Option<&str>, mandate: &str) -> (bool, bool, bool) {
     let mandate_lower = mandate.to_lowercase();
 
     let needs_reasoning = mandate_lower.contains("analyz")
@@ -679,7 +680,13 @@ fn task_requirements(persona: Option<&str>, mandate: &str) -> (bool, bool) {
         || mandate_lower.contains("review")
         || mandate_lower.contains("audit");
 
-    (needs_tools, needs_reasoning)
+    let needs_json = mandate_lower.contains("json array")
+        || mandate_lower.contains("json object")
+        || mandate_lower.contains("output only a json")
+        || mandate_lower.contains("output only json")
+        || mandate_lower.contains("respond with json");
+
+    (needs_tools, needs_reasoning, needs_json)
 }
 
 /// Select the best model from available cards for a task.
@@ -695,11 +702,20 @@ pub fn select_model_for_task(
         return None;
     }
 
-    let (needs_tools, needs_reasoning) = task_requirements(persona, mandate);
+    let (needs_tools, needs_reasoning, needs_json) = task_requirements(persona, mandate);
 
     let mut scored: Vec<(&ModelCard, i32)> = cards.iter().map(|card| {
         let a = &card.agentic;
         let mut score: i32 = 0;
+
+        // JSON compliance is critical for planner tasks
+        if needs_json {
+            match a.json_compliance.as_deref() {
+                Some("strict") => score += 15,
+                Some("best-effort") => score += 5,
+                _ => {}
+            }
+        }
 
         // Use explicit agentic metadata if available
         let has_agentic = a.tool_use.is_some() || a.reasoning.is_some();
@@ -727,8 +743,6 @@ pub fn select_model_for_task(
                 }
             }
         } else {
-            // No agentic metadata — infer from model size.
-            // Larger models generally have better reasoning and tool use.
             let param_b = card.vendor.parameters.as_deref()
                 .and_then(|p| {
                     let p = p.to_uppercase();
@@ -736,14 +750,11 @@ pub fn select_model_for_task(
                 })
                 .unwrap_or(0.0);
 
-            if needs_reasoning || needs_tools {
-                // Models ≤10B can't reliably call tools or reason.
-                // ≥12B is the minimum for reliable tool use.
+            if needs_reasoning || needs_tools || needs_json {
                 if param_b >= 20.0 { score += 20; }
                 else if param_b >= 12.0 { score += 12; }
                 else { score -= 5; }
             } else {
-                // Simple task — prefer smaller/faster
                 if param_b <= 10.0 { score += 8; }
                 else if param_b <= 20.0 { score += 4; }
             }
@@ -770,6 +781,7 @@ pub fn select_model_for_task(
             score = score,
             needs_tools = needs_tools,
             needs_reasoning = needs_reasoning,
+            needs_json = needs_json,
             persona = persona.unwrap_or("none"),
             "Auto-selected model for task"
         );
