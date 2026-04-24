@@ -36,11 +36,14 @@ mod agent;
 mod client;
 mod convert;
 mod error;
+/// Upstream MCP prompt resolution utilities.
+pub mod resolve;
 mod tool_loop;
 
 pub use agent::{Agent, AgentBuilder};
 pub use client::McpClient;
 pub use error::AgentError;
+pub use resolve::resolve_mcp_prompts;
 pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
 
 // SDK facade: external consumers (e.g. agent binaries) depend only on

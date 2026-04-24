@@ -3,7 +3,56 @@
 //! These types map directly to the YAML schemas in the cognitive_core
 //! directory, maintaining compatibility with the Python Myelix format.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Position where an upstream MCP prompt is injected in the system prompt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InjectPosition {
+    /// Before the core mandate.
+    BeforeMandate,
+    /// After the core mandate, before heuristics.
+    AfterMandate,
+    /// After heuristics, before examples.
+    AfterHeuristics,
+    /// At the end of the system prompt.
+    AfterExamples,
+}
+
+/// Reference to an upstream MCP prompt to inject into the system prompt.
+///
+/// The prompt is fetched via `prompts/get` on the named upstream at build
+/// time. Template variables like `{{ input }}` are resolved from the user
+/// prompt before the call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPromptRef {
+    /// Upstream MCP server name.
+    pub upstream: String,
+    /// Prompt name (as registered via `prompts/list`).
+    pub prompt: String,
+    /// Where to inject the resolved prompt in the system prompt.
+    pub inject_position: InjectPosition,
+    /// Arguments to pass to `prompts/get`. Values may contain template
+    /// variables like `{{ input }}` that are resolved before the call.
+    #[serde(default)]
+    pub arguments: Option<HashMap<String, String>>,
+}
+
+/// A resolved upstream prompt ready for injection.
+///
+/// This is the output of fetching a [`McpPromptRef`] via the MCP client.
+/// The Weaver receives these pre-resolved and inserts them at the correct
+/// position.
+#[derive(Debug, Clone)]
+pub struct ResolvedPrompt {
+    /// Where to inject in the system prompt.
+    pub position: InjectPosition,
+    /// The resolved prompt text content.
+    pub content: String,
+    /// Label for the section header (upstream:prompt).
+    pub label: String,
+}
 
 /// Visibility scope for a persona.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -63,6 +112,13 @@ pub struct Persona {
     /// Few-shot examples.
     #[serde(default)]
     pub examples: Vec<Example>,
+    /// Upstream MCP prompts to inject into the system prompt.
+    ///
+    /// Each entry references a prompt on a named upstream MCP server.
+    /// The prompts are fetched at build time and injected at the
+    /// specified position in the assembled system prompt.
+    #[serde(default)]
+    pub mcp_prompts: Vec<McpPromptRef>,
     /// Skill modules (same structure as heuristics).
     #[serde(default)]
     pub skills: Vec<String>,
@@ -280,5 +336,95 @@ core_mandate: "Do stuff."
         assert!(persona.tools.is_empty());
         assert!(persona.examples.is_empty());
         assert!(persona.model_override.is_none());
+        assert!(persona.mcp_prompts.is_empty());
+    }
+
+    #[test]
+    fn deserialize_mcp_prompt_ref() {
+        let yaml = r#"
+upstream: syllogis
+prompt: legal_analysis
+inject_position: after_mandate
+arguments:
+  case_description: "{{ input }}"
+"#;
+        let pref: McpPromptRef = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(pref.upstream, "syllogis");
+        assert_eq!(pref.prompt, "legal_analysis");
+        assert_eq!(pref.inject_position, InjectPosition::AfterMandate);
+        let args = pref.arguments.unwrap();
+        assert_eq!(args["case_description"], "{{ input }}");
+    }
+
+    #[test]
+    fn deserialize_mcp_prompt_ref_no_args() {
+        let yaml = r#"
+upstream: syllogis
+prompt: legal_syllogism
+inject_position: after_heuristics
+"#;
+        let pref: McpPromptRef = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(pref.prompt, "legal_syllogism");
+        assert_eq!(pref.inject_position, InjectPosition::AfterHeuristics);
+        assert!(pref.arguments.is_none());
+    }
+
+    #[test]
+    fn deserialize_persona_with_mcp_prompts() {
+        let yaml = r#"
+persona_name: legal_analyst
+display_name: "Legal Analyst"
+core_mandate: "Analyze French administrative law cases."
+mcp_prompts:
+  - upstream: syllogis
+    prompt: legal_analysis
+    inject_position: after_mandate
+    arguments:
+      case_description: "{{ input }}"
+  - upstream: syllogis
+    prompt: legal_syllogism
+    inject_position: after_heuristics
+"#;
+        let persona: Persona = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(persona.persona_name, "legal_analyst");
+        assert_eq!(persona.mcp_prompts.len(), 2);
+        assert_eq!(persona.mcp_prompts[0].upstream, "syllogis");
+        assert_eq!(persona.mcp_prompts[0].inject_position, InjectPosition::AfterMandate);
+        assert_eq!(persona.mcp_prompts[1].inject_position, InjectPosition::AfterHeuristics);
+    }
+
+    #[test]
+    fn inject_position_all_variants() {
+        for (yaml, expected) in [
+            ("before_mandate", InjectPosition::BeforeMandate),
+            ("after_mandate", InjectPosition::AfterMandate),
+            ("after_heuristics", InjectPosition::AfterHeuristics),
+            ("after_examples", InjectPosition::AfterExamples),
+        ] {
+            let json = format!("\"{yaml}\"");
+            let pos: InjectPosition = serde_json::from_str(&json).unwrap();
+            assert_eq!(pos, expected);
+        }
+    }
+
+    #[test]
+    fn mcp_prompt_ref_serialize_roundtrip() {
+        let pref = McpPromptRef {
+            upstream: "test".to_string(),
+            prompt: "my_prompt".to_string(),
+            inject_position: InjectPosition::BeforeMandate,
+            arguments: Some(
+                [("key".to_string(), "value".to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
+        };
+
+        let yaml = serde_yaml::to_string(&pref).unwrap();
+        let back: McpPromptRef = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(back.upstream, "test");
+        assert_eq!(back.prompt, "my_prompt");
+        assert_eq!(back.inject_position, InjectPosition::BeforeMandate);
+        assert_eq!(back.arguments.unwrap()["key"], "value");
     }
 }

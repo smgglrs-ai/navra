@@ -10,7 +10,7 @@
 use crate::budget::{self, ContextBudget};
 use crate::error::CognitiveError;
 use crate::forge::ForgeService;
-use crate::types::Persona;
+use crate::types::{InjectPosition, Persona, ResolvedPrompt};
 
 /// Structured output from the Weaver for prompt caching support.
 ///
@@ -86,6 +86,24 @@ pub fn assemble_with_phase(
     context: Option<&str>,
     phase: Option<&str>,
 ) -> Result<WeaverOutput, CognitiveError> {
+    assemble_full(forge, persona_name, user_prompt, specialization, context, phase, &[])
+}
+
+/// Assemble with resolved upstream prompts injected at their specified positions.
+///
+/// This is the full-featured entry point. The `resolved_prompts` slice
+/// contains upstream MCP prompts that have already been fetched via
+/// `prompts/get`. The Weaver inserts them at the positions specified by
+/// each [`ResolvedPrompt::position`].
+pub fn assemble_full(
+    forge: &ForgeService,
+    persona_name: &str,
+    user_prompt: &str,
+    specialization: Option<&str>,
+    context: Option<&str>,
+    phase: Option<&str>,
+    resolved_prompts: &[ResolvedPrompt],
+) -> Result<WeaverOutput, CognitiveError> {
     let persona = if let Some(spec_name) = specialization {
         forge.get_persona_specialized(persona_name, spec_name)?
     } else {
@@ -95,7 +113,7 @@ pub fn assemble_with_phase(
             .clone()
     };
 
-    let cacheable_prefix = build_cacheable_prefix(forge, &persona);
+    let cacheable_prefix = build_cacheable_prefix(forge, &persona, resolved_prompts);
     let output_schema = persona.output_schema.clone();
     let output_json_schema = persona.output_json_schema.clone();
 
@@ -161,10 +179,18 @@ fn build_dynamic_context(context: Option<&str>) -> String {
 ///
 /// Assembly order (matching Python Weaver):
 /// 1. Core directives (if loads_directives)
-/// 2. Core mandate
-/// 3. Resolved heuristics
-/// 4. Few-shot examples (up to 3)
-fn build_cacheable_prefix(forge: &ForgeService, persona: &Persona) -> String {
+/// 2. `BeforeMandate` upstream prompts
+/// 3. Core mandate
+/// 4. `AfterMandate` upstream prompts
+/// 5. Resolved heuristics
+/// 6. `AfterHeuristics` upstream prompts
+/// 7. Few-shot examples (up to 3)
+/// 8. `AfterExamples` upstream prompts
+fn build_cacheable_prefix(
+    forge: &ForgeService,
+    persona: &Persona,
+    resolved_prompts: &[ResolvedPrompt],
+) -> String {
     let mut sections = Vec::new();
 
     // 1. Core directives (Guardian only)
@@ -179,19 +205,28 @@ fn build_cacheable_prefix(forge: &ForgeService, persona: &Persona) -> String {
         }
     }
 
-    // 2. Core mandate
+    // 2. BeforeMandate upstream prompts
+    inject_at_position(&mut sections, resolved_prompts, &InjectPosition::BeforeMandate);
+
+    // 3. Core mandate
     sections.push(format!(
         "# Core Mandate: {}\n\n{}",
         persona.display_name, persona.core_mandate
     ));
 
-    // 3. Resolved heuristics
+    // 4. AfterMandate upstream prompts
+    inject_at_position(&mut sections, resolved_prompts, &InjectPosition::AfterMandate);
+
+    // 5. Resolved heuristics
     let heuristic_text = resolve_heuristics(forge, &persona.heuristics);
     if !heuristic_text.is_empty() {
         sections.push(format!("## Heuristics to Apply\n\n{heuristic_text}"));
     }
 
-    // 4. Few-shot examples (up to 3)
+    // 6. AfterHeuristics upstream prompts
+    inject_at_position(&mut sections, resolved_prompts, &InjectPosition::AfterHeuristics);
+
+    // 7. Few-shot examples (up to 3)
     if !persona.examples.is_empty() {
         let mut examples_text = String::from("## Examples\n");
         for (i, ex) in persona.examples.iter().take(3).enumerate() {
@@ -209,7 +244,24 @@ fn build_cacheable_prefix(forge: &ForgeService, persona: &Persona) -> String {
         sections.push(examples_text);
     }
 
+    // 8. AfterExamples upstream prompts
+    inject_at_position(&mut sections, resolved_prompts, &InjectPosition::AfterExamples);
+
     sections.join("\n\n")
+}
+
+/// Insert resolved prompts matching the given position into sections.
+fn inject_at_position(
+    sections: &mut Vec<String>,
+    prompts: &[ResolvedPrompt],
+    position: &InjectPosition,
+) {
+    for rp in prompts.iter().filter(|rp| &rp.position == position) {
+        sections.push(format!(
+            "## Upstream Prompt: {}\n\n{}",
+            rp.label, rp.content
+        ));
+    }
 }
 
 /// Resolve heuristic references to their facet content.
@@ -422,5 +474,153 @@ facets:
 
         let output = assemble(&forge, "developer", "Task", None, Some("")).unwrap();
         assert!(output.dynamic_context.is_empty());
+    }
+
+    #[test]
+    fn inject_prompt_after_mandate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = setup_forge(tmp.path());
+
+        let prompts = vec![ResolvedPrompt {
+            position: InjectPosition::AfterMandate,
+            content: "Use search_codes to find real articles.".to_string(),
+            label: "syllogis:legal_analysis".to_string(),
+        }];
+
+        let output = assemble_full(
+            &forge, "developer", "Analyze case", None, None, None, &prompts,
+        )
+        .unwrap();
+
+        let prefix = &output.cacheable_prefix;
+        assert!(prefix.contains("Upstream Prompt: syllogis:legal_analysis"));
+        assert!(prefix.contains("Use search_codes to find real articles."));
+
+        // Verify ordering: mandate before upstream prompt, upstream prompt before heuristics
+        let mandate_pos = prefix.find("Core Mandate").unwrap();
+        let upstream_pos = prefix.find("Upstream Prompt").unwrap();
+        let heuristics_pos = prefix.find("Heuristics to Apply").unwrap();
+        assert!(mandate_pos < upstream_pos);
+        assert!(upstream_pos < heuristics_pos);
+    }
+
+    #[test]
+    fn inject_prompt_before_mandate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = setup_forge(tmp.path());
+
+        let prompts = vec![ResolvedPrompt {
+            position: InjectPosition::BeforeMandate,
+            content: "Domain context goes here.".to_string(),
+            label: "upstream:context".to_string(),
+        }];
+
+        let output = assemble_full(
+            &forge, "developer", "Task", None, None, None, &prompts,
+        )
+        .unwrap();
+
+        let prefix = &output.cacheable_prefix;
+        let upstream_pos = prefix.find("Upstream Prompt: upstream:context").unwrap();
+        let mandate_pos = prefix.find("Core Mandate").unwrap();
+        assert!(upstream_pos < mandate_pos);
+    }
+
+    #[test]
+    fn inject_prompt_after_heuristics() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = setup_forge(tmp.path());
+
+        let prompts = vec![ResolvedPrompt {
+            position: InjectPosition::AfterHeuristics,
+            content: "Post-heuristic instructions.".to_string(),
+            label: "upstream:post_heuristics".to_string(),
+        }];
+
+        let output = assemble_full(
+            &forge, "developer", "Task", None, None, None, &prompts,
+        )
+        .unwrap();
+
+        let prefix = &output.cacheable_prefix;
+        let heuristics_pos = prefix.find("Heuristics to Apply").unwrap();
+        let upstream_pos = prefix.find("Upstream Prompt: upstream:post_heuristics").unwrap();
+        assert!(heuristics_pos < upstream_pos);
+    }
+
+    #[test]
+    fn inject_prompt_after_examples() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = setup_forge(tmp.path());
+
+        let prompts = vec![ResolvedPrompt {
+            position: InjectPosition::AfterExamples,
+            content: "Final instructions.".to_string(),
+            label: "upstream:final".to_string(),
+        }];
+
+        let output = assemble_full(
+            &forge, "developer", "Task", None, None, None, &prompts,
+        )
+        .unwrap();
+
+        let prefix = &output.cacheable_prefix;
+        assert!(prefix.contains("Final instructions."));
+        // AfterExamples should be the last section
+        let upstream_pos = prefix.find("Upstream Prompt: upstream:final").unwrap();
+        assert!(upstream_pos > prefix.find("Heuristics to Apply").unwrap());
+    }
+
+    #[test]
+    fn inject_multiple_prompts_at_different_positions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = setup_forge(tmp.path());
+
+        let prompts = vec![
+            ResolvedPrompt {
+                position: InjectPosition::BeforeMandate,
+                content: "Before mandate.".to_string(),
+                label: "a:before".to_string(),
+            },
+            ResolvedPrompt {
+                position: InjectPosition::AfterMandate,
+                content: "After mandate.".to_string(),
+                label: "b:after".to_string(),
+            },
+            ResolvedPrompt {
+                position: InjectPosition::AfterExamples,
+                content: "At the end.".to_string(),
+                label: "c:end".to_string(),
+            },
+        ];
+
+        let output = assemble_full(
+            &forge, "developer", "Task", None, None, None, &prompts,
+        )
+        .unwrap();
+
+        let prefix = &output.cacheable_prefix;
+        let before_pos = prefix.find("a:before").unwrap();
+        let mandate_pos = prefix.find("Core Mandate").unwrap();
+        let after_pos = prefix.find("b:after").unwrap();
+        let end_pos = prefix.find("c:end").unwrap();
+
+        assert!(before_pos < mandate_pos);
+        assert!(mandate_pos < after_pos);
+        assert!(after_pos < end_pos);
+    }
+
+    #[test]
+    fn no_upstream_prompts_matches_original() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = setup_forge(tmp.path());
+
+        let without = assemble(&forge, "developer", "Task", None, None).unwrap();
+        let with_empty = assemble_full(
+            &forge, "developer", "Task", None, None, None, &[],
+        )
+        .unwrap();
+
+        assert_eq!(without.cacheable_prefix, with_empty.cacheable_prefix);
     }
 }
