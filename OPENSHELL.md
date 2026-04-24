@@ -728,15 +728,16 @@ single-node deployments. gRPC modules become important for:
 
 ## Implementation roadmap
 
+Maps to ROADMAP.md Phase 6 (OpenShell integration).
+
 | Phase | Work | Priority | Depends on |
 |-------|------|----------|-----------|
-| **8a** | OpenShellAuthenticator in myelix-security | High | OpenShell identity spec |
-| **8b** | A2A client in myelix-protocol | High | — |
-| **8c** | A2A mesh builder in myelix-flow | High | 8b |
-| **8d** | Remove libkrun stub, document delegation to OpenShell | Low | — |
-| **8e** | gRPC module protobuf + GrpcModule adapter | Medium | — |
-| **8f** | OpenShell compute backend for model runtime | Medium | OpenShell compute driver spec |
-| **8g** | OpenShell credential backend for MappedCredentialStore | Low | OpenShell credentials driver spec |
+| **6a** | OpenShellAuthenticator in myelix-security | High | OpenShell identity spec |
+| **6b** | A2A client in myelix-protocol + mesh builder in myelix-flow | High | — |
+| **6c** | Remove libkrun stub, add OpenShell compute backend | Medium | OpenShell compute driver spec |
+| **6d** | gRPC module protobuf + GrpcModule adapter | Medium | — |
+| **6e** | Defense-in-depth network security model (OPA templates, integration tests, paper section) | Medium | 6a, 6c |
+| **6f** | OpenShell credential backend for MappedCredentialStore | Low | OpenShell credentials driver spec |
 
 ## References
 

@@ -72,8 +72,8 @@ pub(crate) enum Commands {
         /// Auth token (reads from MCPD_TOKEN env if not set)
         #[arg(long)]
         token: Option<String>,
-        /// Max iterations
-        #[arg(long, default_value = "50")]
+        /// Max iterations (default 200, set lower for quick tasks)
+        #[arg(long, default_value = "200")]
         max_iterations: usize,
     },
     /// Run the end-to-end security audit demo

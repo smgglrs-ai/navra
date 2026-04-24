@@ -774,9 +774,35 @@ Unix sockets, per-component lifecycle management.
 
 New dependency: `tonic` + `prost` for gRPC.
 
+#### 6e. Defense-in-depth network security model (NEW)
+
+Define and document the combined OpenShell + mcpd security model
+where each agent sandbox is strictly firewalled:
+
+- **Network layer (OpenShell)**: sandbox can only reach its model
+  endpoint, mcpd gateway, and OpenShell gateway. All other
+  traffic blocked via network namespaces + HTTP CONNECT proxy +
+  OPA policy. No internet, no lateral movement.
+- **Application layer (mcpd)**: even with network access, the
+  agent is constrained by ACLs, IFC taint propagation, safety
+  filters, and scoped capability tokens.
+- Neither layer alone is sufficient: OpenShell without mcpd
+  allows unrestricted tool access; mcpd without OpenShell
+  allows network exfiltration. Both together give MAC + DAC.
+
+Deliverables:
+- OPA policy templates for OpenShell supervisor (allowlist for
+  mcpd + model endpoint + gateway only)
+- mcpd config templates for OpenShell-managed deployments
+- Integration test: verify agent inside sandbox cannot reach
+  unauthorized endpoints, and authorized tool calls respect ACLs
+- Security paper section (Phase 8): MAC + DAC analogy
+
+See OPENSHELL.md "Defense in depth" section for full design.
+
 ### Phase 7: RAG enhancements
 
-#### 6a. Two-stage retrieval with cross-encoder reranking (NEW)
+#### 7a. Two-stage retrieval with cross-encoder reranking (NEW)
 
 Add reranking stage to myelix-rag after sqlite-vec retrieval:
 
@@ -788,7 +814,7 @@ Add reranking stage to myelix-rag after sqlite-vec retrieval:
 - Knowledge distillation: train fast bi-encoder from cross-encoder
   scores for domain-specific use
 
-#### 6b. Semantic query caching (NEW)
+#### 7b. Semantic query caching (NEW)
 
 Paraphrase-detection model to identify duplicate queries at
 retrieval time. ~76% savings on redundant ranking operations.
