@@ -98,6 +98,96 @@ pub async fn resolve_mcp_prompts(
     Ok(resolved)
 }
 
+/// Resolve an [`McpPersonaSource`] by calling `prompts/get` on the upstream.
+///
+/// Returns the concatenated prompt messages as a single string, which
+/// becomes the persona's `core_mandate`.
+pub async fn resolve_persona_source(
+    client: &mut McpClient,
+    source: &smgglrs_cognitive::McpPersonaSource,
+) -> Result<String, AgentError> {
+    let arguments = source.arguments.clone().unwrap_or_default();
+    let prompt_name = &source.prompt;
+
+    let result = client
+        .get_prompt(prompt_name, arguments)
+        .await
+        .map_err(|e| {
+            AgentError::Config(format!(
+                "failed to resolve persona source {}:{}: {}",
+                source.upstream, source.prompt, e
+            ))
+        })?;
+
+    let content = result
+        .messages
+        .iter()
+        .map(|m| match &m.content {
+            smgglrs_protocol::Content::Text(tc) => tc.text.as_str(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    if content.is_empty() {
+        return Err(AgentError::Config(format!(
+            "persona source {}:{} returned empty content",
+            source.upstream, source.prompt
+        )));
+    }
+
+    tracing::info!(
+        upstream = %source.upstream,
+        prompt = %source.prompt,
+        content_len = content.len(),
+        "Resolved MCP persona source"
+    );
+
+    Ok(content)
+}
+
+/// Resolve a persona's MCP source and `mcp_prompts`, returning a
+/// fully-populated [`Persona`] ready for the Weaver.
+///
+/// - If `persona.source` is `Some`, calls [`resolve_persona_source()`]
+///   and sets the result as `core_mandate`.
+/// - Any `mcp_prompts` entries are resolved via [`resolve_mcp_prompts()`].
+/// - Returns the resolved persona and the resolved prompts for the Weaver.
+pub async fn resolve_persona(
+    client: &mut McpClient,
+    persona: &smgglrs_cognitive::Persona,
+    user_prompt: &str,
+) -> Result<
+    (
+        smgglrs_cognitive::Persona,
+        Vec<smgglrs_cognitive::ResolvedPrompt>,
+    ),
+    AgentError,
+> {
+    let mut resolved_persona = persona.clone();
+
+    // Resolve MCP persona source -> core_mandate
+    if let Some(ref source) = persona.source {
+        let mandate = resolve_persona_source(client, source).await?;
+        resolved_persona.core_mandate = mandate;
+
+        tracing::info!(
+            persona = %persona.persona_name,
+            upstream = %source.upstream,
+            prompt = %source.prompt,
+            "Set core_mandate from MCP source"
+        );
+    }
+
+    // Resolve mcp_prompts entries
+    let resolved_prompts = if !persona.mcp_prompts.is_empty() {
+        resolve_mcp_prompts(client, &persona.mcp_prompts, user_prompt).await?
+    } else {
+        Vec::new()
+    };
+
+    Ok((resolved_persona, resolved_prompts))
+}
+
 /// Replace `{{ input }}` template variables in a string with the user prompt.
 fn resolve_template(template: &str, user_prompt: &str) -> String {
     template.replace("{{ input }}", user_prompt)

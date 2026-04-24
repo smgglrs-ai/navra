@@ -2466,8 +2466,12 @@ async fn run_agent(
     // Apply persona
     if let Some(ref forge) = forge {
         if forge.get_persona(persona_name).is_some() {
-            // Collect persona-defined mcp_prompts and CLI-provided ones
             let persona = forge.get_persona(persona_name).unwrap();
+
+            // Check if this is an MCP-sourced persona
+            let has_source = persona.source.is_some();
+
+            // Collect persona-defined mcp_prompts and CLI-provided ones
             let all_refs: Vec<smgglrs_cognitive::McpPromptRef> = persona
                 .mcp_prompts
                 .iter()
@@ -2475,12 +2479,8 @@ async fn run_agent(
                 .chain(cli_prompt_refs.iter().cloned())
                 .collect();
 
-            if all_refs.is_empty() {
-                builder = builder.persona(forge, persona_name)?;
-            } else {
-                // Build a temporary agent to resolve prompts, then rebuild
-                // with the resolved prompts. We need an MCP connection to
-                // call prompts/get.
+            if has_source || !all_refs.is_empty() {
+                // Need an MCP connection to resolve source and/or prompts
                 let temp_upstream = if let Some(ref t) = auth_token {
                     smgglrs_agent::Upstream::http_with_auth("resolver", endpoint, t).await?
                 } else {
@@ -2488,18 +2488,44 @@ async fn run_agent(
                 };
                 let mut resolver_client = smgglrs_agent::McpClient::new(temp_upstream);
 
-                let resolved = smgglrs_agent::resolve::resolve_mcp_prompts(
-                    &mut resolver_client,
-                    &all_refs,
-                    prompt,
-                )
-                .await?;
+                if has_source {
+                    // MCP-sourced persona: resolve source + mcp_prompts together
+                    builder = builder
+                        .persona_from_mcp(forge, persona_name, &mut resolver_client, prompt)
+                        .await?;
 
-                if !resolved.is_empty() {
-                    eprintln!("Resolved {} upstream prompt(s)", resolved.len());
+                    // Also resolve any CLI-provided upstream prompts
+                    if !cli_prompt_refs.is_empty() {
+                        let extra_resolved = smgglrs_agent::resolve::resolve_mcp_prompts(
+                            &mut resolver_client,
+                            &cli_prompt_refs,
+                            prompt,
+                        )
+                        .await?;
+
+                        if !extra_resolved.is_empty() {
+                            eprintln!("Resolved {} CLI upstream prompt(s)", extra_resolved.len());
+                        }
+                    }
+
+                    eprintln!("Loaded MCP-sourced persona: {persona_name}");
+                } else {
+                    // Local persona with upstream prompts to resolve
+                    let resolved = smgglrs_agent::resolve::resolve_mcp_prompts(
+                        &mut resolver_client,
+                        &all_refs,
+                        prompt,
+                    )
+                    .await?;
+
+                    if !resolved.is_empty() {
+                        eprintln!("Resolved {} upstream prompt(s)", resolved.len());
+                    }
+
+                    builder = builder.persona_with_prompts(forge, persona_name, &resolved)?;
                 }
-
-                builder = builder.persona_with_prompts(forge, persona_name, &resolved)?;
+            } else {
+                builder = builder.persona(forge, persona_name)?;
             }
 
             eprintln!("Loaded persona: {persona_name}");
