@@ -31,7 +31,7 @@ pub use error::CognitiveError;
 pub use evolution::{TraitStore, TraitVector};
 pub use forge::{ForgeService, SpecializationMeta};
 pub use types::{
-    Directive, Example, Facet, HeuristicModule, HeuristicRef, InjectPosition, McpPromptRef,
-    Persona, Reference, ResolvedPrompt, Scope, Specialization,
+    Directive, Example, Facet, HeuristicModule, HeuristicRef, InjectPosition, McpPersonaSource,
+    McpPromptRef, Persona, Reference, ResolvedPrompt, Scope, Specialization,
 };
 pub use weaver::{assemble, assemble_full, assemble_with_phase, WeaverOutput};

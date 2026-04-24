@@ -43,7 +43,7 @@ mod tool_loop;
 pub use agent::{Agent, AgentBuilder};
 pub use client::McpClient;
 pub use error::AgentError;
-pub use resolve::resolve_mcp_prompts;
+pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};
 pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
 
 // SDK facade: external consumers (e.g. agent binaries) depend only on

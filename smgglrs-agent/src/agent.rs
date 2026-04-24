@@ -275,6 +275,78 @@ impl AgentBuilder {
         Ok(self)
     }
 
+    /// Load an MCP-sourced persona: resolve the persona's source via
+    /// `prompts/get`, then assemble the system prompt via the Weaver.
+    ///
+    /// This handles personas where the core mandate comes from an
+    /// upstream MCP server. The YAML is a thin pointer — the "soul"
+    /// is fetched at runtime.
+    ///
+    /// # Arguments
+    /// - `forge` — loaded cognitive artifacts
+    /// - `name` — persona name
+    /// - `client` — MCP client connected to the upstream(s)
+    /// - `user_prompt` — the user's prompt (for template resolution)
+    pub async fn persona_from_mcp(
+        mut self,
+        forge: &smgglrs_cognitive::ForgeService,
+        name: &str,
+        client: &mut McpClient,
+        user_prompt: &str,
+    ) -> Result<Self, AgentError> {
+        let persona = forge
+            .get_persona(name)
+            .ok_or_else(|| AgentError::Config(format!("persona '{name}' not found")))?;
+
+        let (resolved_persona, resolved_prompts) =
+            crate::resolve::resolve_persona(client, persona, user_prompt).await?;
+
+        // Assemble with the resolved persona injected into a temporary forge
+        // is not needed — we use assemble_full with the resolved mandate.
+        // But assemble_full takes a persona name and looks it up in the forge,
+        // so we assemble manually using the resolved persona directly.
+
+        // Build the system prompt from the resolved persona
+        let output = smgglrs_cognitive::assemble_full(
+            forge, name, "", None, None, None, &resolved_prompts,
+        )
+        .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
+
+        // If the persona source replaced the mandate, override the system prompt
+        if persona.source.is_some() {
+            // Rebuild prefix with the resolved core_mandate
+            // We need to call assemble_full but the forge still has the old persona.
+            // Instead, replace the core mandate in the output.
+            let system = output.system_prompt();
+            let patched = if resolved_persona.core_mandate != persona.core_mandate {
+                system.replace(&persona.core_mandate, &resolved_persona.core_mandate)
+            } else {
+                system
+            };
+            self.config.system_prompt = Some(patched);
+        } else {
+            self.config.system_prompt = Some(output.system_prompt());
+        }
+
+        if let Some(schema) = output.output_json_schema {
+            self.config.output_json_schema = Some(schema);
+        }
+
+        if !persona.tools.is_empty() {
+            self.config.allowed_tools = Some(persona.tools.clone());
+        }
+
+        tracing::info!(
+            persona = name,
+            source = persona.source.is_some(),
+            tokens = output.estimated_tokens,
+            upstream_prompts = resolved_prompts.len(),
+            "Loaded MCP-sourced persona"
+        );
+
+        Ok(self)
+    }
+
     /// Build the agent. Requires endpoint and model to be set.
     pub async fn build(self) -> Result<Agent, AgentError> {
         let upstream = if let Some(upstream) = self.upstream {

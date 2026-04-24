@@ -20,6 +20,24 @@ pub enum InjectPosition {
     AfterExamples,
 }
 
+/// Source reference for an MCP-sourced persona.
+///
+/// When a persona YAML includes a `source` field, the core mandate and
+/// methodology are fetched at runtime from the upstream MCP server's
+/// `prompts/get` endpoint. The YAML becomes a thin pointer: it carries
+/// the persona name, source config, and any local overrides (heuristics,
+/// mcp_prompts, tools), but the "soul" comes from the upstream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPersonaSource {
+    /// Upstream MCP server name (must match an upstream in the gateway config).
+    pub upstream: String,
+    /// Prompt name to fetch via `prompts/get`.
+    pub prompt: String,
+    /// Arguments to pass to `prompts/get`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<HashMap<String, String>>,
+}
+
 /// Reference to an upstream MCP prompt to inject into the system prompt.
 ///
 /// The prompt is fetched via `prompts/get` on the named upstream at build
@@ -77,7 +95,15 @@ pub struct Persona {
     /// Visibility: public or internal.
     #[serde(default)]
     pub scope: Scope,
+    /// MCP source for this persona's core mandate.
+    ///
+    /// When present, the core mandate is fetched at runtime from the
+    /// upstream MCP server via `prompts/get`. The `core_mandate` field
+    /// can be empty in YAML — it will be populated at resolution time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<McpPersonaSource>,
     /// Fundamental directive for this persona.
+    #[serde(default)]
     pub core_mandate: String,
     /// Heuristic modules and facets to load.
     #[serde(default)]
@@ -405,6 +431,103 @@ mcp_prompts:
             let pos: InjectPosition = serde_json::from_str(&json).unwrap();
             assert_eq!(pos, expected);
         }
+    }
+
+    #[test]
+    fn deserialize_mcp_persona_source() {
+        let yaml = r#"
+upstream: syllogis
+prompt: legal_analyst_persona
+arguments:
+  jurisdiction: french_admin
+"#;
+        let source: McpPersonaSource = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(source.upstream, "syllogis");
+        assert_eq!(source.prompt, "legal_analyst_persona");
+        let args = source.arguments.unwrap();
+        assert_eq!(args["jurisdiction"], "french_admin");
+    }
+
+    #[test]
+    fn deserialize_mcp_persona_source_no_args() {
+        let yaml = r#"
+upstream: syllogis
+prompt: generic_persona
+"#;
+        let source: McpPersonaSource = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(source.upstream, "syllogis");
+        assert_eq!(source.prompt, "generic_persona");
+        assert!(source.arguments.is_none());
+    }
+
+    #[test]
+    fn mcp_persona_source_serialize_roundtrip() {
+        let source = McpPersonaSource {
+            upstream: "syllogis".to_string(),
+            prompt: "legal_analyst_persona".to_string(),
+            arguments: Some(
+                [("jurisdiction".to_string(), "french_admin".to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
+        };
+
+        let yaml = serde_yaml::to_string(&source).unwrap();
+        let back: McpPersonaSource = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(back.upstream, "syllogis");
+        assert_eq!(back.prompt, "legal_analyst_persona");
+        assert_eq!(back.arguments.unwrap()["jurisdiction"], "french_admin");
+    }
+
+    #[test]
+    fn deserialize_persona_with_source() {
+        let yaml = r#"
+persona_name: syllogis_legal
+display_name: "Syllogis Legal Analyst"
+source:
+  upstream: syllogis
+  prompt: legal_analyst_persona
+  arguments:
+    jurisdiction: french_admin
+heuristics:
+  - module: legal
+    facets: [evidence_analysis]
+"#;
+        let persona: Persona = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(persona.persona_name, "syllogis_legal");
+        assert!(persona.source.is_some());
+        let source = persona.source.unwrap();
+        assert_eq!(source.upstream, "syllogis");
+        assert_eq!(source.prompt, "legal_analyst_persona");
+        assert!(persona.core_mandate.is_empty());
+        assert_eq!(persona.heuristics.len(), 1);
+    }
+
+    #[test]
+    fn deserialize_persona_without_source_backward_compat() {
+        let yaml = r#"
+persona_name: developer
+display_name: "Developer"
+core_mandate: "Write code."
+"#;
+        let persona: Persona = serde_yaml::from_str(yaml).unwrap();
+        assert!(persona.source.is_none());
+        assert_eq!(persona.core_mandate, "Write code.");
+    }
+
+    #[test]
+    fn deserialize_persona_source_with_local_mandate() {
+        let yaml = r#"
+persona_name: hybrid
+display_name: "Hybrid Persona"
+source:
+  upstream: syllogis
+  prompt: base_persona
+core_mandate: "Local fallback mandate."
+"#;
+        let persona: Persona = serde_yaml::from_str(yaml).unwrap();
+        assert!(persona.source.is_some());
+        assert_eq!(persona.core_mandate, "Local fallback mandate.");
     }
 
     #[test]
