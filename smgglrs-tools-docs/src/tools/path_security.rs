@@ -1,14 +1,11 @@
-use crate::store::IndexStore;
 use smgglrs_core::auth::CallContext;
-use smgglrs_core::models::ModelBackend;
-use smgglrs_core::notify::Notifier;
-use smgglrs_core::permissions::{ApprovalStore, PermissionEngine, PermissionResult};
+use smgglrs_core::permissions::PermissionResult;
 use smgglrs_core::protocol::CallToolResult;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use super::state::DocsState;
 
+#[cfg(test)]
 pub(super) fn resolve_path(raw: &str, must_exist: bool) -> Result<PathBuf, String> {
     resolve_path_with_root(raw, must_exist, None)
 }

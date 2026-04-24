@@ -238,7 +238,6 @@ impl IterativeExecutor {
             }
 
             // --- Phase 3: Reduce (synthesis) ---
-            let new_count = round_findings.len();
             let prev_total = all_findings.len();
             all_findings.extend(round_findings);
 

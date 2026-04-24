@@ -29,6 +29,8 @@ pub struct SpecializationMeta {
     pub path: PathBuf,
 }
 
+/// Service that loads and manages cognitive core components (personas,
+/// heuristics, directives, specializations) from a directory tree.
 pub struct ForgeService {
     personas: HashMap<String, Persona>,
     heuristics: HashMap<String, HeuristicModule>,

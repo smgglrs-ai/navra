@@ -9,10 +9,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub use agents::{AgentConfig, UpstreamConfig};
-pub use models::{AgenticConfig, BudgetConfig, ModelConfig};
-pub use modules::{ApprovalConfig, DocsModuleConfig, GitModuleConfig, ModulesConfig, RagModuleConfig, VisionModuleConfig, VoiceModuleConfig};
-pub use permissions::{PermissionSet, SafetyPatternConfig, ToolRuleConfig};
-pub use server::{DiscoveryConfig, IdentityConfig, RegistryEntry, ServerConfig};
+pub use models::{BudgetConfig, ModelConfig};
+pub use modules::{ApprovalConfig, ModulesConfig};
+pub use permissions::PermissionSet;
+pub use server::{RegistryEntry, ServerConfig};
 
 fn default_true() -> bool {
     true

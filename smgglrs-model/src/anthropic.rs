@@ -4,12 +4,10 @@
 //! Supports chat completion with tool use and streaming.
 
 use crate::chat::{
-    ChatChunk, ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatUsage, FinishReason,
-    FunctionCall, ToolCall, ToolCallDelta, ToolChoice,
+    ChatMessage, ChatRequest, ChatResponse, ChatRole, FinishReason,
+    FunctionCall, ToolCall, ToolChoice,
 };
 use crate::{GenerateRequest, GenerateResponse, Locality, ModelBackend, ModelError};
-use futures_util::StreamExt;
-
 /// Anthropic Messages API version.
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -421,10 +419,12 @@ fn anthropic_stop_reason(reason: &str) -> FinishReason {
 /// Parse an Anthropic SSE event into a ChatChunk.
 ///
 /// Returns `Ok(None)` for events that don't produce a chunk.
+#[cfg(test)]
 fn parse_anthropic_stream_event(
     json_str: &str,
     prompt_tokens: &mut Option<u32>,
-) -> Result<Option<ChatChunk>, ModelError> {
+) -> Result<Option<crate::chat::ChatChunk>, ModelError> {
+    use crate::chat::{ChatChunk, ChatUsage, ToolCallDelta};
     let json: serde_json::Value = serde_json::from_str(json_str)
         .map_err(|e| ModelError::Api(format!("invalid stream event: {e}")))?;
 

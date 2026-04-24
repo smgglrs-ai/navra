@@ -19,8 +19,8 @@ const IMAGE_ROCM: &str = "ghcr.io/ggml-org/llama.cpp:server-rocm";
 
 /// Runtime that manages llama.cpp containers via Podman.
 pub struct PodmanRuntime {
-    client: reqwest::Client,
-    socket_path: String,
+    _client: reqwest::Client,
+    _socket_path: String,
 }
 
 impl Default for PodmanRuntime {
@@ -35,8 +35,8 @@ impl PodmanRuntime {
         let uid = unsafe { libc::getuid() };
         let socket_path = format!("/run/user/{uid}/podman/podman.sock");
         Self {
-            client: reqwest::Client::new(),
-            socket_path,
+            _client: reqwest::Client::new(),
+            _socket_path: socket_path,
         }
     }
 
@@ -46,11 +46,6 @@ impl PodmanRuntime {
         let uid = unsafe { libc::getuid() };
         let socket = format!("/run/user/{uid}/podman/podman.sock");
         std::path::Path::new(&socket).exists()
-    }
-
-    /// Build the Podman API base URL for Unix socket.
-    fn api_url(&self, path: &str) -> String {
-        format!("http://d/v5.0.0/libpod{path}")
     }
 
     /// Select container image based on GPU.
@@ -119,7 +114,7 @@ impl ModelRuntime for PodmanRuntime {
                 }
             }
 
-            let create_body = serde_json::json!({
+            let _create_body = serde_json::json!({
                 "image": image,
                 "name": container_name,
                 "command": cmd,

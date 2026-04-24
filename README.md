@@ -13,6 +13,7 @@
   <a href="#quickstart">Quickstart</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="#configuration">Configuration</a> ·
+  <a href="#security">Security</a> ·
   <a href="#workspace">Workspace</a> ·
   <a href="#license">License</a>
 </p>
@@ -152,6 +153,35 @@ command = ["npx", "-y", "@anthropic/mcp-fs"]
 ```
 
 See [DESIGN.md](DESIGN.md) for the full configuration reference.
+
+## Security
+
+### Transport security
+
+smgglrs's default transport is a **Unix domain socket** with `0600`
+permissions, restricting access to the owning user. The optional TCP
+listener binds to `127.0.0.1` only, preventing network exposure.
+These defaults mean local agent-to-gateway communication is secure
+without additional configuration.
+
+### Upstream connections
+
+**Current limitation**: upstream MCP server connections over HTTP
+(`transport = "http"` or `transport = "sse"`) do not use TLS.
+Connections to `localhost` upstreams are fine (traffic never leaves
+the machine), but connecting to remote upstream servers over plain
+HTTP exposes requests and responses to network interception.
+
+For any non-localhost upstream, place a reverse proxy (nginx, Caddy,
+or Envoy) in front of the upstream server to terminate TLS. See the
+[Transport Security](DESIGN.md#transport-security) section in
+DESIGN.md for a worked example and full details.
+
+### Further reading
+
+See [DESIGN.md](DESIGN.md) for the full security model: defense in
+depth layers, threat model, content safety filtering, IFC, and
+the approval workflow.
 
 ## Workspace
 
