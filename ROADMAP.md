@@ -162,10 +162,10 @@ planned crate or enhancement.
 |--------------------------|----------------|-----|
 | Cognitive core (40 personas, 36 heuristics, 8 directives) | 43 personas, 36 heuristics, 7 directives + Forge + Weaver | **Done** |
 | Weaver (persona + context → structured prompt) | Weaver with budget-aware context, per-phase limits | **Done** |
-| Task decomposition (recursive planning, scope partitioning) | DAG executor + back-edges | **Partial** (scope partitioning not yet done) |
+| Task decomposition (recursive planning, scope partitioning) | DAG executor + flow_escalate + dynamic planner tasks + generates_tasks | **Done** (scope partitioning via planner decomposition) |
 | DAG execution (parallel tasks with dependencies) | DagExecutor with DependencyGraph | **Done** |
 | Mesh communication (lateral agent messaging) | Mailbox + Blackboard (IFC-gated) | **Done** |
-| Persistent memory (working, long-term, cases) | SQLite sessions + working memory + FTS5 + distillation pipeline + RRF retrieval | **Partial** (memory decay and MCP tools remaining) |
+| Persistent memory (working, long-term, cases) | SQLite sessions + working memory + FTS5 + distillation + RRF retrieval + decay + MCP tools | **Done** |
 | Anti-drift (mandate validation, drift detection) | Mandate validator + success_criteria | **Done** |
 | Failure recovery (circular fix detection, attempt history) | Attempt history, circular fix detector, recovery strategies | **Done** |
 | Observability (structured metrics, monitoring) | tracing only | **Low** |
@@ -307,7 +307,7 @@ This gives ad-hoc delegation without requiring static flow files.
 - Timeout: 5 minutes default
 - Isolated context (no shared conversation history)
 
-#### 2c. Flow-template-driven orchestration (NEW)
+#### 2c. Flow-template-driven orchestration ✅
 
 Replace ad-hoc team orchestration (leader manually calling
 team_create/team_add/team_message) with template-driven flows
