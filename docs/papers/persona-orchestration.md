@@ -166,7 +166,7 @@ model assignments.
 | Analysis | 6 | analyst, researcher, business_analyst, financial_analyst, sentiment_analyzer |
 | Leadership | 3 | leader, project_leader, executive_coach |
 | Quality Assurance | 4 | watchdog, viability_challenger, devils_advocate, efficiency_expert |
-| Security | 2 | security_sentinel, myelix_guardian |
+| Security | 2 | security_sentinel, smgglrs_guardian |
 | Creative & Communication | 5 | creative_director, tech_writer, summarizer, synthesizer, interviewer |
 | Ethics & Strategy | 3 | ethics_compliance_officer, strategic_advisor, value_champion |
 | Judges | 12 | 4 axes x 3 perspectives (see below) |
@@ -290,7 +290,7 @@ All evaluations ran on consumer hardware with no cloud API calls:
 
 - **Lead**: Gemma 4 27B (Ollama, locality: local, Q4_K_M)
 - **Teammates**: Granite 4 8B, Qwen 3.6 8B (Ollama, locality: local)
-- **Gateway**: mcpd with IFC, ACLs, and safety filters active
+- **Gateway**: smgglrs with IFC, ACLs, and safety filters active
 - **Transport**: MCP Streamable HTTP over localhost
 
 ---
@@ -310,7 +310,7 @@ rather than creating it.
 
 During blackbox testing, the framework's docs_tree tool defaulted
 to "." (current directory) when no explicit path was provided.
-This caused teammates to scan the mcpd binary's working directory
+This caused teammates to scan the smgglrs binary's working directory
 instead of the project path. Found only because the lead's report
 contained irrelevant file listings. This class of bug — path
 resolution in delegated contexts — is specific to multi-agent

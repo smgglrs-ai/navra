@@ -147,7 +147,7 @@ Updated after each agent execution via rolling averages:
 
 For OCI-hosted models, the composite card is stored as a side
 artifact using the OCI Referrers API (Distribution Spec 1.1 [4]).
-The artifact type is `application/vnd.myelix.model-card.v1+json`,
+The artifact type is `application/vnd.smgglrs.model-card.v1+json`,
 linked to the model manifest via the `subject` descriptor. This
 allows cards to travel with model images across registries without
 modifying the model artifact itself.
@@ -173,7 +173,7 @@ for family and parameter count.
 
 **OCI**: The transport fetches the manifest, retrieves the
 `Docker-Content-Digest` header, then queries the Referrers API for
-side artifacts of type `application/vnd.myelix.model-card.v1+json`.
+side artifacts of type `application/vnd.smgglrs.model-card.v1+json`.
 If found, the full card is deserialized from the referrer blob. If
 not, basic metadata (source only) is returned.
 

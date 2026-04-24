@@ -1,4 +1,4 @@
-# mcpd demo configuration — security audit of a payments app
+# smgglrs demo configuration — security audit of a payments app
 #
 # Demonstrates:
 # - Agent authentication (BLAKE3 + capability tokens)
@@ -12,12 +12,12 @@
 tcp = "127.0.0.1:9315"
 
 [server.identity]
-key_path = "/tmp/mcpd-demo/identity.key"
+key_path = "/tmp/smgglrs-demo/identity.key"
 token_ttl = 3600
 
 [server.discovery]
 url = "http://127.0.0.1:9315/mcp"
-description = "mcpd security audit demo"
+description = "smgglrs security audit demo"
 
 [approval]
 timeout_secs = 120
@@ -27,7 +27,7 @@ notify = "dbus"
 
 [modules.docs]
 enabled = true
-db_path = "/tmp/mcpd-demo/docs.db"
+db_path = "/tmp/smgglrs-demo/docs.db"
 watch = []
 
 [modules.git]
@@ -35,7 +35,7 @@ enabled = true
 
 [modules.rag]
 enabled = true
-db_path = "/tmp/mcpd-demo/rag.db"
+db_path = "/tmp/smgglrs-demo/rag.db"
 
 # --- Agents ---
 # Three agents mapping to the three personas in the audit flow.

@@ -1,0 +1,10 @@
+[Unit]
+Description=smgglrs — MCP Server Socket
+
+[Socket]
+ListenStream=%t/smgglrs/smgglrs.sock
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target

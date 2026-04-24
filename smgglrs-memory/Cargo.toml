@@ -1,0 +1,29 @@
+[package]
+name = "smgglrs-memory"
+description = "Persistent agent memory: working memory (conversation turns) and knowledge store (FTS5)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+rag = ["smgglrs-rag"]
+
+[dependencies]
+smgglrs-core = { path = "../smgglrs-core" }
+smgglrs-model = { path = "../smgglrs-model" }
+smgglrs-rag = { path = "../smgglrs-rag", optional = true }
+chrono = "0.4"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.10"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+serde_yaml = "0.9"
+tempfile = "3"

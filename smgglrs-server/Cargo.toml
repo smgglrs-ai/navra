@@ -1,0 +1,52 @@
+[package]
+name = "smgglrs-server"
+description = "Composable MCP server with modular architecture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "smgglrs"
+path = "src/main.rs"
+
+[dependencies]
+smgglrs-core = { path = "../smgglrs-core" }
+smgglrs-cognitive = { path = "../smgglrs-cognitive" }
+smgglrs-agent = { path = "../smgglrs-agent" }
+smgglrs-flow = { path = "../smgglrs-flow" }
+smgglrs-memory = { path = "../smgglrs-memory" }
+smgglrs-model = { path = "../smgglrs-model" }
+smgglrs-model-hub = { path = "../smgglrs-model-hub" }
+smgglrs-model-runtime = { path = "../smgglrs-model-runtime" }
+smgglrs-tools-docs = { path = "../smgglrs-tools-docs" }
+smgglrs-tools-git = { path = "../smgglrs-tools-git" }
+smgglrs-rag = { path = "../smgglrs-rag" }
+smgglrs-modal-vision = { path = "../smgglrs-modal-vision" }
+smgglrs-modal-voice = { path = "../smgglrs-modal-voice" }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+toml = "0.8"
+serde_yaml = "0.9"
+reqwest = { workspace = true, features = ["stream"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+futures-util = "0.3"
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+anyhow = "1"
+rand = "0.8"
+bs58 = { workspace = true }
+ksni = "0.3"
+mdns-sd = "0.18"
+flume = "0.11"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

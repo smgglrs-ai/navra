@@ -1,15 +1,15 @@
 [package]
-name = "myelix-benchmarks"
+name = "smgglrs-benchmarks"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [dev-dependencies]
-myelix-security = { path = "../myelix-security" }
-myelix-core = { path = "../myelix-core" }
-myelix-model = { path = "../myelix-model" }
-myelix-cognitive = { path = "../myelix-cognitive" }
-myelix-responses = { path = "../myelix-responses" }
+smgglrs-security = { path = "../smgglrs-security" }
+smgglrs-core = { path = "../smgglrs-core" }
+smgglrs-model = { path = "../smgglrs-model" }
+smgglrs-cognitive = { path = "../smgglrs-cognitive" }
+smgglrs-responses = { path = "../smgglrs-responses" }
 criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

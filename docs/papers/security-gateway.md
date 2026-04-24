@@ -1,4 +1,4 @@
-# mcpd: A Security Microkernel for AI Agent Infrastructure
+# smgglrs: A Security Microkernel for AI Agent Infrastructure
 
 **Authors**: Fabien Dupont et al.
 
@@ -12,9 +12,9 @@ AI agents increasingly access local resources -- files, git
 repositories, shell commands, credentials -- via the Model Context
 Protocol (MCP). Current agent runtimes provide no security
 infrastructure: any tool call from any agent executes with the
-full privileges of the host user. We present mcpd, a security
+full privileges of the host user. We present smgglrs, a security
 gateway daemon that interposes between AI agents and local
-resources. mcpd enforces authentication (BLAKE3 tokens, Ed25519
+resources. smgglrs enforces authentication (BLAKE3 tokens, Ed25519
 capability tokens, DID:key identity), deny-wins path ACLs with
 ring inheritance, Bell-LaPadula information flow control with
 per-value taint tracking, a fail-closed hook pipeline for content
@@ -47,9 +47,9 @@ Applications identifies tool misuse (LLM01), data exfiltration
 The EU AI Act Article 14 mandates human oversight and decision
 traceability for high-risk AI systems.
 
-This paper presents mcpd, a gateway daemon that treats agent
+This paper presents smgglrs, a gateway daemon that treats agent
 security as an infrastructure concern rather than an application
-concern. mcpd sits between agents and resources, enforcing
+concern. smgglrs sits between agents and resources, enforcing
 security policies at the protocol layer regardless of which
 agent connects. The architecture follows the microkernel pattern:
 a minimal, auditable security core with all capabilities
@@ -112,9 +112,9 @@ server-side seen-nonce map, pruned after 2-hour TTL.
 
 ### 3.1 Gateway Pattern
 
-mcpd is a gateway, not a framework. Agents (Claude Code, Goose,
+smgglrs is a gateway, not a framework. Agents (Claude Code, Goose,
 custom) connect via MCP Streamable HTTP over Unix socket (0600
-permissions) or TCP. mcpd aggregates built-in tool modules and
+permissions) or TCP. smgglrs aggregates built-in tool modules and
 upstream MCP servers behind a unified security layer. The gateway
 pattern ensures that security enforcement is independent of
 agent implementation.
@@ -147,7 +147,7 @@ All tool invocations pass through a single function,
 The `ChainAuthenticator` tries backends in priority order:
 
 1. **CapabilityAuthenticator**: Ed25519-signed CBOR tokens
-   (`mcpd_cap_v1.*`), with nonce replay protection.
+   (`smgglrs_cap_v1.*`), with nonce replay protection.
 2. **TokenAuthenticator**: BLAKE3-hashed bearer tokens for
    legacy agents.
 3. **NoAuthenticator**: Development-only fallback. Requires
@@ -175,7 +175,7 @@ Path ACLs use glob patterns with deny-wins semantics:
 
 ### 4.1 Token Format
 
-Wire format: `mcpd_cap_v1.<base64url(cbor)>.<base64url(sig)>`
+Wire format: `smgglrs_cap_v1.<base64url(cbor)>.<base64url(sig)>`
 
 Payload fields: version (`v: 1`), issuer DID (`iss`), subject
 DID (`sub`), capability set (path globs, operations, tool globs,
@@ -225,7 +225,7 @@ matching trusted path patterns (`~/Code/**`) retain Trusted
 integrity. Trusted path matching uses canonicalization and
 glob patterns with tilde expansion.
 
-Gateway tools (`myelix_var_*`) are excluded from auto-labeling --
+Gateway tools (`smgglrs_var_*`) are excluded from auto-labeling --
 they return kernel-managed metadata, not external data.
 
 ### 5.3 Write Enforcement
@@ -256,7 +256,7 @@ enables fine-grained flow tracking beyond session-level taint.
 The blackbox is a flight recorder embedded in `McpServer`. It
 records every tool call at the gateway chokepoint:
 
-- **Always on**: No opt-in, no configuration. If mcpd runs, it
+- **Always on**: No opt-in, no configuration. If smgglrs runs, it
   records.
 - **Append-only**: `INSERT` only. No `UPDATE` or `DELETE`.
 - **Hash-chained**: Each entry stores SHA-256 of the previous
@@ -277,7 +277,7 @@ IFC label, previous hash, current hash.
 
 `verify_chain()` replays the entire chain, recomputing hashes
 and comparing. Returns `(valid_count, first_broken_seq)`.
-Exposed via `mcpd audit verify` CLI.
+Exposed via `smgglrs audit verify` CLI.
 
 ### 6.4 Compliance Mapping
 
@@ -325,7 +325,7 @@ is < 0.5% of total latency.
 
 ### 7.3 Competitive Comparison
 
-| Feature | mcpd | SemaClaw | Goose | ZeroClaw |
+| Feature | smgglrs | SemaClaw | Goose | ZeroClaw |
 |---|---|---|---|---|
 | Auth tokens | BLAKE3 + Ed25519 cap | None | None | None |
 | Path ACLs | Deny-wins, ring inheritance | None | None | 3-tier autonomy |
@@ -351,7 +351,7 @@ but a bypassed check cannot be retroactively enforced.
 
 ### 8.2 The NoAuthenticator Fallback
 
-When no authenticator is configured, mcpd falls back to
+When no authenticator is configured, smgglrs falls back to
 `NoAuthenticator` with an error-level warning. This is a
 conscious tradeoff: blocking startup would break development
 workflows; silent open access would create false security
@@ -384,30 +384,30 @@ taint only) rather than rejecting sessionless clients.
 ## 9. Related Work
 
 - **OWASP Top 10 for LLM Applications** [1]: Catalogs agent
-  security risks. mcpd addresses LLM01 (tool misuse), LLM06
+  security risks. smgglrs addresses LLM01 (tool misuse), LLM06
   (data exfiltration), LLM08 (privilege escalation).
-- **Bell-LaPadula model** [2]: Foundational MAC model. mcpd
+- **Bell-LaPadula model** [2]: Foundational MAC model. smgglrs
   adapts no-write-down to agent tool chains.
 - **SemaClaw** [3]: Two-layer agent harness with binary
   permissions (PermissionBridge). Operates at the harness layer
-  vs mcpd's gateway layer. arXiv 2604.11548.
+  vs smgglrs's gateway layer. arXiv 2604.11548.
 - **AWS Agent Registry** [4]: Governance-layer complement
-  (discovery + ownership) to mcpd's runtime-security layer.
+  (discovery + ownership) to smgglrs's runtime-security layer.
 - **Agent Tier pattern** [5]: Two-lane architecture
   (deterministic enforcement + contextual reasoning) that maps
-  1:1 to mcpd's ACL/hook pipeline + governed tool catalogs.
+  1:1 to smgglrs's ACL/hook pipeline + governed tool catalogs.
 - **EU AI Act Article 14** [6]: Human oversight and decision
   traceability requirements for high-risk AI.
 - **SOC2 CC6.1** [7]: Audit trail requirements for system
   operations.
 - **ZeroClaw** [8]: Rust agent runtime with 3-tier autonomy
-  model. Flat runtime vs mcpd's security gateway.
+  model. Flat runtime vs smgglrs's security gateway.
 
 ---
 
 ## 10. Conclusion
 
-mcpd demonstrates that AI agent security is an infrastructure
+smgglrs demonstrates that AI agent security is an infrastructure
 concern that belongs in a dedicated gateway layer, not in each
 agent's application code. The gateway pattern ensures that
 security policies are enforced uniformly regardless of which
@@ -423,7 +423,7 @@ than 0.5% overhead to typical tool call latencies. Security
 need not be traded for performance.
 
 As AI agents gain more capabilities on local systems, the gap
-between agent capability and agent safety will widen. mcpd
+between agent capability and agent safety will widen. smgglrs
 provides one answer: treat the agent-resource boundary as a
 security perimeter, enforce mandatory access control at that
 perimeter, and record every crossing for auditability.
@@ -462,8 +462,8 @@ architecture. 2026.
 | Workspace crates | 17 |
 | Total LoC | ~46,000 |
 | Test count | 788 |
-| Security crate LoC | (myelix-security) |
-| Core crate LoC | (myelix-core) |
+| Security crate LoC | (smgglrs-security) |
+| Core crate LoC | (smgglrs-core) |
 | Benchmark suite | 7 groups, ~30 individual benchmarks |
 | Personas | 43 |
 | Safety regex patterns | 15 (11 secret + 4 PII) |

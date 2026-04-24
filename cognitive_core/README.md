@@ -1,6 +1,6 @@
 # Cognitive Core
 
-The persona system for myelix multi-agent orchestration. Defines
+The persona system for smgglrs multi-agent orchestration. Defines
 agent identities, behavioral frameworks, and operational protocols.
 
 ## Structure

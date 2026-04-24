@@ -1,7 +1,7 @@
 # Myelix Rust Roadmap
 
-This document tracks the evolution of the myelix-* crate family from
-an MCP gateway (mcpd) into a complete multi-agent orchestration
+This document tracks the evolution of the smgglrs-* crate family from
+an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
 ## Current state (2026-04-21)
@@ -13,30 +13,30 @@ Gateway blackbox audit. 4 paper outlines. Fully local multi-agent demos.
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| myelix-protocol | Done | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry) |
-| myelix-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
-| myelix-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
-| myelix-model-runtime | Done | Serve models via llama-server or Podman. libkrun delegated to OpenShell (see OPENSHELL.md) |
-| myelix-security | Done | Auth (BLAKE3, capability tokens, DID:key), ACLs, IFC with trusted paths, safety filters, hooks |
-| myelix-core | Done | MCP server, module trait, session, IFC value store, transport |
-| myelix-server | Done | Gateway binary (mcpd), config, model hub/runtime integration, CLI |
+| smgglrs-protocol | Done | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry) |
+| smgglrs-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
+| smgglrs-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
+| smgglrs-model-runtime | Done | Serve models via llama-server or Podman. libkrun delegated to OpenShell (see OPENSHELL.md) |
+| smgglrs-security | Done | Auth (BLAKE3, capability tokens, DID:key), ACLs, IFC with trusted paths, safety filters, hooks |
+| smgglrs-core | Done | MCP server, module trait, session, IFC value store, transport |
+| smgglrs-server | Done | Gateway binary (smgglrs), config, model hub/runtime integration, CLI |
 
 ### Client & Orchestration (v1 complete)
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| myelix-agent | Done | Client SDK: Agent builder with `.persona()`, McpClient with taint tracking, ReAct tool-use loop, non-progress iterations, scoped capability tokens |
-| myelix-flow | Done (v2) | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), IFC-gated, mandate validation |
+| smgglrs-agent | Done | Client SDK: Agent builder with `.persona()`, McpClient with taint tracking, ReAct tool-use loop, non-progress iterations, scoped capability tokens |
+| smgglrs-flow | Done (v2) | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), IFC-gated, mandate validation |
 
 ### Tools & Modalities (scaffolded)
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| myelix-tools-docs | Done | Document CRUD, FTS5, sqlite-vec |
-| myelix-tools-git | Done | Git status, diff, log, branch, commit |
-| myelix-rag | Done | Vector search, semantic chunking |
-| myelix-modal-voice | Scaffolded | ASR + TTS via ONNX (Whisper, Piper) |
-| myelix-modal-vision | Scaffolded | Image understanding (GPU tier) |
+| smgglrs-tools-docs | Done | Document CRUD, FTS5, sqlite-vec |
+| smgglrs-tools-git | Done | Git status, diff, log, branch, commit |
+| smgglrs-rag | Done | Vector search, semantic chunking |
+| smgglrs-modal-voice | Scaffolded | ASR + TTS via ONNX (Whisper, Piper) |
+| smgglrs-modal-vision | Scaffolded | Image understanding (GPU tier) |
 
 ---
 
@@ -49,14 +49,14 @@ This protocol ensures consistent, reproducible self-analysis runs.
 
 ```bash
 # 1. Refresh the analysis copy (ALWAYS do this first)
-rm -rf /tmp/mcpd-self-audit
-mkdir -p /tmp/mcpd-self-audit
-cp -r myelix-*/src /tmp/mcpd-self-audit/
-cp -r cognitive_core /tmp/mcpd-self-audit/
-cp CLAUDE.md DESIGN.md ROADMAP.md MODELS.md /tmp/mcpd-self-audit/
+rm -rf /tmp/smgglrs-self-audit
+mkdir -p /tmp/smgglrs-self-audit
+cp -r smgglrs-*/src /tmp/smgglrs-self-audit/
+cp -r cognitive_core /tmp/smgglrs-self-audit/
+cp CLAUDE.md DESIGN.md ROADMAP.md MODELS.md /tmp/smgglrs-self-audit/
 
 # 2. Copy self-audit personas (planner, rust_security_auditor, etc.)
-cp -r examples/payments-app/personas /tmp/mcpd-self-audit/ 2>/dev/null
+cp -r examples/payments-app/personas /tmp/smgglrs-self-audit/ 2>/dev/null
 # Or use the leader persona from cognitive_core (general-purpose)
 ```
 
@@ -64,12 +64,12 @@ cp -r examples/payments-app/personas /tmp/mcpd-self-audit/ 2>/dev/null
 
 ```bash
 # Security audit (default)
-just demo --live --model gemma4:26b --project /tmp/mcpd-self-audit
+just demo --live --model gemma4:26b --project /tmp/smgglrs-self-audit
 
 # Custom analysis with additional read access
 just demo --live --model gemma4:26b --project cognitive_core \
   --allow-read /tmp \
-  --prompt "Read /tmp/mcpd-analysis.md and verify against reality."
+  --prompt "Read /tmp/smgglrs-analysis.md and verify against reality."
 
 # Business analysis
 just demo --live --model gemma4:26b --project cognitive_core \
@@ -91,7 +91,7 @@ gathering, and reserves expensive remote models for synthesis.
 
 ### Interpreting results
 
-Many findings from self-analysis of `/tmp/mcpd-self-audit` are
+Many findings from self-analysis of `/tmp/smgglrs-self-audit` are
 re-discoveries of issues already fixed in the live codebase.
 Always cross-reference findings against recent commits before
 acting on them. The stale copy is intentional — it tests the
@@ -175,12 +175,12 @@ planned crate or enhancement.
 
 ## Roadmap
 
-### Phase 1: Cognitive core (myelix-cognitive)
+### Phase 1: Cognitive core (smgglrs-cognitive)
 
 **Goal**: Load persona/directive/heuristic YAML files, compile them
-into structured system prompts, and integrate with myelix-agent.
+into structured system prompts, and integrate with smgglrs-agent.
 
-New crate: `myelix-cognitive` (**Status**: Complete.
+New crate: `smgglrs-cognitive` (**Status**: Complete.
 Forge + Weaver, specializations, output schema, per-phase model,
 token budgeting, context compaction, per-phase context limits,
 43 personas (38 from Python + 5 general-purpose), agent `.persona()` builder.)
@@ -256,11 +256,11 @@ Reference: SemaClaw skill lazy-loading (arXiv 2604.11548).
 **Why first**: The cognitive core is Myelix's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
 
-### Phase 2: DAG execution & mesh communication (myelix-flow v2) ✓
+### Phase 2: DAG execution & mesh communication (smgglrs-flow v2) ✓
 
 **Status**: Core done. Enhancements planned.
 
-Implemented in `myelix-flow`:
+Implemented in `smgglrs-flow`:
 
 - Task struct: id, specialist, mandate, depends_on, inputs,
   expected_output, success_criteria, back_edges
@@ -291,7 +291,7 @@ support via file extension detection — same serde structs):
 - Add fields to flow/DAG definitions: `parameters` (Jinja-style
   template variables), `output_json_schema`, `retry` policy,
   `required_extensions` (MCP servers needed to run the flow).
-- `myelix flow import-goose <recipe.yaml>` CLI command to convert
+- `smgglrs flow import-goose <recipe.yaml>` CLI command to convert
   Goose recipes into Myelix flow definitions (with human review).
 - YAML is consistent with cognitive core (personas/heuristics).
 
@@ -333,7 +333,7 @@ exposed via MCP:
   synthesis). The flow engine resolves to actual models via
   model cards at runtime.
 
-This bridges the existing `myelix-flow` DAG engine with the
+This bridges the existing `smgglrs-flow` DAG engine with the
 team orchestration tools. The pieces exist (YAML loader with
 `{{ param }}` substitution, `ParameterDef`, `single_task_dag()`,
 flow MCP tools) — they need to be composed.
@@ -344,12 +344,12 @@ Flow templates encode orchestration expertise once and reuse it.
 The planner's domain knowledge goes into choosing the right
 template and parameters, not reinventing the workflow each time.
 
-### Phase 3: Persistent memory (myelix-memory)
+### Phase 3: Persistent memory (smgglrs-memory)
 
 **Goal**: Working memory that survives sessions, knowledge
 distillation pipeline, case-based reasoning. Backed by SQLite.
 
-New crate: `myelix-memory` (**Status**: All phases complete —
+New crate: `smgglrs-memory` (**Status**: All phases complete —
 WorkingMemory, KnowledgeStore, SqliteSessionBackend, distillation
 pipeline with Markdown export, RRF retrieval (4 channels + vector
 integration test), memory decay with exponential scoring, model-aware
@@ -357,9 +357,9 @@ compaction strategies, MCP memory tools, audit log storage.)
 
 #### 3a. Session persistence ✅
 
-- `SessionBackend` trait in myelix-core, `SqliteSessionBackend`
-  in myelix-memory. Sessions survive server restarts.
-- Wired in myelix-server at `~/.local/share/mcpd/sessions.db`.
+- `SessionBackend` trait in smgglrs-core, `SqliteSessionBackend`
+  in smgglrs-memory. Sessions survive server restarts.
+- Wired in smgglrs-server at `~/.local/share/smgglrs/sessions.db`.
 - No auto-expiry (sessions persist indefinitely to preserve context
   across long work sessions). `expire()` available for manual use.
 
@@ -527,7 +527,7 @@ and AI decisions have no provenance.
 - Retained indefinitely (no decay — audit logs are immutable)
 
 **Implementation:**
-- Add `AuditLog` struct to `myelix-memory`
+- Add `AuditLog` struct to `smgglrs-memory`
 - `ToolLoopResult` gains `audit_entries: Vec<AuditEntry>`
 - Tool loop records each call as it executes
 - Demo prints audit summary alongside the report
@@ -545,7 +545,7 @@ blocking — agents work without it, just less effectively.
 
 **Status**: Done.
 
-Implemented in `myelix-flow`:
+Implemented in `smgglrs-flow`:
 
 - Mandate validator: keyword + success_criteria matching with
   scoring (0-100), expected_output length check
@@ -561,7 +561,7 @@ Implemented in `myelix-flow`:
 
 #### 5a. ACP transport (skeleton ✅, prompt streaming TODO)
 
-Add Agent Client Protocol support to myelix-server:
+Add Agent Client Protocol support to smgglrs-server:
 
 - ACP is JSON-RPC 2.0 over Streamable HTTP (single `POST /acp`
   endpoint) — same transport as MCP, different method set.
@@ -569,7 +569,7 @@ Add Agent Client Protocol support to myelix-server:
   `session/load`, `session/prompt` (streaming responses).
 - Enables Myelix agents to appear in Zed and JetBrains IDEs
   without building editor plugins.
-- Reuses existing Axum HTTP infrastructure from myelix-server.
+- Reuses existing Axum HTTP infrastructure from smgglrs-server.
 
 Reference: ACP spec (github.com/i-am-bee/acp), Goose's
 goose-acp crate, JetBrains AI Assistant ACP support.
@@ -582,33 +582,33 @@ Design and implement a permission negotiation extension for MCP:
   elevated permissions from the client (e.g., write access to a path).
 - Client-side: present permission request to user, relay decision
   back to server via `permissions/grant` / `permissions/deny`.
-- Server-side (mcpd): update ACLs dynamically based on granted
+- Server-side (smgglrs): update ACLs dynamically based on granted
   permissions. Scoped to session, with optional persistence.
 - Integrate with Goose's approval model: when Goose is the client,
   its permission prompt maps to `permissions/request`.
 - Propose as MCP specification extension to AAIF.
 
 This bridges the gap between Goose's UI-level permission prompts
-and mcpd's infrastructure-level ACLs.
+and smgglrs's infrastructure-level ACLs.
 
 #### 5c. Goose-as-frontend integration ✅ (docs + config examples)
 
-Enable Goose desktop app to connect to mcpd as a single MCP
+Enable Goose desktop app to connect to smgglrs as a single MCP
 extension over Streamable HTTP:
 
-- mcpd already speaks MCP over HTTP — Goose can connect today.
+- smgglrs already speaks MCP over HTTP — Goose can connect today.
 - Build a Goose extension config snippet and test end-to-end:
-  Goose UI → mcpd gateway → downstream tools with full
+  Goose UI → smgglrs gateway → downstream tools with full
   auth/ACL/IFC/safety.
 - Document the setup for users.
 - Capture feedback on: permission flow UX, latency, tool
   discovery, error messages.
 - Stretch: build a Goose deeplink (`goose://extension?...`)
-  for one-click mcpd installation.
+  for one-click smgglrs installation.
 
 #### 5d. LLM backend expansion (NEW)
 
-Add missing model backends to myelix-model:
+Add missing model backends to smgglrs-model:
 
 | Backend | Transport | Priority |
 |---------|-----------|----------|
@@ -623,7 +623,7 @@ Add missing model backends to myelix-model:
 - Supports: `claude` (Claude Code), `gemini` (Gemini CLI),
   `codex` (OpenAI Codex), `goose`, any custom CLI command.
 - Optional Podman isolation: `--network=none` container wrapping
-  the CLI subprocess (reuses myelix-model-runtime isolation).
+  the CLI subprocess (reuses smgglrs-model-runtime isolation).
 - Config: `cli_command`, `cli_args_template`, `isolation: "none" |
   "podman"`, `timeout_secs`.
 
@@ -647,16 +647,16 @@ Reference: Google A2UI v0.9 (developers.googleblog.com, 2026-04-19).
 
 #### 5f. Registry proxy module (NEW)
 
-Add a `RegistryModule` to mcpd that aggregates external agent/tool
+Add a `RegistryModule` to smgglrs that aggregates external agent/tool
 discovery registries behind the gateway's unified security layer:
 
 - **Proxy to external registries**: AWS Agent Registry, Azure Agent
-  Registry, MCP Registry — agents behind mcpd get unified discovery
+  Registry, MCP Registry — agents behind smgglrs get unified discovery
   without needing provider-specific SDK access.
 - **Registry as MCP server**: Expose discovery as MCP tools
   (`registry_search`, `registry_list`, `registry_describe`).
 - **Hybrid search**: Forward keyword + semantic queries to upstream
-  registries, merge results, apply mcpd's ACLs to filter what the
+  registries, merge results, apply smgglrs's ACLs to filter what the
   requesting agent is allowed to discover.
 - **Caching**: Cache registry responses locally with configurable
   TTL (default 1h). Avoid hammering external APIs.
@@ -664,14 +664,14 @@ discovery registries behind the gateway's unified security layer:
   quality (AWS registry fails 33% of Japanese queries). Use local
   embedding model as fallback for non-English queries.
 
-This fits the gateway pattern — mcpd aggregates discovery sources
+This fits the gateway pattern — smgglrs aggregates discovery sources
 just like it aggregates upstream MCP servers.
 
 Reference: AWS Agent Registry (InfoQ, 2026-04-20), DISCOVERY.md.
 
 #### 5g. Multi-agent cross-validation in flows (NEW)
 
-Add cross-validation pattern to myelix-flow for high-stakes
+Add cross-validation pattern to smgglrs-flow for high-stakes
 agent outputs:
 
 - After an agent produces a result, spawn N verifier agents in
@@ -689,16 +689,16 @@ Reference: Claude Code Review multi-agent architecture
 
 ### Phase 5h. Module trait taxonomy review (NEW)
 
-Review whether myelix-core's flat `Module` trait should be split
+Review whether smgglrs-core's flat `Module` trait should be split
 into a richer taxonomy, inspired by SemaClaw's 4-layer plugin
 architecture:
 
-| Layer | SemaClaw | mcpd equivalent | Example |
+| Layer | SemaClaw | smgglrs equivalent | Example |
 |-------|----------|-----------------|---------|
-| **Action** | MCP Tools | Tool modules (docs, git) | `myelix-tools-*` |
-| **Thought** | Subagents | Cognitive specializations | `myelix-cognitive` |
-| **Context** | Skills (lazy-loaded) | Context injectors (RAG, memory) | `myelix-rag`, `myelix-memory` |
-| **Harness** | Lifecycle hooks | Hook pipeline, safety filters | `myelix-security` |
+| **Action** | MCP Tools | Tool modules (docs, git) | `smgglrs-tools-*` |
+| **Thought** | Subagents | Cognitive specializations | `smgglrs-cognitive` |
+| **Context** | Skills (lazy-loaded) | Context injectors (RAG, memory) | `smgglrs-rag`, `smgglrs-memory` |
+| **Harness** | Lifecycle hooks | Hook pipeline, safety filters | `smgglrs-security` |
 
 Currently all modules implement the same `Module` trait regardless
 of their role. Distinguishing tool-providers from context-injectors
@@ -721,23 +721,23 @@ delegation, and gRPC module architecture.
 
 #### 6a. OpenShell-provided identity (NEW)
 
-Add `OpenShellAuthenticator` to myelix-security that accepts
+Add `OpenShellAuthenticator` to smgglrs-security that accepts
 identity tokens from the OpenShell supervisor (SPIFFE SVIDs,
 OIDC JWTs, or gateway-signed tokens). Slots into
 `ChainAuthenticator` between capability and legacy auth.
-No impact on standalone mcpd.
+No impact on standalone smgglrs.
 
 #### 6b. A2A client and teammate mesh (NEW)
 
-Add `A2aClient` to myelix-protocol for outbound A2A calls.
-Currently mcpd can only receive A2A tasks — it cannot call
+Add `A2aClient` to smgglrs-protocol for outbound A2A calls.
+Currently smgglrs can only receive A2A tasks — it cannot call
 other agents. The flow engine needs an A2A client to build
 teammate meshes where agents communicate via A2A instead of
 in-process channels.
 
-The planner persona defines the flow; mcpd builds the A2A mesh
+The planner persona defines the flow; smgglrs builds the A2A mesh
 on its behalf:
-1. Each teammate gets an A2A endpoint on mcpd
+1. Each teammate gets an A2A endpoint on smgglrs
 2. Teammate Agent Cards registered in local directory
 3. Scoped capability tokens minted per teammate
 4. IFC enforcement on all A2A messages
@@ -749,14 +749,14 @@ sandbox deployments.
 #### 6c. Sandbox delegation to OpenShell (NEW)
 
 Remove the aspirational libkrun feature flag from
-myelix-model-runtime (it has zero code behind it). Add an
+smgglrs-model-runtime (it has zero code behind it). Add an
 `openshell` runtime backend that delegates sandbox creation to
 OpenShell's compute driver via gRPC.
 
-mcpd requests a sandbox with labels (`gpu=required`,
+smgglrs requests a sandbox with labels (`gpu=required`,
 `isolation=microvm`); OpenShell's driver handles the rest
 (Podman, libkrun, K8s, whatever). Direct and Podman backends
-remain for standalone mcpd with no OpenShell dependency.
+remain for standalone smgglrs with no OpenShell dependency.
 
 #### 6d. gRPC module architecture (NEW)
 
@@ -776,24 +776,24 @@ New dependency: `tonic` + `prost` for gRPC.
 
 #### 6e. Defense-in-depth network security model (NEW)
 
-Define and document the combined OpenShell + mcpd security model
+Define and document the combined OpenShell + smgglrs security model
 where each agent sandbox is strictly firewalled:
 
 - **Network layer (OpenShell)**: sandbox can only reach its model
-  endpoint, mcpd gateway, and OpenShell gateway. All other
+  endpoint, smgglrs gateway, and OpenShell gateway. All other
   traffic blocked via network namespaces + HTTP CONNECT proxy +
   OPA policy. No internet, no lateral movement.
-- **Application layer (mcpd)**: even with network access, the
+- **Application layer (smgglrs)**: even with network access, the
   agent is constrained by ACLs, IFC taint propagation, safety
   filters, and scoped capability tokens.
-- Neither layer alone is sufficient: OpenShell without mcpd
-  allows unrestricted tool access; mcpd without OpenShell
+- Neither layer alone is sufficient: OpenShell without smgglrs
+  allows unrestricted tool access; smgglrs without OpenShell
   allows network exfiltration. Both together give MAC + DAC.
 
 Deliverables:
 - OPA policy templates for OpenShell supervisor (allowlist for
-  mcpd + model endpoint + gateway only)
-- mcpd config templates for OpenShell-managed deployments
+  smgglrs + model endpoint + gateway only)
+- smgglrs config templates for OpenShell-managed deployments
 - Integration test: verify agent inside sandbox cannot reach
   unauthorized endpoints, and authorized tool calls respect ACLs
 - Security paper section (Phase 8): MAC + DAC analogy
@@ -804,7 +804,7 @@ See OPENSHELL.md "Defense in depth" section for full design.
 
 #### 7a. Two-stage retrieval with cross-encoder reranking (NEW)
 
-Add reranking stage to myelix-rag after sqlite-vec retrieval:
+Add reranking stage to smgglrs-rag after sqlite-vec retrieval:
 
 - ColBERT-style late interaction (preferred: preindexable, low
   latency, fits ONNX in-process strategy)
@@ -828,25 +828,25 @@ similar queries.
 - Comparison with MS Governance Toolkit
 - Security evaluation: attack surface, threat model
 - Use Goose as baseline: "agent without infrastructure security"
-  vs mcpd as "security microkernel"
+  vs smgglrs as "security microkernel"
 - Cite "The Agent Tier" pattern (InfoWorld, Nitesh Varma) as
-  independent validation of mcpd's two-lane architecture
+  independent validation of smgglrs's two-lane architecture
   (deterministic ACL/hook enforcement + contextual agent reasoning
-  through governed tool catalogs). Maps 1:1 to mcpd's design.
+  through governed tool catalogs). Maps 1:1 to smgglrs's design.
 - ZeroClaw as additional competitive baseline (Rust trait-based
   agent, similar permission model, but flat runtime vs gateway)
 - SemaClaw as harness-layer peer comparison: same problems
   (permissions, DAG orchestration, memory, context management)
-  solved at a different architectural layer. mcpd = gateway
+  solved at a different architectural layer. smgglrs = gateway
   (secures any framework), SemaClaw = harness (wraps one
   framework). Their PermissionBridge is binary vs our IFC taint
   propagation. Cite as validation that harness engineering is an
   emerging discipline (arXiv 2604.11548).
 - LangChain Agentic Engineering: cite Worker/Leader pattern as
   industry convergence on multi-agent teams. Note absence of
-  security enforcement — validates mcpd's niche.
+  security enforcement — validates smgglrs's niche.
 - AWS Agent Registry: cite as governance-layer complement to
-  mcpd's runtime-security layer. Discovery + governance + runtime
+  smgglrs's runtime-security layer. Discovery + governance + runtime
   security as three orthogonal concerns.
 - PersonaVLM: cite memory type convergence (4-type taxonomy
   independently arrived at by Cloudflare, PersonaVLM, SemaClaw,
@@ -862,43 +862,43 @@ similar queries.
 ## Crate dependency diagram (planned)
 
 ```
-myelix-protocol          (no myelix deps)
-myelix-model             (no myelix deps)
-myelix-model-hub         (no myelix deps)
-myelix-model-runtime     (no myelix deps)
+smgglrs-protocol          (no smgglrs deps)
+smgglrs-model             (no smgglrs deps)
+smgglrs-model-hub         (no smgglrs deps)
+smgglrs-model-runtime     (no smgglrs deps)
     ↓
-myelix-security          (protocol + model)
+smgglrs-security          (protocol + model)
     ↓
-myelix-cognitive         (security)             PERSONAS
-myelix-agent             (protocol + model + security)  CLIENT
-myelix-memory            (security + rag)       PERSISTENCE
+smgglrs-cognitive         (security)             PERSONAS
+smgglrs-agent             (protocol + model + security)  CLIENT
+smgglrs-memory            (security + rag)       PERSISTENCE
     ↓
-myelix-flow              (agent + cognitive + memory)   ORCHESTRATION
-myelix-core              (protocol + model + security)  SERVER
+smgglrs-flow              (agent + cognitive + memory)   ORCHESTRATION
+smgglrs-core              (protocol + model + security)  SERVER
     ↓
-myelix-tools-*  ─────┐
-myelix-rag      ─────┼── (core only)
-myelix-modal-*  ─────┘
+smgglrs-tools-*  ─────┐
+smgglrs-rag      ─────┼── (core only)
+smgglrs-modal-*  ─────┘
     ↓
-myelix-server            (all + hub + runtime)
+smgglrs-server            (all + hub + runtime)
 ```
 
 ## Ecosystem positioning
 
-mcpd is infrastructure, not an end-user agent. Desktop agents
-(Goose, Claude Code, etc.) connect to mcpd as an MCP server.
-mcpd provides the security layer; the agent provides the UX.
+smgglrs is infrastructure, not an end-user agent. Desktop agents
+(Goose, Claude Code, etc.) connect to smgglrs as an MCP server.
+smgglrs provides the security layer; the agent provides the UX.
 
 ```
 Goose (desktop)  ──┐              ┌── downstream MCP servers
-Claude Code      ──┼── MCP/ACP ──> mcpd ──┼── built-in modules
+Claude Code      ──┼── MCP/ACP ──> smgglrs ──┼── built-in modules
 Zed/JetBrains    ──┘              └── local ONNX models
 ```
 
 ### Goose relationship (April 2026 analysis)
 
 - Goose: Rust agent runtime (~v1.30, Apache-2.0, AAIF/Linux Foundation)
-- Different layer: Goose = end-user agent, mcpd = security gateway
+- Different layer: Goose = end-user agent, smgglrs = security gateway
 - Goose has NO auth tokens, NO ACLs, NO IFC, NO content filtering
 - Goose connects to MCP servers directly (no proxy/filter)
 - Contribution targets: MCP interceptor pattern (SEP-1763),
@@ -909,10 +909,10 @@ Zed/JetBrains    ──┘              └── local ONNX models
 
 - ZeroClaw: Rust agent runtime (<5MB memory, <10ms startup, 8.8MB binary)
 - Trait-based architecture, TOML config, 3-tier autonomy
-  (ReadOnly/Supervised/Full) — similar permission model to mcpd
+  (ReadOnly/Supervised/Full) — similar permission model to smgglrs
 - 70+ tools, 25+ messaging channels, hardware peripheral traits
   (ESP32/Arduino/RPi) — targets embedded/IoT
-- Key difference: flat agent runtime vs mcpd's security gateway
+- Key difference: flat agent runtime vs smgglrs's security gateway
 - Potential collaboration: transport adapters, tool interface traits
 - Watch for convergence — similar Rust + trait patterns, different layers
 - Migrating OpenClaw users (positions as next-gen replacement)
@@ -921,12 +921,12 @@ Zed/JetBrains    ──┘              └── local ONNX models
 
 - SemaClaw: Open-source two-layer agent framework (arXiv 2604.11548)
 - sema-code-core (Node.js agent runtime) + SemaClaw (application harness)
-- Closest architectural parallel to myelix-* crate family
+- Closest architectural parallel to smgglrs-* crate family
 - Same problems: permissions, DAG orchestration, memory with hybrid
   retrieval, structured context injection, persona identity
 - Key differences (our advantages):
   - **Layer**: SemaClaw is a harness (wraps one framework).
-    mcpd is a gateway (secures any framework that speaks MCP).
+    smgglrs is a gateway (secures any framework that speaks MCP).
   - **Security depth**: Their PermissionBridge is binary
     (internal=allow, external=approve). Our IFC propagates taint
     labels through tool chains; deny-wins ACLs are more granular.
@@ -947,7 +947,7 @@ Zed/JetBrains    ──┘              └── local ONNX models
 - No security enforcement whatsoever — their "tool gateway" is an
   API aggregator, not a security layer
 - Validates our architecture: their Worker/Leader = our DAG
-  orchestrator/specialists, their tool gateway = mcpd (minus security)
+  orchestrator/specialists, their tool gateway = smgglrs (minus security)
 - Human PR review as bottleneck supports cross-validation (Phase 5g)
 
 ### AWS Agent Registry (April 2026 analysis)
@@ -955,7 +955,7 @@ Zed/JetBrains    ──┘              └── local ONNX models
 - Centralized agent/tool/MCP server catalog in Amazon Bedrock AgentCore
 - MCP + A2A native, hybrid keyword+semantic search, governance workflow
 - The registry itself is an MCP server (queryable by Kiro, Claude Code)
-- Governance layer (who owns what, is it approved) complements mcpd's
+- Governance layer (who owns what, is it approved) complements smgglrs's
   runtime security layer (what can it access, is the content safe)
 - Non-English semantic search fails 33% of tests — test our local
   embeddings for multilingual quality
@@ -968,7 +968,7 @@ These capabilities from Python Myelix are intentionally NOT replicated:
 - **Docker deployment**: Rust binary is self-contained
 - **Python engine wrappers**: replaced by ModelBackend trait
 - **Rich TUI**: CLI is sufficient; Goose or GNOME shell provides UX
-- **A2A server**: mcpd already serves Agent Cards; A2A orchestration
-  belongs in myelix-flow, not as a separate service
+- **A2A server**: smgglrs already serves Agent Cards; A2A orchestration
+  belongs in smgglrs-flow, not as a separate service
 - **Desktop app**: Goose (or similar) serves as the frontend;
-  mcpd handles GNOME integration (D-Bus notifications, tray)
+  smgglrs handles GNOME integration (D-Bus notifications, tray)

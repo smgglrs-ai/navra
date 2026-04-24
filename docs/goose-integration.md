@@ -1,7 +1,7 @@
-# Connecting Goose to mcpd
+# Connecting Goose to smgglrs
 
 Goose is a desktop AI agent that connects to MCP servers as
-extensions. mcpd speaks MCP Streamable HTTP natively, so Goose
+extensions. smgglrs speaks MCP Streamable HTTP natively, so Goose
 can use it directly as an extension -- no adapters or plugins
 needed.
 
@@ -9,17 +9,17 @@ This guide walks through configuring both sides of the connection.
 
 ## Prerequisites
 
-- **mcpd** running (systemd or manual). See the main README for
+- **smgglrs** running (systemd or manual). See the main README for
   build and run instructions.
 - **Goose** desktop app installed
   ([goose.ai](https://block.github.io/goose/)).
 
-## 1. Configure mcpd for Goose
+## 1. Configure smgglrs for Goose
 
 ### Generate a token
 
 ```bash
-mcpd token generate --name goose --permissions developer
+smgglrs token generate --name goose --permissions developer
 ```
 
 This prints two values:
@@ -27,11 +27,11 @@ This prints two values:
 - **Bearer token** -- give this to Goose (the secret).
 - **BLAKE3 hash** -- store this in `config.toml` (the verifier).
 
-Keep the bearer token somewhere safe. mcpd does not store it.
+Keep the bearer token somewhere safe. smgglrs does not store it.
 
 ### Add the agent entry
 
-Edit `~/.config/mcpd/config.toml` and add:
+Edit `~/.config/smgglrs/config.toml` and add:
 
 ```toml
 [[agents]]
@@ -40,62 +40,62 @@ token_hash = "<blake3-hash-from-above>"
 permissions = "developer"
 ```
 
-See `examples/mcpd-for-goose.toml` for a full example with
+See `examples/smgglrs-for-goose.toml` for a full example with
 permission sets and tool rules.
 
-### Restart mcpd
+### Restart smgglrs
 
 If running via systemd:
 
 ```bash
-systemctl --user restart mcpd
+systemctl --user restart smgglrs
 ```
 
 If running manually, stop and restart the process.
 
 ## 2. Configure Goose
 
-Add mcpd as a Goose extension. Create or edit the file
-`~/.config/goose/extensions/mcpd.yaml`:
+Add smgglrs as a Goose extension. Create or edit the file
+`~/.config/goose/extensions/smgglrs.yaml`:
 
 ```yaml
-name: mcpd
+name: smgglrs
 transport: streamable-http
 url: http://127.0.0.1:9315/mcp
 headers:
-  Authorization: "Bearer <your-mcpd-token>"
+  Authorization: "Bearer <your-smgglrs-token>"
 ```
 
-If mcpd is listening on a Unix socket instead of TCP:
+If smgglrs is listening on a Unix socket instead of TCP:
 
 ```yaml
-name: mcpd
+name: smgglrs
 transport: streamable-http
-url: unix:///run/user/1000/mcpd/mcpd.sock
+url: unix:///run/user/1000/smgglrs/smgglrs.sock
 headers:
-  Authorization: "Bearer <your-mcpd-token>"
+  Authorization: "Bearer <your-smgglrs-token>"
 ```
 
 See `examples/goose-extension.yaml` for a ready-to-use template.
 
 ## 3. Verify the connection
 
-Open Goose and check that mcpd tools appear. You can verify
+Open Goose and check that smgglrs tools appear. You can verify
 from the Goose CLI as well:
 
 ```bash
 goose extensions list
 ```
 
-You should see `mcpd` listed with its tools (e.g., `docs_read`,
+You should see `smgglrs` listed with its tools (e.g., `docs_read`,
 `docs_search`, `git_status`, `git_diff`).
 
 Try a simple command in Goose:
 
 > "List my git repositories under ~/Code"
 
-Goose should invoke mcpd's tools and return results. If modules
-like git or docs are disabled in your mcpd config, only the
+Goose should invoke smgglrs's tools and return results. If modules
+like git or docs are disabled in your smgglrs config, only the
 enabled modules' tools will appear.
 
 ## Security considerations
@@ -104,13 +104,13 @@ enabled modules' tools will appear.
 
 - The bearer token is a shared secret. Treat it like a password.
 - Rotate tokens periodically: generate a new one, update Goose's
-  config, update the hash in `config.toml`, restart mcpd.
+  config, update the hash in `config.toml`, restart smgglrs.
 - Each agent (Goose, Claude Code, etc.) should have its own token
   and permission set.
 
 ### Path ACLs
 
-mcpd enforces deny-wins path ACLs. The permission set assigned to
+smgglrs enforces deny-wins path ACLs. The permission set assigned to
 Goose controls which directories it can access:
 
 ```toml
@@ -151,7 +151,7 @@ policy = "approve"
 
 ### Safety filters
 
-mcpd runs regex and ML-based safety filters on all tool inputs
+smgglrs runs regex and ML-based safety filters on all tool inputs
 and outputs. Secrets, API keys, and PII are redacted before
 reaching Goose. Configure the safety level per permission set:
 
@@ -161,7 +161,7 @@ safety = "standard"   # all filters, redaction enabled
 
 ### Information flow control (IFC)
 
-mcpd tracks data provenance across tool calls. If Goose reads a
+smgglrs tracks data provenance across tool calls. If Goose reads a
 file tagged as confidential, IFC prevents that content from
 flowing to lower-trust tools or upstream servers. This works
 transparently -- no Goose-side configuration needed.
@@ -170,22 +170,22 @@ transparently -- no Goose-side configuration needed.
 
 ### Connection refused
 
-- Verify mcpd is running: `systemctl --user status mcpd` or
+- Verify smgglrs is running: `systemctl --user status smgglrs` or
   check the process manually.
 - Confirm the address matches. Default TCP is `127.0.0.1:9315`.
   Check `[server]` in your `config.toml`.
 - If using a Unix socket, verify the socket file exists:
-  `ls -la /run/user/$(id -u)/mcpd/mcpd.sock`
+  `ls -la /run/user/$(id -u)/smgglrs/smgglrs.sock`
 
 ### Authentication failure (401)
 
 - Verify the bearer token in Goose's config matches the one
-  generated by `mcpd token generate`.
+  generated by `smgglrs token generate`.
 - Verify the `token_hash` in `config.toml` is the BLAKE3 hash
   (not the token itself).
 - Check that the `[[agents]]` entry for `goose` exists and has
   no typos.
-- Restart mcpd after any config change.
+- Restart smgglrs after any config change.
 
 ### Tools not found
 
@@ -208,13 +208,13 @@ transparently -- no Goose-side configuration needed.
 ### Tool call pending approval
 
 - Operations in the `approve` list require human confirmation.
-  Check for a D-Bus notification or run `mcpd approve <id>`.
+  Check for a D-Bus notification or run `smgglrs approve <id>`.
 - The default approval timeout is 300 seconds (configurable
   via `[approval] timeout_secs`).
 
 ### Timeout or slow responses
 
-- mcpd runs safety filters on every tool call. If ML filters
+- smgglrs runs safety filters on every tool call. If ML filters
   are enabled, the first call may be slow while the ONNX model
   loads.
 - Large file reads or searches may take time depending on the
