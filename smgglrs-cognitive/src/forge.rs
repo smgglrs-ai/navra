@@ -229,6 +229,77 @@ impl ForgeService {
     pub fn directive_count(&self) -> usize {
         self.directives.len()
     }
+
+    /// Register a persona auto-discovered from an upstream MCP server.
+    ///
+    /// Called during startup when an upstream exposes a prompt whose name
+    /// starts with `persona:`. The persona is registered with:
+    /// - `name`: the part after `persona:` (e.g., `legal_analyst`)
+    /// - `upstream_name`: the upstream MCP server name
+    /// - `prompt_name`: the full prompt name on the upstream
+    /// - `description`: used as the persona's `display_name`
+    ///
+    /// If a persona with the same name already exists (loaded from YAML),
+    /// the local definition takes precedence and the upstream is skipped.
+    /// Returns `true` if the persona was registered, `false` if skipped.
+    pub fn register_upstream_persona(
+        &mut self,
+        name: &str,
+        upstream_name: &str,
+        prompt_name: &str,
+        description: &str,
+    ) -> bool {
+        if self.personas.contains_key(name) {
+            tracing::debug!(
+                persona = %name,
+                upstream = %upstream_name,
+                "Skipping auto-discovered persona (local YAML takes precedence)"
+            );
+            return false;
+        }
+
+        let display_name = if description.is_empty() {
+            name.replace('_', " ")
+        } else {
+            description.to_string()
+        };
+
+        let persona = Persona {
+            persona_name: name.to_string(),
+            display_name,
+            scope: crate::types::Scope::Public,
+            source: Some(crate::types::McpPersonaSource {
+                upstream: upstream_name.to_string(),
+                prompt: prompt_name.to_string(),
+                arguments: None,
+            }),
+            core_mandate: String::new(),
+            heuristics: Vec::new(),
+            tools: Vec::new(),
+            loads_directives: false,
+            preferred_engine: None,
+            model_override: None,
+            planning_model: None,
+            execution_model: None,
+            output_schema: None,
+            output_json_schema: None,
+            examples: Vec::new(),
+            mcp_prompts: Vec::new(),
+            skills: Vec::new(),
+            planning_context_limit: None,
+            execution_context_limit: None,
+        };
+
+        tracing::info!(
+            persona = %name,
+            upstream = %upstream_name,
+            prompt = %prompt_name,
+            "Auto-discovered upstream persona"
+        );
+
+        self.personas.insert(name.to_string(), persona);
+        true
+    }
 }
 
 /// Build a lazy catalog of specialization metadata from YAML files.
@@ -492,5 +563,88 @@ directives:
         assert_eq!(names.len(), 2);
         assert!(names.contains(&"developer"));
         assert!(names.contains(&"leader"));
+    }
+
+    #[test]
+    fn register_upstream_persona_adds_to_forge() {
+        let mut forge = ForgeService::empty();
+        assert_eq!(forge.persona_count(), 0);
+
+        let registered = forge.register_upstream_persona(
+            "legal_analyst",
+            "syllogis",
+            "persona:legal_analyst",
+            "French administrative law analyst",
+        );
+
+        assert!(registered);
+        assert_eq!(forge.persona_count(), 1);
+
+        let persona = forge.get_persona("legal_analyst").unwrap();
+        assert_eq!(persona.persona_name, "legal_analyst");
+        assert_eq!(persona.display_name, "French administrative law analyst");
+        assert!(persona.core_mandate.is_empty());
+        assert!(persona.source.is_some());
+        let source = persona.source.as_ref().unwrap();
+        assert_eq!(source.upstream, "syllogis");
+        assert_eq!(source.prompt, "persona:legal_analyst");
+        assert!(source.arguments.is_none());
+
+        // Should appear in persona_names
+        assert!(forge.persona_names().contains(&"legal_analyst"));
+    }
+
+    #[test]
+    fn local_yaml_takes_precedence_over_upstream() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        let mut forge = ForgeService::load(tmp.path()).unwrap();
+        assert_eq!(forge.persona_count(), 2);
+
+        // Try to register an upstream persona with the same name as a local one
+        let registered = forge.register_upstream_persona(
+            "developer",
+            "some_upstream",
+            "persona:developer",
+            "Upstream developer persona",
+        );
+
+        assert!(!registered);
+        assert_eq!(forge.persona_count(), 2);
+
+        // The local persona should still be there, unchanged
+        let persona = forge.get_persona("developer").unwrap();
+        assert_eq!(persona.display_name, "Developer");
+        assert_eq!(persona.core_mandate, "Write code.");
+        assert!(persona.source.is_none());
+    }
+
+    #[test]
+    fn persona_prefix_parsing() {
+        // Test the strip_prefix logic used in main.rs
+        let prompt_name = "persona:legal_analyst";
+        let persona_name = prompt_name.strip_prefix("persona:");
+        assert_eq!(persona_name, Some("legal_analyst"));
+
+        let not_persona = "legal_analysis";
+        assert!(not_persona.strip_prefix("persona:").is_none());
+
+        let empty_suffix = "persona:";
+        assert_eq!(empty_suffix.strip_prefix("persona:"), Some(""));
+    }
+
+    #[test]
+    fn register_upstream_persona_empty_description_uses_name() {
+        let mut forge = ForgeService::empty();
+        forge.register_upstream_persona(
+            "code_reviewer",
+            "upstream_x",
+            "persona:code_reviewer",
+            "",
+        );
+
+        let persona = forge.get_persona("code_reviewer").unwrap();
+        assert_eq!(persona.display_name, "code reviewer");
     }
 }
