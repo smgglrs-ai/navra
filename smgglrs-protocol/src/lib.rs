@@ -1,3 +1,19 @@
+//! smgglrs-protocol: Wire types for MCP, A2A, and JSON-RPC.
+//!
+//! Provides serializable request/response types for the protocols
+//! that smgglrs speaks:
+//!
+//! - **MCP** — `ToolDefinition`, `CallToolParams`, `CallToolResult`,
+//!   `PromptDefinition`, `ResourceDefinition`, and capability negotiation
+//! - **JSON-RPC 2.0** — `JsonRpcRequest`, `JsonRpcResponse`, `JsonRpcError`,
+//!   `BatchRequest`, and standard error codes
+//! - **A2A** — `AgentCard`, `Task`, `Message`, and agent-to-agent protocol types
+//! - **IFC labels** — `DataLabel` with `Integrity` and `Confidentiality` levels
+//! - **Upstream** — `Upstream` config for proxied MCP servers with `RetryConfig`
+//!
+//! This crate has no smgglrs dependencies and sits at the bottom of
+//! the dependency graph.
+
 pub mod a2a;
 pub mod label;
 pub mod upstream;

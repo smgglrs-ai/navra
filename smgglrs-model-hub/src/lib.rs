@@ -1,19 +1,18 @@
 #![warn(missing_docs)]
-//! Pull and cache AI models from OCI, HuggingFace, and Ollama registries.
+//! smgglrs-model-hub: Pull and cache AI models from registries.
 //!
-//! Models are addressed by URI:
-//! - `ollama://granite-code:3b` — Ollama registry
+//! [`ModelHub`] downloads models addressed by [`ModelUri`] and caches
+//! them locally in `$XDG_DATA_HOME/smgglrs/models/`. Supported
+//! registries:
+//!
+//! - `ollama://granite-code:3b` — Ollama
 //! - `hf://ibm-granite/granite-3.3-8b-instruct-GGUF` — HuggingFace Hub
 //! - `oci://quay.io/myorg/mymodel:latest` — OCI container registry
 //! - `file:///path/to/model.gguf` — local file (no pull needed)
 //!
-//! Models are cached in `$XDG_DATA_HOME/smgglrs/models/` (default
-//! `~/.local/share/smgglrs/models/`), keyed by content hash.
-//!
-//! Each model has an associated **model card** (composite metadata)
-//! stored in the `cards/` directory. Cards combine vendor metadata
-//! (auto-populated on pull), operator-defined agentic capabilities
-//! (from config), and runtime statistics (learned over time).
+//! Each cached model has an associated [`ModelCard`] combining vendor
+//! metadata (auto-populated on pull), operator-defined agentic
+//! capabilities, and runtime statistics.
 
 pub mod card;
 mod cache;

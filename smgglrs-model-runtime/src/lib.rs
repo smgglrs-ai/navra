@@ -1,15 +1,16 @@
-//! Serve AI models with pluggable isolation backends.
+//! smgglrs-model-runtime: Serve AI models with pluggable isolation.
 //!
-//! Provides a `ModelRuntime` trait for starting and stopping model
-//! inference servers, with implementations for different isolation
-//! levels:
+//! Provides the [`ModelRuntime`] trait for starting, stopping, and
+//! health-checking model inference servers. Configured via
+//! [`ServeConfig`], returns an [`Endpoint`] with an OpenAI-compatible
+//! API URL. Isolation levels:
 //!
 //! - `direct` — spawn `llama-server` as a child process (no isolation)
 //! - `podman` — run inference in a rootless Podman container
 //! - `libkrun` — run inference in a libkrun microVM (future)
 //!
-//! The runtime auto-detects available GPUs and selects the appropriate
-//! container image or execution flags.
+//! [`auto_runtime()`] picks the best available backend. GPU detection
+//! is provided by [`detect_gpus()`].
 
 mod error;
 mod gpu;

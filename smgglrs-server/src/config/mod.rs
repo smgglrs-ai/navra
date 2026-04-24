@@ -1,0 +1,173 @@
+mod agents;
+mod models;
+mod modules;
+mod permissions;
+mod server;
+
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+pub use agents::{AgentConfig, UpstreamConfig};
+pub use models::{AgenticConfig, BudgetConfig, ModelConfig};
+pub use modules::{ApprovalConfig, DocsModuleConfig, GitModuleConfig, ModulesConfig, RagModuleConfig, VisionModuleConfig, VoiceModuleConfig};
+pub use permissions::{PermissionSet, SafetyPatternConfig, ToolRuleConfig};
+pub use server::{DiscoveryConfig, IdentityConfig, RegistryEntry, ServerConfig};
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Config {
+    pub server: ServerConfig,
+    #[serde(default)]
+    pub modules: ModulesConfig,
+    #[serde(default)]
+    pub approval: ApprovalConfig,
+    #[serde(default)]
+    pub agents: Vec<AgentConfig>,
+    #[serde(default)]
+    pub permissions: HashMap<String, PermissionSet>,
+    #[serde(default)]
+    pub upstream: Vec<UpstreamConfig>,
+    /// Credential label → backend source mappings.
+    /// Only credentials listed here are accessible to agents.
+    #[serde(default)]
+    pub credentials: HashMap<String, smgglrs_core::credentials::CredentialMapping>,
+    #[serde(default)]
+    pub models: HashMap<String, ModelConfig>,
+    /// Path to cognitive core directory (personas, heuristics, directives).
+    #[serde(default)]
+    pub cognitive_core: Option<String>,
+    /// Directories containing flow TOML files.
+    #[serde(default)]
+    pub flow_dirs: Vec<String>,
+    /// Domains to query for AID upstream discovery at startup.
+    #[serde(default)]
+    pub discover: Vec<String>,
+    /// Whitelisted MCP servers to advertise in the registry.
+    /// These appear in the /v0.1/servers endpoint alongside
+    /// smgglrs's own modules and connected upstream servers.
+    #[serde(default)]
+    pub registry: Vec<RegistryEntry>,
+    /// Default resource budget for teams and flows.
+    #[serde(default)]
+    pub budget: BudgetConfig,
+}
+
+impl Config {
+    pub fn load(path: Option<&str>) -> anyhow::Result<Self> {
+        let config_path = match path {
+            Some(p) => PathBuf::from(p),
+            None => Self::default_config_path(),
+        };
+
+        if config_path.exists() {
+            let content = std::fs::read_to_string(&config_path)?;
+            let config: Config = toml::from_str(&content)?;
+            Ok(config)
+        } else {
+            Ok(Self::default())
+        }
+    }
+
+    fn default_config_path() -> PathBuf {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("smgglrs/config.toml")
+    }
+
+    pub fn git_enabled(&self) -> bool {
+        self.modules
+            .git
+            .as_ref()
+            .map(|g| g.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn docs_enabled(&self) -> bool {
+        self.modules
+            .docs
+            .as_ref()
+            .map(|d| d.enabled)
+            .unwrap_or(true)
+    }
+
+    pub fn docs_db_path(&self) -> String {
+        self.modules
+            .docs
+            .as_ref()
+            .map(|d| d.db.clone())
+            .unwrap_or_else(modules::default_db_path)
+    }
+
+    pub fn rag_enabled(&self) -> bool {
+        self.modules
+            .rag
+            .as_ref()
+            .map(|r| r.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn voice_enabled(&self) -> bool {
+        self.modules
+            .voice
+            .as_ref()
+            .map(|v| v.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn vision_enabled(&self) -> bool {
+        self.modules
+            .vision
+            .as_ref()
+            .map(|v| v.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn rag_db_path(&self) -> String {
+        self.modules
+            .rag
+            .as_ref()
+            .map(|r| r.db.clone())
+            .unwrap_or_else(modules::default_rag_db_path)
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig {
+                socket: server::default_socket(),
+                tcp: None,
+                discovery: None,
+                identity: None,
+            },
+            modules: ModulesConfig::default(),
+            approval: ApprovalConfig::default(),
+            agents: Vec::new(),
+            permissions: HashMap::new(),
+            upstream: Vec::new(),
+            credentials: HashMap::new(),
+            models: HashMap::new(),
+            cognitive_core: None,
+            flow_dirs: Vec::new(),
+            discover: Vec::new(),
+            registry: Vec::new(),
+            budget: BudgetConfig::default(),
+        }
+    }
+}
+
+pub fn generate_token() -> String {
+    let mut bytes = [0u8; 32];
+    use rand::rngs::OsRng;
+    use rand::RngCore;
+    OsRng.fill_bytes(&mut bytes);
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("mcd_{hex}")
+}
+
+#[cfg(test)]
+mod tests;

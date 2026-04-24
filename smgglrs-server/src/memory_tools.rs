@@ -79,6 +79,137 @@ pub fn memory_query_def() -> ToolDefinition {
     }
 }
 
+// --- Handler functions ---
+
+/// Handle memory_store tool call.
+pub async fn handle_memory_store(
+    args: serde_json::Value,
+    ks: std::sync::Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let kind_str = match args.get("kind").and_then(|v| v.as_str()) {
+        Some(k) => k,
+        None => return CallToolResult::error("Missing required parameter: kind"),
+    };
+    let title = match args.get("title").and_then(|v| v.as_str()) {
+        Some(t) => t,
+        None => return CallToolResult::error("Missing required parameter: title"),
+    };
+    let content = match args.get("content").and_then(|v| v.as_str()) {
+        Some(c) => c,
+        None => return CallToolResult::error("Missing required parameter: content"),
+    };
+
+    let memory_type = match smgglrs_memory::MemoryType::from_str(kind_str) {
+        Ok(mt) => mt,
+        Err(_) => return CallToolResult::error(
+            format!("Invalid kind: {kind_str}. Use: fact, event, instruction, insight")
+        ),
+    };
+
+    let tags: Vec<String> = args
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let entry = smgglrs_memory::MemoryEntry {
+        id: id.clone(),
+        memory_type,
+        title: title.to_string(),
+        content: content.to_string(),
+        tags,
+        created_at: now,
+        updated_at: None,
+    };
+
+    let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+    match store.store(&entry) {
+        Ok(()) => CallToolResult::text(
+            serde_json::json!({"id": id, "status": "stored"}).to_string()
+        ),
+        Err(e) => CallToolResult::error(format!("Failed to store entry: {e}")),
+    }
+}
+
+/// Handle memory_query tool call.
+pub async fn handle_memory_query(
+    args: serde_json::Value,
+    ks: std::sync::Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let query = match args.get("query").and_then(|v| v.as_str()) {
+        Some(q) => q,
+        None => return CallToolResult::error("Missing required parameter: query"),
+    };
+
+    let limit = args.get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(10) as usize;
+
+    let kind_filter = args.get("kind")
+        .and_then(|v| v.as_str())
+        .and_then(|k| smgglrs_memory::MemoryType::from_str(k).ok());
+
+    let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+    match store.search(query) {
+        Ok(entries) => {
+            let mut results: Vec<&smgglrs_memory::MemoryEntry> = entries.iter()
+                .filter(|e| {
+                    kind_filter.as_ref().map_or(true, |k| e.memory_type == *k)
+                })
+                .collect();
+            results.truncate(limit);
+
+            let output: Vec<serde_json::Value> = results.iter().map(|e| {
+                serde_json::json!({
+                    "id": e.id,
+                    "kind": e.memory_type.as_str(),
+                    "title": e.title,
+                    "content": e.content,
+                    "tags": e.tags,
+                    "created_at": e.created_at,
+                })
+            }).collect();
+
+            CallToolResult::text(
+                serde_json::to_string_pretty(&output).unwrap_or_default()
+            )
+        }
+        Err(e) => CallToolResult::error(format!("Search failed: {e}")),
+    }
+}
+
+/// Handle memory_forget tool call.
+pub async fn handle_memory_forget(
+    args: serde_json::Value,
+    ks: std::sync::Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let id = match args.get("id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => return CallToolResult::error("Missing required parameter: id"),
+    };
+
+    let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+    match store.delete(id) {
+        Ok(true) => CallToolResult::text(
+            serde_json::json!({"id": id, "status": "deleted"}).to_string()
+        ),
+        Ok(false) => CallToolResult::error(format!("No entry found with id: {id}")),
+        Err(e) => CallToolResult::error(format!("Failed to delete entry: {e}")),
+    }
+}
+
 pub fn memory_forget_def() -> ToolDefinition {
     ToolDefinition {
         name: "memory_forget".to_string(),

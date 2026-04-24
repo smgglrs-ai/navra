@@ -35,6 +35,7 @@ smgglrs/
 ├── smgglrs-rag            Vector search, sqlite-vec, semantic chunking
 ├── smgglrs-modal-voice    Speech I/O (ASR + TTS via ONNX)
 ├── smgglrs-modal-vision   Image/screen understanding (GPU tier)
+├── smgglrs-responses      Open Responses API types (spec-compliant)
 └── smgglrs-server         Binary: CLI, config, module wiring (smgglrs)
 ```
 
@@ -53,6 +54,7 @@ smgglrs/
 | `smgglrs-rag` | Vector search with sqlite-vec, semantic chunking for context enrichment |
 | `smgglrs-modal-voice` | Speech I/O: ASR (Whisper) + TTS via ONNX models |
 | `smgglrs-modal-vision` | Image/screen understanding (GPU tier) |
+| `smgglrs-responses` | Open Responses API types — spec-compliant, no client, no runtime |
 | `smgglrs-server` | Binary: CLI, config, module wiring, model hub/runtime integration, systemd, system tray |
 
 ## Architecture
