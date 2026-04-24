@@ -19,10 +19,12 @@ pub mod chat;
 pub mod safe_backend;
 pub(crate) mod http_common;
 mod anthropic;
+pub mod cli;
 mod onnx;
 mod openai;
 
 pub use anthropic::AnthropicBackend;
+pub use cli::CliBackend;
 pub use onnx::{ModelTask, OnnxBackend};
 pub use openai::OpenAiBackend;
 pub use safe_backend::{ModelSafetyFilter, SafeModelBackend};

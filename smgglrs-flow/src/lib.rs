@@ -34,6 +34,7 @@ mod mesh_tools;
 mod recovery;
 mod task;
 mod validation;
+pub mod verification;
 pub mod yaml_loader;
 
 pub use backedge::{BackEdgeTracker, ConditionalEdge, EdgeCondition};
@@ -56,3 +57,7 @@ pub use recovery::{
 };
 pub use task::{Attempt, Task, TaskResult, TaskStatus};
 pub use validation::{validate_mandate, ValidationResult};
+pub use verification::{
+    verify_result, VerificationConfig, VerificationResult, VerificationThreshold,
+    VerificationVerdict,
+};

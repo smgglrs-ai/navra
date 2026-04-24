@@ -3528,12 +3528,16 @@ name = "smgglrs-rag"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "ndarray",
+ "ort",
  "rusqlite",
  "serde",
  "serde_json",
  "smgglrs-core",
  "sqlite-vec",
  "tempfile",
+ "thiserror 2.0.18",
+ "tokenizers",
  "tokio",
  "tracing",
  "uuid",

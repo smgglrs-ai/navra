@@ -52,11 +52,16 @@ pub struct ApprovalStore {
 
 impl ApprovalStore {
     pub fn new(timeout_secs: u64) -> Self {
+        Self::with_grant_ttl(timeout_secs, 300)
+    }
+
+    /// Create an approval store with custom timeout and grant TTL.
+    pub fn with_grant_ttl(timeout_secs: u64, grant_ttl_secs: u64) -> Self {
         Self {
             pending: Arc::new(Mutex::new(HashMap::new())),
             grants: Arc::new(Mutex::new(Vec::new())),
             timeout: Duration::from_secs(timeout_secs),
-            grant_ttl: Duration::from_secs(300), // 5 min to retry
+            grant_ttl: Duration::from_secs(grant_ttl_secs),
         }
     }
 

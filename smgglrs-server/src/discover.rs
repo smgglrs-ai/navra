@@ -21,12 +21,18 @@ pub struct DiscoveredEndpoint {
 /// Query a domain's `.well-known/agent` endpoint for AID discovery.
 ///
 /// Returns `None` if the domain doesn't serve AID, the record isn't
-/// MCP, or the request fails.
+/// MCP, or the request fails. Uses a default 10-second timeout.
+#[allow(dead_code)]
 pub async fn lookup_domain(domain: &str) -> Option<DiscoveredEndpoint> {
+    lookup_domain_with_timeout(domain, std::time::Duration::from_secs(10)).await
+}
+
+/// Query a domain's `.well-known/agent` endpoint with a custom timeout.
+pub async fn lookup_domain_with_timeout(domain: &str, timeout: std::time::Duration) -> Option<DiscoveredEndpoint> {
     let url = format!("https://{}/.well-known/agent", domain);
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(timeout)
         .build()
         .ok()?;
 
@@ -83,7 +89,14 @@ pub async fn lookup_domain(domain: &str) -> Option<DiscoveredEndpoint> {
 /// Discover MCP endpoints from a list of domains.
 ///
 /// Queries all domains concurrently and returns discovered endpoints.
+/// Uses a default 10-second timeout.
+#[allow(dead_code)]
 pub async fn discover_all(domains: &[String]) -> Vec<DiscoveredEndpoint> {
+    discover_all_with_timeout(domains, std::time::Duration::from_secs(10)).await
+}
+
+/// Discover MCP endpoints from a list of domains with a custom timeout.
+pub async fn discover_all_with_timeout(domains: &[String], timeout: std::time::Duration) -> Vec<DiscoveredEndpoint> {
     if domains.is_empty() {
         return Vec::new();
     }
@@ -92,7 +105,7 @@ pub async fn discover_all(domains: &[String]) -> Vec<DiscoveredEndpoint> {
     for domain in domains {
         let domain = domain.clone();
         handles.push(tokio::spawn(async move {
-            lookup_domain(&domain).await
+            lookup_domain_with_timeout(&domain, timeout).await
         }));
     }
 

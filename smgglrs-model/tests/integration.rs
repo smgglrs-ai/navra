@@ -6,7 +6,7 @@
 use smgglrs_model::{
     ClassifyLabel, ClassifyResponse, EmbedRequest,
     GenerateRequest, Locality, ModelBackend, ModelError,
-    OpenAiBackend, AnthropicBackend,
+    OpenAiBackend, AnthropicBackend, CliBackend,
     CreateResponseRequest, InputItem, OutputItem, MessageItem,
     ResponseStatus, ModelResponse,
     ClassifyRequest,
@@ -253,4 +253,106 @@ async fn default_backend_methods_return_not_loaded() {
         &CreateResponseRequest::new(String::from("m"), vec![])
     ).await;
     assert!(matches!(resp_err, Err(ModelError::NotLoaded(_))));
+}
+
+// =====================================================================
+// 8. CliBackend
+// =====================================================================
+
+#[test]
+fn cli_backend_constructor() {
+    let backend = CliBackend::new("claude", vec!["-p".into()]);
+    assert_eq!(backend.locality(), &Locality::Local);
+}
+
+#[test]
+fn cli_backend_builder() {
+    let backend = CliBackend::builder("gemini")
+        .args(vec!["--format".into(), "text".into()])
+        .timeout_secs(120)
+        .build();
+    assert_eq!(backend.locality(), &Locality::Local);
+}
+
+#[tokio::test]
+async fn cli_backend_generate_with_echo() {
+    let backend = CliBackend::new("echo", vec!["test output".into()]);
+    let req = GenerateRequest {
+        prompt: "ignored".into(),
+        max_tokens: None,
+        temperature: None,
+        system: None,
+        images: vec![],
+    };
+    let resp = backend.generate(&req).await.unwrap();
+    assert_eq!(resp.text, "test output");
+}
+
+#[tokio::test]
+async fn cli_backend_generate_via_stdin() {
+    let backend = CliBackend::new("cat", vec![]);
+    let req = GenerateRequest {
+        prompt: "stdin content".into(),
+        max_tokens: None,
+        temperature: None,
+        system: None,
+        images: vec![],
+    };
+    let resp = backend.generate(&req).await.unwrap();
+    assert_eq!(resp.text, "stdin content");
+}
+
+#[tokio::test]
+async fn cli_backend_respond() {
+    let backend = CliBackend::new("echo", vec!["response text".into()]);
+    let req = CreateResponseRequest::new(
+        String::from("cli-model"),
+        vec![InputItem::user("hello")],
+    );
+    let resp = backend.respond(&req).await.unwrap();
+    assert_eq!(resp.status, ResponseStatus::Completed);
+    assert_eq!(resp.text().unwrap(), "response text");
+}
+
+#[tokio::test]
+async fn cli_backend_embed_unsupported() {
+    let backend = CliBackend::new("echo", vec![]);
+    let err = backend.embed(&smgglrs_model::EmbedRequest { text: "hi".into() }).await;
+    assert!(matches!(err, Err(ModelError::NotLoaded(_))));
+}
+
+#[tokio::test]
+async fn cli_backend_classify_unsupported() {
+    let backend = CliBackend::new("echo", vec![]);
+    let err = backend.classify(&ClassifyRequest { text: "hi".into() }).await;
+    assert!(matches!(err, Err(ModelError::NotLoaded(_))));
+}
+
+#[tokio::test]
+async fn cli_backend_command_not_found() {
+    let backend = CliBackend::new("nonexistent_cli_tool_xyz", vec![]);
+    let req = GenerateRequest {
+        prompt: "hello".into(),
+        max_tokens: None,
+        temperature: None,
+        system: None,
+        images: vec![],
+    };
+    let err = backend.generate(&req).await.unwrap_err();
+    assert!(matches!(err, ModelError::Inference(_)));
+    assert!(format!("{err}").contains("nonexistent_cli_tool_xyz"));
+}
+
+#[tokio::test]
+async fn cli_backend_nonzero_exit() {
+    let backend = CliBackend::new("false", vec![]);
+    let req = GenerateRequest {
+        prompt: "hello".into(),
+        max_tokens: None,
+        temperature: None,
+        system: None,
+        images: vec![],
+    };
+    let err = backend.generate(&req).await.unwrap_err();
+    assert!(matches!(err, ModelError::Inference(_)));
 }

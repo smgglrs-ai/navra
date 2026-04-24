@@ -1121,6 +1121,7 @@ pub async fn handle_flow_escalate(
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
                 generates_tasks: false,
+                verification: None,
             });
         }
         smgglrs_flow::DagConfig {

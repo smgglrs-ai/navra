@@ -230,7 +230,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     // Build server, registering enabled modules
     let mut builder = smgglrs_core::McpServer::builder()
         .name("smgglrs")
-        .version(env!("CARGO_PKG_VERSION"));
+        .version(env!("CARGO_PKG_VERSION"))
+        .hook_timeout(std::time::Duration::from_secs(cfg.server.hook_timeout_secs));
 
     // Persistent session store (SQLite) — sessions survive restarts
     {
@@ -417,10 +418,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             tracing::info!(agent = %agent.name, permissions = %agent.permissions, "Registered agent");
         }
 
+        let nonce_cache_ttl = std::time::Duration::from_secs(
+            cfg.server.identity.as_ref()
+                .map(|i| i.nonce_cache_ttl_secs)
+                .unwrap_or(7200),
+        );
+
         if has_cap_agents {
             // Build ChainAuthenticator: capability tokens first, then BLAKE3
-            let cap_auth = smgglrs_core::auth::chain::CapabilityAuthenticator::new(
+            let cap_auth = smgglrs_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
                 Box::new(Arc::clone(&root_signer)),
+                nonce_cache_ttl,
             );
             let chain = smgglrs_core::auth::chain::ChainAuthenticator::new()
                 .add(cap_auth)
@@ -435,8 +443,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         // tokens minted by the server. Register CapabilityAuthenticator so
         // those tokens are verified (with proper DID identity), falling back
         // to anonymous for external clients.
-        let cap_auth = smgglrs_core::auth::chain::CapabilityAuthenticator::new(
+        let nonce_cache_ttl = std::time::Duration::from_secs(
+            cfg.server.identity.as_ref()
+                .map(|i| i.nonce_cache_ttl_secs)
+                .unwrap_or(7200),
+        );
+        let cap_auth = smgglrs_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
             Box::new(Arc::clone(&root_signer)),
+            nonce_cache_ttl,
         );
         let no_auth = smgglrs_core::auth::NoAuthenticator {
             default_identity: AgentIdentity::new("anonymous", "readonly"),
@@ -690,8 +704,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     }
 
     // Build shared approval infrastructure
-    let approvals = Arc::new(smgglrs_core::permissions::ApprovalStore::new(
+    let approvals = Arc::new(smgglrs_core::permissions::ApprovalStore::with_grant_ttl(
         cfg.approval.timeout_secs,
+        cfg.approval.grant_ttl_secs,
     ));
     let notifier: Arc<dyn smgglrs_core::notify::Notifier> = match cfg.approval.notify.as_str() {
         "dbus" => {
@@ -866,8 +881,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     asr_model,
                     tts_model,
                     voice_cfg.vad_threshold,
-                    30,
-                    1500,
+                    voice_cfg.max_record_secs,
+                    voice_cfg.silence_timeout_ms,
                     voice_cfg.voice.clone(),
                     perm_engine.clone(),
                 );
@@ -916,7 +931,10 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             domains = cfg.discover.len(),
             "Discovering upstream MCP servers via AID"
         );
-        let discovered = discover::discover_all(&cfg.discover).await;
+        let discovery_timeout = cfg.server.discovery.as_ref()
+            .map(|d| std::time::Duration::from_secs(d.timeout_secs))
+            .unwrap_or_else(|| std::time::Duration::from_secs(10));
+        let discovered = discover::discover_all_with_timeout(&cfg.discover, discovery_timeout).await;
         for endpoint in &discovered {
             tracing::info!(
                 domain = %endpoint.domain,
@@ -967,10 +985,12 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     let mut _mdns_daemon: Option<mdns_sd::ServiceDaemon> = None;
 
     if mdns_enabled {
-        // Browse for MCP servers on LAN (3 second scan)
+        let mdns_browse_secs = cfg.server.discovery.as_ref()
+            .map(|d| d.mdns_browse_secs)
+            .unwrap_or(3);
         tracing::info!("Browsing LAN for MCP servers via mDNS...");
         let lan_servers =
-            mdns::browse(std::time::Duration::from_secs(3)).await;
+            mdns::browse(std::time::Duration::from_secs(mdns_browse_secs)).await;
 
         for server in &lan_servers {
             let url = server.url();
@@ -2034,6 +2054,11 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let router = smgglrs_core::transport::build_router_with_broadcaster(server, broadcaster);
         (router, api_server_ref)
     };
+
+    // --- ACP (Agent Client Protocol) transport ---
+    let acp_router = smgglrs_core::transport::build_acp_router(server.clone());
+    let router = router.merge(acp_router);
+    tracing::info!("ACP endpoint at POST /acp");
 
     // --- Web UI: shared state + API routes ---
     let router = ui::attach_ui_routes(router, &cfg, &server, &models);

@@ -24,7 +24,7 @@
 //!         .await?
 //!         .model(model)
 //!         .system_prompt("You are a helpful assistant.")
-//!         .build()?;
+//!         .build().await?;
 //!
 //!     let result = agent.run("List the git status").await?;
 //!     println!("{}", result.response);

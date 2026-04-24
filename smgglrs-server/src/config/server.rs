@@ -5,6 +5,9 @@ pub struct ServerConfig {
     #[serde(default = "default_socket")]
     pub socket: Option<String>,
     pub tcp: Option<String>,
+    /// Per-hook timeout in seconds (default: 10).
+    #[serde(default = "default_hook_timeout")]
+    pub hook_timeout_secs: u64,
     /// AID discovery configuration. When set, smgglrs serves
     /// `/.well-known/agent` for the AID fallback protocol.
     #[serde(default)]
@@ -12,6 +15,10 @@ pub struct ServerConfig {
     /// Root identity configuration for DID-based auth.
     #[serde(default)]
     pub identity: Option<IdentityConfig>,
+}
+
+fn default_hook_timeout() -> u64 {
+    10
 }
 
 /// Root identity configuration.
@@ -29,6 +36,13 @@ pub struct IdentityConfig {
     /// Maximum delegation chain depth (default: 3).
     #[serde(default = "default_max_delegation_depth")]
     pub max_delegation_depth: u8,
+    /// Nonce cache TTL in seconds for replay tracking (default: 7200 = 2 hours).
+    #[serde(default = "default_nonce_cache_ttl")]
+    pub nonce_cache_ttl_secs: u64,
+}
+
+fn default_nonce_cache_ttl() -> u64 {
+    7200
 }
 
 fn default_token_ttl() -> u64 {
@@ -60,6 +74,20 @@ pub struct DiscoveryConfig {
     /// Documentation URL.
     #[serde(default)]
     pub docs_url: Option<String>,
+    /// Timeout in seconds for AID HTTP lookups and mDNS browse (default: 10).
+    #[serde(default = "default_discovery_timeout")]
+    pub timeout_secs: u64,
+    /// mDNS browse duration in seconds (default: 3).
+    #[serde(default = "default_mdns_browse_secs")]
+    pub mdns_browse_secs: u64,
+}
+
+fn default_discovery_timeout() -> u64 {
+    10
+}
+
+fn default_mdns_browse_secs() -> u64 {
+    3
 }
 
 fn default_aid_auth() -> String {

@@ -4,9 +4,10 @@
 //! `chunks` and `chunk_vectors` tables alongside the existing
 //! `documents` and `documents_fts` tables.
 
+use crate::cache::{QueryCache, QueryCacheConfig};
 use crate::chunk::Chunk;
 use rusqlite::{params, Connection};
-use std::sync::{Mutex, Once};
+use std::sync::{Arc, Mutex, Once};
 use zerocopy::IntoBytes;
 
 /// A search result from vector similarity search.
@@ -57,6 +58,7 @@ fn init_sqlite_vec() {
 pub struct ChunkStore {
     conn: Mutex<Connection>,
     dimensions: usize,
+    query_cache: Option<Arc<QueryCache>>,
 }
 
 impl ChunkStore {
@@ -75,6 +77,7 @@ impl ChunkStore {
         let store = Self {
             conn: Mutex::new(conn),
             dimensions,
+            query_cache: None,
         };
         store.init_schema()?;
         Ok(store)
@@ -87,9 +90,52 @@ impl ChunkStore {
         let store = Self {
             conn: Mutex::new(conn),
             dimensions,
+            query_cache: None,
         };
         store.init_schema()?;
         Ok(store)
+    }
+
+    /// Enable semantic query caching on this store.
+    pub fn with_query_cache(mut self, config: QueryCacheConfig) -> Self {
+        self.query_cache = Some(Arc::new(QueryCache::new(config)));
+        self
+    }
+
+    /// Search with optional semantic query caching.
+    ///
+    /// If caching is enabled, the query embedding is compared against
+    /// cached query embeddings. On a cache hit (cosine similarity above
+    /// the configured threshold), the cached results are returned
+    /// without touching SQLite.
+    pub fn cached_search(
+        &self,
+        query_text: &str,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> rusqlite::Result<Vec<ChunkResult>> {
+        if let Some(ref cache) = self.query_cache {
+            if let Some(results) = cache.lookup(query_text, query_embedding) {
+                return Ok(results);
+            }
+        }
+
+        let results = self.search(query_embedding, limit)?;
+
+        if let Some(ref cache) = self.query_cache {
+            cache.insert(
+                query_text.to_string(),
+                query_embedding.to_vec(),
+                results.clone(),
+            );
+        }
+
+        Ok(results)
+    }
+
+    /// Get the query cache, if enabled.
+    pub fn query_cache(&self) -> Option<&Arc<QueryCache>> {
+        self.query_cache.as_ref()
     }
 
     fn init_schema(&self) -> rusqlite::Result<()> {

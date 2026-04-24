@@ -7,6 +7,7 @@ use crate::error::FlowError;
 use crate::recovery::{classify_failure, detect_circular_fix, get_strategy, RecoveryAction};
 use crate::task::{Attempt, Task, TaskResult, TaskStatus};
 use crate::validation::validate_mandate;
+use crate::verification;
 use smgglrs_agent::Agent;
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_security::ifc::TaintTracker;
@@ -112,9 +113,9 @@ impl DagExecutor {
             // across specialists would require Arc<Mutex<Agent>> which is
             // future work.
             for task in &ready {
-                let agent = self.agents.get_mut(&task.specialist).ok_or_else(|| {
-                    FlowError::UnknownSpecialist(task.specialist.clone())
-                })?;
+                if !self.agents.contains_key(&task.specialist) {
+                    return Err(FlowError::UnknownSpecialist(task.specialist.clone()));
+                }
 
                 tracing::info!(
                     task = %task.id,
@@ -133,7 +134,10 @@ impl DagExecutor {
                         prompt = inject_retry_context(&prompt, &attempts);
                     }
 
-                    let result = agent.run(&prompt).await;
+                    let result = {
+                        let agent = self.agents.get_mut(&task.specialist).unwrap();
+                        agent.run(&prompt).await
+                    };
 
                     match result {
                         Ok(tool_result) => {
@@ -145,6 +149,53 @@ impl DagExecutor {
                             let validation = validate_mandate(task, &tool_result.response);
 
                             if validation.passed {
+                                // Cross-validation: if configured, verify the output
+                                if let Some(ref ver_config) = task.verification {
+                                    tracing::info!(
+                                        task = %task.id,
+                                        agents = ver_config.agents,
+                                        threshold = ?ver_config.threshold,
+                                        "Running cross-validation"
+                                    );
+
+                                    let ver_result = verification::verify_result(
+                                        task,
+                                        &tool_result.response,
+                                        ver_config,
+                                        &mut self.agents,
+                                    )
+                                    .await?;
+
+                                    total_prompt += ver_result.prompt_tokens;
+                                    total_completion += ver_result.completion_tokens;
+
+                                    if !ver_result.passed {
+                                        let findings_str = ver_result.findings.join("; ");
+                                        let error_msg = format!(
+                                            "Cross-validation failed ({}/{} verifiers rejected): {}",
+                                            ver_result.verdicts.iter().filter(|v| !v.passed).count(),
+                                            ver_result.verdicts.len(),
+                                            findings_str
+                                        );
+                                        tracing::warn!(
+                                            task = %task.id,
+                                            "Cross-validation failed"
+                                        );
+
+                                        attempts.push(Attempt {
+                                            error: error_msg,
+                                            error_type: "verification_failed".to_string(),
+                                            output: tool_result.response,
+                                        });
+
+                                        if detect_circular_fix(&attempts, 3) {
+                                            tracing::warn!(task = %task.id, "Circular fix detected");
+                                            break;
+                                        }
+                                        continue;
+                                    }
+                                }
+
                                 let task_result = TaskResult {
                                     task_id: task.id.clone(),
                                     status: TaskStatus::Complete,
@@ -390,6 +441,7 @@ mod tests {
             success_criteria: Vec::new(),
             max_retries: 2,
             back_edges: Vec::new(),
+            verification: None,
         }
     }
 
@@ -443,6 +495,7 @@ mod tests {
             success_criteria: vec!["Tests pass".to_string(), "No regressions".to_string()],
             max_retries: 2,
             back_edges: Vec::new(),
+            verification: None,
         };
 
         let prompt = build_task_prompt(&task, &HashMap::new());
