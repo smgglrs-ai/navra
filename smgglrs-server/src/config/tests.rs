@@ -1,0 +1,323 @@
+use super::*;
+
+#[test]
+fn parse_minimal_config() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert_eq!(config.server.tcp.as_deref(), Some("127.0.0.1:9315"));
+    assert!(config.docs_enabled());
+}
+
+#[test]
+fn parse_modular_config() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[modules.docs]
+enabled = true
+db = "/tmp/test.db"
+
+[[agents]]
+name = "claude"
+token_hash = "abc123"
+permissions = "developer"
+
+[permissions.developer]
+allow = ["~/Documents/**"]
+deny = ["**/.env"]
+operations = ["read", "write", "search", "list", "git.status"]
+approve = ["write", "git.commit"]
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert!(config.docs_enabled());
+    assert_eq!(config.docs_db_path(), "/tmp/test.db");
+    assert_eq!(config.agents.len(), 1);
+    let dev = &config.permissions["developer"];
+    assert!(dev.operations.contains(&"git.status".to_string()));
+    assert!(dev.approve.contains(&"git.commit".to_string()));
+}
+
+#[test]
+fn disable_module() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[modules.docs]
+enabled = false
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert!(!config.docs_enabled());
+}
+
+#[test]
+fn default_config_is_valid() {
+    let config = Config::default();
+    assert!(config.agents.is_empty());
+    assert!(config.docs_enabled());
+}
+
+#[test]
+fn parse_upstream_config() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[[upstream]]
+name = "smgglrs"
+command = ["poetry", "run", "python", "-m", "smgglrs.memory.mcp_server"]
+cwd = "/home/user/smgglrs"
+
+[[upstream]]
+name = "api-server"
+transport = "http"
+url = "http://localhost:8001/mcp"
+
+[[upstream]]
+name = "sse-server"
+transport = "sse"
+url = "http://localhost:8002/sse"
+
+[[upstream]]
+name = "disabled-server"
+command = ["echo", "noop"]
+enabled = false
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert_eq!(config.upstream.len(), 4);
+
+    // stdio (default transport)
+    assert_eq!(config.upstream[0].name, "smgglrs");
+    assert_eq!(config.upstream[0].transport, "stdio");
+    assert_eq!(config.upstream[0].command[0], "poetry");
+    assert_eq!(config.upstream[0].cwd.as_deref(), Some("/home/user/smgglrs"));
+
+    // http
+    assert_eq!(config.upstream[1].name, "api-server");
+    assert_eq!(config.upstream[1].transport, "http");
+    assert_eq!(
+        config.upstream[1].url.as_deref(),
+        Some("http://localhost:8001/mcp")
+    );
+
+    // sse
+    assert_eq!(config.upstream[2].transport, "sse");
+
+    // disabled
+    assert_eq!(config.upstream[3].enabled, Some(false));
+}
+
+#[test]
+fn generate_token_format() {
+    let token = generate_token();
+    assert!(token.starts_with("mcd_"));
+    // 4 prefix chars + 64 hex chars = 68 total
+    assert_eq!(token.len(), 68);
+    // Verify uniqueness
+    let token2 = generate_token();
+    assert_ne!(token, token2);
+}
+
+#[test]
+fn parse_permission_rings() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[permissions.admin]
+ring = 0
+allow = ["/home/user/**"]
+deny = ["**/.env"]
+operations = ["read", "write", "git.status", "git.commit", "shell.exec"]
+
+[permissions.developer]
+ring = 1
+allow = ["/home/user/projects/**"]
+operations = ["read", "write", "git.status", "git.commit"]
+approve = ["git.commit"]
+
+[permissions.readonly]
+ring = 2
+allow = ["/home/user/projects/public/**"]
+operations = ["read", "search", "list"]
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+
+    assert_eq!(config.permissions["admin"].ring, Some(0));
+    assert_eq!(config.permissions["developer"].ring, Some(1));
+    assert_eq!(config.permissions["readonly"].ring, Some(2));
+}
+
+#[test]
+fn ring_defaults_to_none() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[permissions.custom]
+allow = ["~/Documents/**"]
+operations = ["read"]
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert_eq!(config.permissions["custom"].ring, None);
+}
+
+#[test]
+fn parse_compliance_tags() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[permissions.audited]
+allow = ["~/Projects/**"]
+operations = ["read", "write"]
+compliance = ["SOC2-CC6.1", "EU-AI-Act-Art-14", "HIPAA-164.312"]
+
+[permissions.internal]
+allow = ["~/Internal/**"]
+operations = ["read"]
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+
+    let audited = &config.permissions["audited"];
+    assert_eq!(audited.compliance.len(), 3);
+    assert!(audited.compliance.contains(&"SOC2-CC6.1".to_string()));
+    assert!(audited.compliance.contains(&"EU-AI-Act-Art-14".to_string()));
+    assert!(audited.compliance.contains(&"HIPAA-164.312".to_string()));
+
+    // Permission set without compliance tags defaults to empty
+    let internal = &config.permissions["internal"];
+    assert!(internal.compliance.is_empty());
+}
+
+#[test]
+fn parse_identity_config() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[server.identity]
+key_path = "/etc/smgglrs/identity.key"
+token_ttl = 1800
+max_delegation_depth = 2
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    let identity = config.server.identity.as_ref().unwrap();
+    assert_eq!(identity.key_path.as_deref(), Some("/etc/smgglrs/identity.key"));
+    assert_eq!(identity.token_ttl, 1800);
+    assert_eq!(identity.max_delegation_depth, 2);
+}
+
+#[test]
+fn parse_credential_mappings() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[credentials]
+"github.pat" = { source = "keyring", path = "smgglrs/github-pat" }
+"ci.token" = { source = "env", var = "GITHUB_TOKEN" }
+"gnome.github" = { source = "keyring", path = "org.gnome.OnlineAccounts/github" }
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert_eq!(config.credentials.len(), 3);
+
+    let gh = &config.credentials["github.pat"];
+    assert_eq!(gh.source, "keyring");
+    assert_eq!(gh.path.as_deref(), Some("smgglrs/github-pat"));
+
+    let ci = &config.credentials["ci.token"];
+    assert_eq!(ci.source, "env");
+    assert_eq!(ci.var.as_deref(), Some("GITHUB_TOKEN"));
+}
+
+#[test]
+fn parse_agent_capability_fields() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[[agents]]
+name = "leader"
+token_hash = "abc123"
+permissions = "admin"
+pubkey = "~/.config/smgglrs/agents/leader.pub"
+capability_token = true
+token_ttl = 900
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    let agent = &config.agents[0];
+    assert_eq!(agent.pubkey.as_deref(), Some("~/.config/smgglrs/agents/leader.pub"));
+    assert!(agent.capability_token);
+    assert_eq!(agent.token_ttl, Some(900));
+}
+
+#[test]
+fn parse_permission_credentials() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[permissions.leader]
+ring = 1
+allow = ["~/Code/**"]
+operations = ["read", "write"]
+credentials = ["github.pat", "jira.token"]
+can_delegate = true
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    let leader = &config.permissions["leader"];
+    assert_eq!(leader.credentials, vec!["github.pat", "jira.token"]);
+    assert!(leader.can_delegate);
+}
+
+#[test]
+fn parse_model_agentic_config() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[models.granite-code]
+task = "chat"
+source = "ollama://granite-code:3b"
+
+[models.granite-code.agentic]
+strengths = ["code generation", "fast inference"]
+weaknesses = ["limited reasoning"]
+recommended_tasks = ["code review"]
+avoid_tasks = ["multi-step planning"]
+tool_use = "basic"
+cost_tier = "free"
+speed_tier = "fast"
+max_agents = 4
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    let model = &config.models["granite-code"];
+    let agentic = model.agentic.as_ref().unwrap();
+    assert_eq!(agentic.strengths, vec!["code generation", "fast inference"]);
+    assert_eq!(agentic.tool_use, Some("basic".to_string()));
+    assert_eq!(agentic.max_agents, Some(4));
+}
+
+#[test]
+fn agent_capability_defaults() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[[agents]]
+name = "legacy"
+token_hash = "xyz"
+permissions = "dev"
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    let agent = &config.agents[0];
+    assert!(agent.pubkey.is_none());
+    assert!(agent.did.is_none());
+    assert!(!agent.capability_token);
+    assert!(agent.token_ttl.is_none());
+}

@@ -1,0 +1,1266 @@
+use super::*;
+use crate::auth::AgentIdentity;
+use crate::auth::CallContext;
+use crate::module::{Module, PromptHandler, ResourceHandler};
+use crate::protocol::{CallToolParams, CallToolResult, ToolDefinition, ToolInputSchema};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+fn echo_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "echo".to_string(),
+        description: Some("Echoes input".to_string()),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: None,
+            required: None,
+        },
+    }
+}
+
+fn test_agent() -> AgentIdentity {
+    AgentIdentity::new("tester", "dev")
+}
+
+fn test_ctx() -> CallContext {
+    CallContext::new(test_agent(), "test-session")
+}
+
+// A test module providing one tool.
+struct TestModule;
+
+impl Module for TestModule {
+    fn name(&self) -> &str {
+        "test"
+    }
+
+    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+        vec![(
+            ToolDefinition {
+                name: "test_ping".to_string(),
+                description: Some("Returns pong".to_string()),
+                input_schema: ToolInputSchema {
+                    schema_type: "object".to_string(),
+                    properties: None,
+                    required: None,
+                },
+            },
+            Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("pong") })),
+        )]
+    }
+}
+
+/// Number of gateway tools always registered (smgglrs_var_*).
+const GATEWAY_TOOLS: usize = 3;
+
+#[test]
+fn builder_defaults() {
+    let server = McpServer::builder().build();
+    assert_eq!(server.name, "smgglrs");
+    // Only gateway tools (smgglrs_var_list, smgglrs_var_inspect, smgglrs_var_drop)
+    assert_eq!(server.tool_count(), GATEWAY_TOOLS);
+}
+
+#[test]
+fn builder_with_name_and_version() {
+    let server = McpServer::builder()
+        .name("my-server")
+        .version("2.0.0")
+        .build();
+    let info = server.server_info();
+    assert_eq!(info.name, "my-server");
+    assert_eq!(info.version.unwrap(), "2.0.0");
+}
+
+#[test]
+fn register_tool_and_list() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                CallToolResult::text(format!("echo: {args}"))
+            })
+        })
+        .build();
+
+    let result = server.handle_list_tools(&test_agent());
+    assert_eq!(result.tools.len(), 1 + GATEWAY_TOOLS);
+    assert!(result.tools.iter().any(|t| t.name == "echo"));
+}
+
+#[test]
+fn register_module() {
+    let server = McpServer::builder()
+        .module(TestModule)
+        .build();
+
+    let result = server.handle_list_tools(&test_agent());
+    assert_eq!(result.tools.len(), 1 + GATEWAY_TOOLS);
+    assert!(result.tools.iter().any(|t| t.name == "test_ping"));
+}
+
+#[test]
+fn register_multiple_modules() {
+    struct AnotherModule;
+    impl Module for AnotherModule {
+        fn name(&self) -> &str { "another" }
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+            vec![(
+                ToolDefinition {
+                    name: "another_hello".to_string(),
+                    description: None,
+                    input_schema: ToolInputSchema {
+                        schema_type: "object".to_string(),
+                        properties: None,
+                        required: None,
+                    },
+                },
+                Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("hi") })),
+            )]
+        }
+    }
+
+    let server = McpServer::builder()
+        .module(TestModule)
+        .module(AnotherModule)
+        .build();
+
+    assert_eq!(server.tool_count(), 2 + GATEWAY_TOOLS);
+}
+
+#[test]
+#[should_panic(expected = "Tool name conflict")]
+fn duplicate_tool_name_panics() {
+    // Two modules both registering "test_ping" should fail
+    struct DuplicateModule;
+    impl Module for DuplicateModule {
+        fn name(&self) -> &str { "duplicate" }
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+            vec![(
+                ToolDefinition {
+                    name: "test_ping".to_string(),
+                    description: None,
+                    input_schema: ToolInputSchema {
+                        schema_type: "object".to_string(),
+                        properties: None,
+                        required: None,
+                    },
+                },
+                Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("dup") })),
+            )]
+        }
+    }
+
+    McpServer::builder()
+        .module(TestModule)
+        .module(DuplicateModule)
+        .build();
+}
+
+#[tokio::test]
+async fn call_module_tool() {
+    let server = McpServer::builder()
+        .module(TestModule)
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "test_ping".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(!result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => assert_eq!(t.text, "pong"),
+    }
+}
+
+#[test]
+fn capabilities_reflect_tools() {
+    // Gateway tools are always registered, so tools capability is always present
+    let server = McpServer::builder().build();
+    assert!(server.capabilities().tools.is_some());
+
+    let with_tool = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("ok") })
+        })
+        .build();
+    assert!(with_tool.capabilities().tools.is_some());
+}
+
+#[tokio::test]
+async fn call_registered_tool() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("nil");
+                CallToolResult::text(format!("echo: {msg}"))
+            })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({"message": "hello"}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(!result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => assert_eq!(t.text, "echo: hello"),
+    }
+}
+
+#[tokio::test]
+async fn call_unknown_tool() {
+    let server = McpServer::builder().build();
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "nonexistent".to_string(),
+                arguments: serde_json::Value::Null,
+            },
+            test_ctx(),
+        )
+        .await;
+    assert!(result.is_error);
+}
+
+#[test]
+fn handle_initialize_creates_session() {
+    let server = McpServer::builder().name("test").build();
+    let params = crate::protocol::InitializeParams {
+        protocol_version: "2025-03-26".to_string(),
+        capabilities: Default::default(),
+        client_info: crate::protocol::ClientInfo {
+            name: "client".to_string(),
+            version: None,
+        },
+    };
+
+    let (result, session_id) = server.handle_initialize(params, test_agent());
+    assert_eq!(result.protocol_version, "2025-03-26");
+    assert_eq!(result.server_info.name, "test");
+    assert_eq!(server.sessions().count(), 1);
+    assert!(!session_id.is_empty());
+    assert!(server.sessions().get(&session_id).is_some());
+}
+
+#[tokio::test]
+async fn safety_filter_redacts_secrets() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("standard"))
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(!result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("[REDACTED:aws-key]"));
+            assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn safety_filter_blocks_when_configured() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("block"))
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({"message": "SSN: 123-45-6789"}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn no_safety_profile_passes_through() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("AKIAIOSFODNN7EXAMPLE") })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    // No safety profile configured → content passes through unmodified
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("AKIAIOSFODNN7EXAMPLE"));
+        }
+    }
+}
+
+// --- Prompt tests ---
+
+fn greeting_prompt_def() -> crate::protocol::PromptDefinition {
+    crate::protocol::PromptDefinition {
+        name: "greeting".to_string(),
+        description: Some("A greeting prompt".to_string()),
+        arguments: vec![crate::protocol::PromptArgument {
+            name: "name".to_string(),
+            description: Some("Name to greet".to_string()),
+            required: true,
+        }],
+    }
+}
+
+fn greeting_prompt_handler() -> PromptHandler {
+    Arc::new(|args: HashMap<String, String>| {
+        Box::pin(async move {
+            let name = args.get("name").cloned().unwrap_or_else(|| "world".to_string());
+            crate::protocol::GetPromptResult {
+                description: Some("A greeting".to_string()),
+                messages: vec![crate::protocol::PromptMessage {
+                    role: crate::protocol::PromptRole::User,
+                    content: crate::protocol::Content::text(format!("Hello, {name}!")),
+                }],
+            }
+        })
+    })
+}
+
+// A test module providing both tools and prompts.
+struct PromptModule;
+
+impl Module for PromptModule {
+    fn name(&self) -> &str {
+        "prompt_test"
+    }
+
+    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+        vec![]
+    }
+
+    fn prompts(&self) -> Vec<(crate::protocol::PromptDefinition, PromptHandler)> {
+        vec![(greeting_prompt_def(), greeting_prompt_handler())]
+    }
+}
+
+#[test]
+fn register_module_with_prompts() {
+    let server = McpServer::builder()
+        .module(PromptModule)
+        .build();
+
+    assert_eq!(server.prompt_count(), 1);
+    let result = server.handle_list_prompts(&test_agent());
+    assert_eq!(result.prompts.len(), 1);
+    assert_eq!(result.prompts[0].name, "greeting");
+}
+
+#[tokio::test]
+async fn call_registered_prompt() {
+    let server = McpServer::builder()
+        .module(PromptModule)
+        .build();
+
+    let result = server
+        .handle_get_prompt(crate::protocol::GetPromptParams {
+            name: "greeting".to_string(),
+            arguments: HashMap::from([("name".to_string(), "Alice".to_string())]),
+        }, &test_agent())
+        .await;
+
+    let result = result.unwrap();
+    assert_eq!(result.description, Some("A greeting".to_string()));
+    match &result.messages[0].content {
+        crate::protocol::Content::Text(t) => assert_eq!(t.text, "Hello, Alice!"),
+    }
+}
+
+#[tokio::test]
+async fn call_unknown_prompt() {
+    let server = McpServer::builder().build();
+    let result = server
+        .handle_get_prompt(crate::protocol::GetPromptParams {
+            name: "nonexistent".to_string(),
+            arguments: HashMap::new(),
+        }, &test_agent())
+        .await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Unknown prompt"));
+}
+
+#[test]
+fn capabilities_reflect_prompts() {
+    let empty = McpServer::builder().build();
+    assert!(empty.capabilities().prompts.is_none());
+
+    let with_prompt = McpServer::builder()
+        .module(PromptModule)
+        .build();
+    assert!(with_prompt.capabilities().prompts.is_some());
+}
+
+#[test]
+#[should_panic(expected = "Prompt name conflict")]
+fn duplicate_prompt_name_panics() {
+    struct DuplicatePromptModule;
+    impl Module for DuplicatePromptModule {
+        fn name(&self) -> &str { "duplicate" }
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+        fn prompts(&self) -> Vec<(crate::protocol::PromptDefinition, PromptHandler)> {
+            vec![(greeting_prompt_def(), greeting_prompt_handler())]
+        }
+    }
+
+    McpServer::builder()
+        .module(PromptModule)
+        .module(DuplicatePromptModule)
+        .build();
+}
+
+// --- Resource tests ---
+
+fn info_resource_def() -> crate::protocol::ResourceDefinition {
+    crate::protocol::ResourceDefinition {
+        uri: "info://server/status".to_string(),
+        name: "Server Status".to_string(),
+        description: Some("Current server status".to_string()),
+        mime_type: Some("text/plain".to_string()),
+    }
+}
+
+fn info_resource_handler() -> ResourceHandler {
+    Arc::new(|uri: String| {
+        Box::pin(async move {
+            crate::protocol::ReadResourceResult {
+                contents: vec![crate::protocol::ResourceContent {
+                    uri,
+                    mime_type: Some("text/plain".to_string()),
+                    text: Some("running".to_string()),
+                    blob: None,
+                }],
+            }
+        })
+    })
+}
+
+struct ResourceModule;
+
+impl Module for ResourceModule {
+    fn name(&self) -> &str { "resource_test" }
+    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+    fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, ResourceHandler)> {
+        vec![(info_resource_def(), info_resource_handler())]
+    }
+}
+
+#[test]
+fn register_module_with_resources() {
+    let server = McpServer::builder()
+        .module(ResourceModule)
+        .build();
+
+    assert_eq!(server.resource_count(), 1);
+    let result = server.handle_list_resources(&test_agent());
+    assert_eq!(result.resources.len(), 1);
+    assert_eq!(result.resources[0].uri, "info://server/status");
+}
+
+#[tokio::test]
+async fn read_registered_resource() {
+    let server = McpServer::builder()
+        .module(ResourceModule)
+        .build();
+
+    let result = server
+        .handle_read_resource(crate::protocol::ReadResourceParams {
+            uri: "info://server/status".to_string(),
+        }, &test_agent())
+        .await;
+
+    let result = result.unwrap();
+    assert_eq!(result.contents[0].text, Some("running".to_string()));
+}
+
+#[tokio::test]
+async fn read_unknown_resource() {
+    let server = McpServer::builder().build();
+    let result = server
+        .handle_read_resource(crate::protocol::ReadResourceParams {
+            uri: "info://nonexistent".to_string(),
+        }, &test_agent())
+        .await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Unknown resource"));
+}
+
+#[test]
+fn capabilities_reflect_resources() {
+    let empty = McpServer::builder().build();
+    assert!(empty.capabilities().resources.is_none());
+
+    let with_resource = McpServer::builder()
+        .module(ResourceModule)
+        .build();
+    assert!(with_resource.capabilities().resources.is_some());
+}
+
+#[test]
+#[should_panic(expected = "Resource URI conflict")]
+fn duplicate_resource_uri_panics() {
+    struct DuplicateResourceModule;
+    impl Module for DuplicateResourceModule {
+        fn name(&self) -> &str { "duplicate" }
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+        fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, ResourceHandler)> {
+            vec![(info_resource_def(), info_resource_handler())]
+        }
+    }
+
+    McpServer::builder()
+        .module(ResourceModule)
+        .module(DuplicateResourceModule)
+        .build();
+}
+
+// --- Per-tool permission tests ---
+
+#[tokio::test]
+async fn tool_permissions_deny_blocks_tool() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("Permission denied"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn tool_permissions_allow_passes_through() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("reached") })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Allow,
+                }],
+                ToolPolicy::Deny,
+            ),
+        )
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(!result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => assert_eq!(t.text, "reached"),
+    }
+}
+
+#[tokio::test]
+async fn tool_permissions_approve_returns_approval_required() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Approve,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("Approval required"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn no_tool_permissions_allows_all() {
+    // No tool_permissions registered at all — everything should pass
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("ok") })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(!result.is_error);
+}
+
+// --- Capability token tool permission tests ---
+
+fn cap_ctx(tools: Vec<&str>) -> CallContext {
+    use crate::auth::capability::ResolvedCapabilities;
+    CallContext::new(
+        AgentIdentity {
+            name: "cap-agent".to_string(),
+            permissions: "cap:ring1".to_string(),
+            signing_key: None,
+            did: Some("did:key:z6MkTest".to_string()),
+            capabilities: Some(ResolvedCapabilities {
+                issuer_did: "did:key:z6MkRoot".to_string(),
+                subject_did: "did:key:z6MkTest".to_string(),
+                ring: 1,
+                paths: vec!["/home/user/**".to_string()],
+                operations: ["read", "write"].into_iter().map(String::from).collect(),
+                tools: tools.into_iter().map(String::from).collect(),
+                credentials: vec![],
+                expires_at: u64::MAX,
+            }),
+        },
+        "cap-session",
+    )
+}
+
+#[tokio::test]
+async fn cap_token_allows_matching_tool() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("ok") })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            cap_ctx(vec!["echo", "docs_*"]),
+        )
+        .await;
+
+    assert!(!result.is_error);
+}
+
+#[tokio::test]
+async fn cap_token_allows_glob_matching_tool() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("ok") })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            cap_ctx(vec!["*"]),  // wildcard grants all
+        )
+        .await;
+
+    assert!(!result.is_error);
+}
+
+#[tokio::test]
+async fn cap_token_denies_unmatched_tool() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            cap_ctx(vec!["docs_*", "git_*"]),  // no match for "echo"
+        )
+        .await;
+
+    assert!(result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("not in capability token"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn cap_token_bypasses_tool_permissions() {
+    // Even if tool_permissions deny "echo", cap token with matching
+    // tool glob should allow it (cap path takes priority).
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("ok") })
+        })
+        .tool_permissions(
+            "cap:ring1",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            cap_ctx(vec!["echo"]),
+        )
+        .await;
+
+    // Cap token allows — tool_permissions not consulted
+    assert!(!result.is_error);
+}
+
+// --- IFC (Information Flow Control) tests ---
+
+fn read_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "docs_read".to_string(),
+        description: Some("Reads a file".to_string()),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: None,
+            required: None,
+        },
+    }
+}
+
+fn write_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "docs_write".to_string(),
+        description: Some("Writes a file".to_string()),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: None,
+            required: None,
+        },
+    }
+}
+
+#[tokio::test]
+async fn ifc_deny_write_after_untrusted_read() {
+    // Build server with IFC deny policy and both read + write tools
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                // Simulate reading external file — handler returns trusted,
+                // but is_external_read_tool("docs_read") auto-labels Untrusted
+                CallToolResult::text("file contents with injected instructions")
+            })
+        })
+        .tool(write_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
+        .build();
+
+    // First call: read — taints the session
+    let mut ctx = test_ctx();
+    let read_result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_read".to_string(),
+                arguments: serde_json::json!({"path": "/tmp/file.md"}),
+            },
+            ctx.clone(),
+        )
+        .await;
+    assert!(!read_result.is_error);
+
+    // Simulate taint propagation (in real flow, ctx is mutable across calls)
+    ctx.taint.absorb(crate::ifc::DataLabel::UNTRUSTED_SENSITIVE);
+
+    // Second call: write — should be denied by IFC
+    let write_result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_write".to_string(),
+                arguments: serde_json::json!({"path": "/tmp/out.md", "content": "exfiltrated"}),
+            },
+            ctx,
+        )
+        .await;
+    assert!(write_result.is_error);
+    match &write_result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("IFC"));
+            assert!(t.text.contains("tainted"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn ifc_allow_write_without_taint() {
+    // No prior read — session is clean, write should succeed
+    let server = McpServer::builder()
+        .tool(write_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("written") })
+        })
+        .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_write".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+    assert!(!result.is_error);
+}
+
+#[tokio::test]
+async fn ifc_no_policy_allows_tainted_write() {
+    // No IFC policy configured — tainted writes pass through
+    let server = McpServer::builder()
+        .tool(write_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("written") })
+        })
+        .build();
+
+    let mut ctx = test_ctx();
+    ctx.taint.absorb(crate::ifc::DataLabel::UNTRUSTED_SENSITIVE);
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_write".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            ctx,
+        )
+        .await;
+    assert!(!result.is_error);
+}
+
+#[tokio::test]
+async fn ifc_read_tool_auto_labels_untrusted() {
+    // docs_read output should be auto-labeled as Untrusted
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("file data") })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_read".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    // The result should be labeled Untrusted (confidentiality stays Public)
+    assert_eq!(result.label.integrity, crate::ifc::Integrity::Untrusted);
+    assert_eq!(result.label.confidentiality, crate::ifc::Confidentiality::Public);
+}
+
+#[tokio::test]
+async fn ifc_trusted_path_keeps_trusted_label() {
+    // docs_read of a trusted path should stay Trusted
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("my code") })
+        })
+        .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_read".to_string(),
+                arguments: serde_json::json!({"path": "/home/user/Code/project/main.rs"}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert_eq!(result.label.integrity, crate::ifc::Integrity::Trusted);
+}
+
+#[tokio::test]
+async fn ifc_untrusted_path_still_labeled_untrusted() {
+    // docs_read of a non-trusted path should be Untrusted
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("external data") })
+        })
+        .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_read".to_string(),
+                arguments: serde_json::json!({"path": "/tmp/untrusted.txt"}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert_eq!(result.label.integrity, crate::ifc::Integrity::Untrusted);
+}
+
+#[tokio::test]
+async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
+    // docs_read without a path argument should default to Untrusted
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("data") })
+        })
+        .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_read".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert_eq!(result.label.integrity, crate::ifc::Integrity::Untrusted);
+}
+
+#[tokio::test]
+async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
+    // Full flow: read trusted path → session stays clean → write succeeds
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("my code") })
+        })
+        .tool(write_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("written") })
+        })
+        .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
+        .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
+        .build();
+
+    // Read from trusted path — should not taint session
+    let sid = "trusted-session";
+    let ctx = CallContext::new(test_agent(), sid);
+    let _read_result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_read".to_string(),
+                arguments: serde_json::json!({"path": "/home/user/Code/main.rs"}),
+            },
+            ctx,
+        )
+        .await;
+
+    // Write — should succeed because session is not tainted
+    let mut write_ctx = CallContext::new(test_agent(), sid);
+    let persisted = server.sessions().context_label(sid);
+    write_ctx.taint.absorb(persisted);
+
+    let write_result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "docs_write".to_string(),
+                arguments: serde_json::json!({"path": "/home/user/Code/out.rs", "content": "fn main() {}"}),
+            },
+            write_ctx,
+        )
+        .await;
+    assert!(!write_result.is_error);
+}
+
+// --- Hook pipeline tests ---
+
+#[tokio::test]
+async fn hook_safety_filter_via_pipeline() {
+    use crate::hooks::SafetyHook;
+
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .hook(SafetyHook::single("dev", crate::safety::build_pipeline("standard")))
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(!result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("[REDACTED:aws-key]"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn hook_blocks_tool_call() {
+    /// A pre-hook that blocks all tool calls.
+    struct BlockAll;
+
+    #[async_trait::async_trait]
+    impl crate::hooks::Hook for BlockAll {
+        fn name(&self) -> &str { "block-all" }
+        async fn pre_tool_use(
+            &self,
+            _tool_name: &str,
+            _arguments: &serde_json::Value,
+            _ctx: &CallContext,
+        ) -> crate::hooks::HookDecision {
+            crate::hooks::HookDecision::Block("blocked by test hook".to_string())
+        }
+    }
+
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .hook(BlockAll)
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("blocked by test hook"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn legacy_safety_filter_still_works_without_hooks() {
+    // When no hooks are registered, safety_profile() still works via legacy path
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("standard"))
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({"message": "AKIAIOSFODNN7EXAMPLE"}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(!result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("[REDACTED:aws-key]"));
+        }
+    }
+}
+
+// --- Pause/resume tests ---
+
+#[tokio::test]
+async fn paused_server_rejects_tool_calls() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .build();
+
+    server.pause();
+    assert!(server.is_paused());
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => {
+            assert!(t.text.contains("paused"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn resumed_server_accepts_tool_calls() {
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("ok") })
+        })
+        .build();
+
+    server.pause();
+    server.resume();
+    assert!(!server.is_paused());
+
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+
+    assert!(!result.is_error);
+}
+
+#[test]
+fn pause_flag_is_shared() {
+    let server = McpServer::builder().build();
+    let flag = server.pause_flag();
+
+    assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
+    server.pause();
+    assert!(flag.load(std::sync::atomic::Ordering::Relaxed));
+    server.resume();
+    assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
+}

@@ -37,6 +37,7 @@ package only provides shared libraries.
 | `smgglrs-rag` | Context enrichment | Vector search, sqlite-vec, semantic chunking |
 | `smgglrs-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
 | `smgglrs-modal-vision` | Modality | Image/screen understanding (GPU tier) |
+| `smgglrs-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
 | `smgglrs-server` | Binary | CLI, config, module wiring, systemd, tray (binary: `smgglrs`) |
 
 ### Dependency layering
@@ -46,6 +47,7 @@ smgglrs-protocol          (no smgglrs deps)
 smgglrs-model             (no smgglrs deps)
 smgglrs-model-hub         (no smgglrs deps)
 smgglrs-model-runtime     (no smgglrs deps)
+smgglrs-responses         (no smgglrs deps)
     ↓
 smgglrs-security          (protocol + model)
     ↓

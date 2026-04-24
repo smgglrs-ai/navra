@@ -11,6 +11,7 @@
 //! Model selection is IFC-aware: teammates working on sensitive data
 //! are automatically assigned local models to prevent data exfiltration.
 
+use smgglrs_core::identity::CapSigner;
 use smgglrs_core::protocol::{ToolDefinition, ToolInputSchema};
 use std::collections::HashMap;
 use std::sync::{atomic::{AtomicU32, Ordering}, Mutex};
@@ -653,6 +654,489 @@ pub fn personas_list_def() -> ToolDefinition {
             required: None,
         },
     }
+}
+
+// --- Handler functions ---
+
+/// Handle team_create tool call.
+pub async fn handle_team_create(
+    args: serde_json::Value,
+    reg: std::sync::Arc<TeamRegistry>,
+    budget_cfg: &crate::config::BudgetConfig,
+    agent_name: &str,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+    let desc = args.get("description").and_then(|v| v.as_str());
+    let budget = TeamBudget {
+        max_depth: args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_depth as u64) as u32,
+        max_agents: args.get("max_agents").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_agents as u64) as u32,
+        max_tokens: args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(500_000),
+        timeout_secs: args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.timeout_secs),
+        max_iterations: args.get("max_iterations").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_iterations as u64) as usize,
+    };
+    match reg.create_team(name, desc, agent_name, 0, budget) {
+        Ok(team_id) => {
+            tracing::info!(team_id = %team_id, name = name, lead = %agent_name, "Team created");
+            CallToolResult::text(format!("Team created.\nteam_id: {team_id}\nname: {name}"))
+        }
+        Err(e) => CallToolResult::error(e),
+    }
+}
+
+/// Handle team_add tool call.
+pub async fn handle_team_add(
+    args: serde_json::Value,
+    reg: std::sync::Arc<TeamRegistry>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+    };
+    let name = match args.get("name").and_then(|v| v.as_str()) {
+        Some(n) => n, None => return CallToolResult::error("Missing name"),
+    };
+    let persona = args.get("persona").and_then(|v| v.as_str());
+    let model = args.get("model").and_then(|v| v.as_str()).unwrap_or("auto");
+    let locality = args.get("locality").and_then(|v| v.as_str()).unwrap_or("auto");
+
+    let operations: Vec<String> = args.get("operations")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_else(|| DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect());
+
+    let tools: Vec<String> = args.get("tools")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_else(|| DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect());
+
+    match reg.add_teammate(team_id, name, persona, model, locality, operations.clone(), tools.clone()) {
+        Ok(()) => {
+            tracing::info!(team = team_id, name = name, persona = ?persona, model = model, locality = locality, operations = ?operations, tools = ?tools, "Teammate added");
+            CallToolResult::text(format!(
+                "Added '{name}' to team (persona: {}, model: {model}, locality: {locality}, operations: {operations:?}, tools: {tools:?})",
+                persona.unwrap_or("default"),
+            ))
+        }
+        Err(e) => CallToolResult::error(e),
+    }
+}
+
+/// Handle team_status tool call.
+pub async fn handle_team_status(
+    args: serde_json::Value,
+    reg: std::sync::Arc<TeamRegistry>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+    };
+    match reg.get_status(team_id) {
+        Some(status) => CallToolResult::text(serde_json::to_string_pretty(&status).unwrap_or_default()),
+        None => CallToolResult::error(format!("Unknown team: {team_id}")),
+    }
+}
+
+/// Handle team_result tool call.
+pub async fn handle_team_result(
+    args: serde_json::Value,
+    reg: std::sync::Arc<TeamRegistry>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+    };
+    let teammate = match args.get("teammate").and_then(|v| v.as_str()) {
+        Some(t) => t, None => return CallToolResult::error("Missing teammate"),
+    };
+    match reg.get_result(team_id, teammate) {
+        Some(result) => CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default()),
+        None => CallToolResult::error(format!("No result from '{teammate}'")),
+    }
+}
+
+/// Handle team_shutdown tool call.
+pub async fn handle_team_shutdown(
+    args: serde_json::Value,
+    reg: std::sync::Arc<TeamRegistry>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+    };
+    match reg.shutdown(team_id) {
+        Ok(info) => {
+            tracing::info!(team = team_id, "Team shut down");
+            CallToolResult::text(serde_json::to_string_pretty(&info).unwrap_or_default())
+        }
+        Err(e) => CallToolResult::error(e),
+    }
+}
+
+/// Handle team_bb_publish tool call.
+pub async fn handle_team_bb_publish(
+    args: serde_json::Value,
+    reg: std::sync::Arc<TeamRegistry>,
+    agent_name: &str,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+    };
+    let key = match args.get("key").and_then(|v| v.as_str()) {
+        Some(k) => k, None => return CallToolResult::error("Missing key"),
+    };
+    let value = match args.get("value").and_then(|v| v.as_str()) {
+        Some(v) => v, None => return CallToolResult::error("Missing value"),
+    };
+    reg.bb_publish(team_id, key, value, agent_name);
+    CallToolResult::text(format!("Published '{key}' to team blackboard"))
+}
+
+/// Handle team_bb_read tool call.
+pub async fn handle_team_bb_read(
+    args: serde_json::Value,
+    reg: std::sync::Arc<TeamRegistry>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+    };
+    let key = match args.get("key").and_then(|v| v.as_str()) {
+        Some(k) => k, None => return CallToolResult::error("Missing key"),
+    };
+    match reg.bb_read(team_id, key) {
+        Some(entry) => CallToolResult::text(
+            serde_json::to_string_pretty(&entry).unwrap_or_default()
+        ),
+        None => CallToolResult::error(format!("No blackboard entry: {key}")),
+    }
+}
+
+/// Handle models_list tool call.
+pub async fn handle_models_list(
+    cards: Vec<ModelCard>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+    CallToolResult::text(serde_json::to_string_pretty(&cards).unwrap_or_default())
+}
+
+/// Handle personas_list tool call.
+pub async fn handle_personas_list(
+    data: Vec<serde_json::Value>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+    CallToolResult::text(serde_json::to_string_pretty(&data).unwrap_or_default())
+}
+
+/// Context needed to spawn a teammate as a background agent task.
+pub struct TeammateSpawnContext {
+    pub team_registry: std::sync::Arc<TeamRegistry>,
+    pub smgglrs_addr: String,
+    pub signer: std::sync::Arc<smgglrs_core::identity::Ed25519Signer>,
+    pub forge: Option<std::sync::Arc<smgglrs_cognitive::ForgeService>>,
+}
+
+/// Spawn a teammate agent in a background task.
+///
+/// This is the shared logic used by team_message, flow_start, and
+/// flow_escalate. Returns a JoinHandle for the background task.
+pub fn spawn_teammate_agent(
+    ctx: &TeammateSpawnContext,
+    team_id: &str,
+    teammate_id: &str,
+    message: &str,
+    max_iterations: usize,
+    timeout_secs: u64,
+    generates_tasks: bool,
+) -> tokio::task::JoinHandle<()> {
+    let reg = std::sync::Arc::clone(&ctx.team_registry);
+    let signer = std::sync::Arc::clone(&ctx.signer);
+    let forge = ctx.forge.clone();
+    let smgglrs_addr = ctx.smgglrs_addr.clone();
+    let team_id = team_id.to_string();
+    let teammate_id = teammate_id.to_string();
+    let message = message.to_string();
+
+    tokio::spawn(async move {
+        let deadline = std::time::Duration::from_secs(timeout_secs);
+        let timeout_reg = reg.clone();
+        let timeout_team = team_id.clone();
+        let timeout_task = teammate_id.clone();
+        let result = tokio::time::timeout(deadline, async move {
+            let mcp_url = format!("http://{smgglrs_addr}/mcp");
+
+            let (tm_ops, tm_tools) = {
+                let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                teams.get(&team_id)
+                    .and_then(|t| t.teammates.get(&teammate_id))
+                    .map(|tm| (tm.operations.clone(), tm.tools.clone()))
+                    .unwrap_or_else(|| (
+                        DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                        DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                    ))
+            };
+            let tm_tools_desc = tm_tools.join(", ");
+            let cap = smgglrs_core::auth::capability::CapabilitySet {
+                paths: vec!["**".to_string()],
+                operations: tm_ops,
+                tools: tm_tools,
+                credentials: vec![],
+            };
+            let did = format!("did:teammate:{}:{}", team_id, teammate_id);
+            let payload = smgglrs_core::auth::capability::build_payload(
+                signer.did(), &did, cap, 2, 3600,
+            );
+            let token = match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::error!(team = %team_id, to = %teammate_id, error = %e, "Failed to mint teammate token");
+                    reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                    return;
+                }
+            };
+
+            let tm_persona = {
+                let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                teams.get(&team_id)
+                    .and_then(|t| t.teammates.get(&teammate_id))
+                    .and_then(|tm| tm.persona.clone())
+            };
+
+            let escalate_hint = if !generates_tasks {
+                "\nIf your task requires reviewing more than 5 files or covers multiple distinct concern areas, call flow_escalate to spawn a sub-team. Provide the mandate and any context you have gathered so far."
+            } else {
+                ""
+            };
+
+            let system_prompt = if let Some(ref persona_name) = tm_persona {
+                let persona_prompt = forge.as_ref().and_then(|f| {
+                    let output = smgglrs_cognitive::assemble(f, persona_name, "", None, None).ok()?;
+                    Some(output.system_prompt())
+                });
+                match persona_prompt {
+                    Some(prompt) => format!(
+                        "{prompt}\n\n\
+                         You are working as part of a team.\n\
+                         You have access to MCP tools: {tools}.{escalate_hint}\n\
+                         Your team_id is: {team_id}",
+                        tools = tm_tools_desc
+                    ),
+                    None => format!(
+                        "You are a specialist agent named '{}' (persona: {}).\n\n\
+                         You have access to MCP tools: {}.{escalate_hint}\n\
+                         Your team_id is: {}",
+                        teammate_id, persona_name, tm_tools_desc, team_id
+                    ),
+                }
+            } else {
+                format!(
+                    "You are a specialist agent named '{}'.\n\n\
+                     You have access to MCP tools: {}.{escalate_hint}\n\
+                     Your team_id is: {}",
+                    teammate_id, tm_tools_desc, team_id
+                )
+            };
+
+            let mut teammate_model = {
+                let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                teams.get(&team_id)
+                    .and_then(|t| t.teammates.get(&teammate_id))
+                    .map(|tm| tm.model.clone())
+                    .unwrap_or_else(|| "auto".to_string())
+            };
+
+            // Validate model name
+            if teammate_model != "auto"
+                && !reg.model_cards.iter().any(|c| c.model_uri == teammate_model)
+            {
+                tracing::warn!(
+                    task = %teammate_id, model = %teammate_model,
+                    "Unknown model, falling back to auto-select"
+                );
+                teammate_model = "auto".to_string();
+            }
+            if teammate_model == "auto" {
+                if let Some(selected) = select_model_for_task(
+                    &reg.model_cards,
+                    tm_persona.as_deref(),
+                    &message,
+                ) {
+                    teammate_model = selected;
+                } else if std::env::var("ANTHROPIC_API_KEY").is_ok()
+                    || std::env::var("ANTHROPIC_VERTEX_PROJECT_ID").is_ok()
+                {
+                    teammate_model = "claude-sonnet-4-6@default".to_string();
+                } else {
+                    teammate_model = "granite3.3:8b".to_string();
+                }
+            }
+
+            eprintln!("  [teammate] {} → model: {}", teammate_id, teammate_model);
+
+            let is_claude = teammate_model.starts_with("claude");
+
+            macro_rules! run_teammate {
+                ($backend:expr) => {{
+                    let r = async {
+                        let mut builder = smgglrs_agent::Agent::builder()
+                            .endpoint(&mcp_url).await?
+                            .auth_token(&token)
+                            .model($backend)
+                            .system_prompt(&system_prompt)
+                            .max_iterations(max_iterations)
+                            .force_tool_iterations(if generates_tasks { 0 } else { 1 })
+                            .temperature(0.3)
+                            .max_tokens(8192);
+                        if generates_tasks {
+                            builder = builder.allowed_tools(vec![
+                                "models_list".to_string(),
+                                "personas_list".to_string(),
+                            ]);
+                        }
+                        let mut agent = builder.build().await?;
+                        agent.run(&message).await
+                    };
+                    r.await
+                }};
+            }
+
+            let agent_result = if is_claude {
+                let use_vertex = std::env::var("CLAUDE_CODE_USE_VERTEX").is_ok()
+                    || std::env::var("ANTHROPIC_VERTEX_PROJECT_ID").is_ok();
+                if use_vertex {
+                    let project = std::env::var("ANTHROPIC_VERTEX_PROJECT_ID")
+                        .unwrap_or_else(|_| "my-project".to_string());
+                    let region = std::env::var("CLOUD_ML_REGION")
+                        .unwrap_or_else(|_| "us-east5".to_string());
+                    let url = format!(
+                        "https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{teammate_model}:rawPredict"
+                    );
+                    let token_output = std::process::Command::new("gcloud")
+                        .args(["auth", "print-access-token"])
+                        .output();
+                    let gcloud_token = match token_output {
+                        Ok(output) if output.status.success() => {
+                            let t = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                            if t.is_empty() {
+                                tracing::error!(teammate = %teammate_id, "gcloud returned empty token");
+                                reg.set_failed(&team_id, &teammate_id, "Empty gcloud token".to_string());
+                                return;
+                            }
+                            t
+                        }
+                        Ok(output) => {
+                            let err = String::from_utf8_lossy(&output.stderr);
+                            tracing::error!(teammate = %teammate_id, error = %err, "gcloud token failed");
+                            reg.set_failed(&team_id, &teammate_id, format!("gcloud error: {err}"));
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::error!(teammate = %teammate_id, error = %e, "gcloud not available");
+                            reg.set_failed(&team_id, &teammate_id, format!("gcloud error: {e}"));
+                            return;
+                        }
+                    };
+                    run_teammate!(smgglrs_model::AnthropicBackend::new(
+                        &url, &teammate_model, Some(gcloud_token), smgglrs_model::Locality::Remote,
+                    ))
+                } else {
+                    let key = std::env::var("ANTHROPIC_API_KEY").ok();
+                    run_teammate!(smgglrs_model::AnthropicBackend::new(
+                        "https://api.anthropic.com", &teammate_model, key, smgglrs_model::Locality::Remote,
+                    ))
+                }
+            } else {
+                run_teammate!(smgglrs_model::OpenAiBackend::new(
+                    "http://localhost:11434/v1", &teammate_model, None, smgglrs_model::Locality::Local,
+                ))
+            };
+
+            match agent_result {
+                Ok(result) => {
+                    let tokens = result.input_tokens + result.output_tokens;
+                    reg.add_tokens(&team_id, tokens);
+                    tracing::info!(
+                        team = %team_id, to = %teammate_id,
+                        iterations = result.iterations,
+                        tokens = tokens,
+                        "Teammate completed"
+                    );
+                    reg.set_output(&team_id, &teammate_id, result.response);
+                }
+                Err(e) => {
+                    tracing::error!(team = %team_id, to = %teammate_id, error = %e, "Teammate failed");
+                    reg.set_failed(&team_id, &teammate_id, format!("Agent error: {e}"));
+                }
+            }
+        }).await;
+
+        if result.is_err() {
+            tracing::warn!(team = %timeout_team, to = %timeout_task, "Teammate timed out after {timeout_secs}s");
+            timeout_reg.set_failed(&timeout_team, &timeout_task, format!("Timed out after {timeout_secs}s"));
+        }
+    })
+}
+
+/// Handle team_message tool call.
+///
+/// Spawns the teammate as a full MCP agent in the background.
+pub async fn handle_team_message(
+    args: serde_json::Value,
+    spawn_ctx: &TeammateSpawnContext,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id.to_string(), None => return CallToolResult::error("Missing team_id"),
+    };
+    let to = match args.get("to").and_then(|v| v.as_str()) {
+        Some(t) => t.to_string(), None => return CallToolResult::error("Missing to"),
+    };
+    let message = match args.get("message").and_then(|v| v.as_str()) {
+        Some(m) => m.to_string(), None => return CallToolResult::error("Missing message"),
+    };
+
+    if let Err(e) = spawn_ctx.team_registry.send_message(&team_id, &to, &message) {
+        return CallToolResult::error(e);
+    }
+
+    // Get the team's timeout and iteration budget
+    let (timeout_secs, teammate_max_iterations) = {
+        let teams = spawn_ctx.team_registry.teams.lock().unwrap_or_else(|e| e.into_inner());
+        teams.get(&team_id)
+            .map(|t| {
+                let elapsed = t.created_at.elapsed().as_secs();
+                let remaining = t.budget.timeout_secs.saturating_sub(elapsed);
+                (remaining, t.budget.max_iterations)
+            })
+            .unwrap_or((600, 50))
+    };
+
+    let handle = spawn_teammate_agent(
+        spawn_ctx, &team_id, &to, &message,
+        teammate_max_iterations, timeout_secs, false,
+    );
+
+    // Store the handle so it can be aborted on team shutdown
+    spawn_ctx.team_registry.store_handle(&team_id, &to, handle);
+
+    // Stagger teammate spawns to avoid concurrent rate limit hits
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    CallToolResult::text(format!(
+        "Task sent to '{}'. Teammate is running as a full MCP agent \
+         with tool access (docs_tree, docs_grep, docs_read, team_bb_publish). \
+         Use team_status to check progress, team_result to read output.",
+        to
+    ))
 }
 
 /// Determine required model capabilities from task context.

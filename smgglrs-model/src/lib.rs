@@ -1,17 +1,18 @@
-//! Model inference backends for smgglrs.
+//! smgglrs-model: Model inference backends.
 //!
-//! Provides a unified `ModelBackend` trait using the
+//! Provides a unified [`ModelBackend`] trait using the
 //! [Open Responses](https://openresponses.org) specification as the
-//! canonical model I/O interface.
+//! canonical model I/O interface. Backends translate to their native
+//! wire format internally:
 //!
-//! Capabilities:
-//! - `respond()` — multi-turn completion with tools, structured output, reasoning
-//! - `respond_stream()` — streaming variant with SSE events
-//! - `embed()` — generate text embeddings (for vector search)
-//! - `classify()` — classify content (for safety filtering)
-//! - `generate()` — generate text from a prompt (simple, single-turn)
-//! - `transcribe()` — transcribe audio to text
-//! - `synthesize()` — synthesize text to audio
+//! - [`OpenAiBackend`] — Chat Completions API (Ollama, vLLM)
+//! - [`AnthropicBackend`] — Messages API (Claude)
+//! - [`OnnxBackend`] — In-process ONNX Runtime (embeddings, safety)
+//!
+//! `ModelBackend` methods:
+//! - `respond()` / `respond_stream()` — multi-turn completion with tools
+//! - `embed()` — text embeddings, `classify()` — content safety
+//! - `generate()` — simple single-turn, `transcribe()` / `synthesize()` — audio
 
 // Internal modules — Chat Completions types used only for backend translation.
 pub(crate) mod chat;

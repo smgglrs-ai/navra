@@ -1,4 +1,8 @@
-// Re-export from smgglrs-security
+// Facade: downstream module crates (tools-*, rag, modal-*, memory, server)
+// depend only on smgglrs-core and reach security/protocol/model types
+// through these re-exports.  Crates that already have a direct dependency
+// on smgglrs-security or smgglrs-protocol (agent, flow, benchmarks) may
+// import from those crates directly.
 pub use smgglrs_security::auth;
 pub use smgglrs_security::credentials;
 pub use smgglrs_security::hooks;
@@ -10,11 +14,9 @@ pub use smgglrs_security::process;
 pub use smgglrs_security::quota;
 pub use smgglrs_security::safety;
 
-// Re-export from smgglrs-protocol
 pub use smgglrs_protocol as protocol;
 pub use smgglrs_protocol::upstream;
 
-// Re-export from smgglrs-model
 pub use smgglrs_model as models;
 
 // Core modules (owned by this crate)

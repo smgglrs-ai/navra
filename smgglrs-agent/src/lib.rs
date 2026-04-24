@@ -43,7 +43,10 @@ pub use client::McpClient;
 pub use error::AgentError;
 pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
 
-// Re-export key types so users don't need direct deps on protocol/model/security.
+// SDK facade: external consumers (e.g. agent binaries) depend only on
+// smgglrs-agent and reach protocol/model/security types through these
+// re-exports.  Internal workspace crates (flow, engine) have direct
+// deps and import from the source crates instead.
 pub use smgglrs_protocol::{
     CallToolParams, CallToolResult, Content, ToolDefinition, PromptDefinition,
     ResourceDefinition, Upstream,
