@@ -8,6 +8,7 @@
 //! - `rag_status` — show index statistics
 
 use crate::chunk::{chunk_text, ChunkConfig};
+use crate::rerank::{NoopReranker, Reranker};
 use crate::store::ChunkStore;
 use smgglrs_core::auth::CallContext;
 use smgglrs_core::models::ModelBackend;
@@ -19,6 +20,11 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// Over-fetch factor for reranking. When a reranker is active, fetch
+/// this many times the requested limit from the vector index to give
+/// the cross-encoder enough candidates to work with.
+const RERANK_OVERFETCH_FACTOR: usize = 4;
+
 /// RAG module for semantic document search.
 pub struct RagModule {
     state: Arc<RagState>,
@@ -29,6 +35,7 @@ struct RagState {
     embedding_model: Arc<dyn ModelBackend>,
     chunk_config: ChunkConfig,
     perm_engine: Arc<PermissionEngine>,
+    reranker: Arc<dyn Reranker>,
 }
 
 impl RagModule {
@@ -44,6 +51,7 @@ impl RagModule {
                 embedding_model,
                 chunk_config: ChunkConfig::default(),
                 perm_engine,
+                reranker: Arc::new(NoopReranker),
             }),
         }
     }
@@ -61,6 +69,30 @@ impl RagModule {
                 embedding_model,
                 chunk_config,
                 perm_engine,
+                reranker: Arc::new(NoopReranker),
+            }),
+        }
+    }
+
+    /// Create a RAG module with a cross-encoder reranker.
+    ///
+    /// When a reranker is provided, `rag_query` will over-fetch
+    /// candidates from the vector index and rerank them with the
+    /// cross-encoder before returning the top-N results.
+    pub fn with_reranker(
+        store: Arc<ChunkStore>,
+        embedding_model: Arc<dyn ModelBackend>,
+        chunk_config: ChunkConfig,
+        perm_engine: Arc<PermissionEngine>,
+        reranker: Arc<dyn Reranker>,
+    ) -> Self {
+        Self {
+            state: Arc::new(RagState {
+                store,
+                embedding_model,
+                chunk_config,
+                perm_engine,
+                reranker,
             }),
         }
     }
@@ -329,12 +361,28 @@ async fn handle_query(
         Err(e) => return CallToolResult::error(format!("Embedding failed: {e}")),
     };
 
-    // Search for similar chunks
-    match state.store.search(&embed_response.embedding, limit) {
-        Ok(results) => {
-            if results.is_empty() {
+    // Over-fetch when a reranker is active so the cross-encoder has
+    // enough candidates to reshuffle.
+    let fetch_limit = if state.reranker.is_active() {
+        limit * RERANK_OVERFETCH_FACTOR
+    } else {
+        limit
+    };
+
+    // Search for similar chunks (with optional query cache)
+    match state.store.cached_search(query, &embed_response.embedding, fetch_limit) {
+        Ok(candidates) => {
+            if candidates.is_empty() {
                 return CallToolResult::text("No results found.");
             }
+
+            // Rerank and truncate to the requested limit
+            let results: Vec<_> = state
+                .reranker
+                .rerank(query, candidates)
+                .into_iter()
+                .take(limit)
+                .collect();
 
             let mut output = format!("Found {} result(s):\n", results.len());
             for (i, r) in results.iter().enumerate() {
@@ -526,6 +574,7 @@ mod tests {
             embedding_model: Arc::new(FakeModel),
             chunk_config: ChunkConfig::default(),
             perm_engine: Arc::new(test_perm_engine()),
+            reranker: Arc::new(NoopReranker),
         });
 
         let result = handle_status(serde_json::json!({}), test_ctx(), state).await;

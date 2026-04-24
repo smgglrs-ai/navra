@@ -1,5 +1,6 @@
 //! TOML-deserializable flow definitions.
 
+use crate::verification::VerificationConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -150,6 +151,9 @@ pub struct TaskDefinition {
     /// task automatically depends on all injected tasks.
     #[serde(default)]
     pub generates_tasks: bool,
+    /// Cross-validation configuration for high-stakes outputs.
+    #[serde(default)]
+    pub verification: Option<VerificationConfig>,
 }
 
 /// Parse a planner's text output into task definitions.
@@ -278,6 +282,7 @@ pub fn single_task_dag(specialist: &str, mandate: &str) -> DagConfig {
             success_criteria: Vec::new(),
             back_edges: Vec::new(),
             generates_tasks: false,
+            verification: None,
         }],
         blackboard_capacity: None,
     }
@@ -320,6 +325,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
                 generates_tasks: false,
+                verification: None,
             },
             TaskDefinition {
                 id: "planner".to_string(),
@@ -336,6 +342,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
                 generates_tasks: false,
+                verification: None,
             },
             TaskDefinition {
                 id: "worker".to_string(),
@@ -351,6 +358,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
                 generates_tasks: false,
+                verification: None,
             },
             TaskDefinition {
                 id: "synthesize".to_string(),
@@ -364,6 +372,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
                 generates_tasks: false,
+                verification: None,
             },
         ],
         blackboard_capacity: None,

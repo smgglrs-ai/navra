@@ -21,14 +21,22 @@ pub struct CapabilityAuthenticator {
     /// Seen nonces to prevent replay attacks (CWE-294).
     /// Maps nonce → first-seen time. Pruned on access.
     seen_nonces: Mutex<HashMap<[u8; 16], Instant>>,
+    /// TTL for nonce cache entries (default: 7200s = 2 hours).
+    nonce_cache_ttl: std::time::Duration,
 }
 
 impl CapabilityAuthenticator {
     pub fn new(root_signer: Box<dyn CapSigner>) -> Self {
+        Self::with_nonce_ttl(root_signer, std::time::Duration::from_secs(7200))
+    }
+
+    /// Create with a custom nonce cache TTL.
+    pub fn with_nonce_ttl(root_signer: Box<dyn CapSigner>, nonce_cache_ttl: std::time::Duration) -> Self {
         Self {
             root_verifier: root_signer,
             agent_verifiers: HashMap::new(),
             seen_nonces: Mutex::new(HashMap::new()),
+            nonce_cache_ttl,
         }
     }
 
@@ -69,7 +77,7 @@ impl Authenticator for CapabilityAuthenticator {
         // (exp field) — expired tokens are rejected above.
         {
             let mut nonces = self.seen_nonces.lock().unwrap_or_else(|e| e.into_inner());
-            let cutoff = Instant::now() - std::time::Duration::from_secs(7200);
+            let cutoff = Instant::now() - self.nonce_cache_ttl;
             nonces.retain(|_, seen_at| *seen_at > cutoff);
             nonces.entry(payload.nonce).or_insert_with(Instant::now);
         }

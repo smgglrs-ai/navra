@@ -299,7 +299,6 @@ pub(crate) fn attach_ui_routes(
     // filters, records in blackbox, and forwards to the real model.
     let proxy_backend = ui_chat_backend.clone();
     let proxy_forge = ui_forge.clone();
-    let proxy_server = Arc::clone(server);
     let v1_router = axum::Router::new()
         .route("/chat/completions", axum::routing::post(move |
             headers: axum::http::HeaderMap,
@@ -307,15 +306,7 @@ pub(crate) fn attach_ui_routes(
         | {
             let backend = proxy_backend.clone();
             let forge = proxy_forge.clone();
-            let server = proxy_server.clone();
             async move {
-                // Auth
-                if let Err(_) = server.authenticator().authenticate(&headers) {
-                    return axum::Json(serde_json::json!({
-                        "error": {"message": "unauthorized", "type": "auth_error"}
-                    })).into_response();
-                }
-
                 let Some(backend) = backend else {
                     return axum::Json(serde_json::json!({
                         "error": {"message": "no model configured", "type": "server_error"}
@@ -418,7 +409,11 @@ pub(crate) fn attach_ui_routes(
                     }
                 }
             }
-        }));
+        }))
+        .route_layer(axum::middleware::from_fn_with_state(
+            Arc::clone(server),
+            auth_middleware,
+        ));
 
     router
         .nest("/v1", v1_router)

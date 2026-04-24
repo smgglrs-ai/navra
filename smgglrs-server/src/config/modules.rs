@@ -64,6 +64,12 @@ pub struct VoiceModuleConfig {
     /// VAD energy threshold (RMS). Default: 0.01
     #[serde(default = "default_vad_threshold")]
     pub vad_threshold: f32,
+    /// Maximum recording duration in seconds (default: 30).
+    #[serde(default = "default_max_record_secs")]
+    pub max_record_secs: u64,
+    /// Silence timeout in milliseconds before auto-stopping recording (default: 1500).
+    #[serde(default = "default_silence_timeout_ms")]
+    pub silence_timeout_ms: u64,
     /// Default voice for TTS.
     #[serde(default)]
     pub voice: Option<String>,
@@ -79,6 +85,14 @@ fn default_tts_model() -> String {
 
 fn default_vad_threshold() -> f32 {
     0.01
+}
+
+fn default_max_record_secs() -> u64 {
+    30
+}
+
+fn default_silence_timeout_ms() -> u64 {
+    1500
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -119,11 +133,19 @@ impl Default for DocsModuleConfig {
 pub struct ApprovalConfig {
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    /// Time-to-live for cached approval grants in seconds (default: 300 = 5 min).
+    /// After approval, the agent has this long to retry the operation.
+    #[serde(default = "default_grant_ttl")]
+    pub grant_ttl_secs: u64,
     #[serde(default = "default_notify")]
     pub notify: String,
 }
 
 fn default_timeout() -> u64 {
+    300
+}
+
+fn default_grant_ttl() -> u64 {
     300
 }
 
@@ -135,6 +157,7 @@ impl Default for ApprovalConfig {
     fn default() -> Self {
         Self {
             timeout_secs: default_timeout(),
+            grant_ttl_secs: default_grant_ttl(),
             notify: default_notify(),
         }
     }

@@ -141,6 +141,7 @@ impl Default for Config {
             server: ServerConfig {
                 socket: server::default_socket(),
                 tcp: None,
+                hook_timeout_secs: 10,
                 discovery: None,
                 identity: None,
             },

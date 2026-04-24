@@ -1,6 +1,7 @@
 //! Task types for DAG-based execution.
 
 use crate::definition::{BackEdgeDefinition, TaskDefinition};
+use crate::verification::VerificationConfig;
 use smgglrs_protocol::label::DataLabel;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -35,6 +36,9 @@ pub struct Task {
     /// Conditional back-edges evaluated after task completion.
     #[serde(default)]
     pub back_edges: Vec<BackEdgeDefinition>,
+    /// Cross-validation configuration for high-stakes outputs.
+    #[serde(default)]
+    pub verification: Option<VerificationConfig>,
 }
 
 fn default_max_retries() -> u32 {
@@ -54,6 +58,7 @@ impl From<TaskDefinition> for Task {
             success_criteria: def.success_criteria,
             max_retries: default_max_retries(),
             back_edges: def.back_edges,
+            verification: def.verification,
         }
     }
 }

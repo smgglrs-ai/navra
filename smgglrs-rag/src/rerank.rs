@@ -1,0 +1,339 @@
+//! Two-stage retrieval: cross-encoder reranking after vector search.
+//!
+//! After sqlite-vec returns approximate nearest neighbors, a cross-encoder
+//! scores each (query, candidate) pair for fine-grained relevance. This
+//! dramatically improves precision without sacrificing recall.
+//!
+//! The [`Reranker`] trait allows pluggable implementations:
+//! - [`CrossEncoderReranker`] — ONNX cross-encoder (e.g. MiniLM-L6-v2)
+//! - [`NoopReranker`] — passthrough for graceful degradation
+
+use crate::store::ChunkResult;
+use std::path::Path;
+use std::sync::Mutex;
+
+/// Trait for reranking search results after initial vector retrieval.
+pub trait Reranker: Send + Sync {
+    /// Rerank candidates by relevance to the query.
+    ///
+    /// Returns candidates sorted by descending relevance score.
+    /// The `distance` field on each result is replaced with the
+    /// cross-encoder score (higher = more relevant, negated for
+    /// compatibility with the distance convention: lower = better).
+    fn rerank(&self, query: &str, candidates: Vec<ChunkResult>) -> Vec<ChunkResult>;
+
+    /// Whether this reranker actually rescores candidates.
+    ///
+    /// Returns `false` for `NoopReranker`. When `false`, the search
+    /// pipeline skips over-fetching from the vector index.
+    fn is_active(&self) -> bool {
+        true
+    }
+}
+
+/// Passthrough reranker that returns candidates unchanged.
+///
+/// Used when no cross-encoder model is available. Ensures the
+/// pipeline always works, with graceful degradation.
+pub struct NoopReranker;
+
+impl Reranker for NoopReranker {
+    fn rerank(&self, _query: &str, candidates: Vec<ChunkResult>) -> Vec<ChunkResult> {
+        candidates
+    }
+
+    fn is_active(&self) -> bool {
+        false
+    }
+}
+
+/// Cross-encoder reranker using an ONNX model.
+///
+/// Scores each (query, candidate) pair independently. The model
+/// takes two text segments as input and produces a relevance score.
+/// Typical model: `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+///
+/// The ONNX model must accept `input_ids`, `attention_mask`, and
+/// `token_type_ids` tensors and output a single logit per pair.
+pub struct CrossEncoderReranker {
+    session: Mutex<ort::session::Session>,
+    tokenizer: tokenizers::Tokenizer,
+    name: String,
+}
+
+impl CrossEncoderReranker {
+    /// Load a cross-encoder ONNX model.
+    ///
+    /// `model_path` — path to the `.onnx` file.
+    /// `tokenizer_path` — path to the HuggingFace `tokenizer.json`.
+    pub fn load(
+        name: &str,
+        model_path: &Path,
+        tokenizer_path: &Path,
+    ) -> Result<Self, CrossEncoderError> {
+        let session = ort::session::Session::builder()
+            .map_err(|e| CrossEncoderError::Load(format!("session builder: {e}")))?
+            .with_execution_providers([
+                ort::execution_providers::CPUExecutionProvider::default().build(),
+            ])
+            .map_err(|e| CrossEncoderError::Load(format!("execution provider: {e}")))?
+            .commit_from_file(model_path)
+            .map_err(|e| {
+                CrossEncoderError::Load(format!(
+                    "failed to load '{}' from {}: {e}",
+                    name,
+                    model_path.display()
+                ))
+            })?;
+
+        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path).map_err(|e| {
+            CrossEncoderError::Load(format!(
+                "failed to load tokenizer from {}: {e}",
+                tokenizer_path.display()
+            ))
+        })?;
+
+        tracing::info!(
+            model = name,
+            path = %model_path.display(),
+            tokenizer = %tokenizer_path.display(),
+            "Loaded cross-encoder reranker"
+        );
+
+        Ok(Self {
+            session: Mutex::new(session),
+            tokenizer,
+            name: name.to_string(),
+        })
+    }
+
+    /// Score a single (query, document) pair.
+    ///
+    /// Returns a relevance score (higher = more relevant).
+    fn score_pair(&self, query: &str, document: &str) -> Result<f32, CrossEncoderError> {
+        // Encode the pair — the tokenizer handles [CLS] query [SEP] doc [SEP]
+        let encoding = self
+            .tokenizer
+            .encode((query, document), true)
+            .map_err(|e| CrossEncoderError::Inference(format!("tokenization: {e}")))?;
+
+        let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
+        let attention_mask: Vec<i64> = encoding
+            .get_attention_mask()
+            .iter()
+            .map(|&m| m as i64)
+            .collect();
+        let token_type_ids: Vec<i64> = encoding
+            .get_type_ids()
+            .iter()
+            .map(|&t| t as i64)
+            .collect();
+
+        let seq_len = input_ids.len();
+
+        let ids_array = ndarray::Array2::from_shape_vec((1, seq_len), input_ids)
+            .map_err(|e| CrossEncoderError::Inference(format!("input_ids shape: {e}")))?;
+        let mask_array = ndarray::Array2::from_shape_vec((1, seq_len), attention_mask)
+            .map_err(|e| CrossEncoderError::Inference(format!("attention_mask shape: {e}")))?;
+        let type_array = ndarray::Array2::from_shape_vec((1, seq_len), token_type_ids)
+            .map_err(|e| CrossEncoderError::Inference(format!("token_type_ids shape: {e}")))?;
+
+        let ids_tensor = ort::value::TensorRef::from_array_view(&ids_array)
+            .map_err(|e| CrossEncoderError::Inference(format!("input_ids tensor: {e}")))?;
+        let mask_tensor = ort::value::TensorRef::from_array_view(&mask_array)
+            .map_err(|e| CrossEncoderError::Inference(format!("attention_mask tensor: {e}")))?;
+        let type_tensor = ort::value::TensorRef::from_array_view(&type_array)
+            .map_err(|e| CrossEncoderError::Inference(format!("token_type_ids tensor: {e}")))?;
+
+        let mut session = self.session.lock().unwrap();
+        let outputs = session
+            .run(ort::inputs![ids_tensor, mask_tensor, type_tensor])
+            .map_err(|e| {
+                CrossEncoderError::Inference(format!("inference error for '{}': {e}", self.name))
+            })?;
+
+        // Cross-encoder outputs a single logit per pair
+        let (_name, output) = outputs.iter().next().ok_or_else(|| {
+            CrossEncoderError::Inference("no output from cross-encoder".to_string())
+        })?;
+
+        let (_shape, data) = output.try_extract_tensor::<f32>().map_err(|e| {
+            CrossEncoderError::Inference(format!("output extraction: {e}"))
+        })?;
+
+        // The model may output a single value or a pair [not-relevant, relevant].
+        // For ms-marco models, it's a single logit.
+        let score = if data.len() == 1 {
+            data[0]
+        } else if data.len() >= 2 {
+            // Softmax and take "relevant" class
+            let max = data[0].max(data[1]);
+            let exp0 = (data[0] - max).exp();
+            let exp1 = (data[1] - max).exp();
+            exp1 / (exp0 + exp1)
+        } else {
+            0.0
+        };
+
+        Ok(score)
+    }
+}
+
+impl Reranker for CrossEncoderReranker {
+    fn rerank(&self, query: &str, candidates: Vec<ChunkResult>) -> Vec<ChunkResult> {
+        let mut scored: Vec<(ChunkResult, f32)> = candidates
+            .into_iter()
+            .map(|c| {
+                let score = self.score_pair(query, &c.content).unwrap_or_else(|e| {
+                    tracing::warn!(
+                        path = %c.path,
+                        chunk = c.chunk_index,
+                        error = %e,
+                        "Cross-encoder scoring failed, using original distance"
+                    );
+                    // Fall back to negated distance (lower distance = higher score)
+                    -(c.distance as f32)
+                });
+                (c, score)
+            })
+            .collect();
+
+        // Sort by score descending (higher = more relevant)
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Replace distance with negated score (to keep lower = better convention)
+        scored
+            .into_iter()
+            .map(|(mut c, score)| {
+                c.distance = -(score as f64);
+                c
+            })
+            .collect()
+    }
+}
+
+/// Error type for cross-encoder operations.
+#[derive(Debug, thiserror::Error)]
+pub enum CrossEncoderError {
+    #[error("failed to load cross-encoder: {0}")]
+    Load(String),
+    #[error("cross-encoder inference failed: {0}")]
+    Inference(String),
+}
+
+/// Try to load a cross-encoder reranker, falling back to noop.
+///
+/// This is the recommended way to create a reranker — it provides
+/// graceful degradation when the model files are not available.
+pub fn load_reranker(
+    model_path: Option<&Path>,
+    tokenizer_path: Option<&Path>,
+) -> Box<dyn Reranker> {
+    match (model_path, tokenizer_path) {
+        (Some(model), Some(tokenizer)) if model.exists() && tokenizer.exists() => {
+            match CrossEncoderReranker::load("cross-encoder", model, tokenizer) {
+                Ok(reranker) => {
+                    tracing::info!("Cross-encoder reranker loaded");
+                    Box::new(reranker)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to load cross-encoder, using noop reranker");
+                    Box::new(NoopReranker)
+                }
+            }
+        }
+        _ => {
+            tracing::debug!("No cross-encoder model configured, using noop reranker");
+            Box::new(NoopReranker)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_results() -> Vec<ChunkResult> {
+        vec![
+            ChunkResult {
+                path: "/a.md".to_string(),
+                content: "Rust is a systems programming language".to_string(),
+                chunk_index: 0,
+                distance: 0.3,
+            },
+            ChunkResult {
+                path: "/b.md".to_string(),
+                content: "Python is a dynamic scripting language".to_string(),
+                chunk_index: 0,
+                distance: 0.1,
+            },
+            ChunkResult {
+                path: "/c.md".to_string(),
+                content: "Go is a compiled language by Google".to_string(),
+                chunk_index: 0,
+                distance: 0.2,
+            },
+        ]
+    }
+
+    #[test]
+    fn noop_reranker_preserves_order() {
+        let reranker = NoopReranker;
+        let candidates = sample_results();
+        let original_paths: Vec<_> = candidates.iter().map(|c| c.path.clone()).collect();
+        let reranked = reranker.rerank("what is rust?", candidates);
+        let reranked_paths: Vec<_> = reranked.iter().map(|c| c.path.clone()).collect();
+        assert_eq!(original_paths, reranked_paths);
+    }
+
+    #[test]
+    fn noop_reranker_preserves_distances() {
+        let reranker = NoopReranker;
+        let candidates = sample_results();
+        let original_distances: Vec<_> = candidates.iter().map(|c| c.distance).collect();
+        let reranked = reranker.rerank("query", candidates);
+        let reranked_distances: Vec<_> = reranked.iter().map(|c| c.distance).collect();
+        assert_eq!(original_distances, reranked_distances);
+    }
+
+    #[test]
+    fn noop_reranker_empty_candidates() {
+        let reranker = NoopReranker;
+        let reranked = reranker.rerank("query", Vec::new());
+        assert!(reranked.is_empty());
+    }
+
+    #[test]
+    fn load_reranker_no_paths_returns_noop() {
+        let reranker = load_reranker(None, None);
+        // Verify it works as a noop (preserves order)
+        let candidates = sample_results();
+        let paths_before: Vec<_> = candidates.iter().map(|c| c.path.clone()).collect();
+        let reranked = reranker.rerank("query", candidates);
+        let paths_after: Vec<_> = reranked.iter().map(|c| c.path.clone()).collect();
+        assert_eq!(paths_before, paths_after);
+    }
+
+    #[test]
+    fn load_reranker_missing_files_returns_noop() {
+        let reranker = load_reranker(
+            Some(Path::new("/nonexistent/model.onnx")),
+            Some(Path::new("/nonexistent/tokenizer.json")),
+        );
+        let candidates = sample_results();
+        let paths_before: Vec<_> = candidates.iter().map(|c| c.path.clone()).collect();
+        let reranked = reranker.rerank("query", candidates);
+        let paths_after: Vec<_> = reranked.iter().map(|c| c.path.clone()).collect();
+        assert_eq!(paths_before, paths_after);
+    }
+
+    /// Test that the reranking trait object can be stored in an Arc.
+    #[test]
+    fn reranker_is_arc_compatible() {
+        use std::sync::Arc;
+        let reranker: Arc<dyn Reranker> = Arc::new(NoopReranker);
+        let candidates = sample_results();
+        let reranked = reranker.rerank("query", candidates);
+        assert_eq!(reranked.len(), 3);
+    }
+}

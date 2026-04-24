@@ -98,6 +98,7 @@ mod tests {
             success_criteria: criteria.into_iter().map(String::from).collect(),
             max_retries: 2,
             back_edges: Vec::new(),
+            verification: None,
         }
     }
 

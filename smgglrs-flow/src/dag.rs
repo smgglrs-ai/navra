@@ -180,6 +180,7 @@ mod tests {
             success_criteria: Vec::new(),
             max_retries: 2,
             back_edges: Vec::new(),
+            verification: None,
         }
     }
 
