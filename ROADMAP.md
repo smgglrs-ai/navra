@@ -687,7 +687,91 @@ agent outputs:
 Reference: Claude Code Review multi-agent architecture
 (claude.com/blog/code-review, 2026-04-19).
 
-### Phase 5h. Module trait taxonomy review (NEW)
+#### 5h. Upstream prompt injection into agent system prompt (NEW)
+
+Upstream MCP servers can expose domain-specific prompts via
+`prompts/list` and `prompts/get`. These prompts contain critical
+instructions for how the agent should use the upstream's tools
+(methodology, constraints, output format). Currently, upstream
+prompts are discovered and proxied but **never injected into the
+agent's system prompt** — the cognitive weaver only assembles from
+persona YAML (directives + mandate + heuristics + examples).
+
+This gap was discovered during Syllogis integration: the legal
+analysis upstream exposes a `legal_analysis` prompt that instructs
+the agent to "use search_codes to find real articles, follow this
+methodology: extract facts → search → syllogism → conclusion."
+Without this prompt, the agent (using the generic "leader" persona)
+ignored the Syllogis tools and hallucinated article numbers from
+its training data.
+
+**Design**: Add an `mcp_prompts` field to the persona YAML schema:
+
+```yaml
+persona_name: legal_analyst
+core_mandate: "Analyze French administrative law cases..."
+heuristics:
+  - module: french_admin_law
+    facets: [principles, codes]
+mcp_prompts:
+  - upstream: syllogis
+    prompt: legal_analysis
+    inject_position: after_mandate
+    arguments:
+      case_description: "{{ input }}"
+  - upstream: syllogis
+    prompt: legal_syllogism
+    inject_position: after_heuristics
+```
+
+**Weaver changes** (`build_cacheable_prefix()`):
+
+1. Accept an optional MCP client (or prompt resolver function)
+   alongside the ForgeService
+2. After assembling directives + mandate, check for `mcp_prompts`
+3. For each entry, call `prompts/get` on the named upstream
+   with the specified arguments (template variables like
+   `{{ input }}` resolved from the user prompt)
+4. Insert the returned messages at the specified position:
+   - `before_mandate`: before core_mandate
+   - `after_mandate`: after core_mandate, before heuristics
+   - `after_heuristics`: after heuristics, before examples
+   - `after_examples`: at the end of the system prompt
+5. Cache the assembled result (upstream prompts are typically
+   static for a given set of arguments)
+
+**CLI extension**: Also support ad-hoc upstream prompt injection
+without modifying persona YAML:
+
+```bash
+smgglrs run "Analyze this case..." \
+  --persona legal_analyst \
+  --upstream-prompt syllogis:legal_analysis
+```
+
+This fetches the prompt at runtime and appends it after the
+persona's system prompt.
+
+**Why this matters**: Upstream servers are domain experts. Their
+prompts encode domain methodology that the persona YAML shouldn't
+duplicate. A legal analysis persona shouldn't hardcode "use
+search_codes" — that coupling belongs in the upstream's prompt.
+This separation lets the same persona work with different upstreams
+(e.g., a legal analyst persona could work with Syllogis for French
+law or a different upstream for German law, each providing their
+own methodology prompt).
+
+**Implementation priority**: Medium. The CLI `--upstream-prompt`
+flag is a 1-hour change in `main.rs run_agent()`. The YAML schema
++ weaver integration is a half-day change across smgglrs-cognitive
+and smgglrs-agent.
+
+**Discovered via**: Syllogis legal workbench integration
+(2026-04-24). The agent had 40 tools available (6 from Syllogis)
+but never called the Syllogis tools because its system prompt
+(generic "leader" persona) contained no instructions to do so.
+
+#### 5i. Module trait taxonomy review (NEW)
 
 Review whether smgglrs-core's flat `Module` trait should be split
 into a richer taxonomy, inspired by SemaClaw's 4-layer plugin
