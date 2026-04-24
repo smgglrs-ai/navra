@@ -1944,7 +1944,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     .max_iterations(teammate_max_iterations)
                                     .force_tool_iterations(1)
                                     .temperature(0.3)
-                                    .max_tokens(4096)
+                                    .max_tokens(8192)
                                     .build().await?;
                                 agent.run(&bg_message).await
                             };
@@ -2513,6 +2513,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 .map(|tm| tm.model.clone())
                                                 .unwrap_or_else(|| "auto".to_string())
                                         };
+                                        // Validate model name — if it doesn't match any known model, fall back to auto
+                                        if teammate_model != "auto"
+                                            && !spawn_reg.model_cards.iter().any(|c| c.model_uri == teammate_model)
+                                        {
+                                            tracing::warn!(
+                                                task = %spawn_task_id,
+                                                model = %teammate_model,
+                                                "Unknown model from planner, falling back to auto-select"
+                                            );
+                                            teammate_model = "auto".to_string();
+                                        }
                                         if teammate_model == "auto" {
                                             if let Some(selected) = team_tools::select_model_for_task(
                                                 &spawn_reg.model_cards,
@@ -2537,10 +2548,13 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                                 .max_iterations(spawn_max_iter)
                                                 .force_tool_iterations(if spawn_generates_tasks { 0 } else { 1 })
                                                 .temperature(0.3)
-                                                .max_tokens(4096);
-                                            // Planner tasks output text (JSON), not tool calls
+                                                .max_tokens(8192);
+                                            // Planner tasks get discovery tools only (for model/persona lookup)
                                             if spawn_generates_tasks {
-                                                builder = builder.allowed_tools(vec![]);
+                                                builder = builder.allowed_tools(vec![
+                                                    "models_list".to_string(),
+                                                    "personas_list".to_string(),
+                                                ]);
                                             }
                                             let mut agent = builder.build().await?;
                                             agent.run(&spawn_message).await
@@ -2645,7 +2659,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                             ))
                                             .system_prompt("You output ONLY valid JSON arrays. No markdown, no explanation.")
                                             .max_iterations(0)
-                                            .max_tokens(4096)
+                                            .max_tokens(8192)
                                             .temperature(0.0)))
                                     {
                                         Ok(builder) => {
@@ -3085,6 +3099,15 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                             .map(|tm| tm.model.clone())
                                             .unwrap_or_else(|| "auto".to_string())
                                     };
+                                    if teammate_model != "auto"
+                                        && !spawn_reg.model_cards.iter().any(|c| c.model_uri == teammate_model)
+                                    {
+                                        tracing::warn!(
+                                            task = %spawn_task_id, model = %teammate_model,
+                                            "Unknown model in subflow task, falling back to auto-select"
+                                        );
+                                        teammate_model = "auto".to_string();
+                                    }
                                     if teammate_model == "auto" {
                                         if let Some(selected) = team_tools::select_model_for_task(
                                             &spawn_reg.model_cards,
@@ -3109,7 +3132,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                             .max_iterations(spawn_max_iter)
                                             .force_tool_iterations(1)
                                             .temperature(0.3)
-                                            .max_tokens(4096)
+                                            .max_tokens(8192)
                                             .build().await?;
                                         agent.run(&spawn_message).await
                                     }.await;

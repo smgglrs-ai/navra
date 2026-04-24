@@ -1,93 +1,54 @@
 kind: dag
 name: security-audit
 description: |
-  Dynamic security audit with planner-generated task swarm.
-  Stage 1: Scout explores project structure (fast model).
-  Stage 2: Planner creates one task per file group with explicit
-           mandates. Tasks are injected into the DAG dynamically.
-  Stage 3: Specialists execute in parallel (throttled by max_parallel).
-  Stage 4: Synthesizer merges all findings into a prioritized report.
+  Security audit via scout → planner → specialist swarm → synthesizer.
+  The planner decides the decomposition based on project size and risk.
 
 parameters:
   target_dir:
     type: string
     description: Root directory of the project to audit
-  depth:
-    type: string
-    description: Exploration depth for scout (default 2)
-    default: "2"
 
 tasks:
   - id: scout
     specialist: security_sentinel
     model: granite3.3:8b
     mandate: |
-      Use docs_tree to list ALL files in the project. Return the
-      complete file list with exact relative paths as shown by
-      docs_tree. Group by security relevance:
-
-      1. HIGH RISK: auth, secrets, config, API handlers, crypto
-      2. MEDIUM RISK: data processing, middleware, validation
-      3. LOW RISK: tests, docs, utilities
-    expected_output: Categorized file list with exact relative paths
+      Use docs_tree to list all files in the project. Return the
+      complete file list with exact relative paths.
+    expected_output: Complete file list with paths
 
   - id: planner
     specialist: analyst
-    model: gemma4:26b
+    model: qwen3.6:35b-a3b
     generates_tasks: true
     mandate: |
-      Create a task list for security review. Use ONLY paths from
-      the scout output. Output a JSON array of task objects.
+      You are a security audit planner. Given the project file list
+      from the scout, create a thorough review plan.
 
-      Each task reviews 1-2 related files with a specific focus.
-      The specialist calls docs_read to read the files, then reports
-      findings with exact line numbers.
+      Produce a JSON array of tasks. Each task should:
+      - Have a clear id, specialist ("security_sentinel"), and mandate
+      - Cover ALL security-relevant files, not just a sample
+      - Tell the specialist which files to read with docs_read
+      - Specify what to look for
 
-      IMPORTANT: Output ONLY a JSON array. No other text.
+      Use models_list and personas_list to pick appropriate models
+      and personas for each task.
 
-      Example output format:
-      ```json
-      [
-        {
-          "id": "review-auth",
-          "specialist": "security_sentinel",
-          "model": "gemma4:26b",
-          "mandate": "Use docs_read to read src/handler.rs and src/api.rs. Look for: SQL injection (format! in queries), missing authentication checks, broken access control. Report file path, line number, CWE code, and the vulnerable code snippet for each finding."
-        },
-        {
-          "id": "review-secrets",
-          "specialist": "security_sentinel",
-          "model": "gemma4:e4b",
-          "mandate": "Use docs_read to read src/config.rs and src/secrets.rs. Look for: hardcoded API keys, passwords in connection strings, encryption keys in source code. Report file path, line number, and the exact secret found."
-        }
-      ]
-      ```
+      Scale the number of tasks to the project — a 4-file project
+      needs 2 tasks, a 100-file project needs 10-20 tasks. Every
+      security-relevant file must be assigned to at least one task.
 
-      Rules:
-      - One task per security concern area (auth, secrets, injection, etc.)
-      - Each mandate MUST say "Use docs_read to read <exact paths>"
-      - All tasks that read files need tool-calling capability.
-        Use models with ≥12B parameters (e.g. gemma4:e4b or gemma4:26b).
-        Do NOT use small models (≤8B) — they fail to call docs_read.
-      - Use the largest model for complex reasoning (auth flow tracing)
-      - Create 2-6 tasks depending on project size
+      Output ONLY the JSON array.
     depends_on: [scout]
-    expected_output: JSON array of task definitions
+    expected_output: JSON array of tasks covering all files
 
   - id: synthesize
     specialist: synthesizer
     model: gemma4:26b
     mandate: |
-      Combine all findings from the specialist reviews into a
-      professional security audit report. Structure it as:
-      1. Executive summary (2-3 sentences)
-      2. Critical findings (with file, line, CWE, code, remediation)
-      3. High findings
-      4. Medium/Low findings
-      5. Remediation roadmap (prioritized table)
-
-      Only include findings that cite actual code from docs_read.
-      Discard any finding without a real code snippet — those are
-      hallucinated. Confidence = HIGH if code evidence, LOW if not.
+      Merge all specialist findings into a security audit report.
+      Only include findings backed by actual code from docs_read.
+      Discard any claim without a file path and line number.
     depends_on: [planner]
-    expected_output: Professional security audit report with verified findings
+    expected_output: Security audit report with verified findings
