@@ -57,7 +57,7 @@ tasks:
         {
           "id": "review-secrets",
           "specialist": "security_sentinel",
-          "model": "granite3.3:8b",
+          "model": "gemma4:e4b",
           "mandate": "Use docs_read to read src/config.rs and src/secrets.rs. Look for: hardcoded API keys, passwords in connection strings, encryption keys in source code. Report file path, line number, and the exact secret found."
         }
       ]
@@ -66,8 +66,10 @@ tasks:
       Rules:
       - One task per security concern area (auth, secrets, injection, etc.)
       - Each mandate MUST say "Use docs_read to read <exact paths>"
-      - Use gemma4:26b for tasks requiring reasoning (auth flow, injection tracing)
-      - Use granite3.3:8b for simple scanning (secrets, config)
+      - All tasks that read files need tool-calling capability.
+        Use models with ≥12B parameters (e.g. gemma4:e4b or gemma4:26b).
+        Do NOT use small models (≤8B) — they fail to call docs_read.
+      - Use the largest model for complex reasoning (auth flow tracing)
       - Create 2-6 tasks depending on project size
     depends_on: [scout]
     expected_output: JSON array of task definitions
