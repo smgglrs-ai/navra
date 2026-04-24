@@ -76,6 +76,19 @@ impl UpstreamModule {
             resources,
         })
     }
+
+    /// Return the upstream's discovered prompt definitions.
+    ///
+    /// Used at startup to scan for `persona:` prefixed prompts and
+    /// auto-register them in the ForgeService.
+    pub fn discovered_prompts(&self) -> &[PromptDefinition] {
+        &self.prompts
+    }
+
+    /// Return the upstream name.
+    pub fn upstream_name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl Module for UpstreamModule {

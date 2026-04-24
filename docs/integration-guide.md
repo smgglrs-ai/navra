@@ -55,12 +55,23 @@ persona prompt, agents use their default persona and may not know
 your tools exist. The prompt tells the agent what methodology to
 follow and which tools to call.
 
+**Naming convention**: prefix your persona prompt name with
+`persona:` (e.g., `persona:legal_analyst`). smgglrs auto-discovers
+prompts with this prefix at startup and registers them as available
+personas -- no YAML configuration needed on the smgglrs side. You
+can also expose non-persona prompts (without the prefix) for
+injection into other personas via `mcp_prompts`.
+
 Implement `prompts/list` and `prompts/get` in your MCP server:
 
 ```json
 // prompts/list response
 {
   "prompts": [
+    {
+      "name": "persona:legal_analyst",
+      "description": "French administrative law analyst"
+    },
     {
       "name": "legal_analysis",
       "description": "French administrative law analysis methodology",
@@ -224,12 +235,52 @@ pattern = "\\b[12]\\s?\\d{2}\\s?\\d{2}\\s?\\d{2}\\s?\\d{3}\\s?\\d{3}\\s?\\d{2}\\
 ## 4. MCP-sourced personas
 
 smgglrs's cognitive system (the Weaver) assembles system prompts
-from persona YAML files. Personas can pull their instructions from
-your upstream's prompts instead of hardcoding them in YAML.
+from persona definitions. Personas can come from three sources:
+auto-discovery from upstream prompts (zero config), thin YAML
+pointers, or full local YAML files.
 
-### Thin persona pointing to your upstream
+### Auto-discovery (zero config)
 
-Create a persona YAML that fetches its mandate from your server:
+If your MCP server exposes a prompt whose name starts with
+`persona:`, smgglrs auto-discovers it at startup. No YAML file
+is needed on the smgglrs side.
+
+Name your prompt `persona:<name>` in your `prompts/list` response:
+
+```json
+{
+  "prompts": [
+    {
+      "name": "persona:legal_analyst",
+      "description": "French administrative law analyst"
+    }
+  ]
+}
+```
+
+When smgglrs connects to your upstream and calls `prompts/list`,
+it scans for prompts with the `persona:` prefix. For each match:
+
+- The part after `persona:` becomes the persona name
+  (`legal_analyst`)
+- The prompt's `description` becomes the persona's `display_name`
+- A `source` is set pointing to the upstream and prompt name
+- The `core_mandate` is left empty (resolved at runtime via
+  `prompts/get`)
+
+This is the simplest integration path. Add your server as an
+upstream in `config.toml`, and the persona is available
+immediately.
+
+Local YAML persona files always take precedence. If a persona
+named `legal_analyst` exists in `cognitive_core/personas/`, the
+auto-discovered one from the upstream is skipped.
+
+### Advanced: thin YAML pointer
+
+For cases where you need local overrides (extra heuristics,
+specific tools, prompt injection), create a thin persona YAML
+that fetches its mandate from your server:
 
 ```yaml
 # personas/syllogis_legal.yaml
@@ -250,6 +301,12 @@ When this persona is loaded, smgglrs calls `prompts/get` on the
 prompt becomes the persona's `core_mandate`. The YAML stays thin
 -- it carries identity and local overrides, but the domain
 methodology lives in your server.
+
+This approach is useful when you want to:
+- Add local heuristics or directives not provided by the upstream
+- Pass specific arguments to `prompts/get`
+- Override the display name or tools list
+- Combine prompts from multiple upstreams
 
 ### Injecting additional prompts
 
@@ -426,12 +483,15 @@ It exposes three tools and a persona prompt.
 
 ### Persona prompt
 
-Syllogis exposes a `legal_analysis` prompt via `prompts/get` that
-instructs the agent to follow the standard legal analysis
-methodology: extract facts, search applicable law, build a
-syllogism, and cite real sources.
+Syllogis exposes a `persona:legal_analyst` prompt via
+`prompts/list`. When smgglrs connects, it auto-discovers this
+prompt and registers a `legal_analyst` persona pointing to
+Syllogis. No YAML file is needed.
 
-### Gateway config
+### Zero-config setup
+
+The simplest integration: add Syllogis as an upstream and
+configure permissions. The persona is auto-discovered.
 
 ```toml
 # ~/.config/smgglrs/config.toml
@@ -465,17 +525,23 @@ tool = "syllogis_*"
 policy = "allow"
 ```
 
-### Persona YAML
+At startup, smgglrs connects to Syllogis, calls `prompts/list`,
+finds `persona:legal_analyst`, and registers it as an available
+persona. The agent can use this persona immediately.
+
+### Advanced: adding local overrides
+
+If you need local heuristics or prompt injection beyond what the
+upstream provides, create an optional persona YAML. This takes
+precedence over the auto-discovered persona:
 
 ```yaml
 # cognitive_core/personas/syllogis_legal.yaml
-persona_name: syllogis_legal
+persona_name: legal_analyst
 display_name: "Syllogis Legal Analyst"
 source:
   upstream: syllogis
-  prompt: legal_analyst_persona
-  arguments:
-    jurisdiction: french_admin
+  prompt: persona:legal_analyst
 heuristics:
   - module: legal
     facets: [evidence_analysis, source_verification]
@@ -487,12 +553,21 @@ mcp_prompts:
       case_description: "{{ input }}"
 ```
 
+This hybrid approach fetches the core mandate from Syllogis but
+adds local heuristics and injects the `legal_analysis` prompt
+at the right position in the system prompt.
+
 ### What the agent sees at runtime
 
 After initialization, the agent's `tools/list` returns all
-gateway tools plus the Syllogis tools. The system prompt contains:
+gateway tools plus the Syllogis tools.
 
-1. The core mandate fetched from `syllogis:legal_analyst_persona`
+With the zero-config path, the system prompt contains the core
+mandate fetched from `syllogis:persona:legal_analyst` at runtime.
+
+With the advanced YAML override, the system prompt contains:
+
+1. The core mandate fetched from `syllogis:persona:legal_analyst`
 2. The `legal_analysis` methodology injected after the mandate
 3. Local heuristics for evidence analysis and source verification
 

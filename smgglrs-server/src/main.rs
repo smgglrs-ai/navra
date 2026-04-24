@@ -925,6 +925,22 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         }
     }
 
+    // --- Load ForgeService for persona auto-discovery ---
+    // Loaded once here so upstream persona: prompts can be registered
+    // before the forge is shared with other subsystems.
+    let mut forge = if let Some(ref cc_path) = cfg.cognitive_core {
+        let expanded = expand_tilde(cc_path);
+        match smgglrs_cognitive::ForgeService::load(std::path::Path::new(&expanded)) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to load cognitive core, using empty forge");
+                smgglrs_cognitive::ForgeService::empty()
+            }
+        }
+    } else {
+        smgglrs_cognitive::ForgeService::empty()
+    };
+
     // --- AID upstream discovery ---
     if !cfg.discover.is_empty() {
         tracing::info!(
@@ -950,6 +966,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             domain = %endpoint.domain,
                             "Connected discovered upstream"
                         );
+                        for prompt_def in module.discovered_prompts() {
+                            if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                                let description = prompt_def.description.as_deref().unwrap_or("");
+                                forge.register_upstream_persona(
+                                    persona_name,
+                                    module.upstream_name(),
+                                    &prompt_def.name,
+                                    description,
+                                );
+                            }
+                        }
                         builder = builder.module(module);
                     }
                     Err(e) => {
@@ -1002,6 +1029,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                             url = %url,
                             "Connected LAN upstream"
                         );
+                        for prompt_def in module.discovered_prompts() {
+                            if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                                let description = prompt_def.description.as_deref().unwrap_or("");
+                                forge.register_upstream_persona(
+                                    persona_name,
+                                    module.upstream_name(),
+                                    &prompt_def.name,
+                                    description,
+                                );
+                            }
+                        }
                         builder = builder.module(module);
                     }
                     Err(e) => {
@@ -1114,6 +1152,26 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         transport = %upstream_cfg.transport,
                         "Connected upstream"
                     );
+
+                    // Auto-discover persona prompts from this upstream.
+                    // Prompts named "persona:<name>" are registered as
+                    // personas in the ForgeService. Local YAML personas
+                    // take precedence over auto-discovered ones.
+                    for prompt_def in module.discovered_prompts() {
+                        if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                            let description = prompt_def
+                                .description
+                                .as_deref()
+                                .unwrap_or("");
+                            forge.register_upstream_persona(
+                                persona_name,
+                                module.upstream_name(),
+                                &prompt_def.name,
+                                description,
+                            );
+                        }
+                    }
+
                     builder = builder.module(module);
                 }
                 Err(e) => {
