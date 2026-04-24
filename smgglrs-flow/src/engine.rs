@@ -12,7 +12,7 @@ use crate::mesh_tools::{
 use smgglrs_agent::{extract_text, Agent};
 use smgglrs_model::{
     CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
-    InputItem, ItemStatus, Locality, ModelBackend, ModelResponse, OpenAiBackend,
+    InputItem, ItemStatus, Locality, ModelResponse, OpenAiBackend,
     OutputItem, ResponseTool, ResponseToolChoice,
 };
 use smgglrs_protocol::label::DataLabel;

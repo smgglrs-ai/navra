@@ -189,7 +189,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     );
 
     // Build credential store from config mappings
-    let credential_store = Arc::new(
+    let _credential_store = Arc::new(
         smgglrs_core::credentials::MappedCredentialStore::new(cfg.credentials.clone())
     );
     if !cfg.credentials.is_empty() {
@@ -411,6 +411,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     capabilities: None,
                 },
             );
+            if agent.pubkey.is_some() {
+                tracing::debug!(agent = %agent.name, "Agent has pubkey configured");
+            }
             tracing::info!(agent = %agent.name, permissions = %agent.permissions, "Registered agent");
         }
 
@@ -919,6 +922,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 domain = %endpoint.domain,
                 url = %endpoint.url,
                 description = ?endpoint.description,
+                auth = ?endpoint.auth,
                 "Discovered MCP endpoint"
             );
             match smgglrs_core::Upstream::http(&endpoint.domain, &endpoint.url).await {
@@ -2453,24 +2457,6 @@ async fn run_agent(
     }
 
     Ok(())
-}
-
-/// Check if a model name indicates a large model (≥20B parameters).
-/// Large models follow tool-calling instructions naturally and don't
-/// need force_tool_iterations — which actually hurts them by wasting
-/// iterations on exploration instead of targeted docs_read calls.
-fn is_large_model(model_name: &str) -> bool {
-    let name = model_name.to_lowercase();
-    // Match patterns like "26b", "35b", "70b", "gemma4:26b", "qwen3.6:35b-a3b"
-    for segment in name.split(&[':', '-', '_'][..]) {
-        if let Some(num_str) = segment.strip_suffix('b') {
-            if let Ok(size) = num_str.parse::<f64>() {
-                return size >= 20.0;
-            }
-        }
-    }
-    // Claude models are always large
-    name.contains("claude") || name.contains("opus") || name.contains("sonnet")
 }
 
 pub(crate) fn expand_tilde(path: &str) -> String {

@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use super::types::{RegisteredPrompt, RegisteredResource, RegisteredTool, ToolHandler};
+use super::types::{RegisteredPrompt, RegisteredResource, RegisteredTool};
 use super::McpServer;
 
 /// Builder for constructing an McpServer.

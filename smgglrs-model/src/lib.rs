@@ -14,8 +14,8 @@
 //! - `embed()` — text embeddings, `classify()` — content safety
 //! - `generate()` — simple single-turn, `transcribe()` / `synthesize()` — audio
 
-// Internal modules — Chat Completions types used only for backend translation.
-pub(crate) mod chat;
+/// Chat Completions types used for backend translation and streaming.
+pub mod chat;
 pub mod safe_backend;
 pub(crate) mod http_common;
 mod anthropic;

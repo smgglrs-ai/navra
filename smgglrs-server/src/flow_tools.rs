@@ -636,7 +636,7 @@ async fn spawn_and_track_tasks(
     prompt: &str,
     project_file_tree: &str,
 ) -> (Vec<String>, std::collections::HashMap<String, String>, std::collections::HashSet<String>) {
-    let mut new_completed = std::collections::HashMap::new();
+    let new_completed = std::collections::HashMap::new();
     let mut new_failed = std::collections::HashSet::new();
     let mut spawned_ids = Vec::new();
 

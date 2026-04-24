@@ -238,12 +238,6 @@ impl TeamRegistry {
         Ok(())
     }
 
-    /// Get the team's depth and budget (for subteam creation).
-    pub fn get_team_info(&self, team_id: &str) -> Option<(u32, TeamBudget)> {
-        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        teams.get(team_id).map(|t| (t.depth, t.budget.clone()))
-    }
-
     pub fn bb_publish(&self, team_id: &str, key: &str, value: &str, author: &str) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(team) = teams.get_mut(team_id) {
@@ -268,14 +262,6 @@ impl TeamRegistry {
             .cloned()
     }
 
-    pub fn bb_keys(&self, team_id: &str) -> Vec<String> {
-        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        teams
-            .get(team_id)
-            .map(|t| t.blackboard.iter().map(|e| e.key.clone()).collect())
-            .unwrap_or_default()
-    }
-
     /// Store a task handle for a running teammate.
     pub fn store_handle(&self, team_id: &str, teammate: &str, handle: JoinHandle<()>) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
@@ -285,22 +271,6 @@ impl TeamRegistry {
                 old.abort();
             }
         }
-    }
-
-    /// Check if the team's timeout has expired and abort all tasks if so.
-    /// Returns true if the team timed out.
-    pub fn check_timeout(&self, team_id: &str) -> bool {
-        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(team) = teams.get_mut(team_id) {
-            if team.created_at.elapsed().as_secs() > team.budget.timeout_secs {
-                for (name, handle) in team.task_handles.drain() {
-                    tracing::warn!(team = team_id, teammate = %name, "Aborting timed-out teammate task");
-                    handle.abort();
-                }
-                return true;
-            }
-        }
-        false
     }
 
     pub fn set_output(&self, team_id: &str, teammate: &str, output: String) {
@@ -357,6 +327,7 @@ impl TeamRegistry {
         Some(serde_json::json!({
             "team_id": team.team_id,
             "name": team.name,
+            "description": team.description,
             "depth": team.depth,
             "elapsed_secs": team.created_at.elapsed().as_secs(),
             "members": members,

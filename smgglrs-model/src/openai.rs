@@ -9,10 +9,9 @@ use crate::{
     SynthesizeResponse, TranscribeRequest, TranscribeResponse,
 };
 use crate::chat::{
-    ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatToolDefinition,
+    ChatMessage, ChatRequest, ChatResponse, ChatRole,
     FinishReason, FunctionCall, ToolCall, ToolChoice,
 };
-use futures_util::StreamExt;
 
 /// External model backend using OpenAI-compatible HTTP APIs.
 pub struct OpenAiBackend {
@@ -627,6 +626,7 @@ fn pcm_to_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat::ChatToolDefinition;
 
     #[test]
     fn pcm_to_wav_valid_header() {
