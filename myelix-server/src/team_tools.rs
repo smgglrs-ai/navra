@@ -737,10 +737,11 @@ pub fn select_model_for_task(
                 .unwrap_or(0.0);
 
             if needs_reasoning || needs_tools {
-                // Prefer larger models for complex tasks
+                // Models ≤10B can't reliably call tools or reason.
+                // ≥12B is the minimum for reliable tool use.
                 if param_b >= 20.0 { score += 20; }
-                else if param_b >= 10.0 { score += 10; }
-                else if param_b >= 5.0 { score += 3; }
+                else if param_b >= 12.0 { score += 12; }
+                else { score -= 5; }
             } else {
                 // Simple task — prefer smaller/faster
                 if param_b <= 10.0 { score += 8; }
