@@ -2620,13 +2620,56 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                                     Some(o) => o.clone(),
                                     None => continue,
                                 };
-                                let new_tasks = myelix_flow::parse_planner_tasks(&output);
+                                let mut new_tasks = myelix_flow::parse_planner_tasks(&output);
                                 if new_tasks.is_empty() {
                                     tracing::warn!(
                                         flow_id = %bg_flow_id, task = %task.id,
-                                        "Planner task has generates_tasks but output has no parseable tasks"
+                                        "Planner output not parseable as JSON tasks, retrying with correction"
                                     );
-                                    continue;
+                                    // Retry: send the failed output back with a correction prompt
+                                    let correction_prompt = format!(
+                                        "Your previous output was not valid JSON. Here is what you wrote:\n\n\
+                                         {output}\n\n\
+                                         Fix this to be ONLY a JSON array of task objects. Each object must have \
+                                         \"id\" (string), \"specialist\" (string), and \"mandate\" (string). \
+                                         Optional: \"model\" (string). Output ONLY the JSON array, nothing else."
+                                    );
+                                    let correction_model = task.model.clone()
+                                        .unwrap_or_else(|| "gemma4:26b".to_string());
+                                    let mcp_url = format!("http://{}/mcp", bg_mcpd_addr);
+                                    match myelix_agent::Agent::builder()
+                                        .endpoint(&mcp_url).await
+                                        .and_then(|b| Ok(b
+                                            .model(myelix_model::OpenAiBackend::new(
+                                                "http://localhost:11434/v1", &correction_model, None, myelix_model::Locality::Local,
+                                            ))
+                                            .system_prompt("You output ONLY valid JSON arrays. No markdown, no explanation.")
+                                            .max_iterations(0)
+                                            .max_tokens(4096)
+                                            .temperature(0.0)))
+                                    {
+                                        Ok(builder) => {
+                                            if let Ok(mut agent) = builder.build().await {
+                                                if let Ok(result) = agent.run(&correction_prompt).await {
+                                                    new_tasks = myelix_flow::parse_planner_tasks(&result.response);
+                                                    if !new_tasks.is_empty() {
+                                                        tracing::info!(
+                                                            flow_id = %bg_flow_id, count = new_tasks.len(),
+                                                            "Planner retry succeeded"
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Err(e) => tracing::warn!(error = %e, "Correction agent build failed"),
+                                    }
+                                    if new_tasks.is_empty() {
+                                        tracing::warn!(
+                                            flow_id = %bg_flow_id, task = %task.id,
+                                            "Planner retry also failed — no dynamic tasks injected"
+                                        );
+                                        continue;
+                                    }
                                 }
                                 let new_ids: Vec<String> = new_tasks.iter().map(|t| t.id.clone()).collect();
                                 tracing::info!(
@@ -3939,6 +3982,8 @@ async fn run_agent(
             "team_bb_read".to_string(),
             "models_list".to_string(),
             "personas_list".to_string(),
+            "flow_status".to_string(),
+            "flow_result".to_string(),
         ]);
 
     // Apply auth token
