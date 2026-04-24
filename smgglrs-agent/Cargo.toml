@@ -1,0 +1,25 @@
+[package]
+name = "smgglrs-agent"
+description = "SDK for building AI agents that connect to MCP servers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+smgglrs-protocol = { path = "../smgglrs-protocol" }
+smgglrs-model = { path = "../smgglrs-model" }
+smgglrs-security = { path = "../smgglrs-security" }
+smgglrs-cognitive = { path = "../smgglrs-cognitive" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+smgglrs-responses = { path = "../smgglrs-responses" }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }

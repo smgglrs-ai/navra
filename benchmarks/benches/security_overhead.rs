@@ -1,4 +1,4 @@
-//! Benchmarks measuring the latency overhead of myelix security features.
+//! Benchmarks measuring the latency overhead of smgglrs security features.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::path::Path;
@@ -6,7 +6,7 @@ use std::path::Path;
 // --- IFC ---
 
 fn bench_ifc_taint_propagation(c: &mut Criterion) {
-    use myelix_security::ifc::{Confidentiality, DataLabel, Integrity, TaintTracker};
+    use smgglrs_security::ifc::{Confidentiality, DataLabel, Integrity, TaintTracker};
 
     let mut group = c.benchmark_group("ifc");
 
@@ -73,7 +73,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
             "~/Documents/**".to_string(),
         ];
         b.iter(|| {
-            myelix_security::ifc::is_trusted_path(
+            smgglrs_security::ifc::is_trusted_path(
                 black_box("/home/user/Code/project/src/main.rs"),
                 &patterns,
             )
@@ -83,7 +83,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
     group.bench_function("is_trusted_path_no_match", |b| {
         let patterns = vec!["~/Code/**".to_string()];
         b.iter(|| {
-            myelix_security::ifc::is_trusted_path(
+            smgglrs_security::ifc::is_trusted_path(
                 black_box("/tmp/random/file.txt"),
                 &patterns,
             )
@@ -96,10 +96,10 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
 // --- Capability tokens ---
 
 fn bench_capability_tokens(c: &mut Criterion) {
-    use myelix_security::auth::capability::{
+    use smgglrs_security::auth::capability::{
         build_payload, decode_token, encode_token, CapabilitySet,
     };
-    use myelix_security::identity::{load_or_create_file_identity, CapSigner};
+    use smgglrs_security::identity::{load_or_create_file_identity, CapSigner};
 
     let tmp = tempfile::tempdir().unwrap();
     let signer =
@@ -135,7 +135,7 @@ fn bench_capability_tokens(c: &mut Criterion) {
 // --- BLAKE3 token auth ---
 
 fn bench_blake3_auth(c: &mut Criterion) {
-    use myelix_security::auth::TokenAuthenticator;
+    use smgglrs_security::auth::TokenAuthenticator;
 
     let mut group = c.benchmark_group("blake3_auth");
 
@@ -153,7 +153,7 @@ fn bench_blake3_auth(c: &mut Criterion) {
 // --- Safety pipeline ---
 
 fn bench_safety_pipeline(c: &mut Criterion) {
-    use myelix_security::safety::{build_pipeline, FilterContext};
+    use smgglrs_security::safety::{build_pipeline, FilterContext};
 
     let mut group = c.benchmark_group("safety_pipeline");
 
@@ -197,7 +197,7 @@ fn bench_safety_pipeline(c: &mut Criterion) {
 // --- Permission checks ---
 
 fn bench_permissions(c: &mut Criterion) {
-    use myelix_security::permissions::{PathAcl, PermissionEngine};
+    use smgglrs_security::permissions::{PathAcl, PermissionEngine};
 
     let mut engine = PermissionEngine::new();
     engine.add_permission_set(
@@ -249,7 +249,7 @@ fn bench_permissions(c: &mut Criterion) {
 // --- Tool permission rules ---
 
 fn bench_tool_rules(c: &mut Criterion) {
-    use myelix_security::permissions::{ToolPermissions, ToolPolicy, ToolRule};
+    use smgglrs_security::permissions::{ToolPermissions, ToolPolicy, ToolRule};
 
     let rules = vec![
         ToolRule { tool: "docs_read".to_string(), policy: ToolPolicy::Allow },
@@ -290,7 +290,7 @@ fn bench_weaver(c: &mut Criterion) {
         return;
     }
 
-    let forge = match myelix_cognitive::ForgeService::load(&demo_path) {
+    let forge = match smgglrs_cognitive::ForgeService::load(&demo_path) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("Skipping weaver bench: {e}");
@@ -307,7 +307,7 @@ fn bench_weaver(c: &mut Criterion) {
 
     group.bench_function("assemble_short_prompt", |b| {
         b.iter(|| {
-            myelix_cognitive::assemble(
+            smgglrs_cognitive::assemble(
                 &forge,
                 black_box("security_auditor"),
                 black_box(short_prompt),
@@ -320,7 +320,7 @@ fn bench_weaver(c: &mut Criterion) {
 
     group.bench_function("assemble_long_prompt", |b| {
         b.iter(|| {
-            myelix_cognitive::assemble(
+            smgglrs_cognitive::assemble(
                 &forge,
                 black_box("security_auditor"),
                 black_box(long_prompt),
@@ -334,7 +334,7 @@ fn bench_weaver(c: &mut Criterion) {
     group.bench_function("assemble_with_context", |b| {
         let context = "Previous audit (March 2026): Found SQL injection in process_payment().";
         b.iter(|| {
-            myelix_cognitive::assemble(
+            smgglrs_cognitive::assemble(
                 &forge,
                 black_box("analyst"),
                 black_box(short_prompt),
@@ -346,7 +346,7 @@ fn bench_weaver(c: &mut Criterion) {
     });
 
     // Report token overhead
-    let output = myelix_cognitive::assemble(
+    let output = smgglrs_cognitive::assemble(
         &forge,
         "security_auditor",
         short_prompt,

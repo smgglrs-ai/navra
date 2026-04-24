@@ -44,19 +44,19 @@ facets:
       - Proposals use a standardized template covering hypothesis, methodology,
         expected outcomes, resources, and timeline.
       - Proposals must be reviewed and approved before promotion.
-      - Use `myelix research propose <title>` to create a new proposal.
+      - Use `smgglrs research propose <title>` to create a new proposal.
 
       **Stage 2: Formal Experiment**
       - Approved proposals are promoted to full experiments via
-        `myelix research promote <proposal_file>`.
+        `smgglrs research promote <proposal_file>`.
       - Each experiment gets a dedicated directory in `research/experiments/active/`
         with the structure: `EXP-NNN-<slug>/` containing `METHODOLOGY.md`,
         `README.md`, and subdirectories `data/`, `results/`, `analysis/`.
       - Auto-numbered using the EXP-NNN convention (e.g., EXP-006, EXP-007).
 
       **Discovery Commands**
-      - `myelix research list` shows all proposals and active experiments.
-      - `myelix research status <EXP-NNN>` shows experiment details.
+      - `smgglrs research list` shows all proposals and active experiments.
+      - `smgglrs research status <EXP-NNN>` shows experiment details.
       - Scan `research/experiments/` to understand current research state.
 
       **Lifecycle Guidance**

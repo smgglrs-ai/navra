@@ -1,8 +1,8 @@
-# mcpd — Design Document
+# smgglrs — Design Document
 
 ## Overview
 
-**mcpd** is a secure MCP (Model Context Protocol) gateway designed to
+**smgglrs** is a secure MCP (Model Context Protocol) gateway designed to
 run as a user-level systemd unit on Linux desktops. It aggregates
 multiple MCP servers — both built-in modules and upstream external
 servers — behind a unified security layer with authentication, path
@@ -12,7 +12,7 @@ system.
 
 Built-in **modules** contribute tools and prompts directly. External
 **upstream** MCP servers (e.g., Myelix for cognitive personas, or
-specialized tool servers) are proxied through mcpd, which applies the
+specialized tool servers) are proxied through smgglrs, which applies the
 same auth, permissions, and safety policies to all traffic regardless
 of origin.
 
@@ -21,39 +21,39 @@ of origin.
 See CLAUDE.md for the full 14-crate workspace table. Summary:
 
 ```
-mcpd/
-├── myelix-protocol       MCP/A2A/JSON-RPC types, upstream transports
-├── myelix-model          Model backend trait + ONNX/OpenAI/Anthropic impls
-├── myelix-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
-├── myelix-model-runtime  Serve models (Podman, direct, libkrun)
-├── myelix-security       Auth, permissions, IFC, trusted paths, safety, hooks
-├── myelix-agent          Client SDK: agent builder, MCP client, tool-use loop
-├── myelix-flow           Declarative multi-agent flows with handoff routing
-├── myelix-core           Server, module trait, session, transport
-├── myelix-tools-docs     Document tools (FTS5, file I/O)
-├── myelix-tools-git      Git tools (status, diff, log, branch, commit)
-├── myelix-rag            Vector search, sqlite-vec, semantic chunking
-├── myelix-modal-voice    Speech I/O (ASR + TTS via ONNX)
-├── myelix-modal-vision   Image/screen understanding (GPU tier)
-└── myelix-server         Binary: CLI, config, module wiring (mcpd)
+smgglrs/
+├── smgglrs-protocol       MCP/A2A/JSON-RPC types, upstream transports
+├── smgglrs-model          Model backend trait + ONNX/OpenAI/Anthropic impls
+├── smgglrs-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
+├── smgglrs-model-runtime  Serve models (Podman, direct, libkrun)
+├── smgglrs-security       Auth, permissions, IFC, trusted paths, safety, hooks
+├── smgglrs-agent          Client SDK: agent builder, MCP client, tool-use loop
+├── smgglrs-flow           Declarative multi-agent flows with handoff routing
+├── smgglrs-core           Server, module trait, session, transport
+├── smgglrs-tools-docs     Document tools (FTS5, file I/O)
+├── smgglrs-tools-git      Git tools (status, diff, log, branch, commit)
+├── smgglrs-rag            Vector search, sqlite-vec, semantic chunking
+├── smgglrs-modal-voice    Speech I/O (ASR + TTS via ONNX)
+├── smgglrs-modal-vision   Image/screen understanding (GPU tier)
+└── smgglrs-server         Binary: CLI, config, module wiring (smgglrs)
 ```
 
 | Crate | Role |
 |-------|------|
-| `myelix-protocol` | MCP/A2A/JSON-RPC types, upstream client with stdio/HTTP/SSE + resilient transports |
-| `myelix-model` | Model backend trait with ONNX (in-process), OpenAI-compatible, and Anthropic (direct + Vertex AI) implementations |
-| `myelix-model-hub` | Pull and cache models from OCI, HuggingFace, and Ollama registries with content-addressed storage |
-| `myelix-model-runtime` | Serve models with pluggable isolation: direct (llama-server), Podman (rootless container), libkrun (microVM) |
-| `myelix-security` | BLAKE3 token auth, capability tokens (CBOR+Ed25519), DID:key identity, path ACLs, per-tool rules, IFC with trusted paths, safety filters, hook pipeline, approval store, D-Bus notifier, process table, rate limiting |
-| `myelix-agent` | Client SDK for building agents: Agent builder, McpClient (IFC taint tracking), ReAct tool-use loop |
-| `myelix-flow` | Declarative multi-agent flow engine: directed graph of agents, handoff-based routing, TOML config |
-| `myelix-core` | MCP server (JSON-RPC 2.0, Streamable HTTP + SSE), Module trait, session store, IFC value store |
-| `myelix-tools-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
-| `myelix-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`) |
-| `myelix-rag` | Vector search with sqlite-vec, semantic chunking for context enrichment |
-| `myelix-modal-voice` | Speech I/O: ASR (Whisper) + TTS via ONNX models |
-| `myelix-modal-vision` | Image/screen understanding (GPU tier) |
-| `myelix-server` | Binary: CLI, config, module wiring, model hub/runtime integration, systemd, system tray |
+| `smgglrs-protocol` | MCP/A2A/JSON-RPC types, upstream client with stdio/HTTP/SSE + resilient transports |
+| `smgglrs-model` | Model backend trait with ONNX (in-process), OpenAI-compatible, and Anthropic (direct + Vertex AI) implementations |
+| `smgglrs-model-hub` | Pull and cache models from OCI, HuggingFace, and Ollama registries with content-addressed storage |
+| `smgglrs-model-runtime` | Serve models with pluggable isolation: direct (llama-server), Podman (rootless container), libkrun (microVM) |
+| `smgglrs-security` | BLAKE3 token auth, capability tokens (CBOR+Ed25519), DID:key identity, path ACLs, per-tool rules, IFC with trusted paths, safety filters, hook pipeline, approval store, D-Bus notifier, process table, rate limiting |
+| `smgglrs-agent` | Client SDK for building agents: Agent builder, McpClient (IFC taint tracking), ReAct tool-use loop |
+| `smgglrs-flow` | Declarative multi-agent flow engine: directed graph of agents, handoff-based routing, TOML config |
+| `smgglrs-core` | MCP server (JSON-RPC 2.0, Streamable HTTP + SSE), Module trait, session store, IFC value store |
+| `smgglrs-tools-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
+| `smgglrs-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`) |
+| `smgglrs-rag` | Vector search with sqlite-vec, semantic chunking for context enrichment |
+| `smgglrs-modal-voice` | Speech I/O: ASR (Whisper) + TTS via ONNX models |
+| `smgglrs-modal-vision` | Image/screen understanding (GPU tier) |
+| `smgglrs-server` | Binary: CLI, config, module wiring, model hub/runtime integration, systemd, system tray |
 
 ## Architecture
 
@@ -64,7 +64,7 @@ mcpd/
                              │ MCP Streamable HTTP + SSE
                              │ (Unix socket or TCP)
 ┌────────────────────────────▼─────────────────────────────────────────┐
-│                         myelix-server (gateway)                      │
+│                         smgglrs-server (gateway)                      │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐  │
 │  │ System Tray │  │    Config    │  │      Module Loader          │  │
 │  │   (ksni)    │  │    (TOML)    │  │ DocsModule, GitModule       │  │
@@ -73,7 +73,7 @@ mcpd/
 │  └──────┬──────┘  └──────────────┘  └──────────────┬──────────────┘  │
 │         │                                          │                 │
 │  ┌──────▼──────────────────────────────────────────▼──────────────┐  │
-│  │                       myelix-core                              │  │
+│  │                       smgglrs-core                              │  │
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │  │
 │  │  │ JSON-RPC   │ │ MCP Proto  │ │ Streamable │ │   Auth     │   │  │
 │  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP + SSE │ │ (BLAKE3)   │   │  │
@@ -100,8 +100,8 @@ mcpd/
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─ Built-in Modules ─────────────────────────────────────────────┐  │
-│  │  myelix-tools-docs: docs_search, docs_read, docs_write, ...    │  │
-│  │  myelix-tools-git:  git_status, git_diff, git_log, git_branch  │  │
+│  │  smgglrs-tools-docs: docs_search, docs_read, docs_write, ...    │  │
+│  │  smgglrs-tools-git:  git_status, git_diff, git_log, git_branch  │  │
 │  │                 git_commit (approval required)                 │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
@@ -140,7 +140,7 @@ Compile-time composition — modules are wired in `main.rs`:
 
 ```rust
 McpServer::builder()
-    .name("mcpd")
+    .name("smgglrs")
     .module(DocsModule::new(perm_engine, index, approvals, notifier))
     .module(GitModule::new(perm_engine, approvals, notifier))
     .authenticator(token_auth)
@@ -160,7 +160,7 @@ Modules are enabled/disabled in config:
 ```toml
 [modules.docs]
 enabled = true
-db = "$XDG_DATA_HOME/mcpd/index.db"
+db = "$XDG_DATA_HOME/smgglrs/index.db"
 
 [modules.git]
 enabled = true
@@ -169,7 +169,7 @@ enabled = true
 ### Adding a Module
 
 1. Create crate implementing `Module` → provides `(ToolDefinition, ToolHandler)` pairs
-2. Add dependency in `myelix-server/Cargo.toml`
+2. Add dependency in `smgglrs-server/Cargo.toml`
 3. Add config struct in `config.rs`
 4. Add `if cfg.xxx_enabled() { builder = builder.module(xxx); }` in `main.rs`
 
@@ -226,7 +226,7 @@ Sessions are created on `initialize` and tracked via UUID:
 
 ### Transport Bindings
 
-- **Unix domain socket** (default): `$XDG_RUNTIME_DIR/mcpd/mcpd.sock`
+- **Unix domain socket** (default): `$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock`
   with 0600 permissions. Parent directories created automatically.
 - **TCP** (optional): `127.0.0.1:9315` for development
 - Both can be active simultaneously.
@@ -264,7 +264,7 @@ token_hash = "20a8c34a..."  # BLAKE3 hex hash
 permissions = "developer"
 ```
 
-Generate tokens via CLI: `mcpd token generate --name N --perms P`
+Generate tokens via CLI: `smgglrs token generate --name N --perms P`
 
 ### 2. Path ACLs (deny-wins)
 
@@ -386,7 +386,7 @@ Resolution via ANY channel:
   1. Agent calls docs_approve(request_id=abc-123)     ← MCP-native
   2. User clicks D-Bus notification "Approve" button  ← Desktop
   3. User clicks tray menu Approve                    ← Tray icon
-  4. CLI: mcpd approve abc-123                        ← Terminal
+  4. CLI: smgglrs approve abc-123                        ← Terminal
 
 Agent: docs_write(path, content)  # retry
 Server: "Written 42 bytes to /path"  # grant consumed
@@ -415,7 +415,7 @@ is accessible via `server.pause_flag()` for external integration.
 
 ## MCP Tools
 
-### Docs Module (`myelix-tools-docs`)
+### Docs Module (`smgglrs-tools-docs`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
@@ -429,7 +429,7 @@ is accessible via `server.pause_flag()` for external integration.
 | `docs_approve` | — | Approve a pending request by ID |
 | `docs_deny` | — | Deny a pending request by ID |
 
-### Git Module (`myelix-tools-git`)
+### Git Module (`smgglrs-tools-git`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
@@ -462,7 +462,7 @@ Then `check_perm()`:
 
 ### Document Indexing (SQLite FTS5)
 
-Single database at `$XDG_DATA_HOME/mcpd/index.db`:
+Single database at `$XDG_DATA_HOME/smgglrs/index.db`:
 
 ```sql
 CREATE TABLE documents (...);
@@ -520,29 +520,29 @@ character-level tokenization otherwise.
 ### Model Management CLI
 
 ```
-mcpd model available              Show supported models
-mcpd model pull guardian-hap       Download safety classifier
-mcpd model pull granite-embed      Download embedding model
-mcpd model list                    Show installed models with sizes
+smgglrs model available              Show supported models
+smgglrs model pull guardian-hap       Download safety classifier
+smgglrs model pull granite-embed      Download embedding model
+smgglrs model list                    Show installed models with sizes
 ```
 
 Models are downloaded from HuggingFace to
-`~/.local/share/mcpd/models/<name>/` with streaming progress.
+`~/.local/share/smgglrs/models/<name>/` with streaming progress.
 After download, prints a ready-to-paste config snippet.
 
 ### Configuration
 
 ```toml
 [models.safety]
-model_path = "~/.local/share/mcpd/models/guardian-hap/model.onnx"
-tokenizer_path = "~/.local/share/mcpd/models/guardian-hap/tokenizer.json"
+model_path = "~/.local/share/smgglrs/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/smgglrs/models/guardian-hap/tokenizer.json"
 task = "classification"
 labels = ["safe", "hap"]
 threshold = 0.5
 
 [models.embeddings]
-model_path = "~/.local/share/mcpd/models/granite-embed/model.onnx"
-tokenizer_path = "~/.local/share/mcpd/models/granite-embed/tokenizer.json"
+model_path = "~/.local/share/smgglrs/models/granite-embed/model.onnx"
+tokenizer_path = "~/.local/share/smgglrs/models/granite-embed/tokenizer.json"
 task = "embedding"
 dimensions = 768
 ```
@@ -607,8 +607,8 @@ Loaded automatically when a classification model is configured:
 
 ```toml
 [models.safety]
-model_path = "~/.local/share/mcpd/models/guardian-hap/model.onnx"
-tokenizer_path = "~/.local/share/mcpd/models/guardian-hap/tokenizer.json"
+model_path = "~/.local/share/smgglrs/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/smgglrs/models/guardian-hap/tokenizer.json"
 task = "classification"
 labels = ["safe", "hap"]
 threshold = 0.5
@@ -682,8 +682,8 @@ subprocess), `HttpTransportFactory`, `SseTransportFactory`.
 
 ```toml
 [[upstream]]
-name = "myelix"
-command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
+name = "smgglrs"
+command = ["poetry", "run", "python", "-m", "smgglrs.memory.mcp_server"]
 retry_base_delay_ms = 1000
 retry_max_delay_ms = 30000
 retry_budget_secs = 600
@@ -772,32 +772,32 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar.
 
 ## Configuration
 
-Default path: `~/.config/mcpd/config.toml`
+Default path: `~/.config/smgglrs/config.toml`
 
 ```toml
 [server]
-socket = "$XDG_RUNTIME_DIR/mcpd/mcpd.sock"
+socket = "$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock"
 tcp = "127.0.0.1:9315"    # optional, for development
 
 [modules.docs]
 enabled = true
-# db = "$XDG_DATA_HOME/mcpd/index.db"
+# db = "$XDG_DATA_HOME/smgglrs/index.db"
 watch = ["~/Documents", "~/Notes"]   # auto-reindex on file changes
 
 [modules.git]
 enabled = true
 
-# --- ONNX models (install via: mcpd model pull <name>) ---
+# --- ONNX models (install via: smgglrs model pull <name>) ---
 [models.safety]
-model_path = "~/.local/share/mcpd/models/guardian-hap/model.onnx"
-tokenizer_path = "~/.local/share/mcpd/models/guardian-hap/tokenizer.json"
+model_path = "~/.local/share/smgglrs/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/smgglrs/models/guardian-hap/tokenizer.json"
 task = "classification"
 labels = ["safe", "hap"]
 threshold = 0.5
 
 [models.embeddings]
-model_path = "~/.local/share/mcpd/models/granite-embed/model.onnx"
-tokenizer_path = "~/.local/share/mcpd/models/granite-embed/tokenizer.json"
+model_path = "~/.local/share/smgglrs/models/granite-embed/model.onnx"
+tokenizer_path = "~/.local/share/smgglrs/models/granite-embed/tokenizer.json"
 task = "embedding"
 dimensions = 768
 
@@ -807,10 +807,10 @@ notify = "dbus"  # "dbus" or "none"
 
 # --- Upstream MCP servers ---
 [[upstream]]
-name = "myelix"
+name = "smgglrs"
 transport = "stdio"
-command = ["poetry", "run", "python", "-m", "myelix.memory.mcp_server"]
-cwd = "/home/user/myelix"
+command = ["poetry", "run", "python", "-m", "smgglrs.memory.mcp_server"]
+cwd = "/home/user/smgglrs"
 retry_base_delay_ms = 1000
 
 [[upstream]]
@@ -821,7 +821,7 @@ url = "http://localhost:8001/mcp"
 # --- Agents ---
 [[agents]]
 name = "claude-code"
-token_hash = "20a8c34a..."  # BLAKE3 hex hash from `mcpd token generate`
+token_hash = "20a8c34a..."  # BLAKE3 hex hash from `smgglrs token generate`
 permissions = "developer"
 
 [permissions.developer]
@@ -852,27 +852,27 @@ safety = "standard"
 ## CLI
 
 ```
-mcpd serve [--config path] [--no-tray]   Start the server
-mcpd token generate --name N --perms P   Generate agent token (prints BLAKE3 hash)
-mcpd token list                          List registered agents from config
-mcpd approve <request-id>                Approve a pending request (via server)
-mcpd deny <request-id>                   Deny a pending request (via server)
-mcpd status                              Query running server status
-mcpd install                             Install systemd user units
-mcpd uninstall                           Uninstall systemd user units
-mcpd model available                     Show supported models for download
-mcpd model pull <name>                   Download model from HuggingFace
-mcpd model list                          Show installed models
+smgglrs serve [--config path] [--no-tray]   Start the server
+smgglrs token generate --name N --perms P   Generate agent token (prints BLAKE3 hash)
+smgglrs token list                          List registered agents from config
+smgglrs approve <request-id>                Approve a pending request (via server)
+smgglrs deny <request-id>                   Deny a pending request (via server)
+smgglrs status                              Query running server status
+smgglrs install                             Install systemd user units
+smgglrs uninstall                           Uninstall systemd user units
+smgglrs model available                     Show supported models for download
+smgglrs model pull <name>                   Download model from HuggingFace
+smgglrs model list                          Show installed models
 ```
 
 ## Gateway Architecture
 
 ### Design Rationale
 
-mcpd is an **MCP gateway** that aggregates upstream MCP servers:
+smgglrs is an **MCP gateway** that aggregates upstream MCP servers:
 
 - **Domain separation**: Each upstream server owns its domain logic.
-  mcpd stays domain-agnostic.
+  smgglrs stays domain-agnostic.
 - **Unified security**: Auth, ACLs, per-tool rules, content safety,
   and approval workflows apply uniformly to all traffic.
 - **Model agnosticism**: Any MCP client can consume the aggregated
@@ -910,22 +910,22 @@ retry and reconnection (see Resilient Transports section).
 
 ## Systemd Integration
 
-Install via `mcpd install`, uninstall via `mcpd uninstall`.
+Install via `smgglrs install`, uninstall via `smgglrs uninstall`.
 
-Service unit (`~/.config/systemd/user/mcpd.service`):
+Service unit (`~/.config/systemd/user/smgglrs.service`):
 
 ```ini
 [Unit]
-Description=mcpd — Composable MCP Server
+Description=smgglrs — Composable MCP Server
 After=default.target
 
 [Service]
 Type=simple
-ExecStart=%h/.cargo/bin/mcpd serve --no-tray
+ExecStart=%h/.cargo/bin/smgglrs serve --no-tray
 Restart=on-failure
 RestartSec=5
-RuntimeDirectory=mcpd
-ReadWritePaths=%h/.local/share/mcpd %h/.config/mcpd
+RuntimeDirectory=smgglrs
+ReadWritePaths=%h/.local/share/smgglrs %h/.config/smgglrs
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
@@ -934,14 +934,14 @@ ProtectHome=read-only
 WantedBy=default.target
 ```
 
-Socket unit (`~/.config/systemd/user/mcpd.socket`):
+Socket unit (`~/.config/systemd/user/smgglrs.socket`):
 
 ```ini
 [Unit]
-Description=mcpd — MCP Server Socket
+Description=smgglrs — MCP Server Socket
 
 [Socket]
-ListenStream=%t/mcpd/mcpd.sock
+ListenStream=%t/smgglrs/smgglrs.sock
 SocketMode=0600
 
 [Install]
@@ -966,27 +966,27 @@ watch = ["~/Documents", "~/Notes"]
 ## Agent SDK Design Notes
 
 Design inputs from landscape research (April 2026) for the
-future `myelix-agent` crate.
+future `smgglrs-agent` crate.
 
 ### Coding Agent Components (Raschka)
 
 Six core components identified for effective agent harnesses:
 
 1. **Live repository context** — Collect workspace metadata upfront
-   (git status, project structure, conventions). mcpd already provides
-   this via myelix-tools-git and myelix-tools-docs.
+   (git status, project structure, conventions). smgglrs already provides
+   this via smgglrs-tools-git and smgglrs-tools-docs.
 2. **Prompt cache separation** — Separate stable content (tool
    descriptions, system prompt) from dynamic state (conversation
    history). Enables prompt cache reuse across turns.
 3. **Structured tool access with validation** — Model output →
    validation → optional approval → execution → bounded result.
-   Maps to mcpd's permission engine + hook pipeline.
+   Maps to smgglrs's permission engine + hook pipeline.
 4. **Context bloat minimization** — Clip verbose outputs, compress
-   older history more aggressively than recent events. myelix-agent
+   older history more aggressively than recent events. smgglrs-agent
    should implement transcript reduction.
 5. **Dual-layer session memory** — Full transcript (for audit/resume)
    + distilled working memory (for task continuity). Maps to
-   myelix-core session management.
+   smgglrs-core session management.
 6. **Bounded subagent delegation** — Child agents inherit sufficient
    context but operate within tighter constraints. Depth limits,
    read-only modes, explicit task boundaries.
@@ -1000,18 +1000,18 @@ AG-UI's event streaming and interrupt patterns are relevant for
 the hook pipeline:
 
 - **Tool-level approval**: `approval_mode="always_require"` pauses
-  workflow, emits interrupt event for human review. Maps to mcpd's
+  workflow, emits interrupt event for human review. Maps to smgglrs's
   existing approval system.
 - **Information request interrupts**: Agents can pause and ask
   users for input via `HandoffAgentUserRequest`. Could extend
-  mcpd's hook pipeline to support agent-initiated prompts.
+  smgglrs's hook pipeline to support agent-initiated prompts.
 - **Resume mechanism**: `resume.interrupts` carries interrupt ID +
   response payload. The approval store already supports grant
   caching; extend to support arbitrary interrupt/resume.
 
 ### Flow Communication Primitives
 
-myelix-flow provides three execution modes (handoff flows, DAG
+smgglrs-flow provides three execution modes (handoff flows, DAG
 execution, iterative analysis) and three IFC-gated communication
 primitives for mesh topologies:
 
@@ -1035,8 +1035,8 @@ bb_publish, bb_read, bb_keys) intercepted by the flow engine.
 
 RamaLama (containers/ramalama) established the model-as-container
 pattern: URI-addressed models, GPU auto-detection, rootless Podman
-with `--network=none`. Our `myelix-model-hub` and
-`myelix-model-runtime` reimplement this in Rust with the same URI
+with `--network=none`. Our `smgglrs-model-hub` and
+`smgglrs-model-runtime` reimplement this in Rust with the same URI
 scheme (`ollama://`, `hf://`, `oci://`) for compatibility.
 
 ## Future Work
@@ -1046,7 +1046,7 @@ scheme (`ollama://`, `hf://`, `oci://`) for compatibility.
   semantic similarity (embedding model infrastructure is ready)
 - **Content extraction** — PDF, HTML, CSV pipeline
 - **GLM-OCR integration** — 0.9B OCR model for document ingestion
-  via managed runtime, feeding structured markdown into myelix-rag
+  via managed runtime, feeding structured markdown into smgglrs-rag
 
 ### Platform
 - **Gnome Keyring** — Token storage via `org.freedesktop.secrets`

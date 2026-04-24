@@ -1,0 +1,42 @@
+# smgglrs default configuration
+# Copy to ~/.config/smgglrs/config.toml and customize.
+
+[server]
+# socket = "$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock"
+tcp = "127.0.0.1:9315"  # development default
+
+# --- Modules ---
+
+[modules.docs]
+enabled = true
+# db = "$XDG_DATA_HOME/smgglrs/index.db"
+
+# [modules.git]
+# enabled = true
+
+[approval]
+timeout_secs = 300
+notify = "dbus"
+
+# --- Agent definitions ---
+# Generate tokens with: smgglrs token generate --name <name> --permissions <set>
+
+# [[agents]]
+# name = "claude-code"
+# token_hash = "$blake3$..."
+# permissions = "developer"
+
+# --- Permission sets ---
+# Operations are namespaced: "read", "write", "git.status", "git.commit", etc.
+
+[permissions.developer]
+allow = ["~/Documents/**", "~/Notes/**", "~/Code/**"]
+deny = ["**/.env", "**/*secret*", "**/credentials*"]
+operations = ["read", "write", "search", "list"]
+approve = ["write"]
+
+[permissions.readonly]
+allow = ["~/Documents/shared/**"]
+deny = []
+operations = ["read", "search", "list"]
+approve = []

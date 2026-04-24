@@ -1,0 +1,37 @@
+#![warn(missing_docs)]
+//! smgglrs-cognitive: Cognitive core for AI agent identity.
+//!
+//! Loads persona, directive, and heuristic YAML files from a cognitive
+//! core directory, then assembles them into structured prompts via the
+//! Weaver. Compatible with the Python Myelix cognitive core format.
+//!
+//! # Quick start
+//!
+//! ```rust,no_run
+//! use smgglrs_cognitive::{ForgeService, assemble};
+//! use std::path::Path;
+//!
+//! let forge = ForgeService::load(Path::new("cognitive_core")).unwrap();
+//! let output = assemble(&forge, "developer", "Fix the login bug", None, None).unwrap();
+//! println!("{}", output.system_prompt());
+//! ```
+
+pub mod budget;
+mod error;
+pub mod evolution;
+mod forge;
+mod types;
+mod weaver;
+
+pub use budget::{
+    apply_compaction, compact_history, estimate_tokens, recommended_strategy, truncate_to_budget,
+    CompactionStrategy, ContextBudget,
+};
+pub use error::CognitiveError;
+pub use evolution::{TraitStore, TraitVector};
+pub use forge::{ForgeService, SpecializationMeta};
+pub use types::{
+    Directive, Example, Facet, HeuristicModule, HeuristicRef, Persona, Reference, Scope,
+    Specialization,
+};
+pub use weaver::{assemble, assemble_with_phase, WeaverOutput};

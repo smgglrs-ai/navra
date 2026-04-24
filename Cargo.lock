@@ -2186,342 +2186,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "myelix-agent"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "myelix-cognitive",
- "myelix-model",
- "myelix-protocol",
- "myelix-responses",
- "myelix-security",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "myelix-benchmarks"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "myelix-cognitive",
- "myelix-core",
- "myelix-model",
- "myelix-responses",
- "myelix-security",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "myelix-cognitive"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "myelix-core"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "async-trait",
- "axum",
- "base64 0.22.1",
- "futures-util",
- "glob",
- "hex",
- "http-body-util",
- "hyper",
- "hyper-util",
- "myelix-model",
- "myelix-protocol",
- "myelix-security",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tower",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "myelix-flow"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "myelix-agent",
- "myelix-cognitive",
- "myelix-model",
- "myelix-protocol",
- "myelix-responses",
- "myelix-security",
- "serde",
- "serde_json",
- "serde_yaml",
- "thiserror 2.0.18",
- "tokio",
- "toml",
- "tracing",
-]
-
-[[package]]
-name = "myelix-memory"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "myelix-core",
- "myelix-model",
- "myelix-rag",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "myelix-modal-vision"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "dirs",
- "futures-util",
- "myelix-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "zbus 5.14.0",
-]
-
-[[package]]
-name = "myelix-modal-voice"
-version = "0.1.0"
-dependencies = [
- "cpal",
- "dirs",
- "myelix-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "myelix-model"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "futures-util",
- "myelix-responses",
- "ndarray",
- "ort",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokenizers",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "myelix-model-hub"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "futures-util",
- "hex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "myelix-model-runtime"
-version = "0.1.0"
-dependencies = [
- "libc",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "myelix-protocol"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "myelix-rag"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "myelix-core",
- "rusqlite",
- "serde",
- "serde_json",
- "sqlite-vec",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
- "zerocopy",
-]
-
-[[package]]
-name = "myelix-responses"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "myelix-security"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "base64 0.22.1",
- "blake3",
- "bs58",
- "ciborium",
- "dirs",
- "ed25519-dalek",
- "futures-util",
- "glob",
- "keyring",
- "myelix-model",
- "myelix-protocol",
- "rand 0.8.6",
- "regex-lite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
- "zbus 5.14.0",
-]
-
-[[package]]
-name = "myelix-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "bs58",
- "clap",
- "dirs",
- "flume",
- "futures-util",
- "http-body-util",
- "ksni",
- "mdns-sd",
- "myelix-agent",
- "myelix-cognitive",
- "myelix-core",
- "myelix-flow",
- "myelix-memory",
- "myelix-modal-vision",
- "myelix-modal-voice",
- "myelix-model",
- "myelix-model-hub",
- "myelix-model-runtime",
- "myelix-rag",
- "myelix-tools-docs",
- "myelix-tools-git",
- "rand 0.8.6",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "tokio",
- "toml",
- "tower",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "myelix-tools-docs"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "dirs",
- "myelix-core",
- "notify",
- "rusqlite",
- "serde",
- "serde_json",
- "sqlite-vec",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
- "zerocopy",
-]
-
-[[package]]
-name = "myelix-tools-git"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "myelix-core",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "nanorand"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3651,6 +3315,342 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "smgglrs-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+ "smgglrs-cognitive",
+ "smgglrs-model",
+ "smgglrs-protocol",
+ "smgglrs-responses",
+ "smgglrs-security",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "smgglrs-benchmarks"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "serde_json",
+ "smgglrs-cognitive",
+ "smgglrs-core",
+ "smgglrs-model",
+ "smgglrs-responses",
+ "smgglrs-security",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "smgglrs-cognitive"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "smgglrs-core"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "futures-util",
+ "glob",
+ "hex",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "smgglrs-model",
+ "smgglrs-protocol",
+ "smgglrs-security",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "smgglrs-flow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "smgglrs-agent",
+ "smgglrs-cognitive",
+ "smgglrs-model",
+ "smgglrs-protocol",
+ "smgglrs-responses",
+ "smgglrs-security",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tracing",
+]
+
+[[package]]
+name = "smgglrs-memory"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "smgglrs-core",
+ "smgglrs-model",
+ "smgglrs-rag",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "smgglrs-modal-vision"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "dirs",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "smgglrs-core",
+ "tokio",
+ "tracing",
+ "zbus 5.14.0",
+]
+
+[[package]]
+name = "smgglrs-modal-voice"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "dirs",
+ "serde",
+ "serde_json",
+ "smgglrs-core",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "smgglrs-model"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "futures-util",
+ "ndarray",
+ "ort",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "smgglrs-responses",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "smgglrs-model-hub"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "futures-util",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "smgglrs-model-runtime"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "smgglrs-protocol"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "smgglrs-rag"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "smgglrs-core",
+ "sqlite-vec",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
+name = "smgglrs-responses"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "smgglrs-security"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "blake3",
+ "bs58",
+ "ciborium",
+ "dirs",
+ "ed25519-dalek",
+ "futures-util",
+ "glob",
+ "keyring",
+ "rand 0.8.6",
+ "regex-lite",
+ "serde",
+ "serde_json",
+ "smgglrs-model",
+ "smgglrs-protocol",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zbus 5.14.0",
+]
+
+[[package]]
+name = "smgglrs-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bs58",
+ "clap",
+ "dirs",
+ "flume",
+ "futures-util",
+ "http-body-util",
+ "ksni",
+ "mdns-sd",
+ "rand 0.8.6",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "smgglrs-agent",
+ "smgglrs-cognitive",
+ "smgglrs-core",
+ "smgglrs-flow",
+ "smgglrs-memory",
+ "smgglrs-modal-vision",
+ "smgglrs-modal-voice",
+ "smgglrs-model",
+ "smgglrs-model-hub",
+ "smgglrs-model-runtime",
+ "smgglrs-rag",
+ "smgglrs-tools-docs",
+ "smgglrs-tools-git",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "smgglrs-tools-docs"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "dirs",
+ "notify",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "smgglrs-core",
+ "sqlite-vec",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
+name = "smgglrs-tools-git"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "serde",
+ "serde_json",
+ "smgglrs-core",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "socket-pktinfo"

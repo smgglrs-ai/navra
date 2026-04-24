@@ -1,9 +1,9 @@
-# mcpd — Model Integration Architecture
+# smgglrs — Model Integration Architecture
 
 ## Goal
 
-Integrate local AI models into mcpd to support a local "Jarvis"
-assistant combining mcpd (secure tool execution) with Myelix
+Integrate local AI models into smgglrs to support a local "Jarvis"
+assistant combining smgglrs (secure tool execution) with Myelix
 (multi-agent orchestration). Models handle RAG, voice I/O, content
 safety, and vision — all self-hosted, all open source.
 
@@ -21,7 +21,7 @@ via vLLM for better quality.
 
 ### CPU Tier (no GPU required)
 
-Models that run inside the mcpd process via ONNX Runtime (`ort`
+Models that run inside the smgglrs process via ONNX Runtime (`ort`
 crate) or via whisper.cpp bindings. All Apache 2.0 or MIT.
 
 | Role | Model | Params | Runtime | License | Latency |
@@ -33,12 +33,12 @@ crate) or via whisper.cpp bindings. All Apache 2.0 or MIT.
 | ASR | Whisper Large V3 | 1.5B | whisper.cpp (`whisper-rs`) | MIT | ~realtime |
 
 These models total ~2GB RAM (excluding Whisper) or ~4GB with
-Whisper. No GPU, no external serving process. mcpd loads them at
+Whisper. No GPU, no external serving process. smgglrs loads them at
 startup.
 
 ### GPU Tier (RTX 5090 FE — 32GB GDDR7)
 
-Models served by external processes (vLLM, ollama). mcpd connects
+Models served by external processes (vLLM, ollama). smgglrs connects
 via OpenAI-compatible API. Higher quality than CPU tier.
 
 The RTX 5090's Blackwell architecture supports **NVFP4** — 4-bit
@@ -98,7 +98,7 @@ for OCR and enterprise document data extraction. Key improvements:
 or similar when GA. Until then, use the 3.3 2B.
 
 This is a GPU-tier model served externally, not an in-process ONNX
-model. It does not belong in `mcpd model pull`. Configure as:
+model. It does not belong in `smgglrs model pull`. Configure as:
 
 ```toml
 [models.vision]
@@ -113,7 +113,7 @@ locality = "local"
 | | CPU Tier | GPU Tier (RTX 5090) |
 |---|---|---|
 | **Target** | Laptop, desktop without GPU | Workstation with RTX 5090 FE |
-| **Startup** | mcpd loads models in-process | Separate vLLM/ollama processes |
+| **Startup** | smgglrs loads models in-process | Separate vLLM/ollama processes |
 | **Reasoning** | — | Gemma 4 26B-A4B (88.3% AIME, 256K ctx, multimodal) |
 | **ASR quality** | Whisper V3: ~7.5 WER, 30s windows | Granite Speech: 5.52 WER, arbitrary length |
 | **TTS quality** | Kokoro: natural, 26 preset voices | Voxtral: best quality, voice cloning |
@@ -124,8 +124,8 @@ locality = "local"
 
 ### OCR / Document Understanding Candidates
 
-Models evaluated for document ingestion in myelix-tools-docs and
-myelix-rag (landscape research, April 2026):
+Models evaluated for document ingestion in smgglrs-tools-docs and
+smgglrs-rag (landscape research, April 2026):
 
 | Model | Params | Runtime | Speed | Notes |
 |-------|--------|---------|-------|-------|
@@ -152,7 +152,7 @@ Beyond the existing Guardian HAP 38M (in-process ONNX) and Guardian
 
 Nemotron Content Safety is interesting for multimodal safety (text +
 images), but at 4B parameters it must run as an external server via
-myelix-model-runtime (Podman or direct llama-server). Not suitable
+smgglrs-model-runtime (Podman or direct llama-server). Not suitable
 for in-process ONNX. The license (NVIDIA Open Model) should be
 evaluated against our Granite-first / Apache 2.0 preference.
 
@@ -169,18 +169,18 @@ embedding models (landscape research, April 2026):
 
 The Nemotron VL pair could replace or complement Granite Vision 2B
 Embedding for visual RAG. Both are GPU-tier models. Evaluate when
-myelix-rag adds multimodal support.
+smgglrs-rag adds multimodal support.
 
 ## Model Serving Architecture
 
 ### Two-Tier Inference Model
 
-mcpd uses two distinct inference tiers, each with its own crate:
+smgglrs uses two distinct inference tiers, each with its own crate:
 
 ```
 ┌─────────────────────────────────────────────────┐
 │  Tier 1: In-Process (< 200M params)             │
-│  myelix-model + ort (ONNX Runtime)              │
+│  smgglrs-model + ort (ONNX Runtime)              │
 │    ├── CPUExecutionProvider  (default)           │
 │    ├── OpenVINOExecutionProvider  (Intel NPU)    │
 │    └── CUDAExecutionProvider  (NVIDIA GPU)       │
@@ -190,7 +190,7 @@ mcpd uses two distinct inference tiers, each with its own crate:
 
 ┌─────────────────────────────────────────────────┐
 │  Tier 2: Managed External (> 1B params)         │
-│  myelix-model-hub + myelix-model-runtime        │
+│  smgglrs-model-hub + smgglrs-model-runtime        │
 │    ├── direct  (spawn llama-server, no isolation)│
 │    ├── podman  (rootless container, --network=none)│
 │    └── libkrun  (microVM, future)               │
@@ -205,7 +205,7 @@ decoding, paged attention, and efficient quantization formats (GGUF
 Q4_K_M) needed for autoregressive LLM inference. Models > 1B params
 belong in the managed tier, served by llama.cpp or vLLM.
 
-### Model Hub (`myelix-model-hub` crate)
+### Model Hub (`smgglrs-model-hub` crate)
 
 Models are addressed by URI, following RamaLama conventions:
 
@@ -214,10 +214,10 @@ Models are addressed by URI, following RamaLama conventions:
 - `oci://quay.io/myorg/mymodel:latest` — OCI container registry
 - `file:///path/to/model.gguf` — local file (no pull needed)
 
-Content-addressed cache at `~/.local/share/myelix/models/` with
+Content-addressed cache at `~/.local/share/smgglrs/models/` with
 deduplication (same content = same blob, multiple refs).
 
-### Model Runtime (`myelix-model-runtime` crate)
+### Model Runtime (`smgglrs-model-runtime` crate)
 
 Pluggable isolation backends (feature flags):
 
@@ -233,9 +233,9 @@ AMD/Intel `/sys/class/drm/` vendor IDs).
 ### Managed Model Configuration
 
 ```toml
-# Managed model — hub pulls, runtime serves, mcpd connects
+# Managed model — hub pulls, runtime serves, smgglrs connects
 [models.reasoning]
-source = "ollama://granite3.3:8b"     # myelix-model-hub pulls this
+source = "ollama://granite3.3:8b"     # smgglrs-model-hub pulls this
 runtime = "podman"                     # or "direct" for dev
 gpu = "auto"                           # auto-detect, or "cpu", "cuda", "rocm"
 context_size = 4096
@@ -244,24 +244,24 @@ locality = "local"
 # In-process model — no hub/runtime needed
 [models.embeddings]
 backend = "onnx"
-model_path = "~/.local/share/myelix/models/granite-embedding-r2-int8.onnx"
-tokenizer_path = "~/.local/share/myelix/models/granite-embedding-r2/tokenizer.json"
+model_path = "~/.local/share/smgglrs/models/granite-embedding-r2-int8.onnx"
+tokenizer_path = "~/.local/share/smgglrs/models/granite-embedding-r2/tokenizer.json"
 device = "cpu"
 ```
 
-When `source` is present, mcpd at startup:
+When `source` is present, smgglrs at startup:
 1. Pulls the model via `ModelHub` (if not cached)
 2. Starts a server via `ModelRuntime` (Podman or direct)
 3. Connects via `OpenAiBackend` to the local endpoint
-4. Stops the server on mcpd shutdown
+4. Stops the server on smgglrs shutdown
 
 ### In-Process Models (CPU tier, via `ort` crate)
 
-Small models load directly into the mcpd process. No external
+Small models load directly into the smgglrs process. No external
 dependencies, no network calls, no separate processes.
 
 ```
-mcpd process
+smgglrs process
 ├── ort::Session (Guardian HAP 38M)     ← safety pipeline
 ├── ort::Session (Granite Embedding R2) ← RAG indexing/search
 ├── ort::Session (Kokoro-82M)           ← TTS
@@ -290,7 +290,7 @@ Session::builder()?
     .commit_from_file("model.onnx")?;
 ```
 
-The same mcpd binary automatically uses the best available
+The same smgglrs binary automatically uses the best available
 accelerator, falling back to CPU:
 
 - **Desktop (RTX 5090):** CUDA EP claims the model
@@ -421,21 +421,21 @@ browser WASM demos. A native Rust wrapper would be needed.
 
 Larger models run as external servers. Two modes:
 
-**Managed (via `myelix-model-hub` + `myelix-model-runtime`):**
-mcpd pulls the model, starts a containerized llama-server or vLLM,
+**Managed (via `smgglrs-model-hub` + `smgglrs-model-runtime`):**
+smgglrs pulls the model, starts a containerized llama-server or vLLM,
 and connects automatically. No manual setup. Model lifecycle tied
-to mcpd.
+to smgglrs.
 
-**Manual (existing):** User runs vLLM/ollama separately, mcpd
+**Manual (existing):** User runs vLLM/ollama separately, smgglrs
 connects via `OpenAiBackend` to a pre-existing endpoint.
 
 ```
 Managed mode:
-mcpd ──starts──► Podman container (llama-server + model)
+smgglrs ──starts──► Podman container (llama-server + model)
      ──HTTP────► localhost:<auto-port>/v1
 
 Manual mode:
-mcpd ──HTTP──► vLLM instance 1 (Granite Speech 1B, Vision 2B, Guardian 8B)
+smgglrs ──HTTP──► vLLM instance 1 (Granite Speech 1B, Vision 2B, Guardian 8B)
            ──► vLLM-Omni instance 2 (Voxtral TTS 4B)
            ──► ollama (Granite 4 Tiny, Ministral 3)
 ```
@@ -528,7 +528,7 @@ ollama pull granite4:tiny
 ollama cannot serve Speech or TTS models, so those still need
 vLLM or the CPU tier.
 
-### Model Backend Trait (myelix-model crate)
+### Model Backend Trait (smgglrs-model crate)
 
 The `ModelBackend` trait unifies both in-process (ONNX) and
 external (API) backends behind a single interface.
@@ -610,7 +610,7 @@ pub enum Locality {
 
 OpenVINO `AUTO` and `ort`'s EP fallback only select the best device
 **per model session** — they don't optimize the layout across all
-models. mcpd needs a **model router** that detects available hardware
+models. smgglrs needs a **model router** that detects available hardware
 at startup and assigns each model to the optimal accelerator.
 
 ```rust
@@ -698,7 +698,7 @@ router auto-selects. Explicit `device` overrides the router.
 **Startup log examples:**
 
 ```
-$ mcpd serve   # desktop
+$ smgglrs serve   # desktop
 [INFO] Detected: NvidiaGpu { vram: 32GB, cc: 120, nvfp4: true }
 [INFO] guardian-hap → CPU (in-process ONNX, small encoder)
 [INFO] embeddings  → CPU (in-process ONNX, small encoder)
@@ -710,7 +710,7 @@ $ mcpd serve   # desktop
 ```
 
 ```
-$ mcpd serve   # laptop
+$ smgglrs serve   # laptop
 [INFO] Detected: IntelCoreUltra { npu: 47 TOPS, igpu: Arc 140V }
 [INFO] guardian-hap → NPU (OpenVINO, small encoder)
 [INFO] embeddings  → NPU (OpenVINO, small encoder)
@@ -832,30 +832,30 @@ kv_cache = { keys = "q8_0", values = "turbo3" }  # safe config
 
 [models.guardian-hap]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/granite-guardian-hap-38m-int8.onnx"
-tokenizer_path = "$XDG_DATA_HOME/mcpd/models/granite-guardian-hap-38m/tokenizer.json"
+model_path = "$XDG_DATA_HOME/smgglrs/models/granite-guardian-hap-38m-int8.onnx"
+tokenizer_path = "$XDG_DATA_HOME/smgglrs/models/granite-guardian-hap-38m/tokenizer.json"
 device = "cpu"                           # "cpu", "cuda", "openvino"
 
 [models.embeddings]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/granite-embedding-r2-int8.onnx"
-tokenizer_path = "$XDG_DATA_HOME/mcpd/models/granite-embedding-r2/tokenizer.json"
+model_path = "$XDG_DATA_HOME/smgglrs/models/granite-embedding-r2-int8.onnx"
+tokenizer_path = "$XDG_DATA_HOME/smgglrs/models/granite-embedding-r2/tokenizer.json"
 device = "cpu"
 
 [models.tts]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/kokoro-82m-q8.onnx"
+model_path = "$XDG_DATA_HOME/smgglrs/models/kokoro-82m-q8.onnx"
 voice = "af_heart"                       # default voice preset
 device = "cpu"
 
 [models.asr]
 backend = "whisper"
-model_path = "$XDG_DATA_HOME/mcpd/models/ggml-large-v3-turbo.bin"
+model_path = "$XDG_DATA_HOME/smgglrs/models/ggml-large-v3-turbo.bin"
 language = "auto"
 
 [models.vad]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/silero-vad.onnx"
+model_path = "$XDG_DATA_HOME/smgglrs/models/silero-vad.onnx"
 device = "cpu"
 
 # --- GPU Tier (external, optional upgrades) ---
@@ -893,7 +893,7 @@ locality = "local"
 
 ### Model Selection Logic
 
-Modules reference models by role, not by name. mcpd resolves to
+Modules reference models by role, not by name. smgglrs resolves to
 the best available backend at startup:
 
 ```toml
@@ -910,7 +910,7 @@ audio_device = "default"
 This lets users upgrade individual capabilities by uncommenting a
 line, without changing module code.
 
-### Rust Crate Dependencies (myelix-model)
+### Rust Crate Dependencies (smgglrs-model)
 
 ```toml
 [dependencies]
@@ -944,15 +944,15 @@ When the reasoning model is remote (e.g. Claude API), the data flow
 is:
 
 ```
-Local files ──► mcpd ──► Myelix agent ──► Remote Claude API
+Local files ──► smgglrs ──► Myelix agent ──► Remote Claude API
                  │                              ▲
                  │ safety filters here     user's data
                  │                         leaves the box
 ```
 
-mcpd must ensure that sensitive content never leaves the local
+smgglrs must ensure that sensitive content never leaves the local
 perimeter, even when the agent forwarding tool results to a remote
-model is outside mcpd's control.
+model is outside smgglrs's control.
 
 ### Threat Analysis
 
@@ -960,34 +960,34 @@ model is outside mcpd's control.
 |--------|-----------|---------|-----|
 | Agent reads secrets from files | Outbound (tool → agent) | Regex filters redact before returning | Covered |
 | Agent reads PII from documents | Outbound (tool → agent) | PII filters redact | Covered |
-| Agent bypasses mcpd for file I/O | Bypass | Not prevented | **Gap 1** |
+| Agent bypasses smgglrs for file I/O | Bypass | Not prevented | **Gap 1** |
 | Document content sent to remote embeddings API | Outbound (embed request) | Not filtered | **Gap 2** |
 | Remote model injects harmful content via write | Inbound (agent → tool) | Not filtered | **Gap 3** |
 | Transcribed speech contains secrets spoken aloud | Outbound (ASR → agent) | Not filtered | **Gap 4** |
 
 ### Solution: Bidirectional Safety + Perimeter Enforcement
 
-#### Gap 1 — Myelix's Own File Tools Bypass mcpd
+#### Gap 1 — Myelix's Own File Tools Bypass smgglrs
 
 Myelix has 22 built-in MCP tools including file I/O (`file_read`,
 `directory_list`, `environment_variable`). If a specialist uses these
-instead of `docs_read`, mcpd's safety filters never fire.
+instead of `docs_read`, smgglrs's safety filters never fire.
 
 **Solution: Tool exclusion in Myelix config.**
 
-When mcpd is configured as an MCP server, Myelix should disable its
-overlapping built-in tools for specialists that connect to mcpd.
-This is a Myelix-side configuration concern, not an mcpd change:
+When smgglrs is configured as an MCP server, Myelix should disable its
+overlapping built-in tools for specialists that connect to smgglrs.
+This is a Myelix-side configuration concern, not an smgglrs change:
 
 ```yaml
-# Myelix specialist config when mcpd is the file gateway
+# Myelix specialist config when smgglrs is the file gateway
 mcp_servers:
-  mcpd:
+  smgglrs:
     transport: unix
-    socket: "$XDG_RUNTIME_DIR/mcpd/mcpd.sock"
+    socket: "$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock"
     token: "${MCPD_TOKEN}"
 
-# Disable built-in tools that overlap with mcpd
+# Disable built-in tools that overlap with smgglrs
 disabled_tools:
   - file_read
   - file_write
@@ -997,12 +997,12 @@ disabled_tools:
   - environment_variable
 ```
 
-Additionally, mcpd's systemd hardening (`ProtectHome=read-only`,
-`ReadWritePaths` limited to `~/.local/share/mcpd`) ensures that even
-if a process tries to access files outside mcpd, the OS enforces the
+Additionally, smgglrs's systemd hardening (`ProtectHome=read-only`,
+`ReadWritePaths` limited to `~/.local/share/smgglrs`) ensures that even
+if a process tries to access files outside smgglrs, the OS enforces the
 boundary. For Myelix running in a container (its default deployment),
 the container's filesystem view can be restricted to only expose the
-mcpd socket.
+smgglrs socket.
 
 #### Gap 2 — Document Content Sent to Remote Embedding APIs
 
@@ -1012,7 +1012,7 @@ document content flows to the remote service before any filtering.
 **Solution: Safety filter before embedding.**
 
 The `rag_index` tool must run the safety pipeline on document content
-*before* sending it to the embedding backend. This is an mcpd-side
+*before* sending it to the embedding backend. This is an smgglrs-side
 guarantee:
 
 ```rust
@@ -1032,7 +1032,7 @@ async fn handle_rag_index(args, ctx, state) -> CallToolResult {
 ```
 
 **Config enforcement:** The model backend config uses a `locality`
-field. When a backend is `remote`, mcpd enforces that any content
+field. When a backend is `remote`, smgglrs enforces that any content
 sent to it passes through the safety pipeline first.
 
 When `locality = "local"` (or `base_url` resolves to `127.0.0.1` /
@@ -1041,13 +1041,13 @@ the trust perimeter. When `locality = "remote"`, the `ModelBackend`
 wrapper applies the agent's safety pipeline before any API call.
 
 For the CPU tier, locality is always `local` — models run inside the
-mcpd process itself.
+smgglrs process itself.
 
 #### Gap 3 — Inbound Content Filtering
 
 A remote model could instruct an agent to `docs_write` content that
 includes prompt injection, harmful instructions, or content that
-violates policy. Currently mcpd only filters *outbound* (tool
+violates policy. Currently smgglrs only filters *outbound* (tool
 responses), not *inbound* (tool arguments).
 
 **Solution: Bidirectional filter pipeline.**
@@ -1085,7 +1085,7 @@ different concerns:
 - **Regex filters**: Less useful inbound (the agent is unlikely to
   write AWS keys), but still catch accidental secret propagation
 
-Implementation in `myelix-core`:
+Implementation in `smgglrs-core`:
 
 ```rust
 pub struct FilterPipeline {
@@ -1128,7 +1128,7 @@ already covers this because ASR output is just a tool response.
 │                  (local machine / localhost)                     │
 │                                                                 │
 │  ┌──────────┐    ┌─────────────────────────────────────────┐    │
-│  │ In-proc  │    │              mcpd                        │    │
+│  │ In-proc  │    │              smgglrs                        │    │
 │  │ Models   │    │                                         │    │
 │  │ (ONNX/   │◄──►│  Inbound ──► Tool ──► Outbound          │    │
 │  │ whisper) │    │  filters     handler   filters           │    │
@@ -1159,7 +1159,7 @@ already covers this because ASR output is just a tool response.
 ```
 
 **Key invariant:** No unfiltered local content crosses the trust
-perimeter. mcpd enforces this at three points:
+perimeter. smgglrs enforces this at three points:
 
 1. **Outbound tool responses** — existing safety pipeline (regex +
    Guardian models)
@@ -1285,15 +1285,15 @@ pub fn build_pipeline(profile: &str, models: &ModelRegistry) -> FilterPipeline {
 
 ## New Modules
 
-### myelix-rag — Vector Search & Document Intelligence
+### smgglrs-rag — Vector Search & Document Intelligence
 
 Upgrades document search from keyword-only (FTS5) to semantic
 similarity + visual document understanding.
 
 ```
-myelix-tools-docs (FTS5, keyword)
+smgglrs-tools-docs (FTS5, keyword)
         +
-myelix-rag (vector, semantic)
+smgglrs-rag (vector, semantic)
         =
 Hybrid search: keyword recall + semantic precision
 ```
@@ -1301,29 +1301,29 @@ Hybrid search: keyword recall + semantic precision
 #### Relationship to Myelix's Existing RAG
 
 Myelix already has a RAG system (FAISS + all-MiniLM-L6-v2, 384-dim)
-in `/src/myelix/cognitive/knowledge/`. The two serve different
+in `/src/smgglrs/cognitive/knowledge/`. The two serve different
 purposes:
 
-| | myelix-rag | Myelix Knowledge |
+| | smgglrs-rag | Myelix Knowledge |
 |---|---|---|
 | **What it indexes** | User documents (~/Documents, ~/Code, ~/Notes) | Internal knowledge (heuristics, code snippets, personas) |
 | **Access control** | Path ACLs, deny-wins, approval workflow | None (internal to Myelix) |
 | **Safety filtering** | Content filtered before embedding + before returning | None (trusted internal data) |
 | **Embedding model** | Granite Embedding R2 149M (768-dim, in-process ONNX) | all-MiniLM-L6-v2 (384-dim) |
-| **Vector store** | sqlite-vec (single file, aligns with mcpd's SQLite) | FAISS (in-memory, pre-built indices) |
+| **Vector store** | sqlite-vec (single file, aligns with smgglrs's SQLite) | FAISS (in-memory, pre-built indices) |
 | **Visual docs** | Granite Vision 3.3 2B Embedding (GPU tier) | Text-only |
-| **Persistence** | `$XDG_DATA_HOME/mcpd/index.db` | `knowledge_index.faiss` |
+| **Persistence** | `$XDG_DATA_HOME/smgglrs/index.db` | `knowledge_index.faiss` |
 
 They are complementary: Myelix's RAG is the agent's internal memory;
-myelix-rag is the agent's view of the user's documents, mediated
-by permissions and safety filters. Myelix specialists query mcpd's
+smgglrs-rag is the agent's view of the user's documents, mediated
+by permissions and safety filters. Myelix specialists query smgglrs's
 `rag_query` tool for user documents, and their own knowledge system
 for heuristics and learned patterns.
 
 #### Dependencies
 
-- `myelix-core` — Module trait, permissions
-- `myelix-model` — ModelBackend for embeddings (ONNX in-process)
+- `smgglrs-core` — Module trait, permissions
+- `smgglrs-model` — ModelBackend for embeddings (ONNX in-process)
 - `sqlite-vec` — Vector storage in SQLite (aligns with DESIGN.md)
 - `tokenizers` — Text chunking
 
@@ -1341,7 +1341,7 @@ for heuristics and learned patterns.
 #### Data Model
 
 ```sql
--- Extends the existing mcpd index.db
+-- Extends the existing smgglrs index.db
 
 CREATE TABLE chunks (
     id          INTEGER PRIMARY KEY,
@@ -1380,7 +1380,7 @@ CREATE VIRTUAL TABLE page_vectors USING vec0(
 ```
 User query
     │
-    ├──► FTS5 keyword search (myelix-tools-docs) ──► candidates_keyword
+    ├──► FTS5 keyword search (smgglrs-tools-docs) ──► candidates_keyword
     │
     ├──► Embed query (Granite R2 149M, in-process ONNX)
     │    └──► sqlite-vec KNN search ──► candidates_semantic
@@ -1392,15 +1392,15 @@ User query
               └──► Top-K results with scores
 ```
 
-### myelix-modal-voice — Speech I/O
+### smgglrs-modal-voice — Speech I/O
 
 Desktop voice interface: microphone input → ASR → process →
 TTS → speaker output.
 
 #### Dependencies
 
-- `myelix-core` — Module trait
-- `myelix-model` — ModelBackend for ASR + TTS
+- `smgglrs-core` — Module trait
+- `smgglrs-model` — ModelBackend for ASR + TTS
 - `cpal` — Cross-platform audio I/O (PipeWire/PulseAudio/ALSA)
 - `hound` — WAV encoding for audio buffers
 
@@ -1461,20 +1461,20 @@ Speaker (cpal)
 
 #### Desktop Integration
 
-- D-Bus signal `org.mcpd.Voice.Listening` for UI indicators
+- D-Bus signal `org.smgglrs.Voice.Listening` for UI indicators
 - System tray shows microphone state (idle / listening / processing)
 - PipeWire preferred (Fedora default), fallback to PulseAudio/ALSA
 - Keyboard shortcut activation via D-Bus method call
 
-### myelix-modal-vision — Document & Screen Understanding
+### smgglrs-modal-vision — Document & Screen Understanding
 
 Visual understanding for documents, screenshots, and screen capture.
 GPU tier only — no CPU-tier vision model available.
 
 #### Dependencies
 
-- `myelix-core` — Module trait
-- `myelix-model` — ModelBackend for vision models (OpenAI backend)
+- `smgglrs-core` — Module trait
+- `smgglrs-model` — ModelBackend for vision models (OpenAI backend)
 
 #### Tools
 
@@ -1498,41 +1498,41 @@ GPU tier only — no CPU-tier vision model available.
 ## Crate Structure (updated April 2026)
 
 ```
-mcpd/
-├── myelix-protocol       MCP/A2A/JSON-RPC types, upstream transports
-├── myelix-model          Model backend trait + ONNX/OpenAI impls
-├── myelix-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
-├── myelix-model-runtime  Serve models (Podman, direct, libkrun)
-├── myelix-security       Auth, permissions, IFC, safety filters, hooks
-├── myelix-core           Server, module trait, session, transport
-├── myelix-tools-docs     Document tools (FTS5, file I/O)
-├── myelix-tools-git      Git tools (status, diff, log, branch, commit)
-├── myelix-rag            Vector search, sqlite-vec, semantic chunking
-├── myelix-modal-voice    Speech I/O (ASR + TTS via ONNX models)
-├── myelix-modal-vision   Image/screen understanding (GPU tier)
-└── myelix-server         Binary: CLI, config, module wiring (mcpd)
+smgglrs/
+├── smgglrs-protocol       MCP/A2A/JSON-RPC types, upstream transports
+├── smgglrs-model          Model backend trait + ONNX/OpenAI impls
+├── smgglrs-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
+├── smgglrs-model-runtime  Serve models (Podman, direct, libkrun)
+├── smgglrs-security       Auth, permissions, IFC, safety filters, hooks
+├── smgglrs-core           Server, module trait, session, transport
+├── smgglrs-tools-docs     Document tools (FTS5, file I/O)
+├── smgglrs-tools-git      Git tools (status, diff, log, branch, commit)
+├── smgglrs-rag            Vector search, sqlite-vec, semantic chunking
+├── smgglrs-modal-voice    Speech I/O (ASR + TTS via ONNX models)
+├── smgglrs-modal-vision   Image/screen understanding (GPU tier)
+└── smgglrs-server         Binary: CLI, config, module wiring (smgglrs)
 ```
 
 ### Dependency Graph
 
 ```
-myelix-protocol          (no myelix deps)
-myelix-model             (no myelix deps) ──► ort, tokenizers, reqwest
-myelix-model-hub         (no myelix deps) ──► reqwest, sha2
-myelix-model-runtime     (no myelix deps) ──► reqwest, libc
+smgglrs-protocol          (no smgglrs deps)
+smgglrs-model             (no smgglrs deps) ──► ort, tokenizers, reqwest
+smgglrs-model-hub         (no smgglrs deps) ──► reqwest, sha2
+smgglrs-model-runtime     (no smgglrs deps) ──► reqwest, libc
     ↓
-myelix-security          (protocol + model)
+smgglrs-security          (protocol + model)
     ↓
-myelix-core              (protocol + model + security)
+smgglrs-core              (protocol + model + security)
     ↓
-myelix-tools-*  ─────┐
-myelix-rag      ─────┼── (core only)
-myelix-modal-*  ─────┘
+smgglrs-tools-*  ─────┐
+smgglrs-rag      ─────┼── (core only)
+smgglrs-modal-*  ─────┘
     ↓
-myelix-server            (all + hub + runtime)
+smgglrs-server            (all + hub + runtime)
 ```
 
-The `myelix-model-*` crates form a reusable family with no myelix
+The `smgglrs-model-*` crates form a reusable family with no smgglrs
 dependencies — usable by Myelix agents or any Rust project that needs
 to pull and serve AI models.
 
@@ -1572,30 +1572,30 @@ reasoning_model = "reasoning"           # Gemma 4 26B-A4B for visual QA
 
 [models.guardian-hap]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/granite-guardian-hap-38m-int8.onnx"
-tokenizer_path = "$XDG_DATA_HOME/mcpd/models/granite-guardian-hap-38m/tokenizer.json"
+model_path = "$XDG_DATA_HOME/smgglrs/models/granite-guardian-hap-38m-int8.onnx"
+tokenizer_path = "$XDG_DATA_HOME/smgglrs/models/granite-guardian-hap-38m/tokenizer.json"
 device = "cpu"
 
 [models.embeddings]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/granite-embedding-r2-int8.onnx"
-tokenizer_path = "$XDG_DATA_HOME/mcpd/models/granite-embedding-r2/tokenizer.json"
+model_path = "$XDG_DATA_HOME/smgglrs/models/granite-embedding-r2-int8.onnx"
+tokenizer_path = "$XDG_DATA_HOME/smgglrs/models/granite-embedding-r2/tokenizer.json"
 device = "cpu"
 
 [models.tts]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/kokoro-82m-q8.onnx"
+model_path = "$XDG_DATA_HOME/smgglrs/models/kokoro-82m-q8.onnx"
 voice = "af_heart"
 device = "cpu"
 
 [models.asr]
 backend = "whisper"
-model_path = "$XDG_DATA_HOME/mcpd/models/ggml-large-v3-turbo.bin"
+model_path = "$XDG_DATA_HOME/smgglrs/models/ggml-large-v3-turbo.bin"
 language = "auto"
 
 [models.vad]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/silero-vad.onnx"
+model_path = "$XDG_DATA_HOME/smgglrs/models/silero-vad.onnx"
 device = "cpu"
 
 # --- GPU Tier Models (RTX 5090 FE, NVFP4) ---
@@ -1639,17 +1639,17 @@ locality = "local"
 # --- Agents ---
 
 [[agents]]
-name = "myelix-leader"
+name = "smgglrs-leader"
 token_hash = "$blake3$..."
 permissions = "orchestrator"
 
 [[agents]]
-name = "myelix-code-specialist"
+name = "smgglrs-code-specialist"
 token_hash = "$blake3$..."
 permissions = "developer"
 
 [[agents]]
-name = "myelix-research-specialist"
+name = "smgglrs-research-specialist"
 token_hash = "$blake3$..."
 permissions = "researcher"
 
@@ -1691,16 +1691,16 @@ Myelix is at Phase 5.5+ with:
 - **37+ personas**: YAML-defined specialists with per-persona model
   selection (Claude, Gemini, OpenResponses engines)
 - **RAG**: FAISS + all-MiniLM-L6-v2 (384-dim) for internal knowledge
-  (heuristics, code snippets) — distinct from mcpd's document RAG
+  (heuristics, code snippets) — distinct from smgglrs's document RAG
 - **Validation**: Multi-judge system (9 judges, 3 dimensions),
   anti-drift detection
-- **No voice/speech** — to be provided by myelix-modal-voice
-- **No vision** — to be provided by myelix-modal-vision
+- **No voice/speech** — to be provided by smgglrs-modal-voice
+- **No vision** — to be provided by smgglrs-modal-vision
 
 ### Integration Architecture
 
-Myelix connects to mcpd as an MCP client. Each Myelix specialist
-maps to an mcpd agent identity with scoped permissions.
+Myelix connects to smgglrs as an MCP client. Each Myelix specialist
+maps to an smgglrs agent identity with scoped permissions.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -1708,74 +1708,74 @@ maps to an mcpd agent identity with scoped permissions.
 │                                                              │
 │  Leader (Claude API, 1M context)                             │
 │    │                                                         │
-│    ├── Code Specialist ──► mcpd agent "myelix-code"          │
+│    ├── Code Specialist ──► smgglrs agent "smgglrs-code"          │
 │    │   ops: read, write, search                              │
 │    │   disabled_tools: file_read, file_write, directory_list │
 │    │                                                         │
-│    ├── Research Specialist ──► mcpd agent "myelix-research"  │
+│    ├── Research Specialist ──► smgglrs agent "smgglrs-research"  │
 │    │   ops: read, search (FTS5 + RAG)                        │
 │    │   disabled_tools: file_read, directory_list             │
 │    │                                                         │
-│    ├── Voice I/O ──► mcpd agent "myelix-leader"              │
+│    ├── Voice I/O ──► smgglrs agent "smgglrs-leader"              │
 │    │   ops: voice.listen, voice.speak                        │
 │    │                                                         │
-│    └── Vision ──► mcpd agent "myelix-leader"                 │
+│    └── Vision ──► smgglrs agent "smgglrs-leader"                 │
 │        ops: vision.describe, vision.ask, vision.screen       │
 │                                                              │
 │  Internal Knowledge (FAISS, all-MiniLM-L6-v2):              │
-│    Heuristics, code snippets, personas — NOT via mcpd        │
+│    Heuristics, code snippets, personas — NOT via smgglrs        │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ### MCP Client Configuration
 
-Myelix already has MCP client support. Addition for mcpd:
+Myelix already has MCP client support. Addition for smgglrs:
 
 ```yaml
-# myelix config
+# smgglrs config
 mcp_servers:
-  mcpd:
+  smgglrs:
     transport: unix
-    socket: "$XDG_RUNTIME_DIR/mcpd/mcpd.sock"
+    socket: "$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock"
     token: "${MCPD_TOKEN}"
 
 # Per-specialist overrides
 specialists:
   code:
-    mcp_server: mcpd
+    mcp_server: smgglrs
     disabled_tools: [file_read, file_write, file_append,
                      directory_list, directory_create,
                      environment_variable]
   research:
-    mcp_server: mcpd
+    mcp_server: smgglrs
     disabled_tools: [file_read, directory_list]
 ```
 
 ### A2A Interoperability
 
-Myelix's A2A implementation and mcpd's MCP interface are
+Myelix's A2A implementation and smgglrs's MCP interface are
 complementary:
 
-- **MCP** (mcpd ↔ Myelix): Tool invocation. Myelix calls mcpd tools
+- **MCP** (smgglrs ↔ Myelix): Tool invocation. Myelix calls smgglrs tools
   for file access, RAG, voice, vision.
 - **A2A** (Myelix ↔ other agents): Task delegation. Other agents
   on the network discover Myelix via agent cards and delegate tasks.
 
-Future: mcpd could expose an A2A endpoint so external agents
+Future: smgglrs could expose an A2A endpoint so external agents
 discover its tools directly, without going through Myelix. This
-would let any A2A-compatible agent (not just Myelix) use mcpd's
+would let any A2A-compatible agent (not just Myelix) use smgglrs's
 secure file access.
 
 ## Implementation Order
 
 ### Phase 1 — Model backend + safety upgrade
 
-1. Create `myelix-model` crate with `ModelBackend` trait
+1. Create `smgglrs-model` crate with `ModelBackend` trait
 2. Implement `OnnxBackend` (Guardian HAP 38M + Embedding R2 on CPU)
 3. Implement `WhisperBackend` (Whisper via whisper-rs)
 4. Implement `OpenAiBackend` (for GPU tier models)
-5. Add `ModelFilter` trait to `myelix-core` safety pipeline
+5. Add `ModelFilter` trait to `smgglrs-core` safety pipeline
 6. Add bidirectional filtering (`process_inbound` for write-path ops)
 7. Implement `GuardianHapFilter` using in-process ONNX
 8. Add `"guardian"` and `"guardian-deep"` safety profiles
@@ -1783,17 +1783,17 @@ secure file access.
 
 ### Phase 2 — RAG module
 
-1. Create `myelix-rag` crate
+1. Create `smgglrs-rag` crate
 2. Add `sqlite-vec` dependency, vector tables
 3. Implement chunking (paragraph + sentence boundaries)
 4. Implement `rag_index` with pre-embedding safety filter
 5. Implement `rag_query` (embed via in-process ONNX → KNN → results)
 6. Implement hybrid search (FTS5 + vector merge)
-7. Wire into `myelix-server`
+7. Wire into `smgglrs-server`
 
 ### Phase 3 — Voice module
 
-1. Create `myelix-modal-voice` crate
+1. Create `smgglrs-modal-voice` crate
 2. Audio capture via `cpal`
 3. VAD via in-process silero-vad ONNX
 4. `voice_listen`: record → VAD → transcribe (Whisper or Granite)
@@ -1803,7 +1803,7 @@ secure file access.
 
 ### Phase 4 — Vision module (GPU tier)
 
-1. Create `myelix-modal-vision` crate
+1. Create `smgglrs-modal-vision` crate
 2. `vision_describe` / `vision_ocr` / `vision_ask`
 3. Screen capture via XDG portal
 4. Outbound filter on vision model descriptions
@@ -1811,10 +1811,10 @@ secure file access.
 
 ### Phase 5 — Myelix integration
 
-1. Configure Myelix MCP client to connect to mcpd
-2. Map specialist roles to mcpd agent identities
+1. Configure Myelix MCP client to connect to smgglrs
+2. Map specialist roles to smgglrs agent identities
 3. Disable overlapping Myelix built-in tools per specialist
-4. End-to-end test: voice command → Myelix → mcpd → result → voice
+4. End-to-end test: voice command → Myelix → smgglrs → result → voice
 
 ## Platform Profiles
 
@@ -1920,34 +1920,34 @@ reasoning + vision (iGPU with Gemma 4 E4B). No deep safety
 # CPU tier models with OpenVINO NPU acceleration
 [models.guardian-hap]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/granite-guardian-hap-38m-int8.onnx"
-tokenizer_path = "$XDG_DATA_HOME/mcpd/models/granite-guardian-hap-38m/tokenizer.json"
+model_path = "$XDG_DATA_HOME/smgglrs/models/granite-guardian-hap-38m-int8.onnx"
+tokenizer_path = "$XDG_DATA_HOME/smgglrs/models/granite-guardian-hap-38m/tokenizer.json"
 device = "openvino:AUTO"          # NPU > iGPU > CPU
 
 [models.embeddings]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/granite-embedding-r2-int8.onnx"
-tokenizer_path = "$XDG_DATA_HOME/mcpd/models/granite-embedding-r2/tokenizer.json"
+model_path = "$XDG_DATA_HOME/smgglrs/models/granite-embedding-r2-int8.onnx"
+tokenizer_path = "$XDG_DATA_HOME/smgglrs/models/granite-embedding-r2/tokenizer.json"
 device = "openvino:NPU"           # force NPU for embeddings
 
 [models.tts]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/kokoro-82m-fp16.onnx"
+model_path = "$XDG_DATA_HOME/smgglrs/models/kokoro-82m-fp16.onnx"
 voice = "af_heart"
 device = "openvino:AUTO"
 
 [models.asr]
 backend = "whisper"
-model_path = "$XDG_DATA_HOME/mcpd/models/ggml-large-v3-turbo.bin"
+model_path = "$XDG_DATA_HOME/smgglrs/models/ggml-large-v3-turbo.bin"
 language = "auto"
 # Alternative: OpenVINO GenAI on NPU (faster, lower power)
 # backend = "openvino-genai"
-# model_path = "$XDG_DATA_HOME/mcpd/models/whisper-large-v3-turbo-int4-ov"
+# model_path = "$XDG_DATA_HOME/smgglrs/models/whisper-large-v3-turbo-int4-ov"
 # device = "NPU"
 
 [models.vad]
 backend = "onnx"
-model_path = "$XDG_DATA_HOME/mcpd/models/silero-vad.onnx"
+model_path = "$XDG_DATA_HOME/smgglrs/models/silero-vad.onnx"
 device = "cpu"                    # too small for NPU, <1ms on CPU
 
 # Optional: Gemma 4 E4B on iGPU for local reasoning
@@ -2038,9 +2038,9 @@ As of OpenVINO 2026.1 (April 2026), a preview OpenVINO backend for
 llama.cpp enables optimized inference on Intel CPUs, GPUs, and NPUs.
 Validated on Llama-3.2-1B, Phi-3-mini, Qwen2.5-1.5B, Mistral-7B.
 
-This means managed-tier models served via `myelix-model-runtime`
+This means managed-tier models served via `smgglrs-model-runtime`
 (which spawns llama-server) can transparently use Intel NPU
-acceleration if OpenVINO is installed. No mcpd code changes needed —
+acceleration if OpenVINO is installed. No smgglrs code changes needed —
 llama-server picks up the OpenVINO backend at runtime.
 
 New hardware support: Wildcat Lake SoCs, Intel Arc Pro B70 (32GB).
@@ -2066,7 +2066,7 @@ cd onnxruntime
     --use_openvino AUTO \
     --parallel
 
-# Point mcpd to the custom build
+# Point smgglrs to the custom build
 export ORT_STRATEGY=system
 export ORT_LIB_LOCATION=/path/to/onnxruntime/build/Release
 ```
