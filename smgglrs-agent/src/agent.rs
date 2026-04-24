@@ -235,6 +235,46 @@ impl AgentBuilder {
         Ok(self)
     }
 
+    /// Load a persona with pre-resolved upstream prompts injected at
+    /// their specified positions.
+    ///
+    /// Use [`crate::resolve::resolve_mcp_prompts`] to fetch the prompts
+    /// before calling this method.
+    pub fn persona_with_prompts(
+        mut self,
+        forge: &smgglrs_cognitive::ForgeService,
+        name: &str,
+        resolved_prompts: &[smgglrs_cognitive::ResolvedPrompt],
+    ) -> Result<Self, AgentError> {
+        let output = smgglrs_cognitive::assemble_full(
+            forge, name, "", None, None, None, resolved_prompts,
+        )
+        .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
+
+        self.config.system_prompt = Some(output.system_prompt());
+
+        if let Some(schema) = output.output_json_schema {
+            self.config.output_json_schema = Some(schema);
+        }
+
+        let persona = forge
+            .get_persona(name)
+            .ok_or_else(|| AgentError::Config(format!("persona '{name}' not found")))?;
+        if !persona.tools.is_empty() {
+            self.config.allowed_tools = Some(persona.tools.clone());
+        }
+
+        tracing::info!(
+            persona = name,
+            tokens = output.estimated_tokens,
+            context_limit = ?output.context_limit,
+            upstream_prompts = resolved_prompts.len(),
+            "Loaded persona with upstream prompts"
+        );
+
+        Ok(self)
+    }
+
     /// Build the agent. Requires endpoint and model to be set.
     pub async fn build(self) -> Result<Agent, AgentError> {
         let upstream = if let Some(upstream) = self.upstream {

@@ -75,6 +75,12 @@ pub(crate) enum Commands {
         /// Max iterations (default 200, set lower for quick tasks)
         #[arg(long, default_value = "200")]
         max_iterations: usize,
+        /// Inject an upstream MCP prompt into the system prompt.
+        /// Format: "upstream:prompt_name" (e.g., "syllogis:legal_analysis").
+        /// Fetched at runtime and appended after the persona's system prompt.
+        /// Can be repeated.
+        #[arg(long = "upstream-prompt")]
+        upstream_prompts: Vec<String>,
     },
     /// Run the end-to-end security audit demo
     Demo {
@@ -351,4 +357,50 @@ pub(crate) fn model_available() {
     println!("  smgglrs model pull ollama://granite3.3:8b");
     println!("  smgglrs model pull hf://ibm-granite/granite-3.3-8b-instruct-GGUF");
     println!("  smgglrs model pull oci://quay.io/myorg/mymodel:latest");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn cli_run_upstream_prompt_flag() {
+        let cli = Cli::try_parse_from([
+            "smgglrs",
+            "run",
+            "Analyze this case",
+            "--upstream-prompt",
+            "syllogis:legal_analysis",
+            "--upstream-prompt",
+            "syllogis:legal_syllogism",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Run { upstream_prompts, .. } => {
+                assert_eq!(upstream_prompts.len(), 2);
+                assert_eq!(upstream_prompts[0], "syllogis:legal_analysis");
+                assert_eq!(upstream_prompts[1], "syllogis:legal_syllogism");
+            }
+            _ => panic!("Expected Run command"),
+        }
+    }
+
+    #[test]
+    fn cli_run_no_upstream_prompt() {
+        let cli = Cli::try_parse_from([
+            "smgglrs",
+            "run",
+            "Do something",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Run { upstream_prompts, .. } => {
+                assert!(upstream_prompts.is_empty());
+            }
+            _ => panic!("Expected Run command"),
+        }
+    }
 }

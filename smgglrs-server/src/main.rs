@@ -94,8 +94,8 @@ async fn main() -> anyhow::Result<()> {
                 cli::model_available();
             }
         },
-        Commands::Run { prompt, model, persona, endpoint, token, max_iterations } => {
-            run_agent(&prompt, model.as_deref(), &persona, &endpoint, token.as_deref(), max_iterations).await?;
+        Commands::Run { prompt, model, persona, endpoint, token, max_iterations, upstream_prompts } => {
+            run_agent(&prompt, model.as_deref(), &persona, &endpoint, token.as_deref(), max_iterations, &upstream_prompts).await?;
         }
         Commands::Audit { limit, detail, agent, tool, verify } => {
             audit_command(limit, detail, agent, tool, verify)?;
@@ -2367,6 +2367,7 @@ async fn run_agent(
     endpoint: &str,
     token: Option<&str>,
     max_iterations: usize,
+    upstream_prompts: &[String],
 ) -> anyhow::Result<()> {
     // Auto-detect model from Ollama if not specified
     let model_name = if let Some(m) = model_name {
@@ -2440,15 +2441,94 @@ async fn run_agent(
     let auth_token = token
         .map(String::from)
         .or_else(|| std::env::var("MCPD_TOKEN").ok());
-    if let Some(t) = auth_token {
-        builder = builder.auth_token(t);
+    if let Some(ref t) = auth_token {
+        builder = builder.auth_token(t.clone());
+    }
+
+    // Parse --upstream-prompt flags into McpPromptRef entries
+    let cli_prompt_refs: Vec<smgglrs_cognitive::McpPromptRef> = upstream_prompts
+        .iter()
+        .filter_map(|s| {
+            let (upstream, prompt_name) = s.split_once(':')?;
+            Some(smgglrs_cognitive::McpPromptRef {
+                upstream: upstream.to_string(),
+                prompt: prompt_name.to_string(),
+                inject_position: smgglrs_cognitive::InjectPosition::AfterExamples,
+                arguments: None,
+            })
+        })
+        .collect();
+
+    if !cli_prompt_refs.is_empty() {
+        eprintln!("Upstream prompts: {}", cli_prompt_refs.len());
     }
 
     // Apply persona
     if let Some(ref forge) = forge {
         if forge.get_persona(persona_name).is_some() {
-            builder = builder.persona(forge, persona_name)?;
+            // Collect persona-defined mcp_prompts and CLI-provided ones
+            let persona = forge.get_persona(persona_name).unwrap();
+            let all_refs: Vec<smgglrs_cognitive::McpPromptRef> = persona
+                .mcp_prompts
+                .iter()
+                .cloned()
+                .chain(cli_prompt_refs.iter().cloned())
+                .collect();
+
+            if all_refs.is_empty() {
+                builder = builder.persona(forge, persona_name)?;
+            } else {
+                // Build a temporary agent to resolve prompts, then rebuild
+                // with the resolved prompts. We need an MCP connection to
+                // call prompts/get.
+                let temp_upstream = if let Some(ref t) = auth_token {
+                    smgglrs_agent::Upstream::http_with_auth("resolver", endpoint, t).await?
+                } else {
+                    smgglrs_agent::Upstream::http("resolver", endpoint).await?
+                };
+                let mut resolver_client = smgglrs_agent::McpClient::new(temp_upstream);
+
+                let resolved = smgglrs_agent::resolve::resolve_mcp_prompts(
+                    &mut resolver_client,
+                    &all_refs,
+                    prompt,
+                )
+                .await?;
+
+                if !resolved.is_empty() {
+                    eprintln!("Resolved {} upstream prompt(s)", resolved.len());
+                }
+
+                builder = builder.persona_with_prompts(forge, persona_name, &resolved)?;
+            }
+
             eprintln!("Loaded persona: {persona_name}");
+        }
+    } else if !cli_prompt_refs.is_empty() {
+        // No persona loaded but CLI prompts were specified — resolve and append
+        let temp_upstream = if let Some(ref t) = auth_token {
+            smgglrs_agent::Upstream::http_with_auth("resolver", endpoint, t).await?
+        } else {
+            smgglrs_agent::Upstream::http("resolver", endpoint).await?
+        };
+        let mut resolver_client = smgglrs_agent::McpClient::new(temp_upstream);
+
+        let resolved = smgglrs_agent::resolve::resolve_mcp_prompts(
+            &mut resolver_client,
+            &cli_prompt_refs,
+            prompt,
+        )
+        .await?;
+
+        if !resolved.is_empty() {
+            let extra = resolved
+                .iter()
+                .map(|rp| format!("## Upstream Prompt: {}\n\n{}", rp.label, rp.content))
+                .collect::<Vec<_>>()
+                .join("\n\n");
+
+            builder = builder.system_prompt(extra);
+            eprintln!("Resolved {} upstream prompt(s) (no persona)", resolved.len());
         }
     }
 
