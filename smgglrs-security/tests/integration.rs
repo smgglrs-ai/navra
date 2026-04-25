@@ -276,7 +276,7 @@ async fn hook_pipeline_pre_allows_safe_tool() {
     pipeline.add(TestBlockHook { blocked: "shell_exec".to_string() });
 
     let result = pipeline
-        .run_pre("docs_read", serde_json::json!({}), &test_ctx())
+        .run_pre("file_read", serde_json::json!({}), &test_ctx())
         .await;
     assert!(result.is_ok());
 }
@@ -288,7 +288,7 @@ async fn hook_pipeline_post_modifies_result() {
 
     let original = smgglrs_protocol::CallToolResult::text("output");
     let result = pipeline
-        .run_post("docs_read", &serde_json::json!({}), original, &test_ctx())
+        .run_post("file_read", &serde_json::json!({}), original, &test_ctx())
         .await;
 
     match &result.content[0] {
@@ -309,7 +309,7 @@ fn capability_token_sign_verify_roundtrip() {
         CapabilitySet {
             paths: vec!["/home/**".to_string()],
             operations: vec!["read".to_string(), "write".to_string()],
-            tools: vec!["docs_*".to_string()],
+            tools: vec!["file_*".to_string()],
             credentials: vec!["github.pat".to_string()],
         },
         1,
@@ -453,7 +453,7 @@ fn quota_engine_rate_limits_per_agent() {
 #[test]
 fn process_table_tracks_agents() {
     let table = ProcessTable::new();
-    table.record_call("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "docs_read");
+    table.record_call("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "file_read");
     table.record_call("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "git_status");
     table.record_denied("agent-1", "dev", Some("did:key:z6Mk1"), Some(1));
 
@@ -463,7 +463,7 @@ fn process_table_tracks_agents() {
     assert_eq!(snap[0].denied_count, 1);
     assert_eq!(snap[0].active_calls.len(), 2);
 
-    table.complete_call("agent-1", "docs_read");
+    table.complete_call("agent-1", "file_read");
     let snap = table.snapshot();
     assert_eq!(snap[0].active_calls, vec!["git_status"]);
 }
@@ -532,7 +532,7 @@ fn delegated_token_scopes_operations() {
         &root,
         "did:teammate:team-1:reader",
         vec!["read".to_string(), "search".to_string()],
-        vec!["docs_read".to_string(), "docs_grep".to_string()],
+        vec!["file_read".to_string(), "file_grep".to_string()],
         2,
         600,
     )
@@ -542,7 +542,7 @@ fn delegated_token_scopes_operations() {
     let decoded = decode_token(&token, &signer).unwrap();
 
     assert_eq!(decoded.cap.operations, vec!["read", "search"]);
-    assert_eq!(decoded.cap.tools, vec!["docs_read", "docs_grep"]);
+    assert_eq!(decoded.cap.tools, vec!["file_read", "file_grep"]);
     assert!(decoded.parent.is_some());
 
     // Validate delegation chain
@@ -559,7 +559,7 @@ fn delegated_token_rejects_operation_not_in_parent() {
         &root,
         "did:teammate:team-1:hacker",
         vec!["read".to_string(), "shell.exec".to_string()],
-        vec!["docs_read".to_string()],
+        vec!["file_read".to_string()],
         2,
         600,
     )
@@ -579,14 +579,14 @@ fn delegated_token_rejects_tool_not_in_parent_globs() {
         CapabilitySet {
             paths: vec!["**".to_string()],
             operations: vec!["read".to_string()],
-            tools: vec!["docs_*".to_string()],
+            tools: vec!["file_*".to_string()],
             credentials: vec![],
         },
         1,
         3600,
     );
 
-    // "git_status" is not covered by docs_*
+    // "git_status" is not covered by file_*
     let err = build_delegated_payload(
         &root,
         "did:teammate:team-1:hacker",
@@ -610,7 +610,7 @@ fn delegated_token_expiry_capped_by_parent() {
         &root,
         "did:teammate:team-1:worker",
         vec!["read".to_string()],
-        vec!["docs_read".to_string()],
+        vec!["file_read".to_string()],
         2,
         999999, // much longer than parent's 86400
     )
@@ -628,7 +628,7 @@ fn delegated_token_permission_engine_integration() {
         &root,
         "did:teammate:team-1:reader",
         vec!["read".to_string(), "search".to_string()],
-        vec!["docs_read".to_string()],
+        vec!["file_read".to_string()],
         2,
         600,
     )

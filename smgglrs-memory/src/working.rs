@@ -303,7 +303,7 @@ mod tests {
                 role: Role::User,
                 content: "Hello".to_string(),
                 timestamp: 1000,
-                metadata: Some(r#"{"tool": "docs_read"}"#.to_string()),
+                metadata: Some(r#"{"tool": "file_read"}"#.to_string()),
             }],
             created_at: 1000,
         };
@@ -312,7 +312,7 @@ mod tests {
         let turns = mem.get_session_turns("s1").unwrap();
         assert_eq!(
             turns[0].messages[0].metadata.as_deref(),
-            Some(r#"{"tool": "docs_read"}"#)
+            Some(r#"{"tool": "file_read"}"#)
         );
     }
 }

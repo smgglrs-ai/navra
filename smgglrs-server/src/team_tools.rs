@@ -2,7 +2,7 @@
 //!
 //! The team lead creates teammates on the fly, assigns personas and
 //! models, sends them tasks, and reads results. Teammates are full
-//! agents with MCP tool access (docs_tree, docs_grep, docs_read)
+//! agents with MCP tool access (file_tree, file_grep, file_read)
 //! and a shared blackboard for cross-agent knowledge sharing.
 //!
 //! Teammates can create subteams for recursive decomposition,
@@ -23,7 +23,7 @@ pub const DEFAULT_OPERATIONS: &[&str] = &["read", "search", "list"];
 
 /// Default tools granted to teammates.
 pub const DEFAULT_TOOLS: &[&str] = &[
-    "docs_tree", "docs_grep", "docs_read", "team_bb_publish",
+    "file_tree", "file_grep", "file_read", "team_bb_publish",
     "models_list", "personas_list", "flow_escalate",
 ];
 
@@ -451,7 +451,7 @@ pub fn team_add_def() -> ToolDefinition {
                 ("model".to_string(), serde_json::json!({"type": "string", "description": "Model name from models_list (e.g. 'granite3.3:8b'). Use fast/small models for file reading tasks, large models only for synthesis. Defaults to 'auto' (smallest available)."})),
                 ("locality".to_string(), serde_json::json!({"type": "string", "enum": ["local", "remote", "auto"], "description": "'local' = data stays on device, 'remote' = cloud API, 'auto' = IFC decides"})),
                 ("operations".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed operations (default: ['read', 'search', 'list'])"})),
-                ("tools".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: ['docs_tree', 'docs_grep', 'docs_read', 'team_bb_publish'])"})),
+                ("tools".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: ['file_tree', 'file_grep', 'file_read', 'team_bb_publish'])"})),
             ])),
             required: Some(vec!["team_id".to_string(), "name".to_string()]),
         },
@@ -463,7 +463,7 @@ pub fn team_message_def() -> ToolDefinition {
         name: "team_message".to_string(),
         description: Some(
             "Send a task to a teammate. The teammate runs asynchronously \
-             with full tool access (docs_tree, docs_grep, docs_read) and \
+             with full tool access (file_tree, file_grep, file_read) and \
              can publish findings to the team's shared blackboard. \
              Use team_status to check progress, team_result to read output."
                 .to_string(),
@@ -1133,7 +1133,7 @@ pub async fn handle_team_message(
 
     CallToolResult::text(format!(
         "Task sent to '{}'. Teammate is running as a full MCP agent \
-         with tool access (docs_tree, docs_grep, docs_read, team_bb_publish). \
+         with tool access (file_tree, file_grep, file_read, team_bb_publish). \
          Use team_status to check progress, team_result to read output.",
         to
     ))
@@ -1156,8 +1156,8 @@ fn task_requirements(persona: Option<&str>, mandate: &str) -> (bool, bool, bool)
             | "strategic_advisor" | "devils_advocate"));
 
     let needs_tools = mandate_lower.contains("read")
-        || mandate_lower.contains("docs_read")
-        || mandate_lower.contains("docs_tree")
+        || mandate_lower.contains("file_read")
+        || mandate_lower.contains("file_tree")
         || mandate_lower.contains("scan")
         || mandate_lower.contains("search")
         || mandate_lower.contains("explore")

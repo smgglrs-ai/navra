@@ -577,7 +577,7 @@ safety = "standard"
             .map(|w| w.system_prompt())
             .unwrap_or_else(|_| "You are a team lead. Use the available tools to analyze the project and delegate to specialists.".to_string())
     } else {
-        "You are a team lead. Use docs_tree to understand the project structure, \
+        "You are a team lead. Use file_tree to understand the project structure, \
          models_list to see available models, then create a team of specialists \
          to analyze the project. Delegate all file reading to teammates. \
          Synthesize their findings into a final report.".to_string()
@@ -588,9 +588,9 @@ safety = "standard"
     let mcp_endpoint = format!("{smgglrs_url}/mcp");
 
     // Lead agent only gets project overview + team tools.
-    // No docs_read, no docs_grep — the lead MUST delegate all analysis.
+    // No file_read, no file_grep — the lead MUST delegate all analysis.
     let lead_tools = vec![
-        "docs_tree".to_string(),    // project structure overview only
+        "file_tree".to_string(),    // project structure overview only
         "models_list".to_string(),  // see available models
         "personas_list".to_string(),// see available specialist personas
         "team_create".to_string(),

@@ -142,25 +142,25 @@ mod tests {
     #[test]
     fn record_and_snapshot() {
         let table = ProcessTable::new();
-        table.record_call("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "docs_read");
+        table.record_call("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "file_read");
 
         let snap = table.snapshot();
         assert_eq!(snap.len(), 1);
         assert_eq!(snap[0].name, "agent-1");
         assert_eq!(snap[0].call_count, 1);
         assert_eq!(snap[0].denied_count, 0);
-        assert_eq!(snap[0].active_calls, vec!["docs_read"]);
+        assert_eq!(snap[0].active_calls, vec!["file_read"]);
     }
 
     #[test]
     fn complete_call_removes_active() {
         let table = ProcessTable::new();
         table.record_call("a", "dev", None, None, "git_status");
-        table.record_call("a", "dev", None, None, "docs_read");
+        table.record_call("a", "dev", None, None, "file_read");
         assert_eq!(table.snapshot()[0].active_calls.len(), 2);
 
         table.complete_call("a", "git_status");
-        assert_eq!(table.snapshot()[0].active_calls, vec!["docs_read"]);
+        assert_eq!(table.snapshot()[0].active_calls, vec!["file_read"]);
     }
 
     #[test]

@@ -24,7 +24,7 @@ pub struct CapabilitySet {
     pub paths: Vec<String>,
     /// Permitted operations (e.g., "read", "write", "git.status").
     pub operations: Vec<String>,
-    /// Tool name globs (e.g., "docs_*", "git_*").
+    /// Tool name globs (e.g., "file_*", "git_*").
     pub tools: Vec<String>,
     /// Credential labels this token can access.
     #[serde(default)]
@@ -355,7 +355,7 @@ mod tests {
         CapabilitySet {
             paths: vec!["/home/user/projects/**".to_string()],
             operations: vec!["read".to_string(), "write".to_string(), "git.status".to_string()],
-            tools: vec!["docs_*".to_string(), "git_*".to_string()],
+            tools: vec!["file_*".to_string(), "git_*".to_string()],
             credentials: vec!["github.pat".to_string()],
         }
     }
@@ -385,7 +385,7 @@ mod tests {
         assert_eq!(decoded.ring, 1);
         assert_eq!(decoded.cap.paths, vec!["/home/user/projects/**"]);
         assert_eq!(decoded.cap.operations.len(), 3);
-        assert_eq!(decoded.cap.tools, vec!["docs_*", "git_*"]);
+        assert_eq!(decoded.cap.tools, vec!["file_*", "git_*"]);
         assert_eq!(decoded.cap.credentials, vec!["github.pat"]);
         assert_eq!(decoded.nonce, payload.nonce);
     }
@@ -486,7 +486,7 @@ mod tests {
         assert!(resolved.operations.contains("read"));
         assert!(resolved.operations.contains("write"));
         assert!(resolved.operations.contains("git.status"));
-        assert_eq!(resolved.tools, vec!["docs_*", "git_*"]);
+        assert_eq!(resolved.tools, vec!["file_*", "git_*"]);
         assert_eq!(resolved.credentials, vec!["github.pat"]);
     }
 
@@ -521,7 +521,7 @@ mod tests {
             cap: CapabilitySet {
                 paths: vec!["/home/user/projects/app/**".to_string()],
                 operations: vec!["read".to_string()],
-                tools: vec!["docs_*".to_string()],
+                tools: vec!["file_*".to_string()],
                 credentials: vec![],
             },
             ring: 2,
@@ -674,14 +674,14 @@ mod tests {
             &parent,
             "did:teammate:team-1:reader",
             vec!["read".to_string()],
-            vec!["docs_read".to_string()],
+            vec!["file_read".to_string()],
             2,
             600,
         )
         .unwrap();
 
         assert_eq!(child.cap.operations, vec!["read"]);
-        assert_eq!(child.cap.tools, vec!["docs_read"]);
+        assert_eq!(child.cap.tools, vec!["file_read"]);
         assert_eq!(child.ring, 2);
         assert_eq!(child.parent, Some(parent.nonce));
         assert!(child.cap.credentials.is_empty());
@@ -696,7 +696,7 @@ mod tests {
             &parent,
             "did:teammate:team-1:hacker",
             vec!["read".to_string(), "shell.exec".to_string()],
-            vec!["docs_read".to_string()],
+            vec!["file_read".to_string()],
             2,
             600,
         )
@@ -734,7 +734,7 @@ mod tests {
             &parent,
             "did:teammate:team-1:hacker",
             vec!["read".to_string()],
-            vec!["docs_read".to_string()],
+            vec!["file_read".to_string()],
             0, // ring 0 < parent ring 1
             600,
         )
@@ -752,7 +752,7 @@ mod tests {
             &parent,
             "did:teammate:team-1:worker",
             vec!["read".to_string()],
-            vec!["docs_read".to_string()],
+            vec!["file_read".to_string()],
             2,
             99999, // much longer than parent
         )
@@ -766,20 +766,20 @@ mod tests {
     fn delegated_payload_tool_glob_matching() {
         let signer = Ed25519Signer::generate();
         let parent = test_payload(&signer);
-        // Parent has tools: ["docs_*", "git_*"]
+        // Parent has tools: ["file_*", "git_*"]
 
-        // docs_read matches docs_*
+        // file_read matches file_*
         let child = build_delegated_payload(
             &parent,
             "did:teammate:team-1:reader",
             vec!["read".to_string()],
-            vec!["docs_read".to_string(), "docs_grep".to_string(), "git_status".to_string()],
+            vec!["file_read".to_string(), "file_grep".to_string(), "git_status".to_string()],
             2,
             600,
         )
         .unwrap();
 
-        assert_eq!(child.cap.tools, vec!["docs_read", "docs_grep", "git_status"]);
+        assert_eq!(child.cap.tools, vec!["file_read", "file_grep", "git_status"]);
     }
 
     #[test]
@@ -791,7 +791,7 @@ mod tests {
             &parent,
             "did:teammate:team-1:worker",
             vec!["read".to_string()],
-            vec!["docs_read".to_string()],
+            vec!["file_read".to_string()],
             2,
             600,
         )
@@ -802,7 +802,7 @@ mod tests {
 
         assert_eq!(decoded.sub, "did:teammate:team-1:worker");
         assert_eq!(decoded.cap.operations, vec!["read"]);
-        assert_eq!(decoded.cap.tools, vec!["docs_read"]);
+        assert_eq!(decoded.cap.tools, vec!["file_read"]);
         assert_eq!(decoded.ring, 2);
         assert_eq!(decoded.parent, Some(parent.nonce));
 
@@ -819,7 +819,7 @@ mod tests {
             &parent,
             "did:teammate:team-1:worker",
             vec!["read".to_string()],
-            vec!["docs_read".to_string()],
+            vec!["file_read".to_string()],
             2,
             600,
         )

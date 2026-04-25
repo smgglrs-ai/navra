@@ -47,7 +47,7 @@ mod tests {
         );
 
         let tool = ToolDefinition {
-            name: "docs_read".to_string(),
+            name: "file_read".to_string(),
             description: Some("Read a document".to_string()),
             input_schema: ToolInputSchema {
                 schema_type: "object".to_string(),
@@ -57,7 +57,7 @@ mod tests {
         };
 
         let response_tool = tool_def_to_response(&tool);
-        assert_eq!(response_tool.name, "docs_read");
+        assert_eq!(response_tool.name, "file_read");
         assert_eq!(response_tool.description.as_deref(), Some("Read a document"));
         let params = response_tool.parameters.unwrap();
         assert_eq!(params["type"], "object");

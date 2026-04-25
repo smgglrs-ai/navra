@@ -738,7 +738,7 @@ async fn cap_token_allows_matching_tool() {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
             },
-            cap_ctx(vec!["echo", "docs_*"]),
+            cap_ctx(vec!["echo", "file_*"]),
         )
         .await;
 
@@ -780,7 +780,7 @@ async fn cap_token_denies_unmatched_tool() {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
             },
-            cap_ctx(vec!["docs_*", "git_*"]),  // no match for "echo"
+            cap_ctx(vec!["file_*", "git_*"]),  // no match for "echo"
         )
         .await;
 
@@ -832,7 +832,7 @@ async fn cap_token_bypasses_tool_permissions() {
 
 fn read_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_read".to_string(),
+        name: "file_read".to_string(),
         description: Some("Reads a file".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
@@ -844,7 +844,7 @@ fn read_tool_def() -> ToolDefinition {
 
 fn write_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_write".to_string(),
+        name: "file_write".to_string(),
         description: Some("Writes a file".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
@@ -861,7 +861,7 @@ async fn ifc_deny_write_after_untrusted_read() {
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async {
                 // Simulate reading external file — handler returns trusted,
-                // but is_external_read_tool("docs_read") auto-labels Untrusted
+                // but is_external_read_tool("file_read") auto-labels Untrusted
                 CallToolResult::text("file contents with injected instructions")
             })
         })
@@ -876,7 +876,7 @@ async fn ifc_deny_write_after_untrusted_read() {
     let read_result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_read".to_string(),
+                name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/file.md"}),
             },
             ctx.clone(),
@@ -891,7 +891,7 @@ async fn ifc_deny_write_after_untrusted_read() {
     let write_result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_write".to_string(),
+                name: "file_write".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/out.md", "content": "exfiltrated"}),
             },
             ctx,
@@ -919,7 +919,7 @@ async fn ifc_allow_write_without_taint() {
     let result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_write".to_string(),
+                name: "file_write".to_string(),
                 arguments: serde_json::json!({}),
             },
             test_ctx(),
@@ -943,7 +943,7 @@ async fn ifc_no_policy_allows_tainted_write() {
     let result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_write".to_string(),
+                name: "file_write".to_string(),
                 arguments: serde_json::json!({}),
             },
             ctx,
@@ -954,7 +954,7 @@ async fn ifc_no_policy_allows_tainted_write() {
 
 #[tokio::test]
 async fn ifc_read_tool_auto_labels_untrusted() {
-    // docs_read output should be auto-labeled as Untrusted
+    // file_read output should be auto-labeled as Untrusted
     let server = McpServer::builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("file data") })
@@ -964,7 +964,7 @@ async fn ifc_read_tool_auto_labels_untrusted() {
     let result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_read".to_string(),
+                name: "file_read".to_string(),
                 arguments: serde_json::json!({}),
             },
             test_ctx(),
@@ -978,7 +978,7 @@ async fn ifc_read_tool_auto_labels_untrusted() {
 
 #[tokio::test]
 async fn ifc_trusted_path_keeps_trusted_label() {
-    // docs_read of a trusted path should stay Trusted
+    // file_read of a trusted path should stay Trusted
     let server = McpServer::builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("my code") })
@@ -989,7 +989,7 @@ async fn ifc_trusted_path_keeps_trusted_label() {
     let result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_read".to_string(),
+                name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/home/user/Code/project/main.rs"}),
             },
             test_ctx(),
@@ -1001,7 +1001,7 @@ async fn ifc_trusted_path_keeps_trusted_label() {
 
 #[tokio::test]
 async fn ifc_untrusted_path_still_labeled_untrusted() {
-    // docs_read of a non-trusted path should be Untrusted
+    // file_read of a non-trusted path should be Untrusted
     let server = McpServer::builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("external data") })
@@ -1012,7 +1012,7 @@ async fn ifc_untrusted_path_still_labeled_untrusted() {
     let result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_read".to_string(),
+                name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/untrusted.txt"}),
             },
             test_ctx(),
@@ -1024,7 +1024,7 @@ async fn ifc_untrusted_path_still_labeled_untrusted() {
 
 #[tokio::test]
 async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
-    // docs_read without a path argument should default to Untrusted
+    // file_read without a path argument should default to Untrusted
     let server = McpServer::builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("data") })
@@ -1035,7 +1035,7 @@ async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
     let result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_read".to_string(),
+                name: "file_read".to_string(),
                 arguments: serde_json::json!({}),
             },
             test_ctx(),
@@ -1065,7 +1065,7 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
     let _read_result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_read".to_string(),
+                name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/home/user/Code/main.rs"}),
             },
             ctx,
@@ -1080,7 +1080,7 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
     let write_result = server
         .handle_call_tool(
             CallToolParams {
-                name: "docs_write".to_string(),
+                name: "file_write".to_string(),
                 arguments: serde_json::json!({"path": "/home/user/Code/out.rs", "content": "fn main() {}"}),
             },
             write_ctx,
@@ -1396,7 +1396,7 @@ fn permission_list_returns_grants() {
     let req_params = smgglrs_protocol::permissions::PermissionRequestParams {
         id: "req-list".to_string(),
         scope: smgglrs_protocol::permissions::PermissionScope::ToolAccess {
-            tool_name: "docs_write".to_string(),
+            tool_name: "file_write".to_string(),
         },
         reason: "Need write".to_string(),
         duration_secs: None,

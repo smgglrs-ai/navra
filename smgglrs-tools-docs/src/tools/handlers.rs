@@ -416,7 +416,7 @@ pub(super) async fn handle_info(
         modified,
         mime,
         indexed,
-        if is_dir { "\n(use docs_list to see contents)" } else { "" }
+        if is_dir { "\n(use file_list to see contents)" } else { "" }
     );
 
     CallToolResult::text(output)

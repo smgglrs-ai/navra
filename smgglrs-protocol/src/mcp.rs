@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn serialize_tool_definition() {
         let tool = ToolDefinition {
-            name: "docs_search".to_string(),
+            name: "file_search".to_string(),
             description: Some("Search documents".to_string()),
             input_schema: ToolInputSchema {
                 schema_type: "object".to_string(),
@@ -344,7 +344,7 @@ mod tests {
             },
         };
         let json = serde_json::to_value(&tool).unwrap();
-        assert_eq!(json["name"], "docs_search");
+        assert_eq!(json["name"], "file_search");
         assert_eq!(json["inputSchema"]["type"], "object");
         assert!(json["inputSchema"]["required"].as_array().unwrap().contains(&serde_json::json!("query")));
     }
@@ -370,9 +370,9 @@ mod tests {
 
     #[test]
     fn deserialize_call_tool_params() {
-        let json = r#"{"name":"docs_read","arguments":{"path":"/home/user/doc.md"}}"#;
+        let json = r#"{"name":"file_read","arguments":{"path":"/home/user/doc.md"}}"#;
         let params: CallToolParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.name, "docs_read");
+        assert_eq!(params.name, "file_read");
         assert_eq!(params.arguments["path"], "/home/user/doc.md");
     }
 

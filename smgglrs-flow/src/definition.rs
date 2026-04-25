@@ -299,13 +299,13 @@ pub fn single_task_dag(specialist: &str, mandate: &str) -> DagConfig {
 pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
     let scout_mandate = if let Some(ctx) = context {
         format!(
-            "Use docs_tree to list ALL files in the project. Return exact \
+            "Use file_tree to list ALL files in the project. Return exact \
              relative paths grouped by relevance to: {mandate}\n\n\
              Additional context:\n{ctx}"
         )
     } else {
         format!(
-            "Use docs_tree to list ALL files in the project. Return exact \
+            "Use file_tree to list ALL files in the project. Return exact \
              relative paths grouped by relevance to: {mandate}"
         )
     };
@@ -321,7 +321,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 model: Some("granite3.3:8b".to_string()),
                 mandate: scout_mandate,
                 depends_on: Vec::new(),
-                expected_output: Some("Complete file list with exact paths from docs_tree".to_string()),
+                expected_output: Some("Complete file list with exact paths from file_tree".to_string()),
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
                 generates_tasks: false,
@@ -349,9 +349,9 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 specialist: "analyst".to_string(),
                 model: Some("gemma4:26b".to_string()),
                 mandate: format!(
-                    "Read EACH file listed in the planner's tasks using docs_read \
+                    "Read EACH file listed in the planner's tasks using file_read \
                      with the exact paths. Analyze for: {mandate}\n\
-                     You MUST call docs_read — do not guess file contents."
+                     You MUST call file_read — do not guess file contents."
                 ),
                 depends_on: vec!["planner".to_string()],
                 expected_output: Some("Detailed analysis results".to_string()),

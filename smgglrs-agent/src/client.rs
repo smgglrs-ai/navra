@@ -184,7 +184,7 @@ mod tests {
         })])
         .await;
 
-        let _result = client.call_tool("docs_read", serde_json::json!({})).await.unwrap();
+        let _result = client.call_tool("file_read", serde_json::json!({})).await.unwrap();
         assert_eq!(client.taint().integrity, Integrity::Untrusted);
     }
 

@@ -297,7 +297,7 @@ pub fn build_run_summary(
 
         let files: i64 = db
             .query_row(
-                "SELECT COUNT(DISTINCT tool_args) FROM blackbox WHERE seq > ?1 AND tool_name = 'docs_read'",
+                "SELECT COUNT(DISTINCT tool_args) FROM blackbox WHERE seq > ?1 AND tool_name = 'file_read'",
                 [bb_start_seq],
                 |row| row.get(0),
             )
@@ -322,7 +322,7 @@ pub fn build_run_summary(
     };
 
     if files_read > 0 {
-        summary.push_str(&format!("- Files read: {} (via docs_read)\n", files_read));
+        summary.push_str(&format!("- Files read: {} (via file_read)\n", files_read));
     }
     summary.push_str(&format!("- Tool calls: {}\n", total_tool_calls));
 
@@ -674,7 +674,7 @@ async fn spawn_and_track_tasks(
         // Inject verified file tree into every task
         if !project_file_tree.is_empty() && !task.generates_tasks {
             message.push_str(&format!(
-                "\n\n--- Project files (verified) ---\n{}\n\nUse ONLY paths from this list with docs_read.",
+                "\n\n--- Project files (verified) ---\n{}\n\nUse ONLY paths from this list with file_read.",
                 project_file_tree
             ));
         }
@@ -975,7 +975,7 @@ async fn run_dag_execution(
                 }
                 if !project_file_tree.is_empty() {
                     new_task.mandate.push_str(
-                        &format!("\n\n--- Project files (verified) ---\n{project_file_tree}\n\nUse ONLY paths from this list with docs_read.")
+                        &format!("\n\n--- Project files (verified) ---\n{project_file_tree}\n\nUse ONLY paths from this list with file_read.")
                     );
                 }
                 ctx.flow_registry.update_nodes(flow_id, vec![

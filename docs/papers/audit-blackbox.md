@@ -119,17 +119,17 @@ need not be running):
 | `smgglrs audit` | Tabular summary of last 20 entries (seq, agent, outcome, tool, duration, IFC label) |
 | `smgglrs audit --detail` | Full entries with truncated args and result (120 chars in CLI) |
 | `smgglrs audit --limit 100` | Show last 100 entries |
-| `smgglrs audit --tool docs_tree` | Filter to a specific tool |
+| `smgglrs audit --tool file_tree` | Filter to a specific tool |
 | `smgglrs audit --agent claude` | Filter to a specific agent |
 | `smgglrs audit --verify` | Verify hash chain integrity, report valid count and first broken sequence |
 
 Filters compose: `--agent X --tool Y` shows only entries matching both.
 
-## 6. Case Study: The docs_tree Bug
+## 6. Case Study: The file_tree Bug
 
 During development of a multi-agent security audit demo, the lead
 agent delegated file discovery to a teammate. The teammate called
-`docs_tree` with the argument `{"path": "."}`. The tool requires
+`file_tree` with the argument `{"path": "."}`. The tool requires
 absolute paths and returned an error: "Path must be absolute."
 
 **Without the blackbox**, this failure was invisible. The agent
@@ -142,14 +142,14 @@ agent source code and guessing which tool call failed.
 immediately saw:
 
 ```
-seq=47 agent=anonymous tool=docs_tree outcome=error duration=12us
+seq=47 agent=anonymous tool=file_tree outcome=error duration=12us
   args:   {"path":"."}
   result: Error: Path must be absolute. Received: "."
   ifc:    Trusted/Public
 ```
 
 The bug -- a relative path passed by the model -- was found in
-30 seconds. The fix was a one-line default in `docs_tree` to treat
+30 seconds. The fix was a one-line default in `file_tree` to treat
 missing or relative paths as the project root.
 
 This case illustrates the core value proposition: the blackbox

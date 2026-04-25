@@ -858,8 +858,8 @@ mod tests {
 
     #[test]
     fn parse_tool_call_slash_with_args() {
-        let tc = parse_tool_call(r#"/tool docs_read {"path": "/tmp/test.txt"}"#).unwrap();
-        assert_eq!(tc.tool_name, "docs_read");
+        let tc = parse_tool_call(r#"/tool file_read {"path": "/tmp/test.txt"}"#).unwrap();
+        assert_eq!(tc.tool_name, "file_read");
         assert_eq!(tc.arguments["path"], "/tmp/test.txt");
     }
 

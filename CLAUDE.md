@@ -32,7 +32,7 @@ package only provides shared libraries.
 | `smgglrs-agent` | Infrastructure | Client SDK: agent builder, MCP client, tool-use loop |
 | `smgglrs-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation |
 | `smgglrs-core` | Infrastructure | Server, module trait, session, transport, re-exports |
-| `smgglrs-tools-docs` | Tool | Document tools, SQLite FTS5 + sqlite-vec |
+| `smgglrs-tools-docs` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
 | `smgglrs-tools-git` | Tool | Git tools (status, diff, log, branch, commit) |
 | `smgglrs-rag` | Context enrichment | Vector search, sqlite-vec, semantic chunking |
 | `smgglrs-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
@@ -105,7 +105,7 @@ Desktop (D-Bus notifications, system tray, systemd)
 
 ### Naming
 
-- Tool names are prefixed with module name: `docs_read`, `git_status`
+- Tool names are prefixed with module name: `file_read`, `git_status`
 - Operations are string-based, module-namespaced: `"read"`, `"git.commit"`
 - Config fields use snake_case in TOML
 

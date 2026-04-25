@@ -32,7 +32,7 @@ pub type ResourceHandler = Arc<
 /// # Naming convention
 ///
 /// Tool names should be prefixed with the module name to avoid
-/// collisions: `docs_read`, `git_status`, `shell_exec`.
+/// collisions: `file_read`, `git_status`, `shell_exec`.
 ///
 /// Operations for the permission engine follow the same pattern:
 /// `"read"`, `"write"` (docs), `"git.status"`, `"git.commit"` (git).
