@@ -250,6 +250,28 @@ impl Blackbox {
         .collect()
     }
 
+    /// Delete entries older than the specified number of days.
+    ///
+    /// Note: unlike most blackbox operations, this mutates existing data.
+    /// Use with caution -- audit logs often have separate legal retention
+    /// requirements. The hash chain will be broken for deleted entries,
+    /// but `verify_chain` will still validate the remaining contiguous chain.
+    /// Returns the count of deleted entries.
+    pub fn expire_older_than(&self, days: u32) -> usize {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let cutoff_ms = now - (days as i64 * 86400 * 1000);
+
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute(
+            "DELETE FROM blackbox WHERE timestamp_ms < ?1",
+            params![cutoff_ms],
+        )
+        .unwrap_or(0)
+    }
+
     /// Entry count.
     pub fn count(&self) -> u64 {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
@@ -363,6 +385,46 @@ mod tests {
 
         let entries = bb.recent(1);
         assert!(entries[0].tool_args.contains("user@example.com"));
+    }
+
+    #[test]
+    fn expire_older_than_deletes_old() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bb.db");
+        let bb = Blackbox::open(&path).unwrap();
+
+        bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P");
+        bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P");
+
+        assert_eq!(bb.count(), 2);
+
+        // All entries are from "now", so expiring older than 1 day should delete nothing
+        let deleted = bb.expire_older_than(1);
+        assert_eq!(deleted, 0);
+        assert_eq!(bb.count(), 2);
+
+        // Manually insert an old entry for testing
+        {
+            let db = Connection::open(&path).unwrap();
+            let old_ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64
+                - (10 * 86400 * 1000); // 10 days ago
+            db.execute(
+                "INSERT INTO blackbox (seq, timestamp_ms, agent_name, agent_perms, session_id, \
+                 tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash) \
+                 VALUES (99, ?1, 'a', 'dev', 's', 'old_tool', '{}', 'ok', 'allowed', 1, 'T:P', 'x', 'y')",
+                params![old_ts],
+            ).unwrap();
+        }
+
+        let bb2 = Blackbox::open(&path).unwrap();
+        assert_eq!(bb2.count(), 3);
+
+        let deleted = bb2.expire_older_than(5);
+        assert_eq!(deleted, 1);
+        assert_eq!(bb2.count(), 2);
     }
 
     #[test]

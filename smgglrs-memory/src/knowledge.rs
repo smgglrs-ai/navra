@@ -81,6 +81,7 @@ impl KnowledgeStore {
             ("version", "INTEGER DEFAULT 1"),
             ("source_session", "TEXT DEFAULT ''"),
             ("confidence", "REAL DEFAULT 1.0"),
+            ("has_pii", "INTEGER DEFAULT 0"),
         ];
         for (name, typ) in &columns {
             // SQLite doesn't support IF NOT EXISTS on ALTER TABLE,
@@ -292,6 +293,112 @@ impl KnowledgeStore {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Store or update a memory entry with a PII marker.
+    ///
+    /// Same as `store`, but also sets `has_pii = 1` on the entry so it
+    /// can be efficiently queried during purge/expire operations.
+    pub fn store_with_pii(&self, entry: &MemoryEntry, has_pii: bool) -> Result<(), MemoryError> {
+        let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
+        self.db.execute(
+            "INSERT INTO memory_knowledge (id, memory_type, title, content, tags_json, created_at, updated_at, has_pii)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET
+                 title = excluded.title,
+                 content = excluded.content,
+                 tags_json = excluded.tags_json,
+                 updated_at = excluded.updated_at,
+                 has_pii = excluded.has_pii",
+            params![
+                entry.id,
+                entry.memory_type.as_str(),
+                entry.title,
+                entry.content,
+                tags_json,
+                entry.created_at,
+                entry.updated_at,
+                has_pii as i32,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Set the `has_pii` flag on an existing entry.
+    pub fn set_pii_flag(&self, id: &str, has_pii: bool) -> Result<(), MemoryError> {
+        self.db.execute(
+            "UPDATE memory_knowledge SET has_pii = ?1 WHERE id = ?2",
+            params![has_pii as i32, id],
+        )?;
+        Ok(())
+    }
+
+    /// Update the content of an existing entry in-place (for redaction).
+    pub fn update_content(&self, id: &str, title: &str, content: &str) -> Result<(), MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        self.db.execute(
+            "UPDATE memory_knowledge SET title = ?1, content = ?2, updated_at = ?3 WHERE id = ?4",
+            params![title, content, now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Delete entries older than the specified number of days.
+    /// Returns the count of deleted entries.
+    pub fn expire_older_than(&self, days: u32) -> Result<usize, MemoryError> {
+        let cutoff = Self::days_ago_epoch(days);
+        let count = self.db.execute(
+            "DELETE FROM memory_knowledge WHERE created_at < ?1",
+            params![cutoff],
+        )?;
+        Ok(count)
+    }
+
+    /// Delete entries that have `has_pii = 1` and are older than the
+    /// specified number of days. Returns the count of deleted entries.
+    pub fn expire_pii_older_than(&self, days: u32) -> Result<usize, MemoryError> {
+        let cutoff = Self::days_ago_epoch(days);
+        let count = self.db.execute(
+            "DELETE FROM memory_knowledge WHERE has_pii = 1 AND created_at < ?1",
+            params![cutoff],
+        )?;
+        Ok(count)
+    }
+
+    /// List entries that have the `has_pii` flag set.
+    pub fn list_pii_entries(&self, kind: Option<MemoryType>) -> Result<Vec<MemoryEntry>, MemoryError> {
+        if let Some(ref mt) = kind {
+            let mut stmt = self.db.prepare(
+                "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
+                 FROM memory_knowledge WHERE has_pii = 1 AND memory_type = ?1
+                 ORDER BY created_at DESC",
+            )?;
+            let entries = stmt
+                .query_map(params![mt.as_str()], row_to_entry)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(entries)
+        } else {
+            let mut stmt = self.db.prepare(
+                "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
+                 FROM memory_knowledge WHERE has_pii = 1
+                 ORDER BY created_at DESC",
+            )?;
+            let entries = stmt
+                .query_map([], row_to_entry)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(entries)
+        }
+    }
+
+    fn days_ago_epoch(days: u32) -> i64 {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        now - (days as i64 * 86400)
     }
 
     /// Update access_count and last_accessed timestamp for an entry.
@@ -533,5 +640,136 @@ mod tests {
             |row| row.get(0),
         ).unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn store_with_pii_flag() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e = entry("e1", MemoryType::Fact, "PII entry", "Contains email");
+        store.store_with_pii(&e, true).unwrap();
+
+        let pii_entries = store.list_pii_entries(None).unwrap();
+        assert_eq!(pii_entries.len(), 1);
+        assert_eq!(pii_entries[0].id, "e1");
+    }
+
+    #[test]
+    fn store_without_pii_flag_not_in_pii_list() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e = entry("e1", MemoryType::Fact, "Clean entry", "No PII here");
+        store.store_with_pii(&e, false).unwrap();
+
+        let pii_entries = store.list_pii_entries(None).unwrap();
+        assert!(pii_entries.is_empty());
+    }
+
+    #[test]
+    fn set_pii_flag() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e = entry("e1", MemoryType::Fact, "Entry", "Content");
+        store.store(&e).unwrap();
+
+        // Initially not PII
+        assert!(store.list_pii_entries(None).unwrap().is_empty());
+
+        // Mark as PII
+        store.set_pii_flag("e1", true).unwrap();
+        assert_eq!(store.list_pii_entries(None).unwrap().len(), 1);
+
+        // Unmark
+        store.set_pii_flag("e1", false).unwrap();
+        assert!(store.list_pii_entries(None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn update_content_in_place() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e = entry("e1", MemoryType::Fact, "Original", "Original content");
+        store.store(&e).unwrap();
+
+        store.update_content("e1", "Redacted", "[REDACTED]").unwrap();
+
+        let retrieved = store.get("e1").unwrap().unwrap();
+        assert_eq!(retrieved.title, "Redacted");
+        assert_eq!(retrieved.content, "[REDACTED]");
+        assert!(retrieved.updated_at.is_some());
+    }
+
+    #[test]
+    fn expire_older_than_deletes_old() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        // Entry from 100 days ago
+        let old = MemoryEntry {
+            id: "old".to_string(),
+            memory_type: MemoryType::Fact,
+            title: "Old".to_string(),
+            content: "Old stuff".to_string(),
+            tags: vec![],
+            created_at: KnowledgeStore::days_ago_epoch(100) - 1,
+            updated_at: None,
+        };
+        store.store(&old).unwrap();
+
+        // Recent entry
+        let recent = entry("recent", MemoryType::Fact, "Recent", "New stuff");
+        let recent = MemoryEntry { created_at: KnowledgeStore::days_ago_epoch(0), ..recent };
+        store.store(&recent).unwrap();
+
+        let deleted = store.expire_older_than(90).unwrap();
+        assert_eq!(deleted, 1);
+        assert_eq!(store.count().unwrap(), 1);
+        assert!(store.get("recent").unwrap().is_some());
+        assert!(store.get("old").unwrap().is_none());
+    }
+
+    #[test]
+    fn expire_pii_older_than_only_deletes_pii() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let old_ts = KnowledgeStore::days_ago_epoch(40) - 1;
+
+        // Old PII entry
+        let pii_entry = MemoryEntry {
+            id: "pii".to_string(),
+            memory_type: MemoryType::Fact,
+            title: "PII".to_string(),
+            content: "Has PII".to_string(),
+            tags: vec![],
+            created_at: old_ts,
+            updated_at: None,
+        };
+        store.store_with_pii(&pii_entry, true).unwrap();
+
+        // Old clean entry
+        let clean_entry = MemoryEntry {
+            id: "clean".to_string(),
+            memory_type: MemoryType::Fact,
+            title: "Clean".to_string(),
+            content: "No PII".to_string(),
+            tags: vec![],
+            created_at: old_ts,
+            updated_at: None,
+        };
+        store.store_with_pii(&clean_entry, false).unwrap();
+
+        let deleted = store.expire_pii_older_than(30).unwrap();
+        assert_eq!(deleted, 1);
+        assert!(store.get("pii").unwrap().is_none());
+        assert!(store.get("clean").unwrap().is_some());
+    }
+
+    #[test]
+    fn list_pii_entries_by_kind() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e1 = entry("e1", MemoryType::Fact, "PII fact", "email");
+        store.store_with_pii(&e1, true).unwrap();
+        let e2 = entry("e2", MemoryType::Event, "PII event", "phone");
+        store.store_with_pii(&e2, true).unwrap();
+
+        let facts = store.list_pii_entries(Some(MemoryType::Fact)).unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].id, "e1");
+
+        let all = store.list_pii_entries(None).unwrap();
+        assert_eq!(all.len(), 2);
     }
 }

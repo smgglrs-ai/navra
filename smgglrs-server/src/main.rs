@@ -293,6 +293,13 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     }
                     None => bb,
                 };
+                // Blackbox retention sweep at startup
+                if let Some(days) = cfg.memory_audit_retention_days() {
+                    let deleted = bb.expire_older_than(days);
+                    if deleted > 0 {
+                        tracing::info!(deleted = deleted, days = days, "Retention: expired old blackbox entries");
+                    }
+                }
                 let count = bb.count();
                 builder = builder.blackbox(bb);
                 tracing::info!(
@@ -1954,7 +1961,38 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             Box::pin(memory_tools::handle_memory_forget(args, ks))
         });
 
-        tracing::info!("Registered memory tools (memory_store, memory_query, memory_forget)");
+        let ks_purge = Arc::clone(&ks);
+        let sanitizer_for_purge = pii_sanitizer.clone();
+        builder = builder.tool(memory_tools::memory_purge_pii_def(), move |args, _ctx| {
+            let ks = Arc::clone(&ks_purge);
+            let sanitizer = sanitizer_for_purge.clone();
+            Box::pin(memory_tools::handle_memory_purge_pii(args, ks, sanitizer))
+        });
+
+        let ks_forget_content = Arc::clone(&ks);
+        builder = builder.tool(memory_tools::memory_forget_by_content_def(), move |args, _ctx| {
+            let ks = Arc::clone(&ks_forget_content);
+            Box::pin(memory_tools::handle_memory_forget_by_content(args, ks))
+        });
+
+        // --- Data retention sweep at startup ---
+        {
+            let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(days) = cfg.memory_retention_days() {
+                match store.expire_older_than(days) {
+                    Ok(n) if n > 0 => tracing::info!(deleted = n, days = days, "Retention: expired old knowledge entries"),
+                    _ => {}
+                }
+            }
+            if let Some(days) = cfg.memory_pii_retention_days() {
+                match store.expire_pii_older_than(days) {
+                    Ok(n) if n > 0 => tracing::info!(deleted = n, days = days, "Retention: expired PII-flagged knowledge entries"),
+                    _ => {}
+                }
+            }
+        }
+
+        tracing::info!("Registered memory tools (memory_store, memory_query, memory_forget, memory_purge_pii, memory_forget_by_content)");
     }
 
     // --- Registry proxy module ---
@@ -2021,6 +2059,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 Arc::new(smgglrs_memory::audit::AuditLog::open_memory().unwrap())
             }
         };
+
+        // Audit log retention sweep at startup
+        if let Some(days) = cfg.memory_audit_retention_days() {
+            match audit_log.expire_older_than(days) {
+                Ok(n) if n > 0 => tracing::info!(deleted = n, days = days, "Retention: expired old audit entries"),
+                _ => {}
+            }
+        }
 
         let audit = Arc::clone(&audit_log);
         builder = builder.tool(
@@ -2581,13 +2627,40 @@ async fn run_agent(
     eprintln!("Endpoint: {endpoint}");
     eprintln!();
 
-    // Build model backend
-    let backend = smgglrs_model::OpenAiBackend::new(
-        "http://localhost:11434/v1",
-        &model_name,
-        None,
-        smgglrs_model::Locality::Local,
-    );
+    // Detect model provider from name
+    enum ModelProvider {
+        Ollama,
+        VertexAI { url: String, token: Option<String>, region: String },
+        AnthropicDirect { key: String },
+    }
+
+    let provider = if model_name.starts_with("claude") {
+        let project = std::env::var("ANTHROPIC_VERTEX_PROJECT_ID")
+            .or_else(|_| std::env::var("GOOGLE_CLOUD_PROJECT"))
+            .unwrap_or_default();
+        let region = std::env::var("CLOUD_ML_REGION")
+            .or_else(|_| std::env::var("GOOGLE_CLOUD_REGION"))
+            .unwrap_or_else(|_| "us-east5".to_string());
+
+        if !project.is_empty() {
+            let url = format!(
+                "https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{model_name}:rawPredict"
+            );
+            let token = std::process::Command::new("gcloud")
+                .args(["auth", "print-access-token"])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string());
+            ModelProvider::VertexAI { url, token, region }
+        } else if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+            ModelProvider::AnthropicDirect { key }
+        } else {
+            anyhow::bail!("Claude model requested but no ANTHROPIC_VERTEX_PROJECT_ID or ANTHROPIC_API_KEY set");
+        }
+    } else {
+        ModelProvider::Ollama
+    };
 
     // Load persona if cognitive_core exists
     let forge = smgglrs_cognitive::ForgeService::load(std::path::Path::new("cognitive_core"))
@@ -2602,24 +2675,55 @@ async fn run_agent(
             None
         });
 
-    // Build agent
-    let mut builder = smgglrs_agent::Agent::builder()
+    // Build agent with provider-specific backend
+    let base_builder = smgglrs_agent::Agent::builder()
         .endpoint(endpoint)
-        .await?
-        .model(backend)
-        .max_iterations(max_iterations)
-        .temperature(0.0)
-        .max_tokens(8192)
-        .force_tool_iterations(5)
-        .non_progress_tools(vec![
-            "team_status".to_string(),
-            "team_result".to_string(),
-            "team_bb_read".to_string(),
-            "models_list".to_string(),
-            "personas_list".to_string(),
-            "flow_status".to_string(),
-            "flow_result".to_string(),
-        ]);
+        .await?;
+
+    let non_progress = vec![
+        "team_status".to_string(),
+        "team_result".to_string(),
+        "team_bb_read".to_string(),
+        "models_list".to_string(),
+        "personas_list".to_string(),
+        "flow_status".to_string(),
+        "flow_result".to_string(),
+    ];
+
+    macro_rules! configure_builder {
+        ($b:expr) => {
+            $b.max_iterations(max_iterations)
+              .temperature(0.0)
+              .max_tokens(8192)
+              .force_tool_iterations(5)
+              .non_progress_tools(non_progress.clone())
+        };
+    }
+
+    let mut builder = match provider {
+        ModelProvider::VertexAI { url, token, ref region } => {
+            eprintln!("Provider: Vertex AI ({region})");
+            let backend = smgglrs_model::AnthropicBackend::new(
+                url, &model_name, token, smgglrs_model::Locality::Remote,
+            );
+            configure_builder!(base_builder.model(backend))
+        }
+        ModelProvider::AnthropicDirect { key } => {
+            eprintln!("Provider: Anthropic API");
+            let backend = smgglrs_model::AnthropicBackend::new(
+                "https://api.anthropic.com", &model_name, Some(key), smgglrs_model::Locality::Remote,
+            );
+            configure_builder!(base_builder.model(backend))
+        }
+        ModelProvider::Ollama => {
+            let ollama_url = std::env::var("OLLAMA_HOST")
+                .unwrap_or_else(|_| "http://localhost:11434".to_string());
+            let backend = smgglrs_model::OpenAiBackend::new(
+                format!("{ollama_url}/v1"), &model_name, None, smgglrs_model::Locality::Local,
+            );
+            configure_builder!(base_builder.model(backend))
+        }
+    };
 
     // Apply auth token
     let auth_token = token

@@ -311,6 +311,40 @@ impl AuditLog {
         Ok(calls)
     }
 
+    /// Delete audit entries (runs, tool calls, model calls) older than
+    /// the specified number of days. Returns the total number of rows deleted.
+    pub fn expire_older_than(&self, days: u32) -> Result<usize, MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let cutoff = now - (days as i64 * 86400);
+
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+
+        // Delete tool calls for old runs
+        let tc = db.execute(
+            "DELETE FROM audit_tool_calls WHERE run_id IN
+             (SELECT run_id FROM audit_runs WHERE started_at < ?1)",
+            params![cutoff],
+        )?;
+
+        // Delete model calls for old runs
+        let mc = db.execute(
+            "DELETE FROM audit_model_calls WHERE run_id IN
+             (SELECT run_id FROM audit_runs WHERE started_at < ?1)",
+            params![cutoff],
+        )?;
+
+        // Delete old runs
+        let rc = db.execute(
+            "DELETE FROM audit_runs WHERE started_at < ?1",
+            params![cutoff],
+        )?;
+
+        Ok(tc + mc + rc)
+    }
+
     /// Get summary statistics for a run.
     pub fn get_summary(&self, run_id: &str) -> Result<AuditSummary, MemoryError> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
@@ -521,5 +555,47 @@ mod tests {
         assert_eq!(summary.top_tools.len(), 2);
         assert_eq!(summary.top_tools[0], ("file_read".to_string(), 2));
         assert_eq!(summary.top_tools[1], ("git_status".to_string(), 1));
+    }
+
+    #[test]
+    fn expire_older_than_deletes_old_runs() {
+        let log = AuditLog::open_memory().unwrap();
+
+        // Old run (timestamp 100 = way in the past)
+        let old_run = AuditRun {
+            started_at: 100,
+            ..make_run("old-run")
+        };
+        log.begin_run(&old_run).unwrap();
+        log.log_tool_call(&AuditToolCall {
+            run_id: "old-run".to_string(),
+            timestamp_ms: 100,
+            ..make_tool_call("old-run", 1, "file_read")
+        }).unwrap();
+        log.log_model_call(&AuditModelCall {
+            run_id: "old-run".to_string(),
+            timestamp_ms: 100,
+            ..make_model_call("old-run", 1)
+        }).unwrap();
+
+        // Recent run (now)
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let recent_run = AuditRun {
+            started_at: now,
+            ..make_run("recent-run")
+        };
+        log.begin_run(&recent_run).unwrap();
+        log.log_tool_call(&make_tool_call("recent-run", 1, "git_status")).unwrap();
+
+        let deleted = log.expire_older_than(1).unwrap();
+        // Should delete old run + tool call + model call = 3
+        assert_eq!(deleted, 3);
+
+        // Recent run should still exist
+        let summary = log.get_summary("recent-run").unwrap();
+        assert_eq!(summary.tool_call_count, 1);
     }
 }
