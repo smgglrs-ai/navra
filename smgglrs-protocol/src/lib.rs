@@ -16,6 +16,7 @@
 
 pub mod a2a;
 pub mod label;
+pub mod permissions;
 pub mod upstream;
 
 mod jsonrpc;

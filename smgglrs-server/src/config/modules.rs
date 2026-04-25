@@ -13,6 +13,8 @@ pub struct ModulesConfig {
     pub voice: Option<VoiceModuleConfig>,
     #[serde(default)]
     pub vision: Option<VisionModuleConfig>,
+    #[serde(default)]
+    pub registry: Option<RegistryModuleConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -116,6 +118,28 @@ pub(super) fn default_db_path() -> String {
         .join("smgglrs/index.db")
         .to_string_lossy()
         .into_owned()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RegistryModuleConfig {
+    #[serde(default = "super::default_true")]
+    pub enabled: bool,
+    /// Cache TTL for registry responses in seconds (default: 3600 = 1 hour).
+    #[serde(default = "default_cache_ttl")]
+    pub cache_ttl_secs: u64,
+}
+
+fn default_cache_ttl() -> u64 {
+    3600
+}
+
+impl Default for RegistryModuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            cache_ttl_secs: default_cache_ttl(),
+        }
+    }
 }
 
 impl Default for DocsModuleConfig {

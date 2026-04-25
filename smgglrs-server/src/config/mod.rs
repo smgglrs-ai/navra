@@ -126,6 +126,22 @@ impl Config {
             .unwrap_or(false)
     }
 
+    pub fn registry_enabled(&self) -> bool {
+        self.modules
+            .registry
+            .as_ref()
+            .map(|r| r.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn registry_cache_ttl_secs(&self) -> u64 {
+        self.modules
+            .registry
+            .as_ref()
+            .map(|r| r.cache_ttl_secs)
+            .unwrap_or(3600)
+    }
+
     pub fn rag_db_path(&self) -> String {
         self.modules
             .rag

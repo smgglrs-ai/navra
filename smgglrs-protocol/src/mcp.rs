@@ -51,6 +51,9 @@ pub struct ServerCapabilities {
     pub resources: Option<ResourcesCapability>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompts: Option<PromptsCapability>,
+    /// Permission negotiation extension (smgglrs extension to MCP).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<crate::permissions::PermissionsCapability>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -314,6 +317,7 @@ mod tests {
                     list_changed: true,
                 }),
                 prompts: None,
+                permissions: None,
             },
             server_info: ServerInfo {
                 name: "smgglrs-docs".to_string(),
@@ -482,6 +486,7 @@ mod tests {
             tools: None,
             resources: None,
             prompts: Some(PromptsCapability { list_changed: true }),
+            permissions: None,
         };
         let json = serde_json::to_value(&caps).unwrap();
         assert!(json["prompts"]["listChanged"].as_bool().unwrap());

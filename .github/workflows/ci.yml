@@ -8,7 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  ORT_VERSION: "1.20.1"
+  # ort-sys 2.0.0-rc.12 requires ONNX Runtime >= 1.24
+  ORT_VERSION: "1.24.2"
   ORT_LIB_PATH: /opt/onnxruntime/lib
   ORT_PREFER_DYNAMIC_LINK: "1"
 
@@ -23,9 +24,10 @@ jobs:
 
       - name: Install ONNX Runtime
         run: |
-          curl -fsSL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz \
+          curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
             | sudo tar xz -C /opt
-          sudo mv /opt/onnxruntime-linux-x64-${ORT_VERSION} /opt/onnxruntime
+          sudo mv "/opt/onnxruntime-linux-x64-${ORT_VERSION}" /opt/onnxruntime
+          echo "LD_LIBRARY_PATH=/opt/onnxruntime/lib" >> "$GITHUB_ENV"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -47,16 +49,42 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Clippy
-        run: cargo clippy -- -W warnings
-        env:
-          LD_LIBRARY_PATH: /opt/onnxruntime/lib
-
-      - name: Build
-        run: cargo build
-        env:
-          LD_LIBRARY_PATH: /opt/onnxruntime/lib
+        run: cargo clippy -- -D warnings
 
       - name: Test
         run: cargo test
-        env:
-          LD_LIBRARY_PATH: /opt/onnxruntime/lib
+
+      - name: Docs
+        run: cargo doc --no-deps
+
+  build:
+    name: Build (release)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ONNX Runtime
+        run: |
+          curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
+            | sudo tar xz -C /opt
+          sudo mv "/opt/onnxruntime-linux-x64-${ORT_VERSION}" /opt/onnxruntime
+          echo "LD_LIBRARY_PATH=/opt/onnxruntime/lib" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Build release
+        run: cargo build --release

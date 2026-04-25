@@ -102,6 +102,12 @@ pub struct RegistryEntry {
     /// Human-readable description.
     #[serde(default)]
     pub description: Option<String>,
+    /// Registry type: "mcp", "http", "aws_agent_registry".
+    /// - "mcp": queries an MCP registry endpoint (default)
+    /// - "http": generic HTTP/JSON registry with configurable URL template
+    /// - "aws_agent_registry": AWS Agent Registry (future)
+    #[serde(default = "default_registry_type")]
+    pub registry_type: String,
     /// Transport type: "streamable-http", "sse", "stdio".
     #[serde(default = "default_remote_type")]
     pub remote_type: String,
@@ -110,6 +116,19 @@ pub struct RegistryEntry {
     /// Repository URL (optional).
     #[serde(default)]
     pub repository: Option<String>,
+    /// URL template for search queries (HTTP type only).
+    /// Use `{query}` as placeholder for the search term.
+    /// Example: "https://registry.example.com/api/search?q={query}"
+    #[serde(default)]
+    pub search_url: Option<String>,
+    /// JSON path to extract results from the HTTP response (default: root array).
+    /// Example: "data.results" to extract from `{"data": {"results": [...]}}`
+    #[serde(default)]
+    pub results_path: Option<String>,
+}
+
+fn default_registry_type() -> String {
+    "mcp".to_string()
 }
 
 fn default_remote_type() -> String {

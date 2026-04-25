@@ -51,6 +51,19 @@ pub struct McpServer {
     value_stores: crate::ifc::value_store::ValueStoreMap,
     /// Gateway-level audit blackbox — records every tool call.
     blackbox: Option<crate::blackbox::Blackbox>,
+    /// Per-session dynamic permission grants (MCP permission negotiation).
+    session_permissions: crate::permissions::SessionPermissionStore,
+    /// Pending permission requests awaiting grant/deny.
+    pending_permission_requests:
+        std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, PendingPermissionRequest>>>,
+}
+
+/// A pending permission request awaiting grant or deny.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingPermissionRequest {
+    pub session_id: String,
+    pub scope: smgglrs_protocol::permissions::PermissionScope,
+    pub duration_secs: Option<u64>,
 }
 
 impl McpServer {

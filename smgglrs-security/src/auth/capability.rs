@@ -257,6 +257,95 @@ pub fn build_payload(
     }
 }
 
+/// Build a delegated capability payload that chains from a parent token.
+///
+/// The child token's capabilities are intersected with the parent's:
+/// - Operations must be a subset of the parent's operations
+/// - Tools must be a subset of the parent's tools
+/// - Paths must be a subset of the parent's paths
+/// - Credentials must be a subset of the parent's credentials
+/// - Ring must be >= parent's ring (less privileged)
+/// - Expiry must be <= parent's expiry
+///
+/// Returns an error if the requested capabilities would escalate
+/// beyond the parent's grants.
+pub fn build_delegated_payload(
+    parent: &CapabilityPayload,
+    subject_did: &str,
+    requested_ops: Vec<String>,
+    requested_tools: Vec<String>,
+    ring: u8,
+    ttl_secs: u64,
+) -> anyhow::Result<CapabilityPayload> {
+    // Ring attenuation: child must be same or less privileged
+    if ring < parent.ring {
+        anyhow::bail!(
+            "ring escalation: requested ring {} < parent ring {}",
+            ring, parent.ring
+        );
+    }
+
+    // Intersect operations with parent's
+    let parent_ops: HashSet<&str> = parent.cap.operations.iter().map(|s| s.as_str()).collect();
+    let mut effective_ops = Vec::new();
+    for op in &requested_ops {
+        if parent_ops.contains(op.as_str()) {
+            effective_ops.push(op.clone());
+        } else {
+            anyhow::bail!(
+                "operation escalation: '{}' not in parent's grants {:?}",
+                op, parent.cap.operations
+            );
+        }
+    }
+
+    // Intersect tools with parent's using glob matching.
+    // Each requested tool must match at least one parent tool glob.
+    let mut effective_tools = Vec::new();
+    for tool in &requested_tools {
+        let covered = parent.cap.tools.iter().any(|parent_glob| {
+            glob::Pattern::new(parent_glob)
+                .map(|p| p.matches(tool))
+                .unwrap_or(false)
+                || parent_glob == tool
+        });
+        if !covered {
+            anyhow::bail!(
+                "tool escalation: '{}' not covered by parent's tool grants {:?}",
+                tool, parent.cap.tools
+            );
+        }
+        effective_tools.push(tool.clone());
+    }
+
+    // Expiry attenuation: child cannot outlive parent
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let child_exp = now + ttl_secs;
+    let effective_exp = child_exp.min(parent.exp);
+
+    let cap = CapabilitySet {
+        paths: parent.cap.paths.clone(),
+        operations: effective_ops,
+        tools: effective_tools,
+        credentials: vec![], // teammates don't inherit credentials
+    };
+
+    Ok(CapabilityPayload {
+        v: 1,
+        iss: parent.iss.clone(),
+        sub: subject_did.to_string(),
+        cap,
+        ring,
+        iat: now,
+        exp: effective_exp,
+        nonce: generate_nonce(),
+        parent: Some(parent.nonce),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -572,5 +661,171 @@ mod tests {
         assert!(decoded.cap.paths.is_empty());
         assert!(decoded.cap.operations.is_empty());
         assert!(decoded.cap.credentials.is_empty());
+    }
+
+    // --- Delegated payload builder tests ---
+
+    #[test]
+    fn delegated_payload_restricts_operations() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:reader",
+            vec!["read".to_string()],
+            vec!["docs_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        assert_eq!(child.cap.operations, vec!["read"]);
+        assert_eq!(child.cap.tools, vec!["docs_read"]);
+        assert_eq!(child.ring, 2);
+        assert_eq!(child.parent, Some(parent.nonce));
+        assert!(child.cap.credentials.is_empty());
+    }
+
+    #[test]
+    fn delegated_payload_rejects_operation_escalation() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let err = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:hacker",
+            vec!["read".to_string(), "shell.exec".to_string()],
+            vec!["docs_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("operation escalation"));
+        assert!(err.to_string().contains("shell.exec"));
+    }
+
+    #[test]
+    fn delegated_payload_rejects_tool_escalation() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let err = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:hacker",
+            vec!["read".to_string()],
+            vec!["shell_exec".to_string()],
+            2,
+            600,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("tool escalation"));
+        assert!(err.to_string().contains("shell_exec"));
+    }
+
+    #[test]
+    fn delegated_payload_rejects_ring_escalation() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let err = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:hacker",
+            vec!["read".to_string()],
+            vec!["docs_read".to_string()],
+            0, // ring 0 < parent ring 1
+            600,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ring escalation"));
+    }
+
+    #[test]
+    fn delegated_payload_caps_expiry_to_parent() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer); // ttl=3600
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:worker",
+            vec!["read".to_string()],
+            vec!["docs_read".to_string()],
+            2,
+            99999, // much longer than parent
+        )
+        .unwrap();
+
+        // Child expiry must not exceed parent's
+        assert!(child.exp <= parent.exp);
+    }
+
+    #[test]
+    fn delegated_payload_tool_glob_matching() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+        // Parent has tools: ["docs_*", "git_*"]
+
+        // docs_read matches docs_*
+        let child = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:reader",
+            vec!["read".to_string()],
+            vec!["docs_read".to_string(), "docs_grep".to_string(), "git_status".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        assert_eq!(child.cap.tools, vec!["docs_read", "docs_grep", "git_status"]);
+    }
+
+    #[test]
+    fn delegated_payload_sign_verify_roundtrip() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:worker",
+            vec!["read".to_string()],
+            vec!["docs_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        let token = encode_token(&child, &signer).unwrap();
+        let decoded = decode_token(&token, &signer).unwrap();
+
+        assert_eq!(decoded.sub, "did:teammate:team-1:worker");
+        assert_eq!(decoded.cap.operations, vec!["read"]);
+        assert_eq!(decoded.cap.tools, vec!["docs_read"]);
+        assert_eq!(decoded.ring, 2);
+        assert_eq!(decoded.parent, Some(parent.nonce));
+
+        // Validate delegation chain
+        assert!(validate_delegation(&parent, &decoded, 3).is_ok());
+    }
+
+    #[test]
+    fn delegated_payload_inherits_paths() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:worker",
+            vec!["read".to_string()],
+            vec!["docs_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        // Paths are inherited from parent
+        assert_eq!(child.cap.paths, parent.cap.paths);
     }
 }

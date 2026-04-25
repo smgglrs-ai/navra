@@ -517,6 +517,8 @@ pub struct FlowContext {
     pub budget_cfg: crate::config::BudgetConfig,
     pub flow_dirs: Vec<String>,
     pub docs_root: Option<String>,
+    /// Root capability payload for delegated teammate tokens.
+    pub root_payload: Option<smgglrs_core::auth::capability::CapabilityPayload>,
 }
 
 /// Get the current blackbox sequence number (for summary queries).
@@ -689,6 +691,7 @@ async fn spawn_and_track_tasks(
             smgglrs_addr: ctx.smgglrs_addr.clone(),
             signer: std::sync::Arc::clone(&ctx.signer),
             forge: ctx.forge.clone(),
+            root_payload: ctx.root_payload.clone(),
         };
         let handle = crate::team_tools::spawn_teammate_agent(
             &spawn_ctx, team_id, &task.id, &message,

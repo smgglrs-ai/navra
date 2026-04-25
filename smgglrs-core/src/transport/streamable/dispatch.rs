@@ -4,6 +4,9 @@ use crate::protocol::{
     JsonRpcResponse, ReadResourceParams,
 };
 use crate::server::McpServer;
+use smgglrs_protocol::permissions::{
+    PermissionDenyParams, PermissionGrantParams, PermissionRequestParams,
+};
 use std::sync::Arc;
 
 /// Returns (response, optional_session_id_for_header).
@@ -233,6 +236,123 @@ pub(super) async fn dispatch(
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             };
             (resp, session_id)
+        }
+
+        "permissions/request" => {
+            let params: PermissionRequestParams = match request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+            {
+                Some(p) => p,
+                None => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid permissions/request params"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            let sid = match session_id.as_deref() {
+                Some(s) if !s.is_empty() => s,
+                _ => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Session ID required for permissions/request"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            let result = server.handle_permission_request(params, sid);
+            (
+                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                })),
+                session_id,
+            )
+        }
+
+        "permissions/grant" => {
+            let params: PermissionGrantParams = match request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+            {
+                Some(p) => p,
+                None => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid permissions/grant params"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            let resp = match server.handle_permission_grant(params, &agent.name) {
+                Ok(result) => {
+                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }))
+                }
+                Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+            };
+            (resp, session_id)
+        }
+
+        "permissions/deny" => {
+            let params: PermissionDenyParams = match request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+            {
+                Some(p) => p,
+                None => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid permissions/deny params"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            let resp = match server.handle_permission_deny(params) {
+                Ok(result) => {
+                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }))
+                }
+                Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+            };
+            (resp, session_id)
+        }
+
+        "permissions/list" => {
+            let sid = match session_id.as_deref() {
+                Some(s) if !s.is_empty() => s,
+                _ => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Session ID required for permissions/list"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            let result = server.handle_permission_list(sid);
+            (
+                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                })),
+                session_id,
+            )
         }
 
         _ => (

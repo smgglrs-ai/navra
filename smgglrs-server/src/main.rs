@@ -5,6 +5,7 @@ mod discover;
 mod flow_tools;
 mod mdns;
 mod memory_tools;
+mod registry_tools;
 mod team_tools;
 mod tray;
 mod ui;
@@ -1696,6 +1697,24 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             Box::pin(team_tools::handle_team_add(args, reg))
         });
 
+        // Root capability payload for teammate token delegation.
+        // Grants all operations and tools that teammates could possibly use.
+        // Individual teammate tokens are scoped down from this via
+        // build_delegated_payload (attenuation-only delegation chain).
+        let root_cap = smgglrs_core::auth::capability::CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations: vec![
+                "read".to_string(), "write".to_string(), "search".to_string(),
+                "list".to_string(), "git.status".to_string(), "git.diff".to_string(),
+                "git.log".to_string(), "git.commit".to_string(), "git.branch".to_string(),
+            ],
+            tools: vec!["*".to_string()],
+            credentials: vec![],
+        };
+        let root_payload = smgglrs_core::auth::capability::build_payload(
+            root_signer.did(), root_signer.did(), root_cap, 1, 86400,
+        );
+
         // team_message — async: spawns full agent teammate in background
         let msg_spawn_ctx = Arc::new(team_tools::TeammateSpawnContext {
             team_registry: Arc::clone(&team_registry),
@@ -1707,6 +1726,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     .map(Arc::new)
                     .ok()
             }),
+            root_payload: Some(root_payload.clone()),
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -1802,6 +1822,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             docs_root: cfg.modules.docs.as_ref()
                 .and_then(|d| d.default_root.clone())
                 .or_else(|| cfg.cognitive_core.clone()),
+            root_payload: Some(root_payload.clone()),
         });
 
         // flow_start
@@ -1875,6 +1896,37 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         });
 
         tracing::info!("Registered memory tools (memory_store, memory_query, memory_forget)");
+    }
+
+    // --- Registry proxy module ---
+    if cfg.registry_enabled() && !cfg.registry.is_empty() {
+        let registry_state = Arc::new(registry_tools::RegistryState::new(
+            cfg.registry.clone(),
+            cfg.registry_cache_ttl_secs(),
+        ));
+
+        let rs = Arc::clone(&registry_state);
+        builder = builder.tool(registry_tools::registry_search_def(), move |args, _ctx| {
+            let rs = Arc::clone(&rs);
+            Box::pin(registry_tools::handle_registry_search(args, rs))
+        });
+
+        let rs = Arc::clone(&registry_state);
+        builder = builder.tool(registry_tools::registry_list_def(), move |args, _ctx| {
+            let rs = Arc::clone(&rs);
+            Box::pin(registry_tools::handle_registry_list(args, rs))
+        });
+
+        let rs = Arc::clone(&registry_state);
+        builder = builder.tool(registry_tools::registry_describe_def(), move |args, _ctx| {
+            let rs = Arc::clone(&rs);
+            Box::pin(registry_tools::handle_registry_describe(args, rs))
+        });
+
+        tracing::info!(
+            registries = cfg.registry.len(),
+            "Registered registry proxy tools (registry_search, registry_list, registry_describe)"
+        );
     }
 
     // Register audit_query tool

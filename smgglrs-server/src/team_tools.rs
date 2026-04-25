@@ -813,6 +813,11 @@ pub struct TeammateSpawnContext {
     pub smgglrs_addr: String,
     pub signer: std::sync::Arc<smgglrs_core::identity::Ed25519Signer>,
     pub forge: Option<std::sync::Arc<smgglrs_cognitive::ForgeService>>,
+    /// Root capability payload used as the parent for delegated teammate tokens.
+    /// When `Some`, teammate tokens are minted via `build_delegated_payload`
+    /// with proper delegation chain (parent nonce, attenuation validation).
+    /// When `None`, falls back to flat `build_payload` (backward compatible).
+    pub root_payload: Option<smgglrs_core::auth::capability::CapabilityPayload>,
 }
 
 /// Spawn a teammate agent in a background task.
@@ -831,6 +836,7 @@ pub fn spawn_teammate_agent(
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
     let forge = ctx.forge.clone();
+    let root_payload = ctx.root_payload.clone();
     let smgglrs_addr = ctx.smgglrs_addr.clone();
     let team_id = team_id.to_string();
     let teammate_id = teammate_id.to_string();
@@ -855,22 +861,45 @@ pub fn spawn_teammate_agent(
                     ))
             };
             let tm_tools_desc = tm_tools.join(", ");
-            let cap = smgglrs_core::auth::capability::CapabilitySet {
-                paths: vec!["**".to_string()],
-                operations: tm_ops,
-                tools: tm_tools,
-                credentials: vec![],
-            };
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
-            let payload = smgglrs_core::auth::capability::build_payload(
-                signer.did(), &did, cap, 2, 3600,
-            );
-            let token = match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
-                Ok(t) => t,
-                Err(e) => {
-                    tracing::error!(team = %team_id, to = %teammate_id, error = %e, "Failed to mint teammate token");
-                    reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                    return;
+            let token = if let Some(ref root) = root_payload {
+                // Delegated token: scoped to teammate's operations/tools,
+                // chained from the server's root capability payload.
+                match smgglrs_core::auth::capability::build_delegated_payload(
+                    root, &did, tm_ops, tm_tools, 2, timeout_secs,
+                ) {
+                    Ok(payload) => match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            tracing::error!(team = %team_id, to = %teammate_id, error = %e, "Failed to encode teammate token");
+                            reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        tracing::error!(team = %team_id, to = %teammate_id, error = %e, "Failed to build delegated token");
+                        reg.set_failed(&team_id, &teammate_id, format!("Token delegation error: {e}"));
+                        return;
+                    }
+                }
+            } else {
+                // Flat token (backward compatible): no parent delegation chain.
+                let cap = smgglrs_core::auth::capability::CapabilitySet {
+                    paths: vec!["**".to_string()],
+                    operations: tm_ops,
+                    tools: tm_tools,
+                    credentials: vec![],
+                };
+                let payload = smgglrs_core::auth::capability::build_payload(
+                    signer.did(), &did, cap, 2, timeout_secs,
+                );
+                match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        tracing::error!(team = %team_id, to = %teammate_id, error = %e, "Failed to mint teammate token");
+                        reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                        return;
+                    }
                 }
             };
 
