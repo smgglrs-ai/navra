@@ -572,8 +572,75 @@ pub trait ContentFilter: Send + Sync + 'static {
 OpenAI/Anthropic keys, bearer tokens, private keys, passwords,
 connection strings, Slack webhooks.
 
-**PiiFilter** (4 patterns with validators): SSNs (SSA rules), credit
-cards (Luhn), US phone numbers, email addresses.
+**PiiFilter** — Three detection layers:
+
+1. **Regex patterns (US + EU + custom)**:
+   - US: SSNs (SSA validation), credit cards (Luhn), phone numbers,
+     email addresses
+   - EU: French NIR (numéro de sécurité sociale), IBAN, SIRET/SIREN,
+     EU phone formats (+33, +49, etc.), IP addresses (v4/v6),
+     passport numbers
+   - Negative lookaheads for ISO 8601 timestamps and UUIDs to
+     prevent false positives
+   - Custom patterns via `[[pii_patterns]]` in config
+
+2. **NER semantic detection (ONNX)**:
+   - ProtectAI model for English entity recognition
+   - Multilingual XLM-RoBERTa model for non-English PII
+   - Detects names, addresses, organizations, and other entities
+     that regex cannot catch
+   - Download via: `smgglrs pii download [protectai|xlm-roberta]`
+
+3. **File path detection**:
+   - `PathPiiFilter` detects PII in file paths (e.g., usernames
+     in `/home/jean.dupont/`, personal directory names)
+
+**Four filter actions**:
+
+| Action | Behavior |
+|--------|----------|
+| `pass` | Log finding, no modification |
+| `redact` | Replace with `[REDACTED:category]` marker |
+| `pseudonymize` | Replace with consistent pseudonym via `PseudonymMap` (reversible) |
+| `block` | Reject the entire response |
+
+`FilterAction::Pseudonymize` uses `PseudonymMap` to maintain
+consistent replacements within a session (e.g., `Jean Dupont` always
+becomes `Person_A`). This preserves analytical utility while removing
+identifying information.
+
+**Storage filtering**: PII filters run on all persistence paths,
+not just tool responses:
+- Memory ingestion (`KnowledgeStore::store`)
+- Audit/blackbox log entries
+- Knowledge distillation output
+- Vector embeddings (cascade deletion from sqlite-vec when source
+  content is purged via `memory_purge_pii`)
+- Model reasoning text (agent output between tool calls)
+
+**IFC integration**: `Confidentiality::Pii` is a first-class label
+above `Sensitive`. Tool results containing PII are auto-labeled as
+`Pii`. IFC enforcement blocks writes from PII-labeled data to
+non-PII-safe destinations. Redacted results retain the `Pii` taint
+so downstream decisions account for prior PII exposure.
+
+**GDPR compliance tools**:
+
+| Tool | Purpose |
+|------|---------|
+| `memory_purge_pii` | Purge all PII for a data subject (right to erasure) |
+| `memory_forget` | Delete specific memory entries |
+| `pii_report` | Generate data subject access report (right of access) |
+| `pii_consent` | Record and query per-subject consent status |
+
+**PII model management CLI**:
+
+```
+smgglrs pii download protectai     Download English NER model
+smgglrs pii download xlm-roberta   Download multilingual NER model
+```
+
+Models are downloaded to `~/.local/share/smgglrs/models/pii-*/`.
 
 ### Custom Filters
 
@@ -587,6 +654,20 @@ pattern = "https://internal\\.corp\\.com/\\S+"
 [[permissions.developer.safety_patterns]]
 category = "project-secret"
 pattern = "PROJ_SECRET_[A-Za-z0-9]{32}"
+```
+
+Custom PII patterns use a separate config section:
+
+```toml
+[[pii_patterns]]
+category = "employee-id"
+pattern = "EMP-\\d{6}"
+action = "pseudonymize"
+
+[[pii_patterns]]
+category = "internal-project"
+pattern = "PROJ-[A-Z]{3}-\\d{4}"
+action = "redact"
 ```
 
 Invalid regex patterns are logged and skipped.
@@ -767,7 +848,7 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar.
 | Token theft | BLAKE3-hashed storage, Unix socket |
 | Agent bypasses approval | Non-blocking return, grant is single-use |
 | Agent exfiltrates secrets in file content | Content safety filters (redact/block) |
-| Agent exfiltrates PII | PII detector with Luhn/SSA validation |
+| Agent exfiltrates PII | PII pipeline (regex + NER + path detection), IFC Pii label |
 | Contextual sensitive content | ML classifier (Guardian HAP) via ONNX |
 | Custom sensitive data | User-defined regex patterns per permission set |
 | Hook bypass | Hooks run with timeout, timeout continues (no bypass) |

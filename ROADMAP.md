@@ -4,10 +4,12 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-04-21)
+## Current state (2026-04-25)
 
-17 crates, ~49K LoC. 43 personas, 36 heuristics, 7 directives.
-Gateway blackbox audit. 4 paper outlines. Fully local multi-agent demos.
+17 crates, ~68K LoC, ~1044 tests. 43 personas, 36 heuristics,
+7 directives. Gateway blackbox audit. 4 paper outlines. Fully local
+multi-agent demos. Full PII pipeline (regex + NER + file paths,
+pseudonymization, GDPR tools, IFC integration).
 
 ### Infrastructure (complete)
 
@@ -114,56 +116,70 @@ This is addressed by Phase 3h (Structured Audit Log) below.
 
 ---
 
-## URGENT: PII handling gaps (added 2026-04-25)
+## PII handling (completed 2026-04-25)
 
-The safety filter has a PII detection pipeline (regex-based) that runs
-on tool call arguments and results. However, coverage is incomplete and
-downstream data stores are unprotected. This is a compliance risk for
-GDPR/RGPD deployments.
+### Original gaps (all resolved) ✅
 
-### False positives
+1. ✅ **Fix false positives** — timestamp/UUID negative lookaheads
+   in phone and pattern regexes
+2. ✅ **Add EU PII patterns** — NIR, IBAN, SIRET/SIREN, EU phone,
+   IP addresses, passport numbers
+3. ✅ **Filter on memory ingestion** — PII filter runs on
+   KnowledgeStore::store and distillation output
+4. ✅ **Redact audit logs** — blackbox entries pass through the
+   safety pipeline before persistence
+5. ✅ **PII as IFC label** — `Confidentiality::Pii` above Sensitive;
+   tool results containing PII auto-label; IFC blocks writes to
+   non-PII-safe destinations
+6. ✅ **Data retention / purge** — `memory_purge_pii` tool,
+   configurable retention TTL, PII scan on existing data
 
-| Issue | Impact | Fix |
-|-------|--------|-----|
-| Timestamps redacted as phone numbers | `created_at` fields in memory_query responses become `[REDACTED:phone]`, breaking JSON parsers | Refine phone regex to exclude ISO 8601 patterns; add negative lookahead for `\d{4}-\d{2}-\d{2}` |
-| UUID-like strings may trigger patterns | Low confidence but possible with certain digit groupings | Add UUID negative lookahead |
+### Additional PII work completed ✅
 
-### Missing PII patterns (EU/international)
+| Feature | Detail |
+|---------|--------|
+| NER semantic detection | ProtectAI + multilingual XLM-RoBERTa ONNX models for entity recognition beyond regex patterns |
+| Pseudonymization | `FilterAction::Pseudonymize` with `PseudonymMap` for reversible replacement (e.g., `Jean Dupont` → `Person_A`) |
+| Custom PII patterns | `[[pii_patterns]]` config section for operator-defined PII categories |
+| PII in embeddings | Cascade deletion from vector store when source content is purged |
+| Model reasoning filter | PII detection on agent text output (model reasoning), not just tool results |
+| File path PII detection | `PathPiiFilter` detects PII leaked via file paths (e.g., `/home/jean.dupont/`) |
+| Consent tracking | Per-data-subject consent records; `pii_report` tool for GDPR data subject access requests |
+| PII model download | `smgglrs pii download` CLI command to fetch NER models (protectai, xlm-roberta) |
 
-| Pattern | Category | Priority |
-|---------|----------|----------|
-| French NIR (numéro de sécurité sociale) | `nir` | High (French deployments) |
-| EU IBAN (international bank account) | `iban` | High (EU compliance) |
-| French SIRET/SIREN (business ID) | `siret` | Medium |
-| EU phone formats (+33, +49, etc.) | `phone-eu` | Medium |
-| French postal addresses | `address-fr` | Low |
-| IP addresses (v4/v6) | `ip-address` | Medium |
-| Passport numbers (EU formats) | `passport` | Low |
+### Detection layers
 
-### Downstream PII leakage
+1. **Regex** — US patterns (SSN, credit card, phone, email) + EU
+   patterns (NIR, IBAN, SIRET, EU phone, IP, passport) + custom
+   `[[pii_patterns]]`
+2. **NER** — ProtectAI (English) + XLM-RoBERTa (multilingual) ONNX
+   models for semantic entity recognition
+3. **File paths** — `PathPiiFilter` detects usernames, personal
+   directories, and name patterns in file paths
 
-| Gap | Risk | Fix |
-|-----|------|-----|
-| Memory stores are PII-blind | `memory_store` persists content without PII filtering; paraphrased PII bypasses the tool-level filter | Run PII filter on memory ingestion (KnowledgeStore::store) |
-| Audit logs contain raw content | Blackbox records tool args/results with no redaction; PII in tool arguments is logged before the safety filter runs | Redact audit log entries using the same safety pipeline |
-| No data retention policy | No TTL on stored PII, no right-to-erasure mechanism beyond manual `memory_forget` by ID | Add `memory_purge_pii` tool; add configurable retention TTL; add PII scan on existing data |
-| Knowledge distillation is PII-blind | Distilled insights may contain PII extracted from sessions | Run PII filter on distillation output |
+### Filter actions
 
-### IFC + PII integration
+| Action | Behavior |
+|--------|----------|
+| `pass` | Log finding, no modification |
+| `redact` | Replace with `[REDACTED:category]` |
+| `pseudonymize` | Replace with consistent pseudonym via `PseudonymMap` |
+| `block` | Reject the entire response |
 
-| Gap | Fix |
-|-----|-----|
-| PII is not a first-class IFC label | Add `Pii` confidentiality level above `Sensitive`; tool results containing PII auto-label as `Pii`; write operations to non-PII-safe destinations blocked by IFC |
-| No PII-aware taint propagation | If a tool result is redacted, the IFC label should reflect that PII was present (even after redaction) so downstream decisions account for it |
+### Storage filtering
 
-### Implementation priority
+PII filters run on all persistence paths: memory ingestion,
+audit/blackbox logs, distillation output, and vector embeddings
+(cascade deletion on purge).
 
-1. **Fix false positives** (timestamp/UUID exclusions) — 2h, blocks e2e reliability
-2. **Add EU PII patterns** (NIR, IBAN, EU phone) — 4h, blocks EU compliance
-3. **Filter on memory ingestion** — 2h, highest leakage risk
-4. **Redact audit logs** — 2h, compliance requirement
-5. **PII as IFC label** — 4h, architectural improvement
-6. **Data retention / purge** — 1 day, GDPR right-to-erasure
+### GDPR tools
+
+| Tool | Purpose |
+|------|---------|
+| `memory_purge_pii` | Purge all PII for a data subject |
+| `memory_forget` | Delete specific memory entries |
+| `pii_report` | Generate data subject access report |
+| `pii_consent` | Record/query consent status |
 
 ---
 
@@ -186,6 +202,7 @@ GDPR/RGPD deployments.
 | Per-crate README.md files (17 crates) | 2026-04-24 |
 | Module-level //! doc comments (all crates) | 2026-04-24 |
 | Rename docs_* → file_*, MCP resources for reads | 2026-04-25 |
+| Full PII pipeline (regex + NER + paths, pseudonymization, GDPR tools) | 2026-04-25 |
 
 ### Remaining
 
