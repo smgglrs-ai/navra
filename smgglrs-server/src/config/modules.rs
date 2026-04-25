@@ -26,16 +26,39 @@ pub struct MemoryModuleConfig {
     /// Default: "standard".
     #[serde(default = "default_pii_filter")]
     pub pii_filter: String,
+    /// Auto-delete knowledge entries older than N days.
+    /// Default: None (keep forever).
+    #[serde(default)]
+    pub retention_days: Option<u32>,
+    /// Stricter TTL for entries flagged as containing PII.
+    /// Default: 30 days.
+    #[serde(default = "default_pii_retention_days")]
+    pub pii_retention_days: Option<u32>,
+    /// Auto-delete audit log entries older than N days.
+    /// Default: 365 days (1 year).
+    #[serde(default = "default_audit_retention_days")]
+    pub audit_retention_days: Option<u32>,
 }
 
 fn default_pii_filter() -> String {
     "standard".to_string()
 }
 
+fn default_pii_retention_days() -> Option<u32> {
+    Some(30)
+}
+
+fn default_audit_retention_days() -> Option<u32> {
+    Some(365)
+}
+
 impl Default for MemoryModuleConfig {
     fn default() -> Self {
         Self {
             pii_filter: default_pii_filter(),
+            retention_days: None,
+            pii_retention_days: default_pii_retention_days(),
+            audit_retention_days: default_audit_retention_days(),
         }
     }
 }

@@ -150,6 +150,29 @@ impl Config {
             .unwrap_or("standard")
     }
 
+    pub fn memory_retention_days(&self) -> Option<u32> {
+        self.modules
+            .memory
+            .as_ref()
+            .and_then(|m| m.retention_days)
+    }
+
+    pub fn memory_pii_retention_days(&self) -> Option<u32> {
+        self.modules
+            .memory
+            .as_ref()
+            .and_then(|m| m.pii_retention_days)
+            .or(Some(30))
+    }
+
+    pub fn memory_audit_retention_days(&self) -> Option<u32> {
+        self.modules
+            .memory
+            .as_ref()
+            .and_then(|m| m.audit_retention_days)
+            .or(Some(365))
+    }
+
     pub fn pii_model_dir(&self) -> std::path::PathBuf {
         self.server
             .pii_model_path

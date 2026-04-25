@@ -175,6 +175,10 @@ pub async fn handle_memory_store(
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
+    // Detect PII in original content before sanitization
+    let has_pii = content_has_pii(content, &sanitizer)
+        || content_has_pii(title, &sanitizer);
+
     // Sanitize title and content through PII filter before storage
     let sanitized_title = sanitize_for_storage(title, &sanitizer).await;
     let sanitized_content = sanitize_for_storage(content, &sanitizer).await;
@@ -196,9 +200,9 @@ pub async fn handle_memory_store(
     };
 
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
-    match store.store(&entry) {
+    match store.store_with_pii(&entry, has_pii) {
         Ok(()) => CallToolResult::text(
-            serde_json::json!({"id": id, "status": "stored"}).to_string()
+            serde_json::json!({"id": id, "status": "stored", "has_pii": has_pii}).to_string()
         ),
         Err(e) => CallToolResult::error(format!("Failed to store entry: {e}")),
     }
@@ -284,6 +288,222 @@ pub fn build_pii_sanitizer(profile: &str) -> PiiSanitizer {
         "none" | "" => None,
         _ => Some(Arc::new(smgglrs_core::safety::build_pipeline(profile))),
     }
+}
+
+/// Check whether content contains PII by scanning it through the filter pipeline.
+///
+/// Returns true if any PII findings are detected. Does not modify the content.
+pub fn content_has_pii(content: &str, sanitizer: &PiiSanitizer) -> bool {
+    let pipeline = match sanitizer {
+        Some(p) => p,
+        None => return false,
+    };
+
+    let ctx = FilterContext {
+        agent_name: "memory",
+        operation: "scan",
+        path: None,
+    };
+
+    !pipeline.scan_sync(content, &ctx).is_empty()
+}
+
+pub fn memory_purge_pii_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "memory_purge_pii".to_string(),
+        description: Some(
+            "Scan stored knowledge entries for PII and either redact or delete them. \
+             Supports GDPR compliance by finding and removing personal data from \
+             persistent memory. Use action 'redact' to replace PII in-place, or \
+             'delete' to remove entries containing PII entirely."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                ("action".to_string(), serde_json::json!({
+                    "type": "string",
+                    "enum": ["redact", "delete"],
+                    "description": "Action to take: 'redact' replaces PII in-place, 'delete' removes entries"
+                })),
+                ("kind".to_string(), serde_json::json!({
+                    "type": "string",
+                    "enum": ["fact", "event", "instruction", "insight"],
+                    "description": "Optional: filter entries by kind"
+                })),
+                ("query".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Optional: scope the scan to entries matching this search query"
+                })),
+            ])),
+            required: Some(vec!["action".to_string()]),
+        },
+    }
+}
+
+/// Handle memory_purge_pii tool call.
+pub async fn handle_memory_purge_pii(
+    args: serde_json::Value,
+    ks: std::sync::Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+    sanitizer: PiiSanitizer,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let action = match args.get("action").and_then(|v| v.as_str()) {
+        Some(a @ ("redact" | "delete")) => a.to_string(),
+        _ => return CallToolResult::error("Missing or invalid parameter: action (must be 'redact' or 'delete')"),
+    };
+
+    let kind_filter = args.get("kind")
+        .and_then(|v| v.as_str())
+        .and_then(|k| smgglrs_memory::MemoryType::from_str(k).ok());
+
+    let query_filter = args.get("query").and_then(|v| v.as_str()).map(String::from);
+
+    let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+
+    // Get candidate entries
+    let entries = if let Some(ref q) = query_filter {
+        match store.search(q) {
+            Ok(e) => e,
+            Err(e) => return CallToolResult::error(format!("Search failed: {e}")),
+        }
+    } else {
+        match store.list(kind_filter.clone()) {
+            Ok(e) => e,
+            Err(e) => return CallToolResult::error(format!("List failed: {e}")),
+        }
+    };
+
+    // Apply kind filter if search was used (search doesn't filter by kind)
+    let entries: Vec<_> = if query_filter.is_some() {
+        entries.into_iter()
+            .filter(|e| kind_filter.as_ref().map_or(true, |k| e.memory_type == *k))
+            .collect()
+    } else {
+        entries
+    };
+
+    let scanned = entries.len();
+    let mut affected = 0usize;
+
+    for entry in &entries {
+        let has_pii = content_has_pii(&entry.content, &sanitizer)
+            || content_has_pii(&entry.title, &sanitizer);
+
+        if !has_pii {
+            continue;
+        }
+
+        affected += 1;
+
+        match action.as_str() {
+            "delete" => {
+                let _ = store.delete(&entry.id);
+            }
+            "redact" => {
+                let redacted_title = sanitize_for_storage_sync(&entry.title, &sanitizer);
+                let redacted_content = sanitize_for_storage_sync(&entry.content, &sanitizer);
+                let _ = store.update_content(&entry.id, &redacted_title, &redacted_content);
+                let _ = store.set_pii_flag(&entry.id, false);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    CallToolResult::text(
+        serde_json::json!({
+            "scanned": scanned,
+            "affected": affected,
+            "action": action,
+        }).to_string()
+    )
+}
+
+pub fn memory_forget_by_content_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "memory_forget_by_content".to_string(),
+        description: Some(
+            "Find and delete all knowledge entries containing specific content. \
+             Enables GDPR Article 17 right-to-erasure: 'delete all data related \
+             to Jean Dupont'. Set confirm=false for a dry-run preview."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                ("query".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Text to search for in stored entries"
+                })),
+                ("confirm".to_string(), serde_json::json!({
+                    "type": "boolean",
+                    "description": "If true, actually delete matching entries. If false, return a preview (dry run)."
+                })),
+            ])),
+            required: Some(vec!["query".to_string(), "confirm".to_string()]),
+        },
+    }
+}
+
+/// Handle memory_forget_by_content tool call.
+pub async fn handle_memory_forget_by_content(
+    args: serde_json::Value,
+    ks: std::sync::Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let query = match args.get("query").and_then(|v| v.as_str()) {
+        Some(q) => q,
+        None => return CallToolResult::error("Missing required parameter: query"),
+    };
+
+    let confirm = args.get("confirm")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+
+    let entries = match store.search(query) {
+        Ok(e) => e,
+        Err(e) => return CallToolResult::error(format!("Search failed: {e}")),
+    };
+
+    if !confirm {
+        // Dry run: return preview
+        let preview: Vec<serde_json::Value> = entries.iter().map(|e| {
+            serde_json::json!({
+                "id": e.id,
+                "kind": e.memory_type.as_str(),
+                "title": e.title,
+                "created_at": e.created_at,
+            })
+        }).collect();
+
+        return CallToolResult::text(
+            serde_json::json!({
+                "mode": "dry_run",
+                "would_delete": entries.len(),
+                "entries": preview,
+            }).to_string()
+        );
+    }
+
+    // Actually delete
+    let mut deleted = 0usize;
+    for entry in &entries {
+        match store.delete(&entry.id) {
+            Ok(true) => deleted += 1,
+            _ => {}
+        }
+    }
+
+    CallToolResult::text(
+        serde_json::json!({
+            "mode": "confirmed",
+            "deleted": deleted,
+        }).to_string()
+    )
 }
 
 pub fn memory_forget_def() -> ToolDefinition {
@@ -400,5 +620,203 @@ mod tests {
     #[test]
     fn build_pii_sanitizer_standard_returns_some() {
         assert!(build_pii_sanitizer("standard").is_some());
+    }
+
+    #[test]
+    fn content_has_pii_detects_email() {
+        let sanitizer = build_pii_sanitizer("standard");
+        assert!(content_has_pii("email: user@example.com", &sanitizer));
+    }
+
+    #[test]
+    fn content_has_pii_clean_text() {
+        let sanitizer = build_pii_sanitizer("standard");
+        assert!(!content_has_pii("This is clean text", &sanitizer));
+    }
+
+    #[test]
+    fn content_has_pii_none_sanitizer() {
+        assert!(!content_has_pii("user@example.com", &None));
+    }
+
+    #[tokio::test]
+    async fn memory_store_sets_has_pii_flag() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        let sanitizer = build_pii_sanitizer("standard");
+        let content = "Contact john.doe@example.com";
+        let result = handle_memory_store(store_args(content), ks.clone(), sanitizer).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["has_pii"], true);
+
+        // Verify the has_pii flag is set in the store
+        let store = ks.lock().unwrap();
+        let pii_entries = store.list_pii_entries(None).unwrap();
+        assert_eq!(pii_entries.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn memory_purge_pii_redact() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        // Store entry with PII directly (bypassing sanitizer to keep raw PII)
+        {
+            let store = ks.lock().unwrap();
+            let entry = smgglrs_memory::MemoryEntry {
+                id: "pii1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Contact info".to_string(),
+                content: "Email: user@example.com, phone: 555-123-4567".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&entry).unwrap();
+        }
+
+        let sanitizer = build_pii_sanitizer("standard");
+        let args = serde_json::json!({"action": "redact"});
+        let result = handle_memory_purge_pii(args, ks.clone(), sanitizer).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["scanned"], 1);
+        assert_eq!(response["affected"], 1);
+        assert_eq!(response["action"], "redact");
+
+        // Verify content was redacted
+        let store = ks.lock().unwrap();
+        let entry = store.get("pii1").unwrap().unwrap();
+        assert!(!entry.content.contains("user@example.com"));
+        assert!(entry.content.contains("[REDACTED:"));
+    }
+
+    #[tokio::test]
+    async fn memory_purge_pii_delete() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        // Store entries with and without PII
+        {
+            let store = ks.lock().unwrap();
+            let pii = smgglrs_memory::MemoryEntry {
+                id: "pii1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Contact".to_string(),
+                content: "Email: user@example.com".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&pii).unwrap();
+
+            let clean = smgglrs_memory::MemoryEntry {
+                id: "clean1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Clean".to_string(),
+                content: "No PII here".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&clean).unwrap();
+        }
+
+        let sanitizer = build_pii_sanitizer("standard");
+        let args = serde_json::json!({"action": "delete"});
+        let result = handle_memory_purge_pii(args, ks.clone(), sanitizer).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["scanned"], 2);
+        assert_eq!(response["affected"], 1);
+        assert_eq!(response["action"], "delete");
+
+        let store = ks.lock().unwrap();
+        assert!(store.get("pii1").unwrap().is_none());
+        assert!(store.get("clean1").unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn memory_forget_by_content_dry_run() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        {
+            let store = ks.lock().unwrap();
+            let entry = smgglrs_memory::MemoryEntry {
+                id: "e1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Jean info".to_string(),
+                content: "Jean Dupont works at ACME".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&entry).unwrap();
+        }
+
+        let args = serde_json::json!({"query": "Jean", "confirm": false});
+        let result = handle_memory_forget_by_content(args, ks.clone()).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["mode"], "dry_run");
+        assert_eq!(response["would_delete"], 1);
+
+        // Entry should still exist
+        let store = ks.lock().unwrap();
+        assert!(store.get("e1").unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn memory_forget_by_content_confirmed() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        {
+            let store = ks.lock().unwrap();
+            let entry = smgglrs_memory::MemoryEntry {
+                id: "e1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Jean info".to_string(),
+                content: "Jean Dupont works at ACME".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&entry).unwrap();
+        }
+
+        let args = serde_json::json!({"query": "Jean", "confirm": true});
+        let result = handle_memory_forget_by_content(args, ks.clone()).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["mode"], "confirmed");
+        assert_eq!(response["deleted"], 1);
+
+        // Entry should be gone
+        let store = ks.lock().unwrap();
+        assert!(store.get("e1").unwrap().is_none());
     }
 }
