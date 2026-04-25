@@ -1,14 +1,32 @@
 pub mod ml;
+pub mod ner;
 mod regex;
 
 pub use self::ml::MlFilter;
+pub use self::ner::{default_pii_ner_model_dir, load_ner_filter, NerFilter};
 pub use self::regex::{CustomFilter, PiiFilter, SecretFilter};
 
 use std::future::Future;
 use std::pin::Pin;
 
 /// PII finding categories produced by the PII filter.
-const PII_CATEGORIES: &[&str] = &["ssn", "credit-card", "phone", "email"];
+const PII_CATEGORIES: &[&str] = &[
+    "ssn",
+    "credit-card",
+    "phone",
+    "email",
+    "person",
+    "location",
+    "organization",
+    "misc-entity",
+    // sfermion NER categories
+    "identity-document",
+    "ip-address",
+    "temporal-pii",
+    "username",
+    "password",
+    "demographic",
+];
 
 /// Returns true if a finding category represents PII.
 pub fn is_pii_category(category: &str) -> bool {
@@ -94,6 +112,23 @@ impl FilterPipeline {
 
     pub fn add_model_filter(&mut self, filter: impl ModelFilter) {
         self.model_filters.push(Box::new(filter));
+    }
+
+    /// Add a NER-based entity detection filter.
+    ///
+    /// The NER filter runs as a sync `ContentFilter` after regex filters.
+    /// It detects named entities (PERSON, LOCATION, ORGANIZATION) that
+    /// regex patterns cannot catch.
+    pub fn add_ner_filter(&mut self, filter: NerFilter) {
+        self.filters.push(Box::new(filter));
+    }
+
+    /// Add a shared NER filter from an `Arc`.
+    ///
+    /// Allows reusing the same loaded model across multiple safety
+    /// pipelines without loading it multiple times.
+    pub fn add_ner_filter_shared(&mut self, filter: std::sync::Arc<NerFilter>) {
+        self.filters.push(Box::new(SharedNerFilter(filter)));
     }
 
     /// Filter outbound content (tool responses → agent).
@@ -307,6 +342,21 @@ fn redact(content: &str, findings: &mut [Finding]) -> String {
     result
 }
 
+/// Wrapper around `Arc<NerFilter>` that implements `ContentFilter`.
+///
+/// Allows sharing a single loaded NER model across multiple pipelines.
+struct SharedNerFilter(std::sync::Arc<NerFilter>);
+
+impl ContentFilter for SharedNerFilter {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding> {
+        self.0.scan(content, ctx)
+    }
+}
+
 /// Build a filter pipeline from a safety profile name.
 ///
 /// Profiles:
@@ -319,7 +369,9 @@ fn redact(content: &str, findings: &mut [Finding]) -> String {
 ///
 /// The `"guardian"` and `"guardian-deep"` profiles create the regex
 /// pipeline here. ML model filters are added by the server at startup
-/// when models are loaded (via `pipeline.add_model_filter()`).
+/// when models are loaded (via `pipeline.add_model_filter()`). NER
+/// filters are also added by the server via `pipeline.add_ner_filter()`
+/// when a NER model directory is configured.
 pub fn build_pipeline(profile: &str) -> FilterPipeline {
     match profile {
         "standard" => {
@@ -454,8 +506,25 @@ mod tests {
         assert!(is_pii_category("phone"));
         assert!(is_pii_category("email"));
         assert!(!is_pii_category("aws-key"));
-        assert!(!is_pii_category("password"));
         assert!(!is_pii_category("private-key"));
+    }
+
+    #[test]
+    fn pii_category_includes_ner_types() {
+        assert!(is_pii_category("person"));
+        assert!(is_pii_category("location"));
+        assert!(is_pii_category("organization"));
+        assert!(is_pii_category("misc-entity"));
+    }
+
+    #[test]
+    fn pii_category_includes_sfermion_types() {
+        assert!(is_pii_category("identity-document"));
+        assert!(is_pii_category("ip-address"));
+        assert!(is_pii_category("temporal-pii"));
+        assert!(is_pii_category("username"));
+        assert!(is_pii_category("password"));
+        assert!(is_pii_category("demographic"));
     }
 
     #[tokio::test]

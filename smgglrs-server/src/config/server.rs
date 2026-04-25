@@ -15,6 +15,10 @@ pub struct ServerConfig {
     /// Root identity configuration for DID-based auth.
     #[serde(default)]
     pub identity: Option<IdentityConfig>,
+    /// Path to PII NER model directory.
+    /// Default: ~/.local/share/smgglrs/models/pii-ner/
+    #[serde(default)]
+    pub pii_model_path: Option<String>,
 }
 
 fn default_hook_timeout() -> u64 {

@@ -16,7 +16,7 @@ use smgglrs_core::identity::{self, CapSigner, Ed25519Signer};
 use smgglrs_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use std::sync::Arc;
 
-use cli::{Cli, Commands, ModelAction, TokenAction};
+use cli::{Cli, Commands, ModelAction, PiiAction, TokenAction};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -93,6 +93,14 @@ async fn main() -> anyhow::Result<()> {
             }
             ModelAction::Available => {
                 cli::model_available();
+            }
+        },
+        Commands::Pii { action } => match action {
+            PiiAction::Download => {
+                cli::pii_download().await?;
+            }
+            PiiAction::Status => {
+                cli::pii_status();
             }
         },
         Commands::Run { prompt, model, persona, endpoint, token, max_iterations, upstream_prompts } => {
@@ -632,6 +640,25 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
     tracing::info!(count = models.len(), "Model registry ready");
 
+    // Try to load the PII NER model (sfermion/bert-pii-detector-onnx)
+    let pii_ner_dir = cfg.pii_model_dir();
+    let pii_ner_filter: Option<Arc<smgglrs_core::safety::NerFilter>> =
+        match smgglrs_core::safety::load_ner_filter(&pii_ner_dir) {
+            Some(filter) => {
+                tracing::info!(
+                    dir = %pii_ner_dir.display(),
+                    "PII NER model loaded for semantic entity detection"
+                );
+                Some(Arc::new(filter))
+            }
+            None => {
+                tracing::info!(
+                    "PII NER model not installed. Run 'smgglrs pii download' for semantic PII detection."
+                );
+                None
+            }
+        };
+
     // Register safety profiles and per-tool permissions per permission set
     for (name, pset) in &cfg.permissions {
         let mut pipeline = smgglrs_core::safety::build_pipeline(&pset.safety);
@@ -665,6 +692,20 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                         "ml-unsafe",
                     ));
                 }
+            }
+        }
+
+        // Add PII NER filter to profiles that use content filtering
+        if let Some(ref ner) = pii_ner_filter {
+            match pset.safety.as_str() {
+                "standard" | "guardian" | "guardian-deep" | "block" => {
+                    pipeline.add_ner_filter_shared(Arc::clone(ner));
+                    tracing::info!(
+                        permission_set = %name,
+                        "PII NER filter added to safety profile"
+                    );
+                }
+                _ => {}
             }
         }
 
