@@ -114,28 +114,84 @@ This is addressed by Phase 3h (Structured Audit Log) below.
 
 ---
 
-## Code health (updated 2026-04-20)
+## URGENT: PII handling gaps (added 2026-04-25)
+
+The safety filter has a PII detection pipeline (regex-based) that runs
+on tool call arguments and results. However, coverage is incomplete and
+downstream data stores are unprotected. This is a compliance risk for
+GDPR/RGPD deployments.
+
+### False positives
+
+| Issue | Impact | Fix |
+|-------|--------|-----|
+| Timestamps redacted as phone numbers | `created_at` fields in memory_query responses become `[REDACTED:phone]`, breaking JSON parsers | Refine phone regex to exclude ISO 8601 patterns; add negative lookahead for `\d{4}-\d{2}-\d{2}` |
+| UUID-like strings may trigger patterns | Low confidence but possible with certain digit groupings | Add UUID negative lookahead |
+
+### Missing PII patterns (EU/international)
+
+| Pattern | Category | Priority |
+|---------|----------|----------|
+| French NIR (numéro de sécurité sociale) | `nir` | High (French deployments) |
+| EU IBAN (international bank account) | `iban` | High (EU compliance) |
+| French SIRET/SIREN (business ID) | `siret` | Medium |
+| EU phone formats (+33, +49, etc.) | `phone-eu` | Medium |
+| French postal addresses | `address-fr` | Low |
+| IP addresses (v4/v6) | `ip-address` | Medium |
+| Passport numbers (EU formats) | `passport` | Low |
+
+### Downstream PII leakage
+
+| Gap | Risk | Fix |
+|-----|------|-----|
+| Memory stores are PII-blind | `memory_store` persists content without PII filtering; paraphrased PII bypasses the tool-level filter | Run PII filter on memory ingestion (KnowledgeStore::store) |
+| Audit logs contain raw content | Blackbox records tool args/results with no redaction; PII in tool arguments is logged before the safety filter runs | Redact audit log entries using the same safety pipeline |
+| No data retention policy | No TTL on stored PII, no right-to-erasure mechanism beyond manual `memory_forget` by ID | Add `memory_purge_pii` tool; add configurable retention TTL; add PII scan on existing data |
+| Knowledge distillation is PII-blind | Distilled insights may contain PII extracted from sessions | Run PII filter on distillation output |
+
+### IFC + PII integration
+
+| Gap | Fix |
+|-----|-----|
+| PII is not a first-class IFC label | Add `Pii` confidentiality level above `Sensitive`; tool results containing PII auto-label as `Pii`; write operations to non-PII-safe destinations blocked by IFC |
+| No PII-aware taint propagation | If a tool result is redacted, the IFC label should reflect that PII was present (even after redaction) so downstream decisions account for it |
+
+### Implementation priority
+
+1. **Fix false positives** (timestamp/UUID exclusions) — 2h, blocks e2e reliability
+2. **Add EU PII patterns** (NIR, IBAN, EU phone) — 4h, blocks EU compliance
+3. **Filter on memory ingestion** — 2h, highest leakage risk
+4. **Redact audit logs** — 2h, compliance requirement
+5. **PII as IFC label** — 4h, architectural improvement
+6. **Data retention / purge** — 1 day, GDPR right-to-erasure
+
+---
+
+## Code health (updated 2026-04-25)
 
 ### Completed ✅
 
 | Item | When |
 |------|------|
 | `rust-toolchain.toml` + `rustfmt.toml` + `justfile` | 2026-04-20 |
-| Clippy auto-fix (103 → 53 warnings) | 2026-04-20 |
+| Clippy auto-fix (103 → 53 → 0 warnings) | 2026-04-20, 2026-04-24 |
 | Mutex poison recovery (all `.lock().unwrap()`) | 2026-04-17 |
-| main.rs decomposition (cli, demo, ui modules) | 2026-04-17 |
+| main.rs decomposition (cli, demo, ui, *_tools modules) | 2026-04-17, 2026-04-24 |
 | 50+ security findings across 6 audit rounds | 2026-04-17–20 |
+| Extract auth middleware in `ui.rs` | 2026-04-25 |
+| GitHub Actions CI | 2026-04-25 |
+| Make hardcoded values configurable | 2026-04-25 |
+| Per-teammate operation scoping (delegated capability tokens) | 2026-04-25 |
+| Split large files (server.rs, tools.rs, streamable.rs, config.rs, a2a.rs) | 2026-04-24 |
+| Per-crate README.md files (17 crates) | 2026-04-24 |
+| Module-level //! doc comments (all crates) | 2026-04-24 |
+| Rename docs_* → file_*, MCP resources for reads | 2026-04-25 |
 
 ### Remaining
 
 | Item | Detail | Effort |
 |------|--------|--------|
-| Extract auth middleware in `ui.rs` | 5 inline auth checks → single Axum layer | 1h |
-| GitHub Actions CI | `just check` in CI. Needs ONNX in CI (system package or feature-gate) | 1-2h |
 | Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive; revisit when CI is live |
-| Make hardcoded values configurable | Approval TTL, file watcher skip-list → config.toml | 1h |
-| Per-teammate operation scoping | `team_add` accepts operations/tools per teammate, token minted accordingly | Design needed |
-| Remaining 53 clippy warnings | MSRV, method naming, scaffolded dead code — address when CI enforces `-D warnings` | 1h |
 
 ---
 
