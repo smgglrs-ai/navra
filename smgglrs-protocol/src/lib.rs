@@ -15,6 +15,7 @@
 //! the dependency graph.
 
 pub mod a2a;
+pub mod a2a_client;
 pub mod label;
 pub mod permissions;
 pub mod upstream;

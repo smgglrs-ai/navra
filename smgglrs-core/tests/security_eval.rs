@@ -8,7 +8,7 @@ use smgglrs_core::auth::capability::{
     CapabilityPayload, CapabilitySet,
 };
 use smgglrs_core::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
-use smgglrs_core::auth::{AgentIdentity, AuthError, Authenticator, TokenAuthenticator};
+use smgglrs_core::auth::{AgentIdentity, Authenticator, TokenAuthenticator};
 use smgglrs_core::identity::{CapSigner, Ed25519Signer};
 use smgglrs_core::credentials::{CredentialMapping, CredentialStore, MappedCredentialStore};
 use axum::http::HeaderMap;
@@ -353,6 +353,7 @@ mod credential_isolation {
             source: "env".to_string(),
             path: None,
             var: Some("MCPD_SEC_TEST_ALLOWED".to_string()),
+            channel: None,
         });
 
         std::env::set_var("MCPD_SEC_TEST_ALLOWED", "secret-value");
@@ -434,6 +435,7 @@ mod credential_isolation {
             source: "env".to_string(),
             path: None,
             var: Some("X".to_string()),
+            channel: None,
         });
         let store = MappedCredentialStore::new(mappings);
 
