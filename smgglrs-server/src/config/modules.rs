@@ -15,6 +15,29 @@ pub struct ModulesConfig {
     pub vision: Option<VisionModuleConfig>,
     #[serde(default)]
     pub registry: Option<RegistryModuleConfig>,
+    #[serde(default)]
+    pub memory: Option<MemoryModuleConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoryModuleConfig {
+    /// PII filter profile for memory ingestion and audit logs.
+    /// Uses the same profiles as safety: "standard", "secrets-only", "none".
+    /// Default: "standard".
+    #[serde(default = "default_pii_filter")]
+    pub pii_filter: String,
+}
+
+fn default_pii_filter() -> String {
+    "standard".to_string()
+}
+
+impl Default for MemoryModuleConfig {
+    fn default() -> Self {
+        Self {
+            pii_filter: default_pii_filter(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

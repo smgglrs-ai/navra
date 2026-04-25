@@ -7,6 +7,14 @@ pub use self::regex::{CustomFilter, PiiFilter, SecretFilter};
 use std::future::Future;
 use std::pin::Pin;
 
+/// PII finding categories produced by the PII filter.
+const PII_CATEGORIES: &[&str] = &["ssn", "credit-card", "phone", "email"];
+
+/// Returns true if a finding category represents PII.
+pub fn is_pii_category(category: &str) -> bool {
+    PII_CATEGORIES.contains(&category)
+}
+
 /// A detected sensitive content span.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Finding {
@@ -114,6 +122,19 @@ impl FilterPipeline {
         self.run_pipeline(content, ctx, true).await
     }
 
+    /// Filter outbound content and return findings alongside the result.
+    ///
+    /// Like `process_outbound`, but also returns the list of findings
+    /// so callers can inspect categories (e.g., to detect PII and
+    /// elevate IFC labels).
+    pub async fn process_outbound_with_findings(
+        &self,
+        content: &str,
+        ctx: &FilterContext<'_>,
+    ) -> (Result<String, String>, Vec<Finding>) {
+        self.run_pipeline_with_findings(content, ctx, true).await
+    }
+
     /// Backward-compatible sync process (for callers that don't have
     /// model filters). Runs only sync filters.
     pub fn process(&self, content: &str, ctx: &FilterContext) -> Result<String, String> {
@@ -167,6 +188,53 @@ impl FilterPipeline {
         }
 
         apply_action(&self.action, content, &mut findings)
+    }
+
+    async fn run_pipeline_with_findings(
+        &self,
+        content: &str,
+        ctx: &FilterContext<'_>,
+        include_sync: bool,
+    ) -> (Result<String, String>, Vec<Finding>) {
+        if self.action == FilterAction::Pass || self.no_filters() {
+            return (Ok(content.to_string()), Vec::new());
+        }
+
+        let mut findings: Vec<Finding> = Vec::new();
+
+        if include_sync {
+            for filter in &self.filters {
+                findings.extend(filter.scan(content, ctx));
+            }
+
+            if !findings.is_empty() && self.action == FilterAction::Block {
+                let result = apply_action(&self.action, content, &mut findings);
+                return (result, findings);
+            }
+        }
+
+        for model_filter in &self.model_filters {
+            findings.extend(model_filter.scan(content, ctx).await);
+        }
+
+        if findings.is_empty() {
+            return (Ok(content.to_string()), Vec::new());
+        }
+
+        let result = apply_action(&self.action, content, &mut findings);
+        (result, findings)
+    }
+
+    /// Run sync filters only and return findings (no action applied).
+    ///
+    /// Used by the legacy sync path to inspect findings for PII
+    /// category detection before applying the action.
+    pub fn scan_sync(&self, content: &str, ctx: &FilterContext) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for filter in &self.filters {
+            findings.extend(filter.scan(content, ctx));
+        }
+        findings
     }
 
     pub fn has_filters(&self) -> bool {
@@ -377,6 +445,42 @@ mod tests {
         let pipeline = build_pipeline("guardian");
         assert!(pipeline.has_filters());
         assert_eq!(pipeline.action, FilterAction::Redact);
+    }
+
+    #[test]
+    fn pii_category_detection() {
+        assert!(is_pii_category("ssn"));
+        assert!(is_pii_category("credit-card"));
+        assert!(is_pii_category("phone"));
+        assert!(is_pii_category("email"));
+        assert!(!is_pii_category("aws-key"));
+        assert!(!is_pii_category("password"));
+        assert!(!is_pii_category("private-key"));
+    }
+
+    #[tokio::test]
+    async fn process_outbound_with_findings_returns_pii() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(PiiFilter::new());
+        let (result, findings) = pipeline
+            .process_outbound_with_findings("SSN: 123-45-6789", &ctx())
+            .await;
+        assert!(result.unwrap().contains("[REDACTED:ssn]"));
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| is_pii_category(&f.category)));
+    }
+
+    #[tokio::test]
+    async fn process_outbound_with_findings_no_pii() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(SecretFilter::new());
+        let (result, findings) = pipeline
+            .process_outbound_with_findings("key = AKIAIOSFODNN7EXAMPLE", &ctx())
+            .await;
+        assert!(result.unwrap().contains("[REDACTED:aws-key]"));
+        assert!(!findings.is_empty());
+        // Only secret findings, no PII
+        assert!(!findings.iter().any(|f| is_pii_category(&f.category)));
     }
 
     #[test]

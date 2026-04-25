@@ -337,9 +337,15 @@ impl McpServer {
         };
 
         let mut filtered_content = Vec::new();
+        let mut has_pii = false;
         for content in result.content.drain(..) {
             match content {
                 Content::Text(text) => {
+                    // Use the sync path: scan for findings first to detect PII
+                    let findings = pipeline.scan_sync(&text.text, &filter_ctx);
+                    if findings.iter().any(|f| crate::safety::is_pii_category(&f.category)) {
+                        has_pii = true;
+                    }
                     match pipeline.process(&text.text, &filter_ctx) {
                         Ok(processed) => {
                             filtered_content.push(Content::text(processed));
@@ -352,6 +358,10 @@ impl McpServer {
             }
         }
         result.content = filtered_content;
+        // Elevate IFC label to Pii if PII was detected
+        if has_pii && result.label.confidentiality < crate::ifc::Confidentiality::Pii {
+            result.label.confidentiality = crate::ifc::Confidentiality::Pii;
+        }
         result
     }
 

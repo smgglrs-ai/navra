@@ -24,8 +24,14 @@ pub enum Confidentiality {
     Public = 0,
     /// Can flow only to tools with matching clearance.
     Sensitive = 1,
+    /// Contains personally identifiable information (even if redacted).
+    /// Higher than Sensitive: PII-tainted data must only flow to
+    /// PII-safe destinations (e.g., encrypted storage, GDPR-compliant
+    /// sinks). The label persists after redaction — the taint is
+    /// informational.
+    Pii = 2,
     /// Cannot flow out at all (credentials, private keys).
-    Secret = 2,
+    Secret = 3,
 }
 
 /// Data label combining integrity and confidentiality.
@@ -56,6 +62,12 @@ impl DataLabel {
     pub const UNTRUSTED_SENSITIVE: Self = Self {
         integrity: Integrity::Untrusted,
         confidentiality: Confidentiality::Sensitive,
+    };
+
+    /// Untrusted external data, PII confidentiality.
+    pub const UNTRUSTED_PII: Self = Self {
+        integrity: Integrity::Untrusted,
+        confidentiality: Confidentiality::Pii,
     };
 
     /// Trusted but secret data (credential values).
@@ -133,6 +145,19 @@ mod tests {
         let label = DataLabel::TRUSTED_SECRET;
         assert!(!label.can_write_to(Confidentiality::Public));
         assert!(!label.can_write_to(Confidentiality::Sensitive));
+        assert!(!label.can_write_to(Confidentiality::Pii));
+        assert!(label.can_write_to(Confidentiality::Secret));
+    }
+
+    #[test]
+    fn no_write_down_pii_to_lower() {
+        let label = DataLabel {
+            integrity: Integrity::Trusted,
+            confidentiality: Confidentiality::Pii,
+        };
+        assert!(!label.can_write_to(Confidentiality::Public));
+        assert!(!label.can_write_to(Confidentiality::Sensitive));
+        assert!(label.can_write_to(Confidentiality::Pii));
         assert!(label.can_write_to(Confidentiality::Secret));
     }
 
@@ -141,7 +166,40 @@ mod tests {
         let label = DataLabel::TRUSTED_PUBLIC;
         assert!(label.can_write_to(Confidentiality::Public));
         assert!(label.can_write_to(Confidentiality::Sensitive));
+        assert!(label.can_write_to(Confidentiality::Pii));
         assert!(label.can_write_to(Confidentiality::Secret));
+    }
+
+    #[test]
+    fn confidentiality_ordering() {
+        assert!(Confidentiality::Public < Confidentiality::Sensitive);
+        assert!(Confidentiality::Sensitive < Confidentiality::Pii);
+        assert!(Confidentiality::Pii < Confidentiality::Secret);
+    }
+
+    #[test]
+    fn label_join_with_pii() {
+        // Sensitive join Pii = Pii
+        let a = DataLabel {
+            integrity: Integrity::Trusted,
+            confidentiality: Confidentiality::Sensitive,
+        };
+        let b = DataLabel {
+            integrity: Integrity::Trusted,
+            confidentiality: Confidentiality::Pii,
+        };
+        assert_eq!(a.join(b).confidentiality, Confidentiality::Pii);
+
+        // Pii join Secret = Secret
+        let c = DataLabel {
+            integrity: Integrity::Trusted,
+            confidentiality: Confidentiality::Secret,
+        };
+        assert_eq!(b.join(c).confidentiality, Confidentiality::Secret);
+
+        // Public join Pii = Pii
+        let d = DataLabel::TRUSTED_PUBLIC;
+        assert_eq!(d.join(b).confidentiality, Confidentiality::Pii);
     }
 
     #[test]
@@ -149,6 +207,10 @@ mod tests {
         assert_eq!(
             format!("{}", DataLabel::UNTRUSTED_SENSITIVE),
             "Untrusted+Sensitive"
+        );
+        assert_eq!(
+            format!("{}", DataLabel::UNTRUSTED_PII),
+            "Untrusted+Pii"
         );
     }
 }

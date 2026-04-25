@@ -142,6 +142,14 @@ impl Config {
             .unwrap_or(3600)
     }
 
+    pub fn memory_pii_filter(&self) -> &str {
+        self.modules
+            .memory
+            .as_ref()
+            .map(|m| m.pii_filter.as_str())
+            .unwrap_or("standard")
+    }
+
     pub fn rag_db_path(&self) -> String {
         self.modules
             .rag

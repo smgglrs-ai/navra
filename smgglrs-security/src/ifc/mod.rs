@@ -40,9 +40,14 @@ impl TaintTracker {
         self.current.integrity == Integrity::Untrusted
     }
 
-    /// Is the session tainted with sensitive or secret data?
+    /// Is the session tainted with sensitive or higher data?
     pub fn is_sensitive(&self) -> bool {
         self.current.confidentiality >= Confidentiality::Sensitive
+    }
+
+    /// Is the session tainted with PII or higher data?
+    pub fn is_pii(&self) -> bool {
+        self.current.confidentiality >= Confidentiality::Pii
     }
 }
 
@@ -185,6 +190,34 @@ mod tests {
         tracker.absorb(DataLabel::TRUSTED_PUBLIC); // should not decrease
         assert!(tracker.is_untrusted());
         assert!(tracker.is_sensitive());
+    }
+
+    #[test]
+    fn taint_tracker_pii_level() {
+        let mut tracker = TaintTracker::new();
+        assert!(!tracker.is_pii());
+
+        tracker.absorb(DataLabel::UNTRUSTED_PII);
+        assert!(tracker.is_pii());
+        assert!(tracker.is_sensitive()); // Pii > Sensitive, so is_sensitive() is true
+        assert!(tracker.is_untrusted());
+    }
+
+    #[test]
+    fn pii_taint_does_not_decrease() {
+        let mut tracker = TaintTracker::new();
+        tracker.absorb(DataLabel::UNTRUSTED_PII);
+        tracker.absorb(DataLabel::UNTRUSTED_SENSITIVE); // should not decrease
+        assert!(tracker.is_pii());
+        assert_eq!(tracker.level().confidentiality, Confidentiality::Pii);
+    }
+
+    #[test]
+    fn pii_join_secret_becomes_secret() {
+        let mut tracker = TaintTracker::new();
+        tracker.absorb(DataLabel::UNTRUSTED_PII);
+        tracker.absorb(DataLabel::TRUSTED_SECRET);
+        assert_eq!(tracker.level().confidentiality, Confidentiality::Secret);
     }
 
     #[test]

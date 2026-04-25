@@ -277,6 +277,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         }
         match smgglrs_core::blackbox::Blackbox::open(&bb_path) {
             Ok(bb) => {
+                // Attach PII filter to blackbox for sanitizing tool args/results
+                let bb = match memory_tools::build_pii_sanitizer(cfg.memory_pii_filter()) {
+                    Some(filter) => {
+                        tracing::info!("Blackbox PII filter enabled");
+                        bb.with_pii_filter(filter)
+                    }
+                    None => bb,
+                };
                 let count = bb.count();
                 builder = builder.blackbox(bb);
                 tracing::info!(
@@ -1855,6 +1863,14 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     }
 
     // --- Knowledge memory tools ---
+    let pii_sanitizer = memory_tools::build_pii_sanitizer(cfg.memory_pii_filter());
+    if pii_sanitizer.is_some() {
+        tracing::info!(
+            profile = cfg.memory_pii_filter(),
+            "PII filter enabled for memory ingestion and audit logs"
+        );
+    }
+
     let knowledge_store: Option<Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>> = {
         let kb_path = dirs::data_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -1878,9 +1894,11 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let ks = knowledge_store.clone().unwrap();
 
         let ks_store = Arc::clone(&ks);
+        let sanitizer_for_store = pii_sanitizer.clone();
         builder = builder.tool(memory_tools::memory_store_def(), move |args, _ctx| {
             let ks = Arc::clone(&ks_store);
-            Box::pin(memory_tools::handle_memory_store(args, ks))
+            let sanitizer = sanitizer_for_store.clone();
+            Box::pin(memory_tools::handle_memory_store(args, ks, sanitizer))
         });
 
         let ks_query = Arc::clone(&ks);
@@ -1937,8 +1955,23 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         if let Some(parent) = audit_db_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
+        // Build a ContentSanitizer closure from the PII filter pipeline
+        // for the audit log (smgglrs-memory uses a callback, not FilterPipeline directly).
+        let audit_sanitizer: Option<smgglrs_memory::ContentSanitizer> = {
+            let sanitizer_pipeline = memory_tools::build_pii_sanitizer(cfg.memory_pii_filter());
+            sanitizer_pipeline.map(|pipeline| -> smgglrs_memory::ContentSanitizer {
+                Arc::new(move |content: &str| {
+                    memory_tools::sanitize_for_storage_sync(content, &Some(Arc::clone(&pipeline)))
+                })
+            })
+        };
+
         let audit_log = match smgglrs_memory::audit::AuditLog::open(&audit_db_path) {
             Ok(log) => {
+                let log = match audit_sanitizer {
+                    Some(sanitizer) => log.with_sanitizer(sanitizer),
+                    None => log,
+                };
                 tracing::info!(path = %audit_db_path.display(), "Audit log enabled");
                 Arc::new(log)
             }

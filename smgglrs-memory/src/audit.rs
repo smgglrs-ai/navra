@@ -1,6 +1,7 @@
 //! Structured audit log for agent runs, tool calls, and model calls.
 
 use crate::error::MemoryError;
+use crate::pipeline::ContentSanitizer;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -63,6 +64,8 @@ pub struct AuditSummary {
 /// Structured audit log backed by SQLite.
 pub struct AuditLog {
     db: Mutex<Connection>,
+    /// Optional PII sanitizer applied to tool_args and tool_result before recording.
+    sanitizer: Option<ContentSanitizer>,
 }
 
 impl AuditLog {
@@ -71,6 +74,7 @@ impl AuditLog {
         let db = Connection::open(path)?;
         let log = Self {
             db: Mutex::new(db),
+            sanitizer: None,
         };
         log.init_schema()?;
         Ok(log)
@@ -81,9 +85,25 @@ impl AuditLog {
         let db = Connection::open_in_memory()?;
         let log = Self {
             db: Mutex::new(db),
+            sanitizer: None,
         };
         log.init_schema()?;
         Ok(log)
+    }
+
+    /// Attach a PII sanitizer to filter tool_args and tool_result
+    /// before they are written to the audit log.
+    pub fn with_sanitizer(mut self, sanitizer: ContentSanitizer) -> Self {
+        self.sanitizer = Some(sanitizer);
+        self
+    }
+
+    /// Apply the sanitizer to a string, if configured.
+    fn sanitize(&self, content: &str) -> String {
+        match &self.sanitizer {
+            Some(f) => f(content),
+            None => content.to_string(),
+        }
     }
 
     fn init_schema(&self) -> Result<(), MemoryError> {
@@ -163,7 +183,13 @@ impl AuditLog {
     }
 
     /// Log a tool call.
+    ///
+    /// When a PII sanitizer is attached, tool_args and tool_result are
+    /// filtered before being written to the database.
     pub fn log_tool_call(&self, entry: &AuditToolCall) -> Result<(), MemoryError> {
+        let sanitized_args = self.sanitize(&entry.tool_args);
+        let sanitized_result = self.sanitize(&entry.tool_result);
+
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         db.execute(
             "INSERT INTO audit_tool_calls (run_id, agent_id, iteration, timestamp_ms, tool_name, tool_args, tool_result, duration_ms, acl_decision, ifc_label)
@@ -174,8 +200,8 @@ impl AuditLog {
                 entry.iteration,
                 entry.timestamp_ms,
                 entry.tool_name,
-                entry.tool_args,
-                entry.tool_result,
+                sanitized_args,
+                sanitized_result,
                 entry.duration_ms as i64,
                 entry.acl_decision,
                 entry.ifc_label,
@@ -435,6 +461,45 @@ mod tests {
         // Verify via summary
         let summary = log.get_summary("run-1").unwrap();
         assert_eq!(summary.model_call_count, 2);
+    }
+
+    #[test]
+    fn log_tool_call_with_sanitizer_redacts_args_and_result() {
+        use std::sync::Arc;
+
+        let sanitizer: ContentSanitizer = Arc::new(|content: &str| {
+            content.replace("secret-value", "[REDACTED:test]")
+        });
+
+        let log = AuditLog::open_memory().unwrap().with_sanitizer(sanitizer);
+        log.begin_run(&make_run("run-1")).unwrap();
+
+        let mut call = make_tool_call("run-1", 1, "file_read");
+        call.tool_args = r#"{"key": "secret-value"}"#.to_string();
+        call.tool_result = "result contains secret-value here".to_string();
+        log.log_tool_call(&call).unwrap();
+
+        let calls = log.get_tool_calls("run-1").unwrap();
+        assert_eq!(calls.len(), 1);
+        assert!(!calls[0].tool_args.contains("secret-value"),
+            "Expected args redacted: {}", calls[0].tool_args);
+        assert!(!calls[0].tool_result.contains("secret-value"),
+            "Expected result redacted: {}", calls[0].tool_result);
+        assert!(calls[0].tool_args.contains("[REDACTED:test]"));
+        assert!(calls[0].tool_result.contains("[REDACTED:test]"));
+    }
+
+    #[test]
+    fn log_tool_call_without_sanitizer_preserves_content() {
+        let log = AuditLog::open_memory().unwrap();
+        log.begin_run(&make_run("run-1")).unwrap();
+
+        let mut call = make_tool_call("run-1", 1, "file_read");
+        call.tool_args = r#"{"key": "secret-value"}"#.to_string();
+        log.log_tool_call(&call).unwrap();
+
+        let calls = log.get_tool_calls("run-1").unwrap();
+        assert!(calls[0].tool_args.contains("secret-value"));
     }
 
     #[test]
