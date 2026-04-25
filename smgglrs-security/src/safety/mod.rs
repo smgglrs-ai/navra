@@ -1,13 +1,21 @@
 pub mod ml;
 pub mod ner;
+pub mod pseudonym;
 mod regex;
 
 pub use self::ml::MlFilter;
-pub use self::ner::{default_pii_ner_model_dir, load_ner_filter, NerFilter};
-pub use self::regex::{CustomFilter, PiiFilter, SecretFilter};
+pub use self::ner::{
+    default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter, NerFilter,
+};
+pub use self::pseudonym::PseudonymMap;
+pub use self::regex::{CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, SecretFilter};
 
+use serde::Serialize;
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 /// PII finding categories produced by the PII filter.
 const PII_CATEGORIES: &[&str] = &[
@@ -26,11 +34,41 @@ const PII_CATEGORIES: &[&str] = &[
     "username",
     "password",
     "demographic",
+    "path-username",
 ];
 
+/// Custom PII categories registered at runtime via `register_pii_categories`.
+static CUSTOM_PII_CATEGORIES: std::sync::LazyLock<Mutex<Vec<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(Vec::new()));
+
 /// Returns true if a finding category represents PII.
+///
+/// Checks both built-in categories and any custom categories
+/// registered via `register_pii_categories`.
 pub fn is_pii_category(category: &str) -> bool {
-    PII_CATEGORIES.contains(&category)
+    if PII_CATEGORIES.contains(&category) {
+        return true;
+    }
+    if let Ok(custom) = CUSTOM_PII_CATEGORIES.lock() {
+        custom.iter().any(|c| c == category)
+    } else {
+        false
+    }
+}
+
+/// Register additional PII categories from custom PII patterns.
+///
+/// Categories added here will be recognized by `is_pii_category`,
+/// causing findings with these categories to trigger IFC taint
+/// elevation and PII retention policies.
+pub fn register_pii_categories(categories: &[String]) {
+    if let Ok(mut custom) = CUSTOM_PII_CATEGORIES.lock() {
+        for cat in categories {
+            if !PII_CATEGORIES.contains(&cat.as_str()) && !custom.contains(cat) {
+                custom.push(cat.clone());
+            }
+        }
+    }
 }
 
 /// A detected sensitive content span.
@@ -53,6 +91,8 @@ pub enum FilterAction {
     Pass,
     /// Return content with sensitive spans replaced by `[REDACTED:category]`.
     Redact,
+    /// Replace sensitive spans with consistent pseudonyms (Person_A, Location_A, etc.).
+    Pseudonymize,
     /// Block the entire response.
     Block,
 }
@@ -86,6 +126,98 @@ pub trait ModelFilter: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Vec<Finding>> + Send + 'a>>;
 }
 
+/// Point-in-time snapshot of PII metrics, safe to serialize.
+#[derive(Debug, Clone, Serialize)]
+pub struct PiiMetricsSnapshot {
+    pub total_scans: u64,
+    pub pii_detected: u64,
+    pub pii_redacted: u64,
+    pub pii_blocked: u64,
+    pub by_category: HashMap<String, u64>,
+}
+
+/// Thread-safe PII detection metrics.
+///
+/// Tracks scan counts and per-category PII detections across all
+/// filter pipeline invocations. Intended for GDPR DPIA reporting
+/// (Article 35).
+pub struct PiiMetrics {
+    total_scans: AtomicU64,
+    pii_detected: AtomicU64,
+    pii_redacted: AtomicU64,
+    pii_blocked: AtomicU64,
+    by_category: Mutex<HashMap<String, u64>>,
+}
+
+impl PiiMetrics {
+    pub fn new() -> Self {
+        Self {
+            total_scans: AtomicU64::new(0),
+            pii_detected: AtomicU64::new(0),
+            pii_redacted: AtomicU64::new(0),
+            pii_blocked: AtomicU64::new(0),
+            by_category: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Record findings from a scan.
+    pub fn record(&self, findings: &[Finding], action: &FilterAction) {
+        self.total_scans.fetch_add(1, Ordering::Relaxed);
+        let pii_findings: Vec<&Finding> = findings
+            .iter()
+            .filter(|f| is_pii_category(&f.category))
+            .collect();
+        if pii_findings.is_empty() {
+            return;
+        }
+        self.pii_detected
+            .fetch_add(pii_findings.len() as u64, Ordering::Relaxed);
+        match action {
+            FilterAction::Redact | FilterAction::Pseudonymize => {
+                self.pii_redacted
+                    .fetch_add(pii_findings.len() as u64, Ordering::Relaxed);
+            }
+            FilterAction::Block => {
+                self.pii_blocked
+                    .fetch_add(pii_findings.len() as u64, Ordering::Relaxed);
+            }
+            FilterAction::Pass => {}
+        }
+        let mut cats = self.by_category.lock().unwrap_or_else(|e| e.into_inner());
+        for f in &pii_findings {
+            *cats.entry(f.category.clone()).or_insert(0) += 1;
+        }
+    }
+
+    /// Return a point-in-time snapshot of all counters.
+    pub fn snapshot(&self) -> PiiMetricsSnapshot {
+        let cats = self.by_category.lock().unwrap_or_else(|e| e.into_inner());
+        PiiMetricsSnapshot {
+            total_scans: self.total_scans.load(Ordering::Relaxed),
+            pii_detected: self.pii_detected.load(Ordering::Relaxed),
+            pii_redacted: self.pii_redacted.load(Ordering::Relaxed),
+            pii_blocked: self.pii_blocked.load(Ordering::Relaxed),
+            by_category: cats.clone(),
+        }
+    }
+
+    /// Zero all counters.
+    pub fn reset(&self) {
+        self.total_scans.store(0, Ordering::Relaxed);
+        self.pii_detected.store(0, Ordering::Relaxed);
+        self.pii_redacted.store(0, Ordering::Relaxed);
+        self.pii_blocked.store(0, Ordering::Relaxed);
+        let mut cats = self.by_category.lock().unwrap_or_else(|e| e.into_inner());
+        cats.clear();
+    }
+}
+
+impl Default for PiiMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Pipeline that runs multiple filters and applies a configured action.
 ///
 /// Sync filters (regex) run first. If they don't block, async model
@@ -95,6 +227,10 @@ pub struct FilterPipeline {
     filters: Vec<Box<dyn ContentFilter>>,
     model_filters: Vec<Box<dyn ModelFilter>>,
     action: FilterAction,
+    /// Per-session pseudonym map, used when action is `Pseudonymize`.
+    pseudonym_map: PseudonymMap,
+    /// Optional PII metrics collector.
+    metrics: Option<std::sync::Arc<PiiMetrics>>,
 }
 
 impl FilterPipeline {
@@ -103,7 +239,33 @@ impl FilterPipeline {
             filters: Vec::new(),
             model_filters: Vec::new(),
             action,
+            pseudonym_map: PseudonymMap::new(),
+            metrics: None,
         }
+    }
+
+    /// Create a pipeline with a shared pseudonym map.
+    ///
+    /// Use this when multiple pipelines should share the same pseudonym
+    /// assignments (e.g., across a session).
+    pub fn with_pseudonym_map(action: FilterAction, pseudonym_map: PseudonymMap) -> Self {
+        Self {
+            filters: Vec::new(),
+            model_filters: Vec::new(),
+            action,
+            pseudonym_map,
+            metrics: None,
+        }
+    }
+
+    /// Returns a reference to the pipeline's pseudonym map.
+    pub fn pseudonym_map(&self) -> &PseudonymMap {
+        &self.pseudonym_map
+    }
+
+    /// Attach shared PII metrics to this pipeline.
+    pub fn set_metrics(&mut self, metrics: std::sync::Arc<PiiMetrics>) {
+        self.metrics = Some(metrics);
     }
 
     pub fn add_filter(&mut self, filter: impl ContentFilter) {
@@ -182,11 +344,15 @@ impl FilterPipeline {
             findings.extend(filter.scan(content, ctx));
         }
 
+        if let Some(ref m) = self.metrics {
+            m.record(&findings, &self.action);
+        }
+
         if findings.is_empty() {
             return Ok(content.to_string());
         }
 
-        apply_action(&self.action, content, &mut findings)
+        apply_action(&self.action, content, &mut findings, &self.pseudonym_map)
     }
 
     async fn run_pipeline(
@@ -201,28 +367,32 @@ impl FilterPipeline {
 
         let mut findings: Vec<Finding> = Vec::new();
 
-        // Phase 1: sync filters (regex) — sub-microsecond
         if include_sync {
             for filter in &self.filters {
                 findings.extend(filter.scan(content, ctx));
             }
 
-            // Short-circuit: if sync filters already blocked, skip model filters
             if !findings.is_empty() && self.action == FilterAction::Block {
-                return apply_action(&self.action, content, &mut findings);
+                if let Some(ref m) = self.metrics {
+                    m.record(&findings, &self.action);
+                }
+                return apply_action(&self.action, content, &mut findings, &self.pseudonym_map);
             }
         }
 
-        // Phase 2: async model filters
         for model_filter in &self.model_filters {
             findings.extend(model_filter.scan(content, ctx).await);
+        }
+
+        if let Some(ref m) = self.metrics {
+            m.record(&findings, &self.action);
         }
 
         if findings.is_empty() {
             return Ok(content.to_string());
         }
 
-        apply_action(&self.action, content, &mut findings)
+        apply_action(&self.action, content, &mut findings, &self.pseudonym_map)
     }
 
     async fn run_pipeline_with_findings(
@@ -243,7 +413,10 @@ impl FilterPipeline {
             }
 
             if !findings.is_empty() && self.action == FilterAction::Block {
-                let result = apply_action(&self.action, content, &mut findings);
+                if let Some(ref m) = self.metrics {
+                    m.record(&findings, &self.action);
+                }
+                let result = apply_action(&self.action, content, &mut findings, &self.pseudonym_map);
                 return (result, findings);
             }
         }
@@ -252,11 +425,15 @@ impl FilterPipeline {
             findings.extend(model_filter.scan(content, ctx).await);
         }
 
+        if let Some(ref m) = self.metrics {
+            m.record(&findings, &self.action);
+        }
+
         if findings.is_empty() {
             return (Ok(content.to_string()), Vec::new());
         }
 
-        let result = apply_action(&self.action, content, &mut findings);
+        let result = apply_action(&self.action, content, &mut findings, &self.pseudonym_map);
         (result, findings)
     }
 
@@ -281,11 +458,12 @@ impl FilterPipeline {
     }
 }
 
-/// Apply the filter action (block or redact) to content with findings.
+/// Apply the filter action (block, redact, or pseudonymize) to content with findings.
 fn apply_action(
     action: &FilterAction,
     content: &str,
     findings: &mut Vec<Finding>,
+    pseudonym_map: &PseudonymMap,
 ) -> Result<String, String> {
     match action {
         FilterAction::Pass => Ok(content.to_string()),
@@ -303,6 +481,7 @@ fn apply_action(
             ))
         }
         FilterAction::Redact => Ok(redact(content, findings)),
+        FilterAction::Pseudonymize => Ok(pseudonymize(content, findings, pseudonym_map)),
     }
 }
 
@@ -342,6 +521,46 @@ fn redact(content: &str, findings: &mut [Finding]) -> String {
     result
 }
 
+/// Replace finding spans with consistent pseudonyms.
+///
+/// Uses the `PseudonymMap` to assign stable pseudonyms: the same
+/// original value always maps to the same pseudonym within a session.
+/// Handles overlapping spans identically to `redact`.
+fn pseudonymize(content: &str, findings: &mut [Finding], map: &PseudonymMap) -> String {
+    if findings.is_empty() {
+        return content.to_string();
+    }
+
+    // Sort by start position, then by length descending (longer match first)
+    findings.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
+
+    let mut result = String::with_capacity(content.len());
+    let mut pos = 0;
+
+    for finding in findings.iter() {
+        // Skip findings that overlap with already-processed regions
+        if finding.start < pos {
+            continue;
+        }
+        // Append content before the finding
+        if finding.start > pos {
+            result.push_str(&content[pos..finding.start]);
+        }
+        // Look up the original value and replace with pseudonym
+        let original = &content[finding.start..finding.end];
+        let pseudonym = map.get_or_create(original, &finding.category);
+        result.push_str(&pseudonym);
+        pos = finding.end;
+    }
+
+    // Append remaining content
+    if pos < content.len() {
+        result.push_str(&content[pos..]);
+    }
+
+    result
+}
+
 /// Wrapper around `Arc<NerFilter>` that implements `ContentFilter`.
 ///
 /// Allows sharing a single loaded NER model across multiple pipelines.
@@ -361,6 +580,7 @@ impl ContentFilter for SharedNerFilter {
 ///
 /// Profiles:
 /// - `"standard"` — all regex filters, redact action
+/// - `"pseudonymize"` — all regex filters, pseudonymize action
 /// - `"secrets-only"` — secret filter only, redact action
 /// - `"block"` — all regex filters, block action
 /// - `"guardian"` — regex + ML safety (Guardian HAP 38M, in-process)
@@ -378,6 +598,14 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             let mut pipeline = FilterPipeline::new(FilterAction::Redact);
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
+            pipeline.add_filter(PathPiiFilter::new());
+            pipeline
+        }
+        "pseudonymize" => {
+            let mut pipeline = FilterPipeline::new(FilterAction::Pseudonymize);
+            pipeline.add_filter(SecretFilter::new());
+            pipeline.add_filter(PiiFilter::new());
+            pipeline.add_filter(PathPiiFilter::new());
             pipeline
         }
         "secrets-only" => {
@@ -389,6 +617,7 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             let mut pipeline = FilterPipeline::new(FilterAction::Block);
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
+            pipeline.add_filter(PathPiiFilter::new());
             pipeline
         }
         "guardian" | "guardian-deep" => {
@@ -397,6 +626,7 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             let mut pipeline = FilterPipeline::new(FilterAction::Redact);
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
+            pipeline.add_filter(PathPiiFilter::new());
             pipeline
         }
         "none" | "" => FilterPipeline::new(FilterAction::Pass),
@@ -525,6 +755,7 @@ mod tests {
         assert!(is_pii_category("username"));
         assert!(is_pii_category("password"));
         assert!(is_pii_category("demographic"));
+        assert!(is_pii_category("path-username"));
     }
 
     #[tokio::test]
@@ -580,5 +811,241 @@ mod tests {
             .await;
         // Secret should be caught and blocked
         assert!(result.is_err());
+    }
+
+    // --- Pseudonymization tests ---
+
+    #[test]
+    fn pseudonymize_replaces_findings() {
+        let map = PseudonymMap::new();
+        let mut findings = vec![
+            Finding {
+                start: 4,
+                end: 15,
+                category: "email".to_string(),
+                confidence: 1.0,
+            },
+        ];
+        let result = pseudonymize("Hi, a@b.example here", &mut findings, &map);
+        assert_eq!(result, "Hi, Email_A here");
+        assert!(!result.contains("a@b.example"));
+    }
+
+    #[test]
+    fn pseudonymize_consistent_across_calls() {
+        let map = PseudonymMap::new();
+        // First call
+        let mut findings1 = vec![
+            Finding { start: 0, end: 11, category: "person".to_string(), confidence: 1.0 },
+        ];
+        let result1 = pseudonymize("Jean Dupont said hello", &mut findings1, &map);
+
+        // Second call with same value at different position
+        let mut findings2 = vec![
+            Finding { start: 9, end: 20, category: "person".to_string(), confidence: 1.0 },
+        ];
+        let result2 = pseudonymize("Reply to Jean Dupont please", &mut findings2, &map);
+
+        assert_eq!(result1, "Person_A said hello");
+        assert_eq!(result2, "Reply to Person_A please");
+    }
+
+    #[test]
+    fn pseudonymize_different_values_different_pseudonyms() {
+        let map = PseudonymMap::new();
+        let mut findings = vec![
+            Finding { start: 0, end: 11, category: "person".to_string(), confidence: 1.0 },
+            Finding { start: 16, end: 28, category: "person".to_string(), confidence: 1.0 },
+        ];
+        let result = pseudonymize("Jean Dupont and Marie Dupont", &mut findings, &map);
+        assert_eq!(result, "Person_A and Person_B");
+    }
+
+    #[test]
+    fn pseudonymize_different_categories() {
+        let map = PseudonymMap::new();
+        let mut findings = vec![
+            Finding { start: 0, end: 4, category: "person".to_string(), confidence: 1.0 },
+            Finding { start: 11, end: 16, category: "location".to_string(), confidence: 1.0 },
+        ];
+        let result = pseudonymize("Jean lives Paris way", &mut findings, &map);
+        assert_eq!(result, "Person_A lives Location_A way");
+    }
+
+    #[test]
+    fn pseudonymize_no_original_in_output() {
+        let map = PseudonymMap::new();
+        let mut findings = vec![
+            Finding { start: 5, end: 19, category: "email".to_string(), confidence: 1.0 },
+        ];
+        let content = "mail jean@test.com ok";
+        let result = pseudonymize(content, &mut findings, &map);
+        assert!(!result.contains("jean@test.com"));
+        assert!(result.contains("Email_A"));
+    }
+
+    #[test]
+    fn pseudonymize_reverse_map() {
+        let map = PseudonymMap::new();
+        let mut findings = vec![
+            Finding { start: 0, end: 4, category: "person".to_string(), confidence: 1.0 },
+        ];
+        pseudonymize("Jean lives here", &mut findings, &map);
+        let reverse = map.reverse_map();
+        assert_eq!(reverse.get("Person_A"), Some(&"Jean".to_string()));
+    }
+
+    #[test]
+    fn build_pipeline_pseudonymize() {
+        let pipeline = build_pipeline("pseudonymize");
+        assert!(pipeline.has_filters());
+        assert_eq!(pipeline.action, FilterAction::Pseudonymize);
+    }
+
+    #[tokio::test]
+    async fn pseudonymize_pipeline_process_outbound() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Pseudonymize);
+        pipeline.add_filter(PiiFilter::new());
+        let content = "SSN: 123-45-6789";
+        let result = pipeline.process_outbound(content, &ctx()).await.unwrap();
+        assert!(!result.contains("123-45-6789"));
+        assert!(result.contains("ID_A"));
+    }
+
+    #[tokio::test]
+    async fn pseudonymize_pipeline_consistent_across_outbound_calls() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Pseudonymize);
+        pipeline.add_filter(PiiFilter::new());
+        let r1 = pipeline
+            .process_outbound("Contact: test@example.com", &ctx())
+            .await
+            .unwrap();
+        let r2 = pipeline
+            .process_outbound("Again: test@example.com", &ctx())
+            .await
+            .unwrap();
+        // Same email should produce the same pseudonym
+        assert!(r1.contains("Email_A"));
+        assert!(r2.contains("Email_A"));
+    }
+
+    #[test]
+    fn custom_pii_categories_recognized() {
+        register_pii_categories(&[
+            "employee-id".to_string(),
+            "badge".to_string(),
+        ]);
+        assert!(is_pii_category("employee-id"));
+        assert!(is_pii_category("badge"));
+        // Built-in categories still work
+        assert!(is_pii_category("ssn"));
+        assert!(is_pii_category("email"));
+        // Non-PII categories still rejected
+        assert!(!is_pii_category("aws-key"));
+    }
+
+    #[test]
+    fn register_pii_categories_deduplicates() {
+        register_pii_categories(&["test-dedup".to_string()]);
+        register_pii_categories(&["test-dedup".to_string()]);
+        let custom = CUSTOM_PII_CATEGORIES.lock().unwrap();
+        let count = custom.iter().filter(|c| c.as_str() == "test-dedup").count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn register_pii_categories_skips_builtin() {
+        let before = CUSTOM_PII_CATEGORIES.lock().unwrap().len();
+        register_pii_categories(&["ssn".to_string()]);
+        let after = CUSTOM_PII_CATEGORIES.lock().unwrap().len();
+        // "ssn" is already built-in, should not be added to custom
+        assert_eq!(before, after);
+    }
+
+    #[tokio::test]
+    async fn custom_pii_filter_in_pipeline_produces_findings() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        let filter = CustomPiiFilter::new(vec![
+            ("employee-id".to_string(), r"\bEMP-\d{6}\b".to_string(), "employee-id".to_string()),
+        ]).unwrap();
+        pipeline.add_filter(filter);
+        let (result, findings) = pipeline
+            .process_outbound_with_findings("Employee EMP-123456 is here", &ctx())
+            .await;
+        assert!(result.unwrap().contains("[REDACTED:employee-id]"));
+        assert!(!findings.is_empty());
+        assert_eq!(findings[0].category, "employee-id");
+    }
+
+    // --- PII metrics tests ---
+
+    #[test]
+    fn pii_metrics_counting() {
+        let metrics = PiiMetrics::new();
+        let findings = vec![
+            Finding { start: 0, end: 5, category: "email".to_string(), confidence: 1.0 },
+            Finding { start: 10, end: 15, category: "phone".to_string(), confidence: 1.0 },
+            Finding { start: 20, end: 30, category: "aws-key".to_string(), confidence: 1.0 },
+        ];
+        metrics.record(&findings, &FilterAction::Redact);
+        let snap = metrics.snapshot();
+        assert_eq!(snap.total_scans, 1);
+        assert_eq!(snap.pii_detected, 2);
+        assert_eq!(snap.pii_redacted, 2);
+        assert_eq!(snap.pii_blocked, 0);
+        assert_eq!(snap.by_category.get("email"), Some(&1));
+        assert_eq!(snap.by_category.get("phone"), Some(&1));
+        assert_eq!(snap.by_category.get("aws-key"), None);
+    }
+
+    #[test]
+    fn pii_metrics_block_counting() {
+        let metrics = PiiMetrics::new();
+        let findings = vec![
+            Finding { start: 0, end: 5, category: "ssn".to_string(), confidence: 1.0 },
+        ];
+        metrics.record(&findings, &FilterAction::Block);
+        let snap = metrics.snapshot();
+        assert_eq!(snap.pii_blocked, 1);
+        assert_eq!(snap.pii_redacted, 0);
+    }
+
+    #[test]
+    fn pii_metrics_reset() {
+        let metrics = PiiMetrics::new();
+        let findings = vec![
+            Finding { start: 0, end: 5, category: "email".to_string(), confidence: 1.0 },
+        ];
+        metrics.record(&findings, &FilterAction::Redact);
+        assert_eq!(metrics.snapshot().total_scans, 1);
+        metrics.reset();
+        let snap = metrics.snapshot();
+        assert_eq!(snap.total_scans, 0);
+        assert_eq!(snap.pii_detected, 0);
+        assert!(snap.by_category.is_empty());
+    }
+
+    #[test]
+    fn pii_metrics_no_pii_findings() {
+        let metrics = PiiMetrics::new();
+        let findings = vec![
+            Finding { start: 0, end: 5, category: "aws-key".to_string(), confidence: 1.0 },
+        ];
+        metrics.record(&findings, &FilterAction::Redact);
+        let snap = metrics.snapshot();
+        assert_eq!(snap.total_scans, 1);
+        assert_eq!(snap.pii_detected, 0);
+    }
+
+    #[test]
+    fn pipeline_records_metrics() {
+        let metrics = std::sync::Arc::new(PiiMetrics::new());
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(PiiFilter::new());
+        pipeline.set_metrics(std::sync::Arc::clone(&metrics));
+        let _ = pipeline.process("SSN: 123-45-6789", &ctx());
+        let snap = metrics.snapshot();
+        assert_eq!(snap.total_scans, 1);
+        assert!(snap.pii_detected > 0);
     }
 }

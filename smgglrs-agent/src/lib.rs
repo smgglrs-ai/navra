@@ -65,3 +65,4 @@ pub use smgglrs_model::{
 pub use convert::tool_def_to_response;
 pub use smgglrs_security::identity::{CapSigner, Ed25519Signer, load_or_create_file_identity};
 pub use smgglrs_security::ifc::TaintTracker;
+pub use smgglrs_security::safety::FilterPipeline;

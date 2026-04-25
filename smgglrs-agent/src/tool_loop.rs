@@ -11,6 +11,8 @@ use smgglrs_model::{
 };
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_protocol::{CallToolResult, Content};
+use smgglrs_security::safety::{FilterContext, FilterPipeline};
+use std::sync::Arc;
 /// Configuration for the tool-use loop.
 pub struct ToolLoopConfig {
     /// Maximum number of model→tool round-trips (default: 10).
@@ -40,6 +42,13 @@ pub struct ToolLoopConfig {
     /// the model from producing text responses prematurely.
     /// After N iterations, switches to "auto" to allow synthesis.
     pub force_tool_iterations: Option<usize>,
+    /// Optional PII filter applied to model-generated reasoning text.
+    /// When set, the model's text output is filtered through this
+    /// pipeline before being stored in conversation history or
+    /// returned in the final response. This catches PII that the
+    /// model echoes in its reasoning even after tool results were
+    /// redacted.
+    pub pii_filter: Option<Arc<FilterPipeline>>,
 }
 
 impl Default for ToolLoopConfig {
@@ -53,6 +62,7 @@ impl Default for ToolLoopConfig {
             output_json_schema: None,
             non_progress_tools: None,
             force_tool_iterations: None,
+            pii_filter: None,
         }
     }
 }
@@ -86,6 +96,28 @@ pub fn extract_text(result: &CallToolResult) -> String {
         }
     }
     parts.join("")
+}
+
+/// Filter text through the PII pipeline, if configured.
+///
+/// Returns the filtered text, or the original text if no filter is set
+/// or the filter encounters an error (graceful degradation).
+async fn filter_pii(text: &str, pipeline: &FilterPipeline) -> String {
+    let ctx = FilterContext {
+        agent_name: "agent",
+        operation: "model_response",
+        path: None,
+    };
+    match pipeline.process_outbound(text, &ctx).await {
+        Ok(filtered) => filtered,
+        Err(_) => {
+            // Graceful degradation: if the filter blocks entirely,
+            // log and return the original text (the filter is meant
+            // to redact, not block model reasoning).
+            tracing::warn!("PII filter blocked model response text — returning original");
+            text.to_string()
+        }
+    }
 }
 
 /// Execute the agentic tool-use loop using Open Responses.
@@ -219,7 +251,7 @@ pub async fn run_tool_loop(
             .collect();
 
         if function_calls.is_empty() {
-            let text = response.text().unwrap_or_default();
+            let mut text = response.text().unwrap_or_default();
 
             // If the model returns empty text after tool calls were made,
             // prompt it once more to produce a synthesis (max 1 retry).
@@ -231,6 +263,11 @@ pub async fn run_tool_loop(
                      Do not call any more tools."
                 ));
                 continue;
+            }
+
+            // Filter PII from the final model response before returning
+            if let Some(ref pipeline) = config.pii_filter {
+                text = filter_pii(&text, pipeline).await;
             }
 
             return Ok(ToolLoopResult {
@@ -636,5 +673,93 @@ mod tests {
     fn extract_text_from_error_result() {
         let result = CallToolResult::error("something failed");
         assert_eq!(extract_text(&result), "Error: something failed");
+    }
+
+    #[tokio::test]
+    async fn pii_filter_redacts_model_response() {
+        let pipeline = Arc::new(smgglrs_security::safety::build_pipeline("standard"));
+        let model = MockModel::new(vec![stop_response(
+            "The patient's SSN is 123-45-6789 and email is john@example.com",
+        )]);
+        let mut client = mock_client(vec![]).await;
+        let config = ToolLoopConfig {
+            pii_filter: Some(pipeline),
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(&model, &mut client, "Hi", &config, "test-run".into())
+            .await
+            .unwrap();
+        assert!(
+            result.response.contains("[REDACTED:ssn]"),
+            "Expected SSN to be redacted: {}",
+            result.response
+        );
+        assert!(
+            result.response.contains("[REDACTED:email]"),
+            "Expected email to be redacted: {}",
+            result.response
+        );
+        assert!(
+            !result.response.contains("123-45-6789"),
+            "SSN should not appear in response"
+        );
+        assert!(
+            !result.response.contains("john@example.com"),
+            "Email should not appear in response"
+        );
+    }
+
+    #[tokio::test]
+    async fn pii_filter_none_passes_through() {
+        let model = MockModel::new(vec![stop_response(
+            "The patient's SSN is 123-45-6789",
+        )]);
+        let mut client = mock_client(vec![]).await;
+        let config = ToolLoopConfig {
+            pii_filter: None,
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(&model, &mut client, "Hi", &config, "test-run".into())
+            .await
+            .unwrap();
+        assert!(
+            result.response.contains("123-45-6789"),
+            "SSN should pass through when no filter: {}",
+            result.response
+        );
+    }
+
+    #[tokio::test]
+    async fn pii_filter_does_not_affect_tool_calls() {
+        // PII filter only filters model text, not tool call arguments
+        let pipeline = Arc::new(smgglrs_security::safety::build_pipeline("standard"));
+        let model = MockModel::new(vec![
+            tool_call_response("git_status", r#"{"ssn": "123-45-6789"}"#),
+            stop_response("Status is clean."),
+        ]);
+        let mut client = mock_client(vec![serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "nothing to commit"}],
+                "isError": false
+            },
+            "id": 4
+        })])
+        .await;
+        let config = ToolLoopConfig {
+            pii_filter: Some(pipeline),
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(
+            &model, &mut client, "What's the git status?", &config, "test-run".into(),
+        )
+        .await
+        .unwrap();
+        // The final response text "Status is clean." should pass through fine
+        assert_eq!(result.response, "Status is clean.");
+        assert_eq!(result.iterations, 1);
     }
 }

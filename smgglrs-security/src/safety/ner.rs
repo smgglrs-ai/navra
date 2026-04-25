@@ -186,9 +186,10 @@ fn softmax(logits: &[f32]) -> Vec<f32> {
     exps.into_iter().map(|e| e / sum).collect()
 }
 
-/// Built-in label map for sfermion/bert-pii-detector-onnx (55 labels).
+/// Built-in label map for protectai/bert-base-NER-onnx (9 labels).
 ///
-/// Order matches the model's output logits: 27 B- tags, 27 I- tags, plus O.
+/// Order matches the model's output logits: O, then B/I pairs for
+/// MISC, PER, ORG, LOC.
 fn protectai_label_map() -> Vec<String> {
     ["O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]
         .iter()
@@ -196,9 +197,29 @@ fn protectai_label_map() -> Vec<String> {
         .collect()
 }
 
+/// Built-in label map for multilingual NER models like
+/// Davlan/xlm-roberta-base-ner-hrl (9 labels).
+///
+/// Uses DATE instead of MISC compared to the protectai model.
+/// Covers 10+ languages including English, French, German, Spanish,
+/// Italian, Portuguese, and Dutch.
+#[cfg(test)]
+fn multilingual_label_map() -> Vec<String> {
+    ["O", "B-DATE", "I-DATE", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
 fn detect_label_map(num_labels: usize) -> Vec<String> {
     match num_labels {
-        9 => protectai_label_map(),
+        9 => {
+            // Both protectai and multilingual models have 9 labels.
+            // Without a label_map.json we cannot distinguish them,
+            // so default to protectai (English). Multilingual models
+            // ship with a label_map.json that is loaded instead.
+            protectai_label_map()
+        }
         55 => sfermion_label_map(),
         _ => {
             tracing::warn!(num_labels, "Unknown model label count, using sfermion default");
@@ -590,8 +611,9 @@ impl ContentFilter for NerFilter {
 
 /// Load a label map from a JSON file.
 ///
-/// Expected format: `{"0": "O", "1": "B-PER", "2": "I-PER", ...}`
-/// The keys must be consecutive integer indices starting from 0.
+/// Supports two formats:
+/// - Object: `{"0": "O", "1": "B-PER", "2": "I-PER", ...}` (protectai style)
+/// - Array: `["O", "B-PER", "I-PER", ...]` (multilingual/transformers.js style)
 fn load_label_map(path: &Path) -> Result<Vec<String>, NerError> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         NerError::Load(format!(
@@ -600,29 +622,48 @@ fn load_label_map(path: &Path) -> Result<Vec<String>, NerError> {
         ))
     })?;
 
-    let map: std::collections::HashMap<String, String> =
-        serde_json::from_str(&content).map_err(|e| {
-            NerError::Load(format!(
-                "failed to parse label map from {}: {e}",
-                path.display()
-            ))
-        })?;
+    let json_value: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+        NerError::Load(format!(
+            "failed to parse label map from {}: {e}",
+            path.display()
+        ))
+    })?;
 
-    // Find the max index to size the vector
-    let max_idx = map
-        .keys()
-        .filter_map(|k| k.parse::<usize>().ok())
-        .max()
-        .ok_or_else(|| NerError::Load("empty label map".to_string()))?;
-
-    let mut labels = vec!["O".to_string(); max_idx + 1];
-    for (key, value) in &map {
-        if let Ok(idx) = key.parse::<usize>() {
-            labels[idx] = value.clone();
+    match json_value {
+        // Array format: ["O", "B-PER", "I-PER", ...]
+        serde_json::Value::Array(arr) => {
+            if arr.is_empty() {
+                return Err(NerError::Load("empty label map array".to_string()));
+            }
+            let labels: Vec<String> = arr
+                .into_iter()
+                .map(|v| v.as_str().unwrap_or("O").to_string())
+                .collect();
+            Ok(labels)
         }
-    }
+        // Object format: {"0": "O", "1": "B-PER", ...}
+        serde_json::Value::Object(map) => {
+            if map.is_empty() {
+                return Err(NerError::Load("empty label map".to_string()));
+            }
+            let max_idx = map
+                .keys()
+                .filter_map(|k| k.parse::<usize>().ok())
+                .max()
+                .ok_or_else(|| NerError::Load("no valid indices in label map".to_string()))?;
 
-    Ok(labels)
+            let mut labels = vec!["O".to_string(); max_idx + 1];
+            for (key, value) in &map {
+                if let Ok(idx) = key.parse::<usize>() {
+                    labels[idx] = value.as_str().unwrap_or("O").to_string();
+                }
+            }
+            Ok(labels)
+        }
+        _ => Err(NerError::Load(
+            "label map must be a JSON object or array".to_string(),
+        )),
+    }
 }
 
 /// Try to load a NER filter from a model directory.
@@ -676,6 +717,15 @@ pub fn default_pii_ner_model_dir() -> std::path::PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
         .join("smgglrs/models/pii-ner")
+}
+
+/// Returns the default multilingual PII NER model directory path.
+///
+/// `~/.local/share/smgglrs/models/pii-ner-multilingual/`
+pub fn default_pii_ner_multilingual_model_dir() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
+        .join("smgglrs/models/pii-ner-multilingual")
 }
 
 /// Error type for NER filter operations.
@@ -1041,6 +1091,116 @@ mod tests {
         // (fails because model.onnx is invalid, but detects the files correctly)
         let result = load_ner_filter(dir.path());
         assert!(result.is_none());
+    }
+
+    // --- Multilingual label map ---
+
+    #[test]
+    fn multilingual_label_map_has_9_labels() {
+        let map = multilingual_label_map();
+        assert_eq!(map.len(), 9);
+        assert_eq!(map[0], "O");
+        assert_eq!(map[1], "B-DATE");
+        assert_eq!(map[2], "I-DATE");
+        assert_eq!(map[3], "B-PER");
+        assert_eq!(map[4], "I-PER");
+        assert_eq!(map[5], "B-ORG");
+        assert_eq!(map[6], "I-ORG");
+        assert_eq!(map[7], "B-LOC");
+        assert_eq!(map[8], "I-LOC");
+    }
+
+    #[test]
+    fn detect_label_map_9_labels_returns_protectai() {
+        let map = detect_label_map(9);
+        assert_eq!(map.len(), 9);
+        // Default for 9 labels is protectai (MISC, not DATE)
+        assert_eq!(map[1], "B-MISC");
+    }
+
+    #[test]
+    fn detect_label_map_55_labels_returns_sfermion() {
+        let map = detect_label_map(55);
+        assert_eq!(map.len(), 55);
+    }
+
+    #[test]
+    fn multilingual_entity_types_map_to_categories() {
+        // DATE entities from the multilingual model map to temporal-pii
+        assert_eq!(entity_type_to_category("DATE"), Some("temporal-pii"));
+        // PER, LOC, ORG work the same as protectai
+        assert_eq!(entity_type_to_category("PER"), Some("person"));
+        assert_eq!(entity_type_to_category("LOC"), Some("location"));
+        assert_eq!(entity_type_to_category("ORG"), Some("organization"));
+    }
+
+    // --- Label map array format ---
+
+    #[test]
+    fn load_label_map_array_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("label_map.json");
+        std::fs::write(
+            &path,
+            r#"["O", "B-DATE", "I-DATE", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]"#,
+        )
+        .unwrap();
+
+        let labels = load_label_map(&path).unwrap();
+        assert_eq!(labels.len(), 9);
+        assert_eq!(labels[0], "O");
+        assert_eq!(labels[1], "B-DATE");
+        assert_eq!(labels[8], "I-LOC");
+    }
+
+    #[test]
+    fn load_label_map_empty_array_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("label_map.json");
+        std::fs::write(&path, "[]").unwrap();
+        assert!(load_label_map(&path).is_err());
+    }
+
+    #[test]
+    fn load_label_map_invalid_json_type_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("label_map.json");
+        std::fs::write(&path, r#""just a string""#).unwrap();
+        assert!(load_label_map(&path).is_err());
+    }
+
+    // --- Default model dirs ---
+
+    #[test]
+    fn default_multilingual_model_dir_differs_from_english() {
+        let en = default_pii_ner_model_dir();
+        let ml = default_pii_ner_multilingual_model_dir();
+        assert_ne!(en, ml);
+        assert!(ml.to_string_lossy().contains("pii-ner-multilingual"));
+    }
+
+    // --- Integration test (ignored, requires model) ---
+
+    #[test]
+    #[ignore]
+    fn ner_multilingual_french_text() {
+        // Requires: smgglrs pii download --multilingual
+        let model_dir = default_pii_ner_multilingual_model_dir();
+        let filter = NerFilter::load_from_dir(&model_dir)
+            .expect("multilingual NER model not installed");
+        let text = "M. Dupont habite au 15 rue de Rivoli à Paris";
+        let spans = filter.detect_entities(text).unwrap();
+        // Should detect at least one PER (Dupont) and one LOC (Paris)
+        let person_spans: Vec<_> = spans.iter().filter(|s| s.entity_type == "PER").collect();
+        let loc_spans: Vec<_> = spans.iter().filter(|s| s.entity_type == "LOC").collect();
+        assert!(
+            !person_spans.is_empty(),
+            "Expected to detect person entity in French text"
+        );
+        assert!(
+            !loc_spans.is_empty(),
+            "Expected to detect location entity in French text"
+        );
     }
 
     // --- NerFilter implements ContentFilter ---

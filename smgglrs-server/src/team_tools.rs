@@ -818,6 +818,11 @@ pub struct TeammateSpawnContext {
     /// with proper delegation chain (parent nonce, attenuation validation).
     /// When `None`, falls back to flat `build_payload` (backward compatible).
     pub root_payload: Option<smgglrs_core::auth::capability::CapabilityPayload>,
+    /// Optional PII filter applied to model-generated reasoning text.
+    /// When set, teammate agents filter their text output to prevent
+    /// PII leaking through model reasoning even after tool results
+    /// were redacted.
+    pub pii_filter: Option<std::sync::Arc<smgglrs_core::safety::FilterPipeline>>,
 }
 
 /// Spawn a teammate agent in a background task.
@@ -837,6 +842,7 @@ pub fn spawn_teammate_agent(
     let signer = std::sync::Arc::clone(&ctx.signer);
     let forge = ctx.forge.clone();
     let root_payload = ctx.root_payload.clone();
+    let pii_filter = ctx.pii_filter.clone();
     let smgglrs_addr = ctx.smgglrs_addr.clone();
     let team_id = team_id.to_string();
     let teammate_id = teammate_id.to_string();
@@ -1000,6 +1006,9 @@ pub fn spawn_teammate_agent(
                                 "models_list".to_string(),
                                 "personas_list".to_string(),
                             ]);
+                        }
+                        if let Some(ref filter) = pii_filter {
+                            builder = builder.pii_filter(std::sync::Arc::clone(filter));
                         }
                         let mut agent = builder.build().await?;
                         agent.run(&message).await

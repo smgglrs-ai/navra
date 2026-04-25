@@ -359,6 +359,52 @@ impl ChunkStore {
         )?;
         Ok(count > 0)
     }
+
+    /// Delete all chunks whose source/document path matches `source_id`.
+    ///
+    /// This is the cascade entry point for memory erasure: when a
+    /// knowledge entry is deleted, call this with the entry's ID to
+    /// remove any associated embedding vectors.
+    ///
+    /// Returns the number of chunks deleted.
+    pub fn delete_by_source(&self, source_id: &str) -> rusqlite::Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        if self.dimensions > 0 {
+            conn.execute(
+                "DELETE FROM rag_chunk_vectors WHERE rowid IN \
+                 (SELECT id FROM rag_chunks WHERE path = ?1)",
+                params![source_id],
+            )?;
+        }
+        let deleted = conn.execute(
+            "DELETE FROM rag_chunks WHERE path = ?1",
+            params![source_id],
+        )?;
+        Ok(deleted)
+    }
+
+    /// Delete all chunks whose content contains the given query string.
+    ///
+    /// Used for right-to-erasure when you need to purge vectors
+    /// containing a person's name or other PII, regardless of which
+    /// source document they came from.
+    ///
+    /// Returns the number of chunks deleted.
+    pub fn delete_by_content_match(&self, query: &str) -> rusqlite::Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        if self.dimensions > 0 {
+            conn.execute(
+                "DELETE FROM rag_chunk_vectors WHERE rowid IN \
+                 (SELECT id FROM rag_chunks WHERE content LIKE '%' || ?1 || '%')",
+                params![query],
+            )?;
+        }
+        let deleted = conn.execute(
+            "DELETE FROM rag_chunks WHERE content LIKE '%' || ?1 || '%'",
+            params![query],
+        )?;
+        Ok(deleted)
+    }
 }
 
 #[cfg(test)]
@@ -483,5 +529,90 @@ mod tests {
         let results = store.find_similar_documents("/a.md", 5).unwrap();
         assert!(!results.is_empty());
         assert_eq!(results[0].path, "/b.md");
+    }
+
+    #[test]
+    fn delete_by_source_removes_chunks_and_vectors() {
+        let store = test_store();
+        store
+            .index_document("/doc.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
+        assert_eq!(store.stats().unwrap().chunk_count, 2);
+
+        let deleted = store.delete_by_source("/doc.md").unwrap();
+        assert_eq!(deleted, 2);
+        assert_eq!(store.stats().unwrap().chunk_count, 0);
+
+        // Search should return nothing
+        let results = store.search(&[1.0, 0.0, 0.0, 0.0], 5).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn delete_by_source_unknown_returns_zero() {
+        let store = test_store();
+        store
+            .index_document("/doc.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
+
+        let deleted = store.delete_by_source("/nonexistent.md").unwrap();
+        assert_eq!(deleted, 0);
+        // Original chunks untouched
+        assert_eq!(store.stats().unwrap().chunk_count, 2);
+    }
+
+    #[test]
+    fn delete_by_content_match_removes_matching() {
+        let store = test_store();
+        store
+            .index_document("/doc.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
+        assert_eq!(store.stats().unwrap().chunk_count, 2);
+
+        // Delete only chunks containing "First"
+        let deleted = store.delete_by_content_match("First").unwrap();
+        assert_eq!(deleted, 1);
+        assert_eq!(store.stats().unwrap().chunk_count, 1);
+
+        // Remaining chunk should be the second one
+        let results = store.search(&[0.0, 1.0, 0.0, 0.0], 5).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "Second chunk");
+    }
+
+    #[test]
+    fn delete_by_content_match_no_match_returns_zero() {
+        let store = test_store();
+        store
+            .index_document("/doc.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
+
+        let deleted = store.delete_by_content_match("nonexistent text").unwrap();
+        assert_eq!(deleted, 0);
+        assert_eq!(store.stats().unwrap().chunk_count, 2);
+    }
+
+    #[test]
+    fn delete_by_content_match_across_documents() {
+        let store = test_store();
+        store
+            .index_document("/a.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
+
+        let other_chunks = vec![Chunk {
+            content: "First paragraph of another doc".to_string(),
+            start_byte: 0,
+            end_byte: 30,
+            index: 0,
+        }];
+        let other_embeddings = vec![vec![0.5, 0.5, 0.0, 0.0]];
+        store
+            .index_document("/b.md", &other_chunks, &other_embeddings)
+            .unwrap();
+
+        // Delete all chunks containing "First" across all documents
+        let deleted = store.delete_by_content_match("First").unwrap();
+        assert_eq!(deleted, 2); // one from /a.md, one from /b.md
+        assert_eq!(store.stats().unwrap().chunk_count, 1); // only "Second chunk" remains
     }
 }

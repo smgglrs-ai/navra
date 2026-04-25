@@ -10,7 +10,8 @@
 //! by `[modules.memory] pii_filter` in config (default: "standard").
 
 use smgglrs_core::protocol::{ToolDefinition, ToolInputSchema};
-use smgglrs_core::safety::{FilterContext, FilterPipeline};
+use smgglrs_core::safety::{FilterContext, FilterPipeline, PiiMetrics};
+use smgglrs_rag::ChunkStore;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -258,9 +259,14 @@ pub async fn handle_memory_query(
 }
 
 /// Handle memory_forget tool call.
+///
+/// When a `ChunkStore` is provided, also deletes any embedding vectors
+/// associated with the entry's ID to prevent PII leakage through
+/// vector search.
 pub async fn handle_memory_forget(
     args: serde_json::Value,
     ks: std::sync::Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+    chunk_store: Option<Arc<ChunkStore>>,
 ) -> smgglrs_core::protocol::CallToolResult {
     use smgglrs_core::protocol::CallToolResult;
 
@@ -271,9 +277,16 @@ pub async fn handle_memory_forget(
 
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
     match store.delete(id) {
-        Ok(true) => CallToolResult::text(
-            serde_json::json!({"id": id, "status": "deleted"}).to_string()
-        ),
+        Ok(true) => {
+            let chunks_deleted = cascade_delete_source(&chunk_store, id);
+            CallToolResult::text(
+                serde_json::json!({
+                    "id": id,
+                    "status": "deleted",
+                    "chunks_deleted": chunks_deleted,
+                }).to_string()
+            )
+        }
         Ok(false) => CallToolResult::error(format!("No entry found with id: {id}")),
         Err(e) => CallToolResult::error(format!("Failed to delete entry: {e}")),
     }
@@ -342,10 +355,15 @@ pub fn memory_purge_pii_def() -> ToolDefinition {
 }
 
 /// Handle memory_purge_pii tool call.
+///
+/// When `action` is `"delete"` and a `ChunkStore` is provided, also
+/// deletes embedding vectors associated with each purged entry to
+/// prevent PII leakage through vector search.
 pub async fn handle_memory_purge_pii(
     args: serde_json::Value,
     ks: std::sync::Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
     sanitizer: PiiSanitizer,
+    chunk_store: Option<Arc<ChunkStore>>,
 ) -> smgglrs_core::protocol::CallToolResult {
     use smgglrs_core::protocol::CallToolResult;
 
@@ -386,6 +404,7 @@ pub async fn handle_memory_purge_pii(
 
     let scanned = entries.len();
     let mut affected = 0usize;
+    let mut chunks_deleted = 0usize;
 
     for entry in &entries {
         let has_pii = content_has_pii(&entry.content, &sanitizer)
@@ -400,6 +419,7 @@ pub async fn handle_memory_purge_pii(
         match action.as_str() {
             "delete" => {
                 let _ = store.delete(&entry.id);
+                chunks_deleted += cascade_delete_source(&chunk_store, &entry.id);
             }
             "redact" => {
                 let redacted_title = sanitize_for_storage_sync(&entry.title, &sanitizer);
@@ -416,6 +436,7 @@ pub async fn handle_memory_purge_pii(
             "scanned": scanned,
             "affected": affected,
             "action": action,
+            "chunks_deleted": chunks_deleted,
         }).to_string()
     )
 }
@@ -447,9 +468,14 @@ pub fn memory_forget_by_content_def() -> ToolDefinition {
 }
 
 /// Handle memory_forget_by_content tool call.
+///
+/// When `confirm` is true and a `ChunkStore` is provided, also
+/// deletes embedding vectors associated with deleted entries and
+/// any chunks whose content matches the query string.
 pub async fn handle_memory_forget_by_content(
     args: serde_json::Value,
     ks: std::sync::Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+    chunk_store: Option<Arc<ChunkStore>>,
 ) -> smgglrs_core::protocol::CallToolResult {
     use smgglrs_core::protocol::CallToolResult;
 
@@ -491,17 +517,26 @@ pub async fn handle_memory_forget_by_content(
 
     // Actually delete
     let mut deleted = 0usize;
+    let mut chunks_deleted = 0usize;
     for entry in &entries {
         match store.delete(&entry.id) {
-            Ok(true) => deleted += 1,
+            Ok(true) => {
+                deleted += 1;
+                chunks_deleted += cascade_delete_source(&chunk_store, &entry.id);
+            }
             _ => {}
         }
     }
+
+    // Also delete any chunks whose content matches the query string
+    // (catches vectors that may not be linked by source ID).
+    chunks_deleted += cascade_delete_content(&chunk_store, query);
 
     CallToolResult::text(
         serde_json::json!({
             "mode": "confirmed",
             "deleted": deleted,
+            "chunks_deleted": chunks_deleted,
         }).to_string()
     )
 }
@@ -523,6 +558,231 @@ pub fn memory_forget_def() -> ToolDefinition {
             ])),
             required: Some(vec!["id".to_string()]),
         },
+    }
+}
+
+/// Cascade-delete chunks by source ID from the chunk store.
+///
+/// Returns the number of chunks deleted, or 0 if no chunk store is available.
+fn cascade_delete_source(chunk_store: &Option<Arc<ChunkStore>>, source_id: &str) -> usize {
+    if let Some(ref cs) = chunk_store {
+        match cs.delete_by_source(source_id) {
+            Ok(n) => {
+                if n > 0 {
+                    tracing::debug!(source_id, chunks = n, "Cascade-deleted chunks for forgotten entry");
+                }
+                n
+            }
+            Err(e) => {
+                tracing::warn!(source_id, error = %e, "Failed to cascade-delete chunks");
+                0
+            }
+        }
+    } else {
+        0
+    }
+}
+
+/// Cascade-delete chunks by content match from the chunk store.
+///
+/// Returns the number of chunks deleted, or 0 if no chunk store is available.
+fn cascade_delete_content(chunk_store: &Option<Arc<ChunkStore>>, query: &str) -> usize {
+    if let Some(ref cs) = chunk_store {
+        match cs.delete_by_content_match(query) {
+            Ok(n) => {
+                if n > 0 {
+                    tracing::debug!(query, chunks = n, "Cascade-deleted chunks by content match");
+                }
+                n
+            }
+            Err(e) => {
+                tracing::warn!(query, error = %e, "Failed to cascade-delete chunks by content");
+                0
+            }
+        }
+    } else {
+        0
+    }
+}
+
+// --- pii_report tool ---
+
+pub fn pii_report_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "pii_report".to_string(),
+        description: Some(
+            "Generate a GDPR compliance report showing PII detection metrics, \
+             retention policies, and current state of PII-flagged entries. \
+             Provides data needed for Data Protection Impact Assessments \
+             (GDPR Article 35)."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::new()),
+            required: None,
+        },
+    }
+}
+
+/// Handle pii_report tool call.
+pub async fn handle_pii_report(
+    _args: serde_json::Value,
+    ks: Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+    metrics: Option<Arc<PiiMetrics>>,
+    retention_days: Option<u32>,
+    pii_retention_days: Option<u32>,
+    audit_retention_days: Option<u32>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+
+    let pii_entry_count = store.count_pii_entries().unwrap_or(0);
+
+    let metrics_snapshot = metrics
+        .as_ref()
+        .map(|m| {
+            let snap = m.snapshot();
+            serde_json::json!({
+                "total_scans": snap.total_scans,
+                "pii_detected": snap.pii_detected,
+                "pii_redacted": snap.pii_redacted,
+                "pii_blocked": snap.pii_blocked,
+                "by_category": snap.by_category,
+            })
+        })
+        .unwrap_or(serde_json::json!("not_configured"));
+
+    let report = serde_json::json!({
+        "metrics": metrics_snapshot,
+        "knowledge_store": {
+            "entries_with_pii": pii_entry_count,
+        },
+        "retention_policy": {
+            "general_ttl_days": retention_days,
+            "pii_ttl_days": pii_retention_days.unwrap_or(30),
+            "audit_ttl_days": audit_retention_days.unwrap_or(365),
+        },
+    });
+
+    CallToolResult::text(serde_json::to_string_pretty(&report).unwrap_or_default())
+}
+
+// --- memory_consent tool ---
+
+pub fn memory_consent_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "memory_consent".to_string(),
+        description: Some(
+            "Set or query the GDPR consent basis for stored knowledge entries. \
+             Valid bases: legitimate_interest, consent, legal_obligation, \
+             vital_interest, public_task, not_set. Use mode 'set' to assign \
+             a basis to an entry, 'get' to query an entry's basis, or 'list' \
+             to find all entries with a given basis."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                ("mode".to_string(), serde_json::json!({
+                    "type": "string",
+                    "enum": ["set", "get", "list"],
+                    "description": "Operation mode: 'set' assigns a basis, 'get' queries one entry, 'list' filters by basis"
+                })),
+                ("id".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Entry ID (required for 'set' and 'get' modes)"
+                })),
+                ("basis".to_string(), serde_json::json!({
+                    "type": "string",
+                    "enum": ["legitimate_interest", "consent", "legal_obligation", "vital_interest", "public_task", "not_set"],
+                    "description": "Consent basis (required for 'set' mode, used as filter for 'list' mode)"
+                })),
+            ])),
+            required: Some(vec!["mode".to_string()]),
+        },
+    }
+}
+
+/// Handle memory_consent tool call.
+pub async fn handle_memory_consent(
+    args: serde_json::Value,
+    ks: Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let mode = match args.get("mode").and_then(|v| v.as_str()) {
+        Some(m) => m,
+        None => return CallToolResult::error("Missing required parameter: mode"),
+    };
+
+    let store = ks.lock().unwrap_or_else(|e| e.into_inner());
+
+    match mode {
+        "set" => {
+            let id = match args.get("id").and_then(|v| v.as_str()) {
+                Some(id) => id,
+                None => return CallToolResult::error("Missing required parameter: id (for 'set' mode)"),
+            };
+            let basis = match args.get("basis").and_then(|v| v.as_str()) {
+                Some(b @ ("legitimate_interest" | "consent" | "legal_obligation" | "vital_interest" | "public_task" | "not_set")) => b,
+                _ => return CallToolResult::error(
+                    "Missing or invalid parameter: basis (must be one of: legitimate_interest, consent, legal_obligation, vital_interest, public_task, not_set)"
+                ),
+            };
+
+            match store.set_consent_basis(id, basis) {
+                Ok(true) => CallToolResult::text(
+                    serde_json::json!({"id": id, "consent_basis": basis, "status": "updated"}).to_string()
+                ),
+                Ok(false) => CallToolResult::error(format!("No entry found with id: {id}")),
+                Err(e) => CallToolResult::error(format!("Failed to set consent basis: {e}")),
+            }
+        }
+        "get" => {
+            let id = match args.get("id").and_then(|v| v.as_str()) {
+                Some(id) => id,
+                None => return CallToolResult::error("Missing required parameter: id (for 'get' mode)"),
+            };
+
+            match store.get_consent_basis(id) {
+                Ok(Some(basis)) => CallToolResult::text(
+                    serde_json::json!({"id": id, "consent_basis": basis}).to_string()
+                ),
+                Ok(None) => CallToolResult::error(format!("No entry found with id: {id}")),
+                Err(e) => CallToolResult::error(format!("Failed to get consent basis: {e}")),
+            }
+        }
+        "list" => {
+            let basis = match args.get("basis").and_then(|v| v.as_str()) {
+                Some(b) => b,
+                None => return CallToolResult::error("Missing required parameter: basis (for 'list' mode)"),
+            };
+
+            match store.list_by_consent(basis) {
+                Ok(entries) => {
+                    let output: Vec<serde_json::Value> = entries.iter().map(|e| {
+                        serde_json::json!({
+                            "id": e.id,
+                            "kind": e.memory_type.as_str(),
+                            "title": e.title,
+                            "created_at": e.created_at,
+                        })
+                    }).collect();
+
+                    CallToolResult::text(
+                        serde_json::json!({
+                            "basis": basis,
+                            "count": entries.len(),
+                            "entries": output,
+                        }).to_string()
+                    )
+                }
+                Err(e) => CallToolResult::error(format!("Failed to list by consent: {e}")),
+            }
+        }
+        _ => CallToolResult::error(format!("Invalid mode: {mode}. Use 'set', 'get', or 'list'.")),
     }
 }
 
@@ -684,7 +944,7 @@ mod tests {
 
         let sanitizer = build_pii_sanitizer("standard");
         let args = serde_json::json!({"action": "redact"});
-        let result = handle_memory_purge_pii(args, ks.clone(), sanitizer).await;
+        let result = handle_memory_purge_pii(args, ks.clone(), sanitizer, None).await;
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
@@ -735,7 +995,7 @@ mod tests {
 
         let sanitizer = build_pii_sanitizer("standard");
         let args = serde_json::json!({"action": "delete"});
-        let result = handle_memory_purge_pii(args, ks.clone(), sanitizer).await;
+        let result = handle_memory_purge_pii(args, ks.clone(), sanitizer, None).await;
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
@@ -771,7 +1031,7 @@ mod tests {
         }
 
         let args = serde_json::json!({"query": "Jean", "confirm": false});
-        let result = handle_memory_forget_by_content(args, ks.clone()).await;
+        let result = handle_memory_forget_by_content(args, ks.clone(), None).await;
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
@@ -806,7 +1066,7 @@ mod tests {
         }
 
         let args = serde_json::json!({"query": "Jean", "confirm": true});
-        let result = handle_memory_forget_by_content(args, ks.clone()).await;
+        let result = handle_memory_forget_by_content(args, ks.clone(), None).await;
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
@@ -818,5 +1078,331 @@ mod tests {
         // Entry should be gone
         let store = ks.lock().unwrap();
         assert!(store.get("e1").unwrap().is_none());
+    }
+
+    // --- Cascade deletion tests ---
+
+    use smgglrs_rag::ChunkStore;
+
+    fn test_chunk_store() -> Arc<ChunkStore> {
+        Arc::new(ChunkStore::open_memory(4).unwrap())
+    }
+
+    fn index_chunks_for_entry(cs: &ChunkStore, entry_id: &str, content: &str) {
+        let chunks = vec![smgglrs_rag::chunk::Chunk {
+            content: content.to_string(),
+            start_byte: 0,
+            end_byte: content.len(),
+            index: 0,
+        }];
+        let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]];
+        cs.index_document(entry_id, &chunks, &embeddings).unwrap();
+    }
+
+    #[tokio::test]
+    async fn memory_forget_cascades_to_chunk_store() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+        let cs = test_chunk_store();
+
+        // Store a knowledge entry and index chunks with the entry ID as source
+        {
+            let store = ks.lock().unwrap();
+            let entry = smgglrs_memory::MemoryEntry {
+                id: "entry1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Test".to_string(),
+                content: "Some knowledge".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&entry).unwrap();
+        }
+        index_chunks_for_entry(&cs, "entry1", "Some knowledge content");
+        assert_eq!(cs.stats().unwrap().chunk_count, 1);
+
+        // Forget the entry
+        let args = serde_json::json!({"id": "entry1"});
+        let result = handle_memory_forget(args, ks.clone(), Some(Arc::clone(&cs))).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["status"], "deleted");
+        assert_eq!(response["chunks_deleted"], 1);
+
+        // Chunks should be gone
+        assert_eq!(cs.stats().unwrap().chunk_count, 0);
+    }
+
+    #[tokio::test]
+    async fn memory_forget_no_chunk_store_still_works() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        {
+            let store = ks.lock().unwrap();
+            let entry = smgglrs_memory::MemoryEntry {
+                id: "entry1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Test".to_string(),
+                content: "Content".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&entry).unwrap();
+        }
+
+        let args = serde_json::json!({"id": "entry1"});
+        let result = handle_memory_forget(args, ks.clone(), None).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["status"], "deleted");
+        assert_eq!(response["chunks_deleted"], 0);
+    }
+
+    #[tokio::test]
+    async fn memory_purge_pii_delete_cascades_to_chunk_store() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+        let cs = test_chunk_store();
+
+        // Store entry with PII and index chunks
+        {
+            let store = ks.lock().unwrap();
+            let pii = smgglrs_memory::MemoryEntry {
+                id: "pii1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Contact".to_string(),
+                content: "Email: user@example.com".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&pii).unwrap();
+        }
+        index_chunks_for_entry(&cs, "pii1", "Email: user@example.com");
+        assert_eq!(cs.stats().unwrap().chunk_count, 1);
+
+        let sanitizer = build_pii_sanitizer("standard");
+        let args = serde_json::json!({"action": "delete"});
+        let result = handle_memory_purge_pii(args, ks.clone(), sanitizer, Some(Arc::clone(&cs))).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["affected"], 1);
+        assert_eq!(response["chunks_deleted"], 1);
+
+        // Chunks should be gone
+        assert_eq!(cs.stats().unwrap().chunk_count, 0);
+    }
+
+    #[tokio::test]
+    async fn memory_forget_by_content_cascades_to_chunk_store() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+        let cs = test_chunk_store();
+
+        // Store entry and index chunks
+        {
+            let store = ks.lock().unwrap();
+            let entry = smgglrs_memory::MemoryEntry {
+                id: "e1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Jean info".to_string(),
+                content: "Jean Dupont works at ACME".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&entry).unwrap();
+        }
+        index_chunks_for_entry(&cs, "e1", "Jean Dupont works at ACME");
+
+        // Also index a chunk from a different source that mentions Jean
+        index_chunks_for_entry(&cs, "other_doc", "Jean Dupont is a colleague");
+        assert_eq!(cs.stats().unwrap().chunk_count, 2);
+
+        let args = serde_json::json!({"query": "Jean", "confirm": true});
+        let result = handle_memory_forget_by_content(args, ks.clone(), Some(Arc::clone(&cs))).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["mode"], "confirmed");
+        assert_eq!(response["deleted"], 1);
+        // Should delete chunks by source ID (e1) AND by content match ("Jean")
+        assert_eq!(response["chunks_deleted"], 2);
+
+        // All chunks containing "Jean" should be gone
+        assert_eq!(cs.stats().unwrap().chunk_count, 0);
+    }
+
+    // --- pii_report tests ---
+
+    #[tokio::test]
+    async fn pii_report_returns_correct_format() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        // Store an entry with PII
+        {
+            let store = ks.lock().unwrap();
+            let entry = smgglrs_memory::MemoryEntry {
+                id: "pii1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Contact".to_string(),
+                content: "Email: user@example.com".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store_with_pii(&entry, true).unwrap();
+        }
+
+        let metrics = Arc::new(PiiMetrics::new());
+        let result = handle_pii_report(
+            serde_json::json!({}),
+            ks,
+            Some(metrics),
+            Some(90),
+            Some(30),
+            Some(365),
+        ).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let report: serde_json::Value = serde_json::from_str(text).unwrap();
+
+        assert!(report.get("metrics").is_some());
+        assert_eq!(report["knowledge_store"]["entries_with_pii"], 1);
+        assert_eq!(report["retention_policy"]["general_ttl_days"], 90);
+        assert_eq!(report["retention_policy"]["pii_ttl_days"], 30);
+        assert_eq!(report["retention_policy"]["audit_ttl_days"], 365);
+    }
+
+    #[tokio::test]
+    async fn pii_report_without_metrics() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        let result = handle_pii_report(
+            serde_json::json!({}),
+            ks,
+            None,
+            None,
+            None,
+            None,
+        ).await;
+
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let report: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(report["metrics"], "not_configured");
+    }
+
+    // --- memory_consent tests ---
+
+    #[tokio::test]
+    async fn memory_consent_set_and_get() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        // Store an entry
+        {
+            let store = ks.lock().unwrap();
+            let entry = smgglrs_memory::MemoryEntry {
+                id: "e1".to_string(),
+                memory_type: smgglrs_memory::MemoryType::Fact,
+                title: "Test".to_string(),
+                content: "Test content".to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            store.store(&entry).unwrap();
+        }
+
+        // Set consent basis
+        let args = serde_json::json!({"mode": "set", "id": "e1", "basis": "consent"});
+        let result = handle_memory_consent(args, ks.clone()).await;
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["status"], "updated");
+        assert_eq!(response["consent_basis"], "consent");
+
+        // Get consent basis
+        let args = serde_json::json!({"mode": "get", "id": "e1"});
+        let result = handle_memory_consent(args, ks.clone()).await;
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["consent_basis"], "consent");
+    }
+
+    #[tokio::test]
+    async fn memory_consent_list() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        {
+            let store = ks.lock().unwrap();
+            for (id, title) in &[("e1", "A"), ("e2", "B"), ("e3", "C")] {
+                let entry = smgglrs_memory::MemoryEntry {
+                    id: id.to_string(),
+                    memory_type: smgglrs_memory::MemoryType::Fact,
+                    title: title.to_string(),
+                    content: "content".to_string(),
+                    tags: vec![],
+                    created_at: 1000,
+                    updated_at: None,
+                };
+                store.store(&entry).unwrap();
+            }
+            store.set_consent_basis("e1", "consent").unwrap();
+            store.set_consent_basis("e2", "consent").unwrap();
+        }
+
+        let args = serde_json::json!({"mode": "list", "basis": "consent"});
+        let result = handle_memory_consent(args, ks.clone()).await;
+        let text = match result.content.first().unwrap() {
+            smgglrs_core::protocol::Content::Text(t) => &t.text,
+        };
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["count"], 2);
+        assert_eq!(response["basis"], "consent");
+    }
+
+    #[tokio::test]
+    async fn memory_consent_invalid_basis() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        let args = serde_json::json!({"mode": "set", "id": "e1", "basis": "invalid"});
+        let result = handle_memory_consent(args, ks).await;
+        assert!(result.is_error);
     }
 }
