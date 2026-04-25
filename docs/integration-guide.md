@@ -580,17 +580,35 @@ structures the analysis as a legal syllogism.
 
 ## 8. Security considerations
 
-### Safety filters on upstream responses
+### PII detection on upstream responses
 
-smgglrs applies the same safety filters to upstream tool responses
-as to built-in tools. If your server returns content containing
-secrets, PII, or custom-matched patterns, they are redacted before
-reaching the agent:
+All upstream tool responses pass through the full PII pipeline
+before reaching the agent. This includes regex patterns (US + EU),
+NER models (English and multilingual), and file path analysis.
+By default, detected PII is redacted:
 
 ```
 Original:  Dossier 2024/123456, SSN 1 85 12 75 123 456 78
 Redacted:  Dossier 2024/123456, SSN [REDACTED:pii-ssn]
 ```
+
+PII can also be pseudonymized (consistent replacement within a
+session) instead of redacted, depending on the filter action
+configuration. Custom PII patterns can be defined in config via
+`[[pii_patterns]]` for domain-specific identifiers:
+
+```toml
+[[pii_patterns]]
+category = "case-number"
+pattern = "\\bDossier\\s+\\d{4}/\\d{6}\\b"
+action = "pseudonymize"
+```
+
+For data subjects covered by GDPR, the gateway provides tools for
+right of access (`pii_report`), right to erasure
+(`memory_purge_pii`), and consent tracking (`pii_consent`). These
+apply to all data stored by the gateway, including data originating
+from upstream tool responses.
 
 ### IFC labels on upstream tool results
 

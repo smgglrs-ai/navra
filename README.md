@@ -177,6 +177,16 @@ or Envoy) in front of the upstream server to terminate TLS. See the
 [Transport Security](DESIGN.md#transport-security) section in
 DESIGN.md for a worked example and full details.
 
+### PII detection and GDPR compliance
+
+smgglrs detects and handles PII across three layers: regex patterns
+(US + EU), NER models (English + multilingual ONNX), and file path
+analysis. Detected PII can be redacted, pseudonymized, or blocked.
+The PII pipeline covers tool responses, memory storage, audit logs,
+embeddings, and model reasoning text. GDPR tools (`pii_report`,
+`memory_purge_pii`, `pii_consent`) support data subject rights.
+See [DESIGN.md](DESIGN.md#content-safety) for details.
+
 ### Further reading
 
 See [DESIGN.md](DESIGN.md) for the full security model: defense in
