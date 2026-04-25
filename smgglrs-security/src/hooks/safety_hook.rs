@@ -10,8 +10,9 @@
 
 use super::{Hook, HookDecision};
 use crate::auth::CallContext;
+use smgglrs_protocol::label::Confidentiality;
 use smgglrs_protocol::{CallToolResult, Content};
-use crate::safety::{FilterContext, FilterPipeline};
+use crate::safety::{is_pii_category, FilterContext, FilterPipeline};
 use std::collections::HashMap;
 
 /// Operations that carry content from the agent into the system
@@ -117,12 +118,21 @@ impl Hook for SafetyHook {
         };
 
         let mut filtered_content = Vec::new();
+        let mut has_pii = false;
         for content in &result.content {
             match content {
                 Content::Text(text) => {
-                    match pipeline.process_outbound(&text.text, &filter_ctx).await {
-                        Ok(processed) => {
-                            filtered_content.push(Content::text(processed));
+                    let (processed, findings) = pipeline
+                        .process_outbound_with_findings(&text.text, &filter_ctx)
+                        .await;
+                    // Track whether any finding is PII — even if redacted,
+                    // the label persists so downstream consumers know.
+                    if findings.iter().any(|f| is_pii_category(&f.category)) {
+                        has_pii = true;
+                    }
+                    match processed {
+                        Ok(text) => {
+                            filtered_content.push(Content::text(text));
                         }
                         Err(reason) => {
                             return HookDecision::ModifyResult(CallToolResult::error(reason));
@@ -132,12 +142,25 @@ impl Hook for SafetyHook {
             }
         }
 
+        // Elevate IFC label to at least Pii if PII was detected
+        let label = if has_pii && result.label.confidentiality < Confidentiality::Pii {
+            smgglrs_protocol::label::DataLabel {
+                integrity: result.label.integrity,
+                confidentiality: Confidentiality::Pii,
+            }
+        } else {
+            result.label
+        };
+
         let new_result = CallToolResult {
             content: filtered_content,
             is_error: result.is_error,
-            label: result.label,
+            label,
         };
-        // Only return ModifyResult if content actually changed
+        // Return ModifyResult if content or label changed
+        if label != result.label {
+            return HookDecision::ModifyResult(new_result);
+        }
         if new_result.content.len() != result.content.len() {
             return HookDecision::ModifyResult(new_result);
         }
@@ -158,6 +181,7 @@ impl Hook for SafetyHook {
 mod tests {
     use super::*;
     use crate::auth::AgentIdentity;
+    use smgglrs_protocol::label::Confidentiality;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")
@@ -239,6 +263,79 @@ mod tests {
             .await;
 
         // "none" profile has no filters -> continue
+        assert!(matches!(decision, HookDecision::Continue));
+    }
+
+    #[tokio::test]
+    async fn safety_hook_elevates_pii_label() {
+        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
+
+        // Content contains an SSN (PII category)
+        let result = CallToolResult::text("SSN: 123-45-6789".to_string());
+        let decision = hook
+            .post_tool_use("echo", &serde_json::json!({}), &result, &test_ctx())
+            .await;
+
+        match decision {
+            HookDecision::ModifyResult(r) => {
+                // Content should be redacted
+                match &r.content[0] {
+                    Content::Text(t) => assert!(t.text.contains("[REDACTED:ssn]")),
+                }
+                // Label should be elevated to Pii
+                assert_eq!(r.label.confidentiality, Confidentiality::Pii);
+            }
+            other => panic!("Expected ModifyResult, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn safety_hook_elevates_email_to_pii() {
+        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
+
+        let result = CallToolResult::text("Contact: john@example.com".to_string());
+        let decision = hook
+            .post_tool_use("echo", &serde_json::json!({}), &result, &test_ctx())
+            .await;
+
+        match decision {
+            HookDecision::ModifyResult(r) => {
+                assert_eq!(r.label.confidentiality, Confidentiality::Pii);
+            }
+            other => panic!("Expected ModifyResult, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn safety_hook_does_not_downgrade_secret_for_pii() {
+        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
+
+        // Result already labeled Secret — PII should not downgrade it
+        let mut result = CallToolResult::text("SSN: 123-45-6789".to_string());
+        result.label.confidentiality = Confidentiality::Secret;
+        let decision = hook
+            .post_tool_use("echo", &serde_json::json!({}), &result, &test_ctx())
+            .await;
+
+        match decision {
+            HookDecision::ModifyResult(r) => {
+                assert_eq!(r.label.confidentiality, Confidentiality::Secret);
+            }
+            other => panic!("Expected ModifyResult, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn safety_hook_secrets_only_no_pii_elevation() {
+        // "secrets-only" profile doesn't include PII filter
+        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("secrets-only"));
+
+        let result = CallToolResult::text("SSN: 123-45-6789".to_string());
+        let decision = hook
+            .post_tool_use("echo", &serde_json::json!({}), &result, &test_ctx())
+            .await;
+
+        // No PII filter in secrets-only, so no findings, no label change
         assert!(matches!(decision, HookDecision::Continue));
     }
 

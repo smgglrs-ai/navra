@@ -26,7 +26,7 @@ mod working;
 
 pub use error::MemoryError;
 pub use knowledge::KnowledgeStore;
-pub use pipeline::DistillationPipeline;
+pub use pipeline::{ContentSanitizer, DistillationPipeline};
 pub use retrieval::{MemoryRetriever, ScoredEntry};
 pub use session_store::SqliteSessionBackend;
 pub use types::{DistilledEntry, MemoryEntry, MemoryType, Message, Role, Turn};

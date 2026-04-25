@@ -49,11 +49,20 @@ pub struct Segment {
     pub turns: Vec<Turn>,
 }
 
+/// Synchronous content sanitizer function type.
+///
+/// Accepts content, returns sanitized content. Injected from the
+/// server layer to apply PII filtering without smgglrs-memory
+/// depending on smgglrs-security.
+pub type ContentSanitizer = Arc<dyn Fn(&str) -> String + Send + Sync>;
+
 /// Four-stage distillation pipeline.
 pub struct DistillationPipeline<'a> {
     working: &'a WorkingMemory,
     knowledge: &'a KnowledgeStore,
     model: Option<Arc<dyn ModelBackend>>,
+    /// Optional content sanitizer applied before writing output.
+    sanitizer: Option<ContentSanitizer>,
 }
 
 impl<'a> DistillationPipeline<'a> {
@@ -62,12 +71,22 @@ impl<'a> DistillationPipeline<'a> {
             working,
             knowledge,
             model: None,
+            sanitizer: None,
         }
     }
 
     /// Set a model backend for LLM-based knowledge extraction.
     pub fn with_model(mut self, model: Arc<dyn ModelBackend>) -> Self {
         self.model = Some(model);
+        self
+    }
+
+    /// Set a content sanitizer for PII filtering on output.
+    ///
+    /// The sanitizer is applied to distilled entry content before
+    /// writing to Markdown files and before forging into the knowledge store.
+    pub fn with_sanitizer(mut self, sanitizer: ContentSanitizer) -> Self {
+        self.sanitizer = Some(sanitizer);
         self
     }
 
@@ -220,11 +239,30 @@ impl<'a> DistillationPipeline<'a> {
         Ok(entries)
     }
 
+    /// Apply the content sanitizer to a string, if one is configured.
+    fn sanitize(&self, content: &str) -> String {
+        match &self.sanitizer {
+            Some(f) => f(content),
+            None => content.to_string(),
+        }
+    }
+
     /// Stage 4: Forge — persist reconciled entries into the knowledge store.
+    ///
+    /// When a sanitizer is configured, entry content is filtered for PII
+    /// before being persisted.
     fn forge(&self, entries: &[DistilledEntry]) -> Result<usize, MemoryError> {
         let mut stored = 0;
         for entry in entries {
-            self.knowledge.store_distilled(entry)?;
+            let sanitized = if self.sanitizer.is_some() {
+                let mut e = entry.clone();
+                e.content = self.sanitize(&e.content);
+                e.title = self.sanitize(&e.title);
+                e
+            } else {
+                entry.clone()
+            };
+            self.knowledge.store_distilled(&sanitized)?;
             stored += 1;
         }
         Ok(stored)
@@ -232,6 +270,9 @@ impl<'a> DistillationPipeline<'a> {
 
     /// Export distilled entries as Markdown files with YAML frontmatter.
     /// Creates one file per entry in the output directory.
+    ///
+    /// When a sanitizer is configured, entry content and title are
+    /// filtered for PII before writing.
     pub fn export_markdown(
         &self,
         entries: &[DistilledEntry],
@@ -244,6 +285,10 @@ impl<'a> DistillationPipeline<'a> {
         for entry in entries {
             let filename = Self::sanitize_filename(entry);
             let path = output_dir.join(&filename);
+
+            // Apply PII sanitizer to title and content
+            let sanitized_title = self.sanitize(&entry.title);
+            let sanitized_content = self.sanitize(&entry.content);
 
             let tags_yaml = if entry.tags.is_empty() {
                 "[]".to_string()
@@ -264,12 +309,12 @@ impl<'a> DistillationPipeline<'a> {
             let content = format!(
                 "---\ntype: {}\nname: \"{}\"\nsource_session: \"{}\"\nconfidence: {:.2}\ntags: {}\ncreated_at: {}\n---\n\n{}\n",
                 entry.kind.as_str(),
-                entry.title.replace('"', "\\\""),
+                sanitized_title.replace('"', "\\\""),
                 entry.source_session,
                 entry.confidence,
                 tags_yaml,
                 today,
-                entry.content,
+                sanitized_content,
             );
 
             fs::write(&path, &content)
@@ -671,6 +716,59 @@ mod tests {
         let parts: Vec<&str> = content.splitn(3, "---").collect();
         let markdown_body = parts[2].trim();
         assert_eq!(markdown_body, body);
+    }
+
+    /// A mock sanitizer that replaces "secret" with "[REDACTED:test]".
+    fn mock_sanitizer() -> ContentSanitizer {
+        Arc::new(|content: &str| content.replace("secret", "[REDACTED:test]"))
+    }
+
+    #[test]
+    fn export_markdown_with_sanitizer_redacts_content() {
+        let wm = WorkingMemory::open_memory().unwrap();
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let pipeline = DistillationPipeline::new(&wm, &ks)
+            .with_sanitizer(mock_sanitizer());
+
+        let entries = vec![DistilledEntry::new(
+            MemoryType::Fact,
+            "Has a secret".to_string(),
+            "The secret is 42".to_string(),
+            vec![],
+            0.9,
+            "sess-1".to_string(),
+        )];
+
+        let dir = tempfile::tempdir().unwrap();
+        let count = pipeline.export_markdown(&entries, dir.path()).unwrap();
+        assert_eq!(count, 1);
+
+        let files: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        let content = std::fs::read_to_string(files[0].path()).unwrap();
+        assert!(!content.contains("secret"), "Expected 'secret' redacted in markdown output: {content}");
+        assert!(content.contains("[REDACTED:test]"));
+    }
+
+    #[tokio::test]
+    async fn forge_with_sanitizer_redacts_stored_content() {
+        let wm = WorkingMemory::open_memory().unwrap();
+        wm.add_turn(&make_turn("s1", "The secret is 42", 1000)).unwrap();
+
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let pipeline = DistillationPipeline::new(&wm, &ks)
+            .with_sanitizer(mock_sanitizer());
+
+        let stored = pipeline.run("s1").await.unwrap();
+        assert_eq!(stored, 1);
+
+        let entries = ks.list(None).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(!entries[0].content.contains("secret"),
+            "Expected 'secret' redacted in knowledge store: {}", entries[0].content);
+        assert!(entries[0].content.contains("[REDACTED:test]"));
     }
 
     #[tokio::test]

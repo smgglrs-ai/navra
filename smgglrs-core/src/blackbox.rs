@@ -8,8 +8,9 @@
 //!   so tampering is detectable by verifying the chain.
 //! - **Transparent**: agents don't know they're recorded.
 
+use crate::safety::{FilterContext, FilterPipeline};
 use rusqlite::{params, Connection};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// A single blackbox entry — one tool call through the gateway.
 #[derive(Debug, Clone)]
@@ -34,6 +35,8 @@ pub struct Blackbox {
     db: Mutex<Connection>,
     seq: Mutex<u64>,
     prev_hash: Mutex<String>,
+    /// Optional PII filter applied to tool_args and tool_result before recording.
+    pii_filter: Option<Arc<FilterPipeline>>,
 }
 
 impl Blackbox {
@@ -77,10 +80,40 @@ impl Blackbox {
             db: Mutex::new(db),
             seq: Mutex::new(last_seq),
             prev_hash: Mutex::new(last_hash),
+            pii_filter: None,
         })
     }
 
+    /// Attach a PII filter pipeline to sanitize tool_args and tool_result
+    /// before they are written to the blackbox.
+    pub fn with_pii_filter(mut self, filter: Arc<FilterPipeline>) -> Self {
+        self.pii_filter = Some(filter);
+        self
+    }
+
+    /// Apply PII filter synchronously to a content string.
+    fn sanitize(&self, content: &str) -> String {
+        let pipeline = match &self.pii_filter {
+            Some(p) => p,
+            None => return content.to_string(),
+        };
+
+        let ctx = FilterContext {
+            agent_name: "blackbox",
+            operation: "audit",
+            path: None,
+        };
+
+        match pipeline.process(content, &ctx) {
+            Ok(sanitized) => sanitized,
+            Err(_) => "[redacted by PII filter]".to_string(),
+        }
+    }
+
     /// Record a tool call. Called from handle_call_tool.
+    ///
+    /// When a PII filter is attached, tool_args and tool_result are
+    /// sanitized before being written to the database.
     pub fn record(
         &self,
         agent_name: &str,
@@ -102,9 +135,13 @@ impl Blackbox {
             .unwrap_or_default()
             .as_millis() as i64;
 
+        // Sanitize PII in args and result before recording
+        let sanitized_args = self.sanitize(tool_args);
+        let sanitized_result = self.sanitize(tool_result);
+
         // Truncate large fields
-        let args_trunc = truncate(tool_args, 4096);
-        let result_trunc = truncate(tool_result, 4096);
+        let args_trunc = truncate(&sanitized_args, 4096);
+        let result_trunc = truncate(&sanitized_result, 4096);
 
         // Hash chain: SHA-256(seq | prev_hash | agent | tool | args | result | outcome)
         use std::fmt::Write;
@@ -289,6 +326,43 @@ mod tests {
         let (valid, broken) = bb2.verify_chain();
         assert_eq!(valid, 1);
         assert_eq!(broken, Some(2));
+    }
+
+    #[test]
+    fn record_with_pii_filter_redacts_args_and_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let filter = Arc::new(crate::safety::build_pipeline("standard"));
+        let bb = Blackbox::open(&dir.path().join("bb.db"))
+            .unwrap()
+            .with_pii_filter(filter);
+
+        bb.record(
+            "agent1", "dev", "sess1", "file_read",
+            r#"{"email": "user@example.com"}"#,
+            "SSN: 123-45-6789",
+            "allowed", 5, "Trusted:Public",
+        );
+
+        let entries = bb.recent(1);
+        assert_eq!(entries.len(), 1);
+        assert!(!entries[0].tool_args.contains("user@example.com"),
+            "Expected email redacted in tool_args: {}", entries[0].tool_args);
+        assert!(!entries[0].tool_result.contains("123-45-6789"),
+            "Expected SSN redacted in tool_result: {}", entries[0].tool_result);
+        assert!(entries[0].tool_args.contains("[REDACTED:"));
+        assert!(entries[0].tool_result.contains("[REDACTED:"));
+    }
+
+    #[test]
+    fn record_without_pii_filter_preserves_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
+
+        let args = r#"{"email": "user@example.com"}"#;
+        bb.record("agent1", "dev", "sess1", "file_read", args, "ok", "allowed", 5, "T:P");
+
+        let entries = bb.recent(1);
+        assert!(entries[0].tool_args.contains("user@example.com"));
     }
 
     #[test]
