@@ -15,7 +15,7 @@ pub struct PermissionSet {
     pub operations: Vec<String>,
     #[serde(default)]
     pub approve: Vec<String>,
-    /// Safety profile: "standard", "secrets-only", "block", "none"
+    /// Safety profile: "standard", "pseudonymize", "secrets-only", "block", "none"
     #[serde(default = "default_safety")]
     pub safety: String,
     /// Custom regex patterns for content safety filtering.
@@ -73,6 +73,20 @@ pub struct SafetyPatternConfig {
     pub category: String,
     /// Regex pattern to match.
     pub pattern: String,
+}
+
+/// A custom PII pattern for global content safety filtering.
+///
+/// Categories defined here are treated as PII for IFC labeling,
+/// unlike `SafetyPatternConfig` which only triggers redaction/blocking.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PiiPatternConfig {
+    /// Human-readable name for this pattern (e.g., "employee-id").
+    pub name: String,
+    /// Regex pattern to match.
+    pub regex: String,
+    /// PII category name (e.g., "employee-id", "badge", "project-code").
+    pub category: String,
 }
 
 fn default_tool_policy() -> String {

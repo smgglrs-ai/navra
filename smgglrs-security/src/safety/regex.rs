@@ -249,6 +249,105 @@ impl ContentFilter for PiiFilter {
     }
 }
 
+/// Detects PII in file paths: usernames that look like real names.
+///
+/// Extracts username segments from Unix and Windows home directory
+/// paths (e.g. `/home/jean.dupont/`, `/Users/marie-claire/`,
+/// `C:\Users\john.smith\`) and flags those that look like personal
+/// names (contain a dot or hyphen suggesting first.last format).
+///
+/// System usernames (root, nobody, www-data, etc.) and generic
+/// single-word usernames (admin, deploy, app) are skipped.
+pub struct PathPiiFilter {
+    /// Regex matching home directory path patterns.
+    path_re: regex_lite::Regex,
+    /// System/service usernames to exclude.
+    system_users: &'static [&'static str],
+}
+
+impl Default for PathPiiFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PathPiiFilter {
+    pub fn new() -> Self {
+        Self {
+            // Captures the username segment from:
+            //   /home/<user>/  or  /home/<user> (end/space)
+            //   /Users/<user>/ or  /Users/<user> (end/space)
+            //   ~<user>/
+            //   C:\Users\<user>\ or C:\Users\<user> (end/space)
+            path_re: regex_lite::Regex::new(
+                r"(?:/home/|/Users/|~|[A-Z]:\\Users\\)([A-Za-z0-9._-]+)"
+            ).unwrap(),
+            system_users: &[
+                // Unix system accounts
+                "root", "nobody", "daemon", "bin", "sys", "sync",
+                "games", "man", "lp", "mail", "news", "uucp",
+                "proxy", "backup", "list", "irc", "gnats",
+                "www-data", "sshd", "ntp", "messagebus", "polkitd",
+                "avahi", "colord", "geoclue", "gdm", "lightdm", "sddm",
+                "systemd-network", "systemd-resolve", "systemd-timesync",
+                "flatpak", "fwupd", "pipewire", "rtkit", "dnsmasq",
+                // macOS system accounts
+                "_www", "_windowserver", "_spotlight",
+                // Generic / service accounts
+                "admin", "administrator", "deploy", "app", "service",
+                "user", "guest", "test", "ci", "build", "runner",
+                "git", "jenkins", "gitlab-runner", "github-actions",
+                "node", "postgres", "mysql", "redis", "mongo",
+                "nginx", "apache", "httpd", "docker", "vagrant",
+                "ubuntu", "centos", "fedora", "ec2-user", "azureuser",
+            ],
+        }
+    }
+
+    /// Returns true if the username looks like a personal name.
+    ///
+    /// Heuristic: contains a dot or hyphen (e.g. jean.dupont,
+    /// marie-claire), suggesting first.last or hyphenated name.
+    /// Single words without separators are treated as generic.
+    fn looks_like_personal_name(&self, username: &str) -> bool {
+        username.contains('.') || username.contains('-')
+    }
+
+    /// Returns true if the username is a known system/service account.
+    fn is_system_user(&self, username: &str) -> bool {
+        self.system_users.contains(&username)
+    }
+}
+
+impl ContentFilter for PathPiiFilter {
+    fn name(&self) -> &str {
+        "path-pii"
+    }
+
+    fn scan(&self, content: &str, _ctx: &FilterContext) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for m in self.path_re.captures_iter(content) {
+            let username_match = m.get(1).unwrap();
+            let username = username_match.as_str();
+
+            if self.is_system_user(username) {
+                continue;
+            }
+            if !self.looks_like_personal_name(username) {
+                continue;
+            }
+
+            findings.push(Finding {
+                start: username_match.start(),
+                end: username_match.end(),
+                category: "path-username".to_string(),
+                confidence: 1.0,
+            });
+        }
+        findings
+    }
+}
+
 /// User-defined regex patterns from config.
 ///
 /// Each pattern has a category name and a regex. Matched spans
@@ -296,6 +395,84 @@ impl CustomFilter {
 impl ContentFilter for CustomFilter {
     fn name(&self) -> &str {
         "custom"
+    }
+
+    fn scan(&self, content: &str, _ctx: &FilterContext) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for pattern in &self.patterns {
+            for m in pattern.regex.find_iter(content) {
+                findings.push(Finding {
+                    start: m.start(),
+                    end: m.end(),
+                    category: pattern.category.clone(),
+                    confidence: 1.0,
+                });
+            }
+        }
+        findings
+    }
+}
+
+/// User-defined PII regex patterns from config.
+///
+/// Unlike `CustomFilter`, categories from this filter are treated
+/// as PII for IFC labeling (taint elevation, PII retention policies).
+/// Each pattern has a name, category, and regex. Matched spans are
+/// reported as findings with confidence 1.0.
+#[derive(Debug)]
+pub struct CustomPiiFilter {
+    patterns: Vec<CustomPiiPattern>,
+}
+
+#[derive(Debug)]
+struct CustomPiiPattern {
+    #[allow(dead_code)] // retained for diagnostic logging
+    name: String,
+    category: String,
+    regex: regex_lite::Regex,
+}
+
+impl CustomPiiFilter {
+    /// Create a custom PII filter from a list of (name, regex, category) tuples.
+    ///
+    /// Returns an error if any regex pattern is invalid.
+    pub fn new(patterns: Vec<(String, String, String)>) -> Result<Self, String> {
+        let mut compiled = Vec::with_capacity(patterns.len());
+        for (name, pattern, category) in patterns {
+            match regex_lite::Regex::new(&pattern) {
+                Ok(regex) => compiled.push(CustomPiiPattern {
+                    name,
+                    category,
+                    regex,
+                }),
+                Err(e) => {
+                    return Err(format!(
+                        "Invalid PII pattern '{}': {}",
+                        name, e
+                    ));
+                }
+            }
+        }
+        Ok(Self { patterns: compiled })
+    }
+
+    /// Returns true if this filter has any valid patterns.
+    pub fn has_patterns(&self) -> bool {
+        !self.patterns.is_empty()
+    }
+
+    /// Returns the custom PII categories defined in this filter.
+    pub fn categories(&self) -> Vec<String> {
+        self.patterns
+            .iter()
+            .map(|p| p.category.clone())
+            .collect()
+    }
+}
+
+impl ContentFilter for CustomPiiFilter {
+    fn name(&self) -> &str {
+        "custom-pii"
     }
 
     fn scan(&self, content: &str, _ctx: &FilterContext) -> Vec<Finding> {
@@ -966,5 +1143,161 @@ mod tests {
         assert!(!validate_public_ip("10.0.0.1"));
         assert!(!validate_public_ip("172.16.0.1"));
         assert!(!validate_public_ip("192.168.1.1"));
+    }
+
+    // --- PathPiiFilter ---
+
+    #[test]
+    fn detect_path_username_unix() {
+        let filter = PathPiiFilter::new();
+        let content = "Reading /home/jean.dupont/documents/report.txt";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "path-username");
+        assert_eq!(&content[findings[0].start..findings[0].end], "jean.dupont");
+    }
+
+    #[test]
+    fn no_flag_system_user_root() {
+        let filter = PathPiiFilter::new();
+        let findings = filter.scan("File at /home/root/.bashrc", &ctx());
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn detect_path_username_macos() {
+        let filter = PathPiiFilter::new();
+        let content = "Path: /Users/marie-claire.dubois/Desktop/";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "path-username");
+        assert_eq!(&content[findings[0].start..findings[0].end], "marie-claire.dubois");
+    }
+
+    #[test]
+    fn no_flag_generic_username() {
+        let filter = PathPiiFilter::new();
+        let findings = filter.scan("Deployed to /home/deploy/app/", &ctx());
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn no_flag_tmp_path() {
+        let filter = PathPiiFilter::new();
+        let findings = filter.scan("Temp file: /tmp/some-file.txt", &ctx());
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn detect_path_username_windows() {
+        let filter = PathPiiFilter::new();
+        let content = r"Config at C:\Users\john.smith\AppData\config.ini";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "path-username");
+        assert_eq!(&content[findings[0].start..findings[0].end], "john.smith");
+    }
+
+    #[test]
+    fn no_flag_www_data_system_user() {
+        let filter = PathPiiFilter::new();
+        let findings = filter.scan("Logs in /home/www-data/logs/", &ctx());
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn detect_hyphenated_name_not_system() {
+        let filter = PathPiiFilter::new();
+        let content = "/home/marie-claire/projects/";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(&content[findings[0].start..findings[0].end], "marie-claire");
+    }
+
+    #[test]
+    fn no_flag_simple_word_username() {
+        let filter = PathPiiFilter::new();
+        // Single word without dots or hyphens — could be anyone
+        let findings = filter.scan("/home/fabien/code/", &ctx());
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn detect_multiple_path_usernames() {
+        let filter = PathPiiFilter::new();
+        let content = "Compare /home/jean.dupont/a.txt with /Users/alice.martin/b.txt";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 2);
+    }
+
+    #[test]
+    fn detect_tilde_path() {
+        let filter = PathPiiFilter::new();
+        let content = "Home is ~jean.dupont/documents/";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(&content[findings[0].start..findings[0].end], "jean.dupont");
+    }
+
+    // --- CustomPiiFilter tests ---
+
+    #[test]
+    fn custom_pii_filter_valid_patterns() {
+        let filter = CustomPiiFilter::new(vec![
+            ("employee-id".to_string(), r"\bEMP-\d{6}\b".to_string(), "employee-id".to_string()),
+            ("badge-number".to_string(), r"\bBDG[A-Z]\d{4}\b".to_string(), "badge".to_string()),
+        ]).unwrap();
+        assert!(filter.has_patterns());
+        assert_eq!(filter.categories().len(), 2);
+        assert!(filter.categories().contains(&"employee-id".to_string()));
+        assert!(filter.categories().contains(&"badge".to_string()));
+    }
+
+    #[test]
+    fn custom_pii_filter_rejects_invalid_regex() {
+        let result = CustomPiiFilter::new(vec![
+            ("bad-pattern".to_string(), r"[invalid".to_string(), "bad".to_string()),
+        ]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("bad-pattern"));
+    }
+
+    #[test]
+    fn custom_pii_filter_detects_patterns() {
+        let filter = CustomPiiFilter::new(vec![
+            ("employee-id".to_string(), r"\bEMP-\d{6}\b".to_string(), "employee-id".to_string()),
+            ("project-code".to_string(), r"\bPRJ-[A-Z]{3}-\d{4}\b".to_string(), "project-code".to_string()),
+        ]).unwrap();
+        let content = "Employee EMP-123456 works on PRJ-SEC-2026";
+        let findings = filter.scan(content, &ctx());
+        assert_eq!(findings.len(), 2);
+        let categories: Vec<&str> = findings.iter().map(|f| f.category.as_str()).collect();
+        assert!(categories.contains(&"employee-id"));
+        assert!(categories.contains(&"project-code"));
+    }
+
+    #[test]
+    fn custom_pii_filter_no_match() {
+        let filter = CustomPiiFilter::new(vec![
+            ("employee-id".to_string(), r"\bEMP-\d{6}\b".to_string(), "employee-id".to_string()),
+        ]).unwrap();
+        let findings = filter.scan("No employee IDs here", &ctx());
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn custom_pii_filter_empty() {
+        let filter = CustomPiiFilter::new(vec![]).unwrap();
+        assert!(!filter.has_patterns());
+        let findings = filter.scan("anything", &ctx());
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn custom_pii_filter_name_is_custom_pii() {
+        let filter = CustomPiiFilter::new(vec![
+            ("test".to_string(), r"test".to_string(), "test".to_string()),
+        ]).unwrap();
+        assert_eq!(filter.name(), "custom-pii");
     }
 }

@@ -7,6 +7,7 @@ use smgglrs_model::ModelBackend;
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_protocol::Upstream;
 use smgglrs_security::identity::CapSigner;
+use smgglrs_security::safety::FilterPipeline;
 use std::sync::Arc;
 
 /// An AI agent connected to an MCP server with a model backend.
@@ -176,6 +177,15 @@ impl AgentBuilder {
     /// Prevents the model from producing text responses prematurely.
     pub fn force_tool_iterations(mut self, n: usize) -> Self {
         self.config.force_tool_iterations = Some(n);
+        self
+    }
+
+    /// Set a PII filter for model-generated reasoning text.
+    /// When set, the model's text output is filtered through this
+    /// pipeline before being stored in conversation history or
+    /// returned in the final response.
+    pub fn pii_filter(mut self, pipeline: Arc<FilterPipeline>) -> Self {
+        self.config.pii_filter = Some(pipeline);
         self
     }
 

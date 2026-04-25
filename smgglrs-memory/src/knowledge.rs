@@ -82,6 +82,7 @@ impl KnowledgeStore {
             ("source_session", "TEXT DEFAULT ''"),
             ("confidence", "REAL DEFAULT 1.0"),
             ("has_pii", "INTEGER DEFAULT 0"),
+            ("consent_basis", "TEXT DEFAULT 'not_set'"),
         ];
         for (name, typ) in &columns {
             // SQLite doesn't support IF NOT EXISTS on ALTER TABLE,
@@ -399,6 +400,53 @@ impl KnowledgeStore {
             .unwrap_or_default()
             .as_secs() as i64;
         now - (days as i64 * 86400)
+    }
+
+    /// Set the consent basis for an existing entry.
+    ///
+    /// Valid values: "legitimate_interest", "consent", "legal_obligation",
+    /// "vital_interest", "public_task", "not_set".
+    pub fn set_consent_basis(&self, id: &str, basis: &str) -> Result<bool, MemoryError> {
+        let count = self.db.execute(
+            "UPDATE memory_knowledge SET consent_basis = ?1 WHERE id = ?2",
+            params![basis, id],
+        )?;
+        Ok(count > 0)
+    }
+
+    /// Get the consent basis for an entry. Returns None if the entry does not exist.
+    pub fn get_consent_basis(&self, id: &str) -> Result<Option<String>, MemoryError> {
+        let result = self.db.query_row(
+            "SELECT consent_basis FROM memory_knowledge WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// List entries filtered by consent basis.
+    pub fn list_by_consent(&self, basis: &str) -> Result<Vec<MemoryEntry>, MemoryError> {
+        let mut stmt = self.db.prepare(
+            "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
+             FROM memory_knowledge WHERE consent_basis = ?1
+             ORDER BY created_at DESC",
+        )?;
+        let entries = stmt
+            .query_map(params![basis], row_to_entry)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    /// Count entries flagged as containing PII.
+    pub fn count_pii_entries(&self) -> Result<usize, MemoryError> {
+        let count: i64 = self
+            .db
+            .query_row("SELECT COUNT(*) FROM memory_knowledge WHERE has_pii = 1", [], |row| row.get(0))?;
+        Ok(count as usize)
     }
 
     /// Update access_count and last_accessed timestamp for an entry.
@@ -771,5 +819,73 @@ mod tests {
 
         let all = store.list_pii_entries(None).unwrap();
         assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn consent_basis_default_is_not_set() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e = entry("e1", MemoryType::Fact, "Title", "Content");
+        store.store(&e).unwrap();
+
+        let basis = store.get_consent_basis("e1").unwrap().unwrap();
+        assert_eq!(basis, "not_set");
+    }
+
+    #[test]
+    fn set_and_get_consent_basis() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e = entry("e1", MemoryType::Fact, "Title", "Content");
+        store.store(&e).unwrap();
+
+        assert!(store.set_consent_basis("e1", "consent").unwrap());
+        assert_eq!(store.get_consent_basis("e1").unwrap().unwrap(), "consent");
+
+        assert!(store.set_consent_basis("e1", "legitimate_interest").unwrap());
+        assert_eq!(store.get_consent_basis("e1").unwrap().unwrap(), "legitimate_interest");
+    }
+
+    #[test]
+    fn set_consent_basis_nonexistent_returns_false() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        assert!(!store.set_consent_basis("nope", "consent").unwrap());
+    }
+
+    #[test]
+    fn get_consent_basis_nonexistent_returns_none() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        assert!(store.get_consent_basis("nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn list_by_consent() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        store.store(&entry("e1", MemoryType::Fact, "A", "a")).unwrap();
+        store.store(&entry("e2", MemoryType::Fact, "B", "b")).unwrap();
+        store.store(&entry("e3", MemoryType::Fact, "C", "c")).unwrap();
+
+        store.set_consent_basis("e1", "consent").unwrap();
+        store.set_consent_basis("e2", "consent").unwrap();
+        store.set_consent_basis("e3", "legitimate_interest").unwrap();
+
+        let consented = store.list_by_consent("consent").unwrap();
+        assert_eq!(consented.len(), 2);
+
+        let legit = store.list_by_consent("legitimate_interest").unwrap();
+        assert_eq!(legit.len(), 1);
+        assert_eq!(legit[0].id, "e3");
+
+        let not_set = store.list_by_consent("not_set").unwrap();
+        assert!(not_set.is_empty());
+    }
+
+    #[test]
+    fn count_pii_entries() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e1 = entry("e1", MemoryType::Fact, "PII", "email");
+        store.store_with_pii(&e1, true).unwrap();
+        let e2 = entry("e2", MemoryType::Fact, "Clean", "ok");
+        store.store(&e2).unwrap();
+
+        assert_eq!(store.count_pii_entries().unwrap(), 1);
     }
 }

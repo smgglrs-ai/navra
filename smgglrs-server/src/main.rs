@@ -18,6 +18,25 @@ use std::sync::Arc;
 
 use cli::{Cli, Commands, ModelAction, PiiAction, TokenAction};
 
+/// Wrapper around `Arc<CustomPiiFilter>` that implements `ContentFilter`.
+///
+/// Allows sharing a single custom PII filter across multiple pipelines.
+struct SharedCustomPiiFilter(Arc<smgglrs_core::safety::CustomPiiFilter>);
+
+impl smgglrs_core::safety::ContentFilter for SharedCustomPiiFilter {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn scan(
+        &self,
+        content: &str,
+        ctx: &smgglrs_core::safety::FilterContext,
+    ) -> Vec<smgglrs_core::safety::Finding> {
+        self.0.scan(content, ctx)
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -96,8 +115,8 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Pii { action } => match action {
-            PiiAction::Download => {
-                cli::pii_download().await?;
+            PiiAction::Download { multilingual } => {
+                cli::pii_download(multilingual).await?;
             }
             PiiAction::Status => {
                 cli::pii_status();
@@ -647,28 +666,82 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
     tracing::info!(count = models.len(), "Model registry ready");
 
-    // Try to load the PII NER model (sfermion/bert-pii-detector-onnx)
-    let pii_ner_dir = cfg.pii_model_dir();
+    // Try to load PII NER models.
+    // Prefer the multilingual model (better coverage), fall back to English-only.
+    let pii_ml_dir = cfg.pii_multilingual_model_dir();
+    let pii_en_dir = cfg.pii_model_dir();
+
     let pii_ner_filter: Option<Arc<smgglrs_core::safety::NerFilter>> =
-        match smgglrs_core::safety::load_ner_filter(&pii_ner_dir) {
+        match smgglrs_core::safety::load_ner_filter(&pii_ml_dir) {
             Some(filter) => {
                 tracing::info!(
-                    dir = %pii_ner_dir.display(),
-                    "PII NER model loaded for semantic entity detection"
+                    dir = %pii_ml_dir.display(),
+                    "Multilingual PII NER model loaded (EN, FR, DE, ES, IT, PT, NL)"
                 );
                 Some(Arc::new(filter))
             }
-            None => {
-                tracing::info!(
-                    "PII NER model not installed. Run 'smgglrs pii download' for semantic PII detection."
-                );
-                None
+            None => match smgglrs_core::safety::load_ner_filter(&pii_en_dir) {
+                Some(filter) => {
+                    tracing::info!(
+                        dir = %pii_en_dir.display(),
+                        "English PII NER model loaded for semantic entity detection"
+                    );
+                    Some(Arc::new(filter))
+                }
+                None => {
+                    tracing::info!(
+                        "PII NER model not installed. Run 'smgglrs pii download' for semantic PII detection."
+                    );
+                    None
+                }
+            },
+        };
+
+    // Build custom PII filter from global pii_patterns config (shared across all pipelines)
+    let custom_pii_filter: Option<Arc<smgglrs_core::safety::CustomPiiFilter>> =
+        if !cfg.pii_patterns.is_empty() {
+            let patterns: Vec<(String, String, String)> = cfg
+                .pii_patterns
+                .iter()
+                .map(|p| (p.name.clone(), p.regex.clone(), p.category.clone()))
+                .collect();
+            match smgglrs_core::safety::CustomPiiFilter::new(patterns) {
+                Ok(filter) => {
+                    if filter.has_patterns() {
+                        // Register custom categories as PII for IFC labeling
+                        smgglrs_core::safety::register_pii_categories(&filter.categories());
+                        tracing::info!(
+                            patterns = cfg.pii_patterns.len(),
+                            categories = ?filter.categories(),
+                            "Custom PII patterns loaded"
+                        );
+                        Some(Arc::new(filter))
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to compile custom PII patterns");
+                    None
+                }
             }
+        } else {
+            None
         };
 
     // Register safety profiles and per-tool permissions per permission set
     for (name, pset) in &cfg.permissions {
         let mut pipeline = smgglrs_core::safety::build_pipeline(&pset.safety);
+
+        // Add global custom PII filter to profiles that use content filtering
+        if let Some(ref pii_filter) = custom_pii_filter {
+            match pset.safety.as_str() {
+                "standard" | "guardian" | "guardian-deep" | "block" => {
+                    pipeline.add_filter(SharedCustomPiiFilter(Arc::clone(pii_filter)));
+                }
+                _ => {}
+            }
+        }
 
         // Add custom regex patterns if configured
         if !pset.safety_patterns.is_empty() {
@@ -900,6 +973,10 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     }
 
     // --- RAG module ---
+    // Keep a shared reference to the chunk store so memory tools can
+    // cascade-delete embedding vectors when knowledge entries are erased.
+    let mut shared_chunk_store: Option<std::sync::Arc<smgglrs_rag::ChunkStore>> = None;
+
     if cfg.rag_enabled() {
         if let Some(ref model) = embedding_model {
             let rag_db_path = cfg.rag_db_path();
@@ -910,8 +987,10 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 .unwrap_or(768);
             match smgglrs_rag::ChunkStore::open(&rag_db_path, dims) {
                 Ok(store) => {
+                    let store_arc = std::sync::Arc::new(store);
+                    shared_chunk_store = Some(Arc::clone(&store_arc));
                     let rag = smgglrs_rag::RagModule::new(
-                        std::sync::Arc::new(store),
+                        store_arc,
                         model.clone(),
                         perm_engine.clone(),
                     );
@@ -1771,6 +1850,25 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             root_signer.did(), root_signer.did(), root_cap, 1, 86400,
         );
 
+        // Build a PII filter for model reasoning text. Uses "standard"
+        // safety profile (regex PII + NER) to redact PII that the model
+        // echoes in its reasoning even after tool results were redacted.
+        let reasoning_pii_filter: Option<Arc<smgglrs_core::safety::FilterPipeline>> = {
+            let has_pii_profile = cfg.permissions.values().any(|p| {
+                matches!(p.safety.as_str(), "standard" | "guardian" | "guardian-deep" | "block")
+            });
+            if has_pii_profile {
+                let mut pipeline = smgglrs_core::safety::build_pipeline("standard");
+                if let Some(ref ner) = pii_ner_filter {
+                    pipeline.add_ner_filter_shared(Arc::clone(ner));
+                }
+                tracing::info!("PII filter enabled for model reasoning text");
+                Some(Arc::new(pipeline))
+            } else {
+                None
+            }
+        };
+
         // team_message — async: spawns full agent teammate in background
         let msg_spawn_ctx = Arc::new(team_tools::TeammateSpawnContext {
             team_registry: Arc::clone(&team_registry),
@@ -1783,6 +1881,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                     .ok()
             }),
             root_payload: Some(root_payload.clone()),
+            pii_filter: reasoning_pii_filter.clone(),
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -1879,6 +1978,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 .and_then(|d| d.default_root.clone())
                 .or_else(|| cfg.cognitive_core.clone()),
             root_payload: Some(root_payload.clone()),
+            pii_filter: reasoning_pii_filter.clone(),
         });
 
         // flow_start
@@ -1911,6 +2011,10 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     }
 
     // --- Knowledge memory tools ---
+    let pii_metrics: Option<Arc<smgglrs_core::safety::PiiMetrics>> = {
+        let m = Arc::new(smgglrs_core::safety::PiiMetrics::new());
+        Some(m)
+    };
     let pii_sanitizer = memory_tools::build_pii_sanitizer(cfg.memory_pii_filter());
     if pii_sanitizer.is_some() {
         tracing::info!(
@@ -1956,23 +2060,50 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         });
 
         let ks_forget = Arc::clone(&ks);
+        let cs_forget = shared_chunk_store.clone();
         builder = builder.tool(memory_tools::memory_forget_def(), move |args, _ctx| {
             let ks = Arc::clone(&ks_forget);
-            Box::pin(memory_tools::handle_memory_forget(args, ks))
+            let cs = cs_forget.clone();
+            Box::pin(memory_tools::handle_memory_forget(args, ks, cs))
         });
 
         let ks_purge = Arc::clone(&ks);
         let sanitizer_for_purge = pii_sanitizer.clone();
+        let cs_purge = shared_chunk_store.clone();
         builder = builder.tool(memory_tools::memory_purge_pii_def(), move |args, _ctx| {
             let ks = Arc::clone(&ks_purge);
             let sanitizer = sanitizer_for_purge.clone();
-            Box::pin(memory_tools::handle_memory_purge_pii(args, ks, sanitizer))
+            let cs = cs_purge.clone();
+            Box::pin(memory_tools::handle_memory_purge_pii(args, ks, sanitizer, cs))
         });
 
         let ks_forget_content = Arc::clone(&ks);
+        let cs_forget_content = shared_chunk_store.clone();
         builder = builder.tool(memory_tools::memory_forget_by_content_def(), move |args, _ctx| {
             let ks = Arc::clone(&ks_forget_content);
-            Box::pin(memory_tools::handle_memory_forget_by_content(args, ks))
+            let cs = cs_forget_content.clone();
+            Box::pin(memory_tools::handle_memory_forget_by_content(args, ks, cs))
+        });
+
+        // pii_report
+        let ks_report = Arc::clone(&ks);
+        let metrics_for_report = pii_metrics.clone();
+        let retention_days = cfg.memory_retention_days();
+        let pii_retention_days = cfg.memory_pii_retention_days();
+        let audit_retention_days = cfg.memory_audit_retention_days();
+        builder = builder.tool(memory_tools::pii_report_def(), move |args, _ctx| {
+            let ks = Arc::clone(&ks_report);
+            let metrics = metrics_for_report.clone();
+            Box::pin(memory_tools::handle_pii_report(
+                args, ks, metrics, retention_days, pii_retention_days, audit_retention_days,
+            ))
+        });
+
+        // memory_consent
+        let ks_consent = Arc::clone(&ks);
+        builder = builder.tool(memory_tools::memory_consent_def(), move |args, _ctx| {
+            let ks = Arc::clone(&ks_consent);
+            Box::pin(memory_tools::handle_memory_consent(args, ks))
         });
 
         // --- Data retention sweep at startup ---
@@ -1992,7 +2123,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             }
         }
 
-        tracing::info!("Registered memory tools (memory_store, memory_query, memory_forget, memory_purge_pii, memory_forget_by_content)");
+        tracing::info!("Registered memory tools (memory_store, memory_query, memory_forget, memory_purge_pii, memory_forget_by_content, pii_report, memory_consent)");
     }
 
     // --- Registry proxy module ---

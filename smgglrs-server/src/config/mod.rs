@@ -11,7 +11,7 @@ use std::path::PathBuf;
 pub use agents::{AgentConfig, UpstreamConfig};
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
-pub use permissions::PermissionSet;
+pub use permissions::{PiiPatternConfig, PermissionSet};
 pub use server::{RegistryEntry, ServerConfig};
 
 fn default_true() -> bool {
@@ -54,6 +54,10 @@ pub struct Config {
     /// Default resource budget for teams and flows.
     #[serde(default)]
     pub budget: BudgetConfig,
+    /// Custom PII patterns applied globally to all safety pipelines.
+    /// Categories defined here are treated as PII for IFC labeling.
+    #[serde(default)]
+    pub pii_patterns: Vec<PiiPatternConfig>,
 }
 
 impl Config {
@@ -190,6 +194,22 @@ impl Config {
             .unwrap_or_else(smgglrs_core::safety::default_pii_ner_model_dir)
     }
 
+    pub fn pii_multilingual_model_dir(&self) -> std::path::PathBuf {
+        self.server
+            .pii_multilingual_model_path
+            .as_ref()
+            .map(|p| {
+                if p.starts_with("~/") {
+                    dirs::home_dir()
+                        .map(|h| h.join(&p[2..]))
+                        .unwrap_or_else(|| std::path::PathBuf::from(p))
+                } else {
+                    std::path::PathBuf::from(p)
+                }
+            })
+            .unwrap_or_else(smgglrs_core::safety::default_pii_ner_multilingual_model_dir)
+    }
+
     pub fn rag_db_path(&self) -> String {
         self.modules
             .rag
@@ -209,6 +229,7 @@ impl Default for Config {
                 discovery: None,
                 identity: None,
                 pii_model_path: None,
+                pii_multilingual_model_path: None,
             },
             modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),
@@ -222,6 +243,7 @@ impl Default for Config {
             discover: Vec::new(),
             registry: Vec::new(),
             budget: BudgetConfig::default(),
+            pii_patterns: Vec::new(),
         }
     }
 }

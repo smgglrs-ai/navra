@@ -321,3 +321,48 @@ permissions = "dev"
     assert!(!agent.capability_token);
     assert!(agent.token_ttl.is_none());
 }
+
+#[test]
+fn parse_pii_patterns() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[[pii_patterns]]
+name = "employee-id"
+regex = "\\bEMP-\\d{6}\\b"
+category = "employee-id"
+
+[[pii_patterns]]
+name = "badge-number"
+regex = "\\bBDG[A-Z]\\d{4}\\b"
+category = "badge"
+
+[[pii_patterns]]
+name = "internal-project"
+regex = "\\bPRJ-[A-Z]{3}-\\d{4}\\b"
+category = "project-code"
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert_eq!(config.pii_patterns.len(), 3);
+
+    assert_eq!(config.pii_patterns[0].name, "employee-id");
+    assert_eq!(config.pii_patterns[0].regex, r"\bEMP-\d{6}\b");
+    assert_eq!(config.pii_patterns[0].category, "employee-id");
+
+    assert_eq!(config.pii_patterns[1].name, "badge-number");
+    assert_eq!(config.pii_patterns[1].category, "badge");
+
+    assert_eq!(config.pii_patterns[2].name, "internal-project");
+    assert_eq!(config.pii_patterns[2].category, "project-code");
+}
+
+#[test]
+fn pii_patterns_default_empty() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert!(config.pii_patterns.is_empty());
+}

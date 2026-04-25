@@ -519,6 +519,8 @@ pub struct FlowContext {
     pub docs_root: Option<String>,
     /// Root capability payload for delegated teammate tokens.
     pub root_payload: Option<smgglrs_core::auth::capability::CapabilityPayload>,
+    /// Optional PII filter for model reasoning text.
+    pub pii_filter: Option<std::sync::Arc<smgglrs_core::safety::FilterPipeline>>,
 }
 
 /// Get the current blackbox sequence number (for summary queries).
@@ -692,6 +694,7 @@ async fn spawn_and_track_tasks(
             signer: std::sync::Arc::clone(&ctx.signer),
             forge: ctx.forge.clone(),
             root_payload: ctx.root_payload.clone(),
+            pii_filter: ctx.pii_filter.clone(),
         };
         let handle = crate::team_tools::spawn_teammate_agent(
             &spawn_ctx, team_id, &task.id, &message,
