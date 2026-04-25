@@ -3,6 +3,7 @@ mod config;
 mod demo;
 mod discover;
 mod flow_tools;
+mod grpc_manager;
 mod mdns;
 mod memory_tools;
 mod registry_tools;
@@ -12,6 +13,7 @@ mod ui;
 
 use clap::Parser;
 use smgglrs_core::auth::{AgentIdentity, TokenAuthenticator};
+use smgglrs_core::Module;
 use smgglrs_core::identity::{self, CapSigner, Ed25519Signer};
 use smgglrs_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use std::sync::Arc;
@@ -1343,6 +1345,22 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             }
         }
     }
+
+    // --- gRPC out-of-process modules ---
+    let mut _grpc_manager = if !cfg.grpc_modules.is_empty() {
+        let mut manager = grpc_manager::GrpcModuleManager::new(cfg.grpc_modules.clone());
+        let modules = manager.start_all().await;
+        for module in modules {
+            tracing::info!(
+                module = module.name(),
+                "Connected gRPC module"
+            );
+            builder = builder.module(module);
+        }
+        Some(manager)
+    } else {
+        None
+    };
 
     // Register cap_delegate tool if any agent can delegate
     if cfg

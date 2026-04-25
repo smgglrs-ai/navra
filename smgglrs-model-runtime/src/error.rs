@@ -6,8 +6,14 @@ pub enum RuntimeError {
     #[error("no suitable runtime found: {0}")]
     NoRuntime(String),
 
+    #[error("failed to connect to runtime: {0}")]
+    Connection(String),
+
     #[error("failed to start model server: {0}")]
     Start(String),
+
+    #[error("failed to serve model: {0}")]
+    Serve(String),
 
     #[error("model server exited unexpectedly: {0}")]
     Exited(String),

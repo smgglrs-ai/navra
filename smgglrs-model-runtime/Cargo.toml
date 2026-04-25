@@ -1,6 +1,6 @@
 [package]
 name = "smgglrs-model-runtime"
-description = "Serve AI models with pluggable isolation backends (Podman, libkrun, direct)"
+description = "Serve AI models with pluggable isolation backends (Podman, OpenShell, direct)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,7 @@ rust-version.workspace = true
 default = ["podman", "direct"]
 podman = []
 direct = []
-libkrun = []
+openshell = ["tonic", "prost"]
 
 [dependencies]
 reqwest = { workspace = true }
@@ -20,6 +20,11 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 libc = "0.2"
+tonic = { version = "0.12", optional = true }
+prost = { version = "0.13", optional = true }
+
+[build-dependencies]
+tonic-build = "0.12"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
