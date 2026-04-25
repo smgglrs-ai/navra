@@ -855,6 +855,54 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar.
 | Prompt injection via documents | Out of scope (agent responsibility) |
 | Denial of service | Systemd resource limits, pause/resume |
 
+### MAC + DAC: OpenShell Integration
+
+When smgglrs runs inside an OpenShell sandbox, the security model
+extends from application-layer DAC to a combined MAC + DAC defense
+in depth architecture. Neither layer alone is sufficient.
+
+**Two independent enforcement layers:**
+
+| Layer | Type | Mechanism | Prevents |
+|-------|------|-----------|----------|
+| OpenShell | MAC (Mandatory) | Network namespace, HTTP CONNECT proxy, OPA policies, Landlock, seccomp | Network exfiltration, lateral movement between sandboxes, filesystem escape, raw socket creation |
+| smgglrs | DAC (Discretionary) | Capability tokens, deny-wins ACLs, IFC taint propagation, safety filters, hooks | Unauthorized tool calls, path traversal, data leak via tool results, PII exposure, privilege escalation within the application |
+
+**Why both are necessary:**
+
+- **OpenShell without smgglrs**: The agent can reach smgglrs over
+  the network, but without ACLs it could call any tool, read any
+  path, and ignore IFC labels. A compromised agent process has
+  unrestricted tool access.
+
+- **smgglrs without OpenShell**: The agent respects smgglrs's ACLs
+  at the application layer, but a compromised agent process can
+  bypass smgglrs entirely: open raw sockets, exfiltrate data to the
+  internet, read arbitrary files via the OS, or tamper with other
+  processes.
+
+- **Both together**: OpenShell prevents reaching anything except
+  smgglrs and the model. smgglrs prevents doing anything except
+  what the capability token allows. Compromise of either layer alone
+  is insufficient for a full breach.
+
+**Microkernel analogy** (for research papers):
+
+| OS Concept | Traditional OS | Agent Platform |
+|------------|---------------|----------------|
+| Hardware | CPU rings, MMU, I/O ports | OpenShell sandbox (namespace, Landlock, seccomp) |
+| Kernel | Syscall interface, process isolation | smgglrs gateway (tool access, session isolation, IFC) |
+| Userland | Applications using syscalls | MCP servers + agents using tool calls |
+
+This maps MAC (SELinux/AppArmor) to OpenShell's mandatory network
+isolation, and DAC (Unix permissions) to smgglrs's capability-scoped
+ACLs. The combination is the same defense-in-depth pattern used in
+production operating systems.
+
+See `docs/designs/openshell-sandbox.md` for the full OpenShell
+integration design including identity federation, A2A teammate mesh,
+sandbox delegation, and gRPC module architecture.
+
 ## Transport Security
 
 ### What's secure by default

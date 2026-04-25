@@ -868,94 +868,56 @@ Phase 3 (memory as context injector vs memory as tool).
 
 Reference: SemaClaw 4-layer plugin taxonomy (arXiv 2604.11548).
 
-### Phase 6: OpenShell integration
+### Phase 6: OpenShell integration ✅
 
-See OPENSHELL.md for full design.
+See `docs/designs/openshell-sandbox.md` for full design.
 
 **Goal**: Integrate with OpenShell (Red Hat/NVIDIA secure sandbox
 platform) for identity federation, A2A teammate mesh, sandbox
 delegation, and gRPC module architecture.
 
-#### 6a. OpenShell-provided identity (NEW)
+**Status**: Complete (2026-04-25).
 
-Add `OpenShellAuthenticator` to smgglrs-security that accepts
-identity tokens from the OpenShell supervisor (SPIFFE SVIDs,
-OIDC JWTs, or gateway-signed tokens). Slots into
-`ChainAuthenticator` between capability and legacy auth.
-No impact on standalone smgglrs.
+#### 6a. OpenShell-provided identity ✅ (2026-04-24)
 
-#### 6b. A2A client and teammate mesh (NEW)
+`OpenShellAuthenticator` in smgglrs-security accepts identity
+tokens from the OpenShell supervisor (SPIFFE SVIDs, OIDC JWTs,
+or gateway-signed tokens). Slots into `ChainAuthenticator`
+between capability and legacy auth. No impact on standalone smgglrs.
 
-Add `A2aClient` to smgglrs-protocol for outbound A2A calls.
-Currently smgglrs can only receive A2A tasks — it cannot call
-other agents. The flow engine needs an A2A client to build
-teammate meshes where agents communicate via A2A instead of
-in-process channels.
+#### 6b. A2A client and teammate mesh ✅ (2026-04-24)
 
-The planner persona defines the flow; smgglrs builds the A2A mesh
-on its behalf:
-1. Each teammate gets an A2A endpoint on smgglrs
-2. Teammate Agent Cards registered in local directory
-3. Scoped capability tokens minted per teammate
-4. IFC enforcement on all A2A messages
+`A2aClient` in smgglrs-protocol for outbound A2A calls.
+`MeshRouter` in smgglrs-flow routes messages to in-process
+(mailbox) or remote (A2A) teammates transparently.
+`AgentCardDirectory` in smgglrs-core for teammate discovery.
+IFC enforcement on all A2A messages via `X-Smgglrs-DataLabel` header.
 
-In-process mode (current mailbox/blackboard) remains the default
-for single-node. A2A mode enables multi-node and OpenShell
-sandbox deployments.
+#### 6c. Sandbox delegation to OpenShell ✅ (2026-04-24)
 
-#### 6c. Sandbox delegation to OpenShell (NEW)
+Removed aspirational libkrun feature flag. Added `openshell`
+runtime backend that delegates sandbox creation to OpenShell's
+compute driver via gRPC. Vendored proto definitions at
+`smgglrs-model-runtime/proto/`. Direct and Podman backends
+remain for standalone smgglrs.
 
-Remove the aspirational libkrun feature flag from
-smgglrs-model-runtime (it has zero code behind it). Add an
-`openshell` runtime backend that delegates sandbox creation to
-OpenShell's compute driver via gRPC.
+#### 6d. gRPC module architecture ✅ (2026-04-24)
 
-smgglrs requests a sandbox with labels (`gpu=required`,
-`isolation=microvm`); OpenShell's driver handles the rest
-(Podman, libkrun, K8s, whatever). Direct and Podman backends
-remain for standalone smgglrs with no OpenShell dependency.
+`GrpcModule` adapter implements Module trait by forwarding calls
+to gRPC services. `GrpcModuleManager` handles lifecycle (spawn,
+health check, restart). Proto definitions at `smgglrs-core/proto/`.
+Configured via `grpc_modules` in server config.
 
-#### 6d. gRPC module architecture (NEW)
+#### 6e. Defense-in-depth network security model ✅ (2026-04-25)
 
-Add `GrpcModule` adapter that implements the Module trait by
-forwarding calls to gRPC services. Same pattern as
-`UpstreamModule` (MCP adapter) but for gRPC. Enables:
+Combined OpenShell + smgglrs security model documented and tested:
 
-- Modules as separate processes (crash isolation)
-- Modules on separate nodes (multi-node scaling)
-- Modules in any language (language-independent interface)
-- Independent module deployment and versioning
-
-Follows OpenShell's driver model: separate binaries, gRPC over
-Unix sockets, per-component lifecycle management.
-
-New dependency: `tonic` + `prost` for gRPC.
-
-#### 6e. Defense-in-depth network security model (NEW)
-
-Define and document the combined OpenShell + smgglrs security model
-where each agent sandbox is strictly firewalled:
-
-- **Network layer (OpenShell)**: sandbox can only reach its model
-  endpoint, smgglrs gateway, and OpenShell gateway. All other
-  traffic blocked via network namespaces + HTTP CONNECT proxy +
-  OPA policy. No internet, no lateral movement.
-- **Application layer (smgglrs)**: even with network access, the
-  agent is constrained by ACLs, IFC taint propagation, safety
-  filters, and scoped capability tokens.
-- Neither layer alone is sufficient: OpenShell without smgglrs
-  allows unrestricted tool access; smgglrs without OpenShell
-  allows network exfiltration. Both together give MAC + DAC.
-
-Deliverables:
-- OPA policy templates for OpenShell supervisor (allowlist for
-  smgglrs + model endpoint + gateway only)
-- smgglrs config templates for OpenShell-managed deployments
-- Integration test: verify agent inside sandbox cannot reach
-  unauthorized endpoints, and authorized tool calls respect ACLs
-- Security paper section (Phase 8): MAC + DAC analogy
-
-See OPENSHELL.md "Defense in depth" section for full design.
+- OPA policy template: `docs/openshell/opa-sandbox-policy.rego`
+- smgglrs config template: `docs/openshell/smgglrs-sandbox.toml`
+- Integration tests: `smgglrs-server/tests/openshell_integration.rs`
+  (6 tests covering network isolation, ACLs, IFC, identity, tokens, PII)
+- MAC + DAC defense in depth section added to DESIGN.md
+- Microkernel analogy for Phase 8 papers
 
 ### Phase 7: RAG enhancements
 
