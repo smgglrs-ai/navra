@@ -15,6 +15,10 @@ pub struct ServerConfig {
     /// Root identity configuration for DID-based auth.
     #[serde(default)]
     pub identity: Option<IdentityConfig>,
+    /// OpenShell identity federation config.
+    /// When set, OpenShellAuthenticator is inserted into the auth chain.
+    #[serde(default)]
+    pub openshell_auth: Option<smgglrs_core::auth::openshell::OpenShellAuthConfig>,
     /// Path to PII NER model directory (English).
     /// Default: ~/.local/share/smgglrs/models/pii-ner/
     #[serde(default)]

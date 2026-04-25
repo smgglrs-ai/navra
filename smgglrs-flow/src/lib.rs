@@ -30,6 +30,7 @@ mod executor;
 mod handoff;
 pub mod iterative;
 mod mailbox;
+pub mod mesh;
 mod mesh_tools;
 mod recovery;
 mod task;
@@ -52,6 +53,7 @@ pub use executor::{DagExecutor, DagResult};
 pub use handoff::HANDOFF_TOOL_NAME;
 pub use iterative::{Finding, IterativeConfig, IterativeExecutor, IterativeResult, RoundMetric};
 pub use mailbox::{MailboxMessage, MailboxRegistry};
+pub use mesh::{AgentCardDirectory, MeshRouter, TeammateLocation};
 pub use recovery::{
     classify_failure, detect_circular_fix, FailureType, RecoveryAction, RecoveryStrategy,
 };

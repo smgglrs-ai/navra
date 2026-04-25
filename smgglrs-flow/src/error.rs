@@ -56,6 +56,12 @@ pub enum FlowError {
     #[error("unknown task dependency: '{0}'")]
     UnknownDependency(String),
 
+    #[error("teammate not found: '{0}'")]
+    TeammateNotFound(String),
+
+    #[error("A2A error for teammate '{teammate}': {message}")]
+    A2aError { teammate: String, message: String },
+
     #[error("TOML parse error: {0}")]
     Toml(#[from] toml::de::Error),
 

@@ -57,10 +57,10 @@ pub trait CredentialStore: Send + Sync {
 /// A credential source mapping from config.
 ///
 /// Maps a label (e.g., "github.pat") to a backend source
-/// (keyring path, environment variable, etc.).
+/// (keyring path, environment variable, OpenShell channel, etc.).
 #[derive(Debug, Clone, Deserialize)]
 pub struct CredentialMapping {
-    /// Backend: "keyring" or "env".
+    /// Backend: "keyring", "env", or "openshell".
     pub source: String,
     /// Keyring path (for source = "keyring").
     /// e.g., "smgglrs/github-pat" or "org.gnome.OnlineAccounts/github"
@@ -69,6 +69,10 @@ pub struct CredentialMapping {
     /// Environment variable name (for source = "env").
     #[serde(default)]
     pub var: Option<String>,
+    /// OpenShell supervisor credential channel label (for source = "openshell").
+    /// The supervisor delivers credentials via Unix socket or gRPC.
+    #[serde(default)]
+    pub channel: Option<String>,
 }
 
 /// Credential store backed by config-mapped sources.
@@ -116,6 +120,16 @@ impl CredentialStore for MappedCredentialStore {
                 let value = std::env::var(var)
                     .map_err(|_| anyhow::anyhow!("environment variable {var} not set"))?;
                 Ok(Secret::new(value.into_bytes()))
+            }
+            "openshell" => {
+                let _channel = mapping
+                    .channel
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("openshell credential {label} missing 'channel'"))?;
+                // OpenShell credential delivery is fetched from the supervisor's
+                // Unix socket or gRPC endpoint. Placeholder until the supervisor
+                // protocol is implemented.
+                anyhow::bail!("openshell credential source not yet implemented (label: {label})")
             }
             other => anyhow::bail!("unsupported credential source: {other}"),
         }
@@ -200,6 +214,7 @@ mod tests {
                 source: "env".to_string(),
                 path: None,
                 var: Some("MCPD_TEST_CRED".to_string()),
+                channel: None,
             },
         );
         let store = MappedCredentialStore::new(mappings);
@@ -224,6 +239,7 @@ mod tests {
                 source: "env".to_string(),
                 path: None,
                 var: Some("MCPD_DEFINITELY_NOT_SET_12345".to_string()),
+                channel: None,
             },
         );
         let store = MappedCredentialStore::new(mappings);
@@ -239,6 +255,7 @@ mod tests {
                 source: "ftp".to_string(),
                 path: None,
                 var: None,
+                channel: None,
             },
         );
         let store = MappedCredentialStore::new(mappings);
@@ -254,6 +271,7 @@ mod tests {
                 source: "env".to_string(),
                 path: None,
                 var: Some("A".to_string()),
+                channel: None,
             },
         );
         mappings.insert(
@@ -262,6 +280,7 @@ mod tests {
                 source: "keyring".to_string(),
                 path: Some("svc/user".to_string()),
                 var: None,
+                channel: None,
             },
         );
         let store = MappedCredentialStore::new(mappings);
@@ -279,6 +298,7 @@ mod tests {
                 source: "env".to_string(),
                 path: None,
                 var: Some("X".to_string()),
+                channel: None,
             },
         );
         let store = MappedCredentialStore::new(mappings);
@@ -294,6 +314,7 @@ mod tests {
                 source: "keyring".to_string(),
                 path: None,
                 var: None,
+                channel: None,
             },
         );
         let store = MappedCredentialStore::new(mappings);
@@ -309,6 +330,7 @@ mod tests {
                 source: "keyring".to_string(),
                 path: Some("no-slash-here".to_string()),
                 var: None,
+                channel: None,
             },
         );
         let store = MappedCredentialStore::new(mappings);

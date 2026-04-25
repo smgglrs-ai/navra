@@ -228,6 +228,7 @@ impl Default for Config {
                 hook_timeout_secs: 10,
                 discovery: None,
                 identity: None,
+                openshell_auth: None,
                 pii_model_path: None,
                 pii_multilingual_model_path: None,
             },

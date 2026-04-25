@@ -473,9 +473,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 Box::new(Arc::clone(&root_signer)),
                 nonce_cache_ttl,
             );
-            let chain = smgglrs_core::auth::chain::ChainAuthenticator::new()
-                .add(cap_auth)
-                .add(blake3_auth);
+            let mut chain = smgglrs_core::auth::chain::ChainAuthenticator::new()
+                .add(cap_auth);
+
+            // Insert OpenShell authenticator at position 2 if configured
+            if let Some(os_config) = cfg.server.openshell_auth.clone() {
+                let os_auth = smgglrs_core::auth::openshell::OpenShellAuthenticator::new(os_config);
+                chain = chain.add(os_auth);
+                tracing::info!("OpenShell identity federation enabled");
+            }
+
+            chain = chain.add(blake3_auth);
             builder = builder.authenticator(chain);
             tracing::info!("Authenticator chain: capability tokens + BLAKE3");
         } else {
@@ -498,9 +506,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         let no_auth = smgglrs_core::auth::NoAuthenticator {
             default_identity: AgentIdentity::new("anonymous", "readonly"),
         };
-        let chain = smgglrs_core::auth::chain::ChainAuthenticator::new()
-            .add(cap_auth)
-            .add(no_auth);
+        let mut chain = smgglrs_core::auth::chain::ChainAuthenticator::new()
+            .add(cap_auth);
+
+        // Insert OpenShell authenticator if configured
+        if let Some(os_config) = cfg.server.openshell_auth.clone() {
+            let os_auth = smgglrs_core::auth::openshell::OpenShellAuthenticator::new(os_config);
+            chain = chain.add(os_auth);
+            tracing::info!("OpenShell identity federation enabled");
+        }
+
+        let chain = chain.add(no_auth);
         builder = builder.authenticator(chain);
         tracing::warn!(
             "No agents configured — external requests accepted as anonymous. \

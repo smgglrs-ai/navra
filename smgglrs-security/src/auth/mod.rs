@@ -1,5 +1,6 @@
 pub mod capability;
 pub mod chain;
+pub mod openshell;
 
 use std::fmt;
 
