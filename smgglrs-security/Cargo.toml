@@ -29,6 +29,9 @@ dirs = "6"
 rand = "0.8"
 regex-lite = "0.1"
 futures-util = "0.3"
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"] }
+ndarray = "0.17"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]

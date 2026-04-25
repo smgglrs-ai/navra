@@ -150,6 +150,23 @@ impl Config {
             .unwrap_or("standard")
     }
 
+    pub fn pii_model_dir(&self) -> std::path::PathBuf {
+        self.server
+            .pii_model_path
+            .as_ref()
+            .map(|p| {
+                let expanded = if p.starts_with("~/") {
+                    dirs::home_dir()
+                        .map(|h| h.join(&p[2..]))
+                        .unwrap_or_else(|| std::path::PathBuf::from(p))
+                } else {
+                    std::path::PathBuf::from(p)
+                };
+                expanded
+            })
+            .unwrap_or_else(smgglrs_core::safety::default_pii_ner_model_dir)
+    }
+
     pub fn rag_db_path(&self) -> String {
         self.modules
             .rag
@@ -168,6 +185,7 @@ impl Default for Config {
                 hook_timeout_secs: 10,
                 discovery: None,
                 identity: None,
+                pii_model_path: None,
             },
             modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),

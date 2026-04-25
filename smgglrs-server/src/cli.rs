@@ -82,6 +82,11 @@ pub(crate) enum Commands {
         #[arg(long = "upstream-prompt")]
         upstream_prompts: Vec<String>,
     },
+    /// Manage the PII NER model
+    Pii {
+        #[command(subcommand)]
+        action: PiiAction,
+    },
     /// Run the end-to-end security audit demo
     Demo {
         /// Path to the demo project (default: examples/payments-app)
@@ -128,6 +133,14 @@ pub(crate) enum ModelAction {
     List,
     /// Show available models for download
     Available,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum PiiAction {
+    /// Download the protectai/bert-base-NER-onnx model for semantic PII detection
+    Download,
+    /// Check if the PII NER model is installed
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -342,6 +355,84 @@ pub(crate) fn model_list() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+// --- PII NER model management ---
+
+const PII_NER_REPO: &str = "protectai/bert-base-NER-onnx";
+const PII_NER_MODEL_FILE: &str = "model.onnx";
+const PII_NER_TOKENIZER_FILE: &str = "tokenizer.json";
+
+/// Download the protectai/bert-base-NER-onnx model for semantic PII detection.
+///
+/// This model (dslim/bert-base-NER converted to ONNX by ProtectAI) detects
+/// PERSON, LOCATION, ORGANIZATION, and MISC entities in natural language.
+/// It is preferred over sfermion/bert-pii-detector-onnx for name/location
+/// detection in sentences.
+pub(crate) async fn pii_download() -> anyhow::Result<()> {
+    let model_dir = smgglrs_core::safety::default_pii_ner_model_dir();
+    std::fs::create_dir_all(&model_dir)?;
+
+    println!("Pulling protectai/bert-base-NER-onnx — semantic PII detection (PER, LOC, ORG, MISC)");
+
+    // Download model.onnx
+    let model_dest = model_dir.join("model.onnx");
+    if model_dest.exists() {
+        println!("  model.onnx already exists, skipping");
+    } else {
+        let model_url = format!(
+            "https://huggingface.co/{}/resolve/main/{}",
+            PII_NER_REPO, PII_NER_MODEL_FILE
+        );
+        println!("  Downloading model.onnx ...");
+        download_file(&model_url, &model_dest).await?;
+    }
+
+    // Download tokenizer.json
+    let tok_dest = model_dir.join("tokenizer.json");
+    if tok_dest.exists() {
+        println!("  tokenizer.json already exists, skipping");
+    } else {
+        let tok_url = format!(
+            "https://huggingface.co/{}/resolve/main/{}",
+            PII_NER_REPO, PII_NER_TOKENIZER_FILE
+        );
+        println!("  Downloading tokenizer.json ...");
+        download_file(&tok_url, &tok_dest).await?;
+    }
+
+    println!("\nInstalled to: {}", model_dir.display());
+    println!("\nThe PII NER model will be automatically loaded on next server start.");
+    println!("You can also set the path explicitly in config.toml:");
+    println!("\n[server]");
+    println!("pii_model_path = \"{}\"", model_dir.display());
+
+    Ok(())
+}
+
+/// Check if the PII NER model is installed.
+pub(crate) fn pii_status() {
+    let model_dir = smgglrs_core::safety::default_pii_ner_model_dir();
+    let has_model = model_dir.join("model.onnx").exists();
+    let has_tokenizer = model_dir.join("tokenizer.json").exists();
+
+    println!("PII NER model: protectai/bert-base-NER-onnx");
+    println!("Directory:     {}", model_dir.display());
+    println!();
+
+    if has_model && has_tokenizer {
+        let model_size = std::fs::metadata(model_dir.join("model.onnx"))
+            .map(|m| format!("{:.1} MB", m.len() as f64 / 1_048_576.0))
+            .unwrap_or_else(|_| "unknown".to_string());
+        println!("Status:   installed ({model_size})");
+        println!("Entities: PER (person), LOC (location), ORG (organization), MISC");
+    } else {
+        println!("Status:   not installed");
+        if has_model && !has_tokenizer {
+            println!("Detail:   model.onnx present, tokenizer.json missing");
+        }
+        println!("\nRun 'smgglrs pii download' to install.");
+    }
 }
 
 /// Show available models for download.
