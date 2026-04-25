@@ -1,0 +1,158 @@
+# smgglrs configuration template for OpenShell-managed sandboxes.
+#
+# This config is deployed automatically by the OpenShell supervisor
+# when creating a sandbox. It configures smgglrs for a locked-down
+# environment where:
+#
+#   - Identity comes from the OpenShell supervisor (SPIFFE/SPIRE)
+#   - No desktop (D-Bus approval disabled, MCP-based approval instead)
+#   - PII filtering is enabled on all persistence paths
+#   - Permissions are restrictive by default
+#   - Network access is limited by the OPA policy (see opa-sandbox-policy.rego)
+#
+# Template variables (replaced by supervisor at deployment):
+#   - Replace <trust_bundle_path> with the SPIRE agent bundle path
+#   - Replace <workspace_path> with the sandbox workspace directory
+#   - Replace <model_endpoint> with the model server URL
+
+# --- Server ---
+
+[server]
+# Unix socket inside sandbox. The agent process connects here.
+# No TCP listener — not needed inside a sandbox with a single agent.
+socket = "/run/smgglrs/smgglrs.sock"
+
+# Hook timeout (seconds). Shorter than desktop default since
+# sandbox operations should be fast and predictable.
+hook_timeout_secs = 5
+
+# --- OpenShell Identity Federation ---
+#
+# Accept identity tokens from the OpenShell supervisor.
+# SPIFFE mode: verify JWT-SVID against the SPIRE agent trust bundle.
+# The supervisor injects the trust bundle at sandbox creation time.
+
+[server.openshell_auth]
+mode = "spiffe"
+trust_bundle = "<trust_bundle_path>"
+default_permissions = "restricted"
+
+[server.openshell_auth.label_mapping]
+"role=worker"  = "restricted"
+"role=lead"    = "developer"
+"role=admin"   = "admin"
+
+# --- Modules ---
+
+[modules.docs]
+enabled = true
+
+[modules.git]
+enabled = true
+
+[modules.rag]
+enabled = false
+
+[modules.voice]
+enabled = false
+
+[modules.vision]
+enabled = false
+
+# Memory module: PII filtering enabled, short retention.
+[modules.memory]
+pii_filter = "standard"
+retention_days = 30
+pii_retention_days = 7
+audit_retention_days = 90
+
+# --- Approval ---
+#
+# D-Bus notifications are disabled inside sandboxes (no desktop).
+# Approval is handled via MCP tool calls (file_approve, file_deny)
+# which the agent or a supervisor process can invoke.
+
+[approval]
+timeout_secs = 120
+notify = "none"
+
+# --- Upstream MCP Servers ---
+#
+# Domain-specific tool servers deployed alongside smgglrs in the
+# sandbox. The supervisor provisions these based on sandbox labels.
+
+[[upstream]]
+name = "domain-tools"
+transport = "stdio"
+command = ["/usr/libexec/sandbox/domain-tool-server"]
+
+# --- Agent Identity ---
+#
+# The sandbox agent is provisioned by the supervisor. The token
+# hash is injected at sandbox creation time (not stored in this
+# template). When OpenShell auth is enabled, the SPIFFE identity
+# takes precedence over token-based auth.
+
+[[agents]]
+name = "sandbox-agent"
+permissions = "restricted"
+# token_hash = "<injected-by-supervisor>"
+
+# --- Permission Sets ---
+#
+# Three tiers of access for sandboxed agents. The OpenShell label
+# mapping (above) determines which set an agent gets.
+
+# Worker: read-only access to workspace, no writes, no git mutations.
+[permissions.restricted]
+allow = ["<workspace_path>/**"]
+deny = ["**/.env", "**/.env.*", "**/*secret*", "**/credentials*",
+        "**/*.pem", "**/*.key", "**/id_rsa*", "**/id_ed25519*"]
+operations = ["read", "search", "list"]
+approve = []
+safety = "standard"
+default_tool_policy = "allow"
+
+# Lead: read + write access to workspace, git read operations.
+# Write and commit operations require approval (via MCP tool).
+[permissions.developer]
+allow = ["<workspace_path>/**"]
+deny = ["**/.env", "**/.env.*", "**/*secret*", "**/credentials*",
+        "**/*.pem", "**/*.key", "**/id_rsa*", "**/id_ed25519*"]
+operations = ["read", "write", "search", "list",
+              "git.status", "git.diff", "git.log", "git.branch"]
+approve = ["write", "git.commit"]
+safety = "standard"
+default_tool_policy = "allow"
+
+# Admin: full access (for supervisor-level operations only).
+# Not assigned to regular agents — reserved for orchestration.
+[permissions.admin]
+allow = ["<workspace_path>/**"]
+deny = ["**/.env", "**/.env.*"]
+operations = ["read", "write", "search", "list",
+              "git.status", "git.diff", "git.log", "git.branch",
+              "git.commit"]
+approve = []
+safety = "standard"
+default_tool_policy = "allow"
+
+# --- PII Patterns ---
+#
+# Additional PII patterns for sandbox environments.
+# These supplement the built-in patterns (SSN, credit card, etc.).
+
+[[pii_patterns]]
+category = "sandbox-credential"
+pattern = "SANDBOX_TOKEN_[A-Za-z0-9]{32,}"
+action = "redact"
+
+# --- Models ---
+#
+# Model configuration is injected by the supervisor based on
+# sandbox labels. Example for a local llama-server endpoint:
+#
+# [models.inference]
+# backend = "openai"
+# endpoint = "<model_endpoint>"
+# model = "granite3.3:8b"
