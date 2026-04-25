@@ -107,7 +107,7 @@ mod tests {
         );
         assert_eq!(perms.check("shell_exec"), ToolPolicy::Deny);
         assert_eq!(perms.check("shell_run"), ToolPolicy::Deny);
-        assert_eq!(perms.check("docs_read"), ToolPolicy::Allow);
+        assert_eq!(perms.check("file_read"), ToolPolicy::Allow);
     }
 
     #[test]
@@ -152,18 +152,18 @@ mod tests {
         let perms = ToolPermissions::new(
             vec![
                 ToolRule {
-                    tool: "docs_*".to_string(),
+                    tool: "file_*".to_string(),
                     policy: ToolPolicy::Approve,
                 },
                 ToolRule {
-                    tool: "docs_read".to_string(),
+                    tool: "file_read".to_string(),
                     policy: ToolPolicy::Allow,
                 },
             ],
             ToolPolicy::Deny,
         );
-        assert_eq!(perms.check("docs_read"), ToolPolicy::Allow);
-        assert_eq!(perms.check("docs_write"), ToolPolicy::Approve);
+        assert_eq!(perms.check("file_read"), ToolPolicy::Allow);
+        assert_eq!(perms.check("file_write"), ToolPolicy::Approve);
     }
 
     #[test]
@@ -204,7 +204,7 @@ mod tests {
                     policy: ToolPolicy::Deny,
                 },
                 ToolRule {
-                    tool: "docs_*".to_string(),
+                    tool: "file_*".to_string(),
                     policy: ToolPolicy::Allow,
                 },
             ],
@@ -212,7 +212,7 @@ mod tests {
         );
         assert_eq!(perms.check("git_commit"), ToolPolicy::Approve);
         assert_eq!(perms.check("shell_exec"), ToolPolicy::Deny);
-        assert_eq!(perms.check("docs_read"), ToolPolicy::Allow);
+        assert_eq!(perms.check("file_read"), ToolPolicy::Allow);
         assert_eq!(perms.check("unknown_tool"), ToolPolicy::Deny);
     }
 
@@ -226,6 +226,6 @@ mod tests {
             ToolPolicy::Allow,
         );
         assert_eq!(perms.check("anything"), ToolPolicy::Approve);
-        assert_eq!(perms.check("docs_read"), ToolPolicy::Approve);
+        assert_eq!(perms.check("file_read"), ToolPolicy::Approve);
     }
 }

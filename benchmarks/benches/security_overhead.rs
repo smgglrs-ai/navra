@@ -252,9 +252,9 @@ fn bench_tool_rules(c: &mut Criterion) {
     use smgglrs_security::permissions::{ToolPermissions, ToolPolicy, ToolRule};
 
     let rules = vec![
-        ToolRule { tool: "docs_read".to_string(), policy: ToolPolicy::Allow },
-        ToolRule { tool: "docs_write".to_string(), policy: ToolPolicy::Approve },
-        ToolRule { tool: "docs_delete".to_string(), policy: ToolPolicy::Deny },
+        ToolRule { tool: "file_read".to_string(), policy: ToolPolicy::Allow },
+        ToolRule { tool: "file_write".to_string(), policy: ToolPolicy::Approve },
+        ToolRule { tool: "file_delete".to_string(), policy: ToolPolicy::Deny },
         ToolRule { tool: "git_*".to_string(), policy: ToolPolicy::Allow },
         ToolRule { tool: "sys_*".to_string(), policy: ToolPolicy::Deny },
     ];
@@ -263,7 +263,7 @@ fn bench_tool_rules(c: &mut Criterion) {
     let mut group = c.benchmark_group("tool_rules");
 
     group.bench_function("check_exact_match", |b| {
-        b.iter(|| perms.check(black_box("docs_read")));
+        b.iter(|| perms.check(black_box("file_read")));
     });
 
     group.bench_function("check_glob_match", |b| {

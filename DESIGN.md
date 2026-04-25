@@ -102,7 +102,7 @@ smgglrs/
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─ Built-in Modules ─────────────────────────────────────────────┐  │
-│  │  smgglrs-tools-docs: docs_search, docs_read, docs_write, ...    │  │
+│  │  smgglrs-tools-docs: file_search, file_read, file_write, ...     │  │
 │  │  smgglrs-tools-git:  git_status, git_diff, git_log, git_branch  │  │
 │  │                 git_commit (approval required)                 │  │
 │  └────────────────────────────────────────────────────────────────┘  │
@@ -153,7 +153,7 @@ McpServer::builder()
 
 Duplicate tool and prompt names are detected at startup (panic on
 conflict). Tool names must be prefixed with the module name:
-`docs_read`, `git_status`, etc.
+`file_read`, `git_status`, etc.
 
 ### Config-driven
 
@@ -379,18 +379,18 @@ approval-needed response (not blocking the HTTP connection) and sends
 a D-Bus notification in parallel. Four resolution channels:
 
 ```
-Agent: docs_write(path, content)
+Agent: file_write(path, content)
 Server: "Approval required. Request ID: abc-123."
         (+ D-Bus notification with Approve/Deny buttons)
         (+ tray icon shows pending approval)
 
 Resolution via ANY channel:
-  1. Agent calls docs_approve(request_id=abc-123)     ← MCP-native
+  1. Agent calls file_approve(request_id=abc-123)     ← MCP-native
   2. User clicks D-Bus notification "Approve" button  ← Desktop
   3. User clicks tray menu Approve                    ← Tray icon
   4. CLI: smgglrs approve abc-123                        ← Terminal
 
-Agent: docs_write(path, content)  # retry
+Agent: file_write(path, content)  # retry
 Server: "Written 42 bytes to /path"  # grant consumed
 ```
 
@@ -417,19 +417,21 @@ is accessible via `server.pause_flag()` for external integration.
 
 ## MCP Tools
 
-### Docs Module (`smgglrs-tools-docs`)
+### File Module (`smgglrs-tools-docs`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
-| `docs_search` | search | Full-text search via FTS5 |
-| `docs_read` | read | Read file with optional offset/limit (line-based partial reads) |
-| `docs_write` | write | Create or overwrite file, auto-indexes |
-| `docs_edit` | write | Surgical string replacement (old_string → new_string, must be unique) |
-| `docs_delete` | write | Delete file, removes from index |
-| `docs_list` | list | List directory (filters entries by path ACL) |
-| `docs_info` | read | File metadata (size, lines, mime, modified, indexed) without content |
-| `docs_approve` | — | Approve a pending request by ID |
-| `docs_deny` | — | Deny a pending request by ID |
+| `file_search` | search | Full-text search via FTS5 |
+| `file_read` | read | Read file with optional offset/limit (line-based partial reads) |
+| `file_write` | write | Create or overwrite file, auto-indexes |
+| `file_edit` | write | Surgical string replacement (old_string → new_string, must be unique) |
+| `file_delete` | write | Delete file, removes from index |
+| `file_list` | list | List directory (filters entries by path ACL) |
+| `file_info` | read | File metadata (size, lines, mime, modified, indexed) without content |
+| `file_approve` | — | Approve a pending request by ID |
+| `file_deny` | — | Deny a pending request by ID |
+
+Read-only access is also available via MCP resources with `file://` URIs.
 
 ### Git Module (`smgglrs-tools-git`)
 
@@ -476,7 +478,7 @@ CREATE VIRTUAL TABLE documents_fts USING fts5(
 ```
 
 Thread-safe via `Mutex<Connection>` with WAL mode enabled.
-Auto-indexed on `docs_write` and `docs_edit`. Content checksums
+Auto-indexed on `file_write` and `file_edit`. Content checksums
 computed with BLAKE3.
 
 ## Model Serving (ONNX Runtime)

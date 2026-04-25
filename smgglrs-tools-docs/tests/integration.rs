@@ -62,7 +62,7 @@ fn text_of(result: &smgglrs_core::protocol::CallToolResult) -> &str {
 #[test]
 fn module_name_is_docs() {
     let module = build_docs_module();
-    assert_eq!(module.name(), "docs");
+    assert_eq!(module.name(), "file");
 }
 
 // =====================================================================
@@ -79,17 +79,17 @@ fn module_registers_all_expected_tools() {
     assert_eq!(tools.len(), 11);
 
     let expected = [
-        "docs_search",
-        "docs_read",
-        "docs_list",
-        "docs_write",
-        "docs_edit",
-        "docs_info",
-        "docs_delete",
-        "docs_approve",
-        "docs_deny",
-        "docs_tree",
-        "docs_grep",
+        "file_search",
+        "file_read",
+        "file_list",
+        "file_write",
+        "file_edit",
+        "file_info",
+        "file_delete",
+        "file_approve",
+        "file_deny",
+        "file_tree",
+        "file_grep",
     ];
     for name in &expected {
         assert!(names.contains(name), "Missing tool: {name}");
@@ -102,8 +102,8 @@ fn all_tool_names_prefixed_with_docs() {
     let tools = module.tools();
     for (def, _) in &tools {
         assert!(
-            def.name.starts_with("docs_"),
-            "Tool '{}' does not start with 'docs_'",
+            def.name.starts_with("file_"),
+            "Tool '{}' does not start with 'file_'",
             def.name
         );
     }
@@ -136,7 +136,7 @@ fn tool_schemas_have_correct_types() {
 fn read_tool_requires_path() {
     let module = build_docs_module();
     let tools = module.tools();
-    let read = tools.iter().find(|(d, _)| d.name == "docs_read").unwrap();
+    let read = tools.iter().find(|(d, _)| d.name == "file_read").unwrap();
     let required = read.0.input_schema.required.as_ref().unwrap();
     assert!(required.contains(&"path".to_string()));
 }
@@ -145,7 +145,7 @@ fn read_tool_requires_path() {
 fn write_tool_requires_path_and_content() {
     let module = build_docs_module();
     let tools = module.tools();
-    let write = tools.iter().find(|(d, _)| d.name == "docs_write").unwrap();
+    let write = tools.iter().find(|(d, _)| d.name == "file_write").unwrap();
     let required = write.0.input_schema.required.as_ref().unwrap();
     assert!(required.contains(&"path".to_string()));
     assert!(required.contains(&"content".to_string()));
@@ -155,7 +155,7 @@ fn write_tool_requires_path_and_content() {
 fn grep_tool_requires_path_and_pattern() {
     let module = build_docs_module();
     let tools = module.tools();
-    let grep = tools.iter().find(|(d, _)| d.name == "docs_grep").unwrap();
+    let grep = tools.iter().find(|(d, _)| d.name == "file_grep").unwrap();
     let required = grep.0.input_schema.required.as_ref().unwrap();
     assert!(required.contains(&"path".to_string()));
     assert!(required.contains(&"pattern".to_string()));
@@ -165,7 +165,7 @@ fn grep_tool_requires_path_and_pattern() {
 fn tree_tool_has_no_required_params() {
     let module = build_docs_module();
     let tools = module.tools();
-    let tree = tools.iter().find(|(d, _)| d.name == "docs_tree").unwrap();
+    let tree = tools.iter().find(|(d, _)| d.name == "file_tree").unwrap();
     assert!(tree.0.input_schema.required.is_none());
 }
 
@@ -224,6 +224,6 @@ fn set_default_root_changes_module_state() {
     // Should not panic
     module.set_default_root("/home/user/project".to_string());
     // Module should still work after replacing state
-    assert_eq!(module.name(), "docs");
+    assert_eq!(module.name(), "file");
     assert_eq!(module.tools().len(), 11);
 }

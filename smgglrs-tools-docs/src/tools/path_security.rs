@@ -122,8 +122,8 @@ pub(super) async fn check_perm(
                     "Approval required: {} on {}\n\n\
                      Request ID: {}\n\
                      Agent: {}\n\n\
-                     Call docs_approve with this request_id to approve,\n\
-                     or docs_deny to reject.",
+                     Call file_approve with this request_id to approve,\n\
+                     or file_deny to reject.",
                     op, path_str, req.id, ctx.agent.name,
                 )),
             ]))

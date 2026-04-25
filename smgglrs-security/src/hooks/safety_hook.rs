@@ -17,8 +17,8 @@ use std::collections::HashMap;
 /// Operations that carry content from the agent into the system
 /// (write-path). These get inbound filtering.
 const WRITE_OPS: &[&str] = &[
-    "docs_write",
-    "docs_edit",
+    "file_write",
+    "file_edit",
     "voice_speak",
 ];
 
@@ -248,10 +248,10 @@ mod tests {
 
         let args = serde_json::json!({"path": "/tmp/test", "content": "SSN: 123-45-6789"});
         let decision = hook
-            .pre_tool_use("docs_read", &args, &test_ctx())
+            .pre_tool_use("file_read", &args, &test_ctx())
             .await;
 
-        // docs_read is not a write-path tool, so inbound filtering skips it
+        // file_read is not a write-path tool, so inbound filtering skips it
         assert!(matches!(decision, HookDecision::Continue));
     }
 
@@ -261,7 +261,7 @@ mod tests {
 
         let args = serde_json::json!({"path": "/tmp/test", "content": "Hello, world!"});
         let decision = hook
-            .pre_tool_use("docs_write", &args, &test_ctx())
+            .pre_tool_use("file_write", &args, &test_ctx())
             .await;
 
         assert!(matches!(decision, HookDecision::Continue));

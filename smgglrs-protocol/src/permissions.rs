@@ -227,7 +227,7 @@ mod tests {
             grants: vec![PermissionGrantEntry {
                 request_id: "req-1".to_string(),
                 scope: PermissionScope::ToolAccess {
-                    tool_name: "docs_write".to_string(),
+                    tool_name: "file_write".to_string(),
                 },
                 expires_at: Some(1700000000),
                 granted_by: "user".to_string(),

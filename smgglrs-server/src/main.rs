@@ -169,7 +169,7 @@ fn build_perm_engine(cfg: &config::Config) -> PermissionEngine {
         tracing::warn!(
             "No [permissions.readonly] in config. Anonymous agents use the \
              'readonly' permission set — without it, all path-based tools \
-             (docs_read, docs_tree, etc.) will be denied. Add a \
+             (file_read, file_tree, etc.) will be denied. Add a \
              [permissions.readonly] section to grant access."
         );
     }
@@ -773,7 +773,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 notifier.clone(),
             )
         };
-        // Set default root for docs_tree.
+        // Set default root for file_tree.
         // Priority: [modules.docs] default_root > top-level cognitive_core
         let mut docs = docs;
         let docs_root = cfg.modules.docs.as_ref()
@@ -783,7 +783,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             let expanded = expand_tilde(root_path);
             if let Ok(canonical) = std::fs::canonicalize(&expanded) {
                 let root = canonical.display().to_string();
-                tracing::info!(default_root = %root, "Setting docs_tree default root");
+                tracing::info!(default_root = %root, "Setting file_tree default root");
                 docs.set_default_root(root);
             }
         }
@@ -2270,7 +2270,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
 /// Send an approve or deny request to the running server via JSON-RPC.
 async fn approve_or_deny(addr: &str, request_id: &str, approve: bool) -> anyhow::Result<()> {
-    let tool_name = if approve { "docs_approve" } else { "docs_deny" };
+    let tool_name = if approve { "file_approve" } else { "file_deny" };
     let action = if approve { "Approved" } else { "Denied" };
 
     let client = reqwest::Client::new();

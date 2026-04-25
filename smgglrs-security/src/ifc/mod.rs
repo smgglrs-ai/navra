@@ -189,22 +189,22 @@ mod tests {
 
     #[test]
     fn write_tool_classification() {
-        assert!(is_write_tool("docs_write"));
+        assert!(is_write_tool("file_write"));
         assert!(is_write_tool("git_commit"));
         assert!(is_write_tool("git_push"));
-        assert!(is_write_tool("docs_delete"));
-        assert!(is_write_tool("docs_edit"));
+        assert!(is_write_tool("file_delete"));
+        assert!(is_write_tool("file_edit"));
         assert!(is_write_tool("shell_exec"));
-        assert!(!is_write_tool("docs_read"));
+        assert!(!is_write_tool("file_read"));
         assert!(!is_write_tool("git_status"));
         assert!(!is_write_tool("rag_search"));
     }
 
     #[test]
     fn external_read_classification() {
-        assert!(is_external_read_tool("docs_read"));
-        assert!(is_external_read_tool("docs_search"));
-        assert!(is_external_read_tool("docs_list"));
+        assert!(is_external_read_tool("file_read"));
+        assert!(is_external_read_tool("file_search"));
+        assert!(is_external_read_tool("file_list"));
         assert!(is_external_read_tool("git_diff"));
         assert!(is_external_read_tool("git_log"));
         assert!(!is_external_read_tool("git_status"));

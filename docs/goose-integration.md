@@ -87,8 +87,8 @@ from the Goose CLI as well:
 goose extensions list
 ```
 
-You should see `smgglrs` listed with its tools (e.g., `docs_read`,
-`docs_search`, `git_status`, `git_diff`).
+You should see `smgglrs` listed with its tools (e.g., `file_read`,
+`file_search`, `git_status`, `git_diff`).
 
 Try a simple command in Goose:
 
@@ -193,7 +193,7 @@ transparently -- no Goose-side configuration needed.
   `[modules.*]`. Only enabled modules expose tools.
 - Verify the permission set assigned to Goose includes the
   relevant operations (e.g., `git.status` for git tools).
-- Tool names are prefixed with module name: `docs_read`,
+- Tool names are prefixed with module name: `file_read`,
   `git_status`, not `read` or `status`.
 
 ### Tool call denied (403)

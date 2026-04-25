@@ -241,10 +241,10 @@ async teammates.
 Each teammate receives scoped permissions:
 
 - **Operations**: default read-only (read, search, list)
-- **Tools**: default safe set (docs_tree, docs_grep, docs_read,
+- **Tools**: default safe set (file_tree, file_grep, file_read,
   team_bb_publish)
 
-The lead does NOT get docs_read or docs_grep — it must delegate
+The lead does NOT get file_read or file_grep — it must delegate
 all file analysis to teammates, enforcing the delegation pattern
 architecturally.
 
@@ -308,7 +308,7 @@ rather than creating it.
 
 ### 7.2 The "." Path Bug
 
-During blackbox testing, the framework's docs_tree tool defaulted
+During blackbox testing, the framework's file_tree tool defaulted
 to "." (current directory) when no explicit path was provided.
 This caused teammates to scan the smgglrs binary's working directory
 instead of the project path. Found only because the lead's report

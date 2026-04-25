@@ -410,14 +410,14 @@ mod tests {
         let log = AuditLog::open_memory().unwrap();
         log.begin_run(&make_run("run-1")).unwrap();
 
-        log.log_tool_call(&make_tool_call("run-1", 1, "docs_read")).unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 1, "file_read")).unwrap();
         log.log_tool_call(&make_tool_call("run-1", 2, "git_status")).unwrap();
-        log.log_tool_call(&make_tool_call("run-1", 3, "docs_read")).unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 3, "file_read")).unwrap();
 
         let calls = log.get_tool_calls("run-1").unwrap();
         assert_eq!(calls.len(), 3);
         assert_eq!(calls[0].iteration, 1);
-        assert_eq!(calls[0].tool_name, "docs_read");
+        assert_eq!(calls[0].tool_name, "file_read");
         assert_eq!(calls[1].iteration, 2);
         assert_eq!(calls[1].tool_name, "git_status");
         assert_eq!(calls[2].iteration, 3);
@@ -443,8 +443,8 @@ mod tests {
         log.begin_run(&make_run("run-1")).unwrap();
         log.end_run("run-1", 2000, None, None).unwrap();
 
-        log.log_tool_call(&make_tool_call("run-1", 1, "docs_read")).unwrap();
-        log.log_tool_call(&make_tool_call("run-1", 2, "docs_read")).unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 1, "file_read")).unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 2, "file_read")).unwrap();
         log.log_tool_call(&make_tool_call("run-1", 3, "git_status")).unwrap();
         log.log_model_call(&make_model_call("run-1", 1)).unwrap();
 
@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(summary.model_call_count, 1);
         assert_eq!(summary.duration_ms, Some(1000));
         assert_eq!(summary.top_tools.len(), 2);
-        assert_eq!(summary.top_tools[0], ("docs_read".to_string(), 2));
+        assert_eq!(summary.top_tools[0], ("file_read".to_string(), 2));
         assert_eq!(summary.top_tools[1], ("git_status".to_string(), 1));
     }
 }

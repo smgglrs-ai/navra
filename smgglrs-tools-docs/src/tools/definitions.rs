@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 pub(super) fn search_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_search".to_string(),
+        name: "file_search".to_string(),
         description: Some("Full-text search across indexed documents".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
@@ -24,7 +24,7 @@ pub(super) fn search_tool_def() -> ToolDefinition {
 
 pub(super) fn read_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_read".to_string(),
+        name: "file_read".to_string(),
         description: Some("Read a document by path. Supports partial reads with offset and limit (line-based).".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
@@ -49,7 +49,7 @@ pub(super) fn read_tool_def() -> ToolDefinition {
 
 pub(super) fn list_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_list".to_string(),
+        name: "file_list".to_string(),
         description: Some("List files and directories at a path".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
@@ -64,7 +64,7 @@ pub(super) fn list_tool_def() -> ToolDefinition {
 
 pub(super) fn tree_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_tree".to_string(),
+        name: "file_tree".to_string(),
         description: Some(
             "List files under a directory. Returns relative paths and line counts. \
              For large projects, use max_depth to get a high-level overview first, \
@@ -100,7 +100,7 @@ pub(super) fn tree_tool_def() -> ToolDefinition {
 
 pub(super) fn grep_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_grep".to_string(),
+        name: "file_grep".to_string(),
         description: Some(
             "Search for a text pattern across all files in a directory. Returns \
              matching lines with file paths and line numbers. Use this for \
@@ -135,7 +135,7 @@ pub(super) fn grep_tool_def() -> ToolDefinition {
 
 pub(super) fn write_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_write".to_string(),
+        name: "file_write".to_string(),
         description: Some("Create or overwrite a document".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
@@ -156,7 +156,7 @@ pub(super) fn write_tool_def() -> ToolDefinition {
 
 pub(super) fn edit_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_edit".to_string(),
+        name: "file_edit".to_string(),
         description: Some(
             "Edit a document by replacing a string. The old_string must be unique in the file. \
              Use enough surrounding context to ensure uniqueness."
@@ -189,7 +189,7 @@ pub(super) fn edit_tool_def() -> ToolDefinition {
 
 pub(super) fn info_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_info".to_string(),
+        name: "file_info".to_string(),
         description: Some("Get file metadata without reading content (size, type, line count, modified time)".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
@@ -204,7 +204,7 @@ pub(super) fn info_tool_def() -> ToolDefinition {
 
 pub(super) fn delete_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_delete".to_string(),
+        name: "file_delete".to_string(),
         description: Some("Delete a document. Requires write permission.".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
@@ -219,7 +219,7 @@ pub(super) fn delete_tool_def() -> ToolDefinition {
 
 pub(super) fn approve_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_approve".to_string(),
+        name: "file_approve".to_string(),
         description: Some(
             "Approve a pending operation. Call this with the request_id \
              returned by a tool that requires approval."
@@ -238,7 +238,7 @@ pub(super) fn approve_tool_def() -> ToolDefinition {
 
 pub(super) fn deny_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_deny".to_string(),
+        name: "file_deny".to_string(),
         description: Some(
             "Deny a pending operation. Call this with the request_id \
              returned by a tool that requires approval."
@@ -257,7 +257,7 @@ pub(super) fn deny_tool_def() -> ToolDefinition {
 
 pub(super) fn semantic_search_tool_def() -> ToolDefinition {
     ToolDefinition {
-        name: "docs_semantic_search".to_string(),
+        name: "file_semantic_search".to_string(),
         description: Some(
             "Semantic search across indexed documents using vector similarity. \
              Finds documents with similar meaning, even if they don't share exact words."

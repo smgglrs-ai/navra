@@ -64,7 +64,7 @@ Even when a sandbox can reach smgglrs over the network, smgglrs
 enforces what the agent inside that sandbox can actually do:
 
 - **Tool ACLs**: agent can only call specific tools (e.g.,
-  `docs_read`, `git_status` — not `git_commit`)
+  `file_read`, `git_status` — not `git_commit`)
 - **Path ACLs**: tool calls restricted to specific paths (e.g.,
   `/home/projects/foo/**` — deny wins)
 - **IFC taint propagation**: agent tainted with `Sensitive` data

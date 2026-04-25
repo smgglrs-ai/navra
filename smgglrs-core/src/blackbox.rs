@@ -244,8 +244,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
 
-        bb.record("agent1", "dev", "sess1", "docs_read", r#"{"path":"/tmp"}"#, "file content", "allowed", 5, "Trusted:Public");
-        bb.record("agent1", "dev", "sess1", "docs_write", r#"{"path":"/tmp/x"}"#, "ok", "denied_ifc", 2, "Untrusted:Public");
+        bb.record("agent1", "dev", "sess1", "file_read", r#"{"path":"/tmp"}"#, "file content", "allowed", 5, "Trusted:Public");
+        bb.record("agent1", "dev", "sess1", "file_write", r#"{"path":"/tmp/x"}"#, "ok", "denied_ifc", 2, "Untrusted:Public");
 
         assert_eq!(bb.count(), 2);
         let entries = bb.recent(10);

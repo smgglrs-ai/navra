@@ -326,7 +326,7 @@ async fn tool_call_recorded_in_blackbox() {
             "method": "tools/call",
             "id": 3,
             "params": {
-                "name": "docs_tree",
+                "name": "file_tree",
                 "arguments": {}
             }
         }))

@@ -87,7 +87,7 @@ impl McpServerBuilder {
     /// Register all tools and prompts from a module.
     ///
     /// Panics if a tool or prompt name conflicts with an already-registered one.
-    /// Tool names should be prefixed with the module name (e.g. `docs_read`,
+    /// Tool names should be prefixed with the module name (e.g. `file_read`,
     /// `git_status`) to avoid collisions.
     pub fn module(mut self, module: impl Module) -> Self {
         let mod_name = module.name().to_string();

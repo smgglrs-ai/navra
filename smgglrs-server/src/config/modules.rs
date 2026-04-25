@@ -103,7 +103,7 @@ pub struct DocsModuleConfig {
     pub enabled: bool,
     #[serde(default = "default_db_path")]
     pub db: String,
-    /// Default root path for docs_tree when no path argument is given.
+    /// Default root path for file_tree when no path argument is given.
     /// Overrides the top-level `cognitive_core` setting for docs routing.
     #[serde(default)]
     pub default_root: Option<String>,

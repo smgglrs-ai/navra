@@ -369,20 +369,20 @@ fn module_provides_all_tools() {
     let notifier: Arc<dyn smgglrs_core::notify::Notifier> = Arc::new(NoopNotifier);
     let module = DocsModule::new(engine, index, approvals, notifier);
 
-    assert_eq!(module.name(), "docs");
+    assert_eq!(module.name(), "file");
     let tools = module.tools();
     let names: Vec<_> = tools.iter().map(|(def, _)| def.name.as_str()).collect();
-    assert!(names.contains(&"docs_search"));
-    assert!(names.contains(&"docs_read"));
-    assert!(names.contains(&"docs_list"));
-    assert!(names.contains(&"docs_write"));
-    assert!(names.contains(&"docs_edit"));
-    assert!(names.contains(&"docs_info"));
-    assert!(names.contains(&"docs_delete"));
-    assert!(names.contains(&"docs_approve"));
-    assert!(names.contains(&"docs_deny"));
-    assert!(names.contains(&"docs_tree"));
-    assert!(names.contains(&"docs_grep"));
+    assert!(names.contains(&"file_search"));
+    assert!(names.contains(&"file_read"));
+    assert!(names.contains(&"file_list"));
+    assert!(names.contains(&"file_write"));
+    assert!(names.contains(&"file_edit"));
+    assert!(names.contains(&"file_info"));
+    assert!(names.contains(&"file_delete"));
+    assert!(names.contains(&"file_approve"));
+    assert!(names.contains(&"file_deny"));
+    assert!(names.contains(&"file_tree"));
+    assert!(names.contains(&"file_grep"));
     assert_eq!(tools.len(), 11);
 }
 
@@ -539,7 +539,7 @@ async fn write_needs_approval_returns_request_id() {
     let text = text_of(&result);
     assert!(text.contains("Approval required"));
     assert!(text.contains("Request ID:"));
-    assert!(text.contains("docs_approve"));
+    assert!(text.contains("file_approve"));
     assert!(!file.exists());
     assert_eq!(state.approvals.pending_count(), 1);
 }

@@ -1359,7 +1359,7 @@ These run in CI with a mock OpenShell supervisor.
 - Verify: connection refused (proxy denies)
 
 **Test 2: Authorized tool call**
-- Agent calls `docs_read` on an allowed path
+- Agent calls `file_read` on an allowed path
 - Verify: tool call succeeds, result returned
 
 **Test 3: Denied tool call**

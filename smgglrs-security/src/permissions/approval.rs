@@ -38,7 +38,7 @@ struct Grant {
 /// Thread-safe store for pending approvals and cached grants.
 ///
 /// Supports two resolution channels:
-/// 1. MCP-native: agent calls `docs_approve` tool → `approve()` → grant cached
+/// 1. MCP-native: agent calls `file_approve` tool → `approve()` → grant cached
 /// 2. D-Bus: user clicks notification action → `approve()` → grant cached
 ///
 /// After approval, the agent retries the original operation.
@@ -153,7 +153,7 @@ impl ApprovalStore {
         }
     }
 
-    /// Get metadata for a pending request (for docs_approve to validate).
+    /// Get metadata for a pending request (for file_approve to validate).
     pub fn get_pending(&self, id: &str) -> Option<ApprovalRequest> {
         let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         pending.get(id).map(|r| r.meta.clone())

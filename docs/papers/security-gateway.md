@@ -219,7 +219,7 @@ max(confidentiality)`. Taint only rises, never drops.
 
 ### 5.2 Automatic Labeling
 
-External read tools (`docs_read`, `docs_search`, `git_diff`,
+External read tools (`file_read`, `file_search`, `git_diff`,
 `git_log`) auto-label outputs as Untrusted. Exception: files
 matching trusted path patterns (`~/Code/**`) retain Trusted
 integrity. Trusted path matching uses canonicalization and
@@ -230,8 +230,8 @@ they return kernel-managed metadata, not external data.
 
 ### 5.3 Write Enforcement
 
-On write tool calls (`docs_write`, `git_commit`, `docs_edit`,
-`docs_delete`), the gateway checks the session's accumulated
+On write tool calls (`file_write`, `git_commit`, `file_edit`,
+`file_delete`), the gateway checks the session's accumulated
 taint label. Three configurable policies per permission set:
 
 - **Allow**: No IFC enforcement (backward compatible).

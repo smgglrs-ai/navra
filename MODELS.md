@@ -971,7 +971,7 @@ model is outside smgglrs's control.
 
 Myelix has 22 built-in MCP tools including file I/O (`file_read`,
 `directory_list`, `environment_variable`). If a specialist uses these
-instead of `docs_read`, smgglrs's safety filters never fire.
+instead of `file_read`, smgglrs's safety filters never fire.
 
 **Solution: Tool exclusion in Myelix config.**
 
@@ -1045,7 +1045,7 @@ smgglrs process itself.
 
 #### Gap 3 — Inbound Content Filtering
 
-A remote model could instruct an agent to `docs_write` content that
+A remote model could instruct an agent to `file_write` content that
 includes prompt injection, harmful instructions, or content that
 violates policy. Currently smgglrs only filters *outbound* (tool
 responses), not *inbound* (tool arguments).

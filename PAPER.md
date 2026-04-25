@@ -667,8 +667,8 @@ two-dimensional label system inspired by Bell-LaPadula [78]:
 Every tool result carries a `DataLabel`. The session maintains
 a `TaintTracker` that accumulates labels via lattice join —
 taint only rises, never drops. When an agent reads external data
-(e.g., `docs_read`), the session becomes tainted with
-`Untrusted`. Subsequent write operations (e.g., `docs_write`,
+(e.g., `file_read`), the session becomes tainted with
+`Untrusted`. Subsequent write operations (e.g., `file_write`,
 `git_commit`) are checked against the permission set's IFC
 policy:
 
@@ -685,7 +685,7 @@ is prevented from executing write operations that could exfiltrate
 or corrupt data.
 
 The labeling is automatic: tool outputs from external-read
-operations (`docs_read`, `docs_search`, `git_diff`, `git_log`)
+operations (`file_read`, `file_search`, `git_diff`, `git_log`)
 are labeled `Untrusted+Sensitive` by the kernel. Tool handlers
 can also set labels explicitly via `CallToolResult::with_label()`.
 

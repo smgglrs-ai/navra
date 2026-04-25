@@ -208,7 +208,7 @@ async fn builder_config_methods_chainable() {
         .max_iterations(5)
         .temperature(0.7)
         .max_tokens(1000)
-        .allowed_tools(vec!["docs_read".into()])
+        .allowed_tools(vec!["file_read".into()])
         .non_progress_tools(vec!["team_status".into()])
         .force_tool_iterations(2);
     // Can't build without endpoint, but config was set
@@ -238,7 +238,7 @@ async fn client_call_external_read_taints() {
     })])
     .await;
 
-    let _result = client.call_tool("docs_read", serde_json::json!({})).await.unwrap();
+    let _result = client.call_tool("file_read", serde_json::json!({})).await.unwrap();
     assert_eq!(
         client.taint().integrity,
         smgglrs_protocol::label::Integrity::Untrusted,

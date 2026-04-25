@@ -122,6 +122,12 @@ enabled = true
 
 [modules.git]
 enabled = false
+
+[permissions.readonly]
+allow = ["$DEMO_DIR/**", "$REPO_ROOT/**", "/tmp/**"]
+deny = []
+operations = ["read", "write", "search", "list", "delete"]
+safety = "standard"
 EOF
 
 # Start smgglrs
@@ -298,8 +304,10 @@ QUERY_RESP=$(call_tool "$SESSION_ID" "memory_query" '{"query": "e2e test entry"}
 if [[ "$VERBOSE" == true ]]; then echo "    query: $QUERY_RESP"; fi
 
 FOUND=$(echo "$QUERY_RESP" | python3 -c "
-import sys, json
+import sys, json, re
 text = json.load(sys.stdin)['result']['content'][0]['text']
+# Safety filter may redact timestamps as phone numbers; fix broken JSON
+text = re.sub(r'\[REDACTED:\w+\]', '\"[REDACTED]\"', text)
 results = json.loads(text)
 found = any(r['id'] == '$ENTRY_ID' for r in results)
 print('yes' if found else 'no')
@@ -315,8 +323,9 @@ fi
 FILTER_RESP=$(call_tool "$SESSION_ID" "memory_query" '{"query": "e2e", "kind": "fact"}' 13)
 
 ALL_FACTS=$(echo "$FILTER_RESP" | python3 -c "
-import sys, json
+import sys, json, re
 text = json.load(sys.stdin)['result']['content'][0]['text']
+text = re.sub(r'\[REDACTED:\w+\]', '\"[REDACTED]\"', text)
 results = json.loads(text)
 print('yes' if all(r['kind'] == 'fact' for r in results) else 'no')
 " 2>/dev/null || echo "no")
@@ -378,7 +387,109 @@ fi
 # Clean up second entry
 call_tool "$SESSION_ID" "memory_forget" "{\"id\": \"$ENTRY2_ID\"}" 17 >/dev/null 2>&1
 
-# --- Test 4: Model proxy ---
+# --- Test 4: File tools ---
+section "File Tools"
+
+# Verify file_* tools are present (not docs_*)
+HAS_FILE_READ=$(echo "$TOOLS_RESP" | python3 -c "
+import sys, json
+tools = json.load(sys.stdin)['result']['tools']
+print('yes' if any(t['name']=='file_read' for t in tools) else 'no')
+" 2>/dev/null || echo "no")
+
+HAS_DOCS_READ=$(echo "$TOOLS_RESP" | python3 -c "
+import sys, json
+tools = json.load(sys.stdin)['result']['tools']
+print('yes' if any(t['name']=='docs_read' for t in tools) else 'no')
+" 2>/dev/null || echo "no")
+
+if [[ "$HAS_FILE_READ" == "yes" ]]; then
+    pass "file_read tool registered"
+else
+    fail "file_read tool registered"
+fi
+
+if [[ "$HAS_DOCS_READ" == "no" ]]; then
+    pass "docs_read tool removed (renamed to file_read)"
+else
+    fail "docs_read tool removed" "still present — rename incomplete"
+fi
+
+# Check all file_* tools are present
+FILE_TOOLS_OK=$(echo "$TOOLS_RESP" | python3 -c "
+import sys, json
+tools = [t['name'] for t in json.load(sys.stdin)['result']['tools']]
+expected = ['file_read', 'file_write', 'file_list', 'file_tree', 'file_grep']
+missing = [t for t in expected if t not in tools]
+print('yes' if not missing else 'no: ' + ','.join(missing))
+" 2>/dev/null || echo "no")
+
+if [[ "$FILE_TOOLS_OK" == "yes" ]]; then
+    pass "all core file_* tools registered"
+else
+    fail "all core file_* tools registered" "$FILE_TOOLS_OK"
+fi
+
+# Write a test file, read it back, delete it
+WRITE_RESP=$(call_tool "$SESSION_ID" "file_write" "{
+    \"path\": \"$DEMO_DIR/e2e-test-file.txt\",
+    \"content\": \"Hello from e2e test\"
+}" 30)
+if [[ "$VERBOSE" == true ]]; then echo "    write: $WRITE_RESP"; fi
+
+WRITE_OK=$(echo "$WRITE_RESP" | python3 -c "
+import sys, json
+resp = json.load(sys.stdin)
+is_err = resp.get('result', {}).get('isError', False)
+print('no' if is_err else 'yes')
+" 2>/dev/null || echo "no")
+
+if [[ "$WRITE_OK" == "yes" ]]; then
+    pass "file_write creates file"
+else
+    fail "file_write creates file" "response: $WRITE_RESP"
+fi
+
+# Read it back
+READ_RESP=$(call_tool "$SESSION_ID" "file_read" "{\"path\": \"$DEMO_DIR/e2e-test-file.txt\"}" 31)
+
+READ_CONTENT=$(echo "$READ_RESP" | python3 -c "
+import sys, json
+text = json.load(sys.stdin)['result']['content'][0]['text']
+print(text.strip())
+" 2>/dev/null || echo "")
+
+if echo "$READ_CONTENT" | grep -q "Hello from e2e test"; then
+    pass "file_read returns written content"
+else
+    fail "file_read returns written content" "got: $READ_CONTENT"
+fi
+
+# Tree
+TREE_RESP=$(call_tool "$SESSION_ID" "file_tree" "{\"path\": \"$DEMO_DIR\"}" 32)
+
+TREE_HAS_FILE=$(echo "$TREE_RESP" | python3 -c "
+import sys, json
+text = json.load(sys.stdin)['result']['content'][0]['text']
+print('yes' if 'e2e-test-file.txt' in text else 'no')
+" 2>/dev/null || echo "no")
+
+if [[ "$TREE_HAS_FILE" == "yes" ]]; then
+    pass "file_tree lists written file"
+else
+    fail "file_tree lists written file"
+fi
+
+# Delete
+call_tool "$SESSION_ID" "file_delete" "{\"path\": \"$DEMO_DIR/e2e-test-file.txt\"}" 33 >/dev/null 2>&1
+
+if [[ ! -f "$DEMO_DIR/e2e-test-file.txt" ]]; then
+    pass "file_delete removes file"
+else
+    fail "file_delete removes file"
+fi
+
+# --- Test 5: Model proxy ---
 section "Model Proxy"
 
 PROXY_RESP=$(curl -sf -X POST "$BASE_URL/v1/chat/completions" \
@@ -485,7 +596,7 @@ print('yes' if any(m['name'].startswith(base) for m in models) else 'no')
             # calling tools/list via the MCP client, which exercises
             # the full agent -> gateway -> tool pipeline.
             AGENT_OUTPUT=$("$MCPD_BIN" run \
-                "Use the docs_tree tool to list the project structure, then summarize what you see." \
+                "Use the file_tree tool to list the project structure, then summarize what you see." \
                 --model "$MODEL" \
                 --endpoint "$BASE_URL/mcp" \
                 --max-iterations 10 \
@@ -597,10 +708,10 @@ DEMOEOF
             pass "demo smgglrs running on port $DEMO_PORT"
 
             # The prompt must trigger multi-agent behavior:
-            # - Lead reads project structure (docs_tree)
+            # - Lead reads project structure (file_tree)
             # - Lead discovers available models (models_list) and personas (personas_list)
             # - Lead creates a team and adds teammates with personas
-            # - Teammates read files and analyze them (docs_read, docs_grep)
+            # - Teammates read files and analyze them (file_read, file_grep)
             # - Lead collects results and synthesizes a report
             DEMO_PROMPT="Review this project for security issues and summarize your findings."
 
