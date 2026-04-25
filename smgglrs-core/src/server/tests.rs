@@ -1264,3 +1264,224 @@ fn pause_flag_is_shared() {
     server.resume();
     assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
 }
+
+// --- Permission negotiation tests ---
+
+#[test]
+fn permission_request_registers_pending() {
+    let server = McpServer::builder().build();
+    let params = smgglrs_protocol::permissions::PermissionRequestParams {
+        id: "req-1".to_string(),
+        scope: smgglrs_protocol::permissions::PermissionScope::ToolAccess {
+            tool_name: "git_push".to_string(),
+        },
+        reason: "Need to push changes".to_string(),
+        duration_secs: Some(3600),
+    };
+
+    let result = server.handle_permission_request(params, "session-1");
+    assert_eq!(result.id, "req-1");
+    assert_eq!(result.status, "pending");
+}
+
+#[test]
+fn permission_grant_creates_dynamic_grant() {
+    let server = McpServer::builder().build();
+    let req_params = smgglrs_protocol::permissions::PermissionRequestParams {
+        id: "req-grant".to_string(),
+        scope: smgglrs_protocol::permissions::PermissionScope::ToolAccess {
+            tool_name: "git_push".to_string(),
+        },
+        reason: "Need push".to_string(),
+        duration_secs: None,
+    };
+    server.handle_permission_request(req_params, "s1");
+
+    let grant_params = smgglrs_protocol::permissions::PermissionGrantParams {
+        request_id: "req-grant".to_string(),
+    };
+    let result = server.handle_permission_grant(grant_params, "operator");
+    assert!(result.is_ok());
+    let grant = result.unwrap();
+    assert_eq!(grant.request_id, "req-grant");
+    assert_eq!(grant.granted_by, "operator");
+    assert!(grant.expires_at.is_none());
+
+    // Verify the grant is active in the session permission store
+    assert!(server.session_permission_store().check_tool("s1", "git_push"));
+}
+
+#[test]
+fn permission_grant_with_duration() {
+    let server = McpServer::builder().build();
+    let req_params = smgglrs_protocol::permissions::PermissionRequestParams {
+        id: "req-timed".to_string(),
+        scope: smgglrs_protocol::permissions::PermissionScope::PathAccess {
+            path: "/tmp/output".to_string(),
+            operations: vec!["write".to_string()],
+        },
+        reason: "Need temp write access".to_string(),
+        duration_secs: Some(60),
+    };
+    server.handle_permission_request(req_params, "s2");
+
+    let grant_params = smgglrs_protocol::permissions::PermissionGrantParams {
+        request_id: "req-timed".to_string(),
+    };
+    let result = server.handle_permission_grant(grant_params, "user").unwrap();
+    assert!(result.expires_at.is_some());
+    // expires_at should be in the future
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    assert!(result.expires_at.unwrap() > now);
+}
+
+#[test]
+fn permission_deny_removes_pending() {
+    let server = McpServer::builder().build();
+    let req_params = smgglrs_protocol::permissions::PermissionRequestParams {
+        id: "req-deny".to_string(),
+        scope: smgglrs_protocol::permissions::PermissionScope::ToolAccess {
+            tool_name: "shell_exec".to_string(),
+        },
+        reason: "Want shell".to_string(),
+        duration_secs: None,
+    };
+    server.handle_permission_request(req_params, "s3");
+
+    let deny_params = smgglrs_protocol::permissions::PermissionDenyParams {
+        request_id: "req-deny".to_string(),
+        reason: Some("Too dangerous".to_string()),
+    };
+    let result = server.handle_permission_deny(deny_params);
+    assert!(result.is_ok());
+
+    // Tool should not be granted
+    assert!(!server.session_permission_store().check_tool("s3", "shell_exec"));
+}
+
+#[test]
+fn permission_grant_unknown_request_fails() {
+    let server = McpServer::builder().build();
+    let grant_params = smgglrs_protocol::permissions::PermissionGrantParams {
+        request_id: "nonexistent".to_string(),
+    };
+    let result = server.handle_permission_grant(grant_params, "user");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("No pending request"));
+}
+
+#[test]
+fn permission_deny_unknown_request_fails() {
+    let server = McpServer::builder().build();
+    let deny_params = smgglrs_protocol::permissions::PermissionDenyParams {
+        request_id: "nonexistent".to_string(),
+        reason: None,
+    };
+    let result = server.handle_permission_deny(deny_params);
+    assert!(result.is_err());
+}
+
+#[test]
+fn permission_list_returns_grants() {
+    let server = McpServer::builder().build();
+
+    // Initially empty
+    let list = server.handle_permission_list("s4");
+    assert!(list.grants.is_empty());
+
+    // Add a grant
+    let req_params = smgglrs_protocol::permissions::PermissionRequestParams {
+        id: "req-list".to_string(),
+        scope: smgglrs_protocol::permissions::PermissionScope::ToolAccess {
+            tool_name: "docs_write".to_string(),
+        },
+        reason: "Need write".to_string(),
+        duration_secs: None,
+    };
+    server.handle_permission_request(req_params, "s4");
+    let grant_params = smgglrs_protocol::permissions::PermissionGrantParams {
+        request_id: "req-list".to_string(),
+    };
+    server.handle_permission_grant(grant_params, "user").unwrap();
+
+    let list = server.handle_permission_list("s4");
+    assert_eq!(list.grants.len(), 1);
+    assert_eq!(list.grants[0].request_id, "req-list");
+    assert_eq!(list.grants[0].granted_by, "user");
+}
+
+#[test]
+fn capabilities_include_permissions() {
+    let server = McpServer::builder().build();
+    assert!(server.capabilities().permissions.is_some());
+}
+
+#[tokio::test]
+async fn dynamic_grant_overrides_tool_deny() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    let server = McpServer::builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("reached") })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .build();
+
+    // Without dynamic grant, tool is denied
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+    assert!(result.is_error);
+
+    // Grant the tool dynamically for the session
+    let req_params = smgglrs_protocol::permissions::PermissionRequestParams {
+        id: "req-override".to_string(),
+        scope: smgglrs_protocol::permissions::PermissionScope::ToolAccess {
+            tool_name: "echo".to_string(),
+        },
+        reason: "Need echo".to_string(),
+        duration_secs: None,
+    };
+    server.handle_permission_request(req_params, "test-session");
+    server
+        .handle_permission_grant(
+            smgglrs_protocol::permissions::PermissionGrantParams {
+                request_id: "req-override".to_string(),
+            },
+            "user",
+        )
+        .unwrap();
+
+    // Now the tool should be allowed via dynamic grant
+    let result = server
+        .handle_call_tool(
+            CallToolParams {
+                name: "echo".to_string(),
+                arguments: serde_json::json!({}),
+            },
+            test_ctx(),
+        )
+        .await;
+    assert!(!result.is_error);
+    match &result.content[0] {
+        crate::protocol::Content::Text(t) => assert_eq!(t.text, "reached"),
+    }
+}

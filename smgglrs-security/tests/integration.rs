@@ -3,7 +3,8 @@
 //! Tests cross-module behavior: auth → permissions → IFC → hooks → safety.
 
 use smgglrs_security::auth::capability::{
-    build_payload, decode_token, encode_token, validate_delegation, CapabilitySet,
+    build_delegated_payload, build_payload, decode_token, encode_token, resolve_capabilities,
+    validate_delegation, CapabilitySet,
 };
 use smgglrs_security::auth::{
     AgentIdentity, AuthError, Authenticator, CallContext, TokenAuthenticator,
@@ -497,4 +498,164 @@ fn safety_pipeline_blocks_when_configured() {
     let result = pipeline.process("SSN: 123-45-6789", &ctx);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("blocked"));
+}
+
+// =====================================================================
+// 8. Delegated capability tokens for teammate scoping
+// =====================================================================
+
+fn root_payload(signer: &Ed25519Signer) -> smgglrs_security::auth::capability::CapabilityPayload {
+    build_payload(
+        signer.did(),
+        signer.did(),
+        CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations: vec![
+                "read".to_string(), "write".to_string(), "search".to_string(),
+                "list".to_string(), "git.status".to_string(),
+            ],
+            tools: vec!["*".to_string()],
+            credentials: vec![],
+        },
+        1,
+        86400,
+    )
+}
+
+#[test]
+fn delegated_token_scopes_operations() {
+    let signer = Ed25519Signer::generate();
+    let root = root_payload(&signer);
+
+    // Teammate gets only "read" and "search"
+    let child = build_delegated_payload(
+        &root,
+        "did:teammate:team-1:reader",
+        vec!["read".to_string(), "search".to_string()],
+        vec!["docs_read".to_string(), "docs_grep".to_string()],
+        2,
+        600,
+    )
+    .unwrap();
+
+    let token = encode_token(&child, &signer).unwrap();
+    let decoded = decode_token(&token, &signer).unwrap();
+
+    assert_eq!(decoded.cap.operations, vec!["read", "search"]);
+    assert_eq!(decoded.cap.tools, vec!["docs_read", "docs_grep"]);
+    assert!(decoded.parent.is_some());
+
+    // Validate delegation chain
+    assert!(validate_delegation(&root, &decoded, 3).is_ok());
+}
+
+#[test]
+fn delegated_token_rejects_operation_not_in_parent() {
+    let signer = Ed25519Signer::generate();
+    let root = root_payload(&signer);
+
+    // "shell.exec" is not in root's operations
+    let err = build_delegated_payload(
+        &root,
+        "did:teammate:team-1:hacker",
+        vec!["read".to_string(), "shell.exec".to_string()],
+        vec!["docs_read".to_string()],
+        2,
+        600,
+    )
+    .unwrap_err();
+
+    assert!(err.to_string().contains("operation escalation"));
+    assert!(err.to_string().contains("shell.exec"));
+}
+
+#[test]
+fn delegated_token_rejects_tool_not_in_parent_globs() {
+    let signer = Ed25519Signer::generate();
+    // Parent with restricted tool globs (not wildcard)
+    let root = build_payload(
+        signer.did(),
+        signer.did(),
+        CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations: vec!["read".to_string()],
+            tools: vec!["docs_*".to_string()],
+            credentials: vec![],
+        },
+        1,
+        3600,
+    );
+
+    // "git_status" is not covered by docs_*
+    let err = build_delegated_payload(
+        &root,
+        "did:teammate:team-1:hacker",
+        vec!["read".to_string()],
+        vec!["git_status".to_string()],
+        2,
+        600,
+    )
+    .unwrap_err();
+
+    assert!(err.to_string().contains("tool escalation"));
+    assert!(err.to_string().contains("git_status"));
+}
+
+#[test]
+fn delegated_token_expiry_capped_by_parent() {
+    let signer = Ed25519Signer::generate();
+    let root = root_payload(&signer);
+
+    let child = build_delegated_payload(
+        &root,
+        "did:teammate:team-1:worker",
+        vec!["read".to_string()],
+        vec!["docs_read".to_string()],
+        2,
+        999999, // much longer than parent's 86400
+    )
+    .unwrap();
+
+    assert!(child.exp <= root.exp);
+}
+
+#[test]
+fn delegated_token_permission_engine_integration() {
+    let signer = Ed25519Signer::generate();
+    let root = root_payload(&signer);
+
+    let child = build_delegated_payload(
+        &root,
+        "did:teammate:team-1:reader",
+        vec!["read".to_string(), "search".to_string()],
+        vec!["docs_read".to_string()],
+        2,
+        600,
+    )
+    .unwrap();
+
+    let token = encode_token(&child, &signer).unwrap();
+    let decoded = decode_token(&token, &signer).unwrap();
+    let caps = resolve_capabilities(&decoded);
+
+    // PermissionEngine with no named set should fall back to capabilities
+    let engine = PermissionEngine::new();
+
+    // "read" is in the token — allowed
+    let result = engine.check_with_capabilities(
+        "cap:ring2", "read", Path::new("/home/user/project/file.rs"), Some(&caps),
+    );
+    assert_eq!(result, PermissionResult::Allowed);
+
+    // "write" is NOT in the token — denied
+    let result = engine.check_with_capabilities(
+        "cap:ring2", "write", Path::new("/home/user/project/file.rs"), Some(&caps),
+    );
+    assert_eq!(result, PermissionResult::DeniedOperation);
+
+    // "search" is in the token — allowed
+    let result = engine.check_with_capabilities(
+        "cap:ring2", "search", Path::new("/home/user/project/file.rs"), Some(&caps),
+    );
+    assert_eq!(result, PermissionResult::Allowed);
 }

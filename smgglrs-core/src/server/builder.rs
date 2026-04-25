@@ -414,6 +414,10 @@ impl McpServerBuilder {
             trusted_paths: self.trusted_paths.unwrap_or_default(),
             value_stores,
             blackbox: self.blackbox,
+            session_permissions: crate::permissions::SessionPermissionStore::new(),
+            pending_permission_requests: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 }

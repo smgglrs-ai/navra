@@ -39,6 +39,7 @@ impl McpServer {
             } else {
                 Some(crate::protocol::PromptsCapability { list_changed: false })
             },
+            permissions: Some(smgglrs_protocol::permissions::PermissionsCapability {}),
         }
     }
 
@@ -119,22 +120,38 @@ impl McpServer {
         } else if let Some(tp) = self.tool_permissions.get(&ctx.agent.permissions) {
             match tp.check(&params.name) {
                 crate::permissions::tool_rules::ToolPolicy::Deny => {
-                    self.process_table.record_denied(
-                        &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                    // Check if a dynamic session grant overrides the denial
+                    if !self.session_permissions.check_tool(&ctx.session_id, &params.name) {
+                        self.process_table.record_denied(
+                            &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                        );
+                        return CallToolResult::error(format!(
+                            "Permission denied: tool '{}' is blocked for permission set '{}'",
+                            params.name, ctx.agent.permissions
+                        ));
+                    }
+                    tracing::info!(
+                        tool = %params.name,
+                        session_id = %ctx.session_id,
+                        "Tool allowed via dynamic session grant"
                     );
-                    return CallToolResult::error(format!(
-                        "Permission denied: tool '{}' is blocked for permission set '{}'",
-                        params.name, ctx.agent.permissions
-                    ));
                 }
                 crate::permissions::tool_rules::ToolPolicy::Approve => {
-                    self.process_table.record_denied(
-                        &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                    // Check if a dynamic session grant overrides the approval requirement
+                    if !self.session_permissions.check_tool(&ctx.session_id, &params.name) {
+                        self.process_table.record_denied(
+                            &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                        );
+                        return CallToolResult::error(format!(
+                            "Approval required: tool '{}' requires approval for permission set '{}'",
+                            params.name, ctx.agent.permissions
+                        ));
+                    }
+                    tracing::info!(
+                        tool = %params.name,
+                        session_id = %ctx.session_id,
+                        "Tool approval bypassed via dynamic session grant"
                     );
-                    return CallToolResult::error(format!(
-                        "Approval required: tool '{}' requires approval for permission set '{}'",
-                        params.name, ctx.agent.permissions
-                    ));
                 }
                 crate::permissions::tool_rules::ToolPolicy::Allow => {}
             }
@@ -380,6 +397,126 @@ impl McpServer {
 
     pub fn resource_count(&self) -> usize {
         self.resources.len()
+    }
+
+    // --- Permission negotiation handlers ---
+
+    /// Handle a permissions/request: register a pending permission request.
+    pub fn handle_permission_request(
+        &self,
+        params: smgglrs_protocol::permissions::PermissionRequestParams,
+        session_id: &str,
+    ) -> smgglrs_protocol::permissions::PermissionRequestResult {
+        let mut pending = self
+            .pending_permission_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        pending.insert(
+            params.id.clone(),
+            super::PendingPermissionRequest {
+                session_id: session_id.to_string(),
+                scope: params.scope,
+                duration_secs: params.duration_secs,
+            },
+        );
+        tracing::info!(
+            request_id = %params.id,
+            session_id = %session_id,
+            reason = %params.reason,
+            "Permission request registered"
+        );
+        smgglrs_protocol::permissions::PermissionRequestResult {
+            id: params.id,
+            status: "pending".to_string(),
+        }
+    }
+
+    /// Handle a permissions/grant: resolve a pending request and add a dynamic grant.
+    pub fn handle_permission_grant(
+        &self,
+        params: smgglrs_protocol::permissions::PermissionGrantParams,
+        agent_name: &str,
+    ) -> Result<smgglrs_protocol::permissions::PermissionGrantResult, String> {
+        let pending_req = {
+            let mut pending = self
+                .pending_permission_requests
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            pending
+                .remove(&params.request_id)
+                .ok_or_else(|| format!("No pending request with id '{}'", params.request_id))?
+        };
+
+        let expires_at = pending_req.duration_secs.map(|d| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                + d
+        });
+
+        self.session_permissions.add_grant(
+            &pending_req.session_id,
+            params.request_id.clone(),
+            pending_req.scope.clone(),
+            expires_at,
+            agent_name.to_string(),
+        );
+
+        tracing::info!(
+            request_id = %params.request_id,
+            session_id = %pending_req.session_id,
+            agent = %agent_name,
+            "Permission granted"
+        );
+
+        Ok(smgglrs_protocol::permissions::PermissionGrantResult {
+            request_id: params.request_id,
+            scope: pending_req.scope,
+            expires_at,
+            granted_by: agent_name.to_string(),
+        })
+    }
+
+    /// Handle a permissions/deny: remove the pending request.
+    pub fn handle_permission_deny(
+        &self,
+        params: smgglrs_protocol::permissions::PermissionDenyParams,
+    ) -> Result<smgglrs_protocol::permissions::PermissionDenyResult, String> {
+        let mut pending = self
+            .pending_permission_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if pending.remove(&params.request_id).is_none() {
+            return Err(format!(
+                "No pending request with id '{}'",
+                params.request_id
+            ));
+        }
+
+        tracing::info!(
+            request_id = %params.request_id,
+            reason = params.reason.as_deref().unwrap_or("(none)"),
+            "Permission denied"
+        );
+
+        Ok(smgglrs_protocol::permissions::PermissionDenyResult {
+            request_id: params.request_id,
+        })
+    }
+
+    /// Handle a permissions/list: return active grants for the session.
+    pub fn handle_permission_list(
+        &self,
+        session_id: &str,
+    ) -> smgglrs_protocol::permissions::PermissionListResult {
+        let grants = self.session_permissions.list(session_id);
+        smgglrs_protocol::permissions::PermissionListResult { grants }
+    }
+
+    /// Get the session permission store (for checking dynamic grants in tool dispatch).
+    pub fn session_permission_store(&self) -> &crate::permissions::SessionPermissionStore {
+        &self.session_permissions
     }
 
     pub fn sessions(&self) -> &crate::session::SessionStore {
