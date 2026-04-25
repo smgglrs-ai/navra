@@ -13,6 +13,7 @@ pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
 pub use permissions::{PiiPatternConfig, PermissionSet};
 pub use server::{RegistryEntry, ServerConfig};
+pub use crate::grpc_manager::GrpcModuleConfig;
 
 fn default_true() -> bool {
     true
@@ -58,6 +59,9 @@ pub struct Config {
     /// Categories defined here are treated as PII for IFC labeling.
     #[serde(default)]
     pub pii_patterns: Vec<PiiPatternConfig>,
+    /// Out-of-process gRPC modules.
+    #[serde(default)]
+    pub grpc_modules: Vec<GrpcModuleConfig>,
 }
 
 impl Config {
@@ -245,6 +249,7 @@ impl Default for Config {
             registry: Vec::new(),
             budget: BudgetConfig::default(),
             pii_patterns: Vec::new(),
+            grpc_modules: Vec::new(),
         }
     }
 }

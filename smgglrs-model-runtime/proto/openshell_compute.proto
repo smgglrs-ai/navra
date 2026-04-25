@@ -1,0 +1,62 @@
+syntax = "proto3";
+package openshell.compute.v1;
+
+service ComputeDriver {
+    rpc CreateSandbox(CreateSandboxRequest)
+        returns (CreateSandboxResponse);
+    rpc DestroySandbox(DestroySandboxRequest)
+        returns (DestroySandboxResponse);
+    rpc SandboxStatus(SandboxStatusRequest)
+        returns (SandboxStatusResponse);
+}
+
+message CreateSandboxRequest {
+    // Labels drive provisioning decisions
+    map<string, string> labels = 1;
+    // Supervisor config (entrypoint, env vars, mounts)
+    SupervisorConfig supervisor = 2;
+}
+
+message SupervisorConfig {
+    string entrypoint = 1;
+    repeated string args = 2;
+    map<string, string> env = 3;
+    repeated Mount mounts = 4;
+}
+
+message Mount {
+    string source = 1;
+    string target = 2;
+    bool read_only = 3;
+}
+
+message CreateSandboxResponse {
+    string sandbox_id = 1;
+    // Endpoint where the model server is reachable
+    string endpoint_url = 2;
+    SandboxState state = 3;
+}
+
+message DestroySandboxRequest {
+    string sandbox_id = 1;
+}
+
+message DestroySandboxResponse {}
+
+message SandboxStatusRequest {
+    string sandbox_id = 1;
+}
+
+message SandboxStatusResponse {
+    string sandbox_id = 1;
+    SandboxState state = 2;
+    string endpoint_url = 3;
+}
+
+enum SandboxState {
+    SANDBOX_STATE_UNSPECIFIED = 0;
+    SANDBOX_STATE_CREATING = 1;
+    SANDBOX_STATE_RUNNING = 2;
+    SANDBOX_STATE_STOPPED = 3;
+    SANDBOX_STATE_FAILED = 4;
+}

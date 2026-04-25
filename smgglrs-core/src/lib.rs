@@ -24,6 +24,7 @@ pub mod a2a;
 pub mod blackbox;
 pub mod transport;
 
+pub mod grpc_module;
 mod module;
 mod server;
 pub mod session;
@@ -33,4 +34,5 @@ pub use module::{Module, PromptHandler, ResourceHandler};
 pub use server::{McpServer, McpServerBuilder, ToolHandler};
 pub use session::Session;
 pub use smgglrs_protocol::{RetryConfig, Upstream};
+pub use grpc_module::GrpcModule;
 pub use upstream_module::UpstreamModule;

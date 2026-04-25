@@ -48,3 +48,5 @@ ciborium = "0.2"
 base64 = "0.22"
 jsonwebtoken = "9"
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+tonic = "0.12"
+prost = "0.13"

@@ -7,7 +7,7 @@
 //!
 //! - `direct` — spawn `llama-server` as a child process (no isolation)
 //! - `podman` — run inference in a rootless Podman container
-//! - `libkrun` — run inference in a libkrun microVM (future)
+//! - `openshell` — delegate to OpenShell compute driver via gRPC
 //!
 //! [`auto_runtime()`] picks the best available backend. GPU detection
 //! is provided by [`detect_gpus()`].
@@ -19,6 +19,8 @@ mod gpu;
 pub mod direct;
 #[cfg(feature = "podman")]
 pub mod podman;
+#[cfg(feature = "openshell")]
+pub mod openshell;
 
 pub use error::RuntimeError;
 pub use gpu::{GpuDevice, GpuKind, detect_gpus};
@@ -45,8 +47,8 @@ pub enum RuntimeBackend {
     Direct,
     /// Podman container.
     Podman,
-    /// libkrun microVM.
-    Libkrun,
+    /// OpenShell sandbox (gRPC delegation).
+    OpenShell,
 }
 
 /// Configuration for serving a model.
@@ -108,8 +110,18 @@ pub trait ModelRuntime: Send + Sync {
 
 /// Auto-detect the best available runtime.
 ///
-/// Prefers Podman (if available) for isolation, falls back to direct execution.
+/// Prefers OpenShell (strongest isolation), then Podman, then direct execution.
 pub async fn auto_runtime() -> Result<Box<dyn ModelRuntime>, RuntimeError> {
+    #[cfg(feature = "openshell")]
+    {
+        // OpenShell gateway socket is at a well-known path
+        let gateway = "unix:///run/openshell/gateway.sock";
+        if openshell::OpenShellRuntime::is_available(gateway).await {
+            tracing::info!("Using OpenShell runtime");
+            return Ok(Box::new(openshell::OpenShellRuntime::new(gateway).await?));
+        }
+    }
+
     #[cfg(feature = "podman")]
     {
         if podman::PodmanRuntime::is_available().await {
@@ -127,7 +139,7 @@ pub async fn auto_runtime() -> Result<Box<dyn ModelRuntime>, RuntimeError> {
     }
 
     Err(RuntimeError::NoRuntime(
-        "no suitable runtime found (need Podman or llama-server)".to_string(),
+        "no suitable runtime found (need OpenShell, Podman, or llama-server)".to_string(),
     ))
 }
 
