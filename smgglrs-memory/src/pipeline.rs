@@ -363,6 +363,95 @@ impl<'a> DistillationPipeline<'a> {
     }
 }
 
+/// Extract a structured failure insight from a failed task.
+///
+/// Produces a `DistilledEntry` with `MemoryType::Insight` tagged
+/// `["failure", "lesson"]`. The content follows the ReasoningBank
+/// format: what was attempted, why it failed, what to avoid.
+///
+/// # Arguments
+/// - `task_name` — task identifier or short description
+/// - `mandate` — what the task was supposed to accomplish
+/// - `error` — the error message or failure description
+/// - `attempt_history` — list of `(error, output)` pairs from retries
+pub fn extract_failure_insight(
+    task_name: &str,
+    mandate: &str,
+    error: &str,
+    attempt_history: &[(String, String)],
+) -> DistilledEntry {
+    let approaches: Vec<String> = attempt_history
+        .iter()
+        .enumerate()
+        .map(|(i, (err, _output))| format!("Attempt {}: {}", i + 1, err))
+        .collect();
+
+    let history_summary = if approaches.is_empty() {
+        error.to_string()
+    } else {
+        approaches.join(". ")
+    };
+
+    let title = format!("Failure: {task_name}");
+
+    let content = format!(
+        "When attempting [{task_name}] with mandate \"{mandate}\", \
+         the approach failed because [{error}]. \
+         Attempt history: {history_summary}. \
+         Avoid repeating this approach without addressing the root cause."
+    );
+
+    DistilledEntry::new(
+        MemoryType::Insight,
+        title,
+        content,
+        vec!["failure".to_string(), "lesson".to_string()],
+        0.7,
+        String::new(),
+    )
+}
+
+/// Extract a structured success insight from a completed task.
+///
+/// Produces a `DistilledEntry` with `MemoryType::Insight` tagged
+/// `["success", "strategy"]`. The content follows the ReasoningBank
+/// format: what worked and why.
+///
+/// # Arguments
+/// - `task_name` — task identifier or short description
+/// - `mandate` — what the task accomplished
+/// - `result_summary` — brief description of the output
+/// - `iterations` — how many attempts it took to succeed
+pub fn extract_success_insight(
+    task_name: &str,
+    mandate: &str,
+    result_summary: &str,
+    iterations: u32,
+) -> DistilledEntry {
+    let title = format!("Success: {task_name}");
+
+    let summary = if result_summary.len() > 200 {
+        format!("{}...", &result_summary[..197])
+    } else {
+        result_summary.to_string()
+    };
+
+    let content = format!(
+        "For [{task_name}] with mandate \"{mandate}\", \
+         the approach succeeded in {iterations} iteration(s). \
+         Key outcome: {summary}."
+    );
+
+    DistilledEntry::new(
+        MemoryType::Insight,
+        title,
+        content,
+        vec!["success".to_string(), "strategy".to_string()],
+        0.85,
+        String::new(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,6 +477,8 @@ mod tests {
                 },
             ],
             created_at: ts,
+            fork_id: None,
+            parent_fork: None,
         }
     }
 
@@ -791,5 +882,191 @@ mod tests {
         }
         assert_eq!(entries[0].content, "The sky is blue");
         assert_eq!(entries[1].content, "Water is wet");
+    }
+
+    #[test]
+    fn failure_insight_produces_correct_format() {
+        let insight = extract_failure_insight(
+            "deploy_app",
+            "Deploy the application to production",
+            "Connection refused on port 443",
+            &[
+                ("Timeout after 30s".to_string(), "partial output".to_string()),
+                ("Connection refused on port 443".to_string(), String::new()),
+            ],
+        );
+
+        assert_eq!(insight.kind, MemoryType::Insight);
+        assert_eq!(insight.title, "Failure: deploy_app");
+        assert!(insight.content.contains("deploy_app"));
+        assert!(insight.content.contains("Connection refused"));
+        assert!(insight.content.contains("Attempt 1"));
+        assert!(insight.content.contains("Attempt 2"));
+        assert_eq!(insight.tags, vec!["failure", "lesson"]);
+        assert!((insight.confidence - 0.7).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn failure_insight_with_empty_history() {
+        let insight = extract_failure_insight(
+            "build",
+            "Build the project",
+            "Compilation error",
+            &[],
+        );
+
+        assert!(insight.content.contains("Compilation error"));
+        assert!(insight.content.contains("build"));
+        assert_eq!(insight.tags, vec!["failure", "lesson"]);
+    }
+
+    #[test]
+    fn success_insight_produces_correct_format() {
+        let insight = extract_success_insight(
+            "analyze_code",
+            "Analyze the codebase for security issues",
+            "Found 3 vulnerabilities: SQL injection in login.rs, XSS in template.rs, path traversal in files.rs",
+            2,
+        );
+
+        assert_eq!(insight.kind, MemoryType::Insight);
+        assert_eq!(insight.title, "Success: analyze_code");
+        assert!(insight.content.contains("analyze_code"));
+        assert!(insight.content.contains("2 iteration(s)"));
+        assert!(insight.content.contains("3 vulnerabilities"));
+        assert_eq!(insight.tags, vec!["success", "strategy"]);
+        assert!((insight.confidence - 0.85).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn success_insight_truncates_long_result() {
+        let long_result = "x".repeat(300);
+        let insight = extract_success_insight(
+            "task",
+            "Do something",
+            &long_result,
+            1,
+        );
+
+        // Content should be truncated (200 chars + "...")
+        assert!(insight.content.len() < 400);
+        assert!(insight.content.contains("..."));
+    }
+
+    #[test]
+    fn failure_insight_is_searchable_by_tags() {
+        let ks = KnowledgeStore::open_memory().unwrap();
+        let insight = extract_failure_insight(
+            "deploy",
+            "Deploy app",
+            "Port conflict",
+            &[],
+        );
+        ks.store_distilled(&insight).unwrap();
+
+        let results = ks.search_with_tags("deploy", &["failure"]).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].tags.contains(&"failure".to_string()));
+        assert!(results[0].tags.contains(&"lesson".to_string()));
+    }
+
+    #[test]
+    fn insights_superseded_by_same_task_pattern() {
+        let ks = KnowledgeStore::open_memory().unwrap();
+
+        let insight1 = extract_failure_insight(
+            "deploy",
+            "Deploy app",
+            "Port conflict",
+            &[],
+        );
+        let gen1 = ks.store_distilled_with_generation(&insight1).unwrap();
+        assert_eq!(gen1, 1);
+
+        // Same title -> same content_key -> supersession
+        let insight2 = extract_failure_insight(
+            "deploy",
+            "Deploy app",
+            "Memory limit exceeded",
+            &[],
+        );
+        let gen2 = ks.store_distilled_with_generation(&insight2).unwrap();
+        assert_eq!(gen2, 2);
+
+        // Only one entry should exist
+        assert_eq!(ks.count().unwrap(), 1);
+
+        // Content should be updated
+        let entry = ks.query_by_key(&insight2.content_key).unwrap().unwrap();
+        assert!(entry.content.contains("Memory limit exceeded"));
+    }
+
+    #[test]
+    fn strategy_generation_tracks_evolution() {
+        let ks = KnowledgeStore::open_memory().unwrap();
+
+        let insight = extract_success_insight(
+            "build",
+            "Build project",
+            "All tests pass",
+            1,
+        );
+
+        ks.store_distilled_with_generation(&insight).unwrap();
+        assert_eq!(ks.strategy_generation_of(&insight.content_key).unwrap(), Some(1));
+
+        // Supersede with updated insight
+        let updated = DistilledEntry {
+            content: "Build with --release flag for better performance".to_string(),
+            ..insight.clone()
+        };
+        ks.store_distilled_with_generation(&updated).unwrap();
+        assert_eq!(ks.strategy_generation_of(&insight.content_key).unwrap(), Some(2));
+
+        // Third evolution
+        ks.store_distilled_with_generation(&updated).unwrap();
+        assert_eq!(ks.strategy_generation_of(&insight.content_key).unwrap(), Some(3));
+    }
+
+    #[test]
+    fn retrieval_returns_most_relevant_insight_k1() {
+        let ks = KnowledgeStore::open_memory().unwrap();
+
+        // Store multiple insights
+        let insight1 = extract_failure_insight(
+            "deploy_app",
+            "Deploy the web application",
+            "Port 443 already in use",
+            &[],
+        );
+        ks.store_distilled(&insight1).unwrap();
+
+        let insight2 = extract_success_insight(
+            "build_project",
+            "Build the Rust project",
+            "Clean build succeeded",
+            1,
+        );
+        ks.store_distilled(&insight2).unwrap();
+
+        let insight3 = extract_failure_insight(
+            "deploy_staging",
+            "Deploy to staging environment",
+            "TLS certificate expired",
+            &[],
+        );
+        ks.store_distilled(&insight3).unwrap();
+
+        // Search for deploy-related insights, k=1
+        let retriever = crate::retrieval::MemoryRetriever::new(&ks);
+        let results = retriever.retrieve("deploy application", 1).unwrap();
+        assert_eq!(results.len(), 1);
+        // Should find a deploy-related insight
+        assert!(
+            results[0].entry.title.contains("deploy")
+                || results[0].entry.content.contains("deploy"),
+            "Expected deploy-related insight, got: {}",
+            results[0].entry.title,
+        );
     }
 }

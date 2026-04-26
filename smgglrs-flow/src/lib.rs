@@ -49,7 +49,7 @@ pub use definition::{
 };
 pub use engine::{Flow, FlowNode, FlowResult};
 pub use error::FlowError;
-pub use executor::{DagExecutor, DagResult};
+pub use executor::{DagExecutor, DagResult, InsightCallback, InsightRetriever, TaskInsight};
 pub use handoff::HANDOFF_TOOL_NAME;
 pub use iterative::{Finding, IterativeConfig, IterativeExecutor, IterativeResult, RoundMetric};
 pub use mailbox::{MailboxMessage, MailboxRegistry};
