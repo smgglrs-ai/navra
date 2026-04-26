@@ -6,6 +6,7 @@ mod flow_tools;
 mod grpc_manager;
 mod mdns;
 mod memory_tools;
+mod plan_execute;
 mod registry_tools;
 mod team_tools;
 mod tray;
@@ -2300,7 +2301,32 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         tracing::info!("Registered audit_query tool");
     }
 
+    // Register plan_execute tool (needs late-bound server reference)
+    let server_cell: Arc<std::sync::OnceLock<Arc<smgglrs_core::McpServer>>> =
+        Arc::new(std::sync::OnceLock::new());
+    {
+        let cell = Arc::clone(&server_cell);
+        builder = builder.tool(
+            plan_execute::plan_execute_tool_def(),
+            move |args, ctx| {
+                let cell = Arc::clone(&cell);
+                Box::pin(async move {
+                    match cell.get() {
+                        Some(server) => {
+                            plan_execute::handle_plan_execute(args, server, ctx).await
+                        }
+                        None => smgglrs_core::protocol::CallToolResult::error(
+                            "Server not yet initialized",
+                        ),
+                    }
+                })
+            },
+        );
+        tracing::info!("Registered plan_execute tool");
+    }
+
     let server = Arc::new(builder.build());
+    let _ = server_cell.set(Arc::clone(&server));
     tracing::info!(
         tools = server.tool_count(),
         prompts = server.prompt_count(),

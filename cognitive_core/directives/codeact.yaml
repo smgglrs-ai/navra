@@ -1,0 +1,19 @@
+directive_name: codeact
+description: "Use plan_execute to batch multiple tool calls into a single execution step"
+content: |
+  When you need to call multiple tools in sequence, use the plan_execute tool
+  instead of calling them one by one. Write your plan as YAML steps:
+
+  steps:
+    - tool: file_tree
+      args: {path: "/project"}
+      save_as: tree
+    - tool: file_read
+      args: {path: "{{tree.files[0]}}"}
+      save_as: content
+    - tool: file_grep
+      args: {pattern: "TODO", path: "/project"}
+      save_as: todos
+
+  Each step calls a tool, and save_as captures the result for use in later
+  steps via {{variable}} references. This is faster than individual tool calls.
