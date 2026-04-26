@@ -51,6 +51,21 @@ pub struct Turn {
     pub agent: String,
     pub messages: Vec<Message>,
     pub created_at: i64,
+    /// Fork this turn belongs to (None = main timeline).
+    pub fork_id: Option<String>,
+    /// The fork this was branched from (None = root/main).
+    pub parent_fork: Option<String>,
+}
+
+/// Strategy for merging a fork back into the main timeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MergeStrategy {
+    /// Add all fork turns after current main timeline turns.
+    Append,
+    /// Replace main timeline turns from the fork point onward.
+    Replace,
+    /// Summarize the fork into a single turn and append it.
+    Summarize,
 }
 
 /// Category of a knowledge memory entry.

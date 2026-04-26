@@ -12,6 +12,41 @@ use smgglrs_agent::Agent;
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_security::ifc::TaintTracker;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+/// Insight produced after a task completes (success or failure).
+///
+/// Follows the ReasoningBank format: structured memory with a title,
+/// one-sentence description, and 1-3 sentences of reasoning insights.
+#[derive(Debug, Clone)]
+pub struct TaskInsight {
+    /// Short title (e.g. "Failure: analyze_code" or "Success: deploy_app").
+    pub title: String,
+    /// Structured reasoning content.
+    pub content: String,
+    /// Tags: `["failure", "lesson"]` or `["success", "strategy"]`.
+    pub tags: Vec<String>,
+    /// Confidence in this insight (0.0-1.0).
+    pub confidence: f64,
+    /// The task ID that produced this insight.
+    pub task_id: String,
+    /// The mandate of the task.
+    pub mandate: String,
+    /// Number of iterations/attempts the task went through.
+    pub iterations: u32,
+}
+
+/// Callback invoked when the executor produces an insight from a completed task.
+///
+/// Implementors typically store the insight via `KnowledgeStore::store_distilled_with_generation`.
+pub type InsightCallback = Arc<dyn Fn(TaskInsight) + Send + Sync>;
+
+/// Callback to retrieve the most relevant past insight for a task mandate.
+///
+/// Returns `Some(content)` for the k=1 most relevant insight (ReasoningBank
+/// finding: one focused memory beats multiple). Returns `None` if no
+/// relevant insight exists.
+pub type InsightRetriever = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
 /// Result of executing a DAG of tasks.
 #[derive(Debug)]
@@ -35,6 +70,8 @@ pub struct DagExecutor {
     agents: HashMap<String, Agent>,
     max_concurrent: usize,
     blackboard: Option<Blackboard>,
+    insight_callback: Option<InsightCallback>,
+    insight_retriever: Option<InsightRetriever>,
 }
 
 impl Default for DagExecutor {
@@ -50,6 +87,8 @@ impl DagExecutor {
             agents: HashMap::new(),
             max_concurrent: 4,
             blackboard: None,
+            insight_callback: None,
+            insight_retriever: None,
         }
     }
 
@@ -68,6 +107,25 @@ impl DagExecutor {
     /// Enable the shared blackboard with the given entry limit.
     pub fn enable_blackboard(mut self, capacity: usize) -> Self {
         self.blackboard = Some(Blackboard::new(capacity));
+        self
+    }
+
+    /// Set a callback for receiving task insights (ReasoningBank pattern).
+    ///
+    /// The callback is invoked after each task completes (success or failure)
+    /// with a structured insight that can be stored in the knowledge store.
+    pub fn on_insight(mut self, callback: InsightCallback) -> Self {
+        self.insight_callback = Some(callback);
+        self
+    }
+
+    /// Set a retriever for past insights (ReasoningBank k=1 pattern).
+    ///
+    /// Before starting each task, the executor queries this retriever
+    /// with the task mandate and injects the most relevant past insight
+    /// into the task prompt as a "lesson learned" section.
+    pub fn with_insight_retriever(mut self, retriever: InsightRetriever) -> Self {
+        self.insight_retriever = Some(retriever);
         self
     }
 
@@ -128,8 +186,18 @@ impl DagExecutor {
                 let mut task_completed = false;
 
                 for retry in 0..=max_retries {
-                    // Build prompt, injecting prior failure context on retries
-                    let mut prompt = build_task_prompt(task, &results);
+                    // Query past insights for this task (ReasoningBank k=1)
+                    let past_insight = self
+                        .insight_retriever
+                        .as_ref()
+                        .and_then(|r| r(&task.mandate));
+
+                    // Build prompt, injecting past insight and prior failure context
+                    let mut prompt = build_task_prompt_with_insight(
+                        task,
+                        &results,
+                        past_insight.as_deref(),
+                    );
                     if !attempts.is_empty() {
                         prompt = inject_retry_context(&prompt, &attempts);
                     }
@@ -233,6 +301,30 @@ impl DagExecutor {
                                     }
                                 }
 
+                                // Emit success insight via callback
+                                if let Some(ref cb) = self.insight_callback {
+                                    let summary = if task_result.output.len() > 200 {
+                                        format!("{}...", &task_result.output[..197])
+                                    } else {
+                                        task_result.output.clone()
+                                    };
+                                    cb(TaskInsight {
+                                        title: format!("Success: {}", task.id),
+                                        content: format!(
+                                            "For [{}] with mandate \"{}\", \
+                                             the approach succeeded in {} iteration(s). \
+                                             Key outcome: {}.",
+                                            task.id, task.mandate,
+                                            retry + 1, summary,
+                                        ),
+                                        tags: vec!["success".into(), "strategy".into()],
+                                        confidence: 0.85,
+                                        task_id: task.id.clone(),
+                                        mandate: task.mandate.clone(),
+                                        iterations: retry + 1,
+                                    });
+                                }
+
                                 results.insert(task.id.clone(), task_result);
                                 completed.insert(task.id.clone());
                                 task_completed = true;
@@ -312,6 +404,32 @@ impl DagExecutor {
                         .map(|a| a.error.clone())
                         .unwrap_or_else(|| "unknown failure".to_string());
 
+                    // Emit failure insight via callback
+                    if let Some(ref cb) = self.insight_callback {
+                        let history: Vec<String> = attempts
+                            .iter()
+                            .enumerate()
+                            .map(|(i, a)| format!("Attempt {}: {}", i + 1, a.error))
+                            .collect();
+                        let history_summary = history.join(". ");
+
+                        cb(TaskInsight {
+                            title: format!("Failure: {}", task.id),
+                            content: format!(
+                                "When attempting [{}] with mandate \"{}\", \
+                                 the approach failed because [{}]. \
+                                 Attempt history: {}. \
+                                 Avoid repeating this approach without addressing the root cause.",
+                                task.id, task.mandate, last_error, history_summary,
+                            ),
+                            tags: vec!["failure".into(), "lesson".into()],
+                            confidence: 0.7,
+                            task_id: task.id.clone(),
+                            mandate: task.mandate.clone(),
+                            iterations: attempts.len() as u32,
+                        });
+                    }
+
                     results.insert(
                         task.id.clone(),
                         TaskResult {
@@ -362,9 +480,29 @@ impl DagExecutor {
     }
 }
 
-/// Build the user prompt for a task, injecting dependency outputs as context.
-fn build_task_prompt(task: &Task, results: &HashMap<String, TaskResult>) -> String {
+/// Build the user prompt for a task, injecting dependency outputs and
+/// an optional retrieved insight (ReasoningBank k=1) as context.
+#[cfg(test)]
+fn build_task_prompt(
+    task: &Task,
+    results: &HashMap<String, TaskResult>,
+) -> String {
+    build_task_prompt_with_insight(task, results, None)
+}
+
+/// Build a task prompt, optionally injecting a past lesson learned.
+fn build_task_prompt_with_insight(
+    task: &Task,
+    results: &HashMap<String, TaskResult>,
+    insight: Option<&str>,
+) -> String {
     let mut parts = Vec::new();
+
+    // Inject retrieved lesson learned (ReasoningBank k=1)
+    if let Some(lesson) = insight {
+        parts.push("## Lesson learned from past attempts:\n".to_string());
+        parts.push(format!("{lesson}\n\n---\n"));
+    }
 
     // Inject dependency results as context
     let dep_outputs: Vec<(&str, &str)> = task
@@ -502,5 +640,39 @@ mod tests {
         assert!(prompt.contains("**file**: main.rs"));
         assert!(prompt.contains("Tests pass"));
         assert!(prompt.contains("No regressions"));
+    }
+
+    #[test]
+    fn build_prompt_with_insight_injects_lesson() {
+        let task = simple_task("deploy", "ops", &[]);
+        let insight = "When attempting deploy, port 443 was already in use. Use port 8443 instead.";
+        let prompt = build_task_prompt_with_insight(&task, &HashMap::new(), Some(insight));
+        assert!(prompt.contains("Lesson learned from past attempts:"));
+        assert!(prompt.contains("port 443"));
+        assert!(prompt.contains("Your task:"));
+    }
+
+    #[test]
+    fn build_prompt_without_insight_omits_lesson_section() {
+        let task = simple_task("build", "dev", &[]);
+        let prompt = build_task_prompt_with_insight(&task, &HashMap::new(), None);
+        assert!(!prompt.contains("Lesson learned"));
+        assert!(prompt.contains("Your task:"));
+    }
+
+    #[test]
+    fn task_insight_struct_is_complete() {
+        let insight = TaskInsight {
+            title: "Failure: deploy".to_string(),
+            content: "Port conflict".to_string(),
+            tags: vec!["failure".to_string(), "lesson".to_string()],
+            confidence: 0.7,
+            task_id: "deploy".to_string(),
+            mandate: "Deploy the app".to_string(),
+            iterations: 3,
+        };
+        assert_eq!(insight.title, "Failure: deploy");
+        assert_eq!(insight.tags.len(), 2);
+        assert_eq!(insight.iterations, 3);
     }
 }

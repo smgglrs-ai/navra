@@ -83,6 +83,7 @@ impl KnowledgeStore {
             ("confidence", "REAL DEFAULT 1.0"),
             ("has_pii", "INTEGER DEFAULT 0"),
             ("consent_basis", "TEXT DEFAULT 'not_set'"),
+            ("strategy_generation", "INTEGER DEFAULT 0"),
         ];
         for (name, typ) in &columns {
             // SQLite doesn't support IF NOT EXISTS on ALTER TABLE,
@@ -447,6 +448,111 @@ impl KnowledgeStore {
             .db
             .query_row("SELECT COUNT(*) FROM memory_knowledge WHERE has_pii = 1", [], |row| row.get(0))?;
         Ok(count as usize)
+    }
+
+    /// Full-text search filtered to entries whose tags include ALL of the given tags.
+    pub fn search_with_tags(
+        &self,
+        query: &str,
+        required_tags: &[&str],
+    ) -> Result<Vec<MemoryEntry>, MemoryError> {
+        let all = self.search(query)?;
+        Ok(all
+            .into_iter()
+            .filter(|e| {
+                required_tags
+                    .iter()
+                    .all(|tag| e.tags.iter().any(|t| t == tag))
+            })
+            .collect())
+    }
+
+    /// Get the strategy_generation for an entry by content_key.
+    pub fn strategy_generation_of(&self, content_key: &str) -> Result<Option<i64>, MemoryError> {
+        let result = self.db.query_row(
+            "SELECT strategy_generation FROM memory_knowledge WHERE content_key = ?1",
+            params![content_key],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Store a distilled entry, incrementing strategy_generation on supersession.
+    ///
+    /// Like `store_distilled`, but also increments the strategy_generation
+    /// counter when an entry with the same content_key is superseded. This
+    /// tracks how many times a strategy has evolved (ReasoningBank pattern).
+    pub fn store_distilled_with_generation(
+        &self,
+        entry: &DistilledEntry,
+    ) -> Result<i64, MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
+
+        let existing: Option<(String, i64, i64)> = self
+            .db
+            .query_row(
+                "SELECT id, version, strategy_generation FROM memory_knowledge WHERE content_key = ?1",
+                params![entry.content_key],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .ok();
+
+        if let Some((id, version, gen)) = existing {
+            let new_gen = gen + 1;
+            self.db.execute(
+                "UPDATE memory_knowledge SET
+                    title = ?1,
+                    content = ?2,
+                    tags_json = ?3,
+                    updated_at = ?4,
+                    version = ?5,
+                    confidence = ?6,
+                    source_session = ?7,
+                    strategy_generation = ?8
+                 WHERE id = ?9",
+                params![
+                    entry.title,
+                    entry.content,
+                    tags_json,
+                    now,
+                    version + 1,
+                    entry.confidence,
+                    entry.source_session,
+                    new_gen,
+                    id,
+                ],
+            )?;
+            Ok(new_gen)
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            self.db.execute(
+                "INSERT INTO memory_knowledge
+                    (id, memory_type, title, content, tags_json, created_at,
+                     content_key, version, confidence, source_session,
+                     importance, access_count, last_accessed, strategy_generation)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, 0.0, 0, 0, 1)",
+                params![
+                    id,
+                    entry.kind.as_str(),
+                    entry.title,
+                    entry.content,
+                    tags_json,
+                    now,
+                    entry.content_key,
+                    entry.confidence,
+                    entry.source_session,
+                ],
+            )?;
+            Ok(1)
+        }
     }
 
     /// Update access_count and last_accessed timestamp for an entry.

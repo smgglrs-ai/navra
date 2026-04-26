@@ -26,10 +26,12 @@ mod working;
 
 pub use error::MemoryError;
 pub use knowledge::KnowledgeStore;
-pub use pipeline::{ContentSanitizer, DistillationPipeline};
+pub use pipeline::{
+    extract_failure_insight, extract_success_insight, ContentSanitizer, DistillationPipeline,
+};
 pub use retrieval::{MemoryRetriever, ScoredEntry};
 pub use session_store::SqliteSessionBackend;
-pub use types::{DistilledEntry, MemoryEntry, MemoryType, Message, Role, Turn};
+pub use types::{DistilledEntry, MemoryEntry, MemoryType, MergeStrategy, Message, Role, Turn};
 pub use audit::{AuditLog, AuditModelCall, AuditRun, AuditSummary, AuditToolCall};
 pub use decay::{cleanup_decayed, effective_score};
 pub use working::WorkingMemory;
