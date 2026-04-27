@@ -47,10 +47,20 @@ impl SecretFilter {
                     category: "gitlab-token",
                     regex: regex_lite::Regex::new(r"glpat-[A-Za-z0-9\-_]{20,}").unwrap(),
                 },
-                // OpenAI / Anthropic API keys
+                // OpenAI API keys (sk-proj-..., sk-... with 48+ chars)
                 SecretPattern {
                     category: "api-key",
-                    regex: regex_lite::Regex::new(r"sk-[A-Za-z0-9]{32,}").unwrap(),
+                    regex: regex_lite::Regex::new(r"sk-proj-[A-Za-z0-9_-]{32,}").unwrap(),
+                },
+                // Anthropic API keys (sk-ant-...)
+                SecretPattern {
+                    category: "api-key",
+                    regex: regex_lite::Regex::new(r"sk-ant-[A-Za-z0-9_-]{32,}").unwrap(),
+                },
+                // Generic sk- keys (legacy OpenAI format: sk- followed by 48+ alphanumeric chars)
+                SecretPattern {
+                    category: "api-key",
+                    regex: regex_lite::Regex::new(r"sk-[A-Za-z0-9]{48,}").unwrap(),
                 },
                 // Generic bearer tokens in config/env files.
                 // Excludes patterns already caught by specific token detectors.
@@ -724,14 +734,46 @@ mod tests {
     }
 
     #[test]
-    fn detect_openai_key() {
+    fn detect_openai_key_proj() {
         let filter = SecretFilter::new();
         let findings = filter.scan(
-            "OPENAI_API_KEY=sk-1234567890abcdefghijklmnopqrstuv",
+            "OPENAI_API_KEY=sk-proj-1234567890abcdefghijklmnopqrstuv0123456789abcdef",
             &ctx(),
         );
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "api-key");
+    }
+
+    #[test]
+    fn detect_anthropic_key() {
+        let filter = SecretFilter::new();
+        let findings = filter.scan(
+            "ANTHROPIC_API_KEY=sk-ant-api03-1234567890abcdefghijklmnopqrstuv0123456789",
+            &ctx(),
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "api-key");
+    }
+
+    #[test]
+    fn detect_legacy_openai_key() {
+        let filter = SecretFilter::new();
+        // Legacy OpenAI format: sk- followed by 51 alphanumeric chars
+        let findings = filter.scan(
+            "OPENAI_API_KEY=sk-1234567890abcdefghijklmnopqrstuvwxyz012345678901234",
+            &ctx(),
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "api-key");
+    }
+
+    #[test]
+    fn no_false_positive_short_sk_prefix() {
+        let filter = SecretFilter::new();
+        // Short sk- strings should not match (e.g. variable names, abbreviations)
+        let findings = filter.scan("The sk-value is not a real key", &ctx());
+        let api_findings: Vec<_> = findings.iter().filter(|f| f.category == "api-key").collect();
+        assert!(api_findings.is_empty(), "Short sk- falsely detected as API key");
     }
 
     #[test]
@@ -743,6 +785,61 @@ mod tests {
         );
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "private-key");
+    }
+
+    #[test]
+    fn detect_private_key_ec() {
+        let filter = SecretFilter::new();
+        let findings = filter.scan(
+            "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEE...",
+            &ctx(),
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "private-key");
+    }
+
+    #[test]
+    fn detect_private_key_generic() {
+        let filter = SecretFilter::new();
+        let findings = filter.scan(
+            "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg...",
+            &ctx(),
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "private-key");
+    }
+
+    #[test]
+    fn detect_private_key_openssh() {
+        let filter = SecretFilter::new();
+        let findings = filter.scan(
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz...",
+            &ctx(),
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "private-key");
+    }
+
+    #[test]
+    fn detect_private_key_dsa() {
+        let filter = SecretFilter::new();
+        let findings = filter.scan(
+            "-----BEGIN DSA PRIVATE KEY-----\nMIIBuwIBAAK...",
+            &ctx(),
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "private-key");
+    }
+
+    #[test]
+    fn no_false_positive_public_key() {
+        let filter = SecretFilter::new();
+        let findings = filter.scan(
+            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...",
+            &ctx(),
+        );
+        let pk_findings: Vec<_> = findings.iter().filter(|f| f.category == "private-key").collect();
+        assert!(pk_findings.is_empty(), "Public key falsely detected as private key");
     }
 
     #[test]

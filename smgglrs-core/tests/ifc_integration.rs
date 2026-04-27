@@ -58,7 +58,7 @@ fn init_session(server: &McpServer) -> String {
             version: None,
         },
     };
-    let (_, session_id) = server.handle_initialize(params, test_agent());
+    let (_, session_id) = server.handle_initialize(params, test_agent()).unwrap();
     session_id
 }
 

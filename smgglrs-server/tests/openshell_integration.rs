@@ -198,6 +198,8 @@ async fn openshell_identity_token_accepted() {
         mode: smgglrs_core::auth::openshell::OpenShellAuthMode::Local,
         label_mapping: std::collections::HashMap::new(),
         default_permissions: "restricted".to_string(),
+        jwks_cache_ttl_secs: 60,
+        http_timeout_secs: 5,
     };
     assert_eq!(_config.default_permissions, "restricted");
 }

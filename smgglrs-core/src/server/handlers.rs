@@ -44,7 +44,20 @@ impl McpServer {
     }
 
     /// Handle an initialize request. Returns the result and the session ID.
-    pub fn handle_initialize(&self, params: InitializeParams, agent_identity: crate::auth::AgentIdentity) -> (InitializeResult, String) {
+    ///
+    /// Validates parameters before creating a session to prevent resource
+    /// exhaustion from malformed requests.
+    pub fn handle_initialize(&self, params: InitializeParams, agent_identity: crate::auth::AgentIdentity) -> Result<(InitializeResult, String), String> {
+        // Validate protocol version before allocating any resources
+        if params.protocol_version.is_empty() {
+            return Err("Missing protocol_version".to_string());
+        }
+
+        // Validate client info
+        if params.client_info.name.is_empty() {
+            return Err("Missing client_info.name".to_string());
+        }
+
         let session_id = uuid::Uuid::new_v4().to_string();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -66,7 +79,7 @@ impl McpServer {
             capabilities: self.capabilities(),
             server_info: self.server_info(),
         };
-        (result, session_id)
+        Ok((result, session_id))
     }
 
     pub fn handle_list_tools(&self, _agent: &crate::auth::AgentIdentity) -> ListToolsResult {
@@ -428,7 +441,10 @@ impl McpServer {
         let mut pending = self
             .pending_permission_requests
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
+            .unwrap_or_else(|e| {
+                tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
+                e.into_inner()
+            });
         pending.insert(
             params.id.clone(),
             super::PendingPermissionRequest {
@@ -459,7 +475,10 @@ impl McpServer {
             let mut pending = self
                 .pending_permission_requests
                 .lock()
-                .unwrap_or_else(|e| e.into_inner());
+                .unwrap_or_else(|e| {
+                    tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
+                    e.into_inner()
+                });
             pending
                 .remove(&params.request_id)
                 .ok_or_else(|| format!("No pending request with id '{}'", params.request_id))?
@@ -504,7 +523,10 @@ impl McpServer {
         let mut pending = self
             .pending_permission_requests
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
+            .unwrap_or_else(|e| {
+                tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
+                e.into_inner()
+            });
         if pending.remove(&params.request_id).is_none() {
             return Err(format!(
                 "No pending request with id '{}'",

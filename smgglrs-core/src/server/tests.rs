@@ -246,12 +246,46 @@ fn handle_initialize_creates_session() {
         },
     };
 
-    let (result, session_id) = server.handle_initialize(params, test_agent());
+    let (result, session_id) = server.handle_initialize(params, test_agent()).unwrap();
     assert_eq!(result.protocol_version, "2025-03-26");
     assert_eq!(result.server_info.name, "test");
     assert_eq!(server.sessions().count(), 1);
     assert!(!session_id.is_empty());
     assert!(server.sessions().get(&session_id).is_some());
+}
+
+#[test]
+fn handle_initialize_rejects_empty_protocol_version() {
+    let server = McpServer::builder().name("test").build();
+    let params = crate::protocol::InitializeParams {
+        protocol_version: "".to_string(),
+        capabilities: Default::default(),
+        client_info: crate::protocol::ClientInfo {
+            name: "client".to_string(),
+            version: None,
+        },
+    };
+
+    let err = server.handle_initialize(params, test_agent()).unwrap_err();
+    assert!(err.contains("protocol_version"));
+    assert_eq!(server.sessions().count(), 0);
+}
+
+#[test]
+fn handle_initialize_rejects_empty_client_name() {
+    let server = McpServer::builder().name("test").build();
+    let params = crate::protocol::InitializeParams {
+        protocol_version: "2025-03-26".to_string(),
+        capabilities: Default::default(),
+        client_info: crate::protocol::ClientInfo {
+            name: "".to_string(),
+            version: None,
+        },
+    };
+
+    let err = server.handle_initialize(params, test_agent()).unwrap_err();
+    assert!(err.contains("client_info"));
+    assert_eq!(server.sessions().count(), 0);
 }
 
 #[tokio::test]

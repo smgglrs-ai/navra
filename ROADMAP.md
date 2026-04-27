@@ -53,9 +53,16 @@ This protocol ensures consistent, reproducible self-analysis runs.
 # 1. Refresh the analysis copy (ALWAYS do this first)
 rm -rf /tmp/smgglrs-self-audit
 mkdir -p /tmp/smgglrs-self-audit
-cp -r smgglrs-*/src /tmp/smgglrs-self-audit/
+
+# Preserve crate directory structure (src/ + Cargo.toml per crate)
+for d in smgglrs-*/; do
+  mkdir -p "/tmp/smgglrs-self-audit/$d"
+  cp -r "$d/src" "/tmp/smgglrs-self-audit/$d/"
+  cp "$d/Cargo.toml" "/tmp/smgglrs-self-audit/$d/" 2>/dev/null
+done
+
 cp -r cognitive_core /tmp/smgglrs-self-audit/
-cp CLAUDE.md DESIGN.md ROADMAP.md MODELS.md /tmp/smgglrs-self-audit/
+cp CLAUDE.md DESIGN.md ROADMAP.md MODELS.md Cargo.toml /tmp/smgglrs-self-audit/
 
 # 2. Copy self-audit personas (planner, rust_security_auditor, etc.)
 cp -r examples/payments-app/personas /tmp/smgglrs-self-audit/ 2>/dev/null
