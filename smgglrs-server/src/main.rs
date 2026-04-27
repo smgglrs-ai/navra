@@ -2854,7 +2854,7 @@ async fn run_agent(
     };
 
     // Load persona if cognitive_core exists
-    let forge = smgglrs_cognitive::ForgeService::load(std::path::Path::new("cognitive_core"))
+    let mut forge = smgglrs_cognitive::ForgeService::load(std::path::Path::new("cognitive_core"))
         .ok()
         .or_else(|| {
             // Try common locations
@@ -2865,6 +2865,30 @@ async fn run_agent(
             }
             None
         });
+
+    // Discover upstream personas from the running smgglrs server
+    if let Some(ref mut f) = forge {
+        let discover_token = token.map(String::from)
+            .or_else(|| std::env::var("MCPD_TOKEN").ok());
+        let discover_upstream = if let Some(ref t) = discover_token {
+            smgglrs_agent::Upstream::http_with_auth("discover", endpoint, t).await.ok()
+        } else {
+            smgglrs_agent::Upstream::http("discover", endpoint).await.ok()
+        };
+        if let Some(upstream) = discover_upstream {
+            let mut client = smgglrs_agent::McpClient::new(upstream);
+            if let Ok(prompts) = client.list_prompts().await {
+                for p in &prompts {
+                    if let Some(persona_name) = p.name.strip_prefix("persona:") {
+                        let desc = p.description.as_deref().unwrap_or("");
+                        if f.register_upstream_persona(persona_name, "upstream", &p.name, desc) {
+                            eprintln!("Discovered upstream persona: {persona_name}");
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Build agent with provider-specific backend
     let base_builder = smgglrs_agent::Agent::builder()

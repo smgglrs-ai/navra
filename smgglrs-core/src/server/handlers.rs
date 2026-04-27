@@ -297,7 +297,15 @@ impl McpServer {
             let result_text = result.content.iter().map(|c| match c {
                 crate::protocol::Content::Text(t) => t.text.as_str(),
             }).collect::<Vec<_>>().join("");
-            let result_trunc = if result_text.len() > 4096 { &result_text[..4096] } else { &result_text };
+            let result_trunc = if result_text.len() > 4096 {
+                let mut end = 4096;
+                while end > 0 && !result_text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                &result_text[..end]
+            } else {
+                &result_text
+            };
             bb.record(
                 &ctx.agent.name, &ctx.agent.permissions, &ctx.session_id,
                 &params.name, &arguments.to_string(),
