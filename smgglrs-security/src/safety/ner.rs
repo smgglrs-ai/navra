@@ -638,6 +638,106 @@ impl NerFilter {
     }
 }
 
+/// Check if a PERSON/PER entity appears in a technical naming pattern.
+///
+/// Suppresses false positives where algorithm/method names (e.g.,
+/// "Kahn's algorithm", "Dijkstra's algorithm", "Luhn algorithm")
+/// are detected as person names. The NER model correctly identifies
+/// them as person names, but in technical context the name refers
+/// to a well-known algorithm, theorem, or method — not PII.
+///
+/// Only applies to PERSON/PER entity types (and sfermion person
+/// subtypes). Returns `true` if the entity should be suppressed.
+fn suppress_technical_names(text: &str, span: &EntitySpan) -> bool {
+    // Only suppress person entities
+    let is_person = matches!(
+        span.entity_type.as_str(),
+        "PER" | "PERSON" | "GIVENNAME1" | "GIVENNAME2"
+            | "LASTNAME1" | "LASTNAME2" | "LASTNAME3"
+    );
+    if !is_person {
+        return false;
+    }
+
+    let after = &text[span.end..];
+
+    // Possessive patterns: "Kahn's algorithm", "Dijkstra's theorem"
+    const POSSESSIVE_SUFFIXES: &[&str] = &[
+        "'s algorithm",
+        "'s theorem",
+        "'s law",
+        "'s method",
+        "'s formula",
+        "'s conjecture",
+        "'s inequality",
+        "'s lemma",
+        "'s sort",
+        "'s number",
+        "\u{2019}s algorithm",
+        "\u{2019}s theorem",
+        "\u{2019}s law",
+        "\u{2019}s method",
+        "\u{2019}s formula",
+        "\u{2019}s conjecture",
+        "\u{2019}s inequality",
+        "\u{2019}s lemma",
+        "\u{2019}s sort",
+        "\u{2019}s number",
+    ];
+
+    let after_lower = after.to_ascii_lowercase();
+    for suffix in POSSESSIVE_SUFFIXES {
+        if after_lower.starts_with(suffix) {
+            return true;
+        }
+    }
+
+    // Direct patterns: "Kahn algorithm", "Luhn algorithm"
+    // Match " <technical_word>" or "-<Name> <technical_word>" (e.g., "Bell-LaPadula model")
+    const TECHNICAL_WORDS: &[&str] = &[
+        " algorithm",
+        " sort",
+        " search",
+        " tree",
+        " hash",
+        " cipher",
+        " protocol",
+        " model",
+        " theorem",
+        " method",
+        " formula",
+        " conjecture",
+        " inequality",
+        " lemma",
+        " number",
+        " law",
+    ];
+
+    for word in TECHNICAL_WORDS {
+        if after_lower.starts_with(word) {
+            return true;
+        }
+    }
+
+    // Hyphenated compound names followed by technical words:
+    // "Bell-LaPadula model" — the entity might cover "Bell" or "Bell-LaPadula"
+    // Check if the text after the span starts with "-<Word> <technical>"
+    if after.starts_with('-') {
+        // Find the end of the hyphenated part (next space or end)
+        if let Some(space_pos) = after[1..].find(' ') {
+            // remainder includes the space: " model ..."
+            let remainder = &after_lower[1 + space_pos..];
+            for word in TECHNICAL_WORDS {
+                if remainder.starts_with(word) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
 impl ContentFilter for NerFilter {
     fn name(&self) -> &str {
         "ner"
@@ -647,6 +747,7 @@ impl ContentFilter for NerFilter {
         match self.detect_entities(content) {
             Ok(spans) => spans
                 .into_iter()
+                .filter(|span| !suppress_technical_names(content, span))
                 .filter_map(|span| {
                     let category = entity_type_to_category(&span.entity_type)?;
                     Some(Finding {
@@ -1257,6 +1358,131 @@ mod tests {
             !loc_spans.is_empty(),
             "Expected to detect location entity in French text"
         );
+    }
+
+    // --- Technical name suppression ---
+
+    #[test]
+    fn suppress_possessive_algorithm() {
+        let text = "Kahn's algorithm performs topological sorting";
+        let span = EntitySpan {
+            start: 0,
+            end: 4,
+            entity_type: "PER".to_string(),
+            confidence: 0.95,
+        };
+        assert!(suppress_technical_names(text, &span));
+    }
+
+    #[test]
+    fn suppress_possessive_theorem() {
+        let text = "Dijkstra's algorithm finds shortest paths";
+        let span = EntitySpan {
+            start: 0,
+            end: 8,
+            entity_type: "PER".to_string(),
+            confidence: 0.95,
+        };
+        assert!(suppress_technical_names(text, &span));
+    }
+
+    #[test]
+    fn suppress_direct_algorithm() {
+        let text = "Luhn algorithm validates card numbers";
+        let span = EntitySpan {
+            start: 0,
+            end: 4,
+            entity_type: "PER".to_string(),
+            confidence: 0.90,
+        };
+        assert!(suppress_technical_names(text, &span));
+    }
+
+    #[test]
+    fn suppress_hyphenated_model() {
+        // "Bell-LaPadula model" — entity covers "Bell" only
+        let text = "Bell-LaPadula model enforces mandatory access control";
+        let span = EntitySpan {
+            start: 0,
+            end: 4,
+            entity_type: "PER".to_string(),
+            confidence: 0.88,
+        };
+        assert!(suppress_technical_names(text, &span));
+    }
+
+    #[test]
+    fn no_suppress_plain_person() {
+        let text = "Jean Dupont called us yesterday";
+        let span = EntitySpan {
+            start: 0,
+            end: 11,
+            entity_type: "PER".to_string(),
+            confidence: 0.95,
+        };
+        assert!(!suppress_technical_names(text, &span));
+    }
+
+    #[test]
+    fn no_suppress_person_no_algorithm_context() {
+        let text = "Kahn is our new employee";
+        let span = EntitySpan {
+            start: 0,
+            end: 4,
+            entity_type: "PER".to_string(),
+            confidence: 0.90,
+        };
+        assert!(!suppress_technical_names(text, &span));
+    }
+
+    #[test]
+    fn no_suppress_non_person_entity() {
+        // LOC entities should never be suppressed
+        let text = "Paris algorithm is not a real thing";
+        let span = EntitySpan {
+            start: 0,
+            end: 5,
+            entity_type: "LOC".to_string(),
+            confidence: 0.90,
+        };
+        assert!(!suppress_technical_names(text, &span));
+    }
+
+    #[test]
+    fn suppress_possessive_law() {
+        let text = "Amdahl's law limits parallel speedup";
+        let span = EntitySpan {
+            start: 0,
+            end: 6,
+            entity_type: "PER".to_string(),
+            confidence: 0.92,
+        };
+        assert!(suppress_technical_names(text, &span));
+    }
+
+    #[test]
+    fn suppress_sort() {
+        // If "Tim" were detected as a person followed by " sort"
+        let text2 = "Tim sort is efficient";
+        let span = EntitySpan {
+            start: 0,
+            end: 3,
+            entity_type: "PER".to_string(),
+            confidence: 0.85,
+        };
+        assert!(suppress_technical_names(text2, &span));
+    }
+
+    #[test]
+    fn suppress_cipher() {
+        let text = "Caesar cipher is a substitution cipher";
+        let span = EntitySpan {
+            start: 0,
+            end: 6,
+            entity_type: "PER".to_string(),
+            confidence: 0.88,
+        };
+        assert!(suppress_technical_names(text, &span));
     }
 
     // --- NerFilter implements ContentFilter ---

@@ -419,6 +419,7 @@ pub async fn handle_flow_status(
 pub async fn handle_flow_result(
     args: serde_json::Value,
     registry: std::sync::Arc<FlowRegistry>,
+    audit_log: Option<std::sync::Arc<smgglrs_memory::AuditLog>>,
 ) -> smgglrs_core::protocol::CallToolResult {
     use smgglrs_core::protocol::CallToolResult;
     let flow_id = match args.get("flow_id").and_then(|v| v.as_str()) {
@@ -426,12 +427,91 @@ pub async fn handle_flow_result(
         None => return CallToolResult::error("Missing required parameter: flow_id"),
     };
     let node_id = args.get("node_id").and_then(|v| v.as_str());
-    match registry.get_result(flow_id, node_id) {
-        Some(result) => CallToolResult::text(
-            serde_json::to_string_pretty(&result).unwrap_or_default()
-        ),
-        None => CallToolResult::error(format!("No results for flow: {flow_id}")),
+    let include_tasks = args.get("include_tasks").and_then(|v| v.as_bool()).unwrap_or(true);
+
+    // Try in-memory registry first
+    let mut result = match registry.get_result(flow_id, node_id) {
+        Some(r) => r,
+        None => {
+            // Fall back to audit log for persisted results (survives restart)
+            if let Some(ref audit) = audit_log {
+                if let Ok(tasks) = audit.get_flow_results(flow_id) {
+                    if tasks.is_empty() {
+                        return CallToolResult::error(format!("No results for flow: {flow_id}"));
+                    }
+                    if let Some(nid) = node_id {
+                        if let Some(task) = tasks.iter().find(|t| t.task_id == nid) {
+                            return CallToolResult::text(
+                                serde_json::to_string_pretty(&serde_json::json!({
+                                    "flow_id": flow_id,
+                                    "node": nid,
+                                    "status": task.status,
+                                    "output": task.output,
+                                    "source": "persistent",
+                                })).unwrap_or_default()
+                            );
+                        }
+                        return CallToolResult::error(format!("No results for node {nid} in flow {flow_id}"));
+                    }
+                    let all_done = tasks.iter().all(|t| t.status == "done" || t.status == "failed");
+                    let status = if all_done {
+                        if tasks.iter().any(|t| t.status == "failed") { "failed" } else { "completed" }
+                    } else {
+                        "running"
+                    };
+                    let task_results: Vec<serde_json::Value> = tasks.iter().map(|t| {
+                        serde_json::json!({
+                            "task_id": t.task_id,
+                            "specialist": t.specialist,
+                            "model": t.model,
+                            "status": t.status,
+                            "output": t.output,
+                            "iterations": t.iterations,
+                            "tokens": t.tokens,
+                        })
+                    }).collect();
+                    return CallToolResult::text(
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "flow_id": flow_id,
+                            "status": status,
+                            "output": tasks.last().and_then(|t| t.output.as_deref()),
+                            "tasks": task_results,
+                            "source": "persistent",
+                        })).unwrap_or_default()
+                    );
+                }
+            }
+            return CallToolResult::error(format!("No results for flow: {flow_id}"));
+        }
+    };
+
+    // Enrich with persisted task outputs when available
+    if include_tasks && node_id.is_none() {
+        if let Some(ref audit) = audit_log {
+            if let Ok(tasks) = audit.get_flow_results(flow_id) {
+                if !tasks.is_empty() {
+                    let task_results: Vec<serde_json::Value> = tasks.iter().map(|t| {
+                        serde_json::json!({
+                            "task_id": t.task_id,
+                            "specialist": t.specialist,
+                            "model": t.model,
+                            "status": t.status,
+                            "output": t.output,
+                            "iterations": t.iterations,
+                            "tokens": t.tokens,
+                        })
+                    }).collect();
+                    if let Some(obj) = result.as_object_mut() {
+                        obj.insert("tasks".to_string(), serde_json::json!(task_results));
+                    }
+                }
+            }
+        }
     }
+
+    CallToolResult::text(
+        serde_json::to_string_pretty(&result).unwrap_or_default()
+    )
 }
 
 /// Handle flow_list tool call.
@@ -521,6 +601,55 @@ pub struct FlowContext {
     pub root_payload: Option<smgglrs_core::auth::capability::CapabilityPayload>,
     /// Optional PII filter for model reasoning text.
     pub pii_filter: Option<std::sync::Arc<smgglrs_core::safety::FilterPipeline>>,
+    /// Audit log for persisting flow task results.
+    pub audit_log: Option<std::sync::Arc<smgglrs_memory::AuditLog>>,
+}
+
+/// Record completed/failed task results to the audit log.
+fn record_task_results_to_audit(
+    audit_log: &Option<std::sync::Arc<smgglrs_memory::AuditLog>>,
+    team_reg: &crate::team_tools::TeamRegistry,
+    team_id: &str,
+    flow_id: &str,
+    task_ids: &[String],
+    completed: &std::collections::HashMap<String, String>,
+    failed: &std::collections::HashSet<String>,
+    task_defs: &[smgglrs_flow::TaskDefinition],
+) {
+    let Some(audit) = audit_log else { return };
+    let teams = team_reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+    let team = teams.get(team_id);
+
+    for task_id in task_ids {
+        let task_def = task_defs.iter().find(|t| t.id == *task_id);
+        let specialist = task_def.map(|t| t.specialist.as_str());
+        let (model, iterations, tokens) = team
+            .and_then(|t| t.teammates.get(task_id))
+            .map(|tm| {
+                let elapsed_tokens = team
+                    .map(|t| t.tokens_used.load(std::sync::atomic::Ordering::Relaxed))
+                    .unwrap_or(0);
+                (Some(tm.model.as_str()), None::<u32>, Some(elapsed_tokens))
+            })
+            .unwrap_or((None, None, None));
+
+        let (status, output) = if let Some(out) = completed.get(task_id) {
+            ("done", Some(out.as_str()))
+        } else if failed.contains(task_id) {
+            let out = team
+                .and_then(|t| t.teammates.get(task_id))
+                .and_then(|tm| tm.output.as_deref());
+            ("failed", out)
+        } else {
+            continue;
+        };
+
+        if let Err(e) = audit.record_flow_task(
+            flow_id, task_id, specialist, model, status, output, iterations, tokens,
+        ) {
+            tracing::warn!(flow_id = %flow_id, task = %task_id, error = %e, "Failed to record flow task to audit");
+        }
+    }
 }
 
 /// Get the current blackbox sequence number (for summary queries).
@@ -713,6 +842,7 @@ async fn spawn_and_track_tasks(
             forge: ctx.forge.clone(),
             root_payload: ctx.root_payload.clone(),
             pii_filter: ctx.pii_filter.clone(),
+            audit_log: ctx.audit_log.clone(),
         };
         let handle = crate::team_tools::spawn_teammate_agent(
             &spawn_ctx, team_id, &task.id, &message,
@@ -920,6 +1050,12 @@ async fn run_dag_execution(
                 return;
             }
         }
+
+        // Persist completed/failed task results to audit log
+        record_task_results_to_audit(
+            &ctx.audit_log, &ctx.team_registry, team_id, flow_id,
+            &spawned_ids, &completed, &failed, &task_defs,
+        );
 
         // Dynamic task injection: if any completed task has generates_tasks=true,
         // parse its output as a task array and inject into the DAG.
@@ -1271,6 +1407,12 @@ pub async fn handle_flow_escalate(
                 return CallToolResult::error(msg);
             }
         }
+
+        // Persist completed/failed task results to audit log
+        record_task_results_to_audit(
+            &ctx.audit_log, &ctx.team_registry, &team_id, &flow_id,
+            &spawned_ids, &completed, &failed, &task_defs,
+        );
     }
 
     // Subflow complete — return the last task's output
@@ -1408,9 +1550,9 @@ pub fn flow_result_tool_def() -> ToolDefinition {
         name: "flow_result".to_string(),
         description: Some(
             "Get the output of a completed flow or a specific node within it. \
-             Returns the full report if no node specified, or a single node's \
-             output if node_id is given. Can be called while the flow is still \
-             running to read partial results from completed nodes."
+             Returns the full report with all task outputs if no node specified, \
+             or a single node's output if node_id is given. Results are persisted \
+             to disk and survive server restarts."
                 .to_string(),
         ),
         input_schema: ToolInputSchema {
@@ -1423,6 +1565,10 @@ pub fn flow_result_tool_def() -> ToolDefinition {
                 (
                     "node_id".to_string(),
                     serde_json::json!({"type": "string", "description": "Optional: specific node to read results from"}),
+                ),
+                (
+                    "include_tasks".to_string(),
+                    serde_json::json!({"type": "boolean", "default": true, "description": "Include individual task outputs in the response (default: true)"}),
                 ),
             ])),
             required: Some(vec!["flow_id".to_string()]),

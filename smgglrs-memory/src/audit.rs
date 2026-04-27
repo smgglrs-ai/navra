@@ -51,6 +51,30 @@ pub struct AuditRun {
     pub exit_reason: Option<String>,
 }
 
+/// A flow task result entry in the audit log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowTaskResult {
+    pub flow_id: String,
+    pub task_id: String,
+    pub specialist: Option<String>,
+    pub model: Option<String>,
+    pub status: String,
+    pub output: Option<String>,
+    pub iterations: Option<u32>,
+    pub tokens: Option<u32>,
+    pub started_at: Option<i64>,
+    pub completed_at: Option<i64>,
+}
+
+/// A flow summary entry returned by `list_flows`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowSummary {
+    pub flow_id: String,
+    pub status: String,
+    pub task_count: u32,
+    pub started_at: Option<i64>,
+}
+
 /// Summary statistics for an audit run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditSummary {
@@ -153,7 +177,23 @@ impl AuditLog {
                 reasoning_text TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_audit_model_calls_run
-                ON audit_model_calls(run_id, iteration);",
+                ON audit_model_calls(run_id, iteration);
+
+            CREATE TABLE IF NOT EXISTS flow_results (
+                flow_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                specialist TEXT,
+                model TEXT,
+                status TEXT NOT NULL,
+                output TEXT,
+                iterations INTEGER,
+                tokens INTEGER,
+                started_at INTEGER,
+                completed_at INTEGER,
+                PRIMARY KEY (flow_id, task_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_flow_results_flow
+                ON flow_results(flow_id);",
         )?;
         Ok(())
     }
@@ -393,6 +433,95 @@ impl AuditLog {
             duration_ms,
         })
     }
+
+    /// Record a flow task result (upsert by flow_id + task_id).
+    pub fn record_flow_task(
+        &self,
+        flow_id: &str,
+        task_id: &str,
+        specialist: Option<&str>,
+        model: Option<&str>,
+        status: &str,
+        output: Option<&str>,
+        iterations: Option<u32>,
+        tokens: Option<u32>,
+    ) -> Result<(), MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute(
+            "INSERT INTO flow_results (flow_id, task_id, specialist, model, status, output, iterations, tokens, started_at, completed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(flow_id, task_id) DO UPDATE SET
+                 specialist = COALESCE(excluded.specialist, flow_results.specialist),
+                 model = COALESCE(excluded.model, flow_results.model),
+                 status = excluded.status,
+                 output = COALESCE(excluded.output, flow_results.output),
+                 iterations = COALESCE(excluded.iterations, flow_results.iterations),
+                 tokens = COALESCE(excluded.tokens, flow_results.tokens),
+                 completed_at = excluded.completed_at",
+            params![flow_id, task_id, specialist, model, status, output, iterations, tokens, now, now],
+        )?;
+        Ok(())
+    }
+
+    /// Get all task results for a flow.
+    pub fn get_flow_results(&self, flow_id: &str) -> Result<Vec<FlowTaskResult>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
+            "SELECT flow_id, task_id, specialist, model, status, output, iterations, tokens, started_at, completed_at
+             FROM flow_results
+             WHERE flow_id = ?1
+             ORDER BY started_at ASC",
+        )?;
+        let results = stmt
+            .query_map(params![flow_id], |row| {
+                Ok(FlowTaskResult {
+                    flow_id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    specialist: row.get(2)?,
+                    model: row.get(3)?,
+                    status: row.get(4)?,
+                    output: row.get(5)?,
+                    iterations: row.get(6)?,
+                    tokens: row.get(7)?,
+                    started_at: row.get(8)?,
+                    completed_at: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(results)
+    }
+
+    /// List all flows with summary info.
+    pub fn list_flows(&self) -> Result<Vec<FlowSummary>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
+            "SELECT flow_id,
+                    CASE WHEN COUNT(*) = SUM(CASE WHEN status IN ('done', 'failed') THEN 1 ELSE 0 END)
+                         THEN CASE WHEN SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
+                              THEN 'failed' ELSE 'completed' END
+                         ELSE 'running' END AS status,
+                    COUNT(*) AS task_count,
+                    MIN(started_at) AS started_at
+             FROM flow_results
+             GROUP BY flow_id
+             ORDER BY started_at DESC",
+        )?;
+        let results = stmt
+            .query_map([], |row| {
+                Ok(FlowSummary {
+                    flow_id: row.get(0)?,
+                    status: row.get(1)?,
+                    task_count: row.get::<_, i64>(2)? as u32,
+                    started_at: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(results)
+    }
 }
 
 #[cfg(test)]
@@ -597,5 +726,113 @@ mod tests {
         // Recent run should still exist
         let summary = log.get_summary("recent-run").unwrap();
         assert_eq!(summary.tool_call_count, 1);
+    }
+
+    #[test]
+    fn record_and_get_flow_task_results() {
+        let log = AuditLog::open_memory().unwrap();
+
+        log.record_flow_task(
+            "flow-1", "scout", Some("analyst"), Some("granite-3b"),
+            "done", Some("Found 3 issues"), Some(5), Some(1200),
+        ).unwrap();
+        log.record_flow_task(
+            "flow-1", "worker", Some("developer"), Some("granite-8b"),
+            "done", Some("Fixed all issues"), Some(10), Some(3000),
+        ).unwrap();
+
+        let results = log.get_flow_results("flow-1").unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].task_id, "scout");
+        assert_eq!(results[0].specialist, Some("analyst".to_string()));
+        assert_eq!(results[0].status, "done");
+        assert_eq!(results[0].output, Some("Found 3 issues".to_string()));
+        assert_eq!(results[0].iterations, Some(5));
+        assert_eq!(results[0].tokens, Some(1200));
+        assert_eq!(results[1].task_id, "worker");
+    }
+
+    #[test]
+    fn record_flow_task_upserts_on_conflict() {
+        let log = AuditLog::open_memory().unwrap();
+
+        log.record_flow_task(
+            "flow-1", "scout", Some("analyst"), None,
+            "running", None, None, None,
+        ).unwrap();
+        log.record_flow_task(
+            "flow-1", "scout", Some("analyst"), Some("granite-3b"),
+            "done", Some("Analysis complete"), Some(5), Some(800),
+        ).unwrap();
+
+        let results = log.get_flow_results("flow-1").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, "done");
+        assert_eq!(results[0].output, Some("Analysis complete".to_string()));
+        assert_eq!(results[0].model, Some("granite-3b".to_string()));
+    }
+
+    #[test]
+    fn list_flows_returns_summaries() {
+        let log = AuditLog::open_memory().unwrap();
+
+        log.record_flow_task("flow-1", "scout", None, None, "done", Some("ok"), None, None).unwrap();
+        log.record_flow_task("flow-1", "worker", None, None, "done", Some("ok"), None, None).unwrap();
+        log.record_flow_task("flow-2", "task-a", None, None, "done", Some("ok"), None, None).unwrap();
+        log.record_flow_task("flow-2", "task-b", None, None, "failed", None, None, None).unwrap();
+
+        let flows = log.list_flows().unwrap();
+        assert_eq!(flows.len(), 2);
+        // Most recent first
+        let f1 = flows.iter().find(|f| f.flow_id == "flow-1").unwrap();
+        assert_eq!(f1.status, "completed");
+        assert_eq!(f1.task_count, 2);
+        let f2 = flows.iter().find(|f| f.flow_id == "flow-2").unwrap();
+        assert_eq!(f2.status, "failed");
+        assert_eq!(f2.task_count, 2);
+    }
+
+    #[test]
+    fn flow_results_survive_new_instance() {
+        // Simulate server restart by using a file-based DB
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("audit.db");
+
+        // First instance: record results
+        {
+            let log = AuditLog::open(&db_path).unwrap();
+            log.record_flow_task(
+                "flow-1", "scout", Some("analyst"), Some("granite-3b"),
+                "done", Some("Found issues"), Some(5), Some(1200),
+            ).unwrap();
+            log.record_flow_task(
+                "flow-1", "worker", Some("dev"), Some("granite-8b"),
+                "done", Some("Fixed issues"), Some(10), Some(3000),
+            ).unwrap();
+        }
+        // Drop closes the connection
+
+        // Second instance: results must persist
+        {
+            let log = AuditLog::open(&db_path).unwrap();
+            let results = log.get_flow_results("flow-1").unwrap();
+            assert_eq!(results.len(), 2);
+            assert_eq!(results[0].task_id, "scout");
+            assert_eq!(results[0].output, Some("Found issues".to_string()));
+            assert_eq!(results[1].task_id, "worker");
+            assert_eq!(results[1].output, Some("Fixed issues".to_string()));
+
+            let flows = log.list_flows().unwrap();
+            assert_eq!(flows.len(), 1);
+            assert_eq!(flows[0].flow_id, "flow-1");
+            assert_eq!(flows[0].status, "completed");
+        }
+    }
+
+    #[test]
+    fn get_flow_results_empty_for_unknown_flow() {
+        let log = AuditLog::open_memory().unwrap();
+        let results = log.get_flow_results("nonexistent").unwrap();
+        assert!(results.is_empty());
     }
 }
