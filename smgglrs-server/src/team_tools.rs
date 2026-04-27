@@ -823,6 +823,8 @@ pub struct TeammateSpawnContext {
     /// PII leaking through model reasoning even after tool results
     /// were redacted.
     pub pii_filter: Option<std::sync::Arc<smgglrs_core::safety::FilterPipeline>>,
+    /// Audit log for recording teammate runs.
+    pub audit_log: Option<std::sync::Arc<smgglrs_memory::AuditLog>>,
 }
 
 /// Spawn a teammate agent in a background task.
@@ -843,6 +845,7 @@ pub fn spawn_teammate_agent(
     let forge = ctx.forge.clone();
     let root_payload = ctx.root_payload.clone();
     let pii_filter = ctx.pii_filter.clone();
+    let audit_log = ctx.audit_log.clone();
     let smgglrs_addr = ctx.smgglrs_addr.clone();
     let team_id = team_id.to_string();
     let teammate_id = teammate_id.to_string();
@@ -1078,10 +1081,54 @@ pub fn spawn_teammate_agent(
                         tokens = tokens,
                         "Teammate completed"
                     );
+                    // Record teammate run in audit log
+                    if let Some(ref audit) = audit_log {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64;
+                        let run_id = format!("tm-{team_id}-{teammate_id}");
+                        let run = smgglrs_memory::AuditRun {
+                            run_id: run_id.clone(),
+                            agent_id: teammate_id.clone(),
+                            prompt: message.clone(),
+                            persona: tm_persona.clone(),
+                            model: teammate_model.clone(),
+                            started_at: now_ms - (deadline.as_millis() as i64),
+                            ended_at: Some(now_ms),
+                            teammates: vec![],
+                            final_report: Some(result.response.clone()),
+                            exit_reason: Some("completed".to_string()),
+                        };
+                        if let Err(e) = audit.begin_run(&run) {
+                            tracing::warn!(run_id = %run_id, error = %e, "Failed to record teammate run in audit");
+                        }
+                    }
                     reg.set_output(&team_id, &teammate_id, result.response);
                 }
                 Err(e) => {
                     tracing::error!(team = %team_id, to = %teammate_id, error = %e, "Teammate failed");
+                    // Record failed teammate run in audit log
+                    if let Some(ref audit) = audit_log {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64;
+                        let run_id = format!("tm-{team_id}-{teammate_id}");
+                        let run = smgglrs_memory::AuditRun {
+                            run_id,
+                            agent_id: teammate_id.clone(),
+                            prompt: message.clone(),
+                            persona: tm_persona.clone(),
+                            model: teammate_model.clone(),
+                            started_at: now_ms - (deadline.as_millis() as i64),
+                            ended_at: Some(now_ms),
+                            teammates: vec![],
+                            final_report: None,
+                            exit_reason: Some(format!("failed: {e}")),
+                        };
+                        let _ = audit.begin_run(&run);
+                    }
                     reg.set_failed(&team_id, &teammate_id, format!("Agent error: {e}"));
                 }
             }

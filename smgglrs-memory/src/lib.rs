@@ -32,6 +32,6 @@ pub use pipeline::{
 pub use retrieval::{MemoryRetriever, ScoredEntry};
 pub use session_store::SqliteSessionBackend;
 pub use types::{DistilledEntry, MemoryEntry, MemoryType, MergeStrategy, Message, Role, Turn};
-pub use audit::{AuditLog, AuditModelCall, AuditRun, AuditSummary, AuditToolCall};
+pub use audit::{AuditLog, AuditModelCall, AuditRun, AuditSummary, AuditToolCall, FlowSummary, FlowTaskResult};
 pub use decay::{cleanup_decayed, effective_score};
 pub use working::WorkingMemory;

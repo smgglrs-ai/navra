@@ -1643,6 +1643,42 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         dirs
     };
 
+    // Open audit log early so it can be shared with flow tools and audit_query.
+    let audit_db_path = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("smgglrs/audit.db");
+    if let Some(parent) = audit_db_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let audit_sanitizer: Option<smgglrs_memory::ContentSanitizer> = {
+        let sanitizer_pipeline = memory_tools::build_pii_sanitizer(cfg.memory_pii_filter());
+        sanitizer_pipeline.map(|pipeline| -> smgglrs_memory::ContentSanitizer {
+            Arc::new(move |content: &str| {
+                memory_tools::sanitize_for_storage_sync(content, &Some(Arc::clone(&pipeline)))
+            })
+        })
+    };
+    let audit_log: Arc<smgglrs_memory::AuditLog> = match smgglrs_memory::audit::AuditLog::open(&audit_db_path) {
+        Ok(log) => {
+            let log = match audit_sanitizer {
+                Some(sanitizer) => log.with_sanitizer(sanitizer),
+                None => log,
+            };
+            tracing::info!(path = %audit_db_path.display(), "Audit log enabled");
+            Arc::new(log)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to open audit DB, using in-memory");
+            Arc::new(smgglrs_memory::audit::AuditLog::open_memory().unwrap())
+        }
+    };
+    if let Some(days) = cfg.memory_audit_retention_days() {
+        match audit_log.expire_older_than(days) {
+            Ok(n) if n > 0 => tracing::info!(deleted = n, days = days, "Retention: expired old audit entries"),
+            _ => {}
+        }
+    }
+
     // Register flow orchestration tools
     let flow_registry = Arc::new(flow_tools::FlowRegistry::new());
     {
@@ -1660,11 +1696,13 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
         // flow_result — get output from a completed flow or node
         let registry = Arc::clone(&flow_registry);
+        let fr_audit = Arc::clone(&audit_log);
         builder = builder.tool(
             flow_tools::flow_result_tool_def(),
             move |args, _ctx| {
                 let registry = Arc::clone(&registry);
-                Box::pin(flow_tools::handle_flow_result(args, registry))
+                let audit = Arc::clone(&fr_audit);
+                Box::pin(flow_tools::handle_flow_result(args, registry, Some(audit)))
             },
         );
 
@@ -1917,6 +1955,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             }),
             root_payload: Some(root_payload.clone()),
             pii_filter: reasoning_pii_filter.clone(),
+            audit_log: Some(Arc::clone(&audit_log)),
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -2014,6 +2053,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 .or_else(|| cfg.cognitive_core.clone()),
             root_payload: Some(root_payload.clone()),
             pii_filter: reasoning_pii_filter.clone(),
+            audit_log: Some(Arc::clone(&audit_log)),
         });
 
         // flow_start
@@ -2192,48 +2232,8 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         );
     }
 
-    // Register audit_query tool
+    // Register audit_query tool (audit_log was created earlier, reuse it)
     {
-        let audit_db_path = dirs::data_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("smgglrs/audit.db");
-        if let Some(parent) = audit_db_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        // Build a ContentSanitizer closure from the PII filter pipeline
-        // for the audit log (smgglrs-memory uses a callback, not FilterPipeline directly).
-        let audit_sanitizer: Option<smgglrs_memory::ContentSanitizer> = {
-            let sanitizer_pipeline = memory_tools::build_pii_sanitizer(cfg.memory_pii_filter());
-            sanitizer_pipeline.map(|pipeline| -> smgglrs_memory::ContentSanitizer {
-                Arc::new(move |content: &str| {
-                    memory_tools::sanitize_for_storage_sync(content, &Some(Arc::clone(&pipeline)))
-                })
-            })
-        };
-
-        let audit_log = match smgglrs_memory::audit::AuditLog::open(&audit_db_path) {
-            Ok(log) => {
-                let log = match audit_sanitizer {
-                    Some(sanitizer) => log.with_sanitizer(sanitizer),
-                    None => log,
-                };
-                tracing::info!(path = %audit_db_path.display(), "Audit log enabled");
-                Arc::new(log)
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to open audit DB, using in-memory");
-                Arc::new(smgglrs_memory::audit::AuditLog::open_memory().unwrap())
-            }
-        };
-
-        // Audit log retention sweep at startup
-        if let Some(days) = cfg.memory_audit_retention_days() {
-            match audit_log.expire_older_than(days) {
-                Ok(n) if n > 0 => tracing::info!(deleted = n, days = days, "Retention: expired old audit entries"),
-                _ => {}
-            }
-        }
-
         let audit = Arc::clone(&audit_log);
         builder = builder.tool(
             smgglrs_core::protocol::ToolDefinition {
