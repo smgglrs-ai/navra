@@ -14,7 +14,7 @@ tasks:
     specialist: security_sentinel
     model: granite3.3:8b
     mandate: |
-      Use docs_tree to list all files in the project. Return the
+      Use file_tree to list all files in the project. Return the
       complete file list with exact relative paths.
     expected_output: Complete file list with paths
 
@@ -29,7 +29,7 @@ tasks:
       Produce a JSON array of tasks. Each task should:
       - Have a clear id, specialist ("security_sentinel"), and mandate
       - Cover ALL security-relevant files, not just a sample
-      - Tell the specialist which files to read with docs_read
+      - Tell the specialist which files to read with file_read
       - Specify what to look for
 
       Use models_list and personas_list to pick appropriate models
@@ -48,7 +48,7 @@ tasks:
     model: gemma4:26b
     mandate: |
       Merge all specialist findings into a security audit report.
-      Only include findings backed by actual code from docs_read.
+      Only include findings backed by actual code from file_read.
       Discard any claim without a file path and line number.
     depends_on: [planner]
     expected_output: Security audit report with verified findings

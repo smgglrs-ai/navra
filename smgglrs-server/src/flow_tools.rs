@@ -673,11 +673,29 @@ async fn spawn_and_track_tasks(
         if !prompt.is_empty() {
             message.push_str(&format!("\n\n--- Original request ---\n{}\n", prompt));
         }
-        // Inject verified file tree into every task
+        // Inject verified file tree into every task (capped to avoid
+        // exceeding the ~1600 token limit where Ollama's tool_choice
+        // breaks). Planner tasks get the full tree; specialists get
+        // a truncated version.
         if !project_file_tree.is_empty() && !task.generates_tasks {
+            let max_tree_chars = 2000;
+            let tree_slice = if project_file_tree.len() > max_tree_chars {
+                let mut end = max_tree_chars;
+                while end > 0 && !project_file_tree.is_char_boundary(end) {
+                    end -= 1;
+                }
+                // Cut at last newline to avoid partial paths
+                if let Some(nl) = project_file_tree[..end].rfind('\n') {
+                    &project_file_tree[..nl]
+                } else {
+                    &project_file_tree[..end]
+                }
+            } else {
+                &project_file_tree
+            };
             message.push_str(&format!(
-                "\n\n--- Project files (verified) ---\n{}\n\nUse ONLY paths from this list with file_read.",
-                project_file_tree
+                "\n\n--- Project files (verified, use file_tree for full list) ---\n{}\n\nUse file_read to read files. Use file_tree if you need the full listing.",
+                tree_slice
             ));
         }
 

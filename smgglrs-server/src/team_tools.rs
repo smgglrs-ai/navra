@@ -1246,7 +1246,7 @@ pub fn select_model_for_task(
             if needs_reasoning || needs_tools || needs_json {
                 if param_b >= 20.0 { score += 20; }
                 else if param_b >= 12.0 { score += 12; }
-                else { score -= 5; }
+                else { score -= 50; } // ≤10B models can't reliably call tools via Ollama
             } else {
                 if param_b <= 10.0 { score += 8; }
                 else if param_b <= 20.0 { score += 4; }
