@@ -1,0 +1,101 @@
+kind: dag
+name: comprehensive-review
+description: |
+  Full codebase review: scout → planner → specialist swarm → synthesizer.
+  Covers architecture, code quality, security, testing, documentation,
+  performance, and API design. Not security-focused — balanced review.
+
+parameters:
+  target_dir:
+    type: string
+    description: Root directory of the project to review
+
+tasks:
+  - id: scout
+    specialist: principal_engineer
+    model: gemma4:e4b
+    mandate: |
+      Use file_tree to get the project structure. Use file_read to read
+      DESIGN.md and CLAUDE.md. Return:
+      1. Complete file tree
+      2. Architecture summary (crates, layering, key patterns)
+      3. Project stats (file count, crate count)
+    expected_output: File tree, architecture summary, project stats
+
+  - id: planner
+    specialist: analyst
+    model: gemma4:26b
+    generates_tasks: true
+    mandate: |
+      You are a project review planner. Create a balanced review plan
+      covering ALL dimensions of project quality:
+
+      1. ARCHITECTURE — dependency layering, module boundaries, API
+         surface (are the right things public?)
+      2. CODE QUALITY — error handling consistency, naming conventions,
+         unnecessary complexity, dead code
+      3. SECURITY — auth, permissions, IFC, safety filters, PII
+      4. TESTING — coverage gaps, test quality, missing edge cases
+      5. DOCUMENTATION — README accuracy vs code, stale references
+      6. PERFORMANCE — mutex contention, unnecessary allocations,
+         cloning patterns, hot paths
+      7. USABILITY — config ergonomics, error messages, CLI UX
+
+      Produce a JSON array of tasks. CRITICAL CONSTRAINTS:
+
+      1. Each mandate MUST be under 300 words. Be specific: name the
+         crate/directory and what to check. Do NOT list file paths.
+
+      2. Each task: id, specialist, model ("auto"), mandate.
+
+      3. Specialists (all >=12B, can call tools):
+         - principal_engineer: architecture, API surface, layering
+         - software_developer: code quality, performance, patterns
+         - security_sentinel: auth, IFC, safety, permissions
+         - tech_writer: docs accuracy, completeness
+         - assessor: testing coverage, test quality
+
+      4. Scale: 15-25 tasks. One task per crate or concern.
+         GOOD mandate: "Read smgglrs-rag/src/ with file_read.
+         Check chunking logic, vector store operations, and cache
+         TTL handling. Report issues with file:line references."
+
+      5. Every crate must appear in at least one task.
+
+      Output ONLY the JSON array.
+    depends_on: [scout]
+    expected_output: JSON array of 15-25 tasks covering all crates
+
+  - id: synthesize
+    specialist: synthesizer
+    model: gemma4:26b
+    mandate: |
+      Merge ALL specialist findings into a project review report.
+
+      ## Executive Summary
+      3-5 sentence overall assessment.
+
+      ## Architecture
+      Layering, boundaries, API surface findings.
+
+      ## Code Quality
+      Patterns, consistency, complexity findings.
+
+      ## Security
+      Auth, IFC, safety, PII findings.
+
+      ## Testing
+      Coverage gaps, quality issues.
+
+      ## Documentation
+      Accuracy, completeness, staleness.
+
+      ## Performance
+      Hot paths, allocation patterns, contention.
+
+      ## Action Items
+      Prioritized by impact. Include file:line for each.
+
+      Only include findings backed by file content read by specialists.
+    depends_on: [planner]
+    expected_output: Balanced project review with prioritized actions
