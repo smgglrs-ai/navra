@@ -247,6 +247,22 @@ pub(super) async fn handle_write(
         return e;
     }
 
+    // TOCTOU mitigation: verify the path hasn't become a symlink between
+    // resolve and write. If the file exists, check symlink_metadata to
+    // detect symlinks without following them.
+    if path.exists() {
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return CallToolResult::error("Write denied: target is a symlink");
+            }
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "Failed to check symlink status before write");
+                return CallToolResult::error("Write denied: cannot verify path safety");
+            }
+            _ => {}
+        }
+    }
+
     if let Err(e) = std::fs::write(&path, content) {
         return { tracing::warn!(path = %path.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
     }
@@ -325,6 +341,18 @@ pub(super) async fn handle_edit(
     }
 
     let new_content = content.replacen(old_string, new_string, 1);
+
+    // TOCTOU mitigation: verify the path hasn't become a symlink
+    match std::fs::symlink_metadata(&path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return CallToolResult::error("Write denied: target is a symlink");
+        }
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "Failed to check symlink status before write");
+            return CallToolResult::error("Write denied: cannot verify path safety");
+        }
+        _ => {}
+    }
 
     if let Err(e) = std::fs::write(&path, &new_content) {
         return { tracing::warn!(path = %path.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
@@ -464,11 +492,16 @@ pub(super) async fn handle_tree(
     ctx: CallContext,
     state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = args.get("path")
+    let raw_path = match args.get("path")
         .and_then(|v| v.as_str())
         .filter(|p| !p.is_empty() && *p != "." && *p != "./")
         .or(state.default_root.as_deref())
-        .unwrap_or("/");
+    {
+        Some(p) => p,
+        None => return CallToolResult::error(
+            "Missing required parameter: path (no default_root configured)"
+        ),
+    };
 
     let root = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
         Ok(p) => p,

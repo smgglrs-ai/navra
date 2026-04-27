@@ -26,10 +26,24 @@ pub struct OpenShellAuthConfig {
     /// Default permission set when no label matches.
     #[serde(default = "default_permissions")]
     pub default_permissions: String,
+    /// JWKS cache TTL in seconds (default: 60).
+    #[serde(default = "default_jwks_cache_ttl")]
+    pub jwks_cache_ttl_secs: u64,
+    /// HTTP request timeout in seconds for JWKS fetches (default: 5).
+    #[serde(default = "default_http_timeout_secs")]
+    pub http_timeout_secs: u64,
 }
 
 fn default_permissions() -> String {
     "restricted".to_string()
+}
+
+fn default_jwks_cache_ttl() -> u64 {
+    60
+}
+
+fn default_http_timeout_secs() -> u64 {
+    5
 }
 
 /// Verification backend mode.
@@ -40,6 +54,9 @@ pub enum OpenShellAuthMode {
     Spiffe {
         /// Path to SPIRE agent trust bundle PEM.
         trust_bundle_path: PathBuf,
+        /// Expected audience claim (if set, audience validation is enabled).
+        #[serde(default)]
+        audience: Option<String>,
     },
     /// Verify JWT against OIDC provider JWKS endpoint.
     Oidc {
@@ -56,6 +73,9 @@ pub enum OpenShellAuthMode {
     Static {
         /// Path to the gateway's Ed25519 public key PEM.
         public_key_path: PathBuf,
+        /// Expected audience claim (if set, audience validation is enabled).
+        #[serde(default)]
+        audience: Option<String>,
     },
 }
 
@@ -115,9 +135,6 @@ struct JwksCache {
     fetched_at: Instant,
 }
 
-/// JWKS cache TTL (10 minutes).
-const JWKS_CACHE_TTL_SECS: u64 = 600;
-
 /// Authenticator that accepts OpenShell-provided identity tokens.
 pub struct OpenShellAuthenticator {
     config: OpenShellAuthConfig,
@@ -139,6 +156,7 @@ impl OpenShellAuthenticator {
         &self,
         token: &str,
         trust_bundle_path: &PathBuf,
+        audience: Option<&str>,
     ) -> Result<OpenShellClaims, AuthError> {
         let pem_data = std::fs::read(trust_bundle_path).map_err(|e| {
             tracing::error!(path = %trust_bundle_path.display(), error = %e, "Failed to read SPIFFE trust bundle");
@@ -153,8 +171,11 @@ impl OpenShellAuthenticator {
 
         let mut validation = Validation::new(alg);
         validation.validate_exp = true;
-        // SPIFFE JWT-SVIDs may not have an audience
-        validation.validate_aud = false;
+        if let Some(aud) = audience {
+            validation.set_audience(&[aud]);
+        } else {
+            validation.validate_aud = false;
+        }
 
         let token_data = decode::<OpenShellClaims>(token, &key, &validation)
             .map_err(|e| {
@@ -214,6 +235,7 @@ impl OpenShellAuthenticator {
         &self,
         token: &str,
         public_key_path: &PathBuf,
+        audience: Option<&str>,
     ) -> Result<OpenShellClaims, AuthError> {
         let pem_data = std::fs::read(public_key_path).map_err(|e| {
             tracing::error!(path = %public_key_path.display(), error = %e, "Failed to read public key");
@@ -227,7 +249,11 @@ impl OpenShellAuthenticator {
 
         let mut validation = Validation::new(Algorithm::EdDSA);
         validation.validate_exp = true;
-        validation.validate_aud = false;
+        if let Some(aud) = audience {
+            validation.set_audience(&[aud]);
+        } else {
+            validation.validate_aud = false;
+        }
 
         let token_data = decode::<OpenShellClaims>(token, &key, &validation)
             .map_err(|e| {
@@ -250,15 +276,27 @@ impl OpenShellAuthenticator {
 
     /// Get cached JWKS or fetch from the OIDC discovery endpoint.
     fn get_or_fetch_jwks(&self, issuer: &str) -> Result<jwk::JwkSet, AuthError> {
+        let cache_ttl = self.config.jwks_cache_ttl_secs;
+
         // Check cache
         {
-            let cache = self.jwks_cache.read().unwrap_or_else(|e| e.into_inner());
+            let cache = self.jwks_cache.read().unwrap_or_else(|e| {
+                tracing::warn!("JWKS cache RwLock poisoned (read), recovering");
+                e.into_inner()
+            });
             if let Some(ref cached) = *cache {
-                if cached.fetched_at.elapsed().as_secs() < JWKS_CACHE_TTL_SECS {
+                if cached.fetched_at.elapsed().as_secs() < cache_ttl {
                     return Ok(cached.keys.clone());
                 }
             }
         }
+
+        let timeout = std::time::Duration::from_secs(self.config.http_timeout_secs);
+        let agent = ureq::Agent::new_with_config(
+            ureq::config::Config::builder()
+                .timeout_global(Some(timeout))
+                .build(),
+        );
 
         // Fetch JWKS synchronously (blocking context)
         let jwks_url = format!(
@@ -268,7 +306,7 @@ impl OpenShellAuthenticator {
 
         // Use a blocking HTTP client since Authenticator::authenticate is sync
         let oidc_config: serde_json::Value =
-            ureq::get(&jwks_url)
+            agent.get(&jwks_url)
                 .call()
                 .map_err(|e| {
                     tracing::error!(url = %jwks_url, error = %e, "Failed to fetch OIDC config");
@@ -288,7 +326,7 @@ impl OpenShellAuthenticator {
                 AuthError::InvalidToken
             })?;
 
-        let jwks: jwk::JwkSet = ureq::get(jwks_uri)
+        let jwks: jwk::JwkSet = agent.get(jwks_uri)
             .call()
             .map_err(|e| {
                 tracing::error!(url = %jwks_uri, error = %e, "Failed to fetch JWKS");
@@ -303,7 +341,10 @@ impl OpenShellAuthenticator {
 
         // Update cache
         {
-            let mut cache = self.jwks_cache.write().unwrap_or_else(|e| e.into_inner());
+            let mut cache = self.jwks_cache.write().unwrap_or_else(|e| {
+                tracing::warn!("JWKS cache RwLock poisoned (write), recovering");
+                e.into_inner()
+            });
             *cache = Some(JwksCache {
                 keys: jwks.clone(),
                 fetched_at: Instant::now(),
@@ -334,14 +375,14 @@ impl Authenticator for OpenShellAuthenticator {
         }
 
         let claims = match &self.config.mode {
-            OpenShellAuthMode::Spiffe { trust_bundle_path } => {
-                self.verify_spiffe_jwt(token, trust_bundle_path)?
+            OpenShellAuthMode::Spiffe { trust_bundle_path, audience } => {
+                self.verify_spiffe_jwt(token, trust_bundle_path, audience.as_deref())?
             }
             OpenShellAuthMode::Oidc { issuer, audience } => {
                 self.verify_oidc_jwt(token, issuer, audience.as_deref())?
             }
-            OpenShellAuthMode::Static { public_key_path } => {
-                self.verify_static_jwt(token, public_key_path)?
+            OpenShellAuthMode::Static { public_key_path, audience } => {
+                self.verify_static_jwt(token, public_key_path, audience.as_deref())?
             }
             OpenShellAuthMode::Local => {
                 // Local mode extracts identity from SO_PEERCRED,
@@ -498,6 +539,8 @@ mod tests {
             mode,
             label_mapping,
             default_permissions: "restricted".to_string(),
+            jwks_cache_ttl_secs: default_jwks_cache_ttl(),
+            http_timeout_secs: default_http_timeout_secs(),
         }
     }
 
@@ -516,6 +559,7 @@ mod tests {
 
         let config = test_config(OpenShellAuthMode::Static {
             public_key_path: key_path,
+            audience: None,
         });
         let auth = OpenShellAuthenticator::new(config);
 
@@ -589,6 +633,7 @@ mod tests {
 
         let os_config = test_config(OpenShellAuthMode::Static {
             public_key_path: key_path,
+            audience: None,
         });
 
         let chain = ChainAuthenticator::new()
@@ -621,6 +666,7 @@ mod tests {
 
         let config = test_config(OpenShellAuthMode::Static {
             public_key_path: key_path,
+            audience: None,
         });
         let auth = OpenShellAuthenticator::new(config);
 
@@ -646,6 +692,7 @@ mod tests {
 
         let config = test_config(OpenShellAuthMode::Static {
             public_key_path: key_path,
+            audience: None,
         });
         let auth = OpenShellAuthenticator::new(config);
 
@@ -665,6 +712,7 @@ mod tests {
 
         let config = test_config(OpenShellAuthMode::Static {
             public_key_path: key_path,
+            audience: None,
         });
         let auth = OpenShellAuthenticator::new(config);
 
@@ -720,6 +768,7 @@ mod tests {
 
         let config = test_config(OpenShellAuthMode::Static {
             public_key_path: key_path,
+            audience: None,
         });
         let auth = OpenShellAuthenticator::new(config);
 

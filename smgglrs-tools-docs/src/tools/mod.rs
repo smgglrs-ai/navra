@@ -65,7 +65,15 @@ impl DocsModule {
     }
 
     /// Set the default root path for file_tree when no path is specified.
+    /// The path is canonicalized at construction time to prevent traversal attacks.
     pub fn set_default_root(&mut self, path: String) {
+        let canonical = match std::path::Path::new(&path).canonicalize() {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(e) => {
+                tracing::warn!(path = %path, error = %e, "Failed to canonicalize default_root, using as-is");
+                path
+            }
+        };
         // Replace the Arc entirely to avoid Arc::get_mut issues
         let old = &*self.state;
         self.state = Arc::new(DocsState {
@@ -74,7 +82,7 @@ impl DocsModule {
             approvals: old.approvals.clone(),
             notifier: old.notifier.clone(),
             embedding_model: old.embedding_model.clone(),
-            default_root: Some(path),
+            default_root: Some(canonical),
         });
     }
 }

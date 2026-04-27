@@ -112,6 +112,11 @@ fn record_blocking(
     let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let done_clone = done.clone();
 
+    // Pre-allocate a scratch buffer for mono conversion to avoid
+    // per-callback heap allocation. Sized for the largest expected
+    // callback frame (48kHz * 100ms = 4800 samples).
+    let mut scratch = Vec::<f32>::with_capacity(4800);
+
     let stream = device
         .build_input_stream(
             &config.into(),
@@ -120,15 +125,20 @@ fn record_blocking(
                     return;
                 }
 
-                // Convert to mono by averaging channels
-                let mono: Vec<f32> = data
-                    .chunks(channels)
-                    .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-                    .collect();
+                // Convert to mono by averaging channels, reusing
+                // the scratch buffer to avoid per-frame allocation.
+                let mono_len = data.len() / channels;
+                scratch.clear();
+                if scratch.capacity() < mono_len {
+                    scratch.reserve(mono_len - scratch.capacity());
+                }
+                for frame in data.chunks(channels) {
+                    scratch.push(frame.iter().sum::<f32>() / channels as f32);
+                }
 
                 // Simple energy-based VAD
                 let energy: f32 =
-                    mono.iter().map(|s| s * s).sum::<f32>() / mono.len() as f32;
+                    scratch.iter().map(|s| s * s).sum::<f32>() / scratch.len() as f32;
                 let rms = energy.sqrt();
 
                 if rms > vad_threshold {
@@ -137,7 +147,7 @@ fn record_blocking(
                     *last_speech_clone.lock().unwrap() = std::time::Instant::now();
                 }
 
-                samples_clone.lock().unwrap().extend_from_slice(&mono);
+                samples_clone.lock().unwrap().extend_from_slice(&scratch);
             },
             |err| {
                 tracing::error!("Audio input error: {err}");

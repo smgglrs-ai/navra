@@ -86,15 +86,24 @@ pub(super) async fn dispatch(
                     );
                 }
             };
-            let (result, new_session_id) = server.handle_initialize(params, agent);
-            let value = serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                });
-            (
-                JsonRpcResponse::success(id, value),
-                Some(new_session_id),
-            )
+            match server.handle_initialize(params, agent) {
+                Ok((result, new_session_id)) => {
+                    let value = serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    });
+                    (
+                        JsonRpcResponse::success(id, value),
+                        Some(new_session_id),
+                    )
+                }
+                Err(msg) => {
+                    (
+                        JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+                        None,
+                    )
+                }
+            }
         }
 
         "notifications/initialized" => {
