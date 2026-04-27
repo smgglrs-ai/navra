@@ -468,6 +468,62 @@ impl NerFilter {
 
     /// Run NER inference on text and return entity spans.
     fn detect_entities(&self, text: &str) -> Result<Vec<EntitySpan>, NerError> {
+        // BERT models have a max sequence length of 512 tokens.
+        // Longer inputs waste memory (O(n²) attention) and produce
+        // garbage past the training length. For long texts, we scan
+        // in 512-token windows with 64-token overlap to catch entities
+        // that span window boundaries.
+        const MAX_TOKENS: usize = 512;
+        const OVERLAP: usize = 64;
+
+        let full_encoding = self
+            .tokenizer
+            .encode(text, false)
+            .map_err(|e| NerError::Inference(format!("tokenization: {e}")))?;
+
+        let full_ids = full_encoding.get_ids();
+        if full_ids.len() <= MAX_TOKENS {
+            return self.detect_entities_window(text);
+        }
+
+        // Sliding window over long text
+        let full_offsets = full_encoding.get_offsets();
+        let mut all_spans = Vec::new();
+        let mut pos = 0;
+
+        while pos < full_ids.len() {
+            let end = (pos + MAX_TOKENS).min(full_ids.len());
+            let char_start = full_offsets.get(pos).map(|o| o.0).unwrap_or(0);
+            let char_end = full_offsets.get(end.saturating_sub(1)).map(|o| o.1).unwrap_or(text.len());
+
+            // Extract the text window using char offsets
+            let window_start = char_start.min(text.len());
+            let window_end = char_end.min(text.len());
+            if window_start < window_end {
+                if let Ok(mut spans) = self.detect_entities_window(&text[window_start..window_end]) {
+                    // Adjust offsets back to full text coordinates
+                    for span in &mut spans {
+                        span.start += window_start;
+                        span.end += window_start;
+                    }
+                    all_spans.extend(spans);
+                }
+            }
+
+            if end >= full_ids.len() {
+                break;
+            }
+            pos = end - OVERLAP;
+        }
+
+        // Deduplicate overlapping spans (from window overlap)
+        all_spans.sort_by_key(|s| (s.start, s.end));
+        all_spans.dedup_by(|b, a| a.start == b.start && a.end == b.end && a.entity_type == b.entity_type);
+
+        Ok(all_spans)
+    }
+
+    fn detect_entities_window(&self, text: &str) -> Result<Vec<EntitySpan>, NerError> {
         let encoding = self
             .tokenizer
             .encode(text, true)
