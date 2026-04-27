@@ -6,8 +6,8 @@ platform — the Rust replacement for the Python Myelix framework.
 
 ## Current state (2026-04-25)
 
-17 crates, ~68K LoC, ~1044 tests. 43 personas, 36 heuristics,
-7 directives. Gateway blackbox audit. 4 paper outlines. Fully local
+17 crates, ~75K LoC, 1431 tests. 43 personas, 36 heuristics,
+8 directives. Gateway blackbox audit. 4 paper outlines. Fully local
 multi-agent demos. Full PII pipeline (regex + NER + file paths,
 pseudonymization, GDPR tools, IFC integration).
 
