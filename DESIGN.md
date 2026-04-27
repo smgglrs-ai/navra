@@ -307,7 +307,7 @@ tool = "git_commit"
 policy = "approve"
 
 [[permissions.developer.tool_rules]]
-tool = "docs_*"
+tool = "file_*"
 policy = "allow"
 ```
 
