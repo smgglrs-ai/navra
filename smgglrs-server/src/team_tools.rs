@@ -1001,15 +1001,9 @@ pub fn spawn_teammate_agent(
                             .model($backend)
                             .system_prompt(&system_prompt)
                             .max_iterations(max_iterations)
-                            .force_tool_iterations(if generates_tasks { 0 } else { 1 })
+                            .force_tool_iterations(1)
                             .temperature(0.3)
                             .max_tokens(8192);
-                        if generates_tasks {
-                            builder = builder.allowed_tools(vec![
-                                "models_list".to_string(),
-                                "personas_list".to_string(),
-                            ]);
-                        }
                         if let Some(ref filter) = pii_filter {
                             builder = builder.pii_filter(std::sync::Arc::clone(filter));
                         }

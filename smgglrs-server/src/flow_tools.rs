@@ -1385,9 +1385,17 @@ pub async fn handle_flow_escalate(
             break;
         }
 
+        // Throttle: limit concurrent tasks in subflows too
+        let max_parallel = ctx.budget_cfg.max_parallel;
+        let throttled: Vec<&smgglrs_flow::TaskDefinition> = if max_parallel > 0 && ready.len() > max_parallel {
+            ready.into_iter().take(max_parallel).collect()
+        } else {
+            ready
+        };
+
         // Spawn ready tasks as teammates
         let (spawned_ids, _, spawn_failed) = spawn_and_track_tasks(
-            ctx.as_ref(), &team_id, &flow_id, &ready,
+            ctx.as_ref(), &team_id, &flow_id, &throttled,
             &completed, "", "", // no prompt or file tree injection for subflows
         ).await;
         failed.extend(spawn_failed);
