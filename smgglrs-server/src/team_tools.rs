@@ -72,11 +72,11 @@ pub struct TeamBudget {
 impl Default for TeamBudget {
     fn default() -> Self {
         Self {
-            max_depth: 2,
-            max_agents: 10,
-            max_tokens: 500_000,
-            timeout_secs: 600,
-            max_iterations: 50,
+            max_depth: 5,
+            max_agents: 50,
+            max_tokens: 5_000_000,
+            timeout_secs: 1800,
+            max_iterations: 200,
         }
     }
 }
