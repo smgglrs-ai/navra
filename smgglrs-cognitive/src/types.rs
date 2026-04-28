@@ -252,6 +252,24 @@ pub struct Reference {
     pub source: String,
 }
 
+/// A compact skill card for per-turn context injection.
+///
+/// Skill cards are small, focused instruction snippets (80-150 tokens)
+/// loaded from YAML. They are matched against the current task by
+/// keyword overlap and injected into the model's context to help small
+/// models use tools correctly.
+///
+/// Inspired by the "Honey I Shrunk the Coding Agent" paper.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillCard {
+    /// Skill card name (e.g. "file_operations").
+    pub name: String,
+    /// Keywords for matching against task text.
+    pub keywords: Vec<String>,
+    /// Instruction content (80-150 tokens, ~320-600 chars).
+    pub content: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

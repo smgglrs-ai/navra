@@ -7,9 +7,11 @@
 
 mod pipeline;
 mod safety_hook;
+mod tool_guard;
 
 pub use pipeline::HookPipeline;
 pub use safety_hook::SafetyHook;
+pub use tool_guard::ToolGuardHook;
 
 use crate::auth::CallContext;
 use smgglrs_protocol::CallToolResult;

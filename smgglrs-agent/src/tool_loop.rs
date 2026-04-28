@@ -49,6 +49,15 @@ pub struct ToolLoopConfig {
     /// model echoes in its reasoning even after tool results were
     /// redacted.
     pub pii_filter: Option<Arc<FilterPipeline>>,
+    /// Maximum tokens for model reasoning text between tool calls
+    /// (default: 2048). Prevents small models from wasting context
+    /// on verbose explanations. Approximate: chars/4.
+    pub max_reasoning_tokens: Option<usize>,
+    /// Attempt to repair malformed JSON in model tool call arguments
+    /// (default: true). Fixes missing braces, trailing commas,
+    /// unquoted keys, and markdown fences around JSON — common
+    /// failures with small local models.
+    pub repair_malformed_output: bool,
 }
 
 impl Default for ToolLoopConfig {
@@ -63,6 +72,8 @@ impl Default for ToolLoopConfig {
             non_progress_tools: None,
             force_tool_iterations: None,
             pii_filter: None,
+            max_reasoning_tokens: Some(2048),
+            repair_malformed_output: true,
         }
     }
 }
@@ -120,6 +131,101 @@ async fn filter_pii(text: &str, pipeline: &FilterPipeline) -> String {
     }
 }
 
+/// Truncate reasoning text to stay within a token budget.
+///
+/// Approximates token count as chars/4. When text exceeds the limit,
+/// truncates at a word boundary and appends a note directing the model
+/// to continue with action rather than explanation.
+fn truncate_reasoning(text: &str, max_tokens: usize) -> String {
+    let max_chars = max_tokens * 4;
+    if text.len() <= max_chars {
+        return text.to_string();
+    }
+    // Find a word boundary near the limit
+    let mut end = max_chars;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    // Back up to a space if possible
+    if let Some(space) = text[..end].rfind(' ') {
+        end = space;
+    }
+    format!(
+        "{}\n\n[reasoning truncated at {} tokens — continue with action]",
+        &text[..end],
+        max_tokens
+    )
+}
+
+/// Attempt to repair malformed JSON from small model output.
+///
+/// Handles common failures:
+/// - Markdown code fences wrapping JSON
+/// - Trailing commas before closing braces/brackets
+/// - Missing closing braces/brackets
+/// - Unquoted keys (bare identifiers followed by colon)
+pub fn repair_json(input: &str) -> Result<serde_json::Value, String> {
+    // First try parsing as-is
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(input) {
+        return Ok(v);
+    }
+
+    let mut text = input.to_string();
+
+    // Strip markdown code fences
+    if text.contains("```") {
+        let lines: Vec<&str> = text.lines().collect();
+        let mut cleaned = Vec::new();
+        let mut in_fence = false;
+        for line in &lines {
+            let trimmed = line.trim();
+            if trimmed.starts_with("```") {
+                in_fence = !in_fence;
+                continue;
+            }
+            if in_fence || !trimmed.is_empty() {
+                cleaned.push(*line);
+            }
+        }
+        text = cleaned.join("\n");
+        // Try parsing after fence removal
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+            return Ok(v);
+        }
+    }
+
+    // Fix trailing commas: ",}" or ",]"
+    let re_trailing = regex_lite::Regex::new(r",(\s*[}\]])").unwrap();
+    text = re_trailing.replace_all(&text, "$1").to_string();
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+        return Ok(v);
+    }
+
+    // Fix unquoted keys: word: -> "word":
+    let re_unquoted = regex_lite::Regex::new(r"(?m)([{\s,])(\w+)\s*:").unwrap();
+    text = re_unquoted.replace_all(&text, r#"$1"$2":"#).to_string();
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+        return Ok(v);
+    }
+
+    // Fix missing closing braces/brackets
+    let open_braces = text.chars().filter(|c| *c == '{').count();
+    let close_braces = text.chars().filter(|c| *c == '}').count();
+    let open_brackets = text.chars().filter(|c| *c == '[').count();
+    let close_brackets = text.chars().filter(|c| *c == ']').count();
+    for _ in 0..(open_brackets.saturating_sub(close_brackets)) {
+        text.push(']');
+    }
+    for _ in 0..(open_braces.saturating_sub(close_braces)) {
+        text.push('}');
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+        return Ok(v);
+    }
+
+    Err(format!("Could not parse or repair JSON: {}", &input[..input.len().min(200)]))
+}
+
 /// Execute the agentic tool-use loop using Open Responses.
 ///
 /// 1. Discover tools from `client`, convert to [`ResponseTool`]
@@ -172,10 +278,14 @@ pub async fn run_tool_loop(
     }
     input.push(InputItem::user(user_prompt));
 
+    // Collect tool names for hallucinated tool detection
+    let tool_names: Vec<String> = tools.iter().map(|t| t.name.clone()).collect();
+
     let mut total_input = 0u32;
     let mut total_output = 0u32;
     let mut progress_iterations = 0usize;
     let mut empty_retries = 0u8;
+    let mut prev_outputs: Vec<String> = Vec::new();
 
     let mut budget_exhausted = false;
 
@@ -239,6 +349,50 @@ pub async fn run_tool_loop(
             total_output += usage.output_tokens;
         }
 
+        // Bounded reasoning: truncate verbose model text between tool calls
+        // to prevent small models from wasting context on explanation.
+        if let Some(max_tokens) = config.max_reasoning_tokens {
+            if let Some(text) = response.text() {
+                if text.len() > max_tokens * 4 {
+                    let truncated = truncate_reasoning(&text, max_tokens);
+                    tracing::info!(
+                        original_chars = text.len(),
+                        max_tokens = max_tokens,
+                        "Truncated verbose model reasoning"
+                    );
+                    // Replace text in input context so subsequent turns
+                    // don't carry the full verbose reasoning
+                    input.push(InputItem::user(&truncated));
+                }
+            }
+        }
+
+        // Repetition loop detection: if the model produces the same
+        // output 3 times in a row, abort to avoid infinite loops.
+        // The fingerprint uses tool name + arguments (for function
+        // calls) or text content (for messages), ignoring call_ids
+        // which are unique per invocation.
+        let output_fingerprint = response
+            .output
+            .iter()
+            .map(|item| match item {
+                OutputItem::FunctionCall(fc) => format!("fc:{}:{}", fc.name, fc.arguments),
+                OutputItem::Message(msg) => format!("msg:{:?}", msg),
+                _ => format!("other:{item:?}"),
+            })
+            .collect::<Vec<_>>()
+            .join("|");
+        prev_outputs.push(output_fingerprint);
+        if prev_outputs.len() >= 3 {
+            let len = prev_outputs.len();
+            if prev_outputs[len - 1] == prev_outputs[len - 2]
+                && prev_outputs[len - 2] == prev_outputs[len - 3]
+            {
+                return Err(AgentError::Other(anyhow::anyhow!(
+                    "Repetition loop detected: model produced identical output 3 times in a row"
+                )));
+            }
+        }
 
         // Check for function calls in output
         let function_calls: Vec<&FunctionCallItem> = response
@@ -296,6 +450,32 @@ pub async fn run_tool_loop(
 
         // Execute each function call
         for fc in &function_calls {
+            // Hallucinated tool name detection: if the model calls a
+            // tool that doesn't exist, return a helpful error listing
+            // available tools instead of failing opaquely.
+            if !tool_names.contains(&fc.name) {
+                let available = tool_names.join(", ");
+                let error_msg = format!(
+                    "Unknown tool '{}'. Available tools: {}",
+                    fc.name, available
+                );
+                tracing::warn!(tool = %fc.name, "Model hallucinated tool name");
+                input.push(InputItem::FunctionCall(FunctionCallItem {
+                    id: fc.id.clone(),
+                    call_id: fc.call_id.clone(),
+                    name: fc.name.clone(),
+                    arguments: fc.arguments.clone(),
+                    status: Some(ItemStatus::Completed),
+                }));
+                input.push(InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                    id: None,
+                    call_id: fc.call_id.clone(),
+                    output: FunctionCallOutputContent::Text(error_msg),
+                    status: Some(ItemStatus::Completed),
+                }));
+                continue;
+            }
+
             // Add the function call to input (for context)
             input.push(InputItem::FunctionCall(FunctionCallItem {
                 id: fc.id.clone(),
@@ -307,8 +487,30 @@ pub async fn run_tool_loop(
 
             warn_if_sensitive(&fc.arguments);
 
-            let args: serde_json::Value =
-                serde_json::from_str(&fc.arguments).unwrap_or(serde_json::json!({}));
+            // Parse arguments, with optional repair for malformed JSON
+            let args: serde_json::Value = if config.repair_malformed_output {
+                match repair_json(&fc.arguments) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!(
+                            tool = %fc.name,
+                            error = %e,
+                            "Failed to parse or repair tool call arguments"
+                        );
+                        input.push(InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                            id: None,
+                            call_id: fc.call_id.clone(),
+                            output: FunctionCallOutputContent::Text(format!(
+                                "Error: malformed JSON arguments — {e}"
+                            )),
+                            status: Some(ItemStatus::Completed),
+                        }));
+                        continue;
+                    }
+                }
+            } else {
+                serde_json::from_str(&fc.arguments).unwrap_or(serde_json::json!({}))
+            };
 
             tracing::debug!(
                 tool = %fc.name,
@@ -554,9 +756,9 @@ mod tests {
     #[tokio::test]
     async fn max_iterations_forces_synthesis() {
         let model = MockModel::new(vec![
-            tool_call_response("git_status", "{}"),
-            tool_call_response("git_status", "{}"),
-            tool_call_response("git_status", "{}"),
+            tool_call_response("git_status", r#"{"verbose": false}"#),
+            tool_call_response("git_status", r#"{"verbose": true}"#),
+            tool_call_response("git_status", r#"{"branch": "main"}"#),
             stop_response("Partial findings from 3 iterations."),
         ]);
 
@@ -586,9 +788,9 @@ mod tests {
     async fn non_progress_tools_dont_count() {
         // 3 polling rounds (team_status) + 1 progress round (git_status) + stop
         let model = MockModel::new(vec![
-            tool_call_response("team_status", "{}"),
-            tool_call_response("team_status", "{}"),
-            tool_call_response("team_status", "{}"),
+            tool_call_response("team_status", r#"{"poll": 1}"#),
+            tool_call_response("team_status", r#"{"poll": 2}"#),
+            tool_call_response("team_status", r#"{"poll": 3}"#),
             tool_call_response("git_status", "{}"),
             stop_response("Done."),
         ]);
@@ -627,9 +829,9 @@ mod tests {
     async fn non_progress_still_limits_progress_calls() {
         // 2 progress rounds hit max_iterations=2, then synthesis
         let model = MockModel::new(vec![
-            tool_call_response("team_status", "{}"), // non-progress
-            tool_call_response("git_status", "{}"),  // progress #1
-            tool_call_response("git_status", "{}"),  // progress #2 → budget exhausted
+            tool_call_response("team_status", r#"{"poll": 1}"#), // non-progress
+            tool_call_response("git_status", r#"{"verbose": false}"#),  // progress #1
+            tool_call_response("git_status", r#"{"verbose": true}"#),  // progress #2 → budget exhausted
             stop_response("Synthesized from partial work."), // forced synthesis
         ]);
 
@@ -761,5 +963,131 @@ mod tests {
         // The final response text "Status is clean." should pass through fine
         assert_eq!(result.response, "Status is clean.");
         assert_eq!(result.iterations, 1);
+    }
+
+    // --- Bounded reasoning tests ---
+
+    #[test]
+    fn truncate_reasoning_short_text_unchanged() {
+        let text = "Short reasoning.";
+        assert_eq!(truncate_reasoning(text, 2048), text);
+    }
+
+    #[test]
+    fn truncate_reasoning_at_2048_tokens() {
+        // 2048 tokens ~ 8192 chars. Create text longer than that.
+        let text = "word ".repeat(2500); // 12500 chars > 8192
+        let truncated = truncate_reasoning(&text, 2048);
+        assert!(truncated.len() < text.len());
+        assert!(truncated.contains("[reasoning truncated at 2048 tokens"));
+        // Truncated output should be roughly 8192 chars + the note
+        assert!(truncated.len() < 8400);
+    }
+
+    // --- Malformed JSON repair tests ---
+
+    #[test]
+    fn repair_json_valid_passthrough() {
+        let input = r#"{"key": "value"}"#;
+        let result = repair_json(input).unwrap();
+        assert_eq!(result["key"], "value");
+    }
+
+    #[test]
+    fn repair_json_missing_brace() {
+        let input = r#"{"key": "value""#;
+        let result = repair_json(input).unwrap();
+        assert_eq!(result["key"], "value");
+    }
+
+    #[test]
+    fn repair_json_trailing_comma() {
+        let input = r#"{"key": "value",}"#;
+        let result = repair_json(input).unwrap();
+        assert_eq!(result["key"], "value");
+    }
+
+    #[test]
+    fn repair_json_markdown_fences() {
+        let input = "```json\n{\"key\": \"value\"}\n```";
+        let result = repair_json(input).unwrap();
+        assert_eq!(result["key"], "value");
+    }
+
+    #[test]
+    fn repair_json_markdown_fences_no_lang() {
+        let input = "```\n{\"key\": \"value\"}\n```";
+        let result = repair_json(input).unwrap();
+        assert_eq!(result["key"], "value");
+    }
+
+    #[test]
+    fn repair_json_trailing_comma_in_array() {
+        let input = r#"{"items": [1, 2, 3,]}"#;
+        let result = repair_json(input).unwrap();
+        assert_eq!(result["items"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn repair_json_irreparable() {
+        let input = "this is not json at all";
+        assert!(repair_json(input).is_err());
+    }
+
+    // --- Repetition loop detection test ---
+
+    #[tokio::test]
+    async fn repetition_loop_aborts() {
+        // Model produces the exact same tool call 3 times
+        let model = MockModel::new(vec![
+            tool_call_response("git_status", "{}"),
+            tool_call_response("git_status", "{}"),
+            tool_call_response("git_status", "{}"),
+        ]);
+
+        let tool_result = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": false
+            },
+            "id": 4
+        });
+        let mut client =
+            mock_client(vec![tool_result.clone(), tool_result.clone(), tool_result]).await;
+        let config = ToolLoopConfig {
+            max_iterations: 10,
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(&model, &mut client, "loop", &config, "test-run".into()).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Repetition loop"),
+            "Expected repetition loop error, got: {err}"
+        );
+    }
+
+    // --- Hallucinated tool name detection test ---
+
+    #[tokio::test]
+    async fn hallucinated_tool_returns_error_in_context() {
+        // Model calls a tool that doesn't exist, then produces a final answer
+        let model = MockModel::new(vec![
+            tool_call_response("nonexistent_tool", "{}"),
+            stop_response("I used the available tools."),
+        ]);
+        let mut client = mock_client(vec![]).await;
+        let config = ToolLoopConfig::default();
+
+        let result = run_tool_loop(
+            &model, &mut client, "Do something", &config, "test-run".into(),
+        )
+        .await
+        .unwrap();
+        // The model should have received the error about the unknown tool
+        // and produced a final response
+        assert_eq!(result.response, "I used the available tools.");
     }
 }

@@ -1,0 +1,7 @@
+name: security_audit
+keywords: [security, auth, permission, vulnerability, CVE, injection, audit]
+content: |
+  Check for: hardcoded secrets, SQL injection, path traversal,
+  timing attacks, missing input validation. Use file_grep to
+  search for patterns. Report with file:line references.
+  Read DESIGN.md first for the security model.

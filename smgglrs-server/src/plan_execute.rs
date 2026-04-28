@@ -9,7 +9,42 @@ use smgglrs_core::protocol::{CallToolParams, CallToolResult, Content, ToolDefini
 use smgglrs_core::McpServer;
 use std::collections::HashMap;
 
-/// A single step in a YAML plan.
+/// Error handling strategy for a step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OnError {
+    /// Stop plan execution on failure (default).
+    Stop,
+    /// Skip the failed step and continue.
+    Continue,
+    /// Use a default value and mark the step as successful.
+    Default,
+}
+
+impl Default for OnError {
+    fn default() -> Self {
+        OnError::Stop
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for OnError {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "stop" => Ok(OnError::Stop),
+            "continue" => Ok(OnError::Continue),
+            "default" => Ok(OnError::Default),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown on_error value: '{}' (expected stop, continue, default)",
+                other
+            ))),
+        }
+    }
+}
+
+/// A single tool-call step in a YAML plan.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct PlanStep {
     pub tool: String,
@@ -19,12 +54,56 @@ pub struct PlanStep {
     /// Conditional execution: a template expression like "{{prev.success}}".
     /// Step is skipped when the expression resolves to a falsy value.
     pub when: Option<String>,
+    /// Error handling strategy: "stop" (default), "continue", or "default".
+    pub on_error: Option<OnError>,
+    /// Default value to use when on_error is "default" and the step fails.
+    pub default_value: Option<String>,
+}
+
+/// A for_each iteration step that loops over a list.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ForEachStep {
+    /// Variable reference or literal to iterate over.
+    pub for_each: String,
+    /// Delimiter to split the value into items (default: newline).
+    #[serde(default = "default_split_by")]
+    pub split_by: String,
+    /// Optional substring filter — only items containing this string are kept.
+    pub filter: Option<String>,
+    /// Variable name bound to each item during iteration.
+    #[serde(rename = "as")]
+    pub as_var: String,
+    /// Nested steps to execute per item.
+    pub steps: Vec<YamlStep>,
+    /// Maximum number of iterations (default: 50).
+    #[serde(default = "default_max_items")]
+    pub max_items: usize,
+    /// Save aggregate results under this name.
+    pub save_as: Option<String>,
+    /// Conditional execution.
+    pub when: Option<String>,
+}
+
+fn default_split_by() -> String {
+    "\n".to_string()
+}
+
+fn default_max_items() -> usize {
+    50
+}
+
+/// A step in a YAML plan — either a tool call or a for_each loop.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(untagged)]
+pub enum YamlStep {
+    ForEach(ForEachStep),
+    Tool(PlanStep),
 }
 
 /// A parsed YAML plan.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct YamlPlan {
-    pub steps: Vec<PlanStep>,
+    pub steps: Vec<YamlStep>,
 }
 
 /// Result of a single step execution.
@@ -184,85 +263,330 @@ pub async fn execute_yaml_plan(
     // Collect known tool names for validation
     let known_tools = server.handle_list_tools(&ctx.agent);
 
-    for (i, step) in plan.steps.iter().enumerate() {
-        let step_name = step
-            .save_as
-            .clone()
-            .unwrap_or_else(|| format!("step_{}", i));
-
-        // Validate tool name
-        if !known_tools.tools.iter().any(|t| t.name == step.tool) {
-            let sr = StepResult {
-                step: Some(step_name.clone()),
-                tool: step.tool.clone(),
-                result: format!("Unknown tool: {}", step.tool),
-                success: false,
-            };
-            results.push(sr.clone());
-            vars.insert(step_name, sr);
-            if stop_on_error {
-                break;
-            }
-            continue;
-        }
-
-        // Evaluate conditional
-        if let Some(ref when) = step.when {
-            if !evaluate_when(when, &vars) {
-                let sr = StepResult {
-                    step: Some(step_name.clone()),
-                    tool: step.tool.clone(),
-                    result: "Skipped (condition not met)".to_string(),
-                    success: true,
-                };
-                results.push(sr.clone());
-                vars.insert(step_name, sr);
-                continue;
-            }
-        }
-
-        // Resolve variable references in arguments
-        let resolved_args = if step.args.is_null() {
-            serde_json::json!({})
-        } else {
-            substitute_vars(&step.args, &vars)
-        };
-
-        // Build CallToolParams
-        let params = CallToolParams {
-            name: step.tool.clone(),
-            arguments: resolved_args,
-        };
-
-        // Call the tool through the server's dispatch
-        let result = server.handle_call_tool(params, ctx.clone()).await;
-
-        // Extract text from result content
-        let result_text: String = result
-            .content
-            .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-            })
-            .collect::<Vec<_>>()
-            .join("");
-
-        let sr = StepResult {
-            step: Some(step_name.clone()),
-            tool: step.tool.clone(),
-            result: result_text,
-            success: !result.is_error,
-        };
-
-        results.push(sr.clone());
-        vars.insert(step_name, sr.clone());
-
-        if !sr.success && stop_on_error {
+    let mut should_stop = false;
+    for (i, yaml_step) in plan.steps.iter().enumerate() {
+        if should_stop {
             break;
         }
+        execute_step(
+            yaml_step,
+            i,
+            server,
+            ctx,
+            stop_on_error,
+            &known_tools.tools,
+            &mut vars,
+            &mut results,
+            &mut should_stop,
+        )
+        .await;
     }
 
     results
+}
+
+/// Execute a single step (tool call or for_each), appending to results/vars.
+fn execute_step<'a>(
+    yaml_step: &'a YamlStep,
+    index: usize,
+    server: &'a McpServer,
+    ctx: &'a CallContext,
+    stop_on_error: bool,
+    known_tools: &'a [ToolDefinition],
+    vars: &'a mut HashMap<String, StepResult>,
+    results: &'a mut Vec<StepResult>,
+    should_stop: &'a mut bool,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        match yaml_step {
+            YamlStep::Tool(step) => {
+                execute_tool_step(
+                    step,
+                    index,
+                    server,
+                    ctx,
+                    stop_on_error,
+                    known_tools,
+                    vars,
+                    results,
+                    should_stop,
+                )
+                .await;
+            }
+            YamlStep::ForEach(fe) => {
+                execute_for_each_step(
+                    fe,
+                    index,
+                    server,
+                    ctx,
+                    stop_on_error,
+                    known_tools,
+                    vars,
+                    results,
+                    should_stop,
+                )
+                .await;
+            }
+        }
+    })
+}
+
+/// Execute a single tool-call step.
+async fn execute_tool_step(
+    step: &PlanStep,
+    index: usize,
+    server: &McpServer,
+    ctx: &CallContext,
+    stop_on_error: bool,
+    known_tools: &[ToolDefinition],
+    vars: &mut HashMap<String, StepResult>,
+    results: &mut Vec<StepResult>,
+    should_stop: &mut bool,
+) {
+    let step_name = step
+        .save_as
+        .clone()
+        .unwrap_or_else(|| format!("step_{}", index));
+
+    let on_error = step.on_error.as_ref().cloned().unwrap_or_default();
+
+    // Validate tool name
+    if !known_tools.iter().any(|t| t.name == step.tool) {
+        let error_msg = format!("Unknown tool: {}", step.tool);
+        let sr = apply_on_error(&step_name, &step.tool, &error_msg, &on_error, &step.default_value);
+        results.push(sr.clone());
+        vars.insert(step_name, sr.clone());
+        let should_halt = if step.on_error.is_some() {
+            !sr.success && on_error == OnError::Stop
+        } else {
+            !sr.success && stop_on_error
+        };
+        if should_halt {
+            *should_stop = true;
+        }
+        return;
+    }
+
+    // Evaluate conditional
+    if let Some(ref when) = step.when {
+        if !evaluate_when(when, vars) {
+            let sr = StepResult {
+                step: Some(step_name.clone()),
+                tool: step.tool.clone(),
+                result: "Skipped (condition not met)".to_string(),
+                success: true,
+            };
+            results.push(sr.clone());
+            vars.insert(step_name, sr);
+            return;
+        }
+    }
+
+    // Resolve variable references in arguments
+    let resolved_args = if step.args.is_null() {
+        serde_json::json!({})
+    } else {
+        substitute_vars(&step.args, vars)
+    };
+
+    // Build CallToolParams
+    let params = CallToolParams {
+        name: step.tool.clone(),
+        arguments: resolved_args,
+    };
+
+    // Call the tool through the server's dispatch
+    let result = server.handle_call_tool(params, ctx.clone()).await;
+
+    // Extract text from result content
+    let result_text: String = result
+        .content
+        .iter()
+        .map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    let sr = if result.is_error {
+        apply_on_error(&step_name, &step.tool, &result_text, &on_error, &step.default_value)
+    } else {
+        StepResult {
+            step: Some(step_name.clone()),
+            tool: step.tool.clone(),
+            result: result_text,
+            success: true,
+        }
+    };
+
+    results.push(sr.clone());
+    vars.insert(step_name, sr.clone());
+
+    // Per-step on_error overrides global stop_on_error.
+    // If on_error is explicitly set on the step, it takes precedence.
+    let should_halt = if step.on_error.is_some() {
+        !sr.success && on_error == OnError::Stop
+    } else {
+        !sr.success && stop_on_error
+    };
+    if should_halt {
+        *should_stop = true;
+    }
+}
+
+/// Apply on_error strategy to a failed step.
+fn apply_on_error(
+    step_name: &str,
+    tool: &str,
+    error_msg: &str,
+    on_error: &OnError,
+    default_value: &Option<String>,
+) -> StepResult {
+    match on_error {
+        OnError::Stop => StepResult {
+            step: Some(step_name.to_string()),
+            tool: tool.to_string(),
+            result: error_msg.to_string(),
+            success: false,
+        },
+        OnError::Continue => StepResult {
+            step: Some(step_name.to_string()),
+            tool: tool.to_string(),
+            result: format!("Error (continued): {}", error_msg),
+            success: false,
+        },
+        OnError::Default => StepResult {
+            step: Some(step_name.to_string()),
+            tool: tool.to_string(),
+            result: default_value.clone().unwrap_or_default(),
+            success: true,
+        },
+    }
+}
+
+/// Execute a for_each iteration step.
+async fn execute_for_each_step(
+    fe: &ForEachStep,
+    index: usize,
+    server: &McpServer,
+    ctx: &CallContext,
+    stop_on_error: bool,
+    known_tools: &[ToolDefinition],
+    vars: &mut HashMap<String, StepResult>,
+    results: &mut Vec<StepResult>,
+    should_stop: &mut bool,
+) {
+    let fe_name = fe
+        .save_as
+        .clone()
+        .unwrap_or_else(|| format!("for_each_{}", index));
+
+    // Evaluate conditional
+    if let Some(ref when) = fe.when {
+        if !evaluate_when(when, vars) {
+            let sr = StepResult {
+                step: Some(fe_name.clone()),
+                tool: "for_each".to_string(),
+                result: "Skipped (condition not met)".to_string(),
+                success: true,
+            };
+            results.push(sr.clone());
+            vars.insert(fe_name, sr);
+            return;
+        }
+    }
+
+    // Resolve the for_each source value
+    let source = substitute_string(&fe.for_each, vars);
+
+    // Split into items
+    let mut items: Vec<&str> = source.split(&fe.split_by).collect();
+
+    // Apply substring filter
+    if let Some(ref filter) = fe.filter {
+        items.retain(|item| item.contains(filter.as_str()));
+    }
+
+    // Remove empty items
+    items.retain(|item| !item.trim().is_empty());
+
+    // Cap iterations
+    let max = fe.max_items;
+    if items.len() > max {
+        items.truncate(max);
+    }
+
+    let mut iteration_results: Vec<serde_json::Value> = Vec::new();
+
+    for (item_idx, item) in items.iter().enumerate() {
+        if *should_stop {
+            break;
+        }
+
+        // Bind the iteration variable
+        vars.insert(
+            fe.as_var.clone(),
+            StepResult {
+                step: None,
+                tool: "for_each".to_string(),
+                result: item.to_string(),
+                success: true,
+            },
+        );
+
+        let mut iter_step_results: Vec<StepResult> = Vec::new();
+
+        for (sub_idx, sub_step) in fe.steps.iter().enumerate() {
+            if *should_stop {
+                break;
+            }
+            let sub_index = index * 1000 + item_idx * 100 + sub_idx;
+            execute_step(
+                sub_step,
+                sub_index,
+                server,
+                ctx,
+                stop_on_error,
+                known_tools,
+                vars,
+                results,
+                should_stop,
+            )
+            .await;
+
+            // Capture last result for this sub-step
+            if let Some(last) = results.last() {
+                iter_step_results.push(last.clone());
+
+                // Create indexed variables: {save_as}_{item_idx}
+                if let Some(ref save_as) = match sub_step {
+                    YamlStep::Tool(s) => s.save_as.clone(),
+                    YamlStep::ForEach(f) => f.save_as.clone(),
+                } {
+                    let indexed_name = format!("{}_{}", save_as, item_idx);
+                    vars.insert(indexed_name, last.clone());
+                }
+            }
+        }
+
+        // Collect this iteration's results
+        let iter_json = serde_json::to_value(&iter_step_results).unwrap_or_default();
+        iteration_results.push(iter_json);
+    }
+
+    // Remove the iteration variable after the loop
+    vars.remove(&fe.as_var);
+
+    // Save aggregate results
+    let aggregate = serde_json::to_string(&iteration_results).unwrap_or_default();
+    let sr = StepResult {
+        step: Some(fe_name.clone()),
+        tool: "for_each".to_string(),
+        result: aggregate,
+        success: !*should_stop,
+    };
+    results.push(sr.clone());
+    vars.insert(fe_name, sr);
 }
 
 // ---------------------------------------------------------------------------
@@ -738,6 +1062,22 @@ pub fn plan_execute_tool_def() -> ToolDefinition {
 mod tests {
     use super::*;
 
+    /// Helper to extract a PlanStep from a YamlStep::Tool variant.
+    fn as_tool(step: &YamlStep) -> &PlanStep {
+        match step {
+            YamlStep::Tool(s) => s,
+            YamlStep::ForEach(_) => panic!("expected Tool step, got ForEach"),
+        }
+    }
+
+    /// Helper to extract a ForEachStep from a YamlStep::ForEach variant.
+    fn as_for_each(step: &YamlStep) -> &ForEachStep {
+        match step {
+            YamlStep::ForEach(f) => f,
+            YamlStep::Tool(_) => panic!("expected ForEach step, got Tool"),
+        }
+    }
+
     #[test]
     fn test_parse_yaml_plan() {
         let yaml = r#"
@@ -751,9 +1091,9 @@ steps:
 "#;
         let plan: YamlPlan = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(plan.steps.len(), 2);
-        assert_eq!(plan.steps[0].tool, "file_tree");
-        assert_eq!(plan.steps[0].save_as, Some("tree".to_string()));
-        assert_eq!(plan.steps[1].tool, "file_read");
+        assert_eq!(as_tool(&plan.steps[0]).tool, "file_tree");
+        assert_eq!(as_tool(&plan.steps[0]).save_as, Some("tree".to_string()));
+        assert_eq!(as_tool(&plan.steps[1]).tool, "file_read");
     }
 
     #[test]
@@ -769,6 +1109,8 @@ steps:
 steps:
   - args: {path: "/project"}
 "#;
+        // With untagged enum, this may parse as a tool step missing required field
+        // or as a for_each step missing required field — either way it should fail
         let result = serde_yaml::from_str::<YamlPlan>(yaml);
         assert!(result.is_err());
     }
@@ -975,7 +1317,7 @@ steps:
 "#;
         let plan: YamlPlan = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(plan.steps.len(), 2);
-        assert_eq!(plan.steps[1].when, Some("{{tree}}".to_string()));
+        assert_eq!(as_tool(&plan.steps[1]).when, Some("{{tree}}".to_string()));
     }
 
     #[tokio::test]
@@ -1378,6 +1720,391 @@ steps:
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].step, Some("tree".to_string()));
         assert_eq!(parsed[1].tool, "file_read");
+    }
+
+    // -----------------------------------------------------------------------
+    // for_each tests
+    // -----------------------------------------------------------------------
+
+    /// Build a test server with an "echo" tool that returns the "msg" field
+    /// as plain text (not JSON-wrapped args).
+    fn build_echo_server() -> smgglrs_core::McpServer {
+        let echo_def = ToolDefinition {
+            name: "echo".to_string(),
+            description: Some("Echo msg field".to_string()),
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+        };
+        smgglrs_core::McpServer::builder()
+            .name("test")
+            .version("0.1")
+            .tool(echo_def, |args, _ctx| {
+                Box::pin(async move {
+                    let msg = args
+                        .get("msg")
+                        .or_else(|| args.get("path"))
+                        .or_else(|| args.get("val"))
+                        .or_else(|| args.get("full_path"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    CallToolResult::text(msg.to_string())
+                })
+            })
+            .build()
+    }
+
+    #[test]
+    fn test_parse_for_each_step() {
+        let yaml = r#"
+steps:
+  - for_each: "{{files}}"
+    as: file
+    steps:
+      - tool: echo
+        args: {path: "{{file}}"}
+        save_as: content
+"#;
+        let plan: YamlPlan = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(plan.steps.len(), 1);
+        let fe = as_for_each(&plan.steps[0]);
+        assert_eq!(fe.for_each, "{{files}}");
+        assert_eq!(fe.as_var, "file");
+        assert_eq!(fe.steps.len(), 1);
+        assert_eq!(fe.max_items, 50); // default
+        assert_eq!(fe.split_by, "\n"); // default
+    }
+
+    #[tokio::test]
+    async fn test_for_each_iterates_over_newline_list() {
+        let server = build_echo_server();
+
+        let plan_yaml = r#"
+steps:
+  - tool: echo
+    args: {msg: "a.rs|b.rs|c.rs"}
+    save_as: files
+  - for_each: "{{files}}"
+    split_by: "|"
+    as: file
+    save_as: loop_result
+    steps:
+      - tool: echo
+        args: {msg: "{{file}}"}
+        save_as: content
+"#;
+        let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx).await;
+        assert!(!result.is_error);
+
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
+        // 1 (echo) + 3 (iterations) + 1 (for_each aggregate) = 5
+        assert_eq!(steps.len(), 5);
+        assert!(steps[1].result.contains("a.rs"));
+        assert!(steps[2].result.contains("b.rs"));
+        assert!(steps[3].result.contains("c.rs"));
+        assert_eq!(steps[4].tool, "for_each");
+    }
+
+    #[tokio::test]
+    async fn test_for_each_with_filter() {
+        let server = build_echo_server();
+
+        let plan_yaml = r#"
+steps:
+  - tool: echo
+    args: {msg: "a.rs|b.py|c.rs|d.txt"}
+    save_as: files
+  - for_each: "{{files}}"
+    split_by: "|"
+    filter: ".rs"
+    as: file
+    save_as: loop_result
+    steps:
+      - tool: echo
+        args: {msg: "{{file}}"}
+        save_as: content
+"#;
+        let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx).await;
+        assert!(!result.is_error);
+
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
+        // 1 (echo) + 2 (only .rs files) + 1 (aggregate) = 4
+        assert_eq!(steps.len(), 4);
+        assert!(steps[1].result.contains("a.rs"));
+        assert!(steps[2].result.contains("c.rs"));
+    }
+
+    #[tokio::test]
+    async fn test_for_each_with_max_items() {
+        let server = build_echo_server();
+
+        let plan_yaml = r#"
+steps:
+  - tool: echo
+    args: {msg: "a|b|c|d|e"}
+    save_as: items
+  - for_each: "{{items}}"
+    split_by: "|"
+    as: item
+    max_items: 2
+    save_as: loop_result
+    steps:
+      - tool: echo
+        args: {msg: "{{item}}"}
+        save_as: out
+"#;
+        let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx).await;
+        assert!(!result.is_error);
+
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
+        // 1 (echo) + 2 (capped at max_items) + 1 (aggregate) = 4
+        assert_eq!(steps.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn test_for_each_nested_variable_references() {
+        let server = build_echo_server();
+
+        let plan_yaml = r#"
+steps:
+  - tool: echo
+    args: {msg: "/root"}
+    save_as: base_dir
+  - tool: echo
+    args: {msg: "foo.rs|bar.rs"}
+    save_as: files
+  - for_each: "{{files}}"
+    split_by: "|"
+    as: file
+    save_as: loop_result
+    steps:
+      - tool: echo
+        args: {full_path: "{{base_dir}}/{{file}}"}
+        save_as: content
+"#;
+        let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx).await;
+        assert!(!result.is_error);
+
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
+        // 2 (echos) + 2 (iterations) + 1 (aggregate) = 5
+        assert_eq!(steps.len(), 5);
+        // base_dir includes IFC taint suffix, but the full path should still contain the parts
+        assert!(steps[2].result.contains("foo.rs"));
+        assert!(steps[3].result.contains("bar.rs"));
+    }
+
+    // -----------------------------------------------------------------------
+    // on_error tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_on_error_continue_skips_failed_step() {
+        let server = smgglrs_core::McpServer::builder()
+            .name("test")
+            .version("0.1")
+            .build();
+
+        let plan_yaml = r#"
+steps:
+  - tool: nonexistent_tool
+    args: {}
+    save_as: r1
+    on_error: continue
+  - tool: also_missing
+    args: {}
+    save_as: r2
+    on_error: continue
+"#;
+        let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx).await;
+
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
+        // Both steps should be present (not stopped)
+        assert_eq!(steps.len(), 2);
+        assert!(!steps[0].success);
+        assert!(steps[0].result.contains("Error (continued)"));
+        assert!(!steps[1].success);
+        assert!(steps[1].result.contains("Error (continued)"));
+    }
+
+    #[tokio::test]
+    async fn test_on_error_default_uses_default_value() {
+        let server = smgglrs_core::McpServer::builder()
+            .name("test")
+            .version("0.1")
+            .build();
+
+        let plan_yaml = r#"
+steps:
+  - tool: nonexistent_tool
+    args: {}
+    save_as: r1
+    on_error: default
+    default_value: "no results"
+"#;
+        let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx).await;
+
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
+        assert_eq!(steps.len(), 1);
+        assert!(steps[0].success); // marked as success
+        assert_eq!(steps[0].result, "no results");
+    }
+
+    #[tokio::test]
+    async fn test_on_error_stop_halts_on_failure() {
+        let echo_def = ToolDefinition {
+            name: "echo".to_string(),
+            description: Some("Echo".to_string()),
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+        };
+        let server = smgglrs_core::McpServer::builder()
+            .name("test")
+            .version("0.1")
+            .tool(echo_def, |args, _ctx| {
+                Box::pin(async move {
+                    CallToolResult::text(serde_json::to_string(&args).unwrap_or_default())
+                })
+            })
+            .build();
+
+        let plan_yaml = r#"
+steps:
+  - tool: nonexistent_tool
+    args: {}
+    save_as: r1
+    on_error: stop
+  - tool: echo
+    args: {msg: "should not run"}
+    save_as: r2
+"#;
+        let args = serde_json::json!({
+            "format": "yaml",
+            "plan": plan_yaml,
+            "stop_on_error": false
+        });
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx).await;
+
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
+        // Even though stop_on_error is false globally, on_error: stop on the step wins
+        assert_eq!(steps.len(), 1);
+        assert!(!steps[0].success);
+    }
+
+    #[tokio::test]
+    async fn test_for_each_with_on_error_continue() {
+        let echo_def = ToolDefinition {
+            name: "echo".to_string(),
+            description: Some("Echo msg".to_string()),
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+        };
+        let fail_def = ToolDefinition {
+            name: "maybe_fail".to_string(),
+            description: Some("Fails on certain input".to_string()),
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+        };
+        let server = smgglrs_core::McpServer::builder()
+            .name("test")
+            .version("0.1")
+            .tool(echo_def, |args, _ctx| {
+                Box::pin(async move {
+                    let msg = args.get("msg").and_then(|v| v.as_str()).unwrap_or("");
+                    CallToolResult::text(msg.to_string())
+                })
+            })
+            .tool(fail_def, |args, _ctx| {
+                Box::pin(async move {
+                    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    if path.contains("bad") {
+                        CallToolResult::error(format!("Cannot read: {}", path))
+                    } else {
+                        CallToolResult::text(format!("content of {}", path))
+                    }
+                })
+            })
+            .build();
+
+        let plan_yaml = r#"
+steps:
+  - tool: echo
+    args: {msg: "good.rs|bad.rs|ok.rs"}
+    save_as: files
+  - for_each: "{{files}}"
+    split_by: "|"
+    as: file
+    save_as: loop_result
+    steps:
+      - tool: maybe_fail
+        args: {path: "{{file}}"}
+        save_as: content
+        on_error: continue
+"#;
+        let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx).await;
+        assert!(!result.is_error);
+
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
+        // 1 (echo) + 3 (iterations) + 1 (aggregate) = 5
+        assert_eq!(steps.len(), 5);
+        // First iteration succeeds (good.rs)
+        assert!(steps[1].success);
+        // Second iteration fails but continues (bad.rs)
+        assert!(!steps[2].success);
+        assert!(steps[2].result.contains("Error (continued)"));
+        // Third iteration succeeds (ok.rs)
+        assert!(steps[3].success);
+        // Aggregate still marked success since we continued
+        assert!(steps[4].success);
     }
 
     /// Helper to create a test CallContext.
