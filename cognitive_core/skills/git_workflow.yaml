@@ -1,0 +1,7 @@
+name: git_workflow
+keywords: [git, commit, branch, diff, merge, status, log, rebase]
+content: |
+  Use git_status first to understand current state. Use git_diff
+  to see changes before committing. Use git_log to check history.
+  Never force-push or reset without explicit user approval.
+  Commit messages should explain why, not what.

@@ -189,6 +189,22 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the per-turn reasoning token cap (default: 2048).
+    /// Prevents small models from wasting context on verbose
+    /// explanations between tool calls.
+    pub fn max_reasoning_tokens(mut self, n: usize) -> Self {
+        self.config.max_reasoning_tokens = Some(n);
+        self
+    }
+
+    /// Enable or disable malformed output repair (default: true).
+    /// When enabled, the tool loop attempts to fix common JSON
+    /// errors in small model tool call arguments.
+    pub fn repair_malformed_output(mut self, enabled: bool) -> Self {
+        self.config.repair_malformed_output = enabled;
+        self
+    }
+
     /// Load a persona from the cognitive core and set system prompt +
     /// output schema automatically.
     ///

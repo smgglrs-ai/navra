@@ -17,3 +17,57 @@ content: |
 
   Each step calls a tool, and save_as captures the result for use in later
   steps via {{variable}} references. This is faster than individual tool calls.
+
+  ## Iteration with for_each
+
+  Use for_each to loop over a list and run nested steps per item:
+
+  steps:
+    - tool: file_tree
+      args: {path: "/project"}
+      save_as: tree
+    - for_each: "{{tree}}"
+      split_by: "\n"
+      filter: ".rs"
+      as: file
+      max_items: 50
+      save_as: results
+      steps:
+        - tool: file_read
+          args: {path: "{{file}}"}
+          save_as: content
+
+  Fields:
+    - for_each: variable reference or literal to iterate over
+    - split_by: delimiter to split the value (default: newline)
+    - filter: optional substring filter on items
+    - as: variable name bound to each item
+    - max_items: cap on iterations (default: 50)
+    - steps: nested steps to execute per item
+    - save_as: saves all iteration results as a JSON array
+
+  Each iteration's save_as creates indexed variables (e.g. content_0,
+  content_1) accessible in later steps.
+
+  ## Error handling with on_error
+
+  Control what happens when a step fails:
+
+  steps:
+    - tool: file_read
+      args: {path: "{{file}}"}
+      save_as: content
+      on_error: continue
+    - tool: file_grep
+      args: {pattern: "TODO"}
+      on_error: default
+      default_value: "no results"
+      save_as: todos
+
+  Values for on_error:
+    - stop: halt plan execution (default)
+    - continue: skip the failed step and proceed
+    - default: use default_value as the result, mark as success
+
+  Per-step on_error overrides the global stop_on_error setting.
+  Combine with for_each to gracefully handle failures in loops.

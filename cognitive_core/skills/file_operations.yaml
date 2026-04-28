@@ -1,0 +1,8 @@
+name: file_operations
+keywords: [read, write, edit, file, directory, path, create, delete]
+content: |
+  Use file_tree to discover files. Use file_read for content.
+  Use file_grep to search across files. Use plan_execute with
+  format:yaml to batch multiple file operations in one turn.
+  Always verify paths exist before reading. Prefer file_edit
+  over file_write when modifying existing files.

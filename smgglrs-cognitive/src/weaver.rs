@@ -264,6 +264,97 @@ fn inject_at_position(
     }
 }
 
+/// Load skill cards from a directory of YAML files.
+///
+/// Each YAML file should deserialize to a [`SkillCard`]. Files that
+/// fail to parse are logged and skipped (graceful degradation).
+pub fn load_skill_cards(dir: &std::path::Path) -> Vec<crate::types::SkillCard> {
+    let mut cards = Vec::new();
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return cards,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("yaml")
+            && path.extension().and_then(|e| e.to_str()) != Some("yml")
+        {
+            continue;
+        }
+        match std::fs::read_to_string(&path) {
+            Ok(content) => match serde_yaml::from_str::<crate::types::SkillCard>(&content) {
+                Ok(card) => cards.push(card),
+                Err(e) => {
+                    tracing::warn!(path = %path.display(), error = %e, "Failed to parse skill card");
+                }
+            },
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "Failed to read skill card");
+            }
+        }
+    }
+    cards
+}
+
+/// Select the top matching skill cards for the given task text.
+///
+/// Matches by counting keyword overlap between the task text
+/// (lowercased) and each card's keywords. Returns up to `max_cards`
+/// cards, capped at `max_tokens` total estimated tokens.
+pub fn select_skill_cards<'a>(
+    cards: &'a [crate::types::SkillCard],
+    task_text: &str,
+    max_cards: usize,
+    max_tokens: u32,
+) -> Vec<&'a crate::types::SkillCard> {
+    let task_lower = task_text.to_lowercase();
+    let task_words: Vec<&str> = task_lower.split_whitespace().collect();
+
+    let mut scored: Vec<(usize, &crate::types::SkillCard)> = cards
+        .iter()
+        .map(|card| {
+            let score = card
+                .keywords
+                .iter()
+                .filter(|kw| {
+                    let kw_lower = kw.to_lowercase();
+                    task_words.iter().any(|tw| tw.contains(&kw_lower))
+                        || task_lower.contains(&kw_lower)
+                })
+                .count();
+            (score, card)
+        })
+        .filter(|(score, _)| *score > 0)
+        .collect();
+
+    scored.sort_by(|a, b| b.0.cmp(&a.0));
+
+    let mut selected = Vec::new();
+    let mut total_tokens = 0u32;
+    for (_, card) in scored.into_iter().take(max_cards) {
+        let card_tokens = budget::estimate_tokens(&card.content);
+        if total_tokens + card_tokens > max_tokens {
+            break;
+        }
+        total_tokens += card_tokens;
+        selected.push(card);
+    }
+    selected
+}
+
+/// Format selected skill cards as a context section for injection.
+pub fn format_skill_cards(cards: &[&crate::types::SkillCard]) -> String {
+    if cards.is_empty() {
+        return String::new();
+    }
+    let mut sections = Vec::new();
+    sections.push("## Skill Cards".to_string());
+    for card in cards {
+        sections.push(format!("### {}\n{}", card.name, card.content));
+    }
+    sections.join("\n\n")
+}
+
 /// Resolve heuristic references to their facet content.
 fn resolve_heuristics(
     forge: &ForgeService,
@@ -622,5 +713,105 @@ facets:
         .unwrap();
 
         assert_eq!(without.cacheable_prefix, with_empty.cacheable_prefix);
+    }
+
+    #[test]
+    fn skill_card_keyword_matching() {
+        let cards = vec![
+            crate::types::SkillCard {
+                name: "file_ops".to_string(),
+                keywords: vec!["read".into(), "write".into(), "file".into()],
+                content: "Use file_read for content.".to_string(),
+            },
+            crate::types::SkillCard {
+                name: "git_workflow".to_string(),
+                keywords: vec!["git".into(), "commit".into(), "branch".into()],
+                content: "Use git_status first.".to_string(),
+            },
+            crate::types::SkillCard {
+                name: "security".to_string(),
+                keywords: vec!["security".into(), "auth".into(), "vulnerability".into()],
+                content: "Check for hardcoded secrets.".to_string(),
+            },
+        ];
+
+        // Task about reading files should match file_ops
+        let selected = select_skill_cards(&cards, "Read the config file", 2, 500);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].name, "file_ops");
+
+        // Task about git should match git_workflow
+        let selected = select_skill_cards(&cards, "Show git status and commit", 2, 500);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].name, "git_workflow");
+
+        // No matching keywords
+        let selected = select_skill_cards(&cards, "Deploy the application", 2, 500);
+        assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn skill_card_injection_under_500_tokens() {
+        let cards = vec![
+            crate::types::SkillCard {
+                name: "card_a".to_string(),
+                keywords: vec!["test".into()],
+                content: "A".repeat(400), // ~114 tokens
+            },
+            crate::types::SkillCard {
+                name: "card_b".to_string(),
+                keywords: vec!["test".into()],
+                content: "B".repeat(400), // ~114 tokens
+            },
+            crate::types::SkillCard {
+                name: "card_c".to_string(),
+                keywords: vec!["test".into()],
+                content: "C".repeat(2000), // ~571 tokens — too large alone
+            },
+        ];
+
+        let selected = select_skill_cards(&cards, "run test suite", 2, 500);
+        // card_a and card_b fit, card_c would bust the budget
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0].name, "card_a");
+        assert_eq!(selected[1].name, "card_b");
+
+        let formatted = format_skill_cards(&selected.iter().copied().collect::<Vec<_>>());
+        let tokens = crate::budget::estimate_tokens(&formatted);
+        assert!(tokens <= 500, "Formatted skill cards exceeded 500 tokens: {tokens}");
+    }
+
+    #[test]
+    fn load_skill_cards_from_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_dir = tmp.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(
+            skills_dir.join("test_card.yaml"),
+            r#"
+name: test_card
+keywords: [test, example]
+content: "Test content for skill card."
+"#,
+        )
+        .unwrap();
+
+        let cards = load_skill_cards(&skills_dir);
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].name, "test_card");
+        assert_eq!(cards[0].keywords, vec!["test", "example"]);
+    }
+
+    #[test]
+    fn load_skill_cards_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cards = load_skill_cards(tmp.path());
+        assert!(cards.is_empty());
+    }
+
+    #[test]
+    fn format_skill_cards_empty() {
+        let formatted = format_skill_cards(&[]);
+        assert!(formatted.is_empty());
     }
 }
