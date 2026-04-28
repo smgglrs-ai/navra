@@ -844,9 +844,12 @@ async fn spawn_and_track_tasks(
             pii_filter: ctx.pii_filter.clone(),
             audit_log: ctx.audit_log.clone(),
         };
+        // Cap per-task iterations: share the budget across tasks,
+        // with a minimum of 10 to allow meaningful work.
+        let per_task_iters = (ctx.budget_cfg.max_iterations / ready.len().max(1)).max(10).min(30);
         let handle = crate::team_tools::spawn_teammate_agent(
             &spawn_ctx, team_id, &task.id, &message,
-            ctx.budget_cfg.max_iterations, ctx.budget_cfg.timeout_secs,
+            per_task_iters, ctx.budget_cfg.timeout_secs,
             task.generates_tasks,
         );
         ctx.team_registry.store_handle(team_id, &task.id, handle);
@@ -1035,7 +1038,7 @@ async fn run_dag_execution(
             &ctx.team_registry, &ctx.flow_registry,
             team_id, flow_id, &spawned_ids,
             &mut completed, &mut failed,
-            1200, // 20 minute timeout
+            3600, // 60 minute timeout for large flows
         ).await {
             Ok(()) => {}
             Err(msg) => {
