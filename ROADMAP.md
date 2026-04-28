@@ -213,9 +213,12 @@ audit/blackbox logs, distillation output, and vector embeddings
 
 ### Remaining
 
-| Item | Detail | Effort |
-|------|--------|--------|
-| Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive; revisit when CI is live |
+| Item | Detail | Effort | Priority |
+|------|--------|--------|----------|
+| **Agent process isolation** | Teammates run in-process; a panic crashes the server. Wire MeshRouter TeammateLocation::Remote into DagExecutor so agents run in separate OpenShell sandboxes via A2A. | 3-5 days | **High** |
+| **TensorRtRuntime backend** | Add TensorRT-LLM as a ModelRuntime backend alongside Direct/Podman/OpenShell. NVFP4 on Blackwell GPUs for max throughput. | 2-3 days | **Medium-High** |
+| **TurboQuant KV cache** | llama.cpp PR #21089 saves 42% memory at 64K context. Track merge, add --cache-type flags to smgglrs-model-runtime Direct backend config. Benchmark: 18.6GB→10.7GB at 64K. | 1 day (config) | **Medium** |
+| Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive | Low |
 
 ---
 
