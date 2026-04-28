@@ -956,23 +956,18 @@ pub async fn handle_flow_start(
     };
     ctx.flow_registry.set_team_id(&flow_id, &team_id);
 
-    // Spawn the DAG execution in a background task
-    let bg_ctx = std::sync::Arc::clone(&ctx);
-    let bg_flow_id = flow_id.clone();
-    let bg_team_id = team_id.clone();
-    let bg_prompt = prompt.clone();
-
-    tokio::spawn(async move {
-        run_dag_execution(
-            &bg_ctx, &bg_flow_id, &bg_team_id, &bg_prompt,
-            dag_config.tasks,
-        ).await;
-    });
-
     tracing::info!(flow_id = %flow_id, name = %dag_config.name, team_id = %team_id, "Flow started");
+
+    // Execute the DAG synchronously — block until all tasks (including
+    // dynamically injected planner tasks and subflows) complete.
+    // This ensures the caller gets the full result, not just "started."
+    let final_output = run_dag_execution(
+        &ctx, &flow_id, &team_id, &prompt,
+        dag_config.tasks,
+    ).await;
+
     CallToolResult::text(format!(
-        "Flow started.\nflow_id: {flow_id}\nteam_id: {team_id}\n\n\
-         Use flow_status to monitor and flow_result to read outputs."
+        "Flow completed.\nflow_id: {flow_id}\n\n{final_output}"
     ))
 }
 
@@ -985,7 +980,7 @@ async fn run_dag_execution(
     team_id: &str,
     prompt: &str,
     mut task_defs: Vec<smgglrs_flow::TaskDefinition>,
-) {
+) -> String {
     let mut completed: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut total = task_defs.len();
@@ -1015,9 +1010,9 @@ async fn run_dag_execution(
             if !remaining.is_empty() {
                 let msg = format!("Flow deadlocked: tasks {:?} blocked by failed dependencies", remaining);
                 tracing::error!(flow_id = %flow_id, "{msg}");
-                ctx.flow_registry.fail(flow_id, msg);
+                ctx.flow_registry.fail(flow_id, msg.clone());
                 let _ = ctx.team_registry.shutdown(team_id);
-                return;
+                return msg;
             }
             break;
         }
@@ -1045,9 +1040,9 @@ async fn run_dag_execution(
             Ok(()) => {}
             Err(msg) => {
                 tracing::warn!(flow_id = %flow_id, "{}", msg);
-                ctx.flow_registry.fail(flow_id, msg);
+                ctx.flow_registry.fail(flow_id, msg.clone());
                 let _ = ctx.team_registry.shutdown(team_id);
-                return;
+                return msg;
             }
         }
 
@@ -1184,7 +1179,7 @@ async fn run_dag_execution(
     );
     final_output.push_str(&summary);
 
-    ctx.flow_registry.complete(flow_id, final_output);
+    ctx.flow_registry.complete(flow_id, final_output.clone());
     let _ = ctx.team_registry.shutdown(team_id);
     tracing::info!(
         flow_id = %flow_id,
@@ -1192,6 +1187,7 @@ async fn run_dag_execution(
         failed = failed.len(),
         "Flow execution finished"
     );
+    final_output
 }
 
 /// Handle flow_escalate tool call.
