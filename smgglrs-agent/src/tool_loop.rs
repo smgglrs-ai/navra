@@ -369,28 +369,34 @@ pub async fn run_tool_loop(
 
         // Repetition loop detection: if the model produces the same
         // output 3 times in a row, abort to avoid infinite loops.
-        // The fingerprint uses tool name + arguments (for function
-        // calls) or text content (for messages), ignoring call_ids
-        // which are unique per invocation.
-        let output_fingerprint = response
-            .output
-            .iter()
-            .map(|item| match item {
-                OutputItem::FunctionCall(fc) => format!("fc:{}:{}", fc.name, fc.arguments),
-                OutputItem::Message(msg) => format!("msg:{:?}", msg),
-                _ => format!("other:{item:?}"),
-            })
-            .collect::<Vec<_>>()
-            .join("|");
-        prev_outputs.push(output_fingerprint);
-        if prev_outputs.len() >= 3 {
-            let len = prev_outputs.len();
-            if prev_outputs[len - 1] == prev_outputs[len - 2]
-                && prev_outputs[len - 2] == prev_outputs[len - 3]
-            {
-                return Err(AgentError::Other(anyhow::anyhow!(
-                    "Repetition loop detected: model produced identical output 3 times in a row"
-                )));
+        // Exclude status-polling tools (flow_status, team_status)
+        // since those are expected to return identical results while
+        // waiting for async work to complete.
+        let is_status_poll = response.output.iter().any(|item| {
+            matches!(item, OutputItem::FunctionCall(fc)
+                if fc.name == "flow_status" || fc.name == "team_status")
+        });
+        if !is_status_poll {
+            let output_fingerprint = response
+                .output
+                .iter()
+                .map(|item| match item {
+                    OutputItem::FunctionCall(fc) => format!("fc:{}:{}", fc.name, fc.arguments),
+                    OutputItem::Message(msg) => format!("msg:{:?}", msg),
+                    _ => format!("other:{item:?}"),
+                })
+                .collect::<Vec<_>>()
+                .join("|");
+            prev_outputs.push(output_fingerprint);
+            if prev_outputs.len() >= 3 {
+                let len = prev_outputs.len();
+                if prev_outputs[len - 1] == prev_outputs[len - 2]
+                    && prev_outputs[len - 2] == prev_outputs[len - 3]
+                {
+                    return Err(AgentError::Other(anyhow::anyhow!(
+                        "Repetition loop detected: model produced identical output 3 times in a row"
+                    )));
+                }
             }
         }
 

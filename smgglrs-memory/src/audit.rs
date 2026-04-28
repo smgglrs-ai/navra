@@ -204,7 +204,7 @@ impl AuditLog {
         let teammates_json = serde_json::to_string(&run.teammates)
             .unwrap_or_else(|_| "[]".to_string());
         db.execute(
-            "INSERT INTO audit_runs (run_id, agent_id, prompt, persona, model, started_at, ended_at, teammates, final_report, exit_reason)
+            "INSERT OR REPLACE INTO audit_runs (run_id, agent_id, prompt, persona, model, started_at, ended_at, teammates, final_report, exit_reason)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 run.run_id,
