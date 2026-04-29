@@ -1285,8 +1285,11 @@ pub fn select_model_for_task(
                 .unwrap_or(0.0);
 
             if needs_reasoning || needs_tools || needs_json {
-                if param_b >= 20.0 { score += 20; }
-                else if param_b >= 12.0 { score += 12; }
+                // Prefer 12-20B for specialist tasks (fits in GPU with
+                // concurrent KV caches). ≥20B is penalized because model
+                // swapping under concurrent load can hang the GPU.
+                if param_b >= 12.0 && param_b <= 20.0 { score += 20; }
+                else if param_b >= 20.0 { score += 5; }
                 else { score -= 50; } // ≤10B models can't reliably call tools via Ollama
             } else {
                 if param_b <= 10.0 { score += 8; }
