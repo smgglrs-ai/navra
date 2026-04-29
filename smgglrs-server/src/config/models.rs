@@ -171,7 +171,7 @@ fn default_budget_timeout() -> u64 {
 }
 
 fn default_budget_max_parallel() -> usize {
-    4
+    2
 }
 
 fn default_budget_max_iterations() -> usize {
