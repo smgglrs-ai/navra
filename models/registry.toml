@@ -1,0 +1,96 @@
+# smgglrs Model Registry
+#
+# Available models for `smgglrs model pull <name>`.
+# Add your own entries or edit existing ones — no recompilation needed.
+#
+# Each [[models]] entry defines a downloadable model with:
+#   name        — short name for CLI use
+#   description — shown in `smgglrs model available`
+#   repo        — HuggingFace repo ID
+#   model_file  — filename to download from the repo
+#   license     — license identifier for user awareness
+#   tokenizer   — optional tokenizer filename
+#   extra_files — optional additional files to download
+#   config      — TOML snippet to add to config.toml after install
+
+# --- Safety & Embedding models (ONNX, in-process) ---
+
+[[models]]
+name = "guardian-hap"
+description = "Granite Guardian HAP 38M — fast safety classifier"
+repo = "KantiArumilli/granite-guardian-hap-38m-onnx"
+model_file = "guardian_model_quantized.onnx"
+license = "Apache-2.0"
+tokenizer = "tokenizer/tokenizer.json"
+config = """
+[models.guardian-hap]
+model_path = "{model_dir}/model.onnx"
+tokenizer_path = "{model_dir}/tokenizer.json"
+task = "classification"
+labels = ["safe", "hap"]
+threshold = 0.5
+"""
+
+[[models]]
+name = "granite-embed"
+description = "Granite Embedding R2 — text embeddings, 768-dim"
+repo = "yasserrmd/granite-embedding-r2-onnx"
+model_file = "model.onnx"
+license = "Apache-2.0"
+tokenizer = "tokenizer.json"
+config = """
+[models.granite-embed]
+model_path = "{model_dir}/model.onnx"
+tokenizer_path = "{model_dir}/tokenizer.json"
+task = "embedding"
+dimensions = 768
+"""
+
+# --- PII NER models (ONNX, in-process) ---
+
+[[models]]
+name = "pii-ner"
+description = "ProtectAI BERT NER — English PII detection (PER, LOC, ORG)"
+repo = "protectai/bert-base-NER-onnx"
+model_file = "model.onnx"
+license = "MIT"
+tokenizer = "tokenizer.json"
+config = """
+# Auto-detected at startup from ~/.local/share/smgglrs/models/pii-ner/
+"""
+
+[[models]]
+name = "pii-ner-multilingual"
+description = "XLM-RoBERTa NER — multilingual PII (FR, DE, ES, IT, PT, NL)"
+repo = "tjruesch/xlm-roberta-base-ner-hrl-onnx"
+model_file = "model.onnx"
+license = "MIT"
+tokenizer = "tokenizer.json"
+extra_files = ["label_map.json"]
+config = """
+# Auto-detected at startup from ~/.local/share/smgglrs/models/pii-ner-multilingual/
+"""
+
+# --- Agent / inference models (GGUF, for llama-server or Ollama) ---
+
+[[models]]
+name = "nemotron-omni"
+description = "Nemotron 3 Nano Omni 30B-A3B — multimodal (vision+audio+text), tool calling, 256K ctx"
+repo = "unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF"
+model_file = "NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-UD-Q4_K_M.gguf"
+license = "NVIDIA-Open-Model"
+extra_files = ["mmproj-F16.gguf"]
+config = """
+# Use with llama-server:
+#   llama-server -m {model_dir}/model.gguf --mmproj {model_dir}/mmproj-F16.gguf
+# 30B total, 3B active (MoE). Fits in ~10GB VRAM quantized.
+# License: NVIDIA Open Model Agreement (commercial OK, not OSI)
+"""
+
+# --- Add your own models below ---
+# [[models]]
+# name = "my-model"
+# description = "My custom model"
+# repo = "username/repo-name"
+# model_file = "model.onnx"
+# license = "Apache-2.0"

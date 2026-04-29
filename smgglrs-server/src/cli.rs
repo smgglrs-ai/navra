@@ -164,49 +164,63 @@ pub(crate) enum TokenAction {
 
 // --- Model management ---
 
-/// A known model in the registry.
-struct KnownModel {
-    /// Short name for CLI use.
-    name: &'static str,
-    /// Description.
-    description: &'static str,
-    /// HuggingFace repo ID.
-    repo: &'static str,
-    /// ONNX model filename within the repo.
-    model_file: &'static str,
-    /// Tokenizer filename (if any).
-    tokenizer_file: Option<&'static str>,
-    /// Config snippet template.
-    config_template: &'static str,
+/// A model entry loaded from models/registry.toml.
+#[derive(Debug, serde::Deserialize)]
+struct RegistryModel {
+    name: String,
+    description: String,
+    repo: String,
+    model_file: String,
+    license: Option<String>,
+    #[serde(default)]
+    tokenizer: Option<String>,
+    #[serde(default)]
+    extra_files: Vec<String>,
+    #[serde(default)]
+    config: Option<String>,
 }
 
-const KNOWN_MODELS: &[KnownModel] = &[
-    KnownModel {
-        name: "guardian-hap",
-        description: "Granite Guardian HAP 38M — fast safety classifier (Apache 2.0)",
-        repo: "KantiArumilli/granite-guardian-hap-38m-onnx",
-        model_file: "guardian_model_quantized.onnx",
-        tokenizer_file: Some("tokenizer/tokenizer.json"),
-        config_template: r#"[models.guardian-hap]
-model_path = "{model_dir}/model.onnx"
-tokenizer_path = "{model_dir}/tokenizer.json"
-task = "classification"
-labels = ["safe", "hap"]
-threshold = 0.5"#,
-    },
-    KnownModel {
-        name: "granite-embed",
-        description: "Granite Embedding R2 — text embeddings, 768-dim (Apache 2.0)",
-        repo: "yasserrmd/granite-embedding-r2-onnx",
-        model_file: "model.onnx",
-        tokenizer_file: Some("tokenizer.json"),
-        config_template: r#"[models.granite-embed]
-model_path = "{model_dir}/model.onnx"
-tokenizer_path = "{model_dir}/tokenizer.json"
-task = "embedding"
-dimensions = 768"#,
-    },
-];
+#[derive(Debug, serde::Deserialize)]
+struct ModelRegistry {
+    models: Vec<RegistryModel>,
+}
+
+/// Load the model registry from TOML files.
+///
+/// Searches in order:
+/// 1. `models/registry.toml` relative to the binary (shipped default)
+/// 2. `~/.config/smgglrs/models.toml` (user additions)
+///
+/// Both files are merged — user entries override defaults by name.
+fn load_model_registry() -> Vec<RegistryModel> {
+    let mut models = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    // Try shipped registry (next to the binary or in the repo)
+    for path in &[
+        std::path::PathBuf::from("models/registry.toml"),
+        dirs::config_dir()
+            .unwrap_or_default()
+            .join("smgglrs/models.toml"),
+    ] {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            match toml::from_str::<ModelRegistry>(&content) {
+                Ok(reg) => {
+                    for m in reg.models {
+                        if seen.insert(m.name.clone()) {
+                            models.push(m);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Warning: failed to parse {}: {e}", path.display());
+                }
+            }
+        }
+    }
+
+    models
+}
 
 /// Get the models directory.
 fn models_dir() -> std::path::PathBuf {
@@ -256,26 +270,37 @@ async fn download_file(url: &str, dest: &std::path::Path) -> anyhow::Result<()> 
 /// Accepts known model names (guardian-hap, granite-embed) for ONNX models,
 /// or any hub URI (ollama://, hf://, oci://, file://) for general models.
 pub(crate) async fn model_pull(name: &str) -> anyhow::Result<()> {
-    // Check if it's a known ONNX model first
-    if let Some(model) = KNOWN_MODELS.iter().find(|m| m.name == name) {
-        let model_dir = models_dir().join(model.name);
+    // Check the model registry first
+    let registry = load_model_registry();
+    if let Some(model) = registry.iter().find(|m| m.name == name) {
+        let model_dir = models_dir().join(&model.name);
         std::fs::create_dir_all(&model_dir)?;
 
+        if let Some(license) = &model.license {
+            println!("License: {license}");
+        }
         println!("Pulling {} ...", model.description);
 
+        // Download main model file
         let model_url = format!(
             "https://huggingface.co/{}/resolve/main/{}",
             model.repo, model.model_file
         );
-        let model_dest = model_dir.join("model.onnx");
-        if model_dest.exists() {
-            println!("  model.onnx already exists, skipping");
+        let dest_name = if model.model_file.ends_with(".gguf") {
+            "model.gguf"
         } else {
-            println!("  Downloading model.onnx ...");
+            "model.onnx"
+        };
+        let model_dest = model_dir.join(dest_name);
+        if model_dest.exists() {
+            println!("  {dest_name} already exists, skipping");
+        } else {
+            println!("  Downloading {dest_name} ...");
             download_file(&model_url, &model_dest).await?;
         }
 
-        if let Some(tok_file) = model.tokenizer_file {
+        // Download tokenizer if specified
+        if let Some(tok_file) = &model.tokenizer {
             let tok_url = format!(
                 "https://huggingface.co/{}/resolve/main/{}",
                 model.repo, tok_file
@@ -289,12 +314,26 @@ pub(crate) async fn model_pull(name: &str) -> anyhow::Result<()> {
             }
         }
 
+        // Download extra files
+        for extra in &model.extra_files {
+            let extra_url = format!(
+                "https://huggingface.co/{}/resolve/main/{}",
+                model.repo, extra
+            );
+            let extra_dest = model_dir.join(extra);
+            if extra_dest.exists() {
+                println!("  {extra} already exists, skipping");
+            } else {
+                println!("  Downloading {extra} ...");
+                download_file(&extra_url, &extra_dest).await?;
+            }
+        }
+
         println!("\nInstalled to: {}", model_dir.display());
-        println!("\nAdd to config.toml:\n");
-        let config_snippet = model
-            .config_template
-            .replace("{model_dir}", &model_dir.to_string_lossy());
-        println!("{config_snippet}");
+        if let Some(config) = &model.config {
+            let snippet = config.replace("{model_dir}", &model_dir.to_string_lossy());
+            println!("\n{snippet}");
+        }
         return Ok(());
     }
 
@@ -557,17 +596,25 @@ pub(crate) fn pii_status() {
 
 /// Show available models for download.
 pub(crate) fn model_available() {
-    println!("Built-in ONNX models:");
-    println!("{:<20} DESCRIPTION", "NAME");
-    println!("{:<20} -----------", "----");
-    for model in KNOWN_MODELS {
-        println!("{:<20} {}", model.name, model.description);
+    let registry = load_model_registry();
+    if registry.is_empty() {
+        println!("No models in registry. Add entries to models/registry.toml");
+        println!("or ~/.config/smgglrs/models.toml");
+    } else {
+        println!("Available models (from models/registry.toml):");
+        println!("{:<25} {:<15} DESCRIPTION", "NAME", "LICENSE");
+        println!("{:<25} {:<15} -----------", "----", "-------");
+        for model in &registry {
+            let license = model.license.as_deref().unwrap_or("?");
+            println!("{:<25} {:<15} {}", model.name, license, model.description);
+        }
     }
-    println!("\nPull a built-in model:  smgglrs model pull <name>");
+    println!("\nPull a registry model:  smgglrs model pull <name>");
     println!("\nYou can also pull any model by URI:");
     println!("  smgglrs model pull ollama://granite3.3:8b");
     println!("  smgglrs model pull hf://ibm-granite/granite-3.3-8b-instruct-GGUF");
     println!("  smgglrs model pull oci://quay.io/myorg/mymodel:latest");
+    println!("\nEdit models/registry.toml to add your own models.");
 }
 
 #[cfg(test)]
