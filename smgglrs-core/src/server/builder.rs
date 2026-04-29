@@ -84,6 +84,20 @@ impl McpServerBuilder {
         self
     }
 
+    /// Register an individual resource with its handler.
+    pub fn resource(
+        mut self,
+        definition: crate::protocol::ResourceDefinition,
+        handler: crate::module::ResourceHandler,
+    ) -> Self {
+        let uri = definition.uri.clone();
+        self.resources.insert(
+            uri,
+            RegisteredResource { definition, handler },
+        );
+        self
+    }
+
     /// Register all tools and prompts from a module.
     ///
     /// Panics if a tool or prompt name conflicts with an already-registered one.

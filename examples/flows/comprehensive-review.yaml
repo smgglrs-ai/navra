@@ -67,35 +67,35 @@ tasks:
     expected_output: JSON array of 15-25 tasks covering all crates
 
   - id: synthesize
-    specialist: synthesizer
+    specialist: summarizer
     model: gemma4:26b
     mandate: |
-      Merge ALL specialist findings into a project review report.
+      You are a report synthesizer. Your job is to read ALL specialist
+      findings and produce a comprehensive report.
+
+      The specialist outputs are available as MCP resources. Read them:
+
+      Step 1: Read the task list from the "flow://" resource to see
+      all completed tasks and their IDs.
+
+      Step 2: For each completed task, read its output from the
+      flow://<flow_id>/task/<task_id> resource. Read EVERY task.
+
+      Step 3: Write a report that covers:
 
       ## Executive Summary
-      3-5 sentence overall assessment.
+      3-5 sentences summarizing the overall findings.
 
-      ## Architecture
-      Layering, boundaries, API surface findings.
-
-      ## Code Quality
-      Patterns, consistency, complexity findings.
-
-      ## Security
-      Auth, IFC, safety, PII findings.
-
-      ## Testing
-      Coverage gaps, quality issues.
-
-      ## Documentation
-      Accuracy, completeness, staleness.
-
-      ## Performance
-      Hot paths, allocation patterns, contention.
+      Then for each specialist area found, create a section with the
+      actual findings. Do not invent a structure — derive it from what
+      the specialists actually reported. Include severity levels,
+      file:line references, and specific code issues where provided.
 
       ## Action Items
-      Prioritized by impact. Include file:line for each.
+      Top 10 most important items across all specialist findings,
+      prioritized by severity.
 
-      Only include findings backed by file content read by specialists.
+      Be thorough. Read every specialist output. The report should
+      be long and detailed — this is the final deliverable.
     depends_on: [planner]
-    expected_output: Balanced project review with prioritized actions
+    expected_output: Comprehensive report synthesized from all specialist findings

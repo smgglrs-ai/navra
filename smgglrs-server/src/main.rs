@@ -2325,6 +2325,82 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         tracing::info!("Registered plan_execute tool");
     }
 
+    // Register flow:// resources backed by audit.db.
+    // Agents can read specialist outputs via resources/read with
+    // URIs like "flow://flow-1/task/sec-auth-audit".
+    {
+        let flow_audit = Arc::clone(&audit_log);
+        builder = builder.resource(
+            smgglrs_core::protocol::ResourceDefinition {
+                uri: "flow://".to_string(),
+                name: "Flow task results".to_string(),
+                description: Some(
+                    "Read flow task outputs. Use flow://list for all flows, \
+                     flow://<flow_id>/tasks for task list, \
+                     flow://<flow_id>/task/<task_id> for a specific output."
+                        .to_string(),
+                ),
+                mime_type: Some("text/plain".to_string()),
+            },
+            std::sync::Arc::new(move |uri: String| {
+                let audit = Arc::clone(&flow_audit);
+                Box::pin(async move {
+                    let text = if uri == "flow://" || uri == "flow://list" {
+                        match audit.list_flows() {
+                            Ok(flows) if !flows.is_empty() => {
+                                flows.iter().map(|f| {
+                                    format!("{}: {} tasks, {}", f.flow_id, f.task_count, f.status)
+                                }).collect::<Vec<_>>().join("\n")
+                            }
+                            _ => "No flows found.".to_string(),
+                        }
+                    } else if let Some(rest) = uri.strip_prefix("flow://") {
+                        let parts: Vec<&str> = rest.splitn(3, '/').collect();
+                        match parts.as_slice() {
+                            [flow_id, "tasks"] | [flow_id] => {
+                                match audit.get_flow_results(flow_id) {
+                                    Ok(results) if !results.is_empty() => {
+                                        results.iter().map(|r| {
+                                            format!("{} ({}): {} [{} chars]",
+                                                r.task_id,
+                                                r.specialist.as_deref().unwrap_or("?"),
+                                                r.status,
+                                                r.output.as_deref().map(|o| o.len()).unwrap_or(0))
+                                        }).collect::<Vec<_>>().join("\n")
+                                    }
+                                    _ => format!("No results for flow {flow_id}"),
+                                }
+                            }
+                            [flow_id, "task", task_id] => {
+                                match audit.get_flow_results(flow_id) {
+                                    Ok(results) => {
+                                        match results.iter().find(|r| r.task_id == *task_id) {
+                                            Some(r) => r.output.clone().unwrap_or_else(|| "(no output)".to_string()),
+                                            None => format!("Task {task_id} not found in flow {flow_id}"),
+                                        }
+                                    }
+                                    Err(e) => format!("Error reading flow {flow_id}: {e}"),
+                                }
+                            }
+                            _ => format!("Invalid flow URI: {uri}. Use flow://list, flow://<id>/tasks, or flow://<id>/task/<task_id>"),
+                        }
+                    } else {
+                        format!("Invalid URI: {uri}")
+                    };
+                    smgglrs_core::protocol::ReadResourceResult {
+                        contents: vec![smgglrs_core::protocol::ResourceContent {
+                            uri,
+                            mime_type: Some("text/plain".to_string()),
+                            text: Some(text),
+                            blob: None,
+                        }],
+                    }
+                })
+            }),
+        );
+        tracing::info!("Registered flow:// resources (backed by audit.db)");
+    }
+
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
     tracing::info!(
