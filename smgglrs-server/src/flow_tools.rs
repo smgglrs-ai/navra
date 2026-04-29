@@ -603,6 +603,16 @@ pub struct FlowContext {
     pub pii_filter: Option<std::sync::Arc<smgglrs_core::safety::FilterPipeline>>,
     /// Audit log for persisting flow task results.
     pub audit_log: Option<std::sync::Arc<smgglrs_memory::AuditLog>>,
+    /// Path to cognitive core directory on the host (for container mounts).
+    pub cognitive_core_path: Option<String>,
+    /// Shared model server endpoint for containerized agents.
+    pub model_server_url: Option<String>,
+    /// Semaphore limiting concurrent GPU-bound agent executions.
+    pub gpu_semaphore: std::sync::Arc<tokio::sync::Semaphore>,
+    /// Whether to use containerized agent execution.
+    pub containerized: bool,
+    /// Container image for agent sandboxes.
+    pub agent_image: String,
 }
 
 /// Record completed/failed task results to the audit log.
@@ -843,6 +853,11 @@ async fn spawn_and_track_tasks(
             root_payload: ctx.root_payload.clone(),
             pii_filter: ctx.pii_filter.clone(),
             audit_log: ctx.audit_log.clone(),
+            cognitive_core_path: ctx.cognitive_core_path.clone(),
+            model_server_url: ctx.model_server_url.clone(),
+            gpu_semaphore: std::sync::Arc::clone(&ctx.gpu_semaphore),
+            containerized: ctx.containerized,
+            agent_image: ctx.agent_image.clone(),
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.
