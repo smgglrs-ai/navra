@@ -144,6 +144,16 @@ pub struct BudgetConfig {
     /// 0 means no limit.
     #[serde(default = "default_budget_max_parallel")]
     pub max_parallel: usize,
+    /// Use containerized agent execution.
+    /// `true` = always, `false` = never, `None` = auto-detect Podman.
+    #[serde(default)]
+    pub containerized: Option<bool>,
+    /// Container image for the shared model server.
+    #[serde(default = "default_model_server_image")]
+    pub model_server_image: String,
+    /// Container image for agent sandboxes.
+    #[serde(default = "default_agent_image")]
+    pub agent_image: String,
 }
 
 impl Default for BudgetConfig {
@@ -154,6 +164,9 @@ impl Default for BudgetConfig {
             timeout_secs: default_budget_timeout(),
             max_iterations: default_budget_max_iterations(),
             max_parallel: default_budget_max_parallel(),
+            containerized: None,
+            model_server_image: default_model_server_image(),
+            agent_image: default_agent_image(),
         }
     }
 }
@@ -176,4 +189,12 @@ fn default_budget_max_parallel() -> usize {
 
 fn default_budget_max_iterations() -> usize {
     200
+}
+
+fn default_model_server_image() -> String {
+    "ghcr.io/ggerganov/llama.cpp:server-cuda".to_string()
+}
+
+fn default_agent_image() -> String {
+    "localhost/smgglrs-agent:latest".to_string()
 }

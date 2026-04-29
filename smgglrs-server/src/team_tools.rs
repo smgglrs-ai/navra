@@ -40,6 +40,8 @@ pub struct Teammate {
     pub task: Option<String>,
     pub output: Option<String>,
     pub created_at: Instant,
+    /// Podman container ID when running in containerized mode.
+    pub container_id: Option<String>,
 }
 
 /// Re-export the composite model card from the hub.
@@ -210,6 +212,7 @@ impl TeamRegistry {
                 task: None,
                 output: None,
                 created_at: Instant::now(),
+                container_id: None,
             },
         );
 
@@ -269,6 +272,15 @@ impl TeamRegistry {
             // Abort any previous handle for this teammate
             if let Some(old) = team.task_handles.insert(teammate.to_string(), handle) {
                 old.abort();
+            }
+        }
+    }
+
+    pub fn set_container_id(&self, team_id: &str, teammate: &str, container_id: String) {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(team) = teams.get_mut(team_id) {
+            if let Some(tm) = team.teammates.get_mut(teammate) {
+                tm.container_id = Some(container_id);
             }
         }
     }
@@ -383,6 +395,23 @@ impl TeamRegistry {
             })
             .collect();
 
+        // Stop any running containers
+        let containers: Vec<String> = team.teammates.values()
+            .filter_map(|tm| tm.container_id.clone())
+            .collect();
+        if !containers.is_empty() {
+            let names = containers.clone();
+            tokio::spawn(async move {
+                for name in names {
+                    tracing::info!(container = %name, "Stopping agent container on shutdown");
+                    let _ = tokio::process::Command::new("podman")
+                        .args(["stop", "-t", "5", &name])
+                        .output()
+                        .await;
+                }
+            });
+        }
+
         let agent_count = team.teammates.len() as u32;
         self.total_agents.fetch_sub(agent_count, Ordering::Relaxed);
 
@@ -391,6 +420,7 @@ impl TeamRegistry {
             "name": team.name,
             "members_removed": team.teammates.keys().collect::<Vec<_>>(),
             "tasks_aborted": aborted,
+            "containers_stopped": containers,
             "tokens_used": team.tokens_used.load(Ordering::Relaxed),
             "blackboard_entries": team.blackboard.len(),
             "duration_secs": team.created_at.elapsed().as_secs(),
@@ -825,6 +855,319 @@ pub struct TeammateSpawnContext {
     pub pii_filter: Option<std::sync::Arc<smgglrs_core::safety::FilterPipeline>>,
     /// Audit log for recording teammate runs.
     pub audit_log: Option<std::sync::Arc<smgglrs_memory::AuditLog>>,
+    /// Path to cognitive core directory on the host (for container mounts).
+    pub cognitive_core_path: Option<String>,
+    /// Shared model server endpoint (e.g. `http://127.0.0.1:PORT/v1`).
+    /// When set, containerized agents use this instead of Ollama.
+    pub model_server_url: Option<String>,
+    /// Semaphore limiting concurrent GPU-bound agent executions.
+    pub gpu_semaphore: std::sync::Arc<tokio::sync::Semaphore>,
+    /// Whether to use containerized agent execution via Podman.
+    pub containerized: bool,
+    /// Container image for agent sandboxes.
+    pub agent_image: String,
+}
+
+/// Check if Podman is available on this system.
+pub fn is_podman_available() -> bool {
+    std::process::Command::new("podman")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Spawn a teammate agent in a Podman container.
+///
+/// The agent binary (`smgglrs-agent`) reads its configuration from
+/// environment variables and communicates with the gateway over HTTP.
+/// The container uses `slirp4netns` networking so it can reach the
+/// host gateway and model server via `10.0.2.2`.
+fn spawn_containerized_agent(
+    ctx: &TeammateSpawnContext,
+    team_id: &str,
+    teammate_id: &str,
+    message: &str,
+    max_iterations: usize,
+    timeout_secs: u64,
+) -> tokio::task::JoinHandle<()> {
+    let reg = std::sync::Arc::clone(&ctx.team_registry);
+    let signer = std::sync::Arc::clone(&ctx.signer);
+    let root_payload = ctx.root_payload.clone();
+    let smgglrs_addr = ctx.smgglrs_addr.clone();
+    let model_server_url = ctx.model_server_url.clone();
+    let agent_image = ctx.agent_image.clone();
+    let gpu_semaphore = std::sync::Arc::clone(&ctx.gpu_semaphore);
+    let cognitive_core_path = ctx.cognitive_core_path.clone();
+    let audit_log = ctx.audit_log.clone();
+    let team_id = team_id.to_string();
+    let teammate_id = teammate_id.to_string();
+    let message = message.to_string();
+
+    tokio::spawn(async move {
+        let deadline = std::time::Duration::from_secs(timeout_secs);
+        let timeout_reg = reg.clone();
+        let timeout_team = team_id.clone();
+        let timeout_task = teammate_id.clone();
+
+        let result = tokio::time::timeout(deadline, async {
+            // Acquire GPU semaphore before running
+            let _permit = gpu_semaphore.acquire().await.unwrap();
+
+            // Build scoped capability token
+            let (tm_ops, tm_tools, tm_persona, teammate_model) = {
+                let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                teams.get(&team_id)
+                    .and_then(|t| t.teammates.get(&teammate_id))
+                    .map(|tm| (
+                        tm.operations.clone(),
+                        tm.tools.clone(),
+                        tm.persona.clone(),
+                        tm.model.clone(),
+                    ))
+                    .unwrap_or_else(|| (
+                        DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                        DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                        None,
+                        "auto".to_string(),
+                    ))
+            };
+
+            let did = format!("did:teammate:{}:{}", team_id, teammate_id);
+            let token = if let Some(ref root) = root_payload {
+                match smgglrs_core::auth::capability::build_delegated_payload(
+                    root, &did, tm_ops, tm_tools, 2, timeout_secs,
+                ) {
+                    Ok(payload) => match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        reg.set_failed(&team_id, &teammate_id, format!("Token delegation error: {e}"));
+                        return;
+                    }
+                }
+            } else {
+                let cap = smgglrs_core::auth::capability::CapabilitySet {
+                    paths: vec!["**".to_string()],
+                    operations: tm_ops,
+                    tools: tm_tools,
+                    credentials: vec![],
+                };
+                let payload = smgglrs_core::auth::capability::build_payload(
+                    signer.did(), &did, cap, 2, timeout_secs,
+                );
+                match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                        return;
+                    }
+                }
+            };
+
+            // Resolve model
+            let mut model = teammate_model;
+            if model == "auto" {
+                if let Some(selected) = select_model_for_task(
+                    &reg.model_cards, tm_persona.as_deref(), &message,
+                ) {
+                    model = selected;
+                } else {
+                    model = "granite3.3:8b".to_string();
+                }
+            }
+
+            // Determine model endpoint: shared model server or host Ollama
+            let model_endpoint = model_server_url.clone()
+                .unwrap_or_else(|| "http://10.0.2.2:11434/v1".to_string());
+
+            // Parse the gateway port from smgglrs_addr (e.g. "127.0.0.1:9315")
+            let gateway_port = smgglrs_addr
+                .rsplit(':')
+                .next()
+                .unwrap_or("9315");
+            let gateway_url = format!("http://10.0.2.2:{gateway_port}/mcp");
+
+            // Replace host addresses with container-visible 10.0.2.2
+            let container_model_ep = model_endpoint
+                .replace("127.0.0.1", "10.0.2.2")
+                .replace("localhost", "10.0.2.2");
+
+            let container_name = format!("smgglrs-agent-{}-{}", team_id, teammate_id);
+
+            eprintln!("  [container] {} → model: {}, image: {}", teammate_id, model, agent_image);
+
+            // Build persona env vars
+            let persona_env: Vec<String> = if let Some(ref name) = tm_persona {
+                vec![
+                    "-e".to_string(), format!("SMGGLRS_PERSONA={name}"),
+                ]
+            } else {
+                vec![]
+            };
+
+            // Mount cognitive core directory if persona is set and path is known
+            let cognitive_mount: Vec<String> = if tm_persona.is_some() {
+                if let Some(ref core_path) = cognitive_core_path {
+                    vec![
+                        "-v".to_string(),
+                        format!("{core_path}:/cognitive_core:ro,Z"),
+                        "-e".to_string(),
+                        "SMGGLRS_COGNITIVE_CORE=/cognitive_core".to_string(),
+                    ]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            };
+
+            let mut cmd = tokio::process::Command::new("podman");
+            cmd.arg("run")
+                .arg("--rm")
+                .arg("--name").arg(&container_name)
+                .arg("--network=slirp4netns:allow_host_loopback=true")
+                .arg("-e").arg(format!("SMGGLRS_ENDPOINT={gateway_url}"))
+                .arg("-e").arg(format!("SMGGLRS_TOKEN={token}"))
+                .arg("-e").arg(format!("SMGGLRS_MODEL_ENDPOINT={container_model_ep}"))
+                .arg("-e").arg(format!("SMGGLRS_MODEL_NAME={model}"))
+                .arg("-e").arg(format!("SMGGLRS_TASK={message}"))
+                .arg("-e").arg(format!("SMGGLRS_MAX_ITERATIONS={max_iterations}"));
+
+            for arg in &persona_env {
+                cmd.arg(arg);
+            }
+            for arg in &cognitive_mount {
+                cmd.arg(arg);
+            }
+
+            cmd.arg(&agent_image);
+
+            // Record container name
+            reg.set_container_id(&team_id, &teammate_id, container_name.clone());
+
+            let output = cmd
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .await;
+
+            match output {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+
+                    if !output.status.success() {
+                        tracing::error!(
+                            team = %team_id, teammate = %teammate_id,
+                            stderr = %stderr,
+                            "Container agent failed"
+                        );
+                        reg.set_failed(&team_id, &teammate_id, format!("Container exited with error: {stderr}"));
+                        return;
+                    }
+
+                    // Parse JSON output from the agent binary
+                    match serde_json::from_str::<serde_json::Value>(&stdout) {
+                        Ok(result) => {
+                            let response = result.get("output")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let iterations = result.get("iterations")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+                            let tokens_in = result.get("tokens_in")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0) as u32;
+                            let tokens_out = result.get("tokens_out")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0) as u32;
+
+                            let total_tokens = tokens_in + tokens_out;
+                            reg.add_tokens(&team_id, total_tokens);
+
+                            tracing::info!(
+                                team = %team_id, teammate = %teammate_id,
+                                iterations = iterations,
+                                tokens = total_tokens,
+                                "Container teammate completed"
+                            );
+
+                            // Audit log
+                            if let Some(ref audit) = audit_log {
+                                let now_ms = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as i64;
+                                let run_id = format!("tm-{team_id}-{teammate_id}");
+                                let run = smgglrs_memory::AuditRun {
+                                    run_id,
+                                    agent_id: teammate_id.clone(),
+                                    prompt: message.clone(),
+                                    persona: tm_persona.clone(),
+                                    model: model.clone(),
+                                    started_at: now_ms - (deadline.as_millis() as i64),
+                                    ended_at: Some(now_ms),
+                                    teammates: vec![],
+                                    final_report: Some(response.clone()),
+                                    exit_reason: Some("completed".to_string()),
+                                };
+                                let _ = audit.begin_run(&run);
+                            }
+
+                            reg.set_output(&team_id, &teammate_id, response);
+                        }
+                        Err(e) => {
+                            // If we can't parse JSON, use raw stdout as output
+                            let raw = stdout.trim().to_string();
+                            if !raw.is_empty() {
+                                tracing::warn!(
+                                    team = %team_id, teammate = %teammate_id,
+                                    error = %e,
+                                    "Could not parse container JSON output, using raw text"
+                                );
+                                reg.set_output(&team_id, &teammate_id, raw);
+                            } else {
+                                reg.set_failed(
+                                    &team_id, &teammate_id,
+                                    format!("Container produced no output. stderr: {stderr}"),
+                                );
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        team = %team_id, teammate = %teammate_id,
+                        error = %e,
+                        "Failed to run container"
+                    );
+                    reg.set_failed(&team_id, &teammate_id, format!("Podman exec error: {e}"));
+                }
+            }
+        }).await;
+
+        if result.is_err() {
+            tracing::warn!(
+                team = %timeout_team, teammate = %timeout_task,
+                "Container teammate timed out after {timeout_secs}s"
+            );
+            // Try to stop the container on timeout
+            let container_name = format!("smgglrs-agent-{}-{}", timeout_team, timeout_task);
+            let _ = tokio::process::Command::new("podman")
+                .args(["stop", "-t", "5", &container_name])
+                .output()
+                .await;
+            timeout_reg.set_failed(&timeout_team, &timeout_task, format!("Timed out after {timeout_secs}s"));
+        }
+    })
 }
 
 /// Spawn a teammate agent in a background task.
@@ -840,6 +1183,15 @@ pub fn spawn_teammate_agent(
     timeout_secs: u64,
     generates_tasks: bool,
 ) -> tokio::task::JoinHandle<()> {
+    // Containerized path: spawn agent in a Podman container
+    if ctx.containerized && is_podman_available() {
+        return spawn_containerized_agent(
+            ctx, team_id, teammate_id, message,
+            max_iterations, timeout_secs,
+        );
+    }
+
+    // In-process path (fallback)
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
     let forge = ctx.forge.clone();

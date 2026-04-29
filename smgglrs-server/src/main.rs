@@ -208,6 +208,117 @@ fn build_perm_engine(cfg: &config::Config) -> PermissionEngine {
     engine
 }
 
+/// Start a shared model server container for containerized agent execution.
+///
+/// Launches a llama-server container via Podman, mounts the first available
+/// GGUF model, and polls `/health` until ready. Returns the endpoint URL
+/// (rewritten for container access via `10.0.2.2`) and the container name.
+async fn start_model_server_container(
+    cfg: &config::Config,
+) -> anyhow::Result<(String, u16, String)> {
+    // Find the first chat/generate model with a resolved GGUF path
+    let hub = smgglrs_model_hub::ModelHub::new().ok();
+    let mut model_path: Option<std::path::PathBuf> = None;
+
+    for (_name, model_cfg) in &cfg.models {
+        if !matches!(model_cfg.task.as_str(), "chat" | "generate") {
+            continue;
+        }
+        if let Some(ref source) = model_cfg.source {
+            if let Some(ref h) = hub {
+                if let Ok(uri) = smgglrs_model_hub::ModelUri::parse(source) {
+                    if let Ok(p) = h.pull(&uri).await {
+                        model_path = Some(p);
+                        break;
+                    }
+                }
+            }
+        } else if let Some(ref path_str) = model_cfg.model_path {
+            let expanded = expand_tilde(path_str);
+            let p = std::path::PathBuf::from(&expanded);
+            if p.exists() {
+                model_path = Some(p);
+                break;
+            }
+        }
+    }
+
+    let gguf_path = model_path.ok_or_else(|| {
+        anyhow::anyhow!("No chat/generate GGUF model found for model server container")
+    })?;
+    let gguf_str = gguf_path.to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid model path"))?;
+
+    // Pick a free port
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let port = listener.local_addr()?.port();
+    drop(listener);
+
+    let container_name = "smgglrs-model-server".to_string();
+    let image = &cfg.budget.model_server_image;
+    let parallel = cfg.budget.max_parallel.max(2);
+
+    tracing::info!(
+        image = %image,
+        model = %gguf_str,
+        port = port,
+        "Starting shared model server container"
+    );
+
+    // Stop any leftover container with the same name
+    let _ = tokio::process::Command::new("podman")
+        .args(["rm", "-f", &container_name])
+        .output()
+        .await;
+
+    let output = tokio::process::Command::new("podman")
+        .arg("run")
+        .arg("-d")
+        .arg("--rm")
+        .arg("--name").arg(&container_name)
+        .arg("--device").arg("nvidia.com/gpu=all")
+        .arg("-v").arg(format!("{gguf_str}:/model/model.gguf:ro,Z"))
+        .arg("-p").arg(format!("127.0.0.1:{port}:8080"))
+        .arg(image)
+        .arg("-m").arg("/model/model.gguf")
+        .arg("-ngl").arg("99")
+        .arg("--parallel").arg(parallel.to_string())
+        .arg("--ctx-size").arg("8192")
+        .arg("--cont-batching")
+        .output()
+        .await
+        .map_err(|e| anyhow::anyhow!("podman run failed: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!("Model server container failed: {stderr}"));
+    }
+
+    // Poll /health until ready (up to 120s)
+    let client = reqwest::Client::new();
+    let health_url = format!("http://127.0.0.1:{port}/health");
+    for attempt in 0..240 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        if let Ok(resp) = client.get(&health_url).send().await {
+            if resp.status().is_success() {
+                tracing::info!(port = port, "Model server container is ready");
+                let endpoint = format!("http://127.0.0.1:{port}/v1");
+                return Ok((endpoint, port, container_name));
+            }
+        }
+        if attempt % 20 == 19 {
+            tracing::info!(attempt = attempt + 1, "Still waiting for model server health...");
+        }
+    }
+
+    // Cleanup on timeout
+    let _ = tokio::process::Command::new("podman")
+        .args(["stop", &container_name])
+        .output()
+        .await;
+    Err(anyhow::anyhow!("Model server did not become healthy within 120s"))
+}
+
 async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
     tracing::info!("Starting smgglrs");
 
@@ -1886,6 +1997,56 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
 
         let team_registry = Arc::new(team_tools::TeamRegistry::new().with_models(model_cards));
 
+        // Containerized agent execution: detect mode and start shared model server
+        let containerized = match cfg.budget.containerized {
+            Some(true) => {
+                if team_tools::is_podman_available() {
+                    true
+                } else {
+                    tracing::warn!("Containerized mode requested but Podman not available, falling back to in-process");
+                    false
+                }
+            }
+            Some(false) => false,
+            None => team_tools::is_podman_available(),
+        };
+
+        let model_server_url: Option<String> = if containerized {
+            match start_model_server_container(&cfg).await {
+                Ok((url, port, name)) => {
+                    tracing::info!(url = %url, container = %name, "Shared model server started");
+                    // Track container for shutdown
+                    running_endpoints.push((
+                        Box::new(smgglrs_model_runtime::podman::PodmanRuntime::new()),
+                        smgglrs_model_runtime::Endpoint {
+                            url: format!("http://127.0.0.1:{port}"),
+                            id: name,
+                            backend: smgglrs_model_runtime::RuntimeBackend::Podman,
+                        },
+                    ));
+                    Some(url)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to start model server container, agents will use Ollama");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let gpu_semaphore = Arc::new(tokio::sync::Semaphore::new(
+            if cfg.budget.max_parallel == 0 { 64 } else { cfg.budget.max_parallel }
+        ));
+
+        if containerized {
+            tracing::info!(
+                agent_image = %cfg.budget.agent_image,
+                model_server = ?model_server_url,
+                "Containerized agent execution enabled"
+            );
+        }
+
         // team_create
         let reg = Arc::clone(&team_registry);
         let tc_budget_cfg = cfg.budget.clone();
@@ -1956,6 +2117,11 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             root_payload: Some(root_payload.clone()),
             pii_filter: reasoning_pii_filter.clone(),
             audit_log: Some(Arc::clone(&audit_log)),
+            cognitive_core_path: cfg.cognitive_core.as_ref().map(|p| expand_tilde(p)),
+            model_server_url: model_server_url.clone(),
+            gpu_semaphore: Arc::clone(&gpu_semaphore),
+            containerized,
+            agent_image: cfg.budget.agent_image.clone(),
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -2054,6 +2220,11 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             root_payload: Some(root_payload.clone()),
             pii_filter: reasoning_pii_filter.clone(),
             audit_log: Some(Arc::clone(&audit_log)),
+            cognitive_core_path: cfg.cognitive_core.as_ref().map(|p| expand_tilde(p)),
+            model_server_url: model_server_url.clone(),
+            gpu_semaphore: Arc::clone(&gpu_semaphore),
+            containerized,
+            agent_image: cfg.budget.agent_image.clone(),
         });
 
         // flow_start

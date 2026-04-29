@@ -1,0 +1,45 @@
+# smgglrs-agent container image
+#
+# Lightweight agent binary for containerized execution.
+# No GPU deps, no model weights, no ONNX — just the agent process
+# that connects back to the smgglrs gateway (MCP) and a shared
+# model server (OpenAI-compatible API).
+#
+# Build:
+#   podman build -f Dockerfile.agent -t smgglrs-agent:latest .
+#
+# Run:
+#   podman run --rm \
+#     --network=slirp4netns:allow_host_loopback=true \
+#     -e SMGGLRS_ENDPOINT=http://10.0.2.2:9400/mcp \
+#     -e SMGGLRS_MODEL_ENDPOINT=http://10.0.2.2:8091/v1 \
+#     -e SMGGLRS_MODEL_NAME=nemotron-omni \
+#     -e SMGGLRS_TASK="Review the project for security issues" \
+#     smgglrs-agent:latest
+
+FROM docker.io/library/rust:1.86-slim-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+# Build only the agent binary — no ONNX, no GPU deps
+RUN cargo build --release --bin smgglrs-agent 2>&1 | tail -5
+
+# --- Runtime stage ---
+FROM docker.io/library/debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/target/release/smgglrs-agent /usr/bin/smgglrs-agent
+
+# Non-root execution
+RUN useradd -r -s /bin/false agent
+USER agent
+
+ENTRYPOINT ["smgglrs-agent"]
