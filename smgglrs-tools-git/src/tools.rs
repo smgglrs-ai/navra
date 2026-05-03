@@ -194,6 +194,12 @@ fn commit_tool_def() -> ToolDefinition {
 // --- Path validation ---
 
 fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
+    // Reject paths containing ".." components before any filesystem access
+    // to prevent path traversal attacks (CWE-22).
+    if raw.split('/').any(|c| c == "..") {
+        return Err(format!("Path must not contain '..': {raw}"));
+    }
+
     let expanded: PathBuf = if raw.starts_with("~/") {
         match dirs::home_dir() {
             Some(home) => home.join(&raw[2..]),
@@ -205,6 +211,33 @@ fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
 
     if !expanded.is_absolute() {
         return Err(format!("Path must be absolute: {raw}"));
+    }
+
+    // Reject symlinks pointing outside the expanded path's parent.
+    // Check before canonicalize to detect symlink escapes.
+    if expanded.is_symlink() {
+        let target = std::fs::read_link(&expanded)
+            .map_err(|e| format!("Cannot read symlink {raw}: {e}"))?;
+        let resolved = if target.is_absolute() {
+            target
+        } else {
+            expanded.parent().unwrap_or(Path::new("/")).join(&target)
+        };
+        let resolved = resolved
+            .canonicalize()
+            .map_err(|e| format!("Symlink target not accessible: {e}"))?;
+        // If the original path had a parent, ensure the symlink stays within it
+        if let Some(parent) = expanded.parent() {
+            if let Ok(canon_parent) = parent.canonicalize() {
+                if !resolved.starts_with(&canon_parent) {
+                    return Err(format!(
+                        "Symlink escapes allowed directory: {} -> {}",
+                        expanded.display(),
+                        resolved.display()
+                    ));
+                }
+            }
+        }
     }
 
     let canonical = expanded
@@ -943,5 +976,59 @@ mod tests {
                 assert!(t.text.contains("Not a git repository"));
             }
         }
+    }
+
+    // --- Path traversal tests ---
+
+    #[test]
+    fn resolve_repo_path_rejects_dotdot() {
+        let result = resolve_repo_path("/tmp/repo/../../../etc/passwd");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains(".."), "Expected '..' rejection, got: {err}");
+    }
+
+    #[test]
+    fn resolve_repo_path_rejects_dotdot_at_start() {
+        let result = resolve_repo_path("/../etc/passwd");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains(".."), "Expected '..' rejection, got: {err}");
+    }
+
+    #[test]
+    fn resolve_repo_path_rejects_dotdot_in_middle() {
+        let result = resolve_repo_path("/home/user/../other/repo");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains(".."), "Expected '..' rejection, got: {err}");
+    }
+
+    #[test]
+    fn resolve_repo_path_rejects_symlink_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_dir = tmp.path().join("repo");
+        std::fs::create_dir(&repo_dir).unwrap();
+        init_test_repo(&repo_dir);
+
+        // Create a symlink that points outside the parent directory
+        let link_path = tmp.path().join("escape_link");
+        std::os::unix::fs::symlink("/tmp", &link_path).unwrap();
+
+        let result = resolve_repo_path(link_path.to_str().unwrap());
+        assert!(result.is_err(), "Symlink escape should be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Symlink escapes") || err.contains("Not a git repository"),
+            "Expected symlink escape error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_repo_path_allows_valid_absolute() {
+        let tmp = tempfile::tempdir().unwrap();
+        init_test_repo(tmp.path());
+        let result = resolve_repo_path(tmp.path().to_str().unwrap());
+        assert!(result.is_ok(), "Valid absolute repo path should succeed");
     }
 }

@@ -303,4 +303,119 @@ mod tests {
         let ready = dag.get_ready_tasks(&HashSet::new());
         assert_eq!(ready.len(), 3);
     }
+
+    // --- Stress tests ---
+
+    #[test]
+    fn stress_linear_chain_1000() {
+        let tasks: Vec<Task> = (0..1000)
+            .map(|i| {
+                if i == 0 {
+                    task(&format!("t{i}"), &[])
+                } else {
+                    task(&format!("t{i}"), &[&format!("t{}", i - 1)])
+                }
+            })
+            .collect();
+
+        let dag = DependencyGraph::new(tasks).unwrap();
+        assert_eq!(dag.len(), 1000);
+
+        // Verify topological order: each task must come after its predecessor
+        let order = dag.topological_order();
+        assert_eq!(order.len(), 1000);
+        for i in 1..1000 {
+            let prev = format!("t{}", i - 1);
+            let curr = format!("t{i}");
+            assert!(
+                order.iter().position(|x| *x == prev)
+                    < order.iter().position(|x| *x == curr),
+                "t{} must come before t{i} in topological order",
+                i - 1
+            );
+        }
+
+        // Only t0 should be initially ready
+        let ready = dag.get_ready_tasks(&HashSet::new());
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].id, "t0");
+
+        // After completing all but the last, only the last should be ready
+        let mut completed: HashSet<String> = (0..999).map(|i| format!("t{i}")).collect();
+        let ready = dag.get_ready_tasks(&completed);
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].id, "t999");
+
+        // After completing all, nothing is ready
+        completed.insert("t999".to_string());
+        let ready = dag.get_ready_tasks(&completed);
+        assert_eq!(ready.len(), 0);
+    }
+
+    #[test]
+    fn stress_diamond_100() {
+        // Fan-out from root to 100 middle nodes, then fan-in to a sink.
+        // root → m0, m1, ..., m99 → sink
+        let mut tasks = vec![task("root", &[])];
+        for i in 0..100 {
+            tasks.push(task(&format!("m{i}"), &["root"]));
+        }
+        let middle_ids: Vec<String> = (0..100).map(|i| format!("m{i}")).collect();
+        let middle_refs: Vec<&str> = middle_ids.iter().map(|s| s.as_str()).collect();
+        tasks.push(task("sink", &middle_refs));
+
+        let dag = DependencyGraph::new(tasks).unwrap();
+        assert_eq!(dag.len(), 102);
+
+        // Initially only root is ready
+        let ready = dag.get_ready_tasks(&HashSet::new());
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].id, "root");
+
+        // After completing root, all 100 middle nodes should be ready
+        let mut completed = HashSet::new();
+        completed.insert("root".to_string());
+        let ready = dag.get_ready_tasks(&completed);
+        assert_eq!(ready.len(), 100);
+        for t in &ready {
+            assert!(t.id.starts_with('m'), "Expected middle node, got {}", t.id);
+        }
+
+        // After completing all middle nodes, only sink is ready
+        for i in 0..100 {
+            completed.insert(format!("m{i}"));
+        }
+        let ready = dag.get_ready_tasks(&completed);
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].id, "sink");
+
+        // Topological order: root before all middle, all middle before sink
+        let order = dag.topological_order();
+        let root_pos = order.iter().position(|x| x == "root").unwrap();
+        let sink_pos = order.iter().position(|x| x == "sink").unwrap();
+        assert_eq!(root_pos, 0);
+        assert_eq!(sink_pos, order.len() - 1);
+    }
+
+    #[test]
+    fn stress_get_ready_performance() {
+        // 500 independent tasks — get_ready_tasks must return all 500.
+        let tasks: Vec<Task> = (0..500)
+            .map(|i| task(&format!("t{i}"), &[]))
+            .collect();
+
+        let dag = DependencyGraph::new(tasks).unwrap();
+        assert_eq!(dag.len(), 500);
+
+        let start = std::time::Instant::now();
+        let ready = dag.get_ready_tasks(&HashSet::new());
+        let elapsed = start.elapsed();
+
+        assert_eq!(ready.len(), 500);
+        assert!(
+            elapsed.as_millis() < 100,
+            "get_ready_tasks took {}ms for 500 independent tasks (expected <100ms)",
+            elapsed.as_millis()
+        );
+    }
 }
