@@ -776,6 +776,7 @@ async fn spawn_and_track_tasks(
     flow_id: &str,
     ready: &[&smgglrs_flow::TaskDefinition],
     completed: &std::collections::HashMap<String, String>,
+    failed: &std::collections::HashSet<String>,
     prompt: &str,
     project_file_tree: &str,
 ) -> (Vec<String>, std::collections::HashMap<String, String>, std::collections::HashSet<String>) {
@@ -806,6 +807,11 @@ async fn spawn_and_track_tasks(
             for dep_id in &task.depends_on {
                 if let Some(output) = completed.get(dep_id) {
                     message.push_str(&format!("\n## {dep_id}\n{output}\n"));
+                } else if failed.contains(dep_id) {
+                    message.push_str(&format!(
+                        "\n## {dep_id}\n[This stage failed — no output available. \
+                         Work with the results you have.]\n"
+                    ));
                 }
             }
         }
@@ -1008,11 +1014,15 @@ async fn run_dag_execution(
     let max_parallel = ctx.budget_cfg.max_parallel;
 
     loop {
-        // Find ready tasks: dependencies satisfied, not yet completed/failed
+        // Find ready tasks: dependencies satisfied (completed or failed),
+        // not yet completed/failed themselves. Failed dependencies count
+        // as satisfied so downstream tasks (especially synthesizers) can
+        // still run with whatever partial results are available, instead
+        // of deadlocking.
         let mut ready: Vec<smgglrs_flow::TaskDefinition> = task_defs.iter()
             .filter(|t| {
                 !completed.contains_key(&t.id) && !failed.contains(&t.id)
-                && t.depends_on.iter().all(|dep| completed.contains_key(dep))
+                && t.depends_on.iter().all(|dep| completed.contains_key(dep) || failed.contains(dep))
             })
             .cloned()
             .collect();
@@ -1026,7 +1036,7 @@ async fn run_dag_execution(
                 .map(|t| t.id.as_str())
                 .collect();
             if !remaining.is_empty() {
-                let msg = format!("Flow deadlocked: tasks {:?} blocked by failed dependencies", remaining);
+                let msg = format!("Flow deadlocked: tasks {:?} blocked by unresolved dependencies", remaining);
                 tracing::error!(flow_id = %flow_id, "{msg}");
                 ctx.flow_registry.fail(flow_id, msg.clone());
                 let _ = ctx.team_registry.shutdown(team_id);
@@ -1044,7 +1054,7 @@ async fn run_dag_execution(
         let ready_refs: Vec<&smgglrs_flow::TaskDefinition> = ready.iter().collect();
         let (spawned_ids, _, spawn_failed) = spawn_and_track_tasks(
             ctx, team_id, flow_id, &ready_refs,
-            &completed, prompt, &project_file_tree,
+            &completed, &failed, prompt, &project_file_tree,
         ).await;
         failed.extend(spawn_failed);
 
@@ -1377,7 +1387,7 @@ pub async fn handle_flow_escalate(
         let ready: Vec<&smgglrs_flow::TaskDefinition> = task_defs.iter()
             .filter(|t| {
                 !completed.contains_key(&t.id) && !failed.contains(&t.id)
-                && t.depends_on.iter().all(|dep| completed.contains_key(dep))
+                && t.depends_on.iter().all(|dep| completed.contains_key(dep) || failed.contains(dep))
             })
             .collect();
 
@@ -1390,7 +1400,7 @@ pub async fn handle_flow_escalate(
                 .map(|t| t.id.as_str())
                 .collect();
             if !remaining.is_empty() {
-                let msg = format!("Subflow deadlocked: tasks {:?} blocked by failed dependencies", remaining);
+                let msg = format!("Subflow deadlocked: tasks {:?} blocked by unresolved dependencies", remaining);
                 tracing::error!(flow_id = %flow_id, "{msg}");
                 ctx.flow_registry.fail(&flow_id, msg.clone());
                 let _ = ctx.team_registry.shutdown(&team_id);
@@ -1410,7 +1420,7 @@ pub async fn handle_flow_escalate(
         // Spawn ready tasks as teammates
         let (spawned_ids, _, spawn_failed) = spawn_and_track_tasks(
             ctx.as_ref(), &team_id, &flow_id, &throttled,
-            &completed, "", "", // no prompt or file tree injection for subflows
+            &completed, &failed, "", "", // no prompt or file tree injection for subflows
         ).await;
         failed.extend(spawn_failed);
 

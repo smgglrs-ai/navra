@@ -368,10 +368,14 @@ pub async fn run_tool_loop(
         }
 
         // Repetition loop detection: if the model produces the same
-        // output 3 times in a row, abort to avoid infinite loops.
+        // output 5 times in a row, abort to avoid infinite loops.
+        // Threshold is 5 (not 3) because legitimate agents may read
+        // the same file multiple times during analysis — 3 was too
+        // aggressive and caused 8/115 agents to abort prematurely.
         // Exclude status-polling tools (flow_status, team_status)
         // since those are expected to return identical results while
         // waiting for async work to complete.
+        const REPETITION_THRESHOLD: usize = 5;
         let is_status_poll = response.output.iter().any(|item| {
             matches!(item, OutputItem::FunctionCall(fc)
                 if fc.name == "flow_status" || fc.name == "team_status")
@@ -388,13 +392,13 @@ pub async fn run_tool_loop(
                 .collect::<Vec<_>>()
                 .join("|");
             prev_outputs.push(output_fingerprint);
-            if prev_outputs.len() >= 3 {
+            if prev_outputs.len() >= REPETITION_THRESHOLD {
                 let len = prev_outputs.len();
-                if prev_outputs[len - 1] == prev_outputs[len - 2]
-                    && prev_outputs[len - 2] == prev_outputs[len - 3]
-                {
+                let tail = &prev_outputs[len - REPETITION_THRESHOLD..];
+                if tail.iter().all(|o| *o == tail[0]) {
                     return Err(AgentError::Other(anyhow::anyhow!(
-                        "Repetition loop detected: model produced identical output 3 times in a row"
+                        "Repetition loop detected: model produced identical output \
+                         {REPETITION_THRESHOLD} times in a row"
                     )));
                 }
             }
@@ -1044,11 +1048,51 @@ mod tests {
 
     #[tokio::test]
     async fn repetition_loop_aborts() {
-        // Model produces the exact same tool call 3 times
+        // Model produces the exact same tool call 5 times (threshold)
         let model = MockModel::new(vec![
             tool_call_response("git_status", "{}"),
             tool_call_response("git_status", "{}"),
             tool_call_response("git_status", "{}"),
+            tool_call_response("git_status", "{}"),
+            tool_call_response("git_status", "{}"),
+        ]);
+
+        let tool_result = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": false
+            },
+            "id": 4
+        });
+        let mut client =
+            mock_client(vec![
+                tool_result.clone(), tool_result.clone(), tool_result.clone(),
+                tool_result.clone(), tool_result,
+            ]).await;
+        let config = ToolLoopConfig {
+            max_iterations: 10,
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(&model, &mut client, "loop", &config, "test-run".into()).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Repetition loop"),
+            "Expected repetition loop error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn three_identical_calls_no_longer_aborts() {
+        // 3 identical calls followed by a different response should succeed
+        // (old threshold was 3, now it's 5)
+        let model = MockModel::new(vec![
+            tool_call_response("git_status", "{}"),
+            tool_call_response("git_status", "{}"),
+            tool_call_response("git_status", "{}"),
+            stop_response("Done after re-reading."),
         ]);
 
         let tool_result = serde_json::json!({
@@ -1066,13 +1110,9 @@ mod tests {
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "loop", &config, "test-run".into()).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("Repetition loop"),
-            "Expected repetition loop error, got: {err}"
-        );
+        let result = run_tool_loop(&model, &mut client, "read file", &config, "test-run".into()).await;
+        assert!(result.is_ok(), "3 identical calls should not abort (threshold is 5)");
+        assert_eq!(result.unwrap().response, "Done after re-reading.");
     }
 
     // --- Hallucinated tool name detection test ---
