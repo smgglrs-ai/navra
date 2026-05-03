@@ -48,7 +48,10 @@ tasks:
     model: gemma4:26b
     mandate: |
       Merge all specialist findings into a security audit report.
+      All specialist outputs are included below in the "Context from
+      prior stages" section — do NOT use tools to read them.
       Only include findings backed by actual code from file_read.
       Discard any claim without a file path and line number.
+      Do NOT call any tools. Just synthesize what you have been given.
     depends_on: [planner]
     expected_output: Security audit report with verified findings

@@ -22,10 +22,6 @@ use std::sync::Arc;
 
 /// Vision module for image understanding.
 pub struct VisionModule {
-    state: Arc<VisionState>,
-}
-
-struct VisionState {
     /// Vision model (Granite Vision, Gemma 4, etc.)
     vision_model: Arc<dyn ModelBackend>,
     perm_engine: Arc<PermissionEngine>,
@@ -33,9 +29,7 @@ struct VisionState {
 
 impl VisionModule {
     pub fn new(vision_model: Arc<dyn ModelBackend>, perm_engine: Arc<PermissionEngine>) -> Self {
-        Self {
-            state: Arc::new(VisionState { vision_model, perm_engine }),
-        }
+        Self { vision_model, perm_engine }
     }
 }
 
@@ -45,7 +39,10 @@ impl Module for VisionModule {
     }
 
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
-        let s = self.state.clone();
+        let s = Arc::new(VisionState {
+            vision_model: self.vision_model.clone(),
+            perm_engine: self.perm_engine.clone(),
+        });
         vec![
             make_tool(describe_tool_def(), s.clone(), handle_describe),
             make_tool(ocr_tool_def(), s.clone(), handle_ocr),
@@ -53,6 +50,12 @@ impl Module for VisionModule {
             make_tool(screen_tool_def(), s.clone(), handle_screen),
         ]
     }
+}
+
+/// Internal shared state for tool handler closures.
+struct VisionState {
+    vision_model: Arc<dyn ModelBackend>,
+    perm_engine: Arc<PermissionEngine>,
 }
 
 fn make_tool<F>(

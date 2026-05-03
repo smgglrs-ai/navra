@@ -274,7 +274,7 @@ async fn run_node_loop(
     let mut tools: Vec<ResponseTool> = mcp_tools
         .iter()
         .map(|t| ResponseTool {
-            tool_type: "function".to_string(),
+            kind: "function".to_string(),
             name: t.name.clone(),
             description: t.description.clone(),
             parameters: Some(serde_json::json!({

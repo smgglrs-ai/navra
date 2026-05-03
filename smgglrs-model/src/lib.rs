@@ -415,10 +415,10 @@ pub(crate) fn chat_to_responses(model: &str, resp: &chat::ChatResponse) -> Model
 }
 
 fn rand_id() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    nanos as u64 ^ (nanos >> 64) as u64
+    use std::hash::{BuildHasher, Hasher};
+    // RandomState uses OS entropy (SipHash with random keys),
+    // producing unpredictable IDs without external crate deps.
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_u8(0);
+    hasher.finish()
 }
