@@ -1,45 +1,49 @@
 # smgglrs-agent container image
 #
-# Lightweight agent binary for containerized execution.
-# No GPU deps, no model weights, no ONNX — just the agent process
-# that connects back to the smgglrs gateway (MCP) and a shared
-# model server (OpenAI-compatible API).
-#
-# Build:
-#   podman build -f Dockerfile.agent -t smgglrs-agent:latest .
-#
-# Run:
-#   podman run --rm \
-#     --network=slirp4netns:allow_host_loopback=true \
-#     -e SMGGLRS_ENDPOINT=http://10.0.2.2:9400/mcp \
-#     -e SMGGLRS_MODEL_ENDPOINT=http://10.0.2.2:8091/v1 \
-#     -e SMGGLRS_MODEL_NAME=nemotron-omni \
-#     -e SMGGLRS_TASK="Review the project for security issues" \
-#     smgglrs-agent:latest
+# Build:   podman build -f Dockerfile.agent -t smgglrs-agent:latest .
+# Run:     podman run --rm --network=slirp4netns:allow_host_loopback=true \
+#            -e SMGGLRS_ENDPOINT=http://10.0.2.2:9400/mcp \
+#            -e SMGGLRS_MODEL_ENDPOINT=http://10.0.2.2:8091/v1 \
+#            -e SMGGLRS_MODEL_NAME=nemotron-omni \
+#            -e SMGGLRS_TASK="Review the project" \
+#            smgglrs-agent:latest
 
-FROM docker.io/library/rust:1.86-slim-bookworm AS builder
+# Stage 1: Build
+FROM quay.io/hummingbird/rust:latest-builder AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN dnf5 install -y dbus-devel tar gzip && dnf5 clean all
+
+# ONNX Runtime (curl is at /usr/sbin in hummingbird)
+ARG ORT_VERSION=1.25.1
+RUN /usr/sbin/curl -sfL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz \
+    | tar xz -C /opt && \
+    cp /opt/onnxruntime-linux-x64-${ORT_VERSION}/lib/*.so* /usr/lib64/
 
 WORKDIR /src
 COPY . .
 
-# Build only the agent binary — no ONNX, no GPU deps
-RUN cargo build --release --bin smgglrs-agent 2>&1 | tail -5
+RUN for dir in benchmarks; do \
+      if [ ! -f "$dir/Cargo.toml" ]; then \
+        mkdir -p "$dir/src" && \
+        printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"' "$dir" > "$dir/Cargo.toml" && \
+        echo 'fn main() {}' > "$dir/src/main.rs"; \
+      fi; \
+    done
 
-# --- Runtime stage ---
-FROM docker.io/library/debian:bookworm-slim
+ENV ORT_LIB_PATH=/usr/lib64
+ENV ORT_PREFER_DYNAMIC_LINK=1
+RUN cargo build --release --bin smgglrs-agent
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 \
-    && rm -rf /var/lib/apt/lists/*
+# Stage 2: Runtime
+FROM registry.fedoraproject.org/fedora-minimal:latest
 
+RUN microdnf install -y openssl-libs dbus-libs && microdnf clean all
+
+ARG ORT_VERSION=1.25.1
+COPY --from=builder /opt/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/lib64/
 COPY --from=builder /src/target/release/smgglrs-agent /usr/bin/smgglrs-agent
 
-# Non-root execution
-RUN useradd -r -s /bin/false agent
-USER agent
+RUN ldconfig
 
+USER 1001
 ENTRYPOINT ["smgglrs-agent"]
