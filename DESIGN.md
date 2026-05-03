@@ -120,6 +120,93 @@ smgglrs/
          └──────────────────────────────────────────┘
 ```
 
+## Containerized Agent Execution
+
+Agents can run in Podman containers for process isolation. The
+architecture separates the GPU-bound model server from CPU-only
+agent sandboxes.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│              Host (smgglrs-server)                │
+│  - Orchestrates flows via smgglrs-flow            │
+│  - Spawns containers via Podman                   │
+│  - GPU semaphore (max_parallel)                   │
+└──────────┬──────────────┬────────────────────────┘
+           │              │
+    ┌──────▼──────┐  ┌────▼──────────────────┐
+    │ Model Server│  │ Agent Container (N)    │
+    │ (1 per GPU) │  │ smgglrs-agent binary   │
+    │ llama-server│  │ No GPU access          │
+    │ --device    │  │ Reads tools via MCP    │
+    │ nvidia.com/ │  │ Reads model via        │
+    │ gpu=all     │  │   OpenAI-compat API    │
+    └─────────────┘  └────────────────────────┘
+```
+
+- **Model server** (1 container): runs `llama-server` with GPU
+  passthrough (`--device nvidia.com/gpu=all`). Shared by all agents.
+- **Agent sandboxes** (N containers): run `smgglrs-agent` binary.
+  No GPU access. Connect to the model server for inference and to
+  the smgglrs gateway for MCP tools.
+
+### smgglrs-agent Binary
+
+Standalone binary at `smgglrs-agent/src/bin/agent.rs`. Configured
+entirely via environment variables:
+
+| Variable | Required | Description |
+|---|---|---|
+| `SMGGLRS_ENDPOINT` | yes | Gateway MCP URL |
+| `SMGGLRS_TOKEN` | no | Scoped capability token |
+| `SMGGLRS_MODEL_ENDPOINT` | yes | Model server OpenAI-compat URL |
+| `SMGGLRS_MODEL_NAME` | yes | Model name |
+| `SMGGLRS_PERSONA` | no | Persona name |
+| `SMGGLRS_TASK` | yes | Prompt/mandate to execute |
+| `SMGGLRS_MAX_ITERATIONS` | no | Iteration cap (default 30) |
+| `SMGGLRS_COGNITIVE_CORE` | no | Path to cognitive_core directory |
+
+Output: JSON with `output`, `iterations`, `tokens_in`, `tokens_out`.
+
+### Container Image
+
+`Dockerfile.agent` builds the agent image:
+
+- **Builder stage**: `quay.io/hummingbird/rust:latest-builder`,
+  installs ONNX Runtime from GitHub releases.
+- **Runtime stage**: `registry.fedoraproject.org/fedora-minimal:latest`,
+  copies binary + ONNX shared libraries. Runs as UID 1001.
+
+Build: `podman build -f Dockerfile.agent -t smgglrs-agent:latest .`
+
+### Network
+
+Agent containers use `slirp4netns:allow_host_loopback=true` to
+reach the host-bound model server and gateway via `10.0.2.2`.
+No direct internet access.
+
+### GPU Semaphore
+
+`[budget] max_parallel` limits concurrent model requests across
+all agents, preventing GPU memory exhaustion with large models.
+
+### Fallback
+
+When Podman is unavailable, agents run in-process within the
+smgglrs-server. The same `Agent` SDK is used in both paths.
+
+### Configuration
+
+```toml
+[budget]
+containerized = true
+max_parallel = 2
+model_server_image = "docker.io/vllm/vllm-openai:latest"
+agent_image = "smgglrs-agent:latest"
+```
+
 ## Module System
 
 ### Module Trait

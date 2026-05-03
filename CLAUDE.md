@@ -29,7 +29,7 @@ package only provides shared libraries.
 | `smgglrs-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks |
 | `smgglrs-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
 | `smgglrs-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
-| `smgglrs-agent` | Infrastructure | Client SDK: agent builder, MCP client, tool-use loop |
+| `smgglrs-agent` | Infrastructure | Client SDK: agent builder, MCP client, tool-use loop. Standalone `smgglrs-agent` binary for containerized execution (`Dockerfile.agent`) |
 | `smgglrs-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation |
 | `smgglrs-core` | Infrastructure | Server, module trait, session, transport, re-exports |
 | `smgglrs-tools-docs` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |

@@ -59,6 +59,9 @@ smgglrs (gateway)
   Ollama registries with content-addressed storage.
 - **Persona system** — YAML-defined personas, directives, and
   heuristics woven into system prompts.
+- **Containerized agents** — agents run in Podman sandboxes with a
+  shared GPU model server. Falls back to in-process when Podman is
+  unavailable.
 
 ## Quickstart
 
@@ -126,6 +129,9 @@ smgglrs-server            (all crates)                   Binary
   hardcoded in the request path.
 - Resilient upstream transports with exponential backoff, timeout,
   reconnection, and sleep detection.
+- **Agent isolation**: agents can run in Podman containers
+  (`smgglrs-agent` binary) with a shared model server (GPU) and
+  per-agent sandboxes (no GPU). See [DESIGN.md](DESIGN.md) for details.
 
 ## Configuration
 
