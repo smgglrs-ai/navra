@@ -1,0 +1,9 @@
+target/
+.git/
+.claude/
+*.log
+benchmarks/
+docs/
+examples/
+assets/
+cognitive_core/
