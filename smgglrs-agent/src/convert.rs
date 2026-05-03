@@ -24,7 +24,7 @@ pub fn tool_def_to_response(tool: &ToolDefinition) -> ResponseTool {
     }
 
     ResponseTool {
-        tool_type: "function".to_string(),
+        kind: "function".to_string(),
         name: tool.name.clone(),
         description: tool.description.clone(),
         parameters: Some(serde_json::Value::Object(schema)),

@@ -70,18 +70,12 @@ tasks:
     specialist: summarizer
     model: gemma4:26b
     mandate: |
-      You are a report synthesizer. Your job is to read ALL specialist
-      findings and produce a comprehensive report.
+      You are a report synthesizer. All specialist findings are included
+      below in the "Context from prior stages" section. Do NOT use
+      tools to read them — they are already in your context.
 
-      The specialist outputs are available as MCP resources. Read them:
-
-      Step 1: Read the task list from the "flow://" resource to see
-      all completed tasks and their IDs.
-
-      Step 2: For each completed task, read its output from the
-      flow://<flow_id>/task/<task_id> resource. Read EVERY task.
-
-      Step 3: Write a report that covers:
+      Read every specialist output provided and write a comprehensive
+      report:
 
       ## Executive Summary
       3-5 sentences summarizing the overall findings.
@@ -95,7 +89,8 @@ tasks:
       Top 10 most important items across all specialist findings,
       prioritized by severity.
 
-      Be thorough. Read every specialist output. The report should
-      be long and detailed — this is the final deliverable.
+      Be thorough. The report should be long and detailed — this is
+      the final deliverable. Do NOT call any tools. Just synthesize
+      what you have been given.
     depends_on: [planner]
     expected_output: Comprehensive report synthesized from all specialist findings

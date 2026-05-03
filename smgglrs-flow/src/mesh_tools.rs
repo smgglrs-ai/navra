@@ -20,7 +20,7 @@ pub const BB_KEYS: &str = "bb_keys";
 
 pub fn mesh_post_tool_def() -> ResponseTool {
     ResponseTool {
-        tool_type: "function".to_string(),
+        kind: "function".to_string(),
         name: MESH_POST.to_string(),
         description: Some(
             "Send a message to another agent in the flow. The message will be \
@@ -47,7 +47,7 @@ pub fn mesh_post_tool_def() -> ResponseTool {
 
 pub fn mesh_recv_tool_def() -> ResponseTool {
     ResponseTool {
-        tool_type: "function".to_string(),
+        kind: "function".to_string(),
         name: MESH_RECV.to_string(),
         description: Some(
             "Receive all pending messages from your mailbox. Returns a JSON array \
@@ -65,7 +65,7 @@ pub fn mesh_recv_tool_def() -> ResponseTool {
 
 pub fn bb_publish_tool_def() -> ResponseTool {
     ResponseTool {
-        tool_type: "function".to_string(),
+        kind: "function".to_string(),
         name: BB_PUBLISH.to_string(),
         description: Some(
             "Publish a key-value pair to the shared blackboard. Other agents \
@@ -91,7 +91,7 @@ pub fn bb_publish_tool_def() -> ResponseTool {
 
 pub fn bb_read_tool_def() -> ResponseTool {
     ResponseTool {
-        tool_type: "function".to_string(),
+        kind: "function".to_string(),
         name: BB_READ.to_string(),
         description: Some(
             "Read a value from the shared blackboard by key. Returns the value \
@@ -114,7 +114,7 @@ pub fn bb_read_tool_def() -> ResponseTool {
 
 pub fn bb_keys_tool_def() -> ResponseTool {
     ResponseTool {
-        tool_type: "function".to_string(),
+        kind: "function".to_string(),
         name: BB_KEYS.to_string(),
         description: Some(
             "List all keys currently on the shared blackboard. Returns a JSON \

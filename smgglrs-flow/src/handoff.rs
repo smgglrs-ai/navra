@@ -19,7 +19,7 @@ pub struct HandoffRequest {
 /// Create the virtual handoff tool definition for model responses.
 pub fn handoff_tool_def() -> ResponseTool {
     ResponseTool {
-        tool_type: "function".to_string(),
+        kind: "function".to_string(),
         name: HANDOFF_TOOL_NAME.to_string(),
         description: Some("Transfer control to another specialist agent. Use this when the task \
                       requires capabilities outside your expertise."

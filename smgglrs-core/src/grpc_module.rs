@@ -145,24 +145,34 @@ fn parse_data_label(s: &str) -> smgglrs_protocol::label::DataLabel {
     use smgglrs_protocol::label::{Confidentiality, DataLabel, Integrity};
 
     if s.is_empty() {
-        return DataLabel::TRUSTED_PUBLIC;
+        // Fail-safe: unknown label = untrusted
+        return DataLabel::UNTRUSTED_PUBLIC;
     }
 
     let parts: Vec<&str> = s.splitn(2, '+').collect();
     if parts.len() != 2 {
-        return DataLabel::TRUSTED_PUBLIC;
+        return DataLabel::UNTRUSTED_PUBLIC;
     }
 
-    let integrity = match parts[0] {
-        "Untrusted" => Integrity::Untrusted,
-        _ => Integrity::Trusted,
+    // Case-insensitive matching with fail-safe defaults
+    let integrity = if parts[0].eq_ignore_ascii_case("trusted") {
+        Integrity::Trusted
+    } else {
+        // "Untrusted" or any unrecognized value → Untrusted (fail-safe)
+        Integrity::Untrusted
     };
 
-    let confidentiality = match parts[1] {
-        "Sensitive" => Confidentiality::Sensitive,
-        "Pii" => Confidentiality::Pii,
-        "Secret" => Confidentiality::Secret,
-        _ => Confidentiality::Public,
+    let confidentiality = if parts[1].eq_ignore_ascii_case("public") {
+        Confidentiality::Public
+    } else if parts[1].eq_ignore_ascii_case("sensitive") {
+        Confidentiality::Sensitive
+    } else if parts[1].eq_ignore_ascii_case("pii") {
+        Confidentiality::Pii
+    } else if parts[1].eq_ignore_ascii_case("secret") {
+        Confidentiality::Secret
+    } else {
+        // Unrecognized → Sensitive (fail-safe: unknown ≠ public)
+        Confidentiality::Sensitive
     };
 
     DataLabel {
@@ -439,15 +449,43 @@ mod tests {
     }
 
     #[test]
-    fn parse_data_label_empty_returns_default() {
+    fn parse_data_label_empty_returns_untrusted() {
         let label = parse_data_label("");
-        assert_eq!(label, smgglrs_protocol::label::DataLabel::TRUSTED_PUBLIC);
+        assert_eq!(label, smgglrs_protocol::label::DataLabel::UNTRUSTED_PUBLIC);
     }
 
     #[test]
-    fn parse_data_label_invalid_returns_default() {
+    fn parse_data_label_invalid_returns_untrusted() {
         let label = parse_data_label("garbage");
+        assert_eq!(label, smgglrs_protocol::label::DataLabel::UNTRUSTED_PUBLIC);
+    }
+
+    #[test]
+    fn parse_data_label_case_insensitive() {
+        let label = parse_data_label("untrusted+sensitive");
+        assert_eq!(label, smgglrs_protocol::label::DataLabel::UNTRUSTED_SENSITIVE);
+
+        let label = parse_data_label("UNTRUSTED+SENSITIVE");
+        assert_eq!(label, smgglrs_protocol::label::DataLabel::UNTRUSTED_SENSITIVE);
+
+        let label = parse_data_label("trusted+public");
         assert_eq!(label, smgglrs_protocol::label::DataLabel::TRUSTED_PUBLIC);
+
+        let label = parse_data_label("Trusted+pii");
+        assert_eq!(label.integrity, smgglrs_protocol::label::Integrity::Trusted);
+        assert_eq!(label.confidentiality, smgglrs_protocol::label::Confidentiality::Pii);
+    }
+
+    #[test]
+    fn parse_data_label_unknown_integrity_defaults_untrusted() {
+        let label = parse_data_label("whatever+Public");
+        assert_eq!(label.integrity, smgglrs_protocol::label::Integrity::Untrusted);
+    }
+
+    #[test]
+    fn parse_data_label_unknown_confidentiality_defaults_sensitive() {
+        let label = parse_data_label("Trusted+whatever");
+        assert_eq!(label.confidentiality, smgglrs_protocol::label::Confidentiality::Sensitive);
     }
 
     #[test]

@@ -365,7 +365,9 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 specialist: "synthesizer".to_string(),
                 model: Some("gemma4:26b".to_string()),
                 mandate: format!(
-                    "Merge all findings into a coherent final report for: {mandate}"
+                    "Merge all findings into a coherent final report for: {mandate}\n\n\
+                     All prior stage outputs are included in your context below. \
+                     Do NOT use tools to read them — just synthesize what you have been given."
                 ),
                 depends_on: vec!["worker".to_string()],
                 expected_output: Some("Final synthesized report".to_string()),

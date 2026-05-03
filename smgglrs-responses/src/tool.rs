@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct FunctionTool {
     /// Always "function".
     #[serde(rename = "type")]
-    pub tool_type: String,
+    pub kind: String,
     /// Function name.
     pub name: String,
     /// Human-readable description.
@@ -25,7 +25,7 @@ impl FunctionTool {
     /// Create a new function tool.
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
-            tool_type: "function".to_string(),
+            kind: "function".to_string(),
             name: name.into(),
             description: Some(description.into()),
             parameters: None,
@@ -55,7 +55,7 @@ pub enum ToolChoice {
     /// Force a specific function.
     Function {
         #[serde(rename = "type")]
-        choice_type: String,
+        kind: String,
         name: String,
     },
     /// Restrict to a subset of tools.
@@ -75,7 +75,7 @@ pub enum ToolChoiceMode {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AllowedTools {
     #[serde(rename = "type")]
-    pub choice_type: String,
+    pub kind: String,
     pub tools: Vec<AllowedToolRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<ToolChoiceMode>,
@@ -85,7 +85,7 @@ pub struct AllowedTools {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AllowedToolRef {
     #[serde(rename = "type")]
-    pub tool_type: String,
+    pub kind: String,
     pub name: String,
 }
 
@@ -107,7 +107,7 @@ impl ToolChoice {
     /// Force a specific function by name.
     pub fn function(name: impl Into<String>) -> Self {
         Self::Function {
-            choice_type: "function".to_string(),
+            kind: "function".to_string(),
             name: name.into(),
         }
     }
@@ -115,11 +115,11 @@ impl ToolChoice {
     /// Restrict to specific tool names.
     pub fn allowed(names: &[&str], mode: ToolChoiceMode) -> Self {
         Self::Allowed(AllowedTools {
-            choice_type: "allowed_tools".to_string(),
+            kind: "allowed_tools".to_string(),
             tools: names
                 .iter()
                 .map(|n| AllowedToolRef {
-                    tool_type: "function".to_string(),
+                    kind: "function".to_string(),
                     name: n.to_string(),
                 })
                 .collect(),

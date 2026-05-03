@@ -251,7 +251,7 @@ pub async fn run_tool_loop(
             }
         })
         .map(|t| ResponseTool {
-            tool_type: "function".to_string(),
+            kind: "function".to_string(),
             name: t.name.clone(),
             description: t.description.clone(),
             parameters: Some(serde_json::json!({

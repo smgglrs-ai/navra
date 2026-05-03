@@ -802,8 +802,12 @@ async fn spawn_and_track_tasks(
 
         // Build the task message with dependency context
         let mut message = task.mandate.clone();
-        if !task.depends_on.is_empty() {
-            message.push_str("\n\n--- Context from prior stages ---\n");
+        let dep_count = task.depends_on.len();
+        if dep_count > 0 {
+            message.push_str(&format!(
+                "\n\n--- Context from prior stages ({dep_count} outputs follow) ---\n\
+                 ALL outputs are included below. Do NOT use tools to read them.\n"
+            ));
             for dep_id in &task.depends_on {
                 if let Some(output) = completed.get(dep_id) {
                     message.push_str(&format!("\n## {dep_id}\n{output}\n"));
@@ -867,7 +871,17 @@ async fn spawn_and_track_tasks(
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.
-        let per_task_iters = (ctx.budget_cfg.max_iterations / ready.len().max(1)).max(10).min(30);
+        // Synthesizers with many deps already have all outputs in context
+        // and should not need tool calls — give them a minimal budget.
+        let is_synthesizer = task.specialist == "synthesizer" || task.specialist == "summarizer"
+            || task.id == "synthesize" || task.id == "synthesizer";
+        let per_task_iters = if is_synthesizer && dep_count > 2 {
+            // Synthesizer with injected context: 0-2 iterations max
+            // (zero means single LLM call with no tool use)
+            0
+        } else {
+            (ctx.budget_cfg.max_iterations / ready.len().max(1)).max(10).min(30)
+        };
         let handle = crate::team_tools::spawn_teammate_agent(
             &spawn_ctx, team_id, &task.id, &message,
             per_task_iters, ctx.budget_cfg.timeout_secs,
@@ -910,6 +924,12 @@ pub async fn handle_flow_start(
 
     // Resolve the flow YAML: either by name (from flow_dirs) or inline
     let yaml_content = if let Some(name) = args.get("flow_name").and_then(|v| v.as_str()) {
+        // Reject path traversal: only allow alphanumeric, hyphens, underscores
+        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return CallToolResult::error(
+                "Invalid flow_name: only alphanumeric characters, hyphens, and underscores are allowed"
+            );
+        }
         let mut found = None;
         for dir in &ctx.flow_dirs {
             let expanded = crate::expand_tilde(dir);
@@ -1230,7 +1250,25 @@ pub async fn handle_flow_escalate(
         Some(m) => m.to_string(),
         None => return CallToolResult::error("Missing required parameter: mandate"),
     };
+
+    // Bound mandate length to prevent context stuffing
+    const MAX_MANDATE_LEN: usize = 10_000;
+    if mandate.len() > MAX_MANDATE_LEN {
+        return CallToolResult::error(format!(
+            "Mandate too long ({} chars, max {MAX_MANDATE_LEN}). Summarize your request.",
+            mandate.len()
+        ));
+    }
+
     let context = args.get("context").and_then(|v| v.as_str()).map(String::from);
+    if let Some(ref ctx_text) = context {
+        if ctx_text.len() > MAX_MANDATE_LEN {
+            return CallToolResult::error(format!(
+                "Context too long ({} chars, max {MAX_MANDATE_LEN}). Summarize your context.",
+                ctx_text.len()
+            ));
+        }
+    }
 
     // Extract depth and model from calling agent's team
     let caller_did = agent_name;
@@ -1660,5 +1698,104 @@ pub fn flow_escalate_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["mandate".to_string()]),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flow_name_rejects_path_traversal() {
+        // Valid names
+        assert!("security-audit".chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
+        assert!("my_flow_v2".chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
+
+        // Path traversal attempts must be rejected
+        let bad_names = vec![
+            "../../etc/passwd",
+            "../secret",
+            "foo/bar",
+            "foo\\bar",
+            "name with spaces",
+            "name.yaml",
+            "name;rm -rf",
+        ];
+        for name in bad_names {
+            assert!(
+                !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'),
+                "Expected rejection for: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn mandate_length_limit() {
+        const MAX_MANDATE_LEN: usize = 10_000;
+        let short = "a".repeat(MAX_MANDATE_LEN);
+        assert!(short.len() <= MAX_MANDATE_LEN);
+
+        let long = "a".repeat(MAX_MANDATE_LEN + 1);
+        assert!(long.len() > MAX_MANDATE_LEN);
+    }
+
+    #[test]
+    fn flow_registry_basic_lifecycle() {
+        let reg = FlowRegistry::new();
+
+        let id = reg.register("test-flow");
+        assert!(id.starts_with("flow-"));
+
+        let status = reg.get_status(&id).unwrap();
+        assert_eq!(status["status"], "running");
+
+        reg.complete(&id, "done".to_string());
+        let status = reg.get_status(&id).unwrap();
+        assert_eq!(status["status"], "completed");
+    }
+
+    #[test]
+    fn flow_registry_subflow_linkage() {
+        let reg = FlowRegistry::new();
+
+        let parent = reg.register("parent");
+        let child = reg.register_subflow("child", &parent, 1);
+
+        let flows = reg.flows.lock().unwrap();
+        let child_flow = flows.get(&child).unwrap();
+        assert_eq!(child_flow.parent_flow_id.as_deref(), Some(parent.as_str()));
+        assert_eq!(child_flow.depth, 1);
+    }
+
+    #[test]
+    fn flow_registry_fail() {
+        let reg = FlowRegistry::new();
+        let id = reg.register("fail-flow");
+
+        reg.fail(&id, "something broke".to_string());
+        let status = reg.get_status(&id).unwrap();
+        assert_eq!(status["status"], "failed");
+        assert_eq!(status["error"], "something broke");
+    }
+
+    #[test]
+    fn node_status_update() {
+        let reg = FlowRegistry::new();
+        let id = reg.register("node-test");
+
+        reg.update_nodes(&id, vec![
+            NodeStatus {
+                id: "task1".to_string(),
+                specialist: "analyst".to_string(),
+                status: "pending".to_string(),
+                output: None,
+            },
+        ]);
+
+        reg.update_node_status(&id, "task1", "done", Some("result".to_string()));
+
+        let result = reg.get_result(&id, Some("task1")).unwrap();
+        assert_eq!(result["status"], "done");
+        assert_eq!(result["output"], "result");
     }
 }

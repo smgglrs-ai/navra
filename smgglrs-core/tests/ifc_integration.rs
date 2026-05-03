@@ -666,7 +666,7 @@ async fn llm_exfiltration_attempt_blocked() {
         ],
         tools: vec![
             ResponseTool {
-                tool_type: "function".to_string(),
+                kind: "function".to_string(),
                 name: "file_write".to_string(),
                 description: Some("Write content to a file at the given path".to_string()),
                 parameters: Some(serde_json::json!({

@@ -82,7 +82,7 @@ pub struct OutputTextContent {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Annotation {
     #[serde(rename = "type")]
-    pub annotation_type: String,
+    pub kind: String,
     pub url: String,
     pub title: String,
     pub start_index: usize,
