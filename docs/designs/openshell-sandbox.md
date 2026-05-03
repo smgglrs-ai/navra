@@ -4,7 +4,12 @@ Implementation-ready design for smgglrs integration with the
 OpenShell secure sandbox platform. Covers ROADMAP.md Phase 6
 (6a through 6e).
 
-**Status**: Implementation complete (2026-04-25).
+**Status**: Implementation complete (2026-04-25). Containerized
+agent execution is operational (2026-05-03) using Podman directly
+(shared model server + per-agent sandboxes, `Dockerfile.agent`,
+`smgglrs-agent` binary). OpenShell integration remains the target
+for production sandbox deployments with full MAC + DAC defense in
+depth.
 
 ---
 

@@ -4,12 +4,13 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-04-25)
+## Current state (2026-05-03)
 
-17 crates, ~75K LoC, 1431 tests. 43 personas, 36 heuristics,
+17 crates, ~78K LoC, 1431 tests. 43 personas, 36 heuristics,
 8 directives. Gateway blackbox audit. 4 paper outlines. Fully local
 multi-agent demos. Full PII pipeline (regex + NER + file paths,
-pseudonymization, GDPR tools, IFC integration).
+pseudonymization, GDPR tools, IFC integration). Containerized agent
+execution via Podman (shared model server + per-agent sandboxes).
 
 ### Infrastructure (complete)
 
@@ -27,7 +28,7 @@ pseudonymization, GDPR tools, IFC integration).
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| smgglrs-agent | Done | Client SDK: Agent builder with `.persona()`, McpClient with taint tracking, ReAct tool-use loop, non-progress iterations, scoped capability tokens |
+| smgglrs-agent | Done | Client SDK: Agent builder with `.persona()`, McpClient with taint tracking, ReAct tool-use loop, non-progress iterations, scoped capability tokens. Standalone binary (`smgglrs-agent`) for containerized execution + `Dockerfile.agent` |
 | smgglrs-flow | Done (v2) | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), IFC-gated, mandate validation |
 
 ### Tools & Modalities (scaffolded)
@@ -190,7 +191,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 
 ---
 
-## Code health (updated 2026-04-25)
+## Code health (updated 2026-05-03)
 
 ### Completed ✅
 
@@ -210,12 +211,14 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Module-level //! doc comments (all crates) | 2026-04-24 |
 | Rename docs_* → file_*, MCP resources for reads | 2026-04-25 |
 | Full PII pipeline (regex + NER + paths, pseudonymization, GDPR tools) | 2026-04-25 |
+| Containerized agent execution (shared model server + per-agent sandboxes) | 2026-05-03 |
+| smgglrs-agent standalone binary + Dockerfile.agent | 2026-05-03 |
 
 ### Remaining
 
 | Item | Detail | Effort | Priority |
 |------|--------|--------|----------|
-| **Agent process isolation** | Teammates run in-process; a panic crashes the server. Wire MeshRouter TeammateLocation::Remote into DagExecutor so agents run in separate OpenShell sandboxes via A2A. | 3-5 days | **High** |
+| ~~Agent process isolation~~ | ✅ **Done** (2026-05-03). Agents run in Podman containers via `smgglrs-agent` binary. Shared model server (1 container, GPU access) + per-agent sandboxes (no GPU). Network: `slirp4netns:allow_host_loopback=true`. GPU semaphore via `max_parallel`. Fallback: in-process when Podman unavailable. | — | **Done** |
 | **TensorRtRuntime backend** | Add TensorRT-LLM as a ModelRuntime backend alongside Direct/Podman/OpenShell. NVFP4 on Blackwell GPUs for max throughput. | 2-3 days | **Medium-High** |
 | **TurboQuant KV cache** | llama.cpp PR #21089 saves 42% memory at 64K context. Track merge, add --cache-type flags to smgglrs-model-runtime Direct backend config. Benchmark: 18.6GB→10.7GB at 64K. | 1 day (config) | **Medium** |
 | Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive | Low |
