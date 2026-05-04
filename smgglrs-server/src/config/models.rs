@@ -144,6 +144,11 @@ pub struct BudgetConfig {
     /// 0 means no limit.
     #[serde(default = "default_budget_max_parallel")]
     pub max_parallel: usize,
+    /// Allow direct (unsandboxed) Python execution when no container runtime
+    /// is available. Default: `false`. Set to `true` only in trusted dev
+    /// environments. Can also be enabled via `SMGGLRS_ALLOW_DIRECT_EXECUTION=true`.
+    #[serde(default)]
+    pub allow_direct_execution: bool,
     /// Use containerized agent execution.
     /// `true` = always, `false` = never, `None` = auto-detect Podman.
     #[serde(default)]
@@ -164,6 +169,7 @@ impl Default for BudgetConfig {
             timeout_secs: default_budget_timeout(),
             max_iterations: default_budget_max_iterations(),
             max_parallel: default_budget_max_parallel(),
+            allow_direct_execution: false,
             containerized: None,
             model_server_image: default_model_server_image(),
             agent_image: default_agent_image(),
