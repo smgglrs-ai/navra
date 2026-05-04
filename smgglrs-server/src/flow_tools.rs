@@ -800,22 +800,49 @@ async fn spawn_and_track_tasks(
             continue;
         }
 
+        // Detect synthesizer tasks for special handling
+        let is_synthesizer = task.specialist == "synthesizer" || task.specialist == "summarizer"
+            || task.id == "synthesize" || task.id == "synthesizer";
+
         // Build the task message with dependency context
         let mut message = task.mandate.clone();
         let dep_count = task.depends_on.len();
         if dep_count > 0 {
-            message.push_str(&format!(
-                "\n\n--- Context from prior stages ({dep_count} outputs follow) ---\n\
-                 ALL outputs are included below. Do NOT use tools to read them.\n"
-            ));
-            for dep_id in &task.depends_on {
-                if let Some(output) = completed.get(dep_id) {
-                    message.push_str(&format!("\n## {dep_id}\n{output}\n"));
-                } else if failed.contains(dep_id) {
-                    message.push_str(&format!(
-                        "\n## {dep_id}\n[This stage failed — no output available. \
-                         Work with the results you have.]\n"
-                    ));
+            if is_synthesizer && dep_count > 5 {
+                // Synthesizer with many dependencies: point to flow:// resources
+                // instead of inlining all outputs (which exceeds env var limits
+                // for containerized agents).
+                message.push_str(&format!(
+                    "\n\n--- Specialist tasks completed ({dep_count} total) ---\n\
+                     Read each specialist's output using the flow:// MCP resource.\n\
+                     The flow ID is: {flow_id}\n\n\
+                     Available tasks:\n"
+                ));
+                for dep_id in &task.depends_on {
+                    if completed.contains_key(dep_id) {
+                        message.push_str(&format!(
+                            "- {dep_id}: completed → read via flow://{flow_id}/task/{dep_id}\n"
+                        ));
+                    } else if failed.contains(dep_id) {
+                        message.push_str(&format!("- {dep_id}: FAILED (no output)\n"));
+                    }
+                }
+                message.push_str(&format!(
+                    "\nRead each completed task's output, then write a comprehensive report.\n"
+                ));
+            } else {
+                // Few dependencies: inject inline
+                message.push_str(&format!(
+                    "\n\n--- Context from prior stages ({dep_count} outputs follow) ---\n"
+                ));
+                for dep_id in &task.depends_on {
+                    if let Some(output) = completed.get(dep_id) {
+                        message.push_str(&format!("\n## {dep_id}\n{output}\n"));
+                    } else if failed.contains(dep_id) {
+                        message.push_str(&format!(
+                            "\n## {dep_id}\n[This stage failed — no output available.]\n"
+                        ));
+                    }
                 }
             }
         }
@@ -871,14 +898,10 @@ async fn spawn_and_track_tasks(
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.
-        // Synthesizers with many deps already have all outputs in context
-        // and should not need tool calls — give them a minimal budget.
-        let is_synthesizer = task.specialist == "synthesizer" || task.specialist == "summarizer"
-            || task.id == "synthesize" || task.id == "synthesizer";
         let per_task_iters = if is_synthesizer && dep_count > 2 {
-            // Synthesizer with injected context: 0-2 iterations max
-            // (zero means single LLM call with no tool use)
-            0
+            // Synthesizer needs iterations to read specialist outputs
+            // via flow:// MCP resources (one read per specialist)
+            dep_count.min(30)
         } else {
             (ctx.budget_cfg.max_iterations / ready.len().max(1)).max(10).min(30)
         };

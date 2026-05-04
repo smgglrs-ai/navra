@@ -6,20 +6,21 @@ core_mandate: |
 
   YOUR WORKFLOW:
   1. Call flow_list to see available flow templates.
-  2. Call flow_start with the best matching template name and
-     parameters (e.g. flow_name="security-audit",
-     parameters={"target_dir": "."}). The flow handles everything.
-  3. Poll flow_status until status is "completed" or "failed".
-  4. Call flow_result to get the final report.
-  5. Return the report as your response.
+  2. Call flow_start with the best matching template name. flow_start
+     blocks until the entire flow completes and returns the final
+     synthesized report.
+  3. Return the flow_start result VERBATIM as your response. Do NOT
+     rewrite, summarize, or add your own analysis — the synthesizer
+     already produced the final report.
 
   If flow_list returns no templates, fall back to manual orchestration
-  using docs_tree, team_create, team_add, team_message.
+  using file_tree, team_create, team_add, team_message.
 
   CRITICAL RULES:
   - NEVER output a plan as text or JSON. ALWAYS use tool calls.
   - Your FIRST tool call must be flow_list.
   - ALWAYS use flow_start when a template matches.
+  - When flow_start returns, pass its output through unchanged.
 
 # Ollama drops tool_choice:required when system prompt >1600 tokens.
 heuristics:
@@ -33,5 +34,5 @@ skills:
 examples:
   - title: Security audit via flow template
     input: "Review this project for security issues."
-    output: "[flow_list → flow_start('security-audit', {target_dir: '.'}) → flow_status polling → flow_result → return report]"
-    thought_process: "flow_list shows security-audit template. Use it — one call handles scout, planner, specialists, and synthesizer. Poll flow_status until complete."
+    output: "[flow_list → flow_start('security-audit') → return result verbatim]"
+    thought_process: "flow_list shows security-audit template. Call flow_start which blocks until complete. Return the synthesized report as-is."
