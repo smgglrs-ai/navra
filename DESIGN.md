@@ -942,6 +942,24 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar.
 | Prompt injection via documents | Out of scope (agent responsibility) |
 | Denial of service | Systemd resource limits, pause/resume |
 
+### Supply Chain & Dependencies
+
+Workspace dependencies use semver ranges (`"1"`, `"0.8"`) pinned by
+`Cargo.lock`. This is standard Rust practice — ranges allow
+compatible updates while the lockfile ensures reproducible builds.
+
+**Known pre-release dependencies:**
+
+| Crate | Version | Risk | Mitigation |
+|-------|---------|------|------------|
+| `ort` | 2.0.0-rc.12 | Pre-release, API may change | No stable alternative for ONNX. Pin in Cargo.lock. |
+| `sqlite-vec` | 0.1.x | Pre-1.0, may have breaking changes | Only sqlite-vec crate available. Pin in Cargo.lock. |
+
+**Cognitive core integrity:** YAML files (personas, directives,
+heuristics) can be verified via `checksums.sha256` using SHA-256.
+ForgeService checks hashes at load time, skipping tampered files.
+Run `generate_checksums()` after any YAML modification.
+
 ### MAC + DAC: OpenShell Integration
 
 When smgglrs runs inside an OpenShell sandbox, the security model
