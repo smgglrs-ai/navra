@@ -48,12 +48,10 @@ tasks:
 
       2. Each task: id, specialist, model ("auto"), mandate.
 
-      3. Specialists (all >=12B, can call tools):
-         - principal_engineer: architecture, API surface, layering
-         - software_developer: code quality, performance, patterns
-         - security_sentinel: auth, IFC, safety, permissions
-         - tech_writer: docs accuracy, completeness
-         - assessor: testing coverage, test quality
+      3. The "specialist" field MUST be one of these EXACT strings:
+         "principal_engineer", "software_developer", "security_sentinel",
+         "tech_writer", "assessor". Do NOT invent specialist names.
+         Any other value will cause a fatal error.
 
       4. Scale: 15-25 tasks. One task per crate or concern.
          GOOD mandate: "Read smgglrs-rag/src/ with file_read.
