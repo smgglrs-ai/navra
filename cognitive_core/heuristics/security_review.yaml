@@ -1,0 +1,22 @@
+heuristic_name: security_review
+description: "Security review heuristics for assessing code and architecture changes"
+facets:
+  - facet_name: input_validation
+    display_name: "Input Validation"
+    content: |
+      Always validate external inputs: check types, lengths, ranges, and reject invalid data at system boundaries.
+
+  - facet_name: secret_management
+    display_name: "Secret Management"
+    content: |
+      Never hardcode secrets. Use environment variables, keyrings, or secret managers. Rotate credentials regularly.
+
+  - facet_name: least_privilege
+    display_name: "Least Privilege"
+    content: |
+      Grant minimum necessary permissions. Prefer deny-by-default. Scope tokens to specific operations and tools.
+
+  - facet_name: defense_in_depth
+    display_name: "Defense in Depth"
+    content: |
+      Layer security controls: auth + ACLs + IFC + safety filters. No single layer is sufficient alone.

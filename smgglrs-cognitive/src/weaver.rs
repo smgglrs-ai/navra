@@ -250,17 +250,78 @@ fn build_cacheable_prefix(
     sections.join("\n\n")
 }
 
+/// Maximum characters per individual upstream MCP prompt injected into
+/// the system prompt. Prompts exceeding this are truncated to mitigate
+/// prompt injection via oversized upstream content.
+const MAX_PROMPT_CHARS: usize = 8000;
+
+/// Maximum total characters across all upstream MCP prompts injected
+/// into the system prompt in a single assembly.
+const MAX_TOTAL_PROMPT_CHARS: usize = 20000;
+
 /// Insert resolved prompts matching the given position into sections.
+///
+/// Each prompt is capped at [`MAX_PROMPT_CHARS`] characters, and the
+/// cumulative total across all positions is capped at
+/// [`MAX_TOTAL_PROMPT_CHARS`]. Truncated prompts are logged as warnings.
 fn inject_at_position(
     sections: &mut Vec<String>,
     prompts: &[ResolvedPrompt],
     position: &InjectPosition,
 ) {
+    // Calculate how many prompt chars have already been injected
+    let existing_prompt_chars: usize = sections.iter()
+        .filter(|s| s.starts_with("## Upstream Prompt:"))
+        .map(|s| s.len())
+        .sum();
+    let mut budget_remaining = MAX_TOTAL_PROMPT_CHARS.saturating_sub(existing_prompt_chars);
+
     for rp in prompts.iter().filter(|rp| &rp.position == position) {
-        sections.push(format!(
-            "## Upstream Prompt: {}\n\n{}",
-            rp.label, rp.content
-        ));
+        if budget_remaining == 0 {
+            tracing::warn!(
+                label = %rp.label,
+                "Upstream prompt dropped: total prompt budget exhausted ({} chars)",
+                MAX_TOTAL_PROMPT_CHARS,
+            );
+            continue;
+        }
+
+        let content = if rp.content.len() > MAX_PROMPT_CHARS {
+            tracing::warn!(
+                label = %rp.label,
+                original_len = rp.content.len(),
+                max = MAX_PROMPT_CHARS,
+                "Upstream MCP prompt truncated to prevent prompt injection"
+            );
+            // Truncate at a char boundary
+            let mut end = MAX_PROMPT_CHARS;
+            while end > 0 && !rp.content.is_char_boundary(end) {
+                end -= 1;
+            }
+            &rp.content[..end]
+        } else {
+            &rp.content
+        };
+
+        let entry = format!("## Upstream Prompt: {}\n\n{}", rp.label, content);
+        let entry_len = entry.len();
+        if entry_len > budget_remaining {
+            tracing::warn!(
+                label = %rp.label,
+                "Upstream prompt truncated by total budget ({} remaining of {})",
+                budget_remaining,
+                MAX_TOTAL_PROMPT_CHARS,
+            );
+            let mut end = budget_remaining;
+            while end > 0 && !entry.is_char_boundary(end) {
+                end -= 1;
+            }
+            sections.push(entry[..end].to_string());
+            budget_remaining = 0;
+        } else {
+            sections.push(entry);
+            budget_remaining -= entry_len;
+        }
     }
 }
 
@@ -699,6 +760,90 @@ facets:
         assert!(before_pos < mandate_pos);
         assert!(mandate_pos < after_pos);
         assert!(after_pos < end_pos);
+    }
+
+    #[test]
+    fn inject_prompt_truncated_when_oversized() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = setup_forge(tmp.path());
+
+        // Create a prompt that exceeds MAX_PROMPT_CHARS (8000)
+        let oversized_content = "X".repeat(10000);
+        let prompts = vec![ResolvedPrompt {
+            position: InjectPosition::AfterMandate,
+            content: oversized_content.clone(),
+            label: "upstream:oversized".to_string(),
+        }];
+
+        let output = assemble_full(
+            &forge, "developer", "Task", None, None, None, &prompts,
+        )
+        .unwrap();
+
+        let prefix = &output.cacheable_prefix;
+        assert!(prefix.contains("Upstream Prompt: upstream:oversized"));
+        // The injected content should be truncated, not the full 10000 chars
+        let upstream_section = prefix.split("## Upstream Prompt: upstream:oversized")
+            .nth(1)
+            .unwrap();
+        assert!(
+            upstream_section.len() < oversized_content.len(),
+            "Oversized prompt should have been truncated"
+        );
+    }
+
+    #[test]
+    fn inject_prompt_total_budget_caps_multiple_prompts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = setup_forge(tmp.path());
+
+        // Create multiple prompts that together exceed MAX_TOTAL_PROMPT_CHARS (20000)
+        let large_content = "Y".repeat(7000);
+        let prompts = vec![
+            ResolvedPrompt {
+                position: InjectPosition::AfterMandate,
+                content: large_content.clone(),
+                label: "a:first".to_string(),
+            },
+            ResolvedPrompt {
+                position: InjectPosition::AfterMandate,
+                content: large_content.clone(),
+                label: "b:second".to_string(),
+            },
+            ResolvedPrompt {
+                position: InjectPosition::AfterMandate,
+                content: large_content.clone(),
+                label: "c:third".to_string(),
+            },
+            ResolvedPrompt {
+                position: InjectPosition::AfterMandate,
+                content: large_content.clone(),
+                label: "d:fourth".to_string(),
+            },
+        ];
+
+        let output = assemble_full(
+            &forge, "developer", "Task", None, None, None, &prompts,
+        )
+        .unwrap();
+
+        let prefix = &output.cacheable_prefix;
+        // At least the first two should be present; the fourth (28000+ chars)
+        // should be dropped or truncated by the total budget
+        assert!(prefix.contains("a:first"));
+        assert!(prefix.contains("b:second"));
+        // Total upstream prompt content should not exceed MAX_TOTAL_PROMPT_CHARS
+        let total_upstream: usize = prefix
+            .split("## Upstream Prompt:")
+            .skip(1) // skip the part before the first match
+            .map(|s| s.len())
+            .sum();
+        assert!(
+            total_upstream <= super::MAX_TOTAL_PROMPT_CHARS + 500, // small margin for headers
+            "Total upstream content {} exceeds budget {}",
+            total_upstream,
+            super::MAX_TOTAL_PROMPT_CHARS,
+        );
     }
 
     #[test]
