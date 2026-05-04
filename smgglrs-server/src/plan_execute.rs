@@ -659,10 +659,23 @@ fn is_python3_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Check whether direct execution is explicitly allowed.
+///
+/// Returns `true` if the `allow_direct` config flag is set, or if the
+/// `SMGGLRS_ALLOW_DIRECT_EXECUTION` environment variable is set to `true`.
+fn is_direct_execution_allowed(allow_direct: bool) -> bool {
+    if allow_direct {
+        return true;
+    }
+    std::env::var("SMGGLRS_ALLOW_DIRECT_EXECUTION")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false)
+}
+
 /// Detect the best available sandbox backend.
 ///
-/// Preference order: OpenShell > Podman > Direct.
-pub async fn detect_sandbox_backend() -> Option<SandboxBackend> {
+/// Preference order: OpenShell > Podman > Direct (only if explicitly allowed).
+pub async fn detect_sandbox_backend(allow_direct: bool) -> Option<SandboxBackend> {
     // Try OpenShell gRPC socket
     let openshell_sock = "unix:///run/openshell/gateway.sock";
     if std::path::Path::new("/run/openshell/gateway.sock").exists() {
@@ -684,9 +697,20 @@ pub async fn detect_sandbox_backend() -> Option<SandboxBackend> {
         return Some(SandboxBackend::Podman);
     }
 
-    // Direct execution (dev only)
+    // Direct execution — only if explicitly opted in
     if is_python3_available() {
-        return Some(SandboxBackend::Direct);
+        if is_direct_execution_allowed(allow_direct) {
+            tracing::warn!(
+                "No sandbox available — falling back to direct Python execution. \
+                 This provides NO isolation. Use only in trusted dev environments."
+            );
+            return Some(SandboxBackend::Direct);
+        }
+        tracing::info!(
+            "Python 3 is available but direct execution is disabled. \
+             Set allow_direct_execution=true in [budget] config or \
+             SMGGLRS_ALLOW_DIRECT_EXECUTION=true to enable."
+        );
     }
 
     None
@@ -699,18 +723,24 @@ const DEFAULT_TIMEOUT_SECS: u64 = 300;
 ///
 /// The script gets `bridge.py` prepended so it can call `call_tool(name, args)`.
 /// Environment variables provide the gateway address, session ID, and auth token.
+///
+/// The `allow_direct` flag controls whether unsandboxed (direct) execution is
+/// permitted when no container runtime is available. Defaults to `false`.
 pub async fn execute_python(
     code: &str,
     _server: &McpServer,
     ctx: &CallContext,
     timeout_secs: Option<u64>,
+    allow_direct: bool,
 ) -> CallToolResult {
-    let backend = match detect_sandbox_backend().await {
+    let backend = match detect_sandbox_backend(allow_direct).await {
         Some(b) => b,
         None => {
             return CallToolResult::error(
-                "Python mode requires a sandbox (OpenShell, Podman, or python3) \
-                 but none is available. Install Podman or use format: yaml instead.",
+                "Python mode requires a sandbox (OpenShell or Podman) but none is \
+                 available. Install Podman for container isolation, or set \
+                 allow_direct_execution=true in [budget] config (or \
+                 SMGGLRS_ALLOW_DIRECT_EXECUTION=true) to allow unsandboxed execution.",
             );
         }
     };
@@ -947,10 +977,13 @@ async fn run_with_timeout(
 // ---------------------------------------------------------------------------
 
 /// Handle a plan_execute tool call.
+///
+/// `allow_direct` controls whether unsandboxed Python execution is permitted.
 pub async fn handle_plan_execute(
     args: serde_json::Value,
     server: &McpServer,
     ctx: CallContext,
+    allow_direct: bool,
 ) -> CallToolResult {
     let format = args
         .get("format")
@@ -989,7 +1022,7 @@ pub async fn handle_plan_execute(
                 .get("timeout")
                 .and_then(|v| v.as_u64());
 
-            execute_python(plan_str, server, &ctx, timeout_secs).await
+            execute_python(plan_str, server, &ctx, timeout_secs, allow_direct).await
         }
         other => {
             CallToolResult::error(format!(
@@ -1328,7 +1361,7 @@ steps:
             .version("0.1")
             .build();
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(result.is_error);
     }
 
@@ -1343,7 +1376,7 @@ steps:
             .version("0.1")
             .build();
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(result.is_error);
     }
 
@@ -1358,7 +1391,7 @@ steps:
             .version("0.1")
             .build();
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(result.is_error);
     }
 
@@ -1373,7 +1406,7 @@ steps:
             .version("0.1")
             .build();
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(result.is_error);
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
@@ -1393,7 +1426,7 @@ steps:
             .version("0.1")
             .build();
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         // Should have results — the first step fails, second is skipped
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
@@ -1416,7 +1449,7 @@ steps:
             .version("0.1")
             .build();
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
         }).collect::<Vec<_>>().join("");
@@ -1467,7 +1500,7 @@ steps:
             "plan": plan_yaml
         });
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
         let text = result.content.iter().map(|c| match c {
@@ -1522,7 +1555,7 @@ steps:
             "plan": plan_yaml
         });
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
 
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
@@ -1545,7 +1578,7 @@ steps:
             .version("0.1")
             .build();
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, true).await;
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
         }).collect::<Vec<_>>().join("");
@@ -1576,7 +1609,7 @@ steps:
             .version("0.1")
             .build();
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, true).await;
         assert!(result.is_error);
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
@@ -1599,7 +1632,7 @@ steps:
         let ctx = test_ctx();
         let code = "import time; time.sleep(60)";
         // Use a short timeout directly
-        let result = execute_python(code, &server, &ctx, Some(1)).await;
+        let result = execute_python(code, &server, &ctx, Some(1), true).await;
         assert!(result.is_error);
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
@@ -1640,7 +1673,7 @@ steps:
 
     #[tokio::test]
     async fn test_detect_sandbox_backend() {
-        let backend = detect_sandbox_backend().await;
+        let backend = detect_sandbox_backend(true).await;
         // We can't assert a specific backend, but the function should not panic
         match backend {
             Some(SandboxBackend::OpenShell) => {} // OK
@@ -1670,7 +1703,7 @@ steps:
 
         let code = "import sys; print('error msg', file=sys.stderr); sys.exit(2)";
         let full_script = format!(
-            "import sys\nsys.path.insert(0, '{}')\nfrom bridge import call_tool\n\n{}",
+            "import sys\nsys.path.insert(0, '{}')\nfrom smgglrs_bridge import call_tool\n\n{}",
             work_dir.path().display(),
             code,
         );
@@ -1797,7 +1830,7 @@ steps:
 "#;
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
         let text = result.content.iter().map(|c| match c {
@@ -1833,7 +1866,7 @@ steps:
 "#;
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
         let text = result.content.iter().map(|c| match c {
@@ -1867,7 +1900,7 @@ steps:
 "#;
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
         let text = result.content.iter().map(|c| match c {
@@ -1901,7 +1934,7 @@ steps:
 "#;
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
         let text = result.content.iter().map(|c| match c {
@@ -1939,7 +1972,7 @@ steps:
 "#;
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
 
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
@@ -1970,7 +2003,7 @@ steps:
 "#;
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
 
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
@@ -2018,7 +2051,7 @@ steps:
             "stop_on_error": false
         });
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
 
         let text = result.content.iter().map(|c| match c {
             Content::Text(t) => t.text.as_str(),
@@ -2087,7 +2120,7 @@ steps:
 "#;
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
-        let result = handle_plan_execute(args, &server, ctx).await;
+        let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
         let text = result.content.iter().map(|c| match c {
@@ -2105,6 +2138,42 @@ steps:
         assert!(steps[3].success);
         // Aggregate still marked success since we continued
         assert!(steps[4].success);
+    }
+
+    #[tokio::test]
+    async fn test_direct_mode_blocked_by_default() {
+        // When allow_direct is false and no container runtime is available,
+        // Python execution should be refused with a clear error message.
+        if is_podman_available() {
+            // Cannot test the block if Podman is present — skip
+            return;
+        }
+        let args = serde_json::json!({
+            "format": "python",
+            "plan": "print('should not run')"
+        });
+        let server = smgglrs_core::McpServer::builder()
+            .name("test")
+            .version("0.1")
+            .build();
+        let ctx = test_ctx();
+        let result = handle_plan_execute(args, &server, ctx, false).await;
+        assert!(result.is_error);
+        let text = result.content.iter().map(|c| match c {
+            Content::Text(t) => t.text.as_str(),
+        }).collect::<Vec<_>>().join("");
+        assert!(
+            text.contains("allow_direct_execution") || text.contains("SMGGLRS_ALLOW_DIRECT_EXECUTION"),
+            "Error should explain how to enable direct mode. Got: {text}"
+        );
+    }
+
+    #[test]
+    fn test_is_direct_execution_allowed() {
+        // With flag false and no env var, should be false
+        assert!(!is_direct_execution_allowed(false));
+        // With flag true, should be true regardless of env
+        assert!(is_direct_execution_allowed(true));
     }
 
     /// Helper to create a test CallContext.

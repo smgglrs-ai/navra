@@ -2477,6 +2477,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         Arc::new(std::sync::OnceLock::new());
     {
         let cell = Arc::clone(&server_cell);
+        let allow_direct = cfg.budget.allow_direct_execution;
         builder = builder.tool(
             plan_execute::plan_execute_tool_def(),
             move |args, ctx| {
@@ -2484,7 +2485,7 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
                 Box::pin(async move {
                     match cell.get() {
                         Some(server) => {
-                            plan_execute::handle_plan_execute(args, server, ctx).await
+                            plan_execute::handle_plan_execute(args, server, ctx, allow_direct).await
                         }
                         None => smgglrs_core::protocol::CallToolResult::error(
                             "Server not yet initialized",
