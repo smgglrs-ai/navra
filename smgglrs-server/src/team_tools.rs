@@ -885,6 +885,17 @@ pub fn is_podman_available() -> bool {
 /// environment variables and communicates with the gateway over HTTP.
 /// The container uses `slirp4netns` networking so it can reach the
 /// host gateway and model server via `10.0.2.2`.
+///
+/// **Security note on SMGGLRS_TOKEN**: The token passed to the container
+/// is NOT the server's root token. It is a short-lived delegated token
+/// minted via `build_delegated_payload` with:
+/// - Scoped operations: only the teammate's allowed operations
+/// - Scoped tools: only the teammate's allowed tools
+/// - TTL: matches the team's `timeout_secs` (container deadline)
+/// - Delegation chain: traceable back to the root payload via parent nonce
+///
+/// A compromised container can only call the specific tools granted to
+/// that teammate, and the token expires when the team times out.
 fn spawn_containerized_agent(
     ctx: &TeammateSpawnContext,
     team_id: &str,

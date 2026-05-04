@@ -58,6 +58,15 @@ pub struct ToolLoopConfig {
     /// unquoted keys, and markdown fences around JSON — common
     /// failures with small local models.
     pub repair_malformed_output: bool,
+    /// Maximum total tokens (input + output) allowed in a single run
+    /// (default: 500_000). When exceeded, the loop logs a warning and
+    /// stops. This is a soft circuit breaker — the existing
+    /// max_iterations handles hard iteration limits.
+    pub max_tokens_per_run: u64,
+    /// Maximum tool calls allowed per 30-second window (default: 20).
+    /// When exceeded, a warning is logged. This detects runaway agents
+    /// making rapid-fire tool calls without meaningful progress.
+    pub max_calls_per_window: usize,
 }
 
 impl Default for ToolLoopConfig {
@@ -74,6 +83,8 @@ impl Default for ToolLoopConfig {
             pii_filter: None,
             max_reasoning_tokens: Some(2048),
             repair_malformed_output: true,
+            max_tokens_per_run: 500_000,
+            max_calls_per_window: 20,
         }
     }
 }
@@ -289,6 +300,13 @@ pub async fn run_tool_loop(
 
     let mut budget_exhausted = false;
 
+    // Circuit breaker state: token burn monitor
+    let mut total_tokens_consumed: u64 = 0;
+
+    // Circuit breaker state: tool call rate monitor (sliding 30s window)
+    let mut call_timestamps: Vec<std::time::Instant> = Vec::new();
+    let rate_window = std::time::Duration::from_secs(30);
+
     loop {
         if progress_iterations >= config.max_iterations {
             if budget_exhausted {
@@ -347,6 +365,29 @@ pub async fn run_tool_loop(
         if let Some(ref usage) = response.usage {
             total_input += usage.input_tokens;
             total_output += usage.output_tokens;
+
+            // Circuit breaker: token burn monitor
+            total_tokens_consumed += (usage.input_tokens + usage.output_tokens) as u64;
+            if total_tokens_consumed > config.max_tokens_per_run {
+                tracing::warn!(
+                    tokens = total_tokens_consumed,
+                    limit = config.max_tokens_per_run,
+                    iterations = progress_iterations,
+                    "Token burn circuit breaker: agent exceeded max_tokens_per_run"
+                );
+                let text = response.text().unwrap_or_else(|| format!(
+                    "Agent stopped: token budget exceeded ({} tokens consumed, limit {})",
+                    total_tokens_consumed, config.max_tokens_per_run
+                ));
+                return Ok(ToolLoopResult {
+                    run_id,
+                    response: text,
+                    iterations: progress_iterations,
+                    input_tokens: total_input,
+                    output_tokens: total_output,
+                    taint: client.taint(),
+                });
+            }
         }
 
         // Bounded reasoning: truncate verbose model text between tool calls
@@ -458,6 +499,19 @@ pub async fn run_tool_loop(
             progress_iterations += 1;
         }
 
+        // Circuit breaker: tool call rate monitor
+        let now = std::time::Instant::now();
+        call_timestamps.retain(|ts| now.duration_since(*ts) < rate_window);
+        let calls_in_window = call_timestamps.len() + function_calls.len();
+        if calls_in_window > config.max_calls_per_window {
+            tracing::warn!(
+                calls_in_window = calls_in_window,
+                limit = config.max_calls_per_window,
+                window_secs = rate_window.as_secs(),
+                "Tool call rate circuit breaker: agent making rapid-fire tool calls"
+            );
+        }
+
         // Execute each function call
         for fc in &function_calls {
             // Hallucinated tool name detection: if the model calls a
@@ -538,6 +592,9 @@ pub async fn run_tool_loop(
                 output: FunctionCallOutputContent::Text(text),
                 status: Some(ItemStatus::Completed),
             }));
+
+            // Record timestamp for rate monitoring
+            call_timestamps.push(std::time::Instant::now());
         }
     }
 }
