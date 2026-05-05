@@ -19,7 +19,7 @@ use smgglrs_core::identity::{self, CapSigner, Ed25519Signer};
 use smgglrs_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use std::sync::Arc;
 
-use cli::{Cli, Commands, ModelAction, PiiAction, TokenAction};
+use cli::{Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
 
 /// Wrapper around `Arc<CustomPiiFilter>` that implements `ContentFilter`.
 ///
@@ -55,6 +55,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve { config: config_path, no_tray } => {
             let cfg = config::Config::load(config_path.as_deref())?;
             serve(cfg, no_tray).await?;
+        }
+        Commands::Stdio { config: config_path } => {
+            let cfg = config::Config::load(config_path.as_deref())?;
+            stdio(cfg).await?;
         }
         Commands::Token { action } => {
             match action {
@@ -125,6 +129,31 @@ async fn main() -> anyhow::Result<()> {
                 cli::pii_status();
             }
         },
+        Commands::Config { action } => match action {
+            ConfigAction::ImportMcp { path, discover, no_redact } => {
+                let redact = !no_redact;
+                if discover || path.is_none() {
+                    let files = if discover {
+                        config::import::discover_config_files()
+                    } else {
+                        Vec::new()
+                    };
+                    if let Some(p) = &path {
+                        import_mcp_file(p, redact)?;
+                    }
+                    if files.is_empty() && path.is_none() {
+                        eprintln!("Usage: smgglrs config import-mcp <path>");
+                        eprintln!("       smgglrs config import-mcp --discover");
+                        std::process::exit(1);
+                    }
+                    for file in &files {
+                        import_mcp_file(&file.to_string_lossy(), redact)?;
+                    }
+                } else if let Some(p) = &path {
+                    import_mcp_file(p, redact)?;
+                }
+            }
+        },
         Commands::Run { prompt, model, persona, endpoint, token, max_iterations, upstream_prompts } => {
             run_agent(&prompt, model.as_deref(), &persona, &endpoint, token.as_deref(), max_iterations, &upstream_prompts).await?;
         }
@@ -140,6 +169,14 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn import_mcp_file(path: &str, redact: bool) -> anyhow::Result<()> {
+    let content = std::fs::read_to_string(path)?;
+    let (format, servers) = config::import::detect_and_parse(&content)?;
+    eprintln!("# {} — detected {} format, {} server(s)", path, format, servers.len());
+    print!("{}", config::import::to_toml(&servers, redact));
     Ok(())
 }
 
@@ -319,7 +356,20 @@ async fn start_model_server_container(
     Err(anyhow::anyhow!("Model server did not become healthy within 120s"))
 }
 
+enum TransportMode {
+    Http { no_tray: bool },
+    Stdio,
+}
+
+async fn stdio(cfg: config::Config) -> anyhow::Result<()> {
+    serve_inner(cfg, TransportMode::Stdio).await
+}
+
 async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
+    serve_inner(cfg, TransportMode::Http { no_tray }).await
+}
+
+async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result<()> {
     tracing::info!("Starting smgglrs");
 
     // Bootstrap root identity (DID:key from Ed25519)
@@ -2598,238 +2648,235 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
         "Server ready"
     );
 
-    // --- mDNS advertising ---
-    if mdns_enabled {
-        // Extract port from TCP address for advertising
-        let tcp_port = cfg
-            .server
-            .tcp
-            .as_ref()
-            .and_then(|addr| addr.rsplit(':').next())
-            .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(9315);
+    match mode {
+        TransportMode::Stdio => {
+            let agent = smgglrs_core::auth::AgentIdentity::new("stdio", "readonly");
+            smgglrs_core::transport::run_stdio_server(server, agent).await?;
+        }
+        TransportMode::Http { no_tray } => {
+            // --- mDNS advertising ---
+            if mdns_enabled {
+                let tcp_port = cfg
+                    .server
+                    .tcp
+                    .as_ref()
+                    .and_then(|addr| addr.rsplit(':').next())
+                    .and_then(|p| p.parse::<u16>().ok())
+                    .unwrap_or(9315);
 
-        match mdns::advertise(&server.server_info().name, tcp_port, "/mcp") {
-            Ok(daemon) => {
-                tracing::info!(port = tcp_port, "Advertising via mDNS on _mcp._tcp.local.");
-                _mdns_daemon = Some(daemon);
+                match mdns::advertise(&server.server_info().name, tcp_port, "/mcp") {
+                    Ok(daemon) => {
+                        tracing::info!(port = tcp_port, "Advertising via mDNS on _mcp._tcp.local.");
+                        _mdns_daemon = Some(daemon);
+                    }
+                    Err(e) => {
+                        tracing::warn!("mDNS advertising failed: {e}");
+                    }
+                }
             }
-            Err(e) => {
-                tracing::warn!("mDNS advertising failed: {e}");
+
+            // --- System tray ---
+            if !no_tray {
+                match tray::spawn_tray().await {
+                    Ok((cmd_rx, handle)) => {
+                        tracing::info!("System tray icon active");
+                        tokio::spawn(tray::run_tray_updater(
+                            handle,
+                            approvals.clone(),
+                            server.pause_flag(),
+                            cmd_rx,
+                        ));
+                    }
+                    Err(e) => {
+                        tracing::warn!("System tray unavailable: {e}");
+                    }
+                }
+            }
+
+            // --- Build registry entries ---
+            let mut registry_entries: Vec<serde_json::Value> = Vec::new();
+
+            if let Some(ref discovery) = cfg.server.discovery {
+                registry_entries.push(serde_json::json!({
+                    "server": {
+                        "name": server.server_info().name,
+                        "description": format!(
+                            "{}",
+                            discovery.description.as_deref().unwrap_or("smgglrs MCP gateway")
+                        ),
+                        "version": server.server_info().version,
+                        "remotes": [{
+                            "type": "streamable-http",
+                            "url": &discovery.url,
+                        }],
+                    },
+                    "_meta": {
+                        "source": "self",
+                    }
+                }));
+            }
+
+            for entry in &cfg.registry {
+                registry_entries.push(serde_json::json!({
+                    "server": {
+                        "name": &entry.name,
+                        "description": &entry.description,
+                        "remotes": [{
+                            "type": &entry.remote_type,
+                            "url": &entry.url,
+                        }],
+                        "repository": entry.repository.as_ref().map(|r| serde_json::json!({"url": r})),
+                    },
+                    "_meta": {
+                        "source": "whitelist",
+                    }
+                }));
+            }
+
+            if !registry_entries.is_empty() {
+                tracing::info!(
+                    entries = registry_entries.len(),
+                    "Registry serving {} entries at /v0.1/servers",
+                    registry_entries.len()
+                );
+            }
+
+            // --- HTTP transport with SSE broadcaster ---
+            let broadcaster = smgglrs_core::transport::SseBroadcaster::new();
+            let has_discovery = cfg.server.discovery.is_some() || !registry_entries.is_empty();
+            let (router, server) = if has_discovery {
+                let aid_record = cfg.server.discovery.as_ref().map(|discovery| {
+                    let mut aid = serde_json::json!({
+                        "v": "aid1",
+                        "u": &discovery.url,
+                        "p": "mcp",
+                        "a": &discovery.auth,
+                    });
+                    if let Some(ref desc) = discovery.description {
+                        aid["s"] = serde_json::json!(desc);
+                    }
+                    if let Some(ref docs) = discovery.docs_url {
+                        aid["d"] = serde_json::json!(docs);
+                    }
+                    let pubkey_multibase = format!(
+                        "z{}",
+                        bs58::encode({
+                            let mut bytes = vec![0xed, 0x01];
+                            bytes.extend_from_slice(&root_signer.public_key_bytes());
+                            bytes
+                        })
+                        .into_string()
+                    );
+                    aid["k"] = serde_json::json!(pubkey_multibase);
+                    aid["i"] = serde_json::json!("root-1");
+                    tracing::info!(
+                        url = %discovery.url,
+                        did = %root_signer.did(),
+                        "AID discovery at /.well-known/agent (with PKA)"
+                    );
+                    aid
+                });
+                let a2a_endpoint = cfg.server.discovery.as_ref().map(|d| d.url.clone());
+                if a2a_endpoint.is_some() {
+                    tracing::info!("A2A Agent Card at /.well-known/agent.json");
+                }
+                let root_did_str = Some(root_signer.did().to_string());
+                let api_server_ref = Arc::clone(&server);
+                let router = smgglrs_core::transport::build_router_with_discovery(
+                    server, broadcaster, aid_record, registry_entries, a2a_endpoint, root_did_str,
+                );
+                (router, api_server_ref)
+            } else {
+                let api_server_ref = Arc::clone(&server);
+                let router = smgglrs_core::transport::build_router_with_broadcaster(server, broadcaster);
+                (router, api_server_ref)
+            };
+
+            // --- ACP (Agent Client Protocol) transport ---
+            let acp_router = smgglrs_core::transport::build_acp_router(server.clone());
+            let router = router.merge(acp_router);
+            tracing::info!("ACP endpoint at POST /acp");
+
+            // --- Web UI: shared state + API routes ---
+            let router = ui::attach_ui_routes(router, &cfg, &server, &models);
+
+            tracing::info!("Web UI at http://localhost:{}", cfg.server.tcp.as_deref().and_then(|a| a.rsplit(':').next()).unwrap_or("9315"));
+
+            // Listen on Unix socket, TCP, or both
+            if let Some(ref socket_path) = cfg.server.socket {
+                let tcp_addr = cfg.server.tcp.clone();
+
+                if let Some(parent) = std::path::Path::new(socket_path).parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+
+                if std::path::Path::new(socket_path).exists() {
+                    std::fs::remove_file(socket_path)?;
+                }
+
+                let unix_listener = tokio::net::UnixListener::bind(socket_path)?;
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))?;
+                }
+
+                tracing::info!("Listening on unix:{socket_path}");
+
+                let shutdown = async {
+                    let ctrl_c = tokio::signal::ctrl_c();
+                    #[cfg(unix)]
+                    let mut sigterm = tokio::signal::unix::signal(
+                        tokio::signal::unix::SignalKind::terminate(),
+                    ).expect("failed to install SIGTERM handler");
+                    #[cfg(unix)]
+                    tokio::select! {
+                        _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
+                        _ = sigterm.recv() => tracing::info!("Received SIGTERM, shutting down"),
+                    }
+                    #[cfg(not(unix))]
+                    ctrl_c.await.ok();
+                };
+
+                if let Some(addr) = tcp_addr {
+                    let tcp_listener = tokio::net::TcpListener::bind(&addr).await?;
+                    tracing::info!("Listening on tcp:{addr}");
+
+                    let tcp_router = router.clone();
+                    tokio::select! {
+                        result = axum::serve(unix_listener, router)
+                            .with_graceful_shutdown(shutdown) => result?,
+                        result = axum::serve(tcp_listener, tcp_router) => result?,
+                    }
+                } else {
+                    axum::serve(unix_listener, router)
+                        .with_graceful_shutdown(shutdown).await?;
+                }
+            } else {
+                let addr = cfg.server.listen_addr();
+                let listener = tokio::net::TcpListener::bind(&addr).await?;
+                tracing::info!("Listening on tcp:{addr}");
+
+                let shutdown = async {
+                    let ctrl_c = tokio::signal::ctrl_c();
+                    #[cfg(unix)]
+                    let mut sigterm = tokio::signal::unix::signal(
+                        tokio::signal::unix::SignalKind::terminate(),
+                    ).expect("failed to install SIGTERM handler");
+                    #[cfg(unix)]
+                    tokio::select! {
+                        _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
+                        _ = sigterm.recv() => tracing::info!("Received SIGTERM, shutting down"),
+                    }
+                    #[cfg(not(unix))]
+                    ctrl_c.await.ok();
+                };
+
+                axum::serve(listener, router)
+                    .with_graceful_shutdown(shutdown).await?;
             }
         }
-    }
-
-    // --- System tray ---
-    if !no_tray {
-        match tray::spawn_tray().await {
-            Ok((cmd_rx, handle)) => {
-                tracing::info!("System tray icon active");
-                tokio::spawn(tray::run_tray_updater(
-                    handle,
-                    approvals.clone(),
-                    server.pause_flag(),
-                    cmd_rx,
-                ));
-            }
-            Err(e) => {
-                tracing::warn!("System tray unavailable: {e}");
-            }
-        }
-    }
-
-    // --- Build registry entries ---
-    let mut registry_entries: Vec<serde_json::Value> = Vec::new();
-
-    // Add smgglrs's own entry (from its server card data)
-    if let Some(ref discovery) = cfg.server.discovery {
-        registry_entries.push(serde_json::json!({
-            "server": {
-                "name": server.server_info().name,
-                "description": format!(
-                    "{}",
-                    discovery.description.as_deref().unwrap_or("smgglrs MCP gateway")
-                ),
-                "version": server.server_info().version,
-                "remotes": [{
-                    "type": "streamable-http",
-                    "url": &discovery.url,
-                }],
-            },
-            "_meta": {
-                "source": "self",
-            }
-        }));
-    }
-
-    // Add whitelisted entries from config
-    for entry in &cfg.registry {
-        registry_entries.push(serde_json::json!({
-            "server": {
-                "name": &entry.name,
-                "description": &entry.description,
-                "remotes": [{
-                    "type": &entry.remote_type,
-                    "url": &entry.url,
-                }],
-                "repository": entry.repository.as_ref().map(|r| serde_json::json!({"url": r})),
-            },
-            "_meta": {
-                "source": "whitelist",
-            }
-        }));
-    }
-
-    if !registry_entries.is_empty() {
-        tracing::info!(
-            entries = registry_entries.len(),
-            "Registry serving {} entries at /v0.1/servers",
-            registry_entries.len()
-        );
-    }
-
-    // --- HTTP transport with SSE broadcaster ---
-    let broadcaster = smgglrs_core::transport::SseBroadcaster::new();
-    let has_discovery = cfg.server.discovery.is_some() || !registry_entries.is_empty();
-    let (router, server) = if has_discovery {
-        let aid_record = cfg.server.discovery.as_ref().map(|discovery| {
-            let mut aid = serde_json::json!({
-                "v": "aid1",
-                "u": &discovery.url,
-                "p": "mcp",
-                "a": &discovery.auth,
-            });
-            if let Some(ref desc) = discovery.description {
-                aid["s"] = serde_json::json!(desc);
-            }
-            if let Some(ref docs) = discovery.docs_url {
-                aid["d"] = serde_json::json!(docs);
-            }
-            // Populate PKA field with root Ed25519 public key
-            let pubkey_multibase = format!(
-                "z{}",
-                bs58::encode({
-                    let mut bytes = vec![0xed, 0x01];
-                    bytes.extend_from_slice(&root_signer.public_key_bytes());
-                    bytes
-                })
-                .into_string()
-            );
-            aid["k"] = serde_json::json!(pubkey_multibase);
-            aid["i"] = serde_json::json!("root-1");
-            tracing::info!(
-                url = %discovery.url,
-                did = %root_signer.did(),
-                "AID discovery at /.well-known/agent (with PKA)"
-            );
-            aid
-        });
-        let a2a_endpoint = cfg.server.discovery.as_ref().map(|d| d.url.clone());
-        if a2a_endpoint.is_some() {
-            tracing::info!("A2A Agent Card at /.well-known/agent.json");
-        }
-        let root_did_str = Some(root_signer.did().to_string());
-        let api_server_ref = Arc::clone(&server);
-        let router = smgglrs_core::transport::build_router_with_discovery(
-            server, broadcaster, aid_record, registry_entries, a2a_endpoint, root_did_str,
-        );
-        (router, api_server_ref)
-    } else {
-        let api_server_ref = Arc::clone(&server);
-        let router = smgglrs_core::transport::build_router_with_broadcaster(server, broadcaster);
-        (router, api_server_ref)
-    };
-
-    // --- ACP (Agent Client Protocol) transport ---
-    let acp_router = smgglrs_core::transport::build_acp_router(server.clone());
-    let router = router.merge(acp_router);
-    tracing::info!("ACP endpoint at POST /acp");
-
-    // --- Web UI: shared state + API routes ---
-    let router = ui::attach_ui_routes(router, &cfg, &server, &models);
-
-    tracing::info!("Web UI at http://localhost:{}", cfg.server.tcp.as_deref().and_then(|a| a.rsplit(':').next()).unwrap_or("9315"));
-
-    // Listen on Unix socket, TCP, or both
-    if let Some(ref socket_path) = cfg.server.socket {
-        let tcp_addr = cfg.server.tcp.clone();
-
-        // Ensure parent directory exists
-        if let Some(parent) = std::path::Path::new(socket_path).parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        // Remove stale socket file if it exists
-        if std::path::Path::new(socket_path).exists() {
-            std::fs::remove_file(socket_path)?;
-        }
-
-        let unix_listener = tokio::net::UnixListener::bind(socket_path)?;
-
-        // Set socket permissions to owner-only (0600)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))?;
-        }
-
-        tracing::info!("Listening on unix:{socket_path}");
-
-        // Graceful shutdown on SIGTERM/SIGINT
-        let shutdown = async {
-            let ctrl_c = tokio::signal::ctrl_c();
-            #[cfg(unix)]
-            let mut sigterm = tokio::signal::unix::signal(
-                tokio::signal::unix::SignalKind::terminate(),
-            ).expect("failed to install SIGTERM handler");
-            #[cfg(unix)]
-            tokio::select! {
-                _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
-                _ = sigterm.recv() => tracing::info!("Received SIGTERM, shutting down"),
-            }
-            #[cfg(not(unix))]
-            ctrl_c.await.ok();
-        };
-
-        if let Some(addr) = tcp_addr {
-            // Both Unix socket and TCP
-            let tcp_listener = tokio::net::TcpListener::bind(&addr).await?;
-            tracing::info!("Listening on tcp:{addr}");
-
-            let tcp_router = router.clone();
-            tokio::select! {
-                result = axum::serve(unix_listener, router)
-                    .with_graceful_shutdown(shutdown) => result?,
-                result = axum::serve(tcp_listener, tcp_router) => result?,
-            }
-        } else {
-            // Unix socket only
-            axum::serve(unix_listener, router)
-                .with_graceful_shutdown(shutdown).await?;
-        }
-    } else {
-        // TCP only (fallback)
-        let addr = cfg.server.listen_addr();
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
-        tracing::info!("Listening on tcp:{addr}");
-
-        let shutdown = async {
-            let ctrl_c = tokio::signal::ctrl_c();
-            #[cfg(unix)]
-            let mut sigterm = tokio::signal::unix::signal(
-                tokio::signal::unix::SignalKind::terminate(),
-            ).expect("failed to install SIGTERM handler");
-            #[cfg(unix)]
-            tokio::select! {
-                _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
-                _ = sigterm.recv() => tracing::info!("Received SIGTERM, shutting down"),
-            }
-            #[cfg(not(unix))]
-            ctrl_c.await.ok();
-        };
-
-        axum::serve(listener, router)
-            .with_graceful_shutdown(shutdown).await?;
     }
 
     // --- Stop runtime-served models ---
