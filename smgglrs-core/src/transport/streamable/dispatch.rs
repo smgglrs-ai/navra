@@ -10,7 +10,7 @@ use smgglrs_protocol::permissions::{
 use std::sync::Arc;
 
 /// Returns (response, optional_session_id_for_header).
-pub(super) async fn dispatch(
+pub(crate) async fn dispatch(
     server: Arc<McpServer>,
     request: JsonRpcRequest,
     agent: crate::auth::AgentIdentity,
