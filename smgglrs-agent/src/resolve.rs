@@ -55,8 +55,9 @@ pub async fn resolve_mcp_prompts(
                 let content = result
                     .messages
                     .iter()
-                    .map(|m| match &m.content {
-                        smgglrs_protocol::Content::Text(tc) => tc.text.as_str(),
+                    .filter_map(|m| match &m.content {
+                        smgglrs_protocol::Content::Text(tc) => Some(tc.text.as_str()),
+                        _ => None,
                     })
                     .collect::<Vec<_>>()
                     .join("\n\n");
@@ -122,8 +123,9 @@ pub async fn resolve_persona_source(
     let content = result
         .messages
         .iter()
-        .map(|m| match &m.content {
-            smgglrs_protocol::Content::Text(tc) => tc.text.as_str(),
+        .filter_map(|m| match &m.content {
+            smgglrs_protocol::Content::Text(tc) => Some(tc.text.as_str()),
+            _ => None,
         })
         .collect::<Vec<_>>()
         .join("\n\n");

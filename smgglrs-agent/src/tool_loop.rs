@@ -3,6 +3,7 @@
 //! Discover tools → call model.respond() → execute function calls →
 //! feed results back → repeat until completion or max iterations.
 
+use crate::action::{ActionRecord, AgentAction};
 use crate::client::McpClient;
 use crate::error::AgentError;
 use smgglrs_model::{
@@ -104,6 +105,8 @@ pub struct ToolLoopResult {
     pub output_tokens: u32,
     /// Final taint level of the session.
     pub taint: DataLabel,
+    /// Classified action records for every tool call in this run.
+    pub actions: Vec<ActionRecord>,
 }
 
 /// Extract text content from a [`CallToolResult`].
@@ -113,8 +116,8 @@ pub fn extract_text(result: &CallToolResult) -> String {
         parts.push("Error: ".to_string());
     }
     for content in &result.content {
-        match content {
-            Content::Text(tc) => parts.push(tc.text.clone()),
+        if let Content::Text(tc) = content {
+            parts.push(tc.text.clone());
         }
     }
     parts.join("")
@@ -288,6 +291,7 @@ pub async fn run_tool_loop(
     let mut empty_retries = 0u8;
     let mut prev_outputs: Vec<String> = Vec::new();
 
+    let mut actions: Vec<ActionRecord> = Vec::new();
     let mut budget_exhausted = false;
 
     // Circuit breaker state: token burn monitor
@@ -376,6 +380,7 @@ pub async fn run_tool_loop(
                     input_tokens: total_input,
                     output_tokens: total_output,
                     taint: client.taint(),
+                    actions,
                 });
             }
         }
@@ -472,6 +477,7 @@ pub async fn run_tool_loop(
                 input_tokens: total_input,
                 output_tokens: total_output,
                 taint: client.taint(),
+                actions,
             });
         }
 
@@ -572,8 +578,18 @@ pub async fn run_tool_loop(
                 "executing tool call"
             );
 
+            let action = AgentAction::classify(&fc.name, &args);
+            let call_start = std::time::Instant::now();
             let result = client.call_tool(&fc.name, args).await?;
+            let duration_ms = call_start.elapsed().as_millis() as u64;
             let text = extract_text(&result);
+
+            actions.push(ActionRecord {
+                action,
+                success: !result.is_error,
+                duration_ms,
+                output_preview: text.chars().take(200).collect(),
+            });
 
             // Add the tool result to input
             input.push(InputItem::FunctionCallOutput(FunctionCallOutputItem {

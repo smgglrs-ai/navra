@@ -54,6 +54,7 @@ mod tests {
                 properties: Some(props),
                 required: Some(vec!["path".to_string()]),
             },
+            annotations: None,
         };
 
         let response_tool = tool_def_to_response(&tool);
@@ -75,6 +76,7 @@ mod tests {
                 properties: None,
                 required: None,
             },
+            annotations: None,
         };
 
         let response_tool = tool_def_to_response(&tool);
