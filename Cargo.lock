@@ -3797,6 +3797,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smgglrs-core",
+ "tempfile",
  "tokio",
  "tracing",
  "zbus 5.15.0",
