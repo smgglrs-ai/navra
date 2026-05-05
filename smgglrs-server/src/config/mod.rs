@@ -222,6 +222,36 @@ impl Config {
             .map(|r| r.db.clone())
             .unwrap_or_else(modules::default_rag_db_path)
     }
+
+    pub fn rag_reranker_model_path(&self) -> Option<String> {
+        self.modules
+            .rag
+            .as_ref()
+            .and_then(|r| r.reranker_model_path.clone())
+    }
+
+    pub fn rag_reranker_tokenizer_path(&self) -> Option<String> {
+        self.modules
+            .rag
+            .as_ref()
+            .and_then(|r| r.reranker_tokenizer_path.clone())
+    }
+
+    pub fn rag_query_cache_ttl_secs(&self) -> u64 {
+        self.modules
+            .rag
+            .as_ref()
+            .map(|r| r.query_cache_ttl_secs)
+            .unwrap_or(300)
+    }
+
+    pub fn rag_query_cache_max_entries(&self) -> usize {
+        self.modules
+            .rag
+            .as_ref()
+            .map(|r| r.query_cache_max_entries)
+            .unwrap_or(1000)
+    }
 }
 
 impl Default for Config {
