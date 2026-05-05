@@ -30,9 +30,10 @@ pub use jsonrpc::{
 pub use mcp::{
     CallToolParams, CallToolResult, ClientCapabilities, ClientInfo, Content, ContentType,
     GetPromptParams, GetPromptResult, InitializeParams, InitializeResult, ListPromptsResult,
-    ListResourcesResult, ListToolsResult, PromptArgument, PromptDefinition, PromptMessage,
-    PromptRole, PromptsCapability, ReadResourceParams, ReadResourceResult, ResourceContent,
-    ResourceDefinition, ResourcesCapability, ServerCapabilities, ServerInfo, TextContent,
-    ToolDefinition, ToolInputSchema, ToolsCapability, PROTOCOL_VERSION,
+    ListResourcesResult, ListToolsResult, PaginatedRequest, PromptArgument, PromptDefinition,
+    PromptMessage, PromptRole, PromptsCapability, ReadResourceParams, ReadResourceResult,
+    ResourceContent, ResourceDefinition, ResourcesCapability, ServerCapabilities, ServerInfo,
+    TextContent, ToolDefinition, ToolInputSchema, ToolsCapability,
+    DEFAULT_PAGE_SIZE, PROTOCOL_VERSION, encode_cursor, paginate,
 };
 pub use upstream::{RetryConfig, Upstream};

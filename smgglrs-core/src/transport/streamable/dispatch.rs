@@ -1,7 +1,7 @@
 use crate::auth::CallContext;
 use crate::protocol::{
     CallToolParams, GetPromptParams, InitializeParams, JsonRpcError, JsonRpcRequest,
-    JsonRpcResponse, ReadResourceParams,
+    JsonRpcResponse, PaginatedRequest, ReadResourceParams,
 };
 use crate::server::McpServer;
 use smgglrs_protocol::permissions::{
@@ -116,7 +116,11 @@ pub(crate) async fn dispatch(
         }
 
         "tools/list" => {
-            let result = server.handle_list_tools(&agent);
+            let pagination: PaginatedRequest = request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+                .unwrap_or_default();
+            let result = server.handle_list_tools(&agent, &pagination);
             (
                 JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
                     tracing::error!(error = %e, "Failed to serialize response");
@@ -170,7 +174,11 @@ pub(crate) async fn dispatch(
         }
 
         "resources/list" => {
-            let result = server.handle_list_resources(&agent);
+            let pagination: PaginatedRequest = request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+                .unwrap_or_default();
+            let result = server.handle_list_resources(&agent, &pagination);
             (
                 JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
                     tracing::error!(error = %e, "Failed to serialize response");
@@ -209,7 +217,11 @@ pub(crate) async fn dispatch(
         }
 
         "prompts/list" => {
-            let result = server.handle_list_prompts(&agent);
+            let pagination: PaginatedRequest = request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+                .unwrap_or_default();
+            let result = server.handle_list_prompts(&agent, &pagination);
             (
                 JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
                     tracing::error!(error = %e, "Failed to serialize response");

@@ -261,7 +261,7 @@ pub async fn execute_yaml_plan(
     let mut results: Vec<StepResult> = Vec::new();
 
     // Collect known tool names for validation
-    let known_tools = server.handle_list_tools(&ctx.agent);
+    let known_tools = server.handle_list_tools(&ctx.agent, &Default::default());
 
     let mut should_stop = false;
     for (i, yaml_step) in plan.steps.iter().enumerate() {

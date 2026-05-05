@@ -135,10 +135,10 @@ async fn upstream_registers_in_server() {
 
     // Verify tools/list includes the upstream tool
     let agent = smgglrs_core::auth::AgentIdentity::new("test", "dev");
-    let tools_result = server.handle_list_tools(&agent);
+    let tools_result = server.handle_list_tools(&agent, &Default::default());
     assert!(tools_result.tools.iter().any(|t| t.name == "echo"));
 
     // Verify prompts/list includes the upstream prompt
-    let prompts_result = server.handle_list_prompts(&agent);
+    let prompts_result = server.handle_list_prompts(&agent, &Default::default());
     assert!(prompts_result.prompts.iter().any(|p| p.name == "greeting"));
 }

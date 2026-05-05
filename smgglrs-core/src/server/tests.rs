@@ -84,7 +84,7 @@ fn register_tool_and_list() {
         })
         .build();
 
-    let result = server.handle_list_tools(&test_agent());
+    let result = server.handle_list_tools(&test_agent(), &Default::default());
     assert_eq!(result.tools.len(), 1 + GATEWAY_TOOLS);
     assert!(result.tools.iter().any(|t| t.name == "echo"));
 }
@@ -95,7 +95,7 @@ fn register_module() {
         .module(TestModule)
         .build();
 
-    let result = server.handle_list_tools(&test_agent());
+    let result = server.handle_list_tools(&test_agent(), &Default::default());
     assert_eq!(result.tools.len(), 1 + GATEWAY_TOOLS);
     assert!(result.tools.iter().any(|t| t.name == "test_ping"));
 }
@@ -431,7 +431,7 @@ fn register_module_with_prompts() {
         .build();
 
     assert_eq!(server.prompt_count(), 1);
-    let result = server.handle_list_prompts(&test_agent());
+    let result = server.handle_list_prompts(&test_agent(), &Default::default());
     assert_eq!(result.prompts.len(), 1);
     assert_eq!(result.prompts[0].name, "greeting");
 }
@@ -544,7 +544,7 @@ fn register_module_with_resources() {
         .build();
 
     assert_eq!(server.resource_count(), 1);
-    let result = server.handle_list_resources(&test_agent());
+    let result = server.handle_list_resources(&test_agent(), &Default::default());
     assert_eq!(result.resources.len(), 1);
     assert_eq!(result.resources[0].uri, "info://server/status");
 }

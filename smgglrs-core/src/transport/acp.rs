@@ -88,7 +88,7 @@ async fn handle_acp_post(
     match request.method.as_str() {
         "acp/initialize" => {
             let tools: Vec<serde_json::Value> = server
-                .handle_list_tools(&agent)
+                .handle_list_tools(&agent, &Default::default())
                 .tools
                 .iter()
                 .map(|t| {

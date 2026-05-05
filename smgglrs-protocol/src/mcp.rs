@@ -1,8 +1,57 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// MCP protocol version supported by this implementation.
 pub const PROTOCOL_VERSION: &str = "2025-03-26";
+
+/// Default page size for paginated list operations.
+pub const DEFAULT_PAGE_SIZE: usize = 100;
+
+// --- Pagination ---
+
+/// Optional cursor parameter for paginated list requests.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+impl PaginatedRequest {
+    /// Decode the cursor into an offset. Returns 0 if no cursor is set.
+    /// Returns `None` if the cursor is present but invalid.
+    pub fn decode_offset(&self) -> Option<usize> {
+        match &self.cursor {
+            None => Some(0),
+            Some(cursor) => {
+                let bytes = URL_SAFE_NO_PAD.decode(cursor).ok()?;
+                let s = std::str::from_utf8(&bytes).ok()?;
+                s.parse::<usize>().ok()
+            }
+        }
+    }
+}
+
+/// Encode an offset into a cursor string.
+pub fn encode_cursor(offset: usize) -> String {
+    URL_SAFE_NO_PAD.encode(offset.to_string().as_bytes())
+}
+
+/// Apply pagination to a collected list, returning (page, next_cursor).
+pub fn paginate<T: Clone>(items: &[T], offset: usize, page_size: usize) -> (Vec<T>, Option<String>) {
+    if offset >= items.len() {
+        return (Vec::new(), None);
+    }
+    let end = (offset + page_size).min(items.len());
+    let page = items[offset..end].to_vec();
+    let next_cursor = if end < items.len() {
+        Some(encode_cursor(end))
+    } else {
+        None
+    };
+    (page, next_cursor)
+}
 
 // --- Initialize ---
 
@@ -120,8 +169,11 @@ pub struct ToolInputSchema {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListToolsResult {
     pub tools: Vec<ToolDefinition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -239,8 +291,11 @@ pub struct PromptsCapability {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListPromptsResult {
     pub prompts: Vec<PromptDefinition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,8 +341,11 @@ pub struct ResourceDefinition {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListResourcesResult {
     pub resources: Vec<ResourceDefinition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -345,6 +403,8 @@ pub struct ResourceTemplate {
 #[serde(rename_all = "camelCase")]
 pub struct ListResourceTemplatesResult {
     pub resource_templates: Vec<ResourceTemplate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 // --- Cancellation ---
@@ -891,5 +951,112 @@ mod tests {
         assert_eq!(json["uriTemplate"], "file:///{path}");
         let parsed: ResourceTemplate = serde_json::from_value(json).unwrap();
         assert_eq!(parsed.name, "File");
+    }
+
+    // --- Pagination tests ---
+
+    #[test]
+    fn paginated_request_no_cursor_decodes_to_zero() {
+        let req = PaginatedRequest { cursor: None };
+        assert_eq!(req.decode_offset(), Some(0));
+    }
+
+    #[test]
+    fn cursor_roundtrip() {
+        let offset = 42usize;
+        let cursor = encode_cursor(offset);
+        let req = PaginatedRequest { cursor: Some(cursor) };
+        assert_eq!(req.decode_offset(), Some(42));
+    }
+
+    #[test]
+    fn invalid_cursor_returns_none() {
+        let req = PaginatedRequest { cursor: Some("!!!invalid!!!".to_string()) };
+        assert_eq!(req.decode_offset(), None);
+    }
+
+    #[test]
+    fn paginate_all_items_no_next_cursor() {
+        let items: Vec<i32> = (0..5).collect();
+        let (page, next) = paginate(&items, 0, 100);
+        assert_eq!(page.len(), 5);
+        assert!(next.is_none());
+    }
+
+    #[test]
+    fn paginate_first_page_with_next_cursor() {
+        let items: Vec<i32> = (0..10).collect();
+        let (page, next) = paginate(&items, 0, 3);
+        assert_eq!(page, vec![0, 1, 2]);
+        assert!(next.is_some());
+
+        // Decode the cursor and fetch the next page
+        let req = PaginatedRequest { cursor: next };
+        let offset = req.decode_offset().unwrap();
+        assert_eq!(offset, 3);
+
+        let (page2, next2) = paginate(&items, offset, 3);
+        assert_eq!(page2, vec![3, 4, 5]);
+        assert!(next2.is_some());
+    }
+
+    #[test]
+    fn paginate_last_page_no_next_cursor() {
+        let items: Vec<i32> = (0..10).collect();
+        let (page, next) = paginate(&items, 9, 3);
+        assert_eq!(page, vec![9]);
+        assert!(next.is_none());
+    }
+
+    #[test]
+    fn paginate_offset_past_end() {
+        let items: Vec<i32> = (0..5).collect();
+        let (page, next) = paginate(&items, 100, 3);
+        assert!(page.is_empty());
+        assert!(next.is_none());
+    }
+
+    #[test]
+    fn paginate_empty_list() {
+        let items: Vec<i32> = vec![];
+        let (page, next) = paginate(&items, 0, 10);
+        assert!(page.is_empty());
+        assert!(next.is_none());
+    }
+
+    #[test]
+    fn list_tools_result_serializes_next_cursor() {
+        let result = ListToolsResult {
+            tools: vec![],
+            next_cursor: Some(encode_cursor(5)),
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert!(json["nextCursor"].is_string());
+    }
+
+    #[test]
+    fn list_tools_result_omits_null_next_cursor() {
+        let result = ListToolsResult {
+            tools: vec![],
+            next_cursor: None,
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert!(json.get("nextCursor").is_none());
+    }
+
+    #[test]
+    fn paginated_request_deserializes_from_empty() {
+        let json = r#"{}"#;
+        let req: PaginatedRequest = serde_json::from_str(json).unwrap();
+        assert!(req.cursor.is_none());
+        assert_eq!(req.decode_offset(), Some(0));
+    }
+
+    #[test]
+    fn paginated_request_deserializes_with_cursor() {
+        let cursor = encode_cursor(50);
+        let json = format!(r#"{{"cursor":"{}"}}"#, cursor);
+        let req: PaginatedRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req.decode_offset(), Some(50));
     }
 }
