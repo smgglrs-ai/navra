@@ -353,7 +353,6 @@ mod credential_isolation {
             source: "env".to_string(),
             path: None,
             var: Some("MCPD_SEC_TEST_ALLOWED".to_string()),
-            channel: None,
         });
 
         std::env::set_var("MCPD_SEC_TEST_ALLOWED", "secret-value");
@@ -435,7 +434,6 @@ mod credential_isolation {
             source: "env".to_string(),
             path: None,
             var: Some("X".to_string()),
-            channel: None,
         });
         let store = MappedCredentialStore::new(mappings);
 

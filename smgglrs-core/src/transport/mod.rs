@@ -2,7 +2,7 @@ mod acp;
 pub(crate) mod a2a;
 pub mod sse;
 mod stdio_server;
-mod streamable;
+pub(crate) mod streamable;
 
 pub use acp::build_acp_router;
 pub use sse::SseBroadcaster;

@@ -46,5 +46,8 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 bs58 = "0.5"
 ciborium = "0.2"
 base64 = "0.22"
+jsonwebtoken = "9"
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+tonic = "0.12"
+prost = "0.13"
 schemars = "0.8"

@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct PermissionSet {
     /// Privilege ring (0 = most privileged, 3 = most restricted).
     /// When set, deny rules and approval requirements cascade from
@@ -58,7 +58,7 @@ fn default_tainted_write_policy() -> String {
 }
 
 /// A per-tool permission rule in config.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct ToolRuleConfig {
     /// Glob pattern matching tool names (e.g., "git_*", "shell_exec").
     pub tool: String,
@@ -67,7 +67,7 @@ pub struct ToolRuleConfig {
 }
 
 /// A custom regex pattern for safety filtering.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct SafetyPatternConfig {
     /// Category name for this pattern (e.g., "internal-url", "project-secret").
     pub category: String,
@@ -79,7 +79,7 @@ pub struct SafetyPatternConfig {
 ///
 /// Categories defined here are treated as PII for IFC labeling,
 /// unlike `SafetyPatternConfig` which only triggers redaction/blocking.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct PiiPatternConfig {
     /// Human-readable name for this pattern (e.g., "employee-id").
     pub name: String,

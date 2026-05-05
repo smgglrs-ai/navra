@@ -4,7 +4,7 @@ use serde::Deserialize;
 ///
 /// Models can be loaded from local files (ONNX) or pulled from registries
 /// and served via a runtime backend.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct ModelConfig {
     /// Path to a local model file (ONNX). Used directly when no `source` is set.
     #[serde(default)]
@@ -63,7 +63,7 @@ pub struct ModelConfig {
 /// cost_tier = "free"
 /// speed_tier = "fast"
 /// ```
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 pub struct AgenticConfig {
     #[serde(default)]
     pub strengths: Vec<String>,
@@ -130,7 +130,7 @@ fn default_threshold() -> Option<f32> {
 /// max_iterations = 200  # per agent ReAct iterations
 /// max_parallel = 4      # concurrent agents (GPU bound)
 /// ```
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct BudgetConfig {
     #[serde(default = "default_budget_max_agents")]
     pub max_agents: u32,
