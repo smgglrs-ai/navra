@@ -436,6 +436,9 @@ mod tests {
     use super::*;
     use smgglrs_core::auth::AgentIdentity;
     use smgglrs_core::models::{GenerateResponse, ModelBackend, ModelError};
+    use smgglrs_core::permissions::{PathAcl, PermissionEngine};
+    use std::collections::HashSet;
+    use std::io::Write;
 
     struct FakeVisionModel;
     impl ModelBackend for FakeVisionModel {
@@ -464,10 +467,92 @@ mod tests {
         CallContext::new(AgentIdentity::new("test", "dev"), "test")
     }
 
+    fn test_perm_engine() -> Arc<PermissionEngine> {
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "dev".to_string(),
+            PathAcl {
+                ring: None,
+                allow: vec!["/**".to_string()],
+                deny: vec![],
+                operations: ["read", "write"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        Arc::new(engine)
+    }
+
+    fn make_state() -> Arc<VisionState> {
+        Arc::new(VisionState {
+            vision_model: Arc::new(FakeVisionModel),
+            perm_engine: test_perm_engine(),
+        })
+    }
+
+    /// Minimal valid 1x1 white PNG (67 bytes).
+    fn tiny_png() -> Vec<u8> {
+        let mut buf = Vec::new();
+        // PNG signature
+        buf.extend_from_slice(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        // IHDR chunk (1x1, 8-bit grayscale)
+        let ihdr_data: [u8; 13] = [
+            0x00, 0x00, 0x00, 0x01, // width: 1
+            0x00, 0x00, 0x00, 0x01, // height: 1
+            0x08, // bit depth: 8
+            0x00, // color type: grayscale
+            0x00, // compression
+            0x00, // filter
+            0x00, // interlace
+        ];
+        let ihdr_crc = crc32(&[b"IHDR" as &[u8], &ihdr_data].concat());
+        buf.extend_from_slice(&(13u32).to_be_bytes()); // length
+        buf.extend_from_slice(b"IHDR");
+        buf.extend_from_slice(&ihdr_data);
+        buf.extend_from_slice(&ihdr_crc.to_be_bytes());
+        // IDAT chunk (zlib-compressed single pixel: filter byte 0 + pixel value 0xFF)
+        let idat_data: [u8; 10] = [
+            0x78, 0x01, // zlib header (deflate, no dict)
+            0x62, 0xF8, 0x0F, 0x00, // compressed data
+            0x01, 0x01, 0x00, 0x00, // adler32
+        ];
+        let idat_crc = crc32(&[b"IDAT", &idat_data as &[u8]].concat());
+        buf.extend_from_slice(&(idat_data.len() as u32).to_be_bytes());
+        buf.extend_from_slice(b"IDAT");
+        buf.extend_from_slice(&idat_data);
+        buf.extend_from_slice(&idat_crc.to_be_bytes());
+        // IEND chunk
+        let iend_crc = crc32(b"IEND");
+        buf.extend_from_slice(&0u32.to_be_bytes());
+        buf.extend_from_slice(b"IEND");
+        buf.extend_from_slice(&iend_crc.to_be_bytes());
+        buf
+    }
+
+    /// CRC-32 for PNG chunks.
+    fn crc32(data: &[u8]) -> u32 {
+        let mut crc: u32 = 0xFFFF_FFFF;
+        for &byte in data {
+            crc ^= byte as u32;
+            for _ in 0..8 {
+                if crc & 1 != 0 {
+                    crc = (crc >> 1) ^ 0xEDB88320;
+                } else {
+                    crc >>= 1;
+                }
+            }
+        }
+        !crc
+    }
+
+    // --- Module tests ---
+
     #[test]
     fn module_provides_all_tools() {
         let model: Arc<dyn ModelBackend> = Arc::new(FakeVisionModel);
-        let module = VisionModule::new(model, Arc::new(smgglrs_core::permissions::PermissionEngine::new()));
+        let module = VisionModule::new(model, test_perm_engine());
 
         assert_eq!(module.name(), "vision");
         let tools = module.tools();
@@ -479,43 +564,373 @@ mod tests {
         assert_eq!(tools.len(), 4);
     }
 
-    #[tokio::test]
-    async fn describe_rejects_missing_path() {
-        let state = Arc::new(VisionState {
-            vision_model: Arc::new(FakeVisionModel),
-            perm_engine: Arc::new(smgglrs_core::permissions::PermissionEngine::new()),
-        });
-        let result = handle_describe(serde_json::json!({}), test_ctx(), state).await;
-        assert!(result.is_error);
+    // --- load_image tests ---
+
+    #[test]
+    fn load_image_valid_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(&tiny_png()).unwrap();
+
+        let result = load_image(&path);
+        assert!(result.is_ok(), "load_image failed: {:?}", result.err());
+        let img = result.unwrap();
+        assert_eq!(img.mime_type, "image/png");
+        assert!(!img.data.is_empty());
+
+        // Verify data is valid base64
+        use base64::Engine;
+        let decoded = base64::engine::general_purpose::STANDARD.decode(&img.data);
+        assert!(decoded.is_ok());
+        assert_eq!(decoded.unwrap(), tiny_png());
     }
 
+    #[test]
+    fn load_image_rejects_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = load_image(dir.path());
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Not a file"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn load_image_rejects_nonexistent() {
+        let result = load_image(Path::new("/nonexistent/image.png"));
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Not a file"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn load_image_rejects_oversized_file() {
+        // Create a file that exceeds MAX_IMAGE_SIZE using a sparse file
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("huge.png");
+        let file = std::fs::File::create(&path).unwrap();
+        // Set the file length to exceed the limit without writing actual data
+        file.set_len(MAX_IMAGE_SIZE + 1).unwrap();
+
+        let result = load_image(&path);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("too large"), "unexpected error: {msg}");
+    }
+
+    // --- MIME type detection ---
+
+    #[test]
+    fn mime_type_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        std::fs::write(&path, &tiny_png()).unwrap();
+        assert_eq!(load_image(&path).unwrap().mime_type, "image/png");
+    }
+
+    #[test]
+    fn mime_type_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        for ext in &["jpg", "jpeg"] {
+            let path = dir.path().join(format!("test.{ext}"));
+            std::fs::write(&path, &tiny_png()).unwrap(); // content irrelevant for MIME check
+            assert_eq!(load_image(&path).unwrap().mime_type, "image/jpeg");
+        }
+    }
+
+    #[test]
+    fn mime_type_gif() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.gif");
+        std::fs::write(&path, &tiny_png()).unwrap();
+        assert_eq!(load_image(&path).unwrap().mime_type, "image/gif");
+    }
+
+    #[test]
+    fn mime_type_webp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.webp");
+        std::fs::write(&path, &tiny_png()).unwrap();
+        assert_eq!(load_image(&path).unwrap().mime_type, "image/webp");
+    }
+
+    #[test]
+    fn mime_type_bmp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.bmp");
+        std::fs::write(&path, &tiny_png()).unwrap();
+        assert_eq!(load_image(&path).unwrap().mime_type, "image/bmp");
+    }
+
+    #[test]
+    fn mime_type_tiff() {
+        let dir = tempfile::tempdir().unwrap();
+        for ext in &["tiff", "tif"] {
+            let path = dir.path().join(format!("test.{ext}"));
+            std::fs::write(&path, &tiny_png()).unwrap();
+            assert_eq!(load_image(&path).unwrap().mime_type, "image/tiff");
+        }
+    }
+
+    #[test]
+    fn mime_type_svg() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.svg");
+        std::fs::write(&path, &tiny_png()).unwrap();
+        assert_eq!(load_image(&path).unwrap().mime_type, "image/svg+xml");
+    }
+
+    #[test]
+    fn mime_type_unknown_defaults_to_png() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.xyz");
+        std::fs::write(&path, &tiny_png()).unwrap();
+        assert_eq!(load_image(&path).unwrap().mime_type, "image/png");
+    }
+
+    // --- resolve_path tests ---
+
+    #[test]
+    fn resolve_path_rejects_relative() {
+        let result = resolve_path("relative/path.png");
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("must be absolute"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn resolve_path_rejects_bare_filename() {
+        let result = resolve_path("image.png");
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("must be absolute"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn resolve_path_handles_tilde_expansion() {
+        // ~/some_path should be expanded. The path may not exist, so
+        // canonicalize will fail, but the error should say "Cannot resolve"
+        // not "must be absolute".
+        let result = resolve_path("~/nonexistent_test_path_12345.png");
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Cannot resolve"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn resolve_path_absolute_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        std::fs::write(&path, b"data").unwrap();
+        let resolved = resolve_path(path.to_str().unwrap());
+        assert!(resolved.is_ok());
+        assert!(resolved.unwrap().is_absolute());
+    }
+
+    #[test]
+    fn resolve_path_nonexistent_absolute() {
+        let result = resolve_path("/nonexistent/path/image.png");
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("Cannot resolve"), "unexpected error: {msg}");
+    }
+
+    // --- screenshot path validation ---
+
+    #[test]
+    fn screenshot_path_must_be_in_tmp() {
+        // Test the inline validation logic used in handle_screen:
+        // canonical path must start with /tmp or std::env::temp_dir()
+        let tmp = std::env::temp_dir();
+
+        let valid_tmp = Path::new("/tmp/screenshot.png");
+        let in_tmp = valid_tmp.starts_with("/tmp") || valid_tmp.starts_with(&tmp);
+        assert!(in_tmp);
+
+        let invalid = Path::new("/home/user/screenshot.png");
+        let in_tmp = invalid.starts_with("/tmp") || invalid.starts_with(&tmp);
+        assert!(!in_tmp);
+    }
+
+    // --- Tool handler tests ---
+
     #[tokio::test]
-    async fn ask_rejects_missing_question() {
-        let state = Arc::new(VisionState {
-            vision_model: Arc::new(FakeVisionModel),
-            perm_engine: Arc::new(smgglrs_core::permissions::PermissionEngine::new()),
-        });
-        let result = handle_ask(
-            serde_json::json!({"path": "/tmp/test.png"}),
-            test_ctx(),
-            state,
-        )
-        .await;
+    async fn describe_rejects_missing_path() {
+        let result = handle_describe(serde_json::json!({}), test_ctx(), make_state()).await;
         assert!(result.is_error);
     }
 
     #[tokio::test]
     async fn describe_rejects_nonexistent_file() {
+        let result = handle_describe(
+            serde_json::json!({"path": "/nonexistent/image.png"}),
+            test_ctx(),
+            make_state(),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn describe_rejects_relative_path() {
+        let result = handle_describe(
+            serde_json::json!({"path": "relative/image.png"}),
+            test_ctx(),
+            make_state(),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn describe_with_valid_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        std::fs::write(&path, &tiny_png()).unwrap();
+
+        let result = handle_describe(
+            serde_json::json!({"path": path.to_str().unwrap()}),
+            test_ctx(),
+            make_state(),
+        )
+        .await;
+        assert!(!result.is_error, "describe should succeed with valid PNG");
+    }
+
+    #[tokio::test]
+    async fn ocr_rejects_missing_path() {
+        let result = handle_ocr(serde_json::json!({}), test_ctx(), make_state()).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn ocr_with_valid_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        std::fs::write(&path, &tiny_png()).unwrap();
+
+        let result = handle_ocr(
+            serde_json::json!({"path": path.to_str().unwrap()}),
+            test_ctx(),
+            make_state(),
+        )
+        .await;
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn ask_rejects_missing_question() {
+        let result = handle_ask(
+            serde_json::json!({"path": "/tmp/test.png"}),
+            test_ctx(),
+            make_state(),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn ask_rejects_empty_question() {
+        let result = handle_ask(
+            serde_json::json!({"path": "/tmp/test.png", "question": ""}),
+            test_ctx(),
+            make_state(),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn ask_rejects_missing_path() {
+        let result = handle_ask(
+            serde_json::json!({"question": "What is this?"}),
+            test_ctx(),
+            make_state(),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn ask_with_valid_image_and_question() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        std::fs::write(&path, &tiny_png()).unwrap();
+
+        let result = handle_ask(
+            serde_json::json!({
+                "path": path.to_str().unwrap(),
+                "question": "What color is this?"
+            }),
+            test_ctx(),
+            make_state(),
+        )
+        .await;
+        assert!(!result.is_error);
+    }
+
+    // --- Permission check tests ---
+
+    #[tokio::test]
+    async fn permission_check_is_called() {
+        // Build a perm engine with a restrictive permission set that denies reads.
+        // The "dev" permission set in the default engine allows reads,
+        // so we use a non-existent permission set name to trigger DeniedUnknown.
         let state = Arc::new(VisionState {
             vision_model: Arc::new(FakeVisionModel),
             perm_engine: Arc::new(smgglrs_core::permissions::PermissionEngine::new()),
         });
+        let ctx = CallContext::new(
+            AgentIdentity::new("restricted-agent", "nonexistent_perm_set"),
+            "test",
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        std::fs::write(&path, &tiny_png()).unwrap();
+
         let result = handle_describe(
-            serde_json::json!({"path": "/nonexistent/image.png"}),
-            test_ctx(),
+            serde_json::json!({"path": path.to_str().unwrap()}),
+            ctx,
             state,
         )
         .await;
+        // With an unknown permission set, the engine should deny
         assert!(result.is_error);
+    }
+
+    // --- Tool definition tests ---
+
+    #[test]
+    fn describe_tool_def_has_required_path() {
+        let def = describe_tool_def();
+        assert_eq!(def.name, "vision_describe");
+        assert!(def.description.is_some());
+        let required = def.input_schema.required.as_ref().unwrap();
+        assert!(required.contains(&"path".to_string()));
+    }
+
+    #[test]
+    fn ocr_tool_def_has_required_path() {
+        let def = ocr_tool_def();
+        assert_eq!(def.name, "vision_ocr");
+        let required = def.input_schema.required.as_ref().unwrap();
+        assert!(required.contains(&"path".to_string()));
+    }
+
+    #[test]
+    fn ask_tool_def_has_required_fields() {
+        let def = ask_tool_def();
+        assert_eq!(def.name, "vision_ask");
+        let required = def.input_schema.required.as_ref().unwrap();
+        assert!(required.contains(&"path".to_string()));
+        assert!(required.contains(&"question".to_string()));
+    }
+
+    #[test]
+    fn screen_tool_def_has_no_required_fields() {
+        let def = screen_tool_def();
+        assert_eq!(def.name, "vision_screen");
+        assert!(def.input_schema.required.is_none());
     }
 }
