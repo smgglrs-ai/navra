@@ -20,6 +20,8 @@ pub(super) struct AppState {
     pub a2a_endpoint: Option<String>,
     /// Root DID for Agent Card identity.
     pub root_did: Option<String>,
+    /// OAuth 2.0 provider (None = OAuth disabled).
+    pub oauth: Option<Arc<smgglrs_security::auth::oauth::OAuthProvider>>,
 }
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
@@ -31,6 +33,7 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
         registry_entries: Vec::new(),
         a2a_endpoint: None,
         root_did: None,
+        oauth: None,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -52,6 +55,7 @@ pub fn build_router_with_broadcaster(
         registry_entries: Vec::new(),
         a2a_endpoint: None,
         root_did: None,
+        oauth: None,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -89,6 +93,7 @@ pub fn build_router_with_discovery(
         registry_entries,
         a2a_endpoint,
         root_did,
+        oauth: None,
     };
 
     let mut router = Router::new()
@@ -105,6 +110,14 @@ pub fn build_router_with_discovery(
         router = router.route("/.well-known/agent.json", get(handle_agent_card));
     }
 
+    // OAuth routes
+    if state.oauth.is_some() {
+        router = router
+            .route("/.well-known/oauth-authorization-server", get(handle_oauth_metadata))
+            .route("/oauth/token", post(handle_oauth_token))
+            .route("/oauth/register", post(handle_oauth_register));
+    }
+
     let mut router = router.with_state(state);
 
     // Mount A2A JSON-RPC endpoint when A2A is enabled
@@ -117,4 +130,9 @@ pub fn build_router_with_discovery(
     }
 
     router
+}
+
+/// Set the OAuth provider on an existing router's state.
+pub fn set_oauth(state: &mut AppState, provider: Arc<smgglrs_security::auth::oauth::OAuthProvider>) {
+    state.oauth = Some(provider);
 }

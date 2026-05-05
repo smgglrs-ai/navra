@@ -259,3 +259,41 @@ fn make_sse_stream(
         }
     }
 }
+
+// --- OAuth 2.0 endpoints ---
+
+pub(super) async fn handle_oauth_metadata(
+    State(state): State<AppState>,
+) -> axum::response::Response {
+    match &state.oauth {
+        Some(provider) => axum::Json(provider.metadata()).into_response(),
+        None => (axum::http::StatusCode::NOT_FOUND, "OAuth not enabled").into_response(),
+    }
+}
+
+pub(super) async fn handle_oauth_token(
+    State(state): State<AppState>,
+    axum::Json(request): axum::Json<smgglrs_security::auth::oauth::TokenRequest>,
+) -> axum::response::Response {
+    let provider = match &state.oauth {
+        Some(p) => p,
+        None => return (axum::http::StatusCode::NOT_FOUND, "OAuth not enabled").into_response(),
+    };
+    match provider.issue_token(&request) {
+        Ok(response) => axum::Json(response).into_response(),
+        Err(msg) => (axum::http::StatusCode::BAD_REQUEST, msg).into_response(),
+    }
+}
+
+pub(super) async fn handle_oauth_register(
+    State(state): State<AppState>,
+    axum::Json(request): axum::Json<smgglrs_security::auth::oauth::ClientRegistrationRequest>,
+) -> axum::response::Response {
+    let provider = match &state.oauth {
+        Some(p) => p,
+        None => return (axum::http::StatusCode::NOT_FOUND, "OAuth not enabled").into_response(),
+    };
+    let reg = provider.register_dynamic(&request);
+    (axum::http::StatusCode::CREATED, axum::Json(reg)).into_response()
+}
+
