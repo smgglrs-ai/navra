@@ -14,7 +14,7 @@ use syn::{
 /// # Usage
 ///
 /// ```ignore
-/// #[smgglrs_tool(
+/// #[tool(
 ///     name = "file_read",
 ///     description = "Read a file from disk",
 /// )]
@@ -33,7 +33,7 @@ use syn::{
 ///   the definition paired with an `Arc`-wrapped handler closure
 /// - The original async function is preserved unchanged
 #[proc_macro_attribute]
-pub fn smgglrs_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attrs = parse_macro_input!(attr as ToolAttrs);
     let func = parse_macro_input!(item as ItemFn);
 

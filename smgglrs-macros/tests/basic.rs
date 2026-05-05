@@ -1,10 +1,10 @@
-use smgglrs_macros::smgglrs_tool;
+use smgglrs_macros::tool;
 use smgglrs_protocol::{CallToolResult, Content, TextContent};
 use smgglrs_security::auth::CallContext;
 
 // --- Basic tool: single required arg ---
 
-#[smgglrs_tool(
+#[tool(
     name = "test_echo",
     description = "Echo a message back",
 )]
@@ -52,7 +52,7 @@ fn tool_def_has_message_property() {
 
 // --- Tool with optional args and defaults ---
 
-#[smgglrs_tool(
+#[tool(
     name = "test_search",
     description = "Search with limit",
 )]
@@ -88,7 +88,7 @@ fn optional_arg_has_default_in_schema() {
 
 // --- Tool with multiple types ---
 
-#[smgglrs_tool(
+#[tool(
     name = "test_types",
     description = "Test type mapping",
 )]
@@ -187,7 +187,7 @@ async fn handler_can_be_called() {
 
 // --- Tool with no args (besides context) ---
 
-#[smgglrs_tool(
+#[tool(
     name = "test_noop",
     description = "A tool with no arguments",
 )]
