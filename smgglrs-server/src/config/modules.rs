@@ -89,6 +89,26 @@ pub struct RagModuleConfig {
     /// Database path. Defaults to the same directory as docs, separate file.
     #[serde(default = "default_rag_db_path")]
     pub db: String,
+    /// Path to the ONNX cross-encoder model for reranking (optional).
+    #[serde(default)]
+    pub reranker_model_path: Option<String>,
+    /// Path to the tokenizer.json for the cross-encoder model (optional).
+    #[serde(default)]
+    pub reranker_tokenizer_path: Option<String>,
+    /// Query cache TTL in seconds (default: 300). Set to 0 to disable caching.
+    #[serde(default = "default_query_cache_ttl_secs")]
+    pub query_cache_ttl_secs: u64,
+    /// Maximum number of cached query entries (default: 1000).
+    #[serde(default = "default_query_cache_max_entries")]
+    pub query_cache_max_entries: usize,
+}
+
+fn default_query_cache_ttl_secs() -> u64 {
+    300
+}
+
+fn default_query_cache_max_entries() -> usize {
+    1000
 }
 
 pub(super) fn default_rag_db_path() -> String {

@@ -1167,12 +1167,44 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 .unwrap_or(768);
             match smgglrs_rag::ChunkStore::open(&rag_db_path, dims) {
                 Ok(store) => {
+                    // Enable semantic query cache if TTL > 0
+                    let cache_ttl = cfg.rag_query_cache_ttl_secs();
+                    let store = if cache_ttl > 0 {
+                        let cache_config = smgglrs_rag::QueryCacheConfig {
+                            capacity: cfg.rag_query_cache_max_entries(),
+                            ttl: std::time::Duration::from_secs(cache_ttl),
+                            ..smgglrs_rag::QueryCacheConfig::default()
+                        };
+                        tracing::info!(
+                            ttl_secs = cache_ttl,
+                            max_entries = cfg.rag_query_cache_max_entries(),
+                            "RAG query cache enabled"
+                        );
+                        store.with_query_cache(cache_config)
+                    } else {
+                        store
+                    };
+
                     let store_arc = std::sync::Arc::new(store);
                     shared_chunk_store = Some(Arc::clone(&store_arc));
-                    let rag = smgglrs_rag::RagModule::new(
+
+                    // Load cross-encoder reranker if configured
+                    let reranker: Arc<dyn smgglrs_rag::Reranker> = {
+                        let model_path = cfg.rag_reranker_model_path();
+                        let tokenizer_path = cfg.rag_reranker_tokenizer_path();
+                        let r = smgglrs_rag::load_reranker(
+                            model_path.as_ref().map(|p| std::path::Path::new(p.as_str())),
+                            tokenizer_path.as_ref().map(|p| std::path::Path::new(p.as_str())),
+                        );
+                        Arc::from(r)
+                    };
+
+                    let rag = smgglrs_rag::RagModule::with_reranker(
                         store_arc,
                         model.clone(),
+                        smgglrs_rag::ChunkConfig::default(),
                         perm_engine.clone(),
+                        reranker,
                     );
                     tracing::info!("Module 'rag' enabled (db: {rag_db_path}, dims: {dims})");
                     builder = builder.module(rag);

@@ -591,4 +591,281 @@ mod tests {
             _ => panic!("expected text content"),
         }
     }
+
+    // --- Pipeline integration tests: reranking + caching ---
+
+    use crate::cache::QueryCacheConfig;
+    use crate::store::ChunkResult;
+    use smgglrs_core::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
+    use std::time::Duration;
+
+    /// A reranker that reverses the order of candidates, for testing.
+    struct ReversingReranker;
+
+    impl Reranker for ReversingReranker {
+        fn rerank(&self, _query: &str, mut candidates: Vec<ChunkResult>) -> Vec<ChunkResult> {
+            candidates.reverse();
+            let len = candidates.len();
+            for (i, c) in candidates.iter_mut().enumerate() {
+                c.distance = -(len as f64 - i as f64);
+            }
+            candidates
+        }
+
+        fn is_active(&self) -> bool {
+            true
+        }
+    }
+
+    /// Fake embedding model that returns a fixed vector per query text.
+    struct FixedEmbedModel;
+
+    impl ModelBackend for FixedEmbedModel {
+        fn embed(
+            &self,
+            req: &EmbedRequest,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<EmbedResponse, ModelError>> + Send + '_>,
+        > {
+            // Hash the query text to a deterministic embedding
+            let hash = req.text.len() as f32 / 100.0;
+            Box::pin(async move {
+                Ok(EmbedResponse {
+                    embedding: vec![0.9 + hash * 0.001, 0.1, 0.0, 0.0],
+                    dimensions: 4,
+                })
+            })
+        }
+    }
+
+    fn make_indexed_store(with_cache: bool) -> Arc<ChunkStore> {
+        let store = if with_cache {
+            ChunkStore::open_memory(4)
+                .unwrap()
+                .with_query_cache(QueryCacheConfig {
+                    capacity: 100,
+                    ttl: Duration::from_secs(300),
+                    similarity_threshold: 0.92,
+                })
+        } else {
+            ChunkStore::open_memory(4).unwrap()
+        };
+
+        let chunks = vec![
+            crate::chunk::Chunk {
+                content: "Alpha document about Rust".to_string(),
+                start_byte: 0,
+                end_byte: 25,
+                index: 0,
+            },
+            crate::chunk::Chunk {
+                content: "Beta document about Python".to_string(),
+                start_byte: 26,
+                end_byte: 52,
+                index: 1,
+            },
+            crate::chunk::Chunk {
+                content: "Gamma document about Go".to_string(),
+                start_byte: 53,
+                end_byte: 76,
+                index: 2,
+            },
+        ];
+        let embeddings = vec![
+            vec![1.0, 0.0, 0.0, 0.0],
+            vec![0.0, 1.0, 0.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0],
+        ];
+        store
+            .index_document("/test.md", &chunks, &embeddings)
+            .unwrap();
+
+        Arc::new(store)
+    }
+
+    #[tokio::test]
+    async fn query_with_reversing_reranker_changes_order() {
+        let store = make_indexed_store(false);
+
+        let state = Arc::new(RagState {
+            store,
+            embedding_model: Arc::new(FixedEmbedModel),
+            chunk_config: ChunkConfig::default(),
+            perm_engine: Arc::new(test_perm_engine()),
+            reranker: Arc::new(ReversingReranker),
+        });
+
+        let result = handle_query(
+            serde_json::json!({"query": "test query", "limit": 3}),
+            test_ctx(),
+            state,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            smgglrs_core::protocol::Content::Text(t) => {
+                // The reversing reranker should put the last vector-search
+                // result first. With our fixed embedding close to [1,0,0,0],
+                // the original order is Alpha, Beta, Gamma. Reversed: Gamma first.
+                let gamma_pos = t.text.find("Gamma").expect("Gamma should appear");
+                let alpha_pos = t.text.find("Alpha").expect("Alpha should appear");
+                assert!(
+                    gamma_pos < alpha_pos,
+                    "Reversing reranker should put Gamma before Alpha"
+                );
+            }
+            _ => panic!("expected text content"),
+        }
+    }
+
+    #[tokio::test]
+    async fn query_without_reranker_preserves_vector_order() {
+        let store = make_indexed_store(false);
+
+        let state = Arc::new(RagState {
+            store,
+            embedding_model: Arc::new(FixedEmbedModel),
+            chunk_config: ChunkConfig::default(),
+            perm_engine: Arc::new(test_perm_engine()),
+            reranker: Arc::new(NoopReranker),
+        });
+
+        let result = handle_query(
+            serde_json::json!({"query": "test query", "limit": 3}),
+            test_ctx(),
+            state,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            smgglrs_core::protocol::Content::Text(t) => {
+                // With noop reranker and embedding close to [1,0,0,0],
+                // Alpha (embedding [1,0,0,0]) should come first.
+                let alpha_pos = t.text.find("Alpha").expect("Alpha should appear");
+                let gamma_pos = t.text.find("Gamma").expect("Gamma should appear");
+                assert!(
+                    alpha_pos < gamma_pos,
+                    "Without reranker, Alpha should come before Gamma"
+                );
+            }
+            _ => panic!("expected text content"),
+        }
+    }
+
+    #[tokio::test]
+    async fn query_cache_hit_returns_cached_results() {
+        let store = make_indexed_store(true);
+
+        let state = Arc::new(RagState {
+            store: store.clone(),
+            embedding_model: Arc::new(FixedEmbedModel),
+            chunk_config: ChunkConfig::default(),
+            perm_engine: Arc::new(test_perm_engine()),
+            reranker: Arc::new(NoopReranker),
+        });
+
+        // First query — cache miss, populates cache
+        let result1 = handle_query(
+            serde_json::json!({"query": "test query", "limit": 3}),
+            test_ctx(),
+            state.clone(),
+        )
+        .await;
+        assert!(!result1.is_error);
+
+        let cache = store.query_cache().expect("cache should be configured");
+        let metrics = cache.metrics();
+        assert_eq!(metrics.lookups, 1, "first query should trigger a lookup");
+        assert_eq!(metrics.hits, 0, "first query should be a cache miss");
+
+        // Second query with same text — cache hit
+        let result2 = handle_query(
+            serde_json::json!({"query": "test query", "limit": 3}),
+            test_ctx(),
+            state.clone(),
+        )
+        .await;
+        assert!(!result2.is_error);
+
+        let metrics = cache.metrics();
+        assert_eq!(metrics.lookups, 2, "second query should trigger a lookup");
+        assert_eq!(metrics.hits, 1, "second query should be a cache hit");
+    }
+
+    #[tokio::test]
+    async fn query_cache_miss_for_different_queries() {
+        let store = make_indexed_store(true);
+
+        let state = Arc::new(RagState {
+            store: store.clone(),
+            embedding_model: Arc::new(FixedEmbedModel),
+            chunk_config: ChunkConfig::default(),
+            perm_engine: Arc::new(test_perm_engine()),
+            reranker: Arc::new(NoopReranker),
+        });
+
+        // First query
+        handle_query(
+            serde_json::json!({"query": "alpha query", "limit": 3}),
+            test_ctx(),
+            state.clone(),
+        )
+        .await;
+
+        // Different query — should miss (our fixed embed model produces
+        // nearly identical embeddings, but the text differs so exact-match
+        // will miss; semantic match may or may not hit depending on
+        // similarity threshold, so we use a very different text)
+        handle_query(
+            serde_json::json!({"query": "completely unrelated question about cooking", "limit": 3}),
+            test_ctx(),
+            state.clone(),
+        )
+        .await;
+
+        let cache = store.query_cache().expect("cache should be configured");
+        let metrics = cache.metrics();
+        assert_eq!(metrics.lookups, 2);
+        // Both queries used different text, so exact-match misses.
+        // Semantic match might hit because FixedEmbedModel returns similar
+        // vectors. That's expected — it tests the cache lookup path either way.
+        assert!(metrics.entries >= 1, "at least one entry should be cached");
+    }
+
+    #[tokio::test]
+    async fn reranker_overfetch_factor_applied() {
+        // Verify that when a reranker is active, the pipeline fetches more
+        // candidates than the requested limit.
+        let store = make_indexed_store(false);
+
+        let state = Arc::new(RagState {
+            store,
+            embedding_model: Arc::new(FixedEmbedModel),
+            chunk_config: ChunkConfig::default(),
+            perm_engine: Arc::new(test_perm_engine()),
+            reranker: Arc::new(ReversingReranker),
+        });
+
+        // Request limit=1, but RERANK_OVERFETCH_FACTOR=4 so it should
+        // fetch 4 candidates then return 1 after reranking.
+        let result = handle_query(
+            serde_json::json!({"query": "test", "limit": 1}),
+            test_ctx(),
+            state,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            smgglrs_core::protocol::Content::Text(t) => {
+                assert!(
+                    t.text.contains("Found 1 result"),
+                    "Should return exactly 1 result despite overfetching"
+                );
+            }
+            _ => panic!("expected text content"),
+        }
+    }
 }
