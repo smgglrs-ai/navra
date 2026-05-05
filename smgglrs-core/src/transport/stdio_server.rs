@@ -14,7 +14,7 @@ use super::streamable::dispatch::dispatch;
 pub async fn run_stdio_server(
     server: Arc<McpServer>,
     agent: AgentIdentity,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
     let mut reader = BufReader::new(stdin);

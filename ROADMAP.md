@@ -4,7 +4,7 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-05-03)
+## Current state (2026-05-04)
 
 17 crates, ~78K LoC, 1431 tests. 43 personas, 36 heuristics,
 8 directives. Gateway blackbox audit. 4 paper outlines. Fully local
@@ -16,7 +16,7 @@ execution via Podman (shared model server + per-agent sandboxes).
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| smgglrs-protocol | Done | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry) |
+| smgglrs-protocol | Partial (see Phase 9) | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry). 14/39 MCP spec features complete. |
 | smgglrs-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
 | smgglrs-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
 | smgglrs-model-runtime | Done | Serve models via llama-server or Podman. libkrun delegated to OpenShell (see OPENSHELL.md) |
@@ -953,7 +953,282 @@ retrieval time. ~76% savings on redundant ranking operations.
 Particularly valuable in multi-agent flows where agents rephrase
 similar queries.
 
-### Phase 8: Paper & benchmarks
+### Phase 8: Warp-informed UX patterns (NEW — 2026-05-04)
+
+Patterns adopted from studying Warp's open-source codebase
+(github.com/warpdotdev/warp, AGPL-3.0). All items are clean-room
+re-implementations of design patterns, not code copies.
+
+#### 8a. Typed agent action/result model (HIGH priority)
+
+Adopt Warp's action/result enum symmetry pattern for `smgglrs-agent`.
+Currently, tool results are flat `CallToolResult` (text content +
+is_error). A typed model enables better rendering, auto-approval,
+cancellation, and audit:
+
+- `AgentAction` enum: `FileRead`, `FileWrite`, `GitStatus`,
+  `GitCommit`, `RagSearch`, `ShellCommand`, `McpToolCall`,
+  `StartAgent`, `SendMessage`, `AskUser`, etc.
+- `AgentActionResult` enum: mirrors each action with
+  Success/Error/Cancelled variants.
+- Metadata methods: `is_read_only()`, `risk_level()`,
+  `user_friendly_name()`, `cancelled_result()`.
+- Wire into permission engine: `smgglrs-security` ACL decisions
+  use `risk_level()` for auto-approval thresholds.
+- Audit: structured entries in blackbox log (action type, args,
+  result, timing, risk classification).
+
+**Effort**: 2-3 days. ~500 lines in smgglrs-agent + wiring.
+
+#### 8b. MCP config import (HIGH priority, LOW effort)
+
+Let users import upstream MCP server configs from existing tools
+without maintaining separate smgglrs config:
+
+- Parse Claude Desktop format (`.mcp.json` with `mcpServers` key)
+- Parse VSCode format (`mcp.servers` key)
+- Parse Codex TOML format (`[mcp_servers.name]` tables)
+- Normalize all to smgglrs's `[[upstream]]` config entries
+- CLI: `smgglrs config import-mcp <path>` to merge into config.toml
+- Auto-discovery: scan `~/.claude.json`, `.mcp.json` in project root
+- Secret-safe: `#[serde(skip_serializing)]` on credential fields
+  to prevent accidental exposure in config dumps.
+
+**Effort**: 1 day. ~200 lines in smgglrs-server/src/config.rs.
+
+#### 8c. Config schema generation (MEDIUM priority)
+
+Generate JSON Schema from smgglrs config types for editor
+autocomplete in TOML files:
+
+- Add `schemars::JsonSchema` derives to config structs
+- CLI: `smgglrs schema > config.schema.json`
+- Hot-reload: file watcher on `config.toml`, update in-memory
+  config without restart (load-only, no write-back loop)
+- Validate on load with defaults for invalid values
+
+**Effort**: 1 day. Add derives + 50-line CLI subcommand.
+
+#### 8d. Computer use Actor trait (MEDIUM priority)
+
+Clean platform abstraction for `smgglrs-modal-vision`:
+
+- `Actor` trait: `async fn perform_actions(&mut self, actions: &[Action]) -> ActionResult`
+- `Action` enum: `Wait`, `MouseDown/Up/Move`, `TypeText`, `KeyDown/Up`
+- Platform auto-detection: check `WAYLAND_DISPLAY` / `DISPLAY` env vars
+- `ScreenshotParams`: `max_long_edge_px`, `max_total_px` for LLM-friendly sizing
+- Use `xcap` (MIT) for actual capture, not Warp's XDG portal code
+
+**Effort**: 2 days. ~300 lines in smgglrs-modal-vision.
+
+#### 8e. Isolation context detection (MEDIUM priority)
+
+Detect runtime isolation environment for OpenShell integration:
+
+- `IsolationContext` struct: detect Podman container, libkrun VM,
+  OpenShell sandbox, bare metal via env vars + cgroup heuristics
+- Layered detection: explicit env var > heuristic checks
+- Workload token abstraction for identity federation
+- Memoize with `OnceLock` for process lifetime
+
+**Effort**: 0.5 day. ~100 lines in smgglrs-model-runtime.
+
+#### 8f. ToolBlock structured output (LOW-MEDIUM priority)
+
+Block-based tool execution model for future CLI/TUI:
+
+- `ToolBlock`: `block_id: Uuid`, `tool_name`, `arguments`,
+  `result: CallToolResult`, `started_at`, `duration`, `status`
+- Each tool execution produces one addressable block
+- Blocks carry metadata for rendering (exit code, timing, risk)
+- Foundation for eventual terminal-style agent UX
+
+**Effort**: 1 day. ~150 lines in smgglrs-agent.
+
+### Phase 9: Full MCP spec coverage (NEW — 2026-05-04)
+
+**Goal**: smgglrs-protocol covers 100% of the MCP 2025-03-26 spec,
+including proc macros for third-party module authors. Competitive
+parity with rmcp (official Rust MCP SDK, 4.7M downloads) while
+maintaining our differentiators (IFC labels, permissions extension,
+A2A client, resilient upstream proxy).
+
+**Current coverage**: 14/39 features complete. 25 missing.
+
+#### 9a. Missing types — batch 1 (trivial additions)
+
+Add missing fields and types that are <50 lines each:
+
+| Feature | What to add | Lines |
+|---------|------------|-------|
+| `ping` | Match arm in dispatch returning `{}` | 5 |
+| `instructions` field | `Option<String>` on `InitializeResult` | 2 |
+| Tool annotations | `ToolAnnotations` struct (readOnlyHint, destructiveHint, idempotentHint, openWorldHint, title) + field on `ToolDefinition` | 20 |
+| Resource size | `Option<u64>` on `ResourceDefinition` | 2 |
+| Image content | `Content::Image { data, mime_type }` | 10 |
+| Audio content | `Content::Audio { data, mime_type }` | 10 |
+| Embedded resource | `Content::Resource { resource: ResourceContent }` | 10 |
+| MCP error codes | Named constants: `RequestCancelled = -32001`, `ContentTooLarge = -32002` | 10 |
+| Roots types | `Root { uri, name }`, `ListRootsResult` | 15 |
+| Cancellation | `CancelledNotification { request_id, reason }` | 15 |
+| Progress notification | `ProgressNotification { progress_token, progress, total, message }` | 15 |
+
+**Effort**: 1 day. ~115 lines of types + tests.
+
+#### 9b. Missing types — batch 2 (medium complexity)
+
+| Feature | What to add | Lines |
+|---------|------------|-------|
+| Logging | `LoggingCapability`, `SetLevelParams`, `LoggingLevel` enum (8 syslog levels), `LoggingMessageNotification` | 60 |
+| Sampling | `CreateMessageParams`, `CreateMessageResult`, `ModelPreferences`, `ModelHint`, `SamplingMessage` | 100 |
+| Completions | `CompleteParams`, `CompleteResult`, `PromptReference`, `ResourceReference` | 50 |
+| Elicitation | `CreateElicitationParams`, `ElicitationResult`, `ElicitationSchema` | 60 |
+| Resource templates | `ResourceTemplate` struct + `ListResourceTemplatesResult` | 30 |
+
+**Effort**: 2 days. ~300 lines of types + tests.
+
+#### 9c. Pagination infrastructure
+
+Generic pagination pattern for all list operations:
+
+- `PaginatedParams { cursor: Option<String> }` trait or struct
+- `PaginatedResult<T> { items: Vec<T>, next_cursor: Option<String> }`
+- Add cursor fields to: `ListToolsResult`, `ListResourcesResult`,
+  `ListPromptsResult`, `ListResourceTemplatesResult`
+- Add cursor param to list request params
+- Server-side: page through module tool registrations (currently
+  returns all at once — fine for now, but needed for spec compliance)
+
+**Effort**: 1 day. ~100 lines.
+
+#### 9d. Notification infrastructure
+
+Server-initiated notifications over SSE. This is the biggest
+structural gap — blocks 5 features:
+
+- Notification bus: `tokio::broadcast` channel in session state
+- `notify()` method on session: serialize notification, push to SSE stream
+- Implement: `notifications/tools/list_changed`,
+  `notifications/resources/list_changed`,
+  `notifications/resources/updated`,
+  `notifications/prompts/list_changed`,
+  `notifications/progress`
+- Module trait gains `on_change(&self) -> broadcast::Receiver<Notification>`
+- Resource subscription store: track which resources each session
+  has subscribed to, emit `resources/updated` on change
+
+**Effort**: 3 days. ~400 lines across smgglrs-core + smgglrs-protocol.
+
+#### 9e. Progress tracking
+
+Request-level progress reporting:
+
+- `RequestMeta { progress_token: Option<ProgressToken> }` on all
+  request params (tools/call, resources/read, prompts/get)
+- Module handlers receive progress token, can emit
+  `notifications/progress` via notification bus (9d)
+- Wire into long-running tools (RAG indexing, file operations)
+
+**Effort**: 1 day. ~100 lines. Depends on 9d.
+
+#### 9f. Stdio server transport
+
+Server-mode stdio transport (currently only client-side exists):
+
+- Read JSON-RPC from stdin, write to stdout
+- Reuse existing dispatch logic from HTTP transport
+- Enables: `smgglrs stdio` mode for IDE integration (similar
+  to how LSP servers work over stdio)
+- Claude Desktop and Cursor can spawn smgglrs as a stdio subprocess
+
+**Effort**: 2 days. ~200 lines in smgglrs-core.
+
+#### 9g. OAuth 2.0 authorization framework
+
+MCP spec defines OAuth for client-server auth. smgglrs currently
+uses BLAKE3 tokens:
+
+- Implement MCP OAuth flow: discovery → authorize → token → refresh
+- Support as alternative to BLAKE3 (not replacement)
+- Enables third-party clients (not just trusted local agents)
+  to authenticate via standard OAuth
+- Reuse existing auth chain in smgglrs-security
+
+**Effort**: 3-4 days. ~500 lines across smgglrs-security + smgglrs-core.
+
+#### 9h. Proc macro crate: `smgglrs-macros` (NEW crate)
+
+Proc macro for ergonomic tool/prompt/resource definition,
+competing with rmcp's `#[tool]` macro:
+
+```rust
+#[smgglrs::tool(
+    name = "file_read",
+    description = "Read a file from disk",
+    annotations(read_only, idempotent),
+)]
+async fn file_read(
+    #[arg(description = "Path to the file")] path: String,
+    #[arg(description = "Max lines", default = 100)] limit: u32,
+    ctx: CallContext,
+) -> CallToolResult {
+    // ...
+}
+```
+
+The macro generates:
+- `ToolDefinition` with JSON Schema from Rust types (via `schemars`)
+- Handler closure wrapping the function
+- `(ToolDefinition, Handler)` pair for `Module::tools()` registration
+- Compile-time validation of required vs optional args
+
+Also provide `#[smgglrs::prompt]` and `#[smgglrs::resource]` macros.
+
+**Differentiators over rmcp**: IFC label propagation built into
+generated handlers, permission annotation on tool definitions,
+CallContext with session/security state.
+
+**Effort**: 4-5 days. New crate ~800 lines (proc macro + tests).
+
+#### 9i. Spec compliance test suite
+
+Automated test suite verifying spec compliance:
+
+- One test per MCP method: correct request/response serialization
+- Error code tests: all standard + MCP-specific codes
+- Transport tests: stdio and HTTP round-trips
+- Notification tests: verify emission on state changes
+- Pagination tests: cursor-based iteration
+- Run against rmcp's test vectors if available
+
+**Effort**: 2 days. ~500 lines of tests.
+
+#### MCP coverage summary
+
+| Phase | Features | Effort | Priority |
+|-------|----------|--------|----------|
+| 9a. Trivial types | 11 features | 1 day | **High** |
+| 9b. Medium types | 5 features | 2 days | **High** |
+| 9c. Pagination | 4 list endpoints | 1 day | **High** |
+| 9d. Notifications | 5 notifications | 3 days | **High** |
+| 9e. Progress | 1 feature | 1 day | Medium |
+| 9f. Stdio server | 1 transport | 2 days | **High** |
+| 9g. OAuth | 1 auth flow | 3-4 days | Medium |
+| 9h. Proc macros | DX parity with rmcp | 4-5 days | **High** |
+| 9i. Test suite | Compliance verification | 2 days | Medium |
+| **Total** | **25 missing → 0** | **~20 days** | |
+
+**smgglrs differentiators** (not in rmcp, not in MCP spec):
+
+| Feature | Location | Description |
+|---------|----------|-------------|
+| IFC data labels | `label.rs` | Bell-LaPadula lattice with PII level. Taint propagation through tool chains. |
+| Permission negotiation | `permissions.rs` | 4-method extension (request/grant/deny/list). Scoped, time-bounded. |
+| A2A protocol client | `a2a.rs` + `a2a_client.rs` | Full A2A v0.2.5 types + HTTP client with IFC header propagation. |
+| Resilient upstream proxy | `upstream/` | 3 transports + exponential backoff, sleep detection, per-request timeout. |
+| Safety hook pipeline | smgglrs-security | Content filtering as hook, not hardcoded in request path. |
+
+### Phase 10: Paper & benchmarks (was Phase 8)
 
 - Final LoC counts for all crates
 - Latency benchmarks (IFC overhead, hook pipeline, permission checks)
@@ -1099,8 +1374,16 @@ These capabilities from Python Myelix are intentionally NOT replicated:
 
 - **Docker deployment**: Rust binary is self-contained
 - **Python engine wrappers**: replaced by ModelBackend trait
-- **Rich TUI**: CLI is sufficient; Goose or GNOME shell provides UX
+- **Rich TUI**: CLI is sufficient; Goose or GNOME shell provides UX.
+  Warp fork evaluated (2026-05-04) — warpui (MIT) is architecturally
+  clean but AGPL contamination from internal deps makes extraction
+  impractical. Adopt Warp's UX *patterns* (Phase 8) instead.
 - **A2A server**: smgglrs already serves Agent Cards; A2A orchestration
   belongs in smgglrs-flow, not as a separate service
 - **Desktop app**: Goose (or similar) serves as the frontend;
   smgglrs handles GNOME integration (D-Bus notifications, tray)
+- **Adopt rmcp**: Evaluated (2026-05-04). Our hand-rolled MCP types
+  carry IFC labels and permissions extensions that rmcp doesn't
+  support. Full spec coverage (Phase 9) closes the gap while
+  preserving our differentiators. rmcp's `#[tool]` macro DX is
+  replicated in Phase 9h.

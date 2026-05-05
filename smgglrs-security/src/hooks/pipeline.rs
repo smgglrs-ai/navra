@@ -226,6 +226,7 @@ mod tests {
         ) -> HookDecision {
             let text = match &result.content[0] {
                 smgglrs_protocol::Content::Text(t) => &t.text,
+                _ => return HookDecision::Continue,
             };
             HookDecision::ModifyResult(CallToolResult::text(format!(
                 "{}{}",
@@ -321,6 +322,7 @@ mod tests {
             smgglrs_protocol::Content::Text(t) => {
                 assert_eq!(t.text, "hello [filtered]");
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -344,6 +346,7 @@ mod tests {
             smgglrs_protocol::Content::Text(t) => {
                 assert_eq!(t.text, "base [B] [A]");
             }
+            _ => panic!("expected text content"),
         }
     }
 

@@ -588,6 +588,7 @@ mod tests {
                 assert!(t.text.contains("Documents: 0"));
                 assert!(t.text.contains("Chunks:    0"));
             }
+            _ => panic!("expected text content"),
         }
     }
 }
