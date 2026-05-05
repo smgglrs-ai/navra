@@ -31,6 +31,7 @@ pub struct McpServerBuilder {
     trusted_paths: Option<HashMap<String, Vec<String>>>,
     session_store: Option<SessionStore>,
     blackbox: Option<crate::blackbox::Blackbox>,
+    broadcaster: Option<crate::transport::sse::SseBroadcaster>,
 }
 
 impl McpServerBuilder {
@@ -51,6 +52,7 @@ impl McpServerBuilder {
             trusted_paths: None,
             session_store: None,
             blackbox: None,
+            broadcaster: None,
         }
     }
 
@@ -251,6 +253,12 @@ impl McpServerBuilder {
         self
     }
 
+    /// Set the SSE broadcaster for server-initiated notifications.
+    pub fn broadcaster(mut self, b: crate::transport::sse::SseBroadcaster) -> Self {
+        self.broadcaster = Some(b);
+        self
+    }
+
     /// Use a custom session store backend (e.g. SQLite for persistence).
     /// If not set, sessions are stored in memory (lost on restart).
     pub fn session_store(mut self, store: SessionStore) -> Self {
@@ -435,6 +443,7 @@ impl McpServerBuilder {
             pending_permission_requests: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
+            broadcaster: self.broadcaster,
         }
     }
 }
