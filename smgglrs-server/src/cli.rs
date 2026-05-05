@@ -35,6 +35,8 @@ pub(crate) enum Commands {
     Deny { id: String },
     /// Show server status
     Status,
+    /// Print JSON Schema for config.toml
+    Schema,
     /// Install systemd user units and enable the service
     Install,
     /// Uninstall systemd user units

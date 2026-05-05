@@ -104,6 +104,10 @@ async fn main() -> anyhow::Result<()> {
             let addr = cfg.server.listen_addr();
             query_status(&addr).await?;
         }
+        Commands::Schema => {
+            let schema = schemars::schema_for!(config::Config);
+            println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+        }
         Commands::Install => {
             install_systemd_units()?;
         }

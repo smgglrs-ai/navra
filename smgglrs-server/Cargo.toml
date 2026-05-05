@@ -27,6 +27,7 @@ smgglrs-modal-vision = { path = "../smgglrs-modal-vision" }
 smgglrs-modal-voice = { path = "../smgglrs-modal-voice" }
 axum = { workspace = true }
 tokio = { workspace = true }
+schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
