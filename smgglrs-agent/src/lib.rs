@@ -35,6 +35,7 @@
 /// Typed agent action model for classification, risk assessment, and audit.
 pub mod action;
 mod agent;
+pub mod block;
 mod client;
 mod convert;
 mod error;
@@ -43,6 +44,7 @@ pub mod resolve;
 mod tool_loop;
 
 pub use agent::{Agent, AgentBuilder};
+pub use block::{BlockStatus, ToolBlock};
 pub use client::McpClient;
 pub use error::AgentError;
 pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};

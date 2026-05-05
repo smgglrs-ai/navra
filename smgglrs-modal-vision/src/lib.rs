@@ -1,3 +1,4 @@
+pub mod actor;
 mod screenshot;
 mod tools;
 
