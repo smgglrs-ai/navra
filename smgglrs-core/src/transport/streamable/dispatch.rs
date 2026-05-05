@@ -381,6 +381,56 @@ pub(crate) async fn dispatch(
             )
         }
 
+        "completion/complete" => {
+            // Stub: return empty completion list. Full implementation
+            // would suggest argument values for prompts/resources.
+            (
+                JsonRpcResponse::success(id, serde_json::json!({
+                    "completion": {
+                        "values": [],
+                        "hasMore": false,
+                    }
+                })),
+                session_id,
+            )
+        }
+
+        "logging/setLevel" => {
+            let level = request.params
+                .and_then(|p| p.get("level").and_then(|l| l.as_str().map(String::from)));
+            if let Some(level) = level {
+                tracing::info!(level = %level, "Client requested log level change");
+            }
+            (
+                JsonRpcResponse::success(id, serde_json::json!({})),
+                session_id,
+            )
+        }
+
+        "resources/subscribe" => {
+            let uri = request.params
+                .and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from)));
+            if let Some(uri) = uri {
+                tracing::debug!(uri = %uri, "Resource subscription registered");
+            }
+            (
+                JsonRpcResponse::success(id, serde_json::json!({})),
+                session_id,
+            )
+        }
+
+        "resources/unsubscribe" => {
+            let uri = request.params
+                .and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from)));
+            if let Some(uri) = uri {
+                tracing::debug!(uri = %uri, "Resource subscription removed");
+            }
+            (
+                JsonRpcResponse::success(id, serde_json::json!({})),
+                session_id,
+            )
+        }
+
         _ => (
             JsonRpcResponse::error(id, JsonRpcError::method_not_found(&request.method)),
             session_id,
