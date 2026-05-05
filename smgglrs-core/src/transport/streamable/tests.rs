@@ -52,6 +52,7 @@ impl Module for TestResourceModule {
                 name: "Version".to_string(),
                 description: Some("Server version".to_string()),
                 mime_type: Some("text/plain".to_string()),
+                size: None,
             },
             std::sync::Arc::new(|uri: String| {
                 Box::pin(async move {
@@ -86,6 +87,7 @@ fn test_server() -> Arc<McpServer> {
                         properties: None,
                         required: None,
                     },
+                    annotations: None,
                 },
                 |_args, _ctx| Box::pin(async { CallToolResult::text("pong") }),
             )

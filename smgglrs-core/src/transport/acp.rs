@@ -384,9 +384,10 @@ async fn handle_session_prompt(
                 let tool_result = server.handle_call_tool(call_params, ctx).await;
 
                 // Stream the result
-                let result_content: Vec<String> = tool_result.content.iter().map(|c| {
+                let result_content: Vec<String> = tool_result.content.iter().filter_map(|c| {
                     match c {
-                        crate::protocol::Content::Text(t) => t.text.clone(),
+                        crate::protocol::Content::Text(t) => Some(t.text.clone()),
+                        _ => None,
                     }
                 }).collect();
 
@@ -515,6 +516,7 @@ mod tests {
                             properties: None,
                             required: None,
                         },
+                        annotations: None,
                     },
                     |_args, _ctx| Box::pin(async { CallToolResult::text("pong") }),
                 )

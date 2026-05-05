@@ -205,6 +205,7 @@ impl Module for GrpcModule {
                         Some(def.description.clone())
                     },
                     input_schema,
+                    annotations: None,
                 };
 
                 let client = self.client.clone();
@@ -348,6 +349,7 @@ impl Module for GrpcModule {
                     } else {
                         Some(def.mime_type.clone())
                     },
+                    size: None,
                 };
 
                 let client = self.client.clone();
@@ -559,6 +561,7 @@ mod tests {
             name: proto_def.name.clone(),
             description: Some(proto_def.description.clone()),
             mime_type: Some(proto_def.mime_type.clone()),
+            size: None,
         };
 
         assert_eq!(resource_def.uri, "file:///workspace/readme.md");

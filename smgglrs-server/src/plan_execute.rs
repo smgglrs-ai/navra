@@ -402,8 +402,9 @@ async fn execute_tool_step(
     let result_text: String = result
         .content
         .iter()
-        .map(|c| match c {
-            Content::Text(t) => t.text.as_str(),
+        .filter_map(|c| match c {
+            Content::Text(t) => Some(t.text.as_str()),
+            _ => None,
         })
         .collect::<Vec<_>>()
         .join("");
@@ -1087,6 +1088,7 @@ pub fn plan_execute_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["format".to_string(), "plan".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -1475,6 +1477,7 @@ steps:
                 properties: None,
                 required: None,
             },
+            annotations: None,
         };
         let server = smgglrs_core::McpServer::builder()
             .name("test")
@@ -1529,6 +1532,7 @@ steps:
                 properties: None,
                 required: None,
             },
+            annotations: None,
         };
         let server = smgglrs_core::McpServer::builder()
             .name("test")
@@ -1773,6 +1777,7 @@ steps:
                 properties: None,
                 required: None,
             },
+            annotations: None,
         };
         smgglrs_core::McpServer::builder()
             .name("test")
@@ -2027,6 +2032,7 @@ steps:
                 properties: None,
                 required: None,
             },
+            annotations: None,
         };
         let server = smgglrs_core::McpServer::builder()
             .name("test")
@@ -2075,6 +2081,7 @@ steps:
                 properties: None,
                 required: None,
             },
+            annotations: None,
         };
         let fail_def = ToolDefinition {
             name: "maybe_fail".to_string(),
@@ -2084,6 +2091,7 @@ steps:
                 properties: None,
                 required: None,
             },
+            annotations: None,
         };
         let server = smgglrs_core::McpServer::builder()
             .name("test")

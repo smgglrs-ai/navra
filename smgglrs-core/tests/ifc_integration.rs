@@ -25,6 +25,7 @@ fn read_tool_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -37,6 +38,7 @@ fn write_tool_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -110,6 +112,7 @@ fn extract_var_id(result: &CallToolResult) -> Option<String> {
                     return Some(rest[..end].to_string());
                 }
             }
+            _ => panic!("expected text content"),
         }
     }
     None
@@ -120,6 +123,7 @@ fn is_ifc_error(result: &CallToolResult) -> bool {
     result.is_error
         && result.content.iter().any(|c| match c {
             Content::Text(t) => t.text.contains("IFC"),
+            _ => panic!("expected text content"),
         })
 }
 
@@ -379,6 +383,7 @@ async fn var_list_shows_stored_variables() {
             // All should have label field
             assert!(vars.iter().all(|v| v.get("label").is_some()));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -641,6 +646,7 @@ async fn llm_exfiltration_attempt_blocked() {
 
     let file_content = match &read_result.content[0] {
         Content::Text(t) => t.text.clone(),
+        _ => panic!("expected text content"),
     };
 
     // Step 2: Ask the LLM what to do with this file content
@@ -743,6 +749,7 @@ async fn llm_exfiltration_attempt_blocked() {
     // Show full file_read result including the auto-stored variable
     let read_content_full: Vec<String> = read_result.content.iter().map(|c| match c {
         Content::Text(t) => t.text.clone(),
+        _ => panic!("expected text content"),
     }).collect();
 
     eprintln!("\n{}", "=".repeat(70));
@@ -828,6 +835,7 @@ async fn llm_exfiltration_attempt_blocked() {
                 let ifc_blocked = is_ifc_error(&write_result);
                 let error_msg = match &write_result.content[0] {
                     Content::Text(t) => t.text.clone(),
+                    _ => panic!("expected text content"),
                 };
                 eprintln!();
                 eprintln!("    Actual result:");

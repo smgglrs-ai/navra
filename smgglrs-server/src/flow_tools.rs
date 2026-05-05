@@ -1604,6 +1604,7 @@ pub fn flow_start_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["prompt".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -1620,6 +1621,7 @@ pub fn flow_list_tool_def() -> ToolDefinition {
             properties: Some(HashMap::new()),
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -1639,6 +1641,7 @@ pub fn flow_status_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["flow_id".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -1670,6 +1673,7 @@ pub fn flow_result_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["flow_id".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -1725,6 +1729,7 @@ pub fn flow_escalate_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["mandate".to_string()]),
         },
+        annotations: None,
     }
 }
 

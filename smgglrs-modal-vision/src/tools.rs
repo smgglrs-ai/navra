@@ -87,6 +87,7 @@ fn describe_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -104,6 +105,7 @@ fn ocr_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -125,6 +127,7 @@ fn ask_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string(), "question".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -148,6 +151,7 @@ fn screen_tool_def() -> ToolDefinition {
             )])),
             required: None,
         },
+        annotations: None,
     }
 }
 

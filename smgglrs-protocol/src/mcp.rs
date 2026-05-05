@@ -40,6 +40,8 @@ pub struct InitializeResult {
     pub protocol_version: String,
     pub capabilities: ServerCapabilities,
     pub server_info: ServerInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -88,6 +90,23 @@ pub struct ToolDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub input_schema: ToolInputSchema,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<ToolAnnotations>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolAnnotations {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only_hint: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destructive_hint: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotent_hint: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_world_hint: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,12 +148,33 @@ pub struct CallToolResult {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Content {
     Text(TextContent),
-    // Future: Image, Resource
+    Image(ImageContent),
+    Audio(AudioContent),
+    Resource(EmbeddedResourceContent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextContent {
     pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageContent {
+    pub data: String,
+    pub mime_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioContent {
+    pub data: String,
+    pub mime_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddedResourceContent {
+    pub resource: ResourceContent,
 }
 
 impl Content {
@@ -241,6 +281,8 @@ pub struct ResourceDefinition {
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,6 +310,166 @@ pub struct ResourceContent {
     pub text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blob: Option<String>,
+}
+
+// --- Roots ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Root {
+    pub uri: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListRootsResult {
+    pub roots: Vec<Root>,
+}
+
+// --- Resource Templates ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceTemplate {
+    pub uri_template: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<ToolAnnotations>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListResourceTemplatesResult {
+    pub resource_templates: Vec<ResourceTemplate>,
+}
+
+// --- Cancellation ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelledNotification {
+    pub request_id: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+// --- Progress ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressNotification {
+    pub progress_token: serde_json::Value,
+    pub progress: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+// --- Logging ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LoggingLevel {
+    Emergency,
+    Alert,
+    Critical,
+    Error,
+    Warning,
+    Notice,
+    Info,
+    Debug,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetLevelParams {
+    pub level: LoggingLevel,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoggingMessageNotification {
+    pub level: LoggingLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logger: Option<String>,
+    pub data: serde_json::Value,
+}
+
+// --- Sampling ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMessageParams {
+    pub messages: Vec<SamplingMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_preferences: Option<ModelPreferences>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    pub max_tokens: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMessageResult {
+    pub role: String,
+    pub content: serde_json::Value,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPreferences {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hints: Option<Vec<ModelHint>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_priority: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_priority: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intelligence_priority: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelHint {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SamplingMessage {
+    pub role: String,
+    pub content: serde_json::Value,
+}
+
+// --- Completions ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompleteParams {
+    pub ref_type: String,
+    pub ref_name: String,
+    pub argument: CompletionArgument,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionArgument {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompleteResult {
+    pub values: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_more: Option<bool>,
 }
 
 // --- Content Type helper ---
@@ -323,6 +525,7 @@ mod tests {
                 name: "smgglrs-docs".to_string(),
                 version: Some("0.1.0".to_string()),
             },
+            instructions: None,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert!(json["capabilities"]["tools"]["listChanged"].as_bool().unwrap());
@@ -342,6 +545,7 @@ mod tests {
                 )])),
                 required: Some(vec!["query".to_string()]),
             },
+            annotations: None,
         };
         let json = serde_json::to_value(&tool).unwrap();
         assert_eq!(json["name"], "file_search");
@@ -450,6 +654,7 @@ mod tests {
             name: "doc.md".to_string(),
             description: Some("A document".to_string()),
             mime_type: Some("text/markdown".to_string()),
+            size: None,
         };
         let json = serde_json::to_value(&resource).unwrap();
         assert_eq!(json["uri"], "file:///home/user/doc.md");
@@ -492,5 +697,199 @@ mod tests {
         assert!(json["prompts"]["listChanged"].as_bool().unwrap());
         // tools and resources should be omitted
         assert!(json.get("tools").is_none());
+    }
+
+    #[test]
+    fn serialize_initialize_result_with_instructions() {
+        let result = InitializeResult {
+            protocol_version: PROTOCOL_VERSION.to_string(),
+            capabilities: ServerCapabilities::default(),
+            server_info: ServerInfo {
+                name: "test".to_string(),
+                version: None,
+            },
+            instructions: Some("You are a helpful assistant.".to_string()),
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["instructions"], "You are a helpful assistant.");
+    }
+
+    #[test]
+    fn serialize_tool_annotations() {
+        let tool = ToolDefinition {
+            name: "file_read".to_string(),
+            description: None,
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+            annotations: Some(ToolAnnotations {
+                read_only_hint: Some(true),
+                destructive_hint: Some(false),
+                idempotent_hint: Some(true),
+                open_world_hint: None,
+                title: Some("Read File".to_string()),
+            }),
+        };
+        let json = serde_json::to_value(&tool).unwrap();
+        assert!(json["annotations"]["readOnlyHint"].as_bool().unwrap());
+        assert!(!json["annotations"]["destructiveHint"].as_bool().unwrap());
+        assert_eq!(json["annotations"]["title"], "Read File");
+        assert!(json["annotations"].get("openWorldHint").is_none());
+    }
+
+    #[test]
+    fn serialize_image_content() {
+        let content = Content::Image(ImageContent {
+            data: "iVBORw0KGgo=".to_string(),
+            mime_type: "image/png".to_string(),
+        });
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json["type"], "image");
+        assert_eq!(json["mimeType"], "image/png");
+    }
+
+    #[test]
+    fn serialize_audio_content() {
+        let content = Content::Audio(AudioContent {
+            data: "UklGR...".to_string(),
+            mime_type: "audio/wav".to_string(),
+        });
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json["type"], "audio");
+        assert_eq!(json["mimeType"], "audio/wav");
+    }
+
+    #[test]
+    fn serialize_embedded_resource_content() {
+        let content = Content::Resource(EmbeddedResourceContent {
+            resource: ResourceContent {
+                uri: "file:///doc.md".to_string(),
+                mime_type: Some("text/markdown".to_string()),
+                text: Some("# Title".to_string()),
+                blob: None,
+            },
+        });
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json["type"], "resource");
+        assert_eq!(json["resource"]["uri"], "file:///doc.md");
+    }
+
+    #[test]
+    fn serialize_resource_with_size() {
+        let resource = ResourceDefinition {
+            uri: "file:///data.bin".to_string(),
+            name: "data.bin".to_string(),
+            description: None,
+            mime_type: None,
+            size: Some(4096),
+        };
+        let json = serde_json::to_value(&resource).unwrap();
+        assert_eq!(json["size"], 4096);
+    }
+
+    #[test]
+    fn roundtrip_root() {
+        let root = Root {
+            uri: "file:///workspace".to_string(),
+            name: Some("Workspace".to_string()),
+        };
+        let json = serde_json::to_string(&root).unwrap();
+        let parsed: Root = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.uri, "file:///workspace");
+        assert_eq!(parsed.name.as_deref(), Some("Workspace"));
+    }
+
+    #[test]
+    fn roundtrip_cancelled_notification() {
+        let notif = CancelledNotification {
+            request_id: serde_json::json!(42),
+            reason: Some("User cancelled".to_string()),
+        };
+        let json = serde_json::to_string(&notif).unwrap();
+        let parsed: CancelledNotification = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.request_id, serde_json::json!(42));
+        assert_eq!(parsed.reason.as_deref(), Some("User cancelled"));
+    }
+
+    #[test]
+    fn roundtrip_progress_notification() {
+        let notif = ProgressNotification {
+            progress_token: serde_json::json!("tok-1"),
+            progress: 0.5,
+            total: Some(1.0),
+            message: Some("Halfway done".to_string()),
+        };
+        let json = serde_json::to_string(&notif).unwrap();
+        let parsed: ProgressNotification = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.progress, 0.5);
+        assert_eq!(parsed.total, Some(1.0));
+    }
+
+    #[test]
+    fn roundtrip_logging_level() {
+        let params = SetLevelParams {
+            level: LoggingLevel::Warning,
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["level"], "warning");
+        let parsed: SetLevelParams = serde_json::from_value(json).unwrap();
+        assert!(matches!(parsed.level, LoggingLevel::Warning));
+    }
+
+    #[test]
+    fn roundtrip_create_message_params() {
+        let params = CreateMessageParams {
+            messages: vec![SamplingMessage {
+                role: "user".to_string(),
+                content: serde_json::json!({"type": "text", "text": "Hello"}),
+            }],
+            model_preferences: Some(ModelPreferences {
+                hints: Some(vec![ModelHint {
+                    name: Some("claude-sonnet".to_string()),
+                }]),
+                cost_priority: None,
+                speed_priority: Some(0.8),
+                intelligence_priority: None,
+            }),
+            system_prompt: None,
+            max_tokens: 1024,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        let parsed: CreateMessageParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.max_tokens, 1024);
+        assert_eq!(parsed.messages.len(), 1);
+    }
+
+    #[test]
+    fn roundtrip_complete_params() {
+        let params = CompleteParams {
+            ref_type: "ref/prompt".to_string(),
+            ref_name: "code_review".to_string(),
+            argument: CompletionArgument {
+                name: "language".to_string(),
+                value: "py".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        let parsed: CompleteParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.ref_type, "ref/prompt");
+        assert_eq!(parsed.argument.value, "py");
+    }
+
+    #[test]
+    fn roundtrip_resource_template() {
+        let tmpl = ResourceTemplate {
+            uri_template: "file:///{path}".to_string(),
+            name: "File".to_string(),
+            description: Some("Read any file".to_string()),
+            mime_type: None,
+            annotations: None,
+        };
+        let json = serde_json::to_value(&tmpl).unwrap();
+        assert_eq!(json["uriTemplate"], "file:///{path}");
+        let parsed: ResourceTemplate = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed.name, "File");
     }
 }

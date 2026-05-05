@@ -19,6 +19,7 @@ pub(super) fn search_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["query".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -44,6 +45,7 @@ pub(super) fn read_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -59,6 +61,7 @@ pub(super) fn list_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -95,6 +98,7 @@ pub(super) fn tree_tool_def() -> ToolDefinition {
             ])),
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -130,6 +134,7 @@ pub(super) fn grep_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string(), "pattern".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -151,6 +156,7 @@ pub(super) fn write_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string(), "content".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -184,6 +190,7 @@ pub(super) fn edit_tool_def() -> ToolDefinition {
                 "new_string".to_string(),
             ]),
         },
+        annotations: None,
     }
 }
 
@@ -199,6 +206,7 @@ pub(super) fn info_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -214,6 +222,7 @@ pub(super) fn delete_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -233,6 +242,7 @@ pub(super) fn approve_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["request_id".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -252,6 +262,7 @@ pub(super) fn deny_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["request_id".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -277,5 +288,6 @@ pub(super) fn semantic_search_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["query".to_string()]),
         },
+        annotations: None,
     }
 }
