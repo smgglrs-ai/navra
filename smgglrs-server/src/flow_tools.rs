@@ -46,7 +46,6 @@ pub struct FlowRun {
 #[derive(Default)]
 pub struct FlowRegistry {
     pub(crate) flows: Mutex<HashMap<String, FlowRun>>,
-    next_id: Mutex<u64>,
 }
 
 impl FlowRegistry {
@@ -56,9 +55,7 @@ impl FlowRegistry {
 
     /// Register a new flow and return its ID.
     pub fn register(&self, name: &str) -> String {
-        let mut id_counter = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
-        *id_counter += 1;
-        let flow_id = format!("flow-{}", *id_counter);
+        let flow_id = format!("flow-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
 
         let run = FlowRun {
             flow_id: flow_id.clone(),
@@ -82,9 +79,7 @@ impl FlowRegistry {
 
     /// Register a subflow with parent linkage and depth tracking.
     pub fn register_subflow(&self, name: &str, parent_flow_id: &str, depth: u32) -> String {
-        let mut id_counter = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
-        *id_counter += 1;
-        let flow_id = format!("flow-{}", *id_counter);
+        let flow_id = format!("flow-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
 
         let run = FlowRun {
             flow_id: flow_id.clone(),
@@ -613,6 +608,12 @@ pub struct FlowContext {
     pub containerized: bool,
     /// Container image for agent sandboxes.
     pub agent_image: String,
+    /// Memory limit per container (e.g., "2g").
+    pub container_memory: String,
+    /// CPU limit per container (e.g., "2").
+    pub container_cpus: String,
+    /// PID limit per container.
+    pub container_pids: u32,
 }
 
 /// Record completed/failed task results to the audit log.
@@ -814,22 +815,22 @@ async fn spawn_and_track_tasks(
                 // for containerized agents).
                 message.push_str(&format!(
                     "\n\n--- Specialist tasks completed ({dep_count} total) ---\n\
-                     Read each specialist's output using the flow:// MCP resource.\n\
+                     Use the flow_result tool to read each specialist's output.\n\
                      The flow ID is: {flow_id}\n\n\
                      Available tasks:\n"
                 ));
                 for dep_id in &task.depends_on {
                     if completed.contains_key(dep_id) {
                         message.push_str(&format!(
-                            "- {dep_id}: completed → read via flow://{flow_id}/task/{dep_id}\n"
+                            "- {dep_id}: completed → call flow_result(flow_id=\"{flow_id}\", task_id=\"{dep_id}\")\n"
                         ));
                     } else if failed.contains(dep_id) {
                         message.push_str(&format!("- {dep_id}: FAILED (no output)\n"));
                     }
                 }
-                message.push_str(&format!(
-                    "\nRead each completed task's output, then write a comprehensive report.\n"
-                ));
+                message.push_str(
+                    "\nCall flow_result for each completed task, then write a comprehensive report.\n"
+                );
             } else {
                 // Few dependencies: inject inline
                 message.push_str(&format!(
@@ -895,6 +896,9 @@ async fn spawn_and_track_tasks(
             gpu_semaphore: std::sync::Arc::clone(&ctx.gpu_semaphore),
             containerized: ctx.containerized,
             agent_image: ctx.agent_image.clone(),
+            container_memory: ctx.container_memory.clone(),
+            container_cpus: ctx.container_cpus.clone(),
+            container_pids: ctx.container_pids,
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.

@@ -11,17 +11,6 @@ pub struct ResponseError {
     pub message: String,
 }
 
-/// Error type categories.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ErrorType {
-    ServerError,
-    InvalidRequest,
-    NotFound,
-    ModelError,
-    TooManyRequests,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

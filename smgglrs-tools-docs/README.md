@@ -19,7 +19,22 @@ similarity search when an embedding model is available.
 
 ## Tools provided
 
-All tools are prefixed with `docs_` per project convention.
+All tools are prefixed with `file_` per project convention.
+
+| Tool | Description |
+|------|-------------|
+| `file_search` | Full-text search across indexed documents |
+| `file_semantic_search` | Vector similarity search (requires embedding model) |
+| `file_read` | Read file content with optional line offset/limit |
+| `file_list` | List directory contents |
+| `file_tree` | Recursive directory listing with depth control |
+| `file_grep` | Text pattern search across files |
+| `file_write` | Create or overwrite a file |
+| `file_edit` | Replace a unique string within a file |
+| `file_info` | File metadata (size, type, lines, indexed status) |
+| `file_delete` | Delete a file from disk and index |
+| `file_approve` | Approve a pending operation |
+| `file_deny` | Deny a pending operation |
 
 ## Dependency layer
 

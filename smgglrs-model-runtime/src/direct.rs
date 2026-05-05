@@ -49,7 +49,7 @@ impl ModelRuntime for DirectRuntime {
         let config = config.clone();
         Box::pin(async move {
             let port = if config.port == 0 {
-                pick_free_port()?
+                crate::pick_free_port()?
             } else {
                 config.port
             };
@@ -124,6 +124,7 @@ impl ModelRuntime for DirectRuntime {
                 child.kill().await.map_err(|e| {
                     RuntimeError::Stop(format!("failed to kill llama-server: {e}"))
                 })?;
+                let _ = child.wait().await;
                 tracing::info!(id = %id, "Stopped llama-server");
             }
             Ok(())
@@ -149,9 +150,3 @@ impl ModelRuntime for DirectRuntime {
     }
 }
 
-fn pick_free_port() -> Result<u16, RuntimeError> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")
-        .map_err(|e| RuntimeError::Start(format!("no free port: {e}")))?;
-    let port = listener.local_addr().unwrap().port();
-    Ok(port)
-}

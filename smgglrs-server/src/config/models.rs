@@ -159,6 +159,15 @@ pub struct BudgetConfig {
     /// Container image for agent sandboxes.
     #[serde(default = "default_agent_image")]
     pub agent_image: String,
+    /// Memory limit per agent container (e.g., "2g", "512m").
+    #[serde(default = "default_container_memory")]
+    pub container_memory: String,
+    /// CPU limit per agent container (e.g., "2", "0.5").
+    #[serde(default = "default_container_cpus")]
+    pub container_cpus: String,
+    /// Maximum PIDs per agent container.
+    #[serde(default = "default_container_pids")]
+    pub container_pids: u32,
 }
 
 impl Default for BudgetConfig {
@@ -173,6 +182,9 @@ impl Default for BudgetConfig {
             containerized: None,
             model_server_image: default_model_server_image(),
             agent_image: default_agent_image(),
+            container_memory: default_container_memory(),
+            container_cpus: default_container_cpus(),
+            container_pids: default_container_pids(),
         }
     }
 }
@@ -203,4 +215,16 @@ fn default_model_server_image() -> String {
 
 fn default_agent_image() -> String {
     "localhost/smgglrs-agent:latest".to_string()
+}
+
+fn default_container_memory() -> String {
+    "2g".to_string()
+}
+
+fn default_container_cpus() -> String {
+    "2".to_string()
+}
+
+fn default_container_pids() -> u32 {
+    256
 }

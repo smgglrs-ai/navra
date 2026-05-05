@@ -17,27 +17,15 @@ const IMAGE_CPU: &str = "ghcr.io/ggml-org/llama.cpp:server";
 const IMAGE_CUDA: &str = "ghcr.io/ggml-org/llama.cpp:server-cuda";
 const IMAGE_ROCM: &str = "ghcr.io/ggml-org/llama.cpp:server-rocm";
 
-/// Runtime that manages llama.cpp containers via Podman.
-pub struct PodmanRuntime {
-    _client: reqwest::Client,
-    _socket_path: String,
-}
+const HEALTH_MAX_ATTEMPTS: usize = 120;
 
-impl Default for PodmanRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+/// Runtime that manages llama.cpp containers via Podman.
+#[derive(Default)]
+pub struct PodmanRuntime;
 
 impl PodmanRuntime {
     pub fn new() -> Self {
-        // SAFETY: getuid() is always safe — no preconditions, cannot cause UB.
-        let uid = unsafe { libc::getuid() };
-        let socket_path = format!("/run/user/{uid}/podman/podman.sock");
-        Self {
-            _client: reqwest::Client::new(),
-            _socket_path: socket_path,
-        }
+        Self
     }
 
     /// Check if the Podman socket is available.
@@ -66,7 +54,7 @@ impl ModelRuntime for PodmanRuntime {
         let config = config.clone();
         Box::pin(async move {
             let port = if config.port == 0 {
-                pick_free_port()?
+                crate::pick_free_port()?
             } else {
                 config.port
             };
@@ -114,31 +102,7 @@ impl ModelRuntime for PodmanRuntime {
                 }
             }
 
-            let _create_body = serde_json::json!({
-                "image": image,
-                "name": container_name,
-                "command": cmd,
-                "mounts": [{
-                    "destination": "/model",
-                    "source": model_path,
-                    "type": "bind",
-                    "options": ["ro"]
-                }],
-                "portmappings": [{
-                    "container_port": 8080,
-                    "host_port": port as i64,
-                    "host_ip": config.host,
-                    "protocol": "tcp"
-                }],
-                "netns": { "nsmode": "none" },
-                "no_new_privileges": true,
-                "read_only_filesystem": true,
-                "devices": devices.iter().map(|d| {
-                    serde_json::json!({ "path": d })
-                }).collect::<Vec<_>>(),
-            });
-
-            // Create container via Podman API
+            // Create container via Podman CLI
             tracing::info!(
                 image = image,
                 name = %container_name,
@@ -179,7 +143,7 @@ impl ModelRuntime for PodmanRuntime {
             // Wait for health
             let client = reqwest::Client::new();
             let health_url = format!("{url}/health");
-            for attempt in 0..120 {
+            for attempt in 0..HEALTH_MAX_ATTEMPTS {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 if let Ok(resp) = client.get(&health_url).send().await {
                     if resp.status().is_success() {
@@ -191,10 +155,9 @@ impl ModelRuntime for PodmanRuntime {
                         break;
                     }
                 }
-                if attempt == 119 {
-                    // Clean up on timeout
+                if attempt == HEALTH_MAX_ATTEMPTS - 1 {
                     let _ = tokio::process::Command::new("podman")
-                        .args(["stop", &container_name])
+                        .args(["rm", "-f", &container_name])
                         .output()
                         .await;
                     return Err(RuntimeError::Health(
@@ -225,11 +188,11 @@ impl ModelRuntime for PodmanRuntime {
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                tracing::warn!(name = %name, error = %stderr, "podman stop failed");
-            } else {
-                tracing::info!(name = %name, "Stopped model container");
+                return Err(RuntimeError::Stop(format!(
+                    "podman stop {name} failed: {stderr}"
+                )));
             }
-
+            tracing::info!(name = %name, "Stopped model container");
             Ok(())
         })
     }
@@ -253,9 +216,3 @@ impl ModelRuntime for PodmanRuntime {
     }
 }
 
-fn pick_free_port() -> Result<u16, RuntimeError> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")
-        .map_err(|e| RuntimeError::Start(format!("no free port: {e}")))?;
-    let port = listener.local_addr().unwrap().port();
-    Ok(port)
-}

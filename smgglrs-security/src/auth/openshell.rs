@@ -174,6 +174,7 @@ impl OpenShellAuthenticator {
         if let Some(aud) = audience {
             validation.set_audience(&[aud]);
         } else {
+            tracing::warn!("SPIFFE provider has no audience configured — JWT audience validation disabled");
             validation.validate_aud = false;
         }
 
@@ -218,6 +219,7 @@ impl OpenShellAuthenticator {
         if let Some(aud) = audience {
             validation.set_audience(&[aud]);
         } else {
+            tracing::warn!("OIDC provider has no audience configured — JWT audience validation disabled");
             validation.validate_aud = false;
         }
 
@@ -252,6 +254,7 @@ impl OpenShellAuthenticator {
         if let Some(aud) = audience {
             validation.set_audience(&[aud]);
         } else {
+            tracing::warn!("Static provider has no audience configured — JWT audience validation disabled");
             validation.validate_aud = false;
         }
 

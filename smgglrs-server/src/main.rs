@@ -2122,6 +2122,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             gpu_semaphore: Arc::clone(&gpu_semaphore),
             containerized,
             agent_image: cfg.budget.agent_image.clone(),
+            container_memory: cfg.budget.container_memory.clone(),
+            container_cpus: cfg.budget.container_cpus.clone(),
+            container_pids: cfg.budget.container_pids,
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -2200,7 +2203,17 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             Box::pin(team_tools::handle_team_bb_read(args, reg))
         });
 
-        tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, models_list)");
+        // team_bb_notifications
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::team_bb_notifications_def(), move |args, ctx| {
+            let reg = Arc::clone(&reg);
+            let agent_name = ctx.agent.name.clone();
+            Box::pin(async move {
+                team_tools::handle_team_bb_notifications(args, reg, &agent_name).await
+            })
+        });
+
+        tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, team_bb_notifications, models_list)");
 
         // flow_start and flow_escalate — shared context
         let flow_ctx = Arc::new(flow_tools::FlowContext {
@@ -2225,6 +2238,9 @@ async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
             gpu_semaphore: Arc::clone(&gpu_semaphore),
             containerized,
             agent_image: cfg.budget.agent_image.clone(),
+            container_memory: cfg.budget.container_memory.clone(),
+            container_cpus: cfg.budget.container_cpus.clone(),
+            container_pids: cfg.budget.container_pids,
         });
 
         // flow_start
@@ -3147,6 +3163,7 @@ async fn run_agent(
         "team_status".to_string(),
         "team_result".to_string(),
         "team_bb_read".to_string(),
+        "team_bb_notifications".to_string(),
         "models_list".to_string(),
         "personas_list".to_string(),
         "flow_status".to_string(),

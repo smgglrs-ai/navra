@@ -143,6 +143,18 @@ pub async fn auto_runtime() -> Result<Box<dyn ModelRuntime>, RuntimeError> {
     ))
 }
 
+/// Bind to port 0 to let the OS pick a free port, then return it.
+///
+/// Note: there is a small TOCTOU window between releasing the socket
+/// and the caller binding the returned port. This is acceptable for
+/// dev/local use; production deployments should use fixed ports.
+pub fn pick_free_port() -> Result<u16, RuntimeError> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| RuntimeError::Start(format!("no free port: {e}")))?;
+    let port = listener.local_addr().unwrap().port();
+    Ok(port)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

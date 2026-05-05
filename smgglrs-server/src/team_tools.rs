@@ -24,7 +24,9 @@ pub const DEFAULT_OPERATIONS: &[&str] = &["read", "search", "list"];
 /// Default tools granted to teammates.
 pub const DEFAULT_TOOLS: &[&str] = &[
     "file_tree", "file_grep", "file_read", "team_bb_publish",
+    "team_bb_notifications",
     "models_list", "personas_list", "flow_escalate",
+    "flow_status", "flow_result",
 ];
 
 /// A teammate in the team.
@@ -42,6 +44,9 @@ pub struct Teammate {
     pub created_at: Instant,
     /// Podman container ID when running in containerized mode.
     pub container_id: Option<String>,
+    /// Elapsed seconds at the time of the last `team_bb_notifications` call.
+    /// `None` means the agent has never checked, so all entries are returned.
+    pub last_bb_check: Option<u64>,
 }
 
 /// Re-export the composite model card from the hub.
@@ -52,6 +57,15 @@ pub use smgglrs_model_hub::ModelCard;
 pub struct BlackboardEntry {
     pub key: String,
     pub value: String,
+    pub author: String,
+    pub timestamp_secs: u64,
+}
+
+/// Lightweight notification about a blackboard publish event.
+/// Contains only the key and author — not the content.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BlackboardNotification {
+    pub key: String,
     pub author: String,
     pub timestamp_secs: u64,
 }
@@ -213,6 +227,7 @@ impl TeamRegistry {
                 output: None,
                 created_at: Instant::now(),
                 container_id: None,
+                last_bb_check: None,
             },
         );
 
@@ -263,6 +278,54 @@ impl TeamRegistry {
             .iter()
             .find(|e| e.key == key)
             .cloned()
+    }
+
+    /// Return blackboard entries published since the agent's last check,
+    /// excluding entries authored by the agent itself. Advances the
+    /// agent's `last_bb_check` timestamp so the next call only returns
+    /// new entries.
+    pub fn bb_notifications(
+        &self,
+        team_id: &str,
+        agent_name: &str,
+    ) -> Result<Vec<BlackboardNotification>, String> {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        let team = teams
+            .get_mut(team_id)
+            .ok_or_else(|| format!("Unknown team: {team_id}"))?;
+
+        let now = team.created_at.elapsed().as_secs();
+
+        // Find the teammate's last check timestamp.
+        // `None` means never checked — return all entries.
+        let since = team
+            .teammates
+            .get(agent_name)
+            .and_then(|tm| tm.last_bb_check);
+
+        let notifications: Vec<BlackboardNotification> = team
+            .blackboard
+            .iter()
+            .filter(|e| {
+                e.author != agent_name
+                    && match since {
+                        None => true,
+                        Some(ts) => e.timestamp_secs > ts,
+                    }
+            })
+            .map(|e| BlackboardNotification {
+                key: e.key.clone(),
+                author: e.author.clone(),
+                timestamp_secs: e.timestamp_secs,
+            })
+            .collect();
+
+        // Advance the timestamp
+        if let Some(tm) = team.teammates.get_mut(agent_name) {
+            tm.last_bb_check = Some(now);
+        }
+
+        Ok(notifications)
     }
 
     /// Store a task handle for a running teammate.
@@ -582,6 +645,26 @@ pub fn team_bb_read_def() -> ToolDefinition {
     }
 }
 
+pub fn team_bb_notifications_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "team_bb_notifications".to_string(),
+        description: Some(
+            "Check for new blackboard entries published by other teammates \
+             since your last check. Returns key, author, and timestamp for \
+             each new entry (not the content). Call team_bb_read on \
+             interesting keys to retrieve the full value."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                ("team_id".to_string(), serde_json::json!({"type": "string"})),
+            ])),
+            required: Some(vec!["team_id".to_string()]),
+        },
+    }
+}
+
 pub fn team_shutdown_def() -> ToolDefinition {
     ToolDefinition {
         name: "team_shutdown".to_string(),
@@ -821,6 +904,31 @@ pub async fn handle_team_bb_read(
     }
 }
 
+/// Handle team_bb_notifications tool call.
+pub async fn handle_team_bb_notifications(
+    args: serde_json::Value,
+    reg: std::sync::Arc<TeamRegistry>,
+    agent_name: &str,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+    };
+    match reg.bb_notifications(team_id, agent_name) {
+        Ok(notifications) => {
+            if notifications.is_empty() {
+                CallToolResult::text("No new blackboard entries since last check.")
+            } else {
+                CallToolResult::text(
+                    serde_json::to_string_pretty(&notifications).unwrap_or_default()
+                )
+            }
+        }
+        Err(e) => CallToolResult::error(e),
+    }
+}
+
 /// Handle models_list tool call.
 pub async fn handle_models_list(
     cards: Vec<ModelCard>,
@@ -866,6 +974,12 @@ pub struct TeammateSpawnContext {
     pub containerized: bool,
     /// Container image for agent sandboxes.
     pub agent_image: String,
+    /// Memory limit per container (e.g., "2g").
+    pub container_memory: String,
+    /// CPU limit per container (e.g., "2").
+    pub container_cpus: String,
+    /// PID limit per container.
+    pub container_pids: u32,
 }
 
 /// Check if Podman is available on this system.
@@ -910,6 +1024,9 @@ fn spawn_containerized_agent(
     let smgglrs_addr = ctx.smgglrs_addr.clone();
     let model_server_url = ctx.model_server_url.clone();
     let agent_image = ctx.agent_image.clone();
+    let container_memory = ctx.container_memory.clone();
+    let container_cpus = ctx.container_cpus.clone();
+    let container_pids = ctx.container_pids;
     let gpu_semaphore = std::sync::Arc::clone(&ctx.gpu_semaphore);
     let cognitive_core_path = ctx.cognitive_core_path.clone();
     let audit_log = ctx.audit_log.clone();
@@ -1044,6 +1161,11 @@ fn spawn_containerized_agent(
                 .arg("--rm")
                 .arg("--name").arg(&container_name)
                 .arg("--network=slirp4netns:allow_host_loopback=true")
+                .arg(format!("--memory={container_memory}"))
+                .arg(format!("--cpus={container_cpus}"))
+                .arg(format!("--pids-limit={container_pids}"))
+                .arg("--read-only")
+                .arg("--security-opt=no-new-privileges")
                 .arg("-e").arg(format!("SMGGLRS_ENDPOINT={gateway_url}"))
                 .arg("-e").arg(format!("SMGGLRS_TOKEN={token}"))
                 .arg("-e").arg(format!("SMGGLRS_MODEL_ENDPOINT={container_model_ep}"))
@@ -1688,5 +1810,93 @@ pub fn select_model_for_task(
         Some(best.model_uri.clone())
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_registry() -> TeamRegistry {
+        TeamRegistry::new()
+    }
+
+    #[test]
+    fn bb_notifications_returns_entries_from_others() {
+        let reg = test_registry();
+        let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
+
+        // Alice publishes
+        reg.bb_publish(&tid, "finding-1", "data", "alice");
+
+        // Bob sees it
+        let notifs = reg.bb_notifications(&tid, "bob").unwrap();
+        assert_eq!(notifs.len(), 1);
+        assert_eq!(notifs[0].key, "finding-1");
+        assert_eq!(notifs[0].author, "alice");
+
+        // Alice does NOT see her own entry
+        let notifs = reg.bb_notifications(&tid, "alice").unwrap();
+        assert_eq!(notifs.len(), 0);
+    }
+
+    #[test]
+    fn bb_notifications_advances_timestamp() {
+        let reg = test_registry();
+        let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
+
+        reg.bb_publish(&tid, "k1", "v1", "alice");
+
+        // First call returns the entry
+        let n1 = reg.bb_notifications(&tid, "bob").unwrap();
+        assert_eq!(n1.len(), 1);
+
+        // Second call returns empty (timestamp advanced)
+        let n2 = reg.bb_notifications(&tid, "bob").unwrap();
+        assert_eq!(n2.len(), 0);
+    }
+
+    #[test]
+    fn bb_notifications_multiple_entries_in_order() {
+        let reg = test_registry();
+        let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
+        reg.add_teammate(&tid, "carol", None, "m", "local", vec![], vec![]).unwrap();
+
+        reg.bb_publish(&tid, "k1", "v1", "alice");
+        reg.bb_publish(&tid, "k2", "v2", "carol");
+        reg.bb_publish(&tid, "k3", "v3", "alice");
+
+        let notifs = reg.bb_notifications(&tid, "bob").unwrap();
+        assert_eq!(notifs.len(), 3);
+        let keys: Vec<&str> = notifs.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, vec!["k1", "k2", "k3"]);
+    }
+
+    #[test]
+    fn bb_notifications_unknown_team_returns_error() {
+        let reg = test_registry();
+        let result = reg.bb_notifications("no-such-team", "agent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bb_notifications_unknown_agent_still_works() {
+        // An agent not in the teammates map should still get entries
+        // (with since=0) and not panic.
+        let reg = test_registry();
+        let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
+
+        reg.bb_publish(&tid, "k1", "v1", "alice");
+
+        let notifs = reg.bb_notifications(&tid, "outsider").unwrap();
+        // outsider sees alice's entry (since=0)
+        assert_eq!(notifs.len(), 1);
     }
 }

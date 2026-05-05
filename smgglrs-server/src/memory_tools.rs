@@ -402,6 +402,12 @@ pub async fn handle_memory_purge_pii(
         entries
     };
 
+    let limit = args.get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1000) as usize;
+
+    let total_candidates = entries.len();
+    let entries: Vec<_> = entries.into_iter().take(limit).collect();
     let scanned = entries.len();
     let mut affected = 0usize;
     let mut chunks_deleted = 0usize;
@@ -431,14 +437,17 @@ pub async fn handle_memory_purge_pii(
         }
     }
 
-    CallToolResult::text(
-        serde_json::json!({
-            "scanned": scanned,
-            "affected": affected,
-            "action": action,
-            "chunks_deleted": chunks_deleted,
-        }).to_string()
-    )
+    let mut result = serde_json::json!({
+        "scanned": scanned,
+        "affected": affected,
+        "action": action,
+        "chunks_deleted": chunks_deleted,
+    });
+    if total_candidates > limit {
+        result["truncated"] = serde_json::json!(true);
+        result["total_candidates"] = serde_json::json!(total_candidates);
+    }
+    CallToolResult::text(result.to_string())
 }
 
 pub fn memory_forget_by_content_def() -> ToolDefinition {
@@ -490,13 +499,14 @@ pub async fn handle_memory_forget_by_content(
 
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
 
-    let entries = match store.search(query) {
+    let mut entries = match store.search(query) {
         Ok(e) => e,
         Err(e) => return CallToolResult::error(format!("Search failed: {e}")),
     };
+    let total_matches = entries.len();
+    entries.truncate(1000);
 
     if !confirm {
-        // Dry run: return preview
         let preview: Vec<serde_json::Value> = entries.iter().map(|e| {
             serde_json::json!({
                 "id": e.id,
@@ -506,13 +516,16 @@ pub async fn handle_memory_forget_by_content(
             })
         }).collect();
 
-        return CallToolResult::text(
-            serde_json::json!({
-                "mode": "dry_run",
-                "would_delete": entries.len(),
-                "entries": preview,
-            }).to_string()
-        );
+        let mut result = serde_json::json!({
+            "mode": "dry_run",
+            "would_delete": entries.len(),
+            "entries": preview,
+        });
+        if total_matches > 1000 {
+            result["truncated"] = serde_json::json!(true);
+            result["total_matches"] = serde_json::json!(total_matches);
+        }
+        return CallToolResult::text(result.to_string());
     }
 
     // Actually delete
