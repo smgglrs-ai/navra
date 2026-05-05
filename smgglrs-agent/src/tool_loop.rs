@@ -261,17 +261,7 @@ pub async fn run_tool_loop(
                 None => true,
             }
         })
-        .map(|t| ResponseTool {
-            kind: "function".to_string(),
-            name: t.name.clone(),
-            description: t.description.clone(),
-            parameters: Some(serde_json::json!({
-                "type": t.input_schema.schema_type,
-                "properties": t.input_schema.properties,
-                "required": t.input_schema.required,
-            })),
-            strict: None,
-        })
+        .map(|t| crate::convert::tool_def_to_response(t))
         .collect();
 
     if config.allowed_tools.is_some() {

@@ -338,17 +338,9 @@ impl AgentBuilder {
         )
         .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
-        // If the persona source replaced the mandate, override the system prompt
-        if persona.source.is_some() {
-            // Rebuild prefix with the resolved core_mandate
-            // We need to call assemble_full but the forge still has the old persona.
-            // Instead, replace the core mandate in the output.
+        if persona.source.is_some() && resolved_persona.core_mandate != persona.core_mandate {
             let system = output.system_prompt();
-            let patched = if resolved_persona.core_mandate != persona.core_mandate {
-                system.replace(&persona.core_mandate, &resolved_persona.core_mandate)
-            } else {
-                system
-            };
+            let patched = system.replacen(&persona.core_mandate, &resolved_persona.core_mandate, 1);
             self.config.system_prompt = Some(patched);
         } else {
             self.config.system_prompt = Some(output.system_prompt());

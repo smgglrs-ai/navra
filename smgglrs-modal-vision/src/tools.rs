@@ -153,9 +153,21 @@ fn screen_tool_def() -> ToolDefinition {
 
 // --- Image loading ---
 
+const MAX_IMAGE_SIZE: u64 = 100 * 1024 * 1024;
+
 fn load_image(path: &Path) -> Result<ImageInput, String> {
     if !path.is_file() {
         return Err(format!("Not a file: {}", path.display()));
+    }
+
+    let meta = std::fs::metadata(path)
+        .map_err(|e| format!("Cannot stat {}: {e}", path.display()))?;
+    if meta.len() > MAX_IMAGE_SIZE {
+        return Err(format!(
+            "Image too large ({} MB, max {} MB)",
+            meta.len() / (1024 * 1024),
+            MAX_IMAGE_SIZE / (1024 * 1024),
+        ));
     }
 
     let data = std::fs::read(path)

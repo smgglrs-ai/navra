@@ -7,7 +7,7 @@
 
 use crate::protocol::JsonRpcNotification;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
 
 /// Default channel capacity per session.
@@ -29,20 +29,20 @@ pub struct SseEvent {
 /// all sessions or a specific one.
 #[derive(Clone)]
 pub struct SseBroadcaster {
-    channels: Arc<Mutex<HashMap<String, broadcast::Sender<SseEvent>>>>,
+    channels: Arc<RwLock<HashMap<String, broadcast::Sender<SseEvent>>>>,
 }
 
 impl SseBroadcaster {
     pub fn new() -> Self {
         Self {
-            channels: Arc::new(Mutex::new(HashMap::new())),
+            channels: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Subscribe to SSE events for a session. Creates the channel if needed.
     /// Returns a broadcast receiver.
     pub fn subscribe(&self, session_id: &str) -> broadcast::Receiver<SseEvent> {
-        let mut channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
+        let mut channels = self.channels.write().unwrap_or_else(|e| e.into_inner());
         let tx = channels
             .entry(session_id.to_string())
             .or_insert_with(|| broadcast::channel(CHANNEL_CAPACITY).0);
@@ -51,14 +51,14 @@ impl SseBroadcaster {
 
     /// Remove a session's channel (called when session ends).
     pub fn remove_session(&self, session_id: &str) {
-        let mut channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
+        let mut channels = self.channels.write().unwrap_or_else(|e| e.into_inner());
         channels.remove(session_id);
     }
 
     /// Send a notification to a specific session.
     /// Returns false if the session has no active channel.
     pub fn send_to_session(&self, session_id: &str, notification: &JsonRpcNotification) -> bool {
-        let channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
+        let channels = self.channels.read().unwrap_or_else(|e| e.into_inner());
         if let Some(tx) = channels.get(session_id) {
             let event = SseEvent {
                 event: "message".to_string(),
@@ -74,7 +74,7 @@ impl SseBroadcaster {
 
     /// Broadcast a notification to all active sessions.
     pub fn broadcast(&self, notification: &JsonRpcNotification) {
-        let channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
+        let channels = self.channels.read().unwrap_or_else(|e| e.into_inner());
         let event = SseEvent {
             event: "message".to_string(),
             data: serde_json::to_string(notification).unwrap_or_default(),
@@ -86,7 +86,7 @@ impl SseBroadcaster {
 
     /// Number of active session channels.
     pub fn session_count(&self) -> usize {
-        self.channels.lock().unwrap_or_else(|e| e.into_inner()).len()
+        self.channels.read().unwrap_or_else(|e| e.into_inner()).len()
     }
 }
 
