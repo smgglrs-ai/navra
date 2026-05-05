@@ -335,8 +335,9 @@ fn resolve_string(
 fn content_to_text(content: &[Content]) -> String {
     content
         .iter()
-        .map(|c| match c {
-            Content::Text(t) => t.text.as_str(),
+        .filter_map(|c| match c {
+            Content::Text(t) => Some(t.text.as_str()),
+            _ => None,
         })
         .collect::<Vec<_>>()
         .join("\n")

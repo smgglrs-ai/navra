@@ -32,6 +32,8 @@
 //! }
 //! ```
 
+/// Typed agent action model for classification, risk assessment, and audit.
+pub mod action;
 mod agent;
 mod client;
 mod convert;
@@ -44,6 +46,7 @@ pub use agent::{Agent, AgentBuilder};
 pub use client::McpClient;
 pub use error::AgentError;
 pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};
+pub use action::{AgentAction, ActionRecord, RiskLevel};
 pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
 
 // SDK facade: external consumers (e.g. agent binaries) depend only on

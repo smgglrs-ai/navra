@@ -139,6 +139,9 @@ impl Hook for SafetyHook {
                         }
                     }
                 }
+                _ => {
+                    filtered_content.push(content.clone());
+                }
             }
         }
 
@@ -171,6 +174,7 @@ impl Hook for SafetyHook {
                         return HookDecision::ModifyResult(new_result);
                     }
                 }
+                _ => {}
             }
         }
         HookDecision::Continue
