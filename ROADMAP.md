@@ -4,19 +4,36 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-05-04)
+## Current state (2026-05-05)
 
-17 crates, ~78K LoC, 1431 tests. 43 personas, 36 heuristics,
-8 directives. Gateway blackbox audit. 4 paper outlines. Fully local
-multi-agent demos. Full PII pipeline (regex + NER + file paths,
-pseudonymization, GDPR tools, IFC integration). Containerized agent
-execution via Podman (shared model server + per-agent sandboxes).
+18 crates, ~76K LoC, 1577 tests, 0 warnings. 43 personas, 36
+heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
+Fully local multi-agent demos. Full PII pipeline (regex + NER + file
+paths, pseudonymization, GDPR tools, IFC integration). Containerized
+agent execution via Podman (shared model server + per-agent sandboxes).
+
+### Recent (2026-05-05)
+
+- Phase 8a: Typed agent action/result model (AgentAction, RiskLevel)
+- Phase 8b: MCP config import (Claude Desktop, VSCode, Codex formats)
+- Phase 9a-9b: 14 MCP spec types (tool annotations, content variants,
+  logging, sampling, completions, roots, progress, cancellation)
+- Phase 9c: Cursor-based pagination for all list operations
+- Phase 9d-9e: Notification infrastructure (notify/notify_session on
+  McpServer, progress tracking via _meta.progressToken)
+- Phase 9f: Stdio server transport (`smgglrs stdio` for IDE integration)
+- Phase 9g: OAuth 2.0 (provider, authenticator, HTTP endpoints wired)
+- Phase 9h: smgglrs-macros crate (`#[tool]` proc macro)
+- Two self-review rounds (23+8 agents) with findings fixed
+- Self-review findings: zombie process fix, port TOCTOU, pick_free_port
+  dedup, git_diff ref fix, vision size limit, memory pagination, SSE
+  RwLock, audience validation warnings
 
 ### Infrastructure (complete)
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| smgglrs-protocol | Partial (see Phase 9) | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry). 14/39 MCP spec features complete. |
+| smgglrs-protocol | Done (Phase 9) | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry). ~35/39 MCP spec features. |
 | smgglrs-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
 | smgglrs-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
 | smgglrs-model-runtime | Done | Serve models via llama-server or Podman. libkrun delegated to OpenShell (see OPENSHELL.md) |
@@ -213,6 +230,13 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Full PII pipeline (regex + NER + paths, pseudonymization, GDPR tools) | 2026-04-25 |
 | Containerized agent execution (shared model server + per-agent sandboxes) | 2026-05-03 |
 | smgglrs-agent standalone binary + Dockerfile.agent | 2026-05-03 |
+| Two self-review rounds: 20+ findings fixed (security, perf, code quality) | 2026-05-05 |
+| Phase 8a: Typed agent action/result model (AgentAction, RiskLevel) | 2026-05-05 |
+| Phase 8b: MCP config import (Claude Desktop, VSCode, Codex) | 2026-05-05 |
+| Phase 9a-9h: MCP spec coverage 14→35/39 (types, pagination, notifications, OAuth, stdio, proc macros) | 2026-05-05 |
+| Notification bus: notify()/notify_session() on McpServer | 2026-05-05 |
+| OAuth 2.0 endpoints wired into Axum router | 2026-05-05 |
+| smgglrs-macros crate: `#[tool]` proc macro (18th crate) | 2026-05-05 |
 
 ### Remaining
 
@@ -959,7 +983,7 @@ Patterns adopted from studying Warp's open-source codebase
 (github.com/warpdotdev/warp, AGPL-3.0). All items are clean-room
 re-implementations of design patterns, not code copies.
 
-#### 8a. Typed agent action/result model (HIGH priority)
+#### 8a. Typed agent action/result model ✅ (2026-05-05)
 
 Adopt Warp's action/result enum symmetry pattern for `smgglrs-agent`.
 Currently, tool results are flat `CallToolResult` (text content +
@@ -980,7 +1004,7 @@ cancellation, and audit:
 
 **Effort**: 2-3 days. ~500 lines in smgglrs-agent + wiring.
 
-#### 8b. MCP config import (HIGH priority, LOW effort)
+#### 8b. MCP config import ✅ (2026-05-05)
 
 Let users import upstream MCP server configs from existing tools
 without maintaining separate smgglrs config:
@@ -1045,7 +1069,7 @@ Block-based tool execution model for future CLI/TUI:
 
 **Effort**: 1 day. ~150 lines in smgglrs-agent.
 
-### Phase 9: Full MCP spec coverage (NEW — 2026-05-04)
+### Phase 9: Full MCP spec coverage (2026-05-04, mostly complete)
 
 **Goal**: smgglrs-protocol covers 100% of the MCP 2025-03-26 spec,
 including proc macros for third-party module authors. Competitive
@@ -1053,9 +1077,10 @@ parity with rmcp (official Rust MCP SDK, 4.7M downloads) while
 maintaining our differentiators (IFC labels, permissions extension,
 A2A client, resilient upstream proxy).
 
-**Current coverage**: 14/39 features complete. 25 missing.
+**Current coverage**: ~35/39 features. Remaining: completion/complete,
+logging/setLevel, resources/subscribe+unsubscribe (4 methods not dispatched).
 
-#### 9a. Missing types — batch 1 (trivial additions)
+#### 9a. Missing types — batch 1 ✅ (2026-05-05)
 
 Add missing fields and types that are <50 lines each:
 
@@ -1075,7 +1100,7 @@ Add missing fields and types that are <50 lines each:
 
 **Effort**: 1 day. ~115 lines of types + tests.
 
-#### 9b. Missing types — batch 2 (medium complexity)
+#### 9b. Missing types — batch 2 ✅ (2026-05-05)
 
 | Feature | What to add | Lines |
 |---------|------------|-------|
@@ -1087,7 +1112,7 @@ Add missing fields and types that are <50 lines each:
 
 **Effort**: 2 days. ~300 lines of types + tests.
 
-#### 9c. Pagination infrastructure
+#### 9c. Pagination infrastructure ✅ (2026-05-05)
 
 Generic pagination pattern for all list operations:
 
@@ -1101,7 +1126,7 @@ Generic pagination pattern for all list operations:
 
 **Effort**: 1 day. ~100 lines.
 
-#### 9d. Notification infrastructure
+#### 9d. Notification infrastructure ✅ (2026-05-05)
 
 Server-initiated notifications over SSE. This is the biggest
 structural gap — blocks 5 features:
@@ -1119,7 +1144,7 @@ structural gap — blocks 5 features:
 
 **Effort**: 3 days. ~400 lines across smgglrs-core + smgglrs-protocol.
 
-#### 9e. Progress tracking
+#### 9e. Progress tracking ✅ (2026-05-05)
 
 Request-level progress reporting:
 
@@ -1131,7 +1156,7 @@ Request-level progress reporting:
 
 **Effort**: 1 day. ~100 lines. Depends on 9d.
 
-#### 9f. Stdio server transport
+#### 9f. Stdio server transport ✅ (2026-05-05)
 
 Server-mode stdio transport (currently only client-side exists):
 
@@ -1143,7 +1168,7 @@ Server-mode stdio transport (currently only client-side exists):
 
 **Effort**: 2 days. ~200 lines in smgglrs-core.
 
-#### 9g. OAuth 2.0 authorization framework
+#### 9g. OAuth 2.0 authorization framework ✅ (2026-05-05)
 
 MCP spec defines OAuth for client-server auth. smgglrs currently
 uses BLAKE3 tokens:
@@ -1156,7 +1181,7 @@ uses BLAKE3 tokens:
 
 **Effort**: 3-4 days. ~500 lines across smgglrs-security + smgglrs-core.
 
-#### 9h. Proc macro crate: `smgglrs-macros` (NEW crate)
+#### 9h. Proc macro crate: `smgglrs-macros` ✅ (2026-05-05)
 
 Proc macro for ergonomic tool/prompt/resource definition,
 competing with rmcp's `#[tool]` macro:
@@ -1205,18 +1230,18 @@ Automated test suite verifying spec compliance:
 
 #### MCP coverage summary
 
-| Phase | Features | Effort | Priority |
-|-------|----------|--------|----------|
-| 9a. Trivial types | 11 features | 1 day | **High** |
-| 9b. Medium types | 5 features | 2 days | **High** |
-| 9c. Pagination | 4 list endpoints | 1 day | **High** |
-| 9d. Notifications | 5 notifications | 3 days | **High** |
-| 9e. Progress | 1 feature | 1 day | Medium |
-| 9f. Stdio server | 1 transport | 2 days | **High** |
-| 9g. OAuth | 1 auth flow | 3-4 days | Medium |
-| 9h. Proc macros | DX parity with rmcp | 4-5 days | **High** |
-| 9i. Test suite | Compliance verification | 2 days | Medium |
-| **Total** | **25 missing → 0** | **~20 days** | |
+| Phase | Features | Status |
+|-------|----------|--------|
+| 9a. Trivial types | 11 features | ✅ Done |
+| 9b. Medium types | 5 features | ✅ Done |
+| 9c. Pagination | 4 list endpoints | ✅ Done |
+| 9d. Notifications | 5 notifications | ✅ Done |
+| 9e. Progress | progressToken | ✅ Done |
+| 9f. Stdio server | 1 transport | ✅ Done |
+| 9g. OAuth | auth flow + endpoints | ✅ Done |
+| 9h. Proc macros | `#[tool]` macro | ✅ Done |
+| 9i. Test suite | Compliance tests | Remaining |
+| **Remaining** | completion, logging, subscribe | ~1 day |
 
 **smgglrs differentiators** (not in rmcp, not in MCP spec):
 
