@@ -144,6 +144,7 @@ async fn exfiltration_blocked_via_var_ref() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -161,6 +162,7 @@ async fn exfiltration_blocked_via_var_ref() {
                     "path": "/tmp/exfil.txt",
                     "content": format!("var://{var_id}"),
                 }),
+                meta: None,
             },
             ctx,
         )
@@ -183,6 +185,7 @@ async fn exfiltration_blocked_via_context_label() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
+                meta: None,
             },
             session_ctx(&sid),
         )
@@ -203,6 +206,7 @@ async fn exfiltration_blocked_via_context_label() {
                     "path": "/tmp/exfil.txt",
                     "content": "I'll just paste the secret here: SECRET_DATA_abc123",
                 }),
+                meta: None,
             },
             write_ctx,
         )
@@ -225,6 +229,7 @@ async fn clean_write_allowed_after_tainted_read() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -237,6 +242,7 @@ async fn clean_write_allowed_after_tainted_read() {
             CallToolParams {
                 name: "smgglrs_var_list".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -254,6 +260,7 @@ async fn clean_write_allowed_after_tainted_read() {
                     "path": "/tmp/output.txt",
                     "content": format!("var://{clean_var_id}"),
                 }),
+                meta: None,
             },
             ctx,
         )
@@ -275,6 +282,7 @@ async fn var_inspect_taints_context() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
+                meta: None,
             },
             session_ctx(&sid),
         )
@@ -287,6 +295,7 @@ async fn var_inspect_taints_context() {
             CallToolParams {
                 name: "smgglrs_var_inspect".to_string(),
                 arguments: serde_json::json!({"id": var_id}),
+                meta: None,
             },
             session_ctx(&sid),
         )
@@ -306,6 +315,7 @@ async fn var_inspect_taints_context() {
                     "path": "/tmp/exfil.txt",
                     "content": "exfiltrated data",
                 }),
+                meta: None,
             },
             write_ctx,
         )
@@ -325,6 +335,7 @@ async fn auto_store_produces_var_id() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/file.md"}),
+                meta: None,
             },
             ctx,
         )
@@ -347,6 +358,7 @@ async fn var_list_shows_stored_variables() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/file1.md"}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -356,6 +368,7 @@ async fn var_list_shows_stored_variables() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/file2.md"}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -367,6 +380,7 @@ async fn var_list_shows_stored_variables() {
             CallToolParams {
                 name: "smgglrs_var_list".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             ctx,
         )
@@ -403,6 +417,7 @@ async fn context_label_persists_across_calls() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
+                meta: None,
             },
             session_ctx(&sid),
         )
@@ -429,6 +444,7 @@ async fn multiple_reads_mixed_labels_per_value() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -441,6 +457,7 @@ async fn multiple_reads_mixed_labels_per_value() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/clean.md"}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -456,6 +473,7 @@ async fn multiple_reads_mixed_labels_per_value() {
                     "path": "/tmp/out1.txt",
                     "content": format!("var://{tainted_var}"),
                 }),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -472,6 +490,7 @@ async fn multiple_reads_mixed_labels_per_value() {
                     "path": "/tmp/out2.txt",
                     "content": format!("var://{clean_var}"),
                 }),
+                meta: None,
             },
             ctx,
         )
@@ -637,6 +656,7 @@ async fn llm_exfiltration_attempt_blocked() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -827,6 +847,7 @@ async fn llm_exfiltration_attempt_blocked() {
                                 "path": target_path,
                                 "content": format!("var://{var_id}"),
                             }),
+                            meta: None,
                         },
                         ctx.clone(),
                     )

@@ -393,6 +393,7 @@ async fn execute_tool_step(
     let params = CallToolParams {
         name: step.tool.clone(),
         arguments: resolved_args,
+        meta: None,
     };
 
     // Call the tool through the server's dispatch

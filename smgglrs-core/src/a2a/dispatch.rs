@@ -153,6 +153,7 @@ pub async fn handle_message_send(
             CallToolParams {
                 name: tool_name.clone(),
                 arguments,
+                meta: None,
             },
             ctx,
         )
@@ -353,6 +354,7 @@ pub async fn handle_message_stream(
             CallToolParams {
                 name: tool_name.clone(),
                 arguments,
+                meta: None,
             },
             ctx,
         )

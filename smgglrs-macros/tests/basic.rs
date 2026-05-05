@@ -181,6 +181,7 @@ async fn handler_can_be_called() {
     assert!(!result.is_error);
     match &result.content[0] {
         Content::Text(t) => assert_eq!(t.text, "hello"),
+        _ => panic!("expected text content"),
     }
 }
 

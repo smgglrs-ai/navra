@@ -54,6 +54,7 @@ impl McpClient {
         let params = CallToolParams {
             name: name.to_string(),
             arguments,
+            meta: None,
         };
         let mut result = self.upstream.call_tool(params).await?;
 

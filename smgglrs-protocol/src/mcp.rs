@@ -5,6 +5,15 @@ use std::collections::HashMap;
 /// MCP protocol version supported by this implementation.
 pub const PROTOCOL_VERSION: &str = "2025-03-26";
 
+// --- Server-initiated notification methods ---
+
+pub const NOTIFY_TOOLS_LIST_CHANGED: &str = "notifications/tools/list_changed";
+pub const NOTIFY_RESOURCES_LIST_CHANGED: &str = "notifications/resources/list_changed";
+pub const NOTIFY_RESOURCES_UPDATED: &str = "notifications/resources/updated";
+pub const NOTIFY_PROMPTS_LIST_CHANGED: &str = "notifications/prompts/list_changed";
+pub const NOTIFY_PROGRESS: &str = "notifications/progress";
+pub const NOTIFY_INITIALIZED: &str = "notifications/initialized";
+
 /// Default page size for paginated list operations.
 pub const DEFAULT_PAGE_SIZE: usize = 100;
 
@@ -181,6 +190,34 @@ pub struct CallToolParams {
     pub name: String,
     #[serde(default)]
     pub arguments: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "_meta")]
+    pub meta: Option<RequestMeta>,
+}
+
+/// Request metadata carrying a progress token for long-running operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress_token: Option<serde_json::Value>,
+}
+
+/// Parameters for `notifications/progress`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressParams {
+    pub progress_token: serde_json::Value,
+    pub progress: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// Parameters for `notifications/resources/updated`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceUpdatedParams {
+    pub uri: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

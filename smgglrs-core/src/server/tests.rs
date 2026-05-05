@@ -171,6 +171,7 @@ async fn call_module_tool() {
             CallToolParams {
                 name: "test_ping".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -213,6 +214,7 @@ async fn call_registered_tool() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({"message": "hello"}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -233,6 +235,7 @@ async fn call_unknown_tool() {
             CallToolParams {
                 name: "nonexistent".to_string(),
                 arguments: serde_json::Value::Null,
+                meta: None,
             },
             test_ctx(),
         )
@@ -311,6 +314,7 @@ async fn safety_filter_redacts_secrets() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -343,6 +347,7 @@ async fn safety_filter_blocks_when_configured() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({"message": "SSN: 123-45-6789"}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -364,6 +369,7 @@ async fn no_safety_profile_passes_through() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -634,6 +640,7 @@ async fn tool_permissions_deny_blocks_tool() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -673,6 +680,7 @@ async fn tool_permissions_allow_passes_through() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -710,6 +718,7 @@ async fn tool_permissions_approve_returns_approval_required() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -738,6 +747,7 @@ async fn no_tool_permissions_allows_all() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -784,6 +794,7 @@ async fn cap_token_allows_matching_tool() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             cap_ctx(vec!["echo", "file_*"]),
         )
@@ -805,6 +816,7 @@ async fn cap_token_allows_glob_matching_tool() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             cap_ctx(vec!["*"]),  // wildcard grants all
         )
@@ -826,6 +838,7 @@ async fn cap_token_denies_unmatched_tool() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             cap_ctx(vec!["file_*", "git_*"]),  // no match for "echo"
         )
@@ -867,6 +880,7 @@ async fn cap_token_bypasses_tool_permissions() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             cap_ctx(vec!["echo"]),
         )
@@ -928,6 +942,7 @@ async fn ifc_deny_write_after_untrusted_read() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/file.md"}),
+                meta: None,
             },
             ctx.clone(),
         )
@@ -943,6 +958,7 @@ async fn ifc_deny_write_after_untrusted_read() {
             CallToolParams {
                 name: "file_write".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/out.md", "content": "exfiltrated"}),
+                meta: None,
             },
             ctx,
         )
@@ -972,6 +988,7 @@ async fn ifc_allow_write_without_taint() {
             CallToolParams {
                 name: "file_write".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -996,6 +1013,7 @@ async fn ifc_no_policy_allows_tainted_write() {
             CallToolParams {
                 name: "file_write".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             ctx,
         )
@@ -1017,6 +1035,7 @@ async fn ifc_read_tool_auto_labels_untrusted() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1042,6 +1061,7 @@ async fn ifc_trusted_path_keeps_trusted_label() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/home/user/Code/project/main.rs"}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1065,6 +1085,7 @@ async fn ifc_untrusted_path_still_labeled_untrusted() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/tmp/untrusted.txt"}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1088,6 +1109,7 @@ async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1118,6 +1140,7 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
             CallToolParams {
                 name: "file_read".to_string(),
                 arguments: serde_json::json!({"path": "/home/user/Code/main.rs"}),
+                meta: None,
             },
             ctx,
         )
@@ -1133,6 +1156,7 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
             CallToolParams {
                 name: "file_write".to_string(),
                 arguments: serde_json::json!({"path": "/home/user/Code/out.rs", "content": "fn main() {}"}),
+                meta: None,
             },
             write_ctx,
         )
@@ -1161,6 +1185,7 @@ async fn hook_safety_filter_via_pipeline() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1205,6 +1230,7 @@ async fn hook_blocks_tool_call() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1237,6 +1263,7 @@ async fn legacy_safety_filter_still_works_without_hooks() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({"message": "AKIAIOSFODNN7EXAMPLE"}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1269,6 +1296,7 @@ async fn paused_server_rejects_tool_calls() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1300,6 +1328,7 @@ async fn resumed_server_accepts_tool_calls() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1500,6 +1529,7 @@ async fn dynamic_grant_overrides_tool_deny() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
@@ -1531,6 +1561,7 @@ async fn dynamic_grant_overrides_tool_deny() {
             CallToolParams {
                 name: "echo".to_string(),
                 arguments: serde_json::json!({}),
+                meta: None,
             },
             test_ctx(),
         )
