@@ -2643,6 +2643,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         tracing::info!("Registered flow:// resources (backed by audit.db)");
     }
 
+    let broadcaster = smgglrs_core::transport::SseBroadcaster::new();
+    let builder = builder.broadcaster(broadcaster.clone());
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
     tracing::info!(
@@ -2748,7 +2750,6 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             }
 
             // --- HTTP transport with SSE broadcaster ---
-            let broadcaster = smgglrs_core::transport::SseBroadcaster::new();
             let has_discovery = cfg.server.discovery.is_some() || !registry_entries.is_empty();
             let (router, server) = if has_discovery {
                 let aid_record = cfg.server.discovery.as_ref().map(|discovery| {

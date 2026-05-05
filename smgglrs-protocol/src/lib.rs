@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! smgglrs-protocol: Wire types for MCP, A2A, and JSON-RPC.
 //!
 //! Provides serializable request/response types for the protocols

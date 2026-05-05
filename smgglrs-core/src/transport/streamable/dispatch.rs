@@ -107,8 +107,13 @@ pub(crate) async fn dispatch(
         }
 
         "notifications/initialized" => {
-            // No response needed for notifications, but since this comes
-            // as a request with an id via HTTP, acknowledge it.
+            (
+                JsonRpcResponse::success(id, serde_json::json!({})),
+                session_id,
+            )
+        }
+
+        "ping" => {
             (
                 JsonRpcResponse::success(id, serde_json::json!({})),
                 session_id,
