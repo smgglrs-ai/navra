@@ -2655,7 +2655,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     match mode {
         TransportMode::Stdio => {
             let agent = smgglrs_core::auth::AgentIdentity::new("stdio", "readonly");
-            smgglrs_core::transport::run_stdio_server(server, agent).await?;
+            smgglrs_core::transport::run_stdio_server(server, agent)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
         }
         TransportMode::Http { no_tray } => {
             // --- mDNS advertising ---

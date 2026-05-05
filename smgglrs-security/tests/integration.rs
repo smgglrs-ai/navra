@@ -247,6 +247,7 @@ impl Hook for TestResultHook {
     ) -> HookDecision {
         let text = match &result.content[0] {
             Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         HookDecision::ModifyResult(smgglrs_protocol::CallToolResult::text(
             format!("{}{}", text, self.suffix),
@@ -293,6 +294,7 @@ async fn hook_pipeline_post_modifies_result() {
 
     match &result.content[0] {
         Content::Text(t) => assert_eq!(t.text, "output [audited]"),
+        _ => panic!("expected text content"),
     }
 }
 

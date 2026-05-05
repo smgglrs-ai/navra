@@ -695,6 +695,7 @@ mod tests {
         use smgglrs_core::protocol::Content;
         match &result.content[0] {
             Content::Text(tc) => &tc.text,
+            _ => panic!("expected text content"),
         }
     }
 

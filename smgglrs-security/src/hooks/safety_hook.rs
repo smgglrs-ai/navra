@@ -208,6 +208,7 @@ mod tests {
                         assert!(t.text.contains("[REDACTED:aws-key]"));
                         assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
                     }
+                    _ => panic!("expected text content"),
                 }
             }
             other => panic!("Expected ModifyResult, got {other:?}"),
@@ -285,6 +286,7 @@ mod tests {
                 // Content should be redacted
                 match &r.content[0] {
                     Content::Text(t) => assert!(t.text.contains("[REDACTED:ssn]")),
+                    _ => panic!("expected text content"),
                 }
                 // Label should be elevated to Pii
                 assert_eq!(r.label.confidentiality, Confidentiality::Pii);

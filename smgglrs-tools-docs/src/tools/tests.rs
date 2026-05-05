@@ -60,6 +60,7 @@ fn readonly_ctx() -> CallContext {
 fn text_of(result: &CallToolResult) -> &str {
     match &result.content[0] {
         smgglrs_core::protocol::Content::Text(t) => &t.text,
+        _ => panic!("expected text content"),
     }
 }
 

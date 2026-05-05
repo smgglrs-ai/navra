@@ -52,6 +52,7 @@ fn dev_ctx() -> CallContext {
 fn text_of(result: &smgglrs_core::protocol::CallToolResult) -> &str {
     match &result.content[0] {
         Content::Text(t) => &t.text,
+        _ => panic!("expected text content"),
     }
 }
 

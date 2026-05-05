@@ -831,6 +831,7 @@ mod tests {
         // Should succeed
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["status"], "stored");
@@ -931,6 +932,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["has_pii"], true);
@@ -968,6 +970,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["scanned"], 1);
@@ -1019,6 +1022,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["scanned"], 2);
@@ -1055,6 +1059,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["mode"], "dry_run");
@@ -1090,6 +1095,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["mode"], "confirmed");
@@ -1149,6 +1155,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["status"], "deleted");
@@ -1183,6 +1190,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["status"], "deleted");
@@ -1219,6 +1227,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["affected"], 1);
@@ -1260,6 +1269,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["mode"], "confirmed");
@@ -1306,6 +1316,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let report: serde_json::Value = serde_json::from_str(text).unwrap();
 
@@ -1333,6 +1344,7 @@ mod tests {
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let report: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(report["metrics"], "not_configured");
@@ -1366,6 +1378,7 @@ mod tests {
         let result = handle_memory_consent(args, ks.clone()).await;
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["status"], "updated");
@@ -1376,6 +1389,7 @@ mod tests {
         let result = handle_memory_consent(args, ks.clone()).await;
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["consent_basis"], "consent");
@@ -1409,6 +1423,7 @@ mod tests {
         let result = handle_memory_consent(args, ks.clone()).await;
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
+            _ => panic!("expected text content"),
         };
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["count"], 2);

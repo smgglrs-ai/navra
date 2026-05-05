@@ -703,6 +703,7 @@ mod tests {
                 // Branch line should be present
                 assert!(t.text.contains("##") || t.text.contains("clean"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -728,6 +729,7 @@ mod tests {
             Content::Text(t) => {
                 assert!(t.text.contains("README.md"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -752,6 +754,7 @@ mod tests {
             Content::Text(t) => {
                 assert!(t.text.contains("Changed content") || t.text.contains("README.md"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -774,6 +777,7 @@ mod tests {
             Content::Text(t) => {
                 assert_eq!(t.text, "No changes");
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -796,6 +800,7 @@ mod tests {
             Content::Text(t) => {
                 assert!(t.text.contains("Initial commit"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -821,6 +826,7 @@ mod tests {
                 assert!(!lines.is_empty());
                 assert!(lines[0].contains("Initial commit"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -844,6 +850,7 @@ mod tests {
                 // Current branch should be marked with *
                 assert!(t.text.contains("*"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -876,6 +883,7 @@ mod tests {
                 assert!(t.text.contains("Approval required"));
                 assert!(t.text.contains("git.commit"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -898,6 +906,7 @@ mod tests {
             Content::Text(t) => {
                 assert!(t.text.contains("not permitted"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -937,6 +946,7 @@ mod tests {
             Content::Text(t) => {
                 assert!(t.text.contains("Access denied"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -955,6 +965,7 @@ mod tests {
             Content::Text(t) => {
                 assert!(t.text.contains("Missing"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
@@ -976,6 +987,7 @@ mod tests {
             Content::Text(t) => {
                 assert!(t.text.contains("Not a git repository"));
             }
+            _ => panic!("expected text content"),
         }
     }
 

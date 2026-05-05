@@ -633,6 +633,7 @@ mod tests {
                 assert!(t.text.contains("Voice Module Status"));
                 assert!(t.text.contains("Audio host"));
             }
+            _ => panic!("expected text content"),
         }
     }
 
