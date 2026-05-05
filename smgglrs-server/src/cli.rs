@@ -18,6 +18,12 @@ pub(crate) enum Commands {
         #[arg(long)]
         no_tray: bool,
     },
+    /// Run as a stdio MCP server (for Claude Desktop, Cursor, etc.)
+    Stdio {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+    },
     /// Generate or manage agent tokens
     Token {
         #[command(subcommand)]
@@ -87,6 +93,11 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: PiiAction,
     },
+    /// Configuration utilities
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
     /// Run the end-to-end security audit demo
     Demo {
         /// Path to the demo project (default: examples/payments-app)
@@ -119,6 +130,21 @@ pub(crate) enum Commands {
         /// Additional directories to allow writing (can be repeated)
         #[arg(long = "allow-write")]
         allow_write: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ConfigAction {
+    /// Import MCP server configs from Claude Desktop, VS Code, or Codex
+    ImportMcp {
+        /// Path to config file (auto-detects format)
+        path: Option<String>,
+        /// Auto-discover config files in standard locations
+        #[arg(long)]
+        discover: bool,
+        /// Show secret values instead of redacting them
+        #[arg(long)]
+        no_redact: bool,
     },
 }
 
