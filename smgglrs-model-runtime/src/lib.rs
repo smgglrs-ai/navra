@@ -155,6 +155,76 @@ pub fn pick_free_port() -> Result<u16, RuntimeError> {
     Ok(port)
 }
 
+/// Detected runtime isolation environment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IsolationLevel {
+    /// Bare metal or VM — no container isolation detected.
+    BareMetal,
+    /// Running inside a Podman/Docker container.
+    Container,
+    /// Running inside an OpenShell sandbox (libkrun microVM).
+    OpenShellSandbox,
+}
+
+/// Runtime isolation context — detected once, cached for process lifetime.
+#[derive(Debug, Clone)]
+pub struct IsolationContext {
+    pub level: IsolationLevel,
+    pub container_id: Option<String>,
+    pub sandbox_id: Option<String>,
+}
+
+static ISOLATION_CONTEXT: std::sync::OnceLock<IsolationContext> = std::sync::OnceLock::new();
+
+impl IsolationContext {
+    /// Detect the current isolation environment.
+    ///
+    /// Checks (in order):
+    /// 1. `OPENSHELL_SANDBOX_ID` env var → OpenShellSandbox
+    /// 2. `/.containerenv` or `/.dockerenv` file → Container
+    /// 3. `/run/.containerenv` file → Container
+    /// 4. Otherwise → BareMetal
+    pub fn detect() -> &'static IsolationContext {
+        ISOLATION_CONTEXT.get_or_init(|| {
+            if let Ok(sandbox_id) = std::env::var("OPENSHELL_SANDBOX_ID") {
+                return IsolationContext {
+                    level: IsolationLevel::OpenShellSandbox,
+                    container_id: None,
+                    sandbox_id: Some(sandbox_id),
+                };
+            }
+
+            let container_id = std::fs::read_to_string("/proc/self/cgroup")
+                .ok()
+                .and_then(|cg| {
+                    cg.lines()
+                        .find(|l| l.contains("libpod") || l.contains("docker") || l.contains("containerd"))
+                        .and_then(|l| l.rsplit('/').next())
+                        .map(String::from)
+                });
+
+            let in_container = container_id.is_some()
+                || std::path::Path::new("/.containerenv").exists()
+                || std::path::Path::new("/.dockerenv").exists()
+                || std::path::Path::new("/run/.containerenv").exists();
+
+            if in_container {
+                IsolationContext {
+                    level: IsolationLevel::Container,
+                    container_id,
+                    sandbox_id: None,
+                }
+            } else {
+                IsolationContext {
+                    level: IsolationLevel::BareMetal,
+                    container_id: None,
+                    sandbox_id: None,
+                }
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,5 +248,20 @@ mod tests {
         };
         let debug = format!("{ep:?}");
         assert!(debug.contains("127.0.0.1:8080"));
+    }
+
+    #[test]
+    fn isolation_context_detect_returns_consistent() {
+        let ctx1 = IsolationContext::detect();
+        let ctx2 = IsolationContext::detect();
+        assert_eq!(ctx1.level, ctx2.level);
+        assert!(std::ptr::eq(ctx1, ctx2));
+    }
+
+    #[test]
+    fn isolation_level_debug() {
+        assert_eq!(format!("{:?}", IsolationLevel::BareMetal), "BareMetal");
+        assert_eq!(format!("{:?}", IsolationLevel::Container), "Container");
+        assert_eq!(format!("{:?}", IsolationLevel::OpenShellSandbox), "OpenShellSandbox");
     }
 }
