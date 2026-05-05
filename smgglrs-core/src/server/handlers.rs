@@ -2,7 +2,7 @@ use crate::auth::CallContext;
 use crate::protocol::{
     CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
     InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    ReadResourceParams, ReadResourceResult,
+    PaginatedRequest, ReadResourceParams, ReadResourceResult,
 };
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::Session;
@@ -83,9 +83,11 @@ impl McpServer {
         Ok((result, session_id))
     }
 
-    pub fn handle_list_tools(&self, _agent: &crate::auth::AgentIdentity) -> ListToolsResult {
-        let tools = self.tools.values().map(|t| t.definition.clone()).collect();
-        ListToolsResult { tools }
+    pub fn handle_list_tools(&self, _agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListToolsResult {
+        let all_tools: Vec<_> = self.tools.values().map(|t| t.definition.clone()).collect();
+        let offset = pagination.decode_offset().unwrap_or(0);
+        let (tools, next_cursor) = crate::protocol::paginate(&all_tools, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        ListToolsResult { tools, next_cursor }
     }
 
     pub async fn handle_call_tool(
@@ -389,9 +391,11 @@ impl McpServer {
         result
     }
 
-    pub fn handle_list_prompts(&self, _agent: &crate::auth::AgentIdentity) -> ListPromptsResult {
-        let prompts = self.prompts.values().map(|p| p.definition.clone()).collect();
-        ListPromptsResult { prompts }
+    pub fn handle_list_prompts(&self, _agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListPromptsResult {
+        let all_prompts: Vec<_> = self.prompts.values().map(|p| p.definition.clone()).collect();
+        let offset = pagination.decode_offset().unwrap_or(0);
+        let (prompts, next_cursor) = crate::protocol::paginate(&all_prompts, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        ListPromptsResult { prompts, next_cursor }
     }
 
     pub async fn handle_get_prompt(
@@ -409,13 +413,15 @@ impl McpServer {
         self.prompts.len()
     }
 
-    pub fn handle_list_resources(&self, _agent: &crate::auth::AgentIdentity) -> ListResourcesResult {
-        let resources = self
+    pub fn handle_list_resources(&self, _agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListResourcesResult {
+        let all_resources: Vec<_> = self
             .resources
             .values()
             .map(|r| r.definition.clone())
             .collect();
-        ListResourcesResult { resources }
+        let offset = pagination.decode_offset().unwrap_or(0);
+        let (resources, next_cursor) = crate::protocol::paginate(&all_resources, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        ListResourcesResult { resources, next_cursor }
     }
 
     pub async fn handle_read_resource(
