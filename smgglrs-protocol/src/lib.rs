@@ -34,6 +34,10 @@ pub use mcp::{
     PromptMessage, PromptRole, PromptsCapability, ReadResourceParams, ReadResourceResult,
     ResourceContent, ResourceDefinition, ResourcesCapability, ServerCapabilities, ServerInfo,
     TextContent, ToolDefinition, ToolInputSchema, ToolsCapability,
+    ProgressParams, RequestMeta, ResourceUpdatedParams,
     DEFAULT_PAGE_SIZE, PROTOCOL_VERSION, encode_cursor, paginate,
+    NOTIFY_TOOLS_LIST_CHANGED, NOTIFY_RESOURCES_LIST_CHANGED,
+    NOTIFY_RESOURCES_UPDATED, NOTIFY_PROMPTS_LIST_CHANGED,
+    NOTIFY_PROGRESS, NOTIFY_INITIALIZED,
 };
 pub use upstream::{RetryConfig, Upstream};

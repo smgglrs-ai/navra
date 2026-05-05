@@ -380,6 +380,7 @@ async fn handle_session_prompt(
                 let call_params = CallToolParams {
                     name: tool_call.tool_name.clone(),
                     arguments: tool_call.arguments.clone(),
+                    meta: None,
                 };
                 let tool_result = server.handle_call_tool(call_params, ctx).await;
 

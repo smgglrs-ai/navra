@@ -426,6 +426,7 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
                     properties: if properties.is_empty() { None } else { Some(properties) },
                     required: #required_tokens,
                 },
+                annotations: None,
             }
         }
 

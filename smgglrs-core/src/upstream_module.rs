@@ -109,6 +109,7 @@ impl Module for UpstreamModule {
                         let params = CallToolParams {
                             name,
                             arguments: args,
+                            meta: None,
                         };
                         let mut u = upstream.lock().await;
                         match u.call_tool(params).await {
