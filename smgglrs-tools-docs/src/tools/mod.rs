@@ -130,6 +130,7 @@ impl Module for DocsModule {
                     .to_string(),
             ),
             mime_type: None,
+            size: None,
         };
         let handler: ResourceHandler = Arc::new(move |uri: String| {
             let state = s.clone();

@@ -516,6 +516,7 @@ pub fn team_create_def() -> ToolDefinition {
             ])),
             required: Some(vec!["name".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -548,6 +549,7 @@ pub fn team_add_def() -> ToolDefinition {
             ])),
             required: Some(vec!["team_id".to_string(), "name".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -570,6 +572,7 @@ pub fn team_message_def() -> ToolDefinition {
             ])),
             required: Some(vec!["team_id".to_string(), "to".to_string(), "message".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -588,6 +591,7 @@ pub fn team_status_def() -> ToolDefinition {
             ])),
             required: Some(vec!["team_id".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -603,6 +607,7 @@ pub fn team_result_def() -> ToolDefinition {
             ])),
             required: Some(vec!["team_id".to_string(), "teammate".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -624,6 +629,7 @@ pub fn team_bb_publish_def() -> ToolDefinition {
             ])),
             required: Some(vec!["team_id".to_string(), "key".to_string(), "value".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -642,6 +648,7 @@ pub fn team_bb_read_def() -> ToolDefinition {
             ])),
             required: Some(vec!["team_id".to_string(), "key".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -662,6 +669,7 @@ pub fn team_bb_notifications_def() -> ToolDefinition {
             ])),
             required: Some(vec!["team_id".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -680,6 +688,7 @@ pub fn team_shutdown_def() -> ToolDefinition {
             ])),
             required: Some(vec!["team_id".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -719,6 +728,7 @@ pub fn models_list_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -737,6 +747,7 @@ pub fn personas_list_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 

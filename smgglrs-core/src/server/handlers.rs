@@ -78,6 +78,7 @@ impl McpServer {
             protocol_version: crate::protocol::PROTOCOL_VERSION.to_string(),
             capabilities: self.capabilities(),
             server_info: self.server_info(),
+            instructions: None,
         };
         Ok((result, session_id))
     }
@@ -307,8 +308,9 @@ impl McpServer {
 
         // Record in blackbox
         if let Some(ref bb) = self.blackbox {
-            let result_text = result.content.iter().map(|c| match c {
-                crate::protocol::Content::Text(t) => t.text.as_str(),
+            let result_text = result.content.iter().filter_map(|c| match c {
+                crate::protocol::Content::Text(t) => Some(t.text.as_str()),
+                _ => None,
             }).collect::<Vec<_>>().join("");
             let result_trunc = if result_text.len() > 4096 {
                 let mut end = 4096;
@@ -376,6 +378,7 @@ impl McpServer {
                         }
                     }
                 }
+                other => filtered_content.push(other),
             }
         }
         result.content = filtered_content;

@@ -103,6 +103,7 @@ pub fn memory_store_def() -> ToolDefinition {
                 "content".to_string(),
             ]),
         },
+        annotations: None,
     }
 }
 
@@ -134,6 +135,7 @@ pub fn memory_query_def() -> ToolDefinition {
             ])),
             required: Some(vec!["query".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -351,6 +353,7 @@ pub fn memory_purge_pii_def() -> ToolDefinition {
             ])),
             required: Some(vec!["action".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -473,6 +476,7 @@ pub fn memory_forget_by_content_def() -> ToolDefinition {
             ])),
             required: Some(vec!["query".to_string(), "confirm".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -571,6 +575,7 @@ pub fn memory_forget_def() -> ToolDefinition {
             ])),
             required: Some(vec!["id".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -635,6 +640,7 @@ pub fn pii_report_def() -> ToolDefinition {
             properties: Some(HashMap::new()),
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -715,6 +721,7 @@ pub fn memory_consent_def() -> ToolDefinition {
             ])),
             required: Some(vec!["mode".to_string()]),
         },
+        annotations: None,
     }
 }
 

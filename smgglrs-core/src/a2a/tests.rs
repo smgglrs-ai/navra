@@ -26,6 +26,7 @@ fn test_server() -> McpServer {
                     properties: None,
                     required: None,
                 },
+                annotations: None,
             },
             |_args, _ctx| Box::pin(async { CallToolResult::text("pong") }),
         )
@@ -38,6 +39,7 @@ fn test_server() -> McpServer {
                     properties: None,
                     required: None,
                 },
+                annotations: None,
             },
             |args, _ctx| {
                 Box::pin(async move {

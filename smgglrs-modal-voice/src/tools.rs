@@ -139,6 +139,7 @@ fn listen_tool_def() -> ToolDefinition {
             ])),
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -162,6 +163,7 @@ fn speak_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["text".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -185,6 +187,7 @@ fn transcribe_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -199,6 +202,7 @@ fn status_tool_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 

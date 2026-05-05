@@ -90,6 +90,7 @@ fn status_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -119,6 +120,7 @@ fn diff_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -144,6 +146,7 @@ fn log_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -165,6 +168,7 @@ fn branch_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -188,6 +192,7 @@ fn commit_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string(), "message".to_string()]),
         },
+        annotations: None,
     }
 }
 

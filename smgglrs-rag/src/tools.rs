@@ -147,6 +147,7 @@ fn index_tool_def() -> ToolDefinition {
             )])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -172,6 +173,7 @@ fn query_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["query".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -197,6 +199,7 @@ fn similar_tool_def() -> ToolDefinition {
             ])),
             required: Some(vec!["path".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -209,6 +212,7 @@ fn status_tool_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 

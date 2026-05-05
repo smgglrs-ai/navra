@@ -15,6 +15,7 @@ fn echo_tool_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -44,6 +45,7 @@ impl Module for TestModule {
                     properties: None,
                     required: None,
                 },
+                annotations: None,
             },
             Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("pong") })),
         )]
@@ -113,6 +115,7 @@ fn register_multiple_modules() {
                         properties: None,
                         required: None,
                     },
+                    annotations: None,
                 },
                 Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("hi") })),
             )]
@@ -144,6 +147,7 @@ fn duplicate_tool_name_panics() {
                         properties: None,
                         required: None,
                     },
+                    annotations: None,
                 },
                 Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("dup") })),
             )]
@@ -175,6 +179,7 @@ async fn call_module_tool() {
     assert!(!result.is_error);
     match &result.content[0] {
         crate::protocol::Content::Text(t) => assert_eq!(t.text, "pong"),
+        _ => panic!("expected text content"),
     }
 }
 
@@ -216,6 +221,7 @@ async fn call_registered_tool() {
     assert!(!result.is_error);
     match &result.content[0] {
         crate::protocol::Content::Text(t) => assert_eq!(t.text, "echo: hello"),
+        _ => panic!("expected text content"),
     }
 }
 
@@ -316,6 +322,7 @@ async fn safety_filter_redacts_secrets() {
             assert!(t.text.contains("[REDACTED:aws-key]"));
             assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -367,6 +374,7 @@ async fn no_safety_profile_passes_through() {
         crate::protocol::Content::Text(t) => {
             assert!(t.text.contains("AKIAIOSFODNN7EXAMPLE"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -445,6 +453,7 @@ async fn call_registered_prompt() {
     assert_eq!(result.description, Some("A greeting".to_string()));
     match &result.messages[0].content {
         crate::protocol::Content::Text(t) => assert_eq!(t.text, "Hello, Alice!"),
+        _ => panic!("expected text content"),
     }
 }
 
@@ -499,6 +508,7 @@ fn info_resource_def() -> crate::protocol::ResourceDefinition {
         name: "Server Status".to_string(),
         description: Some("Current server status".to_string()),
         mime_type: Some("text/plain".to_string()),
+        size: None,
     }
 }
 
@@ -634,6 +644,7 @@ async fn tool_permissions_deny_blocks_tool() {
         crate::protocol::Content::Text(t) => {
             assert!(t.text.contains("Permission denied"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -670,6 +681,7 @@ async fn tool_permissions_allow_passes_through() {
     assert!(!result.is_error);
     match &result.content[0] {
         crate::protocol::Content::Text(t) => assert_eq!(t.text, "reached"),
+        _ => panic!("expected text content"),
     }
 }
 
@@ -708,6 +720,7 @@ async fn tool_permissions_approve_returns_approval_required() {
         crate::protocol::Content::Text(t) => {
             assert!(t.text.contains("Approval required"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -823,6 +836,7 @@ async fn cap_token_denies_unmatched_tool() {
         crate::protocol::Content::Text(t) => {
             assert!(t.text.contains("not in capability token"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -873,6 +887,7 @@ fn read_tool_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -885,6 +900,7 @@ fn write_tool_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -937,6 +953,7 @@ async fn ifc_deny_write_after_untrusted_read() {
             assert!(t.text.contains("IFC"));
             assert!(t.text.contains("tainted"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -1154,6 +1171,7 @@ async fn hook_safety_filter_via_pipeline() {
         crate::protocol::Content::Text(t) => {
             assert!(t.text.contains("[REDACTED:aws-key]"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -1197,6 +1215,7 @@ async fn hook_blocks_tool_call() {
         crate::protocol::Content::Text(t) => {
             assert!(t.text.contains("blocked by test hook"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -1228,6 +1247,7 @@ async fn legacy_safety_filter_still_works_without_hooks() {
         crate::protocol::Content::Text(t) => {
             assert!(t.text.contains("[REDACTED:aws-key]"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -1259,6 +1279,7 @@ async fn paused_server_rejects_tool_calls() {
         crate::protocol::Content::Text(t) => {
             assert!(t.text.contains("paused"));
         }
+        _ => panic!("expected text content"),
     }
 }
 
@@ -1517,5 +1538,6 @@ async fn dynamic_grant_overrides_tool_deny() {
     assert!(!result.is_error);
     match &result.content[0] {
         crate::protocol::Content::Text(t) => assert_eq!(t.text, "reached"),
+        _ => panic!("expected text content"),
     }
 }

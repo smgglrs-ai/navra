@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+/// MCP-specific error codes.
+pub const REQUEST_CANCELLED: i32 = -32001;
+pub const CONTENT_TOO_LARGE: i32 = -32002;
+
 /// JSON-RPC 2.0 request identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]

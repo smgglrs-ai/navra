@@ -109,6 +109,7 @@ pub fn registry_search_def() -> ToolDefinition {
             ])),
             required: Some(vec!["query".to_string()]),
         },
+        annotations: None,
     }
 }
 
@@ -125,6 +126,7 @@ pub fn registry_list_def() -> ToolDefinition {
             properties: None,
             required: None,
         },
+        annotations: None,
     }
 }
 
@@ -157,6 +159,7 @@ pub fn registry_describe_def() -> ToolDefinition {
             ])),
             required: Some(vec!["name".to_string()]),
         },
+        annotations: None,
     }
 }
 

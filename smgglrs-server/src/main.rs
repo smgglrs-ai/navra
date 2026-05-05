@@ -1589,6 +1589,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     },
                     required: Some(vec!["subject_did".to_string()]),
                 },
+                annotations: None,
             },
             move |args, ctx| {
                 let signer = Arc::clone(&delegate_signer);
@@ -1775,6 +1776,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     properties: None,
                     required: None,
                 },
+                annotations: None,
             },
             |_args, _ctx| {
                 // The actual data comes from the server's process table,
@@ -2498,6 +2500,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     },
                     required: None,
                 },
+                annotations: None,
             },
             move |args, _ctx| {
                 let audit = Arc::clone(&audit);
@@ -2579,6 +2582,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         .to_string(),
                 ),
                 mime_type: Some("text/plain".to_string()),
+                size: None,
             },
             std::sync::Arc::new(move |uri: String| {
                 let audit = Arc::clone(&flow_audit);

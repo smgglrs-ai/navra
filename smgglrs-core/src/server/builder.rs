@@ -309,6 +309,7 @@ impl McpServerBuilder {
                             properties: None,
                             required: None,
                         },
+                        annotations: None,
                     },
                     handler: Arc::new(move |_args, ctx| {
                         let vs = vs.clone();
@@ -349,6 +350,7 @@ impl McpServerBuilder {
                             )])),
                             required: Some(vec!["id".to_string()]),
                         },
+                        annotations: None,
                     },
                     handler: Arc::new(move |args, ctx| {
                         let vs = vs.clone();
@@ -390,6 +392,7 @@ impl McpServerBuilder {
                             )])),
                             required: Some(vec!["id".to_string()]),
                         },
+                        annotations: None,
                     },
                     handler: Arc::new(move |args, ctx| {
                         let vs = vs.clone();

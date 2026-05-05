@@ -87,6 +87,7 @@ fn tool_result_to_parts(result: &crate::protocol::CallToolResult) -> Vec<Part> {
         .iter()
         .map(|c| match c {
             crate::protocol::Content::Text(tc) => Part::text(&tc.text),
+            _ => Part::text("[unsupported content type]"),
         })
         .collect()
 }

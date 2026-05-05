@@ -79,6 +79,7 @@ async fn upstream_call_tool_through_module() {
     assert!(!result.is_error);
     match &result.content[0] {
         smgglrs_core::protocol::Content::Text(t) => assert_eq!(t.text, "echo: hello"),
+        _ => panic!("expected text content"),
     }
 }
 
@@ -106,6 +107,7 @@ async fn upstream_get_prompt_through_module() {
         smgglrs_core::protocol::Content::Text(t) => {
             assert_eq!(t.text, "Hello from upstream!");
         }
+        _ => panic!("expected text content"),
     }
 }
 
