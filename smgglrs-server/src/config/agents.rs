@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct AgentConfig {
     pub name: String,
     pub token_hash: String,
@@ -24,7 +24,7 @@ pub struct AgentConfig {
     pub token_ttl: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct UpstreamConfig {
     pub name: String,
     #[serde(default = "default_transport")]

@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 pub struct ModulesConfig {
     #[serde(default)]
     pub docs: Option<DocsModuleConfig>,
@@ -19,7 +19,7 @@ pub struct ModulesConfig {
     pub memory: Option<MemoryModuleConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct MemoryModuleConfig {
     /// PII filter profile for memory ingestion and audit logs.
     /// Uses the same profiles as safety: "standard", "secrets-only", "none".
@@ -63,13 +63,13 @@ impl Default for MemoryModuleConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct GitModuleConfig {
     #[serde(default = "super::default_true")]
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct VisionModuleConfig {
     #[serde(default = "super::default_true")]
     pub enabled: bool,
@@ -82,7 +82,7 @@ fn default_vision_model() -> String {
     "vision".to_string()
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct RagModuleConfig {
     #[serde(default = "super::default_true")]
     pub enabled: bool,
@@ -119,7 +119,7 @@ pub(super) fn default_rag_db_path() -> String {
         .into_owned()
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct VoiceModuleConfig {
     #[serde(default = "super::default_true")]
     pub enabled: bool,
@@ -163,7 +163,7 @@ fn default_silence_timeout_ms() -> u64 {
     1500
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct DocsModuleConfig {
     #[serde(default = "super::default_true")]
     pub enabled: bool,
@@ -186,7 +186,7 @@ pub(super) fn default_db_path() -> String {
         .into_owned()
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct RegistryModuleConfig {
     #[serde(default = "super::default_true")]
     pub enabled: bool,
@@ -219,7 +219,7 @@ impl Default for DocsModuleConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct ApprovalConfig {
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,

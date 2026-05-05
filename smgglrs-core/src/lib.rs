@@ -36,3 +36,7 @@ pub use session::Session;
 pub use smgglrs_protocol::{RetryConfig, Upstream};
 pub use grpc_module::GrpcModule;
 pub use upstream_module::UpstreamModule;
+
+/// Re-export dispatch for unit tests (not part of public API).
+#[cfg(test)]
+pub(crate) use transport::streamable::dispatch::dispatch as dispatch_for_test;

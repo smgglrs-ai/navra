@@ -890,6 +890,219 @@ async fn cap_token_bypasses_tool_permissions() {
     assert!(!result.is_error);
 }
 
+// ========================================================================
+// MCP spec compliance: dispatch handler tests (Phase 9i)
+// ========================================================================
+
+/// Helper to run a JSON-RPC request through the dispatch function.
+async fn dispatch_request(
+    server: &std::sync::Arc<super::McpServer>,
+    method: &str,
+    params: Option<serde_json::Value>,
+    session_id: Option<String>,
+) -> crate::protocol::JsonRpcResponse {
+    let request = crate::protocol::JsonRpcRequest::new(
+        method,
+        params,
+        crate::protocol::RequestId::Number(1),
+    );
+    let (response, _) = crate::dispatch_for_test(
+        server.clone(),
+        request,
+        test_agent(),
+        session_id,
+    )
+    .await;
+    response
+}
+
+/// Helper to initialize a session and return (server, session_id).
+fn init_test_session() -> (std::sync::Arc<super::McpServer>, String) {
+    let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
+    let params = crate::protocol::InitializeParams {
+        protocol_version: "2025-03-26".to_string(),
+        capabilities: Default::default(),
+        client_info: crate::protocol::ClientInfo {
+            name: "test-client".to_string(),
+            version: None,
+        },
+    };
+    let (_, session_id) = server.handle_initialize(params, test_agent()).unwrap();
+    (server, session_id)
+}
+
+#[tokio::test]
+async fn dispatch_ping_returns_empty_object() {
+    let (server, session_id) = init_test_session();
+    let resp = dispatch_request(&server, "ping", None, Some(session_id)).await;
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.unwrap(), serde_json::json!({}));
+}
+
+#[tokio::test]
+async fn dispatch_completion_complete_returns_empty_values() {
+    let (server, session_id) = init_test_session();
+    let resp = dispatch_request(
+        &server,
+        "completion/complete",
+        Some(serde_json::json!({
+            "ref": {"type": "ref/prompt", "name": "test"},
+            "argument": {"name": "lang", "value": "py"}
+        })),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_none());
+    let result = resp.result.unwrap();
+    assert!(result["completion"]["values"].as_array().unwrap().is_empty());
+    assert!(!result["completion"]["hasMore"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn dispatch_logging_set_level_returns_success() {
+    let (server, session_id) = init_test_session();
+    let resp = dispatch_request(
+        &server,
+        "logging/setLevel",
+        Some(serde_json::json!({"level": "warning"})),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.unwrap(), serde_json::json!({}));
+}
+
+#[tokio::test]
+async fn dispatch_resources_subscribe_returns_success() {
+    let (server, session_id) = init_test_session();
+    let resp = dispatch_request(
+        &server,
+        "resources/subscribe",
+        Some(serde_json::json!({"uri": "file:///watched.md"})),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.unwrap(), serde_json::json!({}));
+}
+
+#[tokio::test]
+async fn dispatch_resources_unsubscribe_returns_success() {
+    let (server, session_id) = init_test_session();
+    let resp = dispatch_request(
+        &server,
+        "resources/unsubscribe",
+        Some(serde_json::json!({"uri": "file:///watched.md"})),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_none());
+    assert_eq!(resp.result.unwrap(), serde_json::json!({}));
+}
+
+#[tokio::test]
+async fn dispatch_unknown_method_returns_method_not_found() {
+    let (server, session_id) = init_test_session();
+    let resp = dispatch_request(
+        &server,
+        "nonexistent/method",
+        None,
+        Some(session_id),
+    )
+    .await;
+    let error = resp.error.unwrap();
+    assert_eq!(error.code, -32601);
+    assert!(error.message.contains("nonexistent/method"));
+}
+
+#[tokio::test]
+async fn dispatch_without_session_returns_error() {
+    let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
+    // Any method except "initialize" should require a session
+    let resp = dispatch_request(&server, "tools/list", None, None).await;
+    let error = resp.error.unwrap();
+    assert_eq!(error.code, -32002);
+    assert!(error.message.contains("Session required"));
+}
+
+#[tokio::test]
+async fn dispatch_initialize_does_not_require_session() {
+    let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
+    let resp = dispatch_request(
+        &server,
+        "initialize",
+        Some(serde_json::json!({
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "test"}
+        })),
+        None,
+    )
+    .await;
+    assert!(resp.error.is_none());
+    let result = resp.result.unwrap();
+    assert_eq!(result["protocolVersion"], "2025-03-26");
+}
+
+// ========================================================================
+// MCP spec compliance: error code tests (Phase 9i)
+// ========================================================================
+
+#[test]
+fn error_code_parse_error() {
+    let err = crate::protocol::JsonRpcError::parse_error();
+    assert_eq!(err.code, -32700);
+}
+
+#[test]
+fn error_code_invalid_request() {
+    let err = crate::protocol::JsonRpcError::invalid_request("bad");
+    assert_eq!(err.code, -32600);
+}
+
+#[test]
+fn error_code_method_not_found() {
+    let err = crate::protocol::JsonRpcError::method_not_found("foo");
+    assert_eq!(err.code, -32601);
+}
+
+#[test]
+fn error_code_invalid_params() {
+    let err = crate::protocol::JsonRpcError::invalid_params("missing field");
+    assert_eq!(err.code, -32602);
+}
+
+#[test]
+fn error_code_internal_error() {
+    let err = crate::protocol::JsonRpcError::internal("oops");
+    assert_eq!(err.code, -32603);
+}
+
+#[test]
+fn error_code_request_cancelled() {
+    assert_eq!(crate::protocol::REQUEST_CANCELLED, -32001);
+}
+
+#[test]
+fn error_code_content_too_large() {
+    assert_eq!(crate::protocol::CONTENT_TOO_LARGE, -32002);
+}
+
+#[test]
+fn error_code_enum_roundtrip() {
+    use crate::protocol::ErrorCode;
+    assert_eq!(ErrorCode::ParseError.code(), -32700);
+    assert_eq!(ErrorCode::InvalidRequest.code(), -32600);
+    assert_eq!(ErrorCode::MethodNotFound.code(), -32601);
+    assert_eq!(ErrorCode::InvalidParams.code(), -32602);
+    assert_eq!(ErrorCode::InternalError.code(), -32603);
+    assert_eq!(ErrorCode::from_code(-32700), ErrorCode::ParseError);
+    assert_eq!(ErrorCode::from_code(-32600), ErrorCode::InvalidRequest);
+    assert_eq!(ErrorCode::from_code(-32601), ErrorCode::MethodNotFound);
+    assert_eq!(ErrorCode::from_code(-32602), ErrorCode::InvalidParams);
+    assert_eq!(ErrorCode::from_code(-32603), ErrorCode::InternalError);
+}
+
 // --- IFC (Information Flow Control) tests ---
 
 fn read_tool_def() -> ToolDefinition {

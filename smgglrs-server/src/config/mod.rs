@@ -20,7 +20,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct Config {
     pub server: ServerConfig,
     #[serde(default)]

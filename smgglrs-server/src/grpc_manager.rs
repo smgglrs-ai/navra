@@ -14,7 +14,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 /// Configuration for a single gRPC module.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct GrpcModuleConfig {
     /// Module name (used in logging and tool registration).
     pub name: String,

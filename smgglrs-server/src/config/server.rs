@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct ServerConfig {
     #[serde(default = "default_socket")]
     pub socket: Option<String>,
@@ -37,7 +37,7 @@ fn default_hook_timeout() -> u64 {
 ///
 /// Controls where smgglrs stores its Ed25519 root keypair and how
 /// capability tokens are issued.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct IdentityConfig {
     /// Path to Ed25519 seed file. If omitted, the OS keyring is used.
     #[serde(default)]
@@ -69,7 +69,7 @@ fn default_max_delegation_depth() -> u8 {
 ///
 /// Populates the `/.well-known/agent` JSON endpoint per the AID spec.
 /// See: https://aid.agentcommunity.org/docs/specification
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct DiscoveryConfig {
     /// Externally-reachable URL of this server's MCP endpoint.
     /// Example: "https://tools.example.com/mcp"
@@ -107,7 +107,7 @@ fn default_aid_auth() -> String {
 }
 
 /// A whitelisted MCP server for the registry.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct RegistryEntry {
     /// Server name (unique identifier).
     pub name: String,

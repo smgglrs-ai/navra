@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use std::time::Instant;
 
 /// Configuration for OpenShell identity verification.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct OpenShellAuthConfig {
     /// Verification mode.
     pub mode: OpenShellAuthMode,
@@ -48,6 +48,7 @@ fn default_http_timeout_secs() -> u64 {
 
 /// Verification backend mode.
 #[derive(Debug, Clone, Deserialize)]
+#[derive(schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OpenShellAuthMode {
     /// Verify JWT-SVID against SPIRE trust bundle.
