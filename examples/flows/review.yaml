@@ -1,0 +1,103 @@
+kind: dag
+name: review
+description: |
+  Domain-agnostic review: scout → planner → specialist swarm → synthesizer.
+  The scout classifies the project domain and content types. The planner
+  selects personas from the full catalog based on what the scout found.
+  Works on any project: code, legal, financial, scientific, documentation.
+
+parameters:
+  target_dir:
+    type: string
+    description: Root directory of the project to review
+
+tasks:
+  - id: scout
+    specialist: analyst
+    model: gemma4:e4b
+    mandate: |
+      Examine the project at {{ target_dir }}. Use file_tree to get the
+      structure, then file_read on key files (README, config files,
+      top-level docs, a few representative content files).
+
+      Classify the project and return a JSON object:
+      {
+        "domain": "software|legal|financial|scientific|documentation|mixed",
+        "languages": ["rust", "python", ...],
+        "frameworks": ["MCP", "Django", ...],
+        "content_types": ["source code", "contracts", "reports", ...],
+        "file_count": N,
+        "structure_summary": "brief description of how the project is organized",
+        "key_files": ["path/to/important/file", ...],
+        "review_focus": ["security", "correctness", "compliance", ...]
+      }
+
+      Be factual. Only report what you observe in the actual files.
+    expected_output: JSON classification of project domain and structure
+
+  - id: planner
+    specialist: analyst
+    model: gemma4:26b
+    depends_on: [scout]
+    generates_tasks: true
+    mandate: |
+      You are a review planner. Read the scout's project classification,
+      then design a review plan using the right specialists.
+
+      STEP 1: Call personas_list to see all available personas.
+
+      STEP 2: Based on the project domain and content types from the
+      scout, select 5-8 personas that are relevant. Match personas to
+      the project — do NOT use code-focused personas on a legal project.
+
+      Examples of persona-domain matching:
+      - Software project → principal_engineer, software_developer,
+        security_sentinel, tech_writer, assessor
+      - Legal project → analyst, ethics_compliance_officer,
+        researcher, tech_writer, devils_advocate
+      - Financial project → financial_analyst, analyst,
+        ethics_compliance_officer, assessor, watchdog
+      - Scientific → researcher, data_scientist, analyst,
+        tech_writer, assessor
+      - Mixed → pick based on what content types are present
+
+      STEP 3: Create 10-20 review tasks. Each task must have:
+      - "id": unique identifier (e.g., "arch-01", "quality-01")
+      - "specialist": a persona name from personas_list output
+      - "model": "auto"
+      - "mandate": specific review instructions (under 300 words).
+        Name the directory/file area and what to check.
+
+      Distribute tasks across the selected personas. Every major
+      area of the project should be covered by at least one task.
+
+      Output ONLY the JSON array of tasks.
+    expected_output: JSON array of 10-20 tasks with dynamically selected personas
+
+  - id: synthesize
+    specialist: summarizer
+    model: gemma4:26b
+    depends_on: [planner]
+    mandate: |
+      Read all specialist outputs via flow_result. The flow ID is
+      available in context.
+
+      Produce a structured review report:
+
+      ## Executive Summary
+      3-5 sentences: what kind of project this is, overall quality
+      assessment, and the most critical findings.
+
+      ## Findings by Area
+      For each specialist area, create a section with findings.
+      Derive the structure from what the specialists actually reported.
+      Include severity levels and specific references where provided.
+
+      ## Action Items
+      Top 10 items, prioritized by severity and impact.
+
+      ## Methodology
+      Which personas were used and why (based on domain classification).
+
+      Be thorough. Read EVERY specialist output before writing.
+    expected_output: Comprehensive review report
