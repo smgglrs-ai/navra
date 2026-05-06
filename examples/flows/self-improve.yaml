@@ -1,0 +1,134 @@
+kind: dag
+name: self-improve
+description: |
+  Autonomous audit-fix-test-verify cycle. A principal engineer audits
+  the codebase, an analyst plans targeted fixes, software developers
+  apply them, and an assessor verifies the build and tests still pass.
+
+  Operates on a git worktree so the main branch is never touched.
+  Only verified fixes survive. Run with:
+    smgglrs improve --target . --cycles 3
+
+parameters:
+  target_dir:
+    type: string
+    description: Root directory of the project to improve
+  cycle:
+    type: string
+    description: Cycle number (for tracking across iterations)
+    default: "1"
+
+tasks:
+  # --- Phase 1: Audit ---
+  - id: audit
+    specialist: principal_engineer
+    model: gemma4:e4b
+    mandate: |
+      Audit the project at {{ target_dir }}. Use file_tree to get the
+      structure, then file_read to examine files. Focus on:
+      - Dead code (unused functions, unreachable branches)
+      - Missing error handling (unwrap on fallible operations)
+      - Security gaps (unsanitized input, missing permission checks)
+      - Test coverage gaps (public functions without tests)
+      - Inconsistencies (naming, patterns, conventions)
+
+      Report findings as a JSON array:
+      [{"id": "issue-1", "file": "path/to/file.rs", "line": 42,
+        "severity": "high", "category": "error_handling",
+        "description": "unwrap() on user-supplied path without validation",
+        "suggested_fix": "Replace .unwrap() with .map_err()"}]
+
+      Only report issues you can verify by reading the actual code.
+      Do NOT guess line numbers. Do NOT report style preferences.
+      Maximum 15 issues, ordered by severity.
+    expected_output: JSON array of verified issues
+
+  # --- Phase 2: Plan fixes ---
+  - id: planner
+    specialist: analyst
+    model: gemma4:26b
+    depends_on: [audit]
+    generates_tasks: true
+    mandate: |
+      Read the audit findings. Select the top 5 issues that meet
+      ALL of these criteria:
+      1. Single-file fix (no cross-file refactors)
+      2. Can be done with file_edit (string replacement)
+      3. Won't break compilation (no signature changes)
+      4. Won't break existing tests
+
+      For each selected issue, create a fix task. Each fix agent
+      gets file_read, file_write, file_edit, file_grep, and file_tree.
+
+      Output a JSON array:
+      [{"id": "fix-01", "specialist": "software_developer",
+        "tools": ["file_read", "file_write", "file_edit", "file_grep", "file_tree"],
+        "operations": ["read", "write", "search", "list"],
+        "mandate": "In file smgglrs-foo/src/bar.rs, replace X with Y because Z.
+          Read the file first to verify the context. Use file_edit with
+          the exact old_string to replace."}]
+
+      Each mandate must include the EXACT file path and describe
+      precisely what to change. The developer should be able to
+      execute the fix without any ambiguity.
+    expected_output: JSON array of 3-5 fix tasks
+
+  # --- Phase 3: Fixes (dynamically injected by planner) ---
+  # Each fix-NN agent gets write tools via the tools/operations
+  # fields in the planner's JSON output.
+
+  # --- Phase 4: Build and test verification ---
+  - id: verify
+    specialist: assessor
+    model: auto
+    depends_on: [planner]
+    tools: [build_test, file_read, file_grep]
+    operations: [read, build]
+    mandate: |
+      Verify that the fixes didn't break anything.
+
+      Step 1: Run build_test with command "build" on {{ target_dir }}.
+      If the build fails, report which files have errors and what
+      the error messages say.
+
+      Step 2: If the build passed, run build_test with command "test"
+      on {{ target_dir }}. Report total tests, passed, failed.
+
+      Step 3: If any tests fail that weren't failing before, identify
+      which fix likely caused the regression.
+
+      Report results as JSON:
+      {"build_success": true/false, "tests_passed": N,
+       "tests_failed": N, "regressions": ["test_name", ...]}
+    expected_output: Build and test verification results
+
+  # --- Phase 5: Cycle report ---
+  - id: synthesize
+    specialist: summarizer
+    model: gemma4:26b
+    depends_on: [planner, verify]
+    mandate: |
+      Read the audit findings, fix task outputs, and verification
+      results via flow_result. The flow ID is available in context.
+
+      Produce a cycle report:
+
+      ## Cycle {{ cycle }} Summary
+
+      ### Metrics
+      - Issues found by audit: N
+      - Fixes planned: N
+      - Fixes applied: N (list which succeeded/failed)
+      - Build status: pass/fail
+      - Tests: N passed, N failed, N regressions
+
+      ### Fixes Applied
+      For each successful fix: file, what was changed, why.
+
+      ### Remaining Issues
+      Issues from the audit that were NOT addressed in this cycle
+      (candidates for the next cycle).
+
+      ### Recommendations
+      Should another cycle run? What should it focus on?
+    expected_output: Cycle summary report with metrics

@@ -1,5 +1,14 @@
 use clap::{Parser, Subcommand};
 
+/// Default path for the cognitive core directory.
+fn default_cognitive_core_path() -> String {
+    dirs::config_dir()
+        .unwrap_or_default()
+        .join("smgglrs/cognitive_core")
+        .to_string_lossy()
+        .to_string()
+}
+
 #[derive(Parser)]
 #[command(name = "smgglrs", about = "Composable MCP server")]
 pub(crate) struct Cli {
@@ -99,6 +108,27 @@ pub(crate) enum Commands {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+    /// Run autonomous self-improvement cycles (audit→fix→test→verify)
+    Improve {
+        /// Path to the project to improve
+        #[arg(short, long, default_value = ".")]
+        target: String,
+        /// Number of improvement cycles to run
+        #[arg(short, long, default_value_t = 3)]
+        cycles: u32,
+        /// Git branch name for the worktree
+        #[arg(short, long, default_value = "self-improve")]
+        branch: String,
+        /// Path to config file
+        #[arg(long)]
+        config: Option<String>,
+    },
+    /// Validate cognitive core cross-references
+    ValidateCognitive {
+        /// Path to cognitive core directory
+        #[arg(long, default_value_t = default_cognitive_core_path())]
+        cognitive_core: String,
     },
     /// Run the end-to-end security audit demo
     Demo {
