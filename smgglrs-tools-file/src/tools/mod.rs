@@ -20,12 +20,12 @@ use definitions::*;
 use handlers::*;
 use state::DocsState;
 
-/// Document management module for smgglrs.
-pub struct DocsModule {
+/// File management module for smgglrs.
+pub struct FileModule {
     state: Arc<DocsState>,
 }
 
-impl DocsModule {
+impl FileModule {
     pub fn new(
         perm_engine: Arc<PermissionEngine>,
         index: Arc<IndexStore>,
@@ -87,7 +87,7 @@ impl DocsModule {
     }
 }
 
-impl Module for DocsModule {
+impl Module for FileModule {
     fn name(&self) -> &str {
         "file"
     }

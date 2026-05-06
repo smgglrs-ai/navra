@@ -11,7 +11,7 @@ members = [
     "smgglrs-agent",
     "smgglrs-flow",
     "smgglrs-core",
-    "smgglrs-tools-docs",
+    "smgglrs-tools-file",
     "smgglrs-tools-git",
     "smgglrs-rag",
     "smgglrs-modal-voice",

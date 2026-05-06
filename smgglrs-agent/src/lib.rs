@@ -42,6 +42,8 @@ mod error;
 /// Upstream MCP prompt resolution utilities.
 pub mod resolve;
 mod tool_loop;
+/// Hermes-format trace export for agent conversations.
+pub mod trace;
 
 pub use agent::{Agent, AgentBuilder};
 pub use block::{BlockStatus, ToolBlock};
@@ -50,6 +52,7 @@ pub use error::AgentError;
 pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};
 pub use action::{AgentAction, ActionRecord, RiskLevel};
 pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
+pub use trace::{HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, TraceExporter};
 
 // SDK facade: external consumers (e.g. agent binaries) depend only on
 // smgglrs-agent and reach protocol/model/security types through these

@@ -16,5 +16,8 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 
+[features]
+webmcp = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
