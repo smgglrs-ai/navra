@@ -15,6 +15,7 @@
 //! | `SMGGLRS_TASK` | yes | Prompt/mandate to execute |
 //! | `SMGGLRS_MAX_ITERATIONS` | no | Iteration cap (default 30) |
 //! | `SMGGLRS_COGNITIVE_CORE` | no | Path to cognitive_core directory |
+//! | `SMGGLRS_OUTPUT_SCHEMA` | no | JSON schema to constrain model output format |
 
 use std::env;
 use std::path::Path;
@@ -54,6 +55,9 @@ async fn run() -> Result<(), String> {
     let token = env::var("SMGGLRS_TOKEN").ok();
     let persona_name = env::var("SMGGLRS_PERSONA").ok();
     let cognitive_core_path = env::var("SMGGLRS_COGNITIVE_CORE").ok();
+    let output_schema: Option<serde_json::Value> = env::var("SMGGLRS_OUTPUT_SCHEMA")
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok());
     let max_iterations: usize = env::var("SMGGLRS_MAX_ITERATIONS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -76,6 +80,10 @@ async fn run() -> Result<(), String> {
         .model(backend)
         .max_iterations(max_iterations)
         .temperature(0.3);
+
+    if let Some(schema) = output_schema {
+        builder = builder.output_json_schema(schema);
+    }
 
     // Load persona if both name and cognitive core path are provided
     if let (Some(ref name), Some(ref core_path)) = (&persona_name, &cognitive_core_path) {

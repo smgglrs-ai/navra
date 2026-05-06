@@ -2424,7 +2424,19 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             },
         );
 
-        tracing::info!("Registered flow escalation tool (flow_escalate)");
+        let fr_ctx = Arc::clone(&flow_ctx);
+        builder = builder.tool(
+            flow_tools::flow_resume_tool_def(),
+            move |args, ctx| {
+                let flow_ctx = Arc::clone(&fr_ctx);
+                let agent = ctx.agent.name.clone();
+                Box::pin(async move {
+                    flow_tools::handle_flow_resume(args, flow_ctx, &agent).await
+                })
+            },
+        );
+
+        tracing::info!("Registered flow tools (flow_escalate, flow_resume)");
     }
 
     // --- Knowledge memory tools ---

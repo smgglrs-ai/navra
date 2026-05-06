@@ -236,6 +236,7 @@ impl ModelBackend for AnthropicBackend {
             temperature: request.temperature,
             tools: Vec::new(),
             tool_choice: None,
+            response_format: None,
         };
 
         let url = self.messages_url();
@@ -592,6 +593,7 @@ mod tests {
             temperature: None,
             tools: Vec::new(),
             tool_choice: None,
+            response_format: None,
         };
         let body = backend.build_body(&request, false);
         assert_eq!(body["system"], "Be helpful.");
@@ -620,6 +622,7 @@ mod tests {
                 parameters: serde_json::json!({"type": "object", "properties": {"city": {"type": "string"}}}),
             }],
             tool_choice: Some(ToolChoice::Auto),
+            response_format: None,
         };
         let body = backend.build_body(&request, false);
         let tools = body["tools"].as_array().unwrap();
@@ -773,6 +776,7 @@ mod tests {
             temperature: None,
             tools: Vec::new(),
             tool_choice: None,
+            response_format: None,
         };
         let body = backend.build_body(&request, false);
         assert_eq!(body["max_tokens"], DEFAULT_MAX_TOKENS);

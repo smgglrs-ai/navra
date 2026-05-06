@@ -347,12 +347,21 @@ pub(crate) fn responses_to_chat(req: &CreateResponseRequest) -> chat::ChatReques
         _ => ToolChoice::Auto,
     });
 
+    let response_format = req.text.as_ref().and_then(|t| {
+        t.format.as_ref().map(|f| match f {
+            smgglrs_responses::ResponseFormat::JsonObject => serde_json::json!("json"),
+            smgglrs_responses::ResponseFormat::JsonSchema { schema, .. } => schema.clone(),
+            smgglrs_responses::ResponseFormat::Text => serde_json::Value::Null,
+        })
+    }).filter(|v| !v.is_null());
+
     ChatRequest {
         messages,
         max_tokens: req.max_output_tokens,
         temperature: req.temperature,
         tools,
         tool_choice,
+        response_format,
     }
 }
 

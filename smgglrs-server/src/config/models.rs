@@ -198,7 +198,7 @@ fn default_budget_max_depth() -> u32 {
 }
 
 fn default_budget_timeout() -> u64 {
-    1800
+    3600
 }
 
 fn default_budget_max_parallel() -> usize {
