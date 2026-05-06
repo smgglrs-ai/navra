@@ -4,13 +4,22 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-05-05)
+## Current state (2026-05-06)
 
-18 crates, ~76K LoC, 1577 tests, 0 warnings. 43 personas, 36
+18 crates, ~77K LoC, 1600+ tests, 0 warnings. 43 personas, 36
 heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
 Fully local multi-agent demos. Full PII pipeline (regex + NER + file
 paths, pseudonymization, GDPR tools, IFC integration). Containerized
 agent execution via Podman (shared model server + per-agent sandboxes).
+
+### Recent (2026-05-06)
+
+- Renamed smgglrs-tools-docs → smgglrs-tools-file (DocsModule→FileModule)
+- WebMCP transport skeleton (feature-gated, CDP bridge pattern)
+- Persona semantic validation (cross-reference checks + CLI subcommand)
+- Working memory decay wired into turn selection (get_turns_by_score)
+- Hermes-format trace export (JSONL with <think>/<tool_call>/<tool_response>)
+- ROADMAP reprioritized with tech watch items (13 articles analyzed)
 
 ### Recent (2026-05-05)
 
@@ -52,7 +61,7 @@ agent execution via Podman (shared model server + per-agent sandboxes).
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| smgglrs-tools-docs | Done | Document CRUD, FTS5, sqlite-vec |
+| smgglrs-tools-file | Done | File CRUD, FTS5, sqlite-vec (renamed from smgglrs-tools-docs 2026-05-06) |
 | smgglrs-tools-git | Done | Git status, diff, log, branch, commit |
 | smgglrs-rag | Done | Vector search, semantic chunking |
 | smgglrs-modal-voice | Scaffolded | ASR + TTS via ONNX (Whisper, Piper) |
@@ -246,6 +255,9 @@ audit/blackbox logs, distillation output, and vector embeddings
 | **TensorRtRuntime backend** | Add TensorRT-LLM as a ModelRuntime backend alongside Direct/Podman/OpenShell. NVFP4 on Blackwell GPUs for max throughput. | 2-3 days | **Medium-High** |
 | **TurboQuant KV cache** | llama.cpp PR #21089 saves 42% memory at 64K context. Track merge, add --cache-type flags to smgglrs-model-runtime Direct backend config. Benchmark: 18.6GB→10.7GB at 64K. | 1 day (config) | **Medium** |
 | Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive | Low |
+| Session store sharding | Replace single `RwLock<HashMap>` with DashMap — known perf bottleneck under concurrent sessions | 1-2 days | Medium |
+| Streaming model download | `pull()` buffers entire model in `Vec<u8>` — stream to disk for large models | 2-3 days | Medium |
+| Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive | Low |
 
 ---
 
@@ -365,6 +377,39 @@ Reference: SemaClaw skill lazy-loading (arXiv 2604.11548).
 
 **Why first**: The cognitive core is Myelix's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
+
+#### 1e. Context budget → tool output compression
+
+**Crate**: `smgglrs-cognitive` (budget.rs) + `smgglrs-core` (CallContext)
+
+`ContextBudget` exists but tools ignore it. Wire budget awareness
+into `CallContext` so modules self-compress based on remaining tokens:
+
+- Add `remaining_tokens: Option<usize>` to `CallContext`
+- `CallToolResult::compress(max_tokens)` method that truncates
+  tool output to fit (RTK pattern: 60-90% token reduction)
+- Intent-based compression: `file_read` returns summary if budget
+  is tight, full content if budget is ample (Strands pattern)
+- Weaver applies budget after tool output injection
+
+**Effort**: 2-3 days. **Priority**: High.
+**Acceptance**: Self-review flow completes with 40% fewer tokens.
+
+#### 1f. Bidirectional persona bridge
+
+**Crate**: `smgglrs-cognitive` (new `bridge.rs`)
+
+Import and export personas across agent frameworks:
+
+- **Import**: Anthropic-style agent plugin dirs → cognitive YAML
+  (`agents/*.md` → Persona, `skills/*.md` → Directive,
+  `scripts/*.py` → upstream tool definitions)
+- **Export**: persona + heuristics + directives → single markdown
+  for Claude Code, Cursor, or other systems
+- CLI: `smgglrs persona import <dir>`, `smgglrs persona export <name>`
+
+**Effort**: 2-3 days. **Priority**: High.
+**Acceptance**: Round-trip import/export preserves persona semantics.
 
 ### Phase 2: DAG execution & mesh communication (smgglrs-flow v2) ✓
 
@@ -977,6 +1022,42 @@ retrieval time. ~76% savings on redundant ranking operations.
 Particularly valuable in multi-agent flows where agents rephrase
 similar queries.
 
+#### 7c. Agentic RAG L2
+
+**Crate**: `smgglrs-rag` (new `agentic.rs`)
+
+Move from passive retrieval to active, multi-step retrieval:
+
+- **Query decomposition**: Break complex queries into sub-queries
+  routed to vector search, FTS5, or upstream MCP resources
+- **Self-correction loop**: Evaluate retrieved context relevance
+  before sending to the LLM; re-query if below threshold
+- **Multi-hop chaining**: Answer requires combining results from
+  multiple retrievals (e.g., "find the function that calls X,
+  then check its error handling")
+- Uses existing `smgglrs-flow` DAG for multi-step orchestration
+
+**Effort**: 3-5 days. **Priority**: High.
+**Depends on**: 7a (reranker provides relevance scoring for
+self-correction), 7b (caching avoids redundant sub-queries).
+**Acceptance**: Multi-hop retrieval test finds correct answer
+across 3+ document hops.
+
+#### 7d. Nomic Embed v1.5 evaluation
+
+**Crate**: `smgglrs-model` (OnnxBackend) + `smgglrs-rag` (store)
+
+Evaluate as replacement for current embedding model:
+
+- Matryoshka dimensions: 768 (search) / 1536 / 3072 (re-rank)
+- Apache 2.0 license, ONNX export available
+- Two-stage retrieval: 768-dim fast search → 3072-dim re-rank
+- Also evaluate GeminiEmbedding as cloud-tier fallback
+- Benchmark: recall@10 vs current model on project codebase
+
+**Effort**: 2 days. **Priority**: Medium-High.
+**Acceptance**: Recall@10 improves or matches at lower latency.
+
 ### Phase 8: Warp-informed UX patterns (NEW — 2026-05-04)
 
 Patterns adopted from studying Warp's open-source codebase
@@ -1068,6 +1149,24 @@ Block-based tool execution model for future CLI/TUI:
 - Foundation for eventual terminal-style agent UX
 
 **Effort**: 1 day. ~150 lines in smgglrs-agent.
+
+#### 8g. Intent-based tool grouping
+
+**Crate**: `smgglrs-core` (server, dispatch) + `smgglrs-agent` (tool_loop)
+
+Reduce tool count per request for small models that struggle with
+large tool lists:
+
+- Group fine-grained tools into intent-based tools: `file_read` +
+  `file_write` + `file_edit` → `file_operate(op, path, ...)`
+- Semantic tool discovery: embed tool descriptions at startup,
+  match against query, expose only relevant subset to the model
+- Config: `[server] tool_grouping = "none" | "intent" | "semantic"`
+- Backward compatible — ungrouped mode remains the default
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Acceptance**: Small models (≤10B) succeed at tool calling with
+grouped tools where they previously failed with 40+ individual tools.
 
 ### Phase 9: Full MCP spec coverage (2026-05-04, mostly complete)
 
@@ -1288,6 +1387,63 @@ Automated test suite verifying spec compliance:
 - OpenMythos / RDT architecture: cite if Recurrent Depth
   Transformers validate for CPU-tier model sizing claims.
 - Peer review
+
+### Phase 11: Model & safety research (from tech watch 2026-05-06)
+
+Research-driven items that require evaluation before committing
+to implementation. Each item has a research gate.
+
+#### 11a. ONNX/ort deepening
+
+**Crates**: `smgglrs-model` (OnnxBackend), `smgglrs-model-runtime`
+
+Track and contribute to the ONNX/ort-rs ecosystem:
+
+- RDT (Recurrent Depth Transformer) loop/recurrence operators
+  in ONNX — required to run RDT models in-process
+- ort-rs GenAI API bindings: KV cache management, buffer sharing
+  for efficient autoregressive generation
+- Moshi/KAME ONNX export viability (see 11b)
+
+**Effort**: Research + upstream PRs. **Priority**: Medium.
+**Gate**: Are RDT operators merged in ONNX spec? Is ort-rs GenAI
+API stable enough to depend on?
+
+#### 11b. KAME tandem voice architecture
+
+**Crate**: `smgglrs-modal-voice`
+
+Evaluate Moshi-based speech-to-speech as replacement for the
+current cascaded ASR → LLM → TTS pipeline:
+
+- Tandem: fast S2S front-end + oracle stream from LLM back-end
+- Latency target: <500ms first-byte (vs ~2s cascaded)
+- Requires ONNX export of Moshi encoder/decoder (see 11a)
+- Evaluate against current Whisper + Piper cascade
+
+**Effort**: Research. **Priority**: Medium.
+**Gate**: Is Moshi exported to ONNX? Does latency improve in
+practice on our hardware (RTX 5090)?
+
+#### 11c. Adversarial safety evaluation
+
+**Crates**: `smgglrs-security` (safety classifier),
+`smgglrs-flow` (pipeline orchestration)
+
+Generate adversarial training data for the safety classifier
+using AutoData's Challenger/Weak/Strong/Verifier pattern:
+
+- Challenger generates adversarial prompts targeting specific
+  safety categories (jailbreak, PII extraction, prompt injection)
+- Weak model produces naive responses
+- Strong model produces robust responses
+- Verifier scores both; delta becomes training signal
+- Orchestrated as a `smgglrs-flow` DAG (4 specialists)
+
+**Effort**: 3-5 days. **Priority**: Medium.
+**Depends on**: Flow engine (Phase 2), safety classifier (done).
+**Acceptance**: Safety classifier F1 improves on held-out test
+set after fine-tuning on generated data.
 
 ---
 
