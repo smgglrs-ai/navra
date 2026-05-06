@@ -153,7 +153,9 @@ fn log_tool_def() -> ToolDefinition {
 fn branch_tool_def() -> ToolDefinition {
     ToolDefinition {
         name: "git_branch".to_string(),
-        description: Some("List branches or show the current branch.".to_string()),
+        description: Some(
+            "List branches, show current branch, or create a new branch.".to_string(),
+        ),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
@@ -164,6 +166,10 @@ fn branch_tool_def() -> ToolDefinition {
                 (
                     "all".to_string(),
                     serde_json::json!({"type": "boolean", "description": "Show remote branches too (default: false)"}),
+                ),
+                (
+                    "create".to_string(),
+                    serde_json::json!({"type": "string", "description": "Create and switch to a new branch with this name"}),
                 ),
             ])),
             required: Some(vec!["path".to_string()]),
@@ -477,6 +483,20 @@ async fn handle_branch(
 
     if let Err(result) = check_perm(&state, &ctx, "git.branch", &repo_path).await {
         return result;
+    }
+
+    // Branch creation
+    if let Some(name) = args.get("create").and_then(|v| v.as_str()) {
+        if name.starts_with('-') {
+            return CallToolResult::error("Branch name must not start with '-'");
+        }
+        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+            return CallToolResult::error("Branch name contains invalid characters");
+        }
+        return match run_git(&repo_path, &["checkout", "-b", name]).await {
+            Ok(output) => CallToolResult::text(format!("Created and switched to branch '{name}'\n{output}")),
+            Err(e) => CallToolResult::error(e),
+        };
     }
 
     let show_all = args

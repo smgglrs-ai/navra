@@ -1,3 +1,4 @@
+mod build_tools;
 mod cli;
 mod config;
 mod demo;
@@ -158,6 +159,72 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         },
+        Commands::Improve { target, cycles, branch, config } => {
+            println!("smgglrs self-improvement: {} cycles on {}", cycles, target);
+            println!("Branch: {branch}");
+
+            let target_path = std::path::Path::new(&target).canonicalize()
+                .unwrap_or_else(|e| { eprintln!("Cannot resolve target: {e}"); std::process::exit(1); });
+
+            // Create git worktree
+            let worktree_path = target_path.join(".smgglrs-improve").join(&branch);
+            let worktree_result = std::process::Command::new("git")
+                .args(["worktree", "add", worktree_path.to_str().unwrap(), "-b", &branch])
+                .current_dir(&target_path)
+                .output();
+
+            match worktree_result {
+                Ok(output) if output.status.success() => {
+                    println!("Created worktree at {}", worktree_path.display());
+                }
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    if stderr.contains("already exists") {
+                        println!("Worktree already exists at {}", worktree_path.display());
+                    } else {
+                        eprintln!("Failed to create worktree: {}", stderr);
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => { eprintln!("git worktree failed: {e}"); std::process::exit(1); }
+            }
+
+            // Start the server, run cycles, then stop
+            println!("Starting smgglrs for self-improvement...");
+            println!("Target: {}", worktree_path.display());
+            println!("Cycles: {cycles}");
+            println!();
+            println!("Use 'smgglrs serve' in another terminal, then call:");
+            println!("  flow_start(flow_name=\"self-improve\", prompt=\"Improve the project\",");
+            println!("    parameters={{\"target_dir\": \"{}\", \"cycle\": \"1\"}})", worktree_path.display());
+            println!();
+            println!("After each cycle, review the worktree and merge if satisfied:");
+            println!("  cd {} && git log --oneline", target_path.display());
+            println!("  git merge {branch}");
+            println!("  git worktree remove {}", worktree_path.display());
+        }
+        Commands::ValidateCognitive { cognitive_core } => {
+            let path = std::path::Path::new(&cognitive_core);
+            if !path.exists() {
+                eprintln!("Cognitive core directory not found: {}", path.display());
+                std::process::exit(1);
+            }
+            let forge = smgglrs_cognitive::ForgeService::load(path)?;
+            let findings = forge.validate();
+            let mut has_errors = false;
+            for finding in &findings {
+                if finding.severity == smgglrs_cognitive::Severity::Error {
+                    has_errors = true;
+                }
+                println!("[{}] {}", finding.severity, finding.message);
+            }
+            if findings.is_empty() {
+                println!("No issues found.");
+            }
+            if has_errors {
+                std::process::exit(1);
+            }
+        }
         Commands::Run { prompt, model, persona, endpoint, token, max_iterations, upstream_prompts } => {
             run_agent(&prompt, model.as_deref(), &persona, &endpoint, token.as_deref(), max_iterations, &upstream_prompts).await?;
         }
@@ -1052,10 +1119,10 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
     // --- Docs module ---
     // Keep watcher handle alive for the lifetime of the server.
-    let mut _watcher_handle: Option<smgglrs_tools_docs::WatcherHandle> = None;
+    let mut _watcher_handle: Option<smgglrs_tools_file::WatcherHandle> = None;
     if cfg.docs_enabled() {
         let db_path = cfg.docs_db_path();
-        let mut index = smgglrs_tools_docs::IndexStore::open(&db_path)?;
+        let mut index = smgglrs_tools_file::IndexStore::open(&db_path)?;
 
         // Enable vector search if an embedding model is loaded
         if embedding_model.is_some() {
@@ -1071,7 +1138,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         let index = Arc::new(index);
 
         let docs = if let Some(ref model) = embedding_model {
-            smgglrs_tools_docs::DocsModule::with_embeddings(
+            smgglrs_tools_file::FileModule::with_embeddings(
                 perm_engine.clone(),
                 index.clone(),
                 approvals.clone(),
@@ -1079,7 +1146,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 model.clone(),
             )
         } else {
-            smgglrs_tools_docs::DocsModule::new(
+            smgglrs_tools_file::FileModule::new(
                 perm_engine.clone(),
                 index.clone(),
                 approvals.clone(),
@@ -1129,7 +1196,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             })
             .collect();
         if !watch_dirs.is_empty() {
-            match smgglrs_tools_docs::start_watcher_with_embeddings(
+            match smgglrs_tools_file::start_watcher_with_embeddings(
                 watch_dirs,
                 index,
                 embedding_model.clone(),
@@ -2600,6 +2667,21 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             },
         );
         tracing::info!("Registered plan_execute tool");
+    }
+
+    // Register build_test tool for self-improvement flows
+    {
+        let perm = Arc::clone(&perm_engine);
+        builder = builder.tool(
+            build_tools::build_test_tool_def(),
+            move |args, ctx| {
+                let perm = Arc::clone(&perm);
+                Box::pin(async move {
+                    build_tools::handle_build_test(args, ctx, perm).await
+                })
+            },
+        );
+        tracing::info!("Registered build_test tool");
     }
 
     // Register flow:// resources backed by audit.db.

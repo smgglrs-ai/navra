@@ -154,6 +154,14 @@ pub struct TaskDefinition {
     /// Cross-validation configuration for high-stakes outputs.
     #[serde(default)]
     pub verification: Option<VerificationConfig>,
+    /// Override DEFAULT_TOOLS for this task. When set, the agent
+    /// gets exactly these tools (e.g., add file_write for fix tasks).
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
+    /// Override DEFAULT_OPERATIONS for this task. When set, the
+    /// capability token grants these operations instead of the default.
+    #[serde(default)]
+    pub operations: Option<Vec<String>>,
 }
 
 /// Parse a planner's text output into task definitions.
@@ -283,6 +291,8 @@ pub fn single_task_dag(specialist: &str, mandate: &str) -> DagConfig {
             back_edges: Vec::new(),
             generates_tasks: false,
             verification: None,
+            tools: None,
+            operations: None,
         }],
         blackboard_capacity: None,
     }
@@ -326,6 +336,8 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 back_edges: Vec::new(),
                 generates_tasks: false,
                 verification: None,
+                tools: None,
+                operations: None,
             },
             TaskDefinition {
                 id: "planner".to_string(),
@@ -343,6 +355,8 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 back_edges: Vec::new(),
                 generates_tasks: false,
                 verification: None,
+                tools: None,
+                operations: None,
             },
             TaskDefinition {
                 id: "worker".to_string(),
@@ -359,6 +373,8 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 back_edges: Vec::new(),
                 generates_tasks: false,
                 verification: None,
+                tools: None,
+                operations: None,
             },
             TaskDefinition {
                 id: "synthesize".to_string(),
@@ -375,6 +391,8 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 back_edges: Vec::new(),
                 generates_tasks: false,
                 verification: None,
+                tools: None,
+                operations: None,
             },
         ],
         blackboard_capacity: None,

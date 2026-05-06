@@ -789,11 +789,16 @@ async fn spawn_and_track_tasks(
         let model = task.model.clone().unwrap_or_else(|| "auto".to_string());
         let persona = if task.specialist.is_empty() { None } else { Some(task.specialist.clone()) };
 
+        let ops = task.operations.as_ref()
+            .map(|o| o.clone())
+            .unwrap_or_else(|| crate::team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect());
+        let tools = task.tools.as_ref()
+            .map(|t| t.clone())
+            .unwrap_or_else(|| crate::team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect());
+
         if let Err(e) = ctx.team_registry.add_teammate(
             team_id, &task.id, persona.as_deref(),
-            &model, "local",
-            crate::team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
-            crate::team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            &model, "local", ops, tools,
         ) {
             tracing::error!(task = %task.id, error = %e, "Failed to add teammate for flow task");
             new_failed.insert(task.id.clone());
@@ -1371,6 +1376,8 @@ pub async fn handle_flow_escalate(
                 back_edges: Vec::new(),
                 generates_tasks: false,
                 verification: None,
+                tools: None,
+                operations: None,
             });
         }
         smgglrs_flow::DagConfig {
