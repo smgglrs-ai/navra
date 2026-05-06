@@ -1001,6 +1001,17 @@ pub async fn handle_flow_start(
 
     let flow_id = ctx.flow_registry.register(&dag_config.name);
 
+    // Persist flow metadata for resumability
+    if let Some(ref audit) = ctx.audit_log {
+        let params_json = serde_json::to_string(&params).unwrap_or_default();
+        let _ = audit.save_flow_metadata(
+            &flow_id,
+            &dag_config.name,
+            Some(&yaml_content),
+            Some(&params_json),
+        );
+    }
+
     // Initialize node statuses
     let nodes: Vec<NodeStatus> = dag_config.tasks.iter().map(|t| {
         NodeStatus {
@@ -1041,6 +1052,11 @@ pub async fn handle_flow_start(
         &ctx, &flow_id, &team_id, &prompt,
         dag_config.tasks,
     ).await;
+
+    // Mark flow complete in metadata
+    if let Some(ref audit) = ctx.audit_log {
+        let _ = audit.complete_flow_metadata(&flow_id, "completed");
+    }
 
     CallToolResult::text(format!(
         "Flow completed.\nflow_id: {flow_id}\n\n{final_output}"
@@ -1738,6 +1754,163 @@ pub fn flow_escalate_tool_def() -> ToolDefinition {
         },
         annotations: None,
     }
+}
+
+pub fn flow_resume_tool_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "flow_resume".to_string(),
+        description: Some(
+            "Resume a timed-out or failed flow. Skips completed tasks \
+             (read from audit.db) and runs only the remaining ones."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([(
+                "flow_id".to_string(),
+                serde_json::json!({
+                    "type": "string",
+                    "description": "ID of the flow to resume"
+                }),
+            )])),
+            required: Some(vec!["flow_id".to_string()]),
+        },
+        annotations: None,
+    }
+}
+
+/// Resume a timed-out flow by loading its metadata and completed tasks
+/// from audit.db, then re-running only the remaining tasks.
+pub async fn handle_flow_resume(
+    args: serde_json::Value,
+    ctx: std::sync::Arc<FlowContext>,
+    agent_name: &str,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let flow_id = match args.get("flow_id").and_then(|v| v.as_str()) {
+        Some(id) => id.to_string(),
+        None => return CallToolResult::error("Missing required parameter: flow_id"),
+    };
+
+    // Load flow metadata
+    let metadata = match &ctx.audit_log {
+        Some(audit) => match audit.load_flow_metadata(&flow_id) {
+            Ok(Some(m)) => m,
+            Ok(None) => return CallToolResult::error(format!("Flow {flow_id} not found in audit.db")),
+            Err(e) => return CallToolResult::error(format!("Failed to load flow metadata: {e}")),
+        },
+        None => return CallToolResult::error("Audit log not configured"),
+    };
+
+    // Load completed task results
+    let completed_results = match &ctx.audit_log {
+        Some(audit) => match audit.get_flow_results(&flow_id) {
+            Ok(r) => r,
+            Err(e) => return CallToolResult::error(format!("Failed to load flow results: {e}")),
+        },
+        None => Vec::new(),
+    };
+
+    let already_done: std::collections::HashMap<String, String> = completed_results
+        .iter()
+        .filter(|r| r.status == "done")
+        .filter_map(|r| {
+            let output = r.output.clone().unwrap_or_default();
+            Some((r.task_id.clone(), output))
+        })
+        .collect();
+
+    let already_failed: std::collections::HashSet<String> = completed_results
+        .iter()
+        .filter(|r| r.status == "failed")
+        .map(|r| r.task_id.clone())
+        .collect();
+
+    // Re-parse the YAML to get the task definitions
+    let yaml_content = match metadata.yaml_content {
+        Some(ref y) => y.clone(),
+        None => return CallToolResult::error("Flow has no saved YAML content — cannot resume"),
+    };
+
+    let params: std::collections::HashMap<String, String> = metadata.parameters
+        .as_ref()
+        .and_then(|p| serde_json::from_str(p).ok())
+        .unwrap_or_default();
+
+    let dag_config = match smgglrs_flow::yaml_loader::load_flow_yaml(&yaml_content, &params) {
+        Ok(c) => c,
+        Err(e) => return CallToolResult::error(format!("Failed to parse flow YAML: {e}")),
+    };
+
+    // Filter to only tasks not already completed
+    let remaining: Vec<smgglrs_flow::TaskDefinition> = dag_config.tasks
+        .into_iter()
+        .filter(|t| !already_done.contains_key(&t.id))
+        .collect();
+
+    if remaining.is_empty() {
+        return CallToolResult::text(format!(
+            "Flow {flow_id} has no remaining tasks. {} completed, {} failed.",
+            already_done.len(), already_failed.len()
+        ));
+    }
+
+    tracing::info!(
+        flow_id = %flow_id,
+        completed = already_done.len(),
+        remaining = remaining.len(),
+        "Resuming flow"
+    );
+
+    // Re-register the flow and run remaining tasks
+    let new_flow_id = ctx.flow_registry.register(&format!("{}-resumed", metadata.name));
+
+    // Copy completed results to the new flow
+    if let Some(ref audit) = ctx.audit_log {
+        for (task_id, output) in &already_done {
+            let _ = audit.record_flow_task(
+                &new_flow_id, task_id, None, None, "done", Some(output), None, None,
+            );
+        }
+        let _ = audit.save_flow_metadata(
+            &new_flow_id,
+            &metadata.name,
+            metadata.yaml_content.as_deref(),
+            metadata.parameters.as_deref(),
+        );
+    }
+
+    // Create team and run
+    let team_budget = crate::team_tools::TeamBudget {
+        max_agents: ctx.budget_cfg.max_agents.max(remaining.len() as u32 + 2),
+        max_depth: ctx.budget_cfg.max_depth,
+        max_iterations: ctx.budget_cfg.max_iterations,
+        timeout_secs: ctx.budget_cfg.timeout_secs.max(600),
+        ..Default::default()
+    };
+    let team_id = match ctx.team_registry.create_team(
+        &metadata.name, None, agent_name, 0, team_budget,
+    ) {
+        Ok(id) => id,
+        Err(e) => return CallToolResult::error(format!("Failed to create resume team: {e}")),
+    };
+    ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
+
+    let prompt = format!("Resumed flow {flow_id}");
+    let final_output = run_dag_execution(
+        &ctx, &new_flow_id, &team_id, &prompt, remaining,
+    ).await;
+
+    if let Some(ref audit) = ctx.audit_log {
+        let _ = audit.complete_flow_metadata(&new_flow_id, "completed");
+    }
+
+    CallToolResult::text(format!(
+        "Flow resumed.\nOriginal: {flow_id}\nResumed as: {new_flow_id}\n\
+         Previously completed: {} tasks\n\n{final_output}",
+        already_done.len()
+    ))
 }
 
 #[cfg(test)]

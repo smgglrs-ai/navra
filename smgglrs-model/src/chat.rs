@@ -123,6 +123,8 @@ pub struct ChatRequest {
     pub temperature: Option<f32>,
     pub tools: Vec<ChatToolDefinition>,
     pub tool_choice: Option<ToolChoice>,
+    /// JSON schema for structured output (Ollama `format` field).
+    pub response_format: Option<serde_json::Value>,
 }
 
 // --- Response (non-streaming) ---

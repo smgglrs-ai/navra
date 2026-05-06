@@ -66,6 +66,16 @@ pub struct FlowTaskResult {
     pub completed_at: Option<i64>,
 }
 
+/// Persisted flow metadata for resumability.
+#[derive(Debug, Clone)]
+pub struct FlowMetadata {
+    pub flow_id: String,
+    pub name: String,
+    pub yaml_content: Option<String>,
+    pub parameters: Option<String>,
+    pub status: String,
+}
+
 /// A flow summary entry returned by `list_flows`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowSummary {
@@ -194,6 +204,17 @@ impl AuditLog {
             );
             CREATE INDEX IF NOT EXISTS idx_flow_results_flow
                 ON flow_results(flow_id);",
+        )?;
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS flow_metadata (
+                flow_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                yaml_content TEXT,
+                parameters TEXT,
+                status TEXT NOT NULL DEFAULT 'running',
+                started_at INTEGER,
+                completed_at INTEGER
+            );",
         )?;
         Ok(())
     }
@@ -465,6 +486,59 @@ impl AuditLog {
             params![flow_id, task_id, specialist, model, status, output, iterations, tokens, now, now],
         )?;
         Ok(())
+    }
+
+    /// Save flow metadata for resumability.
+    pub fn save_flow_metadata(
+        &self,
+        flow_id: &str,
+        name: &str,
+        yaml_content: Option<&str>,
+        parameters: Option<&str>,
+    ) -> Result<(), MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute(
+            "INSERT OR REPLACE INTO flow_metadata (flow_id, name, yaml_content, parameters, status, started_at)
+             VALUES (?1, ?2, ?3, ?4, 'running', ?5)",
+            params![flow_id, name, yaml_content, parameters, now],
+        )?;
+        Ok(())
+    }
+
+    /// Update flow metadata status on completion.
+    pub fn complete_flow_metadata(&self, flow_id: &str, status: &str) -> Result<(), MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute(
+            "UPDATE flow_metadata SET status = ?1, completed_at = ?2 WHERE flow_id = ?3",
+            params![status, now, flow_id],
+        )?;
+        Ok(())
+    }
+
+    /// Load flow metadata for resuming a timed-out or failed flow.
+    pub fn load_flow_metadata(&self, flow_id: &str) -> Result<Option<FlowMetadata>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
+            "SELECT flow_id, name, yaml_content, parameters, status FROM flow_metadata WHERE flow_id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![flow_id], |row| {
+            Ok(FlowMetadata {
+                flow_id: row.get(0)?,
+                name: row.get(1)?,
+                yaml_content: row.get(2)?,
+                parameters: row.get(3)?,
+                status: row.get(4)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
     }
 
     /// Get all task results for a flow.

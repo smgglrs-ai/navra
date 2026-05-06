@@ -532,6 +532,14 @@ impl OpenAiBackend {
             }
         }
 
+        // Note: response_format/format is intentionally NOT sent to
+        // Ollama. When tools are present (planner agents), Ollama can't
+        // handle both format constraints and tool_choice simultaneously.
+        // When prompts are large (>1600 tokens), Ollama ignores format
+        // anyway. We rely on the resilient JSON parser in
+        // parse_planner_tasks() to recover valid objects from malformed
+        // model output instead.
+
         if stream {
             body["stream"] = serde_json::json!(true);
             body["stream_options"] = serde_json::json!({"include_usage": true});
@@ -745,6 +753,7 @@ mod tests {
                 parameters: serde_json::json!({"type": "object"}),
             }],
             tool_choice: Some(ToolChoice::Auto),
+            response_format: None,
         };
         let body = backend.build_chat_body(&request, false);
         assert_eq!(body["tools"][0]["type"], "function");
@@ -762,6 +771,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             tool_choice: None,
+            response_format: None,
         };
         let body = backend.build_chat_body(&request, true);
         assert_eq!(body["stream"], true);

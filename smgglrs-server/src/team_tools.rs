@@ -1028,6 +1028,7 @@ fn spawn_containerized_agent(
     message: &str,
     max_iterations: usize,
     timeout_secs: u64,
+    generates_tasks: bool,
 ) -> tokio::task::JoinHandle<()> {
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
@@ -1331,7 +1332,7 @@ pub fn spawn_teammate_agent(
     if ctx.containerized && is_podman_available() {
         return spawn_containerized_agent(
             ctx, team_id, teammate_id, message,
-            max_iterations, timeout_secs,
+            max_iterations, timeout_secs, generates_tasks,
         );
     }
 
@@ -1500,6 +1501,11 @@ pub fn spawn_teammate_agent(
                             .force_tool_iterations(1)
                             .temperature(0.3)
                             .max_tokens(8192);
+                        // Note: generates_tasks schema enforcement is NOT
+                        // applied here. Ollama can't handle format + tools
+                        // simultaneously, and ignores format on large prompts.
+                        // The resilient parser in parse_planner_tasks()
+                        // recovers valid JSON from malformed model output.
                         if let Some(ref filter) = pii_filter {
                             builder = builder.pii_filter(std::sync::Arc::clone(filter));
                         }
