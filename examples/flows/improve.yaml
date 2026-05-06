@@ -1,0 +1,149 @@
+kind: dag
+name: improve
+description: |
+  Domain-agnostic improvement cycle: audit → plan → fix → verify → report.
+  The scout classifies the project, the planner selects appropriate
+  personas and improvement strategies. Fix agents get write access.
+  Works on any project type: code, documentation, configuration.
+
+parameters:
+  target_dir:
+    type: string
+    description: Root directory of the project to improve
+  cycle:
+    type: string
+    description: Cycle number (for tracking across iterations)
+    default: "1"
+
+tasks:
+  # --- Phase 1: Classify and audit ---
+  - id: scout
+    specialist: analyst
+    model: gemma4:e4b
+    mandate: |
+      Examine the project at {{ target_dir }}. Use file_tree and
+      file_read to understand the project type, structure, and
+      content.
+
+      Return a JSON object:
+      {
+        "domain": "software|legal|financial|documentation|mixed",
+        "languages": [...],
+        "content_types": [...],
+        "file_count": N,
+        "structure_summary": "...",
+        "improvement_opportunities": [
+          "category 1: brief description",
+          "category 2: brief description"
+        ]
+      }
+    expected_output: Project classification with improvement areas
+
+  - id: audit
+    specialist: analyst
+    model: gemma4:e4b
+    depends_on: [scout]
+    mandate: |
+      Based on the scout's classification, perform a detailed audit
+      of the project at {{ target_dir }}. Use file_read to examine
+      files in depth.
+
+      Report findings as a JSON array:
+      [{"id": "issue-1", "file": "path/to/file", "line": N,
+        "severity": "high|medium|low", "category": "...",
+        "description": "...", "suggested_fix": "..."}]
+
+      Adapt your audit focus to the project type:
+      - Software: dead code, error handling, security, test gaps
+      - Legal: inconsistencies, missing clauses, outdated references
+      - Financial: calculation errors, missing validations, compliance gaps
+      - Documentation: stale content, broken references, missing sections
+
+      Maximum 15 issues, ordered by severity. Only report issues you
+      can verify by reading the actual content.
+    expected_output: JSON array of verified issues
+
+  # --- Phase 2: Plan fixes ---
+  - id: planner
+    specialist: analyst
+    model: gemma4:26b
+    depends_on: [audit]
+    generates_tasks: true
+    mandate: |
+      Read the audit findings and the scout's domain classification.
+      Call personas_list to see available specialists.
+
+      Select the top 5 issues that can be fixed with file_edit
+      (single-file changes only). For each, create a fix task with
+      the appropriate specialist persona.
+
+      Persona selection rules:
+      - Code fixes → software_developer
+      - Security fixes → security_sentinel
+      - Documentation fixes → tech_writer
+      - Compliance fixes → ethics_compliance_officer
+      - Architecture fixes → principal_engineer or system_architect
+      - Use other personas from the catalog when they fit better
+
+      Output a JSON array:
+      [{"id": "fix-01", "specialist": "<persona_from_catalog>",
+        "tools": ["file_read", "file_write", "file_edit", "file_grep", "file_tree"],
+        "operations": ["read", "write", "search", "list"],
+        "mandate": "In file X, change Y to Z because..."}]
+
+      Each mandate must include the EXACT file path and describe
+      precisely what to change.
+    expected_output: JSON array of 3-5 fix tasks
+
+  # --- Phase 3: Fixes (dynamically injected) ---
+
+  # --- Phase 4: Verification ---
+  - id: verify
+    specialist: assessor
+    model: auto
+    depends_on: [planner]
+    tools: [build_test, file_read, file_grep]
+    operations: [read, build]
+    mandate: |
+      Verify the fixes didn't break anything.
+
+      For software projects: run build_test with command "build",
+      then "test". Report pass/fail counts.
+
+      For non-software projects: use file_read to verify the
+      changed files are well-formed and consistent with their
+      context. Check for broken references or formatting issues.
+
+      Report results as JSON:
+      {"verification_type": "build_test|content_check",
+       "success": true/false, "details": "..."}
+    expected_output: Verification results
+
+  # --- Phase 5: Cycle report ---
+  - id: synthesize
+    specialist: summarizer
+    model: gemma4:26b
+    depends_on: [planner, verify]
+    mandate: |
+      Read all task outputs via flow_result.
+
+      ## Cycle {{ cycle }} Summary
+
+      ### Project
+      Domain, type, key characteristics (from scout).
+
+      ### Metrics
+      - Issues found: N
+      - Fixes attempted: N
+      - Fixes verified: N
+      - Verification result: pass/fail
+
+      ### Changes Made
+      For each fix: file, what changed, why, which persona did it.
+
+      ### Remaining Issues
+      Issues not addressed (candidates for next cycle).
+
+      ### Methodology
+      Which personas were used and why (based on domain).
+    expected_output: Cycle report with metrics and methodology
