@@ -368,7 +368,7 @@ fn module_provides_all_tools() {
     let index = Arc::new(IndexStore::open_memory().unwrap());
     let approvals = Arc::new(ApprovalStore::new(300));
     let notifier: Arc<dyn smgglrs_core::notify::Notifier> = Arc::new(NoopNotifier);
-    let module = DocsModule::new(engine, index, approvals, notifier);
+    let module = FileModule::new(engine, index, approvals, notifier);
 
     assert_eq!(module.name(), "file");
     let tools = module.tools();

@@ -1,6 +1,6 @@
 [package]
-name = "smgglrs-tools-docs"
-description = "Document management module for smgglrs"
+name = "smgglrs-tools-file"
+description = "File management module for smgglrs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

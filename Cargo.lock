@@ -3996,7 +3996,7 @@ dependencies = [
  "smgglrs-model-hub",
  "smgglrs-model-runtime",
  "smgglrs-rag",
- "smgglrs-tools-docs",
+ "smgglrs-tools-file",
  "smgglrs-tools-git",
  "tempfile",
  "tokio",
@@ -4010,7 +4010,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "smgglrs-tools-docs"
+name = "smgglrs-tools-file"
 version = "0.1.0"
 dependencies = [
  "blake3",

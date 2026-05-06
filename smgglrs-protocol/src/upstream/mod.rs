@@ -9,6 +9,8 @@ pub mod retry;
 pub mod sse;
 pub mod stdio;
 mod transport;
+#[cfg(feature = "webmcp")]
+pub mod webmcp;
 
 pub use retry::{RetryConfig, TransportFactory};
 pub use transport::Transport;
@@ -153,6 +155,27 @@ impl Upstream {
             config,
         )
         .await?;
+        Self::connect(name, transport).await
+    }
+
+    /// Connect via WebMCP (Chrome DevTools Protocol) and initialize.
+    ///
+    /// The `cdp_url` should be a CDP WebSocket endpoint, e.g.,
+    /// `ws://127.0.0.1:9222/devtools/page/ABC`.
+    #[cfg(feature = "webmcp")]
+    pub async fn webmcp(name: &str, cdp_url: &str) -> Result<Self, UpstreamError> {
+        let transport = webmcp::WebMcpTransport::new(name, cdp_url);
+        Self::connect(name, transport).await
+    }
+
+    /// Connect via WebMCP with a specific CDP target ID and initialize.
+    #[cfg(feature = "webmcp")]
+    pub async fn webmcp_with_target(
+        name: &str,
+        cdp_url: &str,
+        target_id: &str,
+    ) -> Result<Self, UpstreamError> {
+        let transport = webmcp::WebMcpTransport::new(name, cdp_url).with_target(target_id);
         Self::connect(name, transport).await
     }
 

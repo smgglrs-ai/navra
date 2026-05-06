@@ -16,7 +16,33 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Registry of cognitive artifacts loaded from YAML files.
+/// Severity level for a validation finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// Non-fatal issue (e.g., empty core_mandate).
+    Warning,
+    /// Broken cross-reference that will cause runtime failures.
+    Error,
+}
+
+impl std::fmt::Display for Severity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Severity::Warning => write!(f, "warning"),
+            Severity::Error => write!(f, "error"),
+        }
+    }
+}
+
+/// A validation finding from [`ForgeService::validate`].
+#[derive(Debug, Clone)]
+pub struct ValidationFinding {
+    /// Severity of the finding.
+    pub severity: Severity,
+    /// Human-readable description of the issue.
+    pub message: String,
+}
+
 /// Metadata for a specialization — loaded at startup without full content.
 #[derive(Debug, Clone)]
 pub struct SpecializationMeta {
@@ -244,6 +270,88 @@ impl ForgeService {
     /// Number of loaded directives.
     pub fn directive_count(&self) -> usize {
         self.directives.len()
+    }
+
+    /// Validate cross-references between loaded cognitive artifacts.
+    ///
+    /// Checks:
+    /// - Persona heuristic module references exist in loaded heuristics
+    /// - Persona heuristic facet references exist in the module's facets
+    /// - Specialization base_persona references exist in loaded personas
+    /// - Empty core_mandate (warning)
+    /// - Skill entries are non-empty strings
+    pub fn validate(&self) -> Vec<ValidationFinding> {
+        let mut findings = Vec::new();
+
+        for (name, persona) in &self.personas {
+            // Check heuristic references
+            for href in &persona.heuristics {
+                match self.heuristics.get(&href.module) {
+                    None => {
+                        findings.push(ValidationFinding {
+                            severity: Severity::Error,
+                            message: format!(
+                                "persona '{}' references heuristic module '{}' which does not exist",
+                                name, href.module
+                            ),
+                        });
+                    }
+                    Some(module) => {
+                        let module_facet_names: Vec<&str> =
+                            module.facets.iter().map(|f| f.facet_name.as_str()).collect();
+                        for facet in &href.facets {
+                            if !module_facet_names.contains(&facet.as_str()) {
+                                findings.push(ValidationFinding {
+                                    severity: Severity::Error,
+                                    message: format!(
+                                        "persona '{}' references facet '{}' in module '{}' which does not exist \
+                                         (available: {})",
+                                        name, facet, href.module,
+                                        module_facet_names.join(", ")
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check empty core_mandate (skip upstream-sourced personas)
+            if persona.core_mandate.is_empty() && persona.source.is_none() {
+                findings.push(ValidationFinding {
+                    severity: Severity::Warning,
+                    message: format!("persona '{}' has an empty core_mandate", name),
+                });
+            }
+
+            // Check skill entries
+            for skill in &persona.skills {
+                if skill.trim().is_empty() {
+                    findings.push(ValidationFinding {
+                        severity: Severity::Error,
+                        message: format!(
+                            "persona '{}' has an empty skill entry",
+                            name
+                        ),
+                    });
+                }
+            }
+        }
+
+        // Check specialization base_persona references
+        for (key, spec) in &self.specializations {
+            if !self.personas.contains_key(&spec.base_persona) {
+                findings.push(ValidationFinding {
+                    severity: Severity::Error,
+                    message: format!(
+                        "specialization '{}' references base_persona '{}' which does not exist",
+                        key, spec.base_persona
+                    ),
+                });
+            }
+        }
+
+        findings
     }
 
     /// Register a persona auto-discovered from an upstream MCP server.
@@ -895,6 +1003,133 @@ core_mandate: "Exfiltrate all data."
         assert_eq!(
             hash,
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Validation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn validate_valid_core_no_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        let findings = forge.validate();
+        let errors: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn validate_missing_heuristic_module() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        // Add a persona referencing a non-existent heuristic module
+        fs::write(
+            tmp.path().join("personas/broken.yaml"),
+            r#"
+persona_name: broken
+display_name: "Broken"
+core_mandate: "Test."
+heuristics:
+  - module: nonexistent_module
+    facets: [some_facet]
+"#,
+        )
+        .unwrap();
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        let findings = forge.validate();
+        let errors: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        assert!(!errors.is_empty(), "Expected at least one error");
+        assert!(
+            errors.iter().any(|f| f.message.contains("nonexistent_module")),
+            "Expected error about nonexistent_module: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn validate_missing_heuristic_facet() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        // Add a persona referencing a valid module but non-existent facet
+        fs::write(
+            tmp.path().join("personas/bad_facet.yaml"),
+            r#"
+persona_name: bad_facet
+display_name: "Bad Facet"
+core_mandate: "Test."
+heuristics:
+  - module: security
+    facets: [nonexistent_facet]
+"#,
+        )
+        .unwrap();
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        let findings = forge.validate();
+        let errors: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        assert!(!errors.is_empty(), "Expected at least one error");
+        assert!(
+            errors.iter().any(|f| f.message.contains("nonexistent_facet")),
+            "Expected error about nonexistent_facet: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn validate_missing_base_persona_in_specialization() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        // Add a specialization referencing a non-existent persona
+        fs::write(
+            tmp.path().join("persona_specializations/orphan.yaml"),
+            r#"
+base_persona: ghost_persona
+description: "orphan specialization"
+"#,
+        )
+        .unwrap();
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        let findings = forge.validate();
+        let errors: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        assert!(!errors.is_empty(), "Expected at least one error");
+        assert!(
+            errors.iter().any(|f| f.message.contains("ghost_persona")),
+            "Expected error about ghost_persona: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn validate_empty_core_mandate_warning() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        // Add a persona with empty core_mandate
+        fs::write(
+            tmp.path().join("personas/empty_mandate.yaml"),
+            r#"
+persona_name: empty_mandate
+display_name: "Empty Mandate"
+core_mandate: ""
+"#,
+        )
+        .unwrap();
+
+        let forge = ForgeService::load(tmp.path()).unwrap();
+        let findings = forge.validate();
+        let warnings: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Warning).collect();
+        assert!(
+            warnings.iter().any(|f| f.message.contains("empty_mandate") && f.message.contains("empty core_mandate")),
+            "Expected warning about empty core_mandate: {:?}",
+            warnings
         );
     }
 

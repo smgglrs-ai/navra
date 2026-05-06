@@ -1,0 +1,423 @@
+- generic [active] [ref=e1]:
+  - dialog "Manage Your Privacy" [ref=e2]:
+    - document [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - heading "Manage Your Privacy" [level=1] [ref=e6]
+          - generic [ref=e7]: "To provide the best experiences, our 141 partners and we use technologies like cookies to store and/or access device information. Consenting to these technologies will allow us and our partners to process personal data, such as browsing behavior and unique IDs, on this site. You can update your choices at any time by clicking on the Update Privacy Preferences link at the bottom of the screen. We use this data to:"
+        - form "Purpose" [ref=e8]:
+          - generic [ref=e10]: Use limited data to select advertising
+          - generic [ref=e17]: Actively scan device characteristics for identification
+          - generic [ref=e21]: Use precise geolocation data
+          - generic [ref=e26]: Use limited data to select content
+          - generic [ref=e30]: Develop and improve services
+          - generic [ref=e37]: Understand audiences through statistics or combinations of data from different sources
+          - generic [ref=e41]: Measure content performance
+          - generic [ref=e50]: Measure advertising performance
+          - generic [ref=e57]: Create profiles for personalised advertising
+          - generic [ref=e61]: Use profiles to select personalised advertising
+          - generic [ref=e70]: Create profiles to personalise content
+          - generic [ref=e80]: Use profiles to select personalised content
+          - generic [ref=e84]: Store and/or access information on a device
+      - form [ref=e93]:
+        - button "Reject All" [ref=e95] [cursor=pointer]:
+          - generic [ref=e96]: Reject All
+        - button "Manage Settings" [ref=e98] [cursor=pointer]
+        - button "Accept All" [ref=e100] [cursor=pointer]:
+          - generic [ref=e101]: Accept All
+    - 'button "Language: en" [ref=e102] [cursor=pointer]':
+      - img [ref=e103]
+  - generic [ref=e107]:
+    - text: 
+    - banner [ref=e108]:
+      - generic [ref=e112]:
+        - link "MachineLearningMastery.com" [ref=e114] [cursor=pointer]:
+          - /url: https://machinelearningmastery.com/
+          - img "MachineLearningMastery.com" [ref=e115]
+        - text:  
+        - generic [ref=e117]:
+          - generic [ref=e119]:
+            - paragraph [ref=e120]: Making developers awesome at machine learning
+            - link "Click to Take the FREE Crash-Course" [ref=e124] [cursor=pointer]:
+              - /url: ""
+          - navigation [ref=e127]:
+            - list [ref=e128]:
+              - listitem [ref=e129]:
+                - link "Get Started" [ref=e130] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/start-here/
+              - listitem [ref=e131]:
+                - link "Blog" [ref=e132] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/blog/
+              - listitem [ref=e133]:
+                - link "Topics" [ref=e134] [cursor=pointer]:
+                  - /url: "#"
+                  - text: Topics
+                  - generic [ref=e135]: 
+              - listitem [ref=e136]:
+                - link "eBooks" [ref=e137] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/products/
+              - listitem [ref=e138]:
+                - link "FAQ" [ref=e139] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/faq/
+              - listitem [ref=e140]:
+                - link "About" [ref=e141] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/about/
+              - listitem [ref=e142]:
+                - link "Contact" [ref=e143] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/contact/
+              - listitem [ref=e144]:
+                - search [ref=e146]:
+                  - searchbox "Search..." [ref=e147]
+                  - button "Search" [ref=e148] [cursor=pointer]: 
+    - generic [ref=e150]:
+      - generic:
+        - generic [ref=e151]:
+          - article [ref=e152]:
+            - heading "Agentic RAG Explained in 3 Levels of Difficulty" [level=1] [ref=e154]
+            - generic [ref=e155]:
+              - generic [ref=e156]:
+                - text: By
+                - link "Bala Priya C" [ref=e159] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/author/bala-priya-c/
+                - text: on May 4, 2026 in
+                - link "Artificial Intelligence" [ref=e161] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/category/artificial-intelligence/
+                - link " 0" [ref=e163] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/agentic-rag-explained-in-3-levels-of-difficulty/#respond
+                  - generic [ref=e164]: 
+                  - text: "0"
+              - paragraph
+            - generic [ref=e165]:
+              - generic [ref=e166]:
+                - button "Facebook Share" [ref=e167] [cursor=pointer]:
+                  - img [ref=e169]
+                  - text: Share
+                - button "Twitter Share" [ref=e171] [cursor=pointer]:
+                  - img [ref=e173]
+                  - text: Post
+                - button "LinkedIn Share" [ref=e175] [cursor=pointer]:
+                  - img [ref=e177]
+                  - text: Share
+              - paragraph [ref=e182]: In this article, you will learn what agentic RAG is, how it differs from traditional RAG, and when to use it.
+              - paragraph [ref=e183]: "Topics we will cover include:"
+              - list [ref=e184]:
+                - listitem [ref=e185]: The key limitations of traditional RAG pipelines and what agents add to address them.
+                - listitem [ref=e186]: How the agentic retrieval loop works, including query decomposition, multi-hop chaining, and self-correction.
+                - listitem [ref=e187]: Advanced architectures like Graph RAG, reflection, and memory, along with the production tradeoffs that come with them.
+              - generic [ref=e188]:
+                - img "Example MLM Formatting Post" [ref=e189]
+                - paragraph [ref=e190]: Agentic RAG Explained in 3 Levels of Difficulty
+              - heading "Introduction" [level=2] [ref=e191]
+              - paragraph [ref=e192]:
+                - text: Traditional
+                - link "Retrieval-Augmented Generation (RAG)" [ref=e193] [cursor=pointer]:
+                  - /url: https://aws.amazon.com/what-is/retrieval-augmented-generation/
+                - text: retrieves information once and generates a response based on that single result. This approach works well for simple, clearly defined questions. However, it starts to break down when a task requires pulling information from multiple sources, reasoning across documents, or refining incomplete results.
+              - paragraph [ref=e194]:
+                - text: A basic RAG pipeline has no built-in way to retry, adjust its retrieval strategy, or validate the quality of what it retrieved. As a result, it can struggle with more complex queries where iteration and verification are important.
+                - link "Agentic RAG" [ref=e195] [cursor=pointer]:
+                  - /url: https://www.ibm.com/think/topics/agentic-rag
+                - text: extends the traditional RAG pipeline by introducing autonomous AI agents into the process. Instead of a single retrieval pass, an agent decomposes the query, routes each part to the right source, checks what it gets back, and iterates until it has enough grounded context to generate a reliable answer.
+              - paragraph [ref=e196]: "This article covers agentic RAG at three levels. Level 1 contrasts it with traditional RAG and explains the core capabilities agents add. Level 2 gets into how the retrieval loop actually works: decomposition, multi-hop chaining, and self-correction. Level 3 covers more advanced architectures like Graph RAG and the production tradeoffs that matter at scale."
+              - 'heading "Level 1: Making Sense of the “Agentic” in Agentic RAG" [level=2] [ref=e198]'
+              - heading "The Limitations of Traditional RAG" [level=3] [ref=e199]
+              - paragraph [ref=e200]: Traditional RAG follows a fixed sequence. The retriever runs once, produces a set of chunks, and those chunks go to the LLM. There is no reasoning about whether the retrieved context is actually useful, no mechanism to try again if retrieval misses the mark, and no ability to pull from multiple sources or use external tools. It is a one-shot solution.
+              - paragraph [ref=e201]: This creates specific failure modes. For a query like “Compare our Q3 2025 sales with Q1 2026 performance and summarize the key risk factors from our latest SEC filing,” a static RAG pipeline retrieves whatever chunks happened to be most similar to that combined query — almost certainly a mishmash that doesn’t cleanly address either part.
+              - paragraph [ref=e202]: The pipeline has no way to decompose the question, retrieve different information for each part, and synthesize a coherent answer.
+              - generic [ref=e203]:
+                - img "Basic RAG vs Agentic RAG" [ref=e204]
+                - paragraph [ref=e205]: Basic RAG vs. Agentic RAG
+              - heading "What Agents Add" [level=3] [ref=e207]
+              - paragraph [ref=e208]:
+                - text: An
+                - link "AI agent" [ref=e209] [cursor=pointer]:
+                  - /url: https://www.kdnuggets.com/ai-agents-explained-in-3-levels-of-difficulty
+                - text: "is an LLM-powered system with a role, a task, and access to tools — and more importantly, the ability to reason about what to do next based on what it observes. The key capabilities agents bring to RAG are planning, tool use, and iterative refinement:"
+              - paragraph [ref=e210]: Planning lets the agent break a complex query into subtasks and decide what information is needed and in what order.
+              - paragraph [ref=e211]: Tool use allows retrieval beyond vector stores, including web search, SQL databases, APIs, and code execution — choosing the right tool per task.
+              - paragraph [ref=e212]: Iterative refinement enables the agent to evaluate results, retry searches, and resolve conflicts by retrieving more context, improving reliability over one-shot retrieval.
+              - 'heading "Level 2: Understanding How the Agentic Retrieval Loop Works" [level=2] [ref=e214]'
+              - heading "Query Decomposition and Source Routing" [level=3] [ref=e215]
+              - paragraph [ref=e216]:
+                - text: The first thing an agentic RAG system does with a complex query is break it apart. Rather than firing the full query at a single retrieval source, the agent identifies the distinct information needs embedded in it and plans a retrieval strategy for each one. This is
+                - link "query decomposition" [ref=e217] [cursor=pointer]:
+                  - /url: https://haystack.deepset.ai/blog/query-decomposition
+                - text: ", and it is what makes agentic RAG qualitatively different from static pipelines."
+              - paragraph [ref=e218]: "Once decomposed, each sub-question is routed to the most suitable source. The agent acts as a router across vector stores, databases, web search, and knowledge bases. Routing depends on query type: factual lookups go to structured data, semantic queries go to documents, and time-sensitive questions go to web search. A single request may combine multiple sources in sequence."
+              - heading "Multi-Hop Retrieval" [level=3] [ref=e220]
+              - paragraph [ref=e221]: Many queries require multi-hop reasoning, where information must be connected across multiple documents. For example, understanding a company’s legal exposure may require linking filings, case law, and compliance records that aren’t retrieved together in one step.
+              - paragraph [ref=e222]: "Agentic systems solve this by chaining retrievals: each result informs the next query. The agent iterates — retrieving context, identifying gaps, refining queries — until enough evidence is gathered for a reliable answer."
+              - paragraph [ref=e223]:
+                - text: Systems like
+                - link "RQ-RAG" [ref=e224] [cursor=pointer]:
+                  - /url: https://github.com/chanchimin/RQ-RAG
+                - text: formalize this by decomposing multi-hop queries into latent sub-questions upfront;
+                - link "RAG-Fusion" [ref=e225] [cursor=pointer]:
+                  - /url: https://github.com/Raudaschl/rag-fusion
+                - text: takes a parallel approach, generating multiple reformulations of the same query and merging results using reciprocal rank fusion to improve recall when a single formulation would miss relevant content.
+              - generic [ref=e226]:
+                - img "An overview of agentic retrieval loop" [ref=e227]
+                - paragraph [ref=e228]: An overview of agentic retrieval loop
+              - heading "Self-Correction and Retrieval Validation" [level=3] [ref=e230]
+              - paragraph [ref=e231]: In a static pipeline, retrieved context is passed directly to the LLM, which cannot verify its relevance and may generate incorrect but plausible answers from loosely related chunks.
+              - paragraph [ref=e232]: "Agentic systems add validation steps: the agent checks relevance, detects contradictions, and re-queries when needed. Irrelevant or weak evidence is not passed forward. This self-correction loop is a key difference from static RAG, reducing hallucinations by treating retrieved data as evidence to evaluate rather than truth to assume."
+              - 'heading "Level 3: Moving to Advanced Agentic RAG Architectures and Production Tradeoffs" [level=2] [ref=e233]'
+              - heading "Graph RAG and Structured Knowledge" [level=3] [ref=e235]
+              - paragraph [ref=e236]: Vector search in a vector database treats documents as independent chunks ranked by embedding similarity. This works when relevant information is self-contained within passages, but breaks down when queries require reasoning over relationships between entities — where the key is how entities across documents connect, not just what each document says.
+              - paragraph [ref=e237]:
+                - link "Graph RAG" [ref=e238] [cursor=pointer]:
+                  - /url: https://microsoft.github.io/graphrag/
+                - text: builds a knowledge graph from documents and retrieves via graph traversal instead of embedding similarity. For domains where information is inherently relational — legal research, healthcare diagnostics, financial exposure analysis — Graph RAG consistently outperforms flat retrieval on complex reasoning tasks.
+              - paragraph [ref=e239]: It improves performance on relationship-heavy queries but is expensive to build and maintain. It is best suited for stable, high-value data and is not well suited for simple or fast-changing datasets.
+              - paragraph [ref=e240]:
+                - text: Read
+                - 'link "GraphRAG and Agentic Architecture: Practical Experimentation with Neo4j and NeoConverse" [ref=e241] [cursor=pointer]':
+                  - /url: https://neo4j.com/blog/developer/graphrag-and-agentic-architecture-with-neoconverse/
+                - text: for a practical approach to integrating Graph RAG in agentic applications.
+              - generic [ref=e242]:
+                - img "vector-similarity-search-vs-graph-rag" [ref=e243]
+                - paragraph [ref=e244]: Vector Similarity Search vs Graph RAG
+              - heading "Reflection and Memory" [level=3] [ref=e246]
+              - paragraph [ref=e247]: Advanced agentic RAG systems add two mechanisms above the retrieval loop.
+              - paragraph [ref=e248]: Reflection lets the agent review its draft answer for gaps, errors, or weak support and trigger further retrieval if needed.
+              - paragraph [ref=e249]: "Memory works at two levels: short-term memory tracks what has already been retrieved in a session, while long-term memory learns from past queries to improve future retrieval efficiency."
+              - paragraph [ref=e250]: Together, reflection and memory push agentic RAG from a stateless retrieval loop toward something closer to a reasoning system with genuine operational history.
+              - paragraph [ref=e251]:
+                - 'link "Vector Databases vs. Graph RAG for Agent Memory: When to Use Which" [ref=e252] [cursor=pointer]':
+                  - /url: https://machinelearningmastery.com/vector-databases-vs-graph-rag-for-agent-memory-when-to-use-which/
+                - text: is a useful resource for deciding between Graph RAG and vector databases for agentic memory.
+              - paragraph [ref=e253]:
+                - strong [ref=e254]: So when is agentic RAG overkill?
+                - text: "Agentic RAG is more powerful but slower and costlier than static RAG. It uses multiple LLM calls, so latency, token use, and failure risk all increase with complexity. A simple rule of thumb: use static RAG for single-hop factual queries and agentic RAG for multi-step reasoning or cross-source synthesis."
+              - heading "Conclusion" [level=2] [ref=e256]
+              - paragraph [ref=e257]: "The defining insight of agentic RAG is straightforward: retrieval isn’t a single well-defined step — it’s an ongoing reasoning process. Basic RAG pipelines retrieve and generate. Agentic RAG systems retrieve, evaluate, iterate, and then generate, and the difference in output quality on complex queries is substantial. The tradeoffs in cost and latency are real, but for the class of questions that matter most in production, they’re worth it."
+              - paragraph [ref=e258]: "For further learning, you may find the following resources useful:"
+              - list [ref=e259]:
+                - listitem [ref=e260]:
+                  - link "What Is Agentic RAG? From LLM RAG to AI Agents | Weaviate" [ref=e261] [cursor=pointer]:
+                    - /url: https://weaviate.io/blog/what-is-agentic-rag
+                - listitem [ref=e262]:
+                  - link "What is Agentic RAG? | IBM" [ref=e263] [cursor=pointer]:
+                    - /url: https://www.ibm.com/think/topics/agentic-rag
+                - listitem [ref=e264]:
+                  - link "Traditional RAG vs. Agentic RAG—Why AI Agents Need Dynamic Knowledge to Get Smarter | NVIDIA Technical Blog" [ref=e265] [cursor=pointer]:
+                    - /url: https://developer.nvidia.com/blog/traditional-rag-vs-agentic-rag-why-ai-agents-need-dynamic-knowledge-to-get-smarter/
+              - paragraph [ref=e266]: Happy learning!
+              - generic [ref=e267]:
+                - button "Facebook Share" [ref=e268] [cursor=pointer]:
+                  - img [ref=e270]
+                  - text: Share
+                - button "Twitter Share" [ref=e272] [cursor=pointer]:
+                  - img [ref=e274]
+                  - text: Post
+                - button "LinkedIn Share" [ref=e276] [cursor=pointer]:
+                  - img [ref=e278]
+                  - text: Share
+              - generic [ref=e284]:
+                - heading "More On This Topic" [level=3] [ref=e285]
+                - list [ref=e286]:
+                  - listitem [ref=e287]:
+                    - link "Vector Databases Explained in 3 Levels of Difficulty" [ref=e288] [cursor=pointer]:
+                      - /url: https://machinelearningmastery.com/vector-databases-explained-in-3-levels-of-difficulty/
+                      - figure [ref=e289]:
+                        - img "mlm-bala-vector-db-3-levels" [ref=e290]
+                      - generic [ref=e291]: Vector Databases Explained in 3 Levels of Difficulty
+                  - listitem [ref=e292]:
+                    - link "AI Agent Memory Explained in 3 Levels of Difficulty" [ref=e293] [cursor=pointer]:
+                      - /url: https://machinelearningmastery.com/ai-agent-memory-explained-in-3-levels-of-difficulty/
+                      - figure [ref=e294]:
+                        - img "bala-ai-agent-memory" [ref=e295]
+                      - generic [ref=e296]: AI Agent Memory Explained in 3 Levels of Difficulty
+                  - listitem [ref=e297]:
+                    - link "3 Levels of Deep Learning Competence" [ref=e298] [cursor=pointer]:
+                      - /url: https://machinelearningmastery.com/deep-learning-competence/
+                      - figure [ref=e299]:
+                        - img "The Three Levels of Deep Learning Competence" [ref=e300]
+                      - generic [ref=e301]: 3 Levels of Deep Learning Competence
+                  - listitem [ref=e302]:
+                    - 'link "Understanding RAG Part II: How Classic RAG Works" [ref=e303] [cursor=pointer]':
+                      - /url: https://machinelearningmastery.com/understanding-rag-part-ii-how-classic-rag-works/
+                      - figure [ref=e304]:
+                        - img "mlm-understanding-rag-2-how-works" [ref=e305]
+                      - generic [ref=e306]: "Understanding RAG Part II: How Classic RAG Works"
+                  - listitem [ref=e307]:
+                    - 'link "Understanding RAG Part VIII: Mitigating…" [ref=e308] [cursor=pointer]':
+                      - /url: https://machinelearningmastery.com/understanding-rag-part-viii-mitigating-hallucinations-in-rag/
+                      - figure [ref=e309]:
+                        - img "mlm-feature-understanding-rag-8" [ref=e310]
+                      - generic [ref=e311]: "Understanding RAG Part VIII: Mitigating…"
+                  - listitem [ref=e312]:
+                    - 'link "Understanding RAG Part IX: Fine-Tuning LLMs for RAG" [ref=e313] [cursor=pointer]':
+                      - /url: https://machinelearningmastery.com/understanding-rag-part-ix-fine-tuning-llms-for-rag/
+                      - figure [ref=e314]:
+                        - img "mlm-understanding-rag-9" [ref=e315]
+                      - generic [ref=e316]: "Understanding RAG Part IX: Fine-Tuning LLMs for RAG"
+            - complementary [ref=e317]:
+              - img "Bala Priya C" [ref=e318]
+              - generic [ref=e319]:
+                - heading "About Bala Priya C" [level=4] [ref=e320]
+                - text: Bala Priya C is a developer and technical writer from India. She likes working at the intersection of math, programming, data science, and content creation. Her areas of interest and expertise include DevOps, data science, and natural language processing. She enjoys reading, writing, coding, and coffee! Currently, she's working on learning and sharing her knowledge with the developer community by authoring tutorials, how-to guides, opinion pieces, and more. Bala also creates engaging resource overviews and coding tutorials.
+                - link "View all posts by Bala Priya C →" [ref=e322] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/author/bala-priya-c/
+          - generic [ref=e323]:
+            - link " Effective KV Compression with TurboQuant" [ref=e325] [cursor=pointer]:
+              - /url: https://machinelearningmastery.com/effective-kv-compression-with-turboquant/
+              - generic [ref=e326]: 
+              - text: Effective KV Compression with TurboQuant
+            - link "Implementing Statistical Guardrails for Non-Deterministic Agents " [ref=e328] [cursor=pointer]:
+              - /url: https://machinelearningmastery.com/implementing-statistical-guardrails-for-non-deterministic-agents/
+              - text: Implementing Statistical Guardrails for Non-Deterministic Agents
+              - generic [ref=e329]: 
+          - heading "No comments yet." [level=5] [ref=e332]
+          - generic [ref=e333]:
+            - heading "Leave a Reply" [level=3] [ref=e334]: Leave a Reply
+            - generic [ref=e335]:
+              - paragraph [ref=e336]:
+                - textbox "Comment *" [ref=e337]
+              - paragraph [ref=e338]:
+                - textbox "Name (required)" [ref=e339]
+                - generic [ref=e340]: Name (required)
+              - paragraph [ref=e341]:
+                - textbox "Email (will not be published) (required)" [ref=e342]
+                - generic [ref=e343]: Email (will not be published) (required)
+              - paragraph [ref=e344]:
+                - button "Submit Comment" [ref=e345] [cursor=pointer]: Submit Comment 
+        - complementary [ref=e346]:
+          - paragraph [ref=e349]:
+            - strong [ref=e350]: Welcome!
+            - text: I'm
+            - emphasis [ref=e351]: Jason Brownlee
+            - text: PhD
+            - text: and I
+            - strong [ref=e352]: help developers
+            - text: get results with
+            - strong [ref=e353]: machine learning
+            - text: .
+            - link "Read more" [ref=e354] [cursor=pointer]:
+              - /url: /about
+          - generic [ref=e356]:
+            - heading "Never miss a tutorial:" [level=4] [ref=e357]
+            - generic [ref=e358]:
+              - link "LinkedIn" [ref=e359] [cursor=pointer]:
+                - /url: https://www.linkedin.com/company/machine-learning-mastery/
+                - img "LinkedIn" [ref=e360]
+              - link "Twitter" [ref=e361] [cursor=pointer]:
+                - /url: https://twitter.com/TeachTheMachine
+                - img "Twitter" [ref=e362]
+              - link "Facebook" [ref=e363] [cursor=pointer]:
+                - /url: https://www.facebook.com/MachineLearningMastery/
+                - img "Facebook" [ref=e364]
+              - link "Email Newsletter" [ref=e365] [cursor=pointer]:
+                - /url: /newsletter/
+                - img "Email Newsletter" [ref=e366]
+              - link "RSS Feed" [ref=e367] [cursor=pointer]:
+                - /url: https://machinelearningmastery.com/rss-feed/
+                - img "RSS Feed" [ref=e368]
+          - generic [ref=e374]:
+            - heading "Picked for you:" [level=4] [ref=e375]
+            - generic [ref=e376]:
+              - generic [ref=e377]:
+                - link "Tour of Deep Learning Algorithms" [ref=e378] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/tutorial-first-neural-network-python-keras/
+                  - img "Tour of Deep Learning Algorithms" [ref=e379]
+                - link "Your First Deep Learning Project in Python with Keras Step-by-Step" [ref=e380] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/tutorial-first-neural-network-python-keras/
+              - generic [ref=e381]:
+                - link [ref=e382] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/machine-learning-in-python-step-by-step/
+                - link "Your First Machine Learning Project in Python Step-By-Step" [ref=e383] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/machine-learning-in-python-step-by-step/
+              - generic [ref=e384]:
+                - link "How to Develop LSTM Models for Time Series Forecasting" [ref=e385] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/how-to-develop-lstm-models-for-time-series-forecasting/
+                  - img "How to Develop LSTM Models for Time Series Forecasting" [ref=e386]
+                - link "How to Develop LSTM Models for Time Series Forecasting" [ref=e387] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/how-to-develop-lstm-models-for-time-series-forecasting/
+              - generic [ref=e388]:
+                - link "ARIMA Rolling Forecast Line Plot" [ref=e389] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/arima-for-time-series-forecasting-with-python/
+                  - img "ARIMA Rolling Forecast Line Plot" [ref=e390]
+                - link "How to Create an ARIMA Model for Time Series Forecasting in Python" [ref=e391] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/arima-for-time-series-forecasting-with-python/
+              - generic [ref=e392]:
+                - link "Machine Learning Frustration" [ref=e393] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/machine-learning-for-programmers/
+                  - img "Machine Learning Frustration" [ref=e394]
+                - link "Machine Learning for Developers" [ref=e395] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/machine-learning-for-programmers/
+          - generic [ref=e398]:
+            - paragraph
+            - heading "Loving the Tutorials?" [level=4] [ref=e399]
+            - paragraph
+            - paragraph [ref=e400]:
+              - text: The
+              - link "EBook Catalog" [ref=e401] [cursor=pointer]:
+                - /url: /products/
+              - text: is where
+              - text: you'll find the
+              - strong [ref=e402]: Really Good
+              - text: stuff.
+            - paragraph [ref=e403]:
+              - link ">> See What's Inside" [ref=e404] [cursor=pointer]:
+                - /url: /products/
+    - contentinfo [ref=e406]:
+      - generic [ref=e408]:
+        - generic [ref=e410]:
+          - figure [ref=e411]
+          - paragraph [ref=e412]:
+            - text: Machine Learning Mastery is part of Guiding Tech Media, a leading digital media publisher focused on helping people figure out technology.
+            - link "Visit our corporate website" [ref=e413] [cursor=pointer]:
+              - /url: https://www.guidingtechmedia.com
+            - text: to learn more about our mission and team.
+          - navigation "Footer Menu" [ref=e414]:
+            - list [ref=e415]:
+              - listitem [ref=e416]:
+                - link "Privacy" [ref=e417] [cursor=pointer]:
+                  - /url: https://www.guidingtechmedia.com/privacy/
+                - text: "|"
+              - listitem [ref=e418]:
+                - link "Disclaimer" [ref=e419] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/disclaimer/
+                - text: "|"
+              - listitem [ref=e420]:
+                - link "Terms" [ref=e421] [cursor=pointer]:
+                  - /url: https://www.guidingtechmedia.com/terms-of-use/
+                - text: "|"
+              - listitem [ref=e422]:
+                - link "Contact" [ref=e423] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/contact/
+                - text: "|"
+              - listitem [ref=e424]:
+                - link "Sitemap" [ref=e425] [cursor=pointer]:
+                  - /url: https://machinelearningmastery.com/sitemap/
+                - text: "|"
+              - listitem [ref=e426]:
+                - link "ADVERTISE WITH US" [ref=e427] [cursor=pointer]:
+                  - /url: https://www.kdnuggets.com/media-kit?utm_source=mlm&utm_medium=footer&utm_campaign=link
+          - paragraph [ref=e428]: © 2026 Guiding Tech Media All Rights Reserved
+        - list [ref=e431]:
+          - listitem [ref=e432]:
+            - link "LinkedIn" [ref=e433] [cursor=pointer]:
+              - /url: https://www.linkedin.com/company/machine-learning-mastery/
+              - img [ref=e434]
+              - generic [ref=e436]: LinkedIn
+          - listitem [ref=e437]:
+            - link "Facebook" [ref=e438] [cursor=pointer]:
+              - /url: https://www.facebook.com/MachineLearningMastery/
+              - img [ref=e439]
+              - generic [ref=e441]: Facebook
+          - listitem [ref=e442]:
+            - link "Twitter" [ref=e443] [cursor=pointer]:
+              - /url: https://twitter.com/TeachTheMachine
+              - img [ref=e444]
+              - generic [ref=e446]: Twitter
+          - listitem [ref=e447]:
+            - link "RSS Feed" [ref=e448] [cursor=pointer]:
+              - /url: https://machinelearningmastery.com/feed/
+              - img [ref=e449]
+              - generic [ref=e451]: RSS Feed
+          - listitem [ref=e452]:
+            - link "Mail" [ref=e453] [cursor=pointer]:
+              - /url: https://machinelearningmastery.com/contact/
+              - img [ref=e454]
+              - generic [ref=e456]: Mail

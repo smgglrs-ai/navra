@@ -20,7 +20,7 @@ smgglrs-memory = { path = "../smgglrs-memory" }
 smgglrs-model = { path = "../smgglrs-model" }
 smgglrs-model-hub = { path = "../smgglrs-model-hub" }
 smgglrs-model-runtime = { path = "../smgglrs-model-runtime" }
-smgglrs-tools-docs = { path = "../smgglrs-tools-docs" }
+smgglrs-tools-file = { path = "../smgglrs-tools-file" }
 smgglrs-tools-git = { path = "../smgglrs-tools-git" }
 smgglrs-rag = { path = "../smgglrs-rag" }
 smgglrs-modal-vision = { path = "../smgglrs-modal-vision" }

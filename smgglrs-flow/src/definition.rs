@@ -176,7 +176,7 @@ pub struct TaskDefinition {
 pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
     let trimmed = output.trim();
 
-    // Strip ALL markdown code fences (there may be multiple)
+    // Strip markdown artifacts: code fences, list markers, bullet points
     let mut cleaned = String::new();
     let mut in_fence = false;
     for line in trimmed.lines() {
@@ -184,7 +184,23 @@ pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
             in_fence = !in_fence;
             continue;
         }
-        cleaned.push_str(line);
+        // Strip markdown list markers that contaminate JSON
+        // e.g., "*   {" or "-   {" or "1.  {"
+        let stripped = line.trim_start();
+        let stripped = if stripped.starts_with("* ") || stripped.starts_with("- ") {
+            &stripped[2..]
+        } else if stripped.starts_with("*   ") || stripped.starts_with("-   ") {
+            &stripped[4..]
+        } else if stripped.len() > 2 && stripped.as_bytes()[0].is_ascii_digit() && stripped.contains(". ") {
+            if let Some(idx) = stripped.find(". ") {
+                &stripped[idx + 2..]
+            } else {
+                stripped
+            }
+        } else {
+            line
+        };
+        cleaned.push_str(stripped);
         cleaned.push('\n');
     }
     let json_str = if cleaned.trim().is_empty() { trimmed.to_string() } else { cleaned };
@@ -214,30 +230,54 @@ pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
         }
     }
 
-    // Strategy 2: extract individual {...} blocks and parse each
+    // Strategy 2: extract individual {...} blocks and parse each.
+    // Also handles missing opening braces by splitting on `"id"` boundaries.
     let mut tasks = Vec::new();
-    let mut depth = 0i32;
-    let mut obj_start = None;
-    for (i, ch) in array_str.char_indices() {
-        match ch {
-            '{' => {
-                if depth == 0 { obj_start = Some(i); }
-                depth += 1;
-            }
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    if let Some(start) = obj_start {
-                        let obj_str = &array_str[start..=i];
-                        match serde_json::from_str::<TaskDefinition>(obj_str) {
-                            Ok(task) => tasks.push(task),
-                            Err(e) => tracing::debug!(error = %e, "Skipping unparseable task object"),
-                        }
+
+    // First, try splitting on `"id"` field boundaries — this handles
+    // cases where the model drops an opening brace between objects.
+    let id_pattern = "\"id\"";
+    let mut positions: Vec<usize> = Vec::new();
+    let mut search_from = 0;
+    while let Some(pos) = array_str[search_from..].find(id_pattern) {
+        positions.push(search_from + pos);
+        search_from += pos + id_pattern.len();
+    }
+
+    for (idx, &pos) in positions.iter().enumerate() {
+        // Walk backwards from "id" to find the nearest `{`
+        let obj_start = array_str[..pos].rfind('{').unwrap_or(pos);
+        // Walk forward to find the matching `}`
+        let after_id = &array_str[pos..];
+        let mut depth = 0i32;
+        let mut obj_end = None;
+        for (i, ch) in after_id.char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth < 0 {
+                        obj_end = Some(pos + i);
+                        break;
                     }
-                    obj_start = None;
                 }
+                _ => {}
             }
-            _ => {}
+        }
+        if let Some(end) = obj_end {
+            // Construct the object, ensuring it starts with {
+            let mut obj_str = array_str[obj_start..=end].to_string();
+            if !obj_str.starts_with('{') {
+                obj_str = format!("{{{obj_str}");
+            }
+            match serde_json::from_str::<TaskDefinition>(&obj_str) {
+                Ok(task) => {
+                    if !tasks.iter().any(|t: &TaskDefinition| t.id == task.id) {
+                        tasks.push(task);
+                    }
+                }
+                Err(e) => tracing::debug!(error = %e, "Skipping unparseable task object"),
+            }
         }
     }
 

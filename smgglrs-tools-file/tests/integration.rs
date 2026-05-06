@@ -1,6 +1,6 @@
-//! Integration tests for smgglrs-tools-docs public API.
+//! Integration tests for smgglrs-tools-file public API.
 //!
-//! Tests DocsModule construction, tool definitions, and IndexStore behavior
+//! Tests FileModule construction, tool definitions, and IndexStore behavior
 //! through the public interface only.
 
 use smgglrs_core::auth::{AgentIdentity, CallContext};
@@ -8,7 +8,7 @@ use smgglrs_core::notify::NoopNotifier;
 use smgglrs_core::permissions::{ApprovalStore, PathAcl, PermissionEngine};
 use smgglrs_core::protocol::Content;
 use smgglrs_core::Module;
-use smgglrs_tools_docs::{DocsModule, IndexStore};
+use smgglrs_tools_file::{FileModule, IndexStore};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -16,15 +16,15 @@ use std::sync::Arc;
 // Helpers
 // =====================================================================
 
-fn build_docs_module() -> DocsModule {
+fn build_file_module() -> FileModule {
     let engine = Arc::new(PermissionEngine::new());
     let index = Arc::new(IndexStore::open_memory().unwrap());
     let approvals = Arc::new(ApprovalStore::new(300));
     let notifier: Arc<dyn smgglrs_core::notify::Notifier> = Arc::new(NoopNotifier);
-    DocsModule::new(engine, index, approvals, notifier)
+    FileModule::new(engine, index, approvals, notifier)
 }
 
-fn build_docs_module_with_perms(tmpdir: &tempfile::TempDir) -> DocsModule {
+fn build_file_module_with_perms(tmpdir: &tempfile::TempDir) -> FileModule {
     let mut engine = PermissionEngine::new();
     engine.add_permission_set(
         "dev".to_string(),
@@ -42,7 +42,7 @@ fn build_docs_module_with_perms(tmpdir: &tempfile::TempDir) -> DocsModule {
     let index = Arc::new(IndexStore::open_memory().unwrap());
     let approvals = Arc::new(ApprovalStore::new(300));
     let notifier: Arc<dyn smgglrs_core::notify::Notifier> = Arc::new(NoopNotifier);
-    DocsModule::new(Arc::new(engine), index, approvals, notifier)
+    FileModule::new(Arc::new(engine), index, approvals, notifier)
 }
 
 fn dev_ctx() -> CallContext {
@@ -61,8 +61,8 @@ fn text_of(result: &smgglrs_core::protocol::CallToolResult) -> &str {
 // =====================================================================
 
 #[test]
-fn module_name_is_docs() {
-    let module = build_docs_module();
+fn module_name_is_file() {
+    let module = build_file_module();
     assert_eq!(module.name(), "file");
 }
 
@@ -72,7 +72,7 @@ fn module_name_is_docs() {
 
 #[test]
 fn module_registers_all_expected_tools() {
-    let module = build_docs_module();
+    let module = build_file_module();
     let tools = module.tools();
     let names: Vec<&str> = tools.iter().map(|(def, _)| def.name.as_str()).collect();
 
@@ -98,8 +98,8 @@ fn module_registers_all_expected_tools() {
 }
 
 #[test]
-fn all_tool_names_prefixed_with_docs() {
-    let module = build_docs_module();
+fn all_tool_names_prefixed_with_file() {
+    let module = build_file_module();
     let tools = module.tools();
     for (def, _) in &tools {
         assert!(
@@ -116,7 +116,7 @@ fn all_tool_names_prefixed_with_docs() {
 
 #[test]
 fn tool_schemas_have_correct_types() {
-    let module = build_docs_module();
+    let module = build_file_module();
     let tools = module.tools();
     for (def, _) in &tools {
         assert_eq!(
@@ -135,7 +135,7 @@ fn tool_schemas_have_correct_types() {
 
 #[test]
 fn read_tool_requires_path() {
-    let module = build_docs_module();
+    let module = build_file_module();
     let tools = module.tools();
     let read = tools.iter().find(|(d, _)| d.name == "file_read").unwrap();
     let required = read.0.input_schema.required.as_ref().unwrap();
@@ -144,7 +144,7 @@ fn read_tool_requires_path() {
 
 #[test]
 fn write_tool_requires_path_and_content() {
-    let module = build_docs_module();
+    let module = build_file_module();
     let tools = module.tools();
     let write = tools.iter().find(|(d, _)| d.name == "file_write").unwrap();
     let required = write.0.input_schema.required.as_ref().unwrap();
@@ -154,7 +154,7 @@ fn write_tool_requires_path_and_content() {
 
 #[test]
 fn grep_tool_requires_path_and_pattern() {
-    let module = build_docs_module();
+    let module = build_file_module();
     let tools = module.tools();
     let grep = tools.iter().find(|(d, _)| d.name == "file_grep").unwrap();
     let required = grep.0.input_schema.required.as_ref().unwrap();
@@ -164,7 +164,7 @@ fn grep_tool_requires_path_and_pattern() {
 
 #[test]
 fn tree_tool_has_no_required_params() {
-    let module = build_docs_module();
+    let module = build_file_module();
     let tools = module.tools();
     let tree = tools.iter().find(|(d, _)| d.name == "file_tree").unwrap();
     assert!(tree.0.input_schema.required.is_none());
@@ -221,7 +221,7 @@ fn index_store_delete_removes_from_search() {
 
 #[test]
 fn set_default_root_changes_module_state() {
-    let mut module = build_docs_module();
+    let mut module = build_file_module();
     // Should not panic
     module.set_default_root("/home/user/project".to_string());
     // Module should still work after replacing state
