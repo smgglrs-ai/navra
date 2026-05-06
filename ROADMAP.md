@@ -297,6 +297,68 @@ planned crate or enhancement.
 
 ## Roadmap
 
+### URGENT: Platform tool modules (git remote + forge integration)
+
+**Goal**: Add remote Git operations (push/pull/fetch) to
+`smgglrs-tools-git` and create per-provider forge modules
+(`smgglrs-tools-github`, `smgglrs-tools-gitlab`, `smgglrs-tools-jira`)
+exposing platform-specific tools with scoped permissions.
+
+**Context**: Inspired by [service-gator](https://github.com/LobsterTrap/service-gator)
+(Rust MCP server for scoped forge access). smgglrs already has
+local git tools but no remote operations or forge API integration.
+The tool naming convention (`<provider>_<resource>_<action>`) is
+documented in DESIGN.md.
+
+#### U1. Git remote operations
+
+Add `git_push`, `git_pull`, `git_fetch` to `smgglrs-tools-git`.
+Provider-agnostic, pure Git transport. Permissions: `git.push`,
+`git.pull`, `git.fetch`. Push requires approval by default.
+
+**Effort**: 2 days **Priority**: High
+**Acceptance**: `git_push` with approval flow, ACL-gated per-repo.
+
+#### U2. GitHub module (`smgglrs-tools-github`)
+
+New crate. Tools: `github_pr_create`, `github_pr_list`,
+`github_pr_review`, `github_issue_create`, `github_issue_list`,
+`github_issue_comment`. Uses `gh` CLI or GitHub REST API.
+MCP resources: `github://org/repo/pulls`, `github://org/repo/issues`.
+
+**Effort**: 3-4 days **Priority**: High
+**Acceptance**: Create a PR from an agent with scoped permissions,
+glob-based ACLs on tool names (`github_pr_*`).
+
+#### U3. GitLab module (`smgglrs-tools-gitlab`)
+
+New crate. Tools: `gitlab_mr_create`, `gitlab_mr_list`,
+`gitlab_mr_approve`, `gitlab_issue_list`, `gitlab_issue_comment`.
+Uses `glab` CLI or GitLab REST API.
+
+**Effort**: 3-4 days **Priority**: Medium-High
+**Acceptance**: Create an MR from an agent with fork-only push support.
+
+#### U4. Jira module (`smgglrs-tools-jira`)
+
+New crate. Tools: `jira_issue_create`, `jira_issue_list`,
+`jira_issue_get`, `jira_issue_transition`, `jira_issue_comment`.
+Uses Jira REST API.
+
+**Effort**: 2-3 days **Priority**: Medium
+**Acceptance**: Create and transition an issue from an agent.
+
+#### U5. Permission patterns for platform tools
+
+Validate that deny-wins ACL globs work cleanly with three-part
+tool names. Document permission recipes: read-only GitHub access,
+push-to-fork-only, PR-create-without-merge, etc.
+
+**Effort**: 1 day **Priority**: High **Depends on**: U2
+**Acceptance**: Config examples in DESIGN.md, integration tests.
+
+---
+
 ### Phase 1: Cognitive core (smgglrs-cognitive)
 
 **Goal**: Load persona/directive/heuristic YAML files, compile them
@@ -1352,41 +1414,119 @@ Automated test suite verifying spec compliance:
 | Resilient upstream proxy | `upstream/` | 3 transports + exponential backoff, sleep detection, per-request timeout. |
 | Safety hook pipeline | smgglrs-security | Content filtering as hook, not hardcoded in request path. |
 
-### Phase 10: Paper & benchmarks (was Phase 8)
+### Phase 10: Papers (restructured 2026-05-06)
 
-- Final LoC counts for all crates
-- Latency benchmarks (IFC overhead, hook pipeline, permission checks)
-- Comparison with MS Governance Toolkit
-- Security evaluation: attack surface, threat model
-- Use Goose as baseline: "agent without infrastructure security"
-  vs smgglrs as "security microkernel"
-- Cite "The Agent Tier" pattern (InfoWorld, Nitesh Varma) as
-  independent validation of smgglrs's two-lane architecture
-  (deterministic ACL/hook enforcement + contextual agent reasoning
-  through governed tool catalogs). Maps 1:1 to smgglrs's design.
-- ZeroClaw as additional competitive baseline (Rust trait-based
-  agent, similar permission model, but flat runtime vs gateway)
-- SemaClaw as harness-layer peer comparison: same problems
-  (permissions, DAG orchestration, memory, context management)
-  solved at a different architectural layer. smgglrs = gateway
-  (secures any framework), SemaClaw = harness (wraps one
-  framework). Their PermissionBridge is binary vs our IFC taint
-  propagation. Cite as validation that harness engineering is an
-  emerging discipline (arXiv 2604.11548).
-- LangChain Agentic Engineering: cite Worker/Leader pattern as
-  industry convergence on multi-agent teams. Note absence of
-  security enforcement — validates smgglrs's niche.
-- AWS Agent Registry: cite as governance-layer complement to
-  smgglrs's runtime-security layer. Discovery + governance + runtime
-  security as three orthogonal concerns.
-- PersonaVLM: cite memory type convergence (4-type taxonomy
-  independently arrived at by Cloudflare, PersonaVLM, SemaClaw,
-  and our Phase 3b). Cite temporal retrieval and persona evolution.
-- BLD cross-tokenizer distillation (arXiv 2604.07466): cite if
-  discussing heterogeneous model ensemble strategies.
-- OpenMythos / RDT architecture: cite if Recurrent Depth
-  Transformers validate for CPU-tier model sizing claims.
-- Peer review
+Restructured from 4 narrow papers to 3 stronger papers.
+The audit blackbox paper is absorbed into the security paper.
+The model cards paper is absorbed into the persona paper.
+A new paper on autonomous multi-domain review is added.
+
+#### 10a. Security Gateway (flagship, full paper)
+
+**Title**: "smgglrs: A Security Microkernel for AI Agent Infrastructure"
+**Target**: USENIX Security / IEEE S&P workshop
+**Outline**: `docs/papers/security-gateway.md` (471 lines)
+
+Contributions:
+1. Gateway architecture for MCP security (single chokepoint)
+2. Bell-LaPadula IFC with per-value taint tracking
+3. Capability token delegation with privilege attenuation
+4. Hash-chained audit blackbox (absorbs old blackbox paper)
+5. PII pipeline: regex + NER + file paths + pseudonymization + IFC
+6. Containerized agent sandboxes with resource limits
+7. Typed action risk levels for auto-approval decisions
+8. OAuth 2.0 authorization framework
+
+Updates needed:
+- Add OAuth 2.0 (not in current outline)
+- Add PII pipeline as content safety contribution
+- Add containerized agents as defense in depth
+- Add typed AgentAction/RiskLevel as permission mechanism
+- Replace "six manual audit rounds" with "automated self-review
+  (23+8 containerized agents, 330+ tool calls)"
+- Add OpenShell/Kaiden as related work on sandboxing
+- Add Claude Code Review cross-validation as related work
+
+References to add: OpenShell, Kaiden, Claude Code Review,
+AutoData (if 11c done), Strands (tool compression), OWASP.
+
+#### 10b. Persona-Driven Orchestration (full paper)
+
+**Title**: "Persona-Driven Multi-Agent Orchestration with Cognitive
+Identity and Adaptive Memory"
+**Target**: AAAI / NeurIPS workshop on agents
+**Outline**: `docs/papers/persona-orchestration.md` (388 lines)
+
+Contributions:
+1. Cognitive core: Forge + Weaver, 43 personas, token budgeting
+2. Composite model cards for agent-driven model selection
+   (absorbs old model cards paper)
+3. Team orchestration with dynamic persona selection
+4. Memory decay + distillation as working memory management
+5. Self-review as concrete evaluation (26 agents, 125 files,
+   192 tool calls, 2.77M tokens)
+
+Updates needed:
+- Self-review flow results as evaluation data
+- Model selection scoring (penalize ≤10B, prefer 12-20B)
+- CodeAct / plan_execute as execution strategy
+- Persona bridge (if 1f done) for generality argument
+- Hermes trace export for reproducibility
+- TOML model registry (replaces hardcoded constants)
+- Context budget + RTK compression (if 1e done)
+
+References to add: CodeAct, Strands, RTK, BLD (2604.07466),
+Cloudflare Agent Memory, AgentSwing (2603.27490).
+
+#### 10c. Autonomous Multi-Domain Review (NEW, workshop paper)
+
+**Title**: "Domain-Agnostic Autonomous Review via Dynamic Persona
+Selection in Multi-Agent Flows"
+**Target**: ISSTA / ASE workshop, or SCORED
+
+Contributions:
+1. Domain-agnostic review flow: scout classifies project domain,
+   planner selects personas from catalog, specialists execute
+2. Comparison: hardcoded vs dynamic persona selection on same
+   codebase — quality, coverage, persona relevance, cost
+3. Resilient JSON parsing for model-generated task arrays
+   (markdown stripping, id-boundary recovery)
+4. Flow resumability: persist state to audit.db, resume timed-out
+   flows without re-running completed tasks
+5. Self-improvement loop: audit → fix → test → verify cycle
+   with git worktree isolation
+
+Data collection (in progress):
+- Run `comprehensive-review.yaml` (hardcoded) and `review.yaml`
+  (dynamic) on smgglrs — compare findings
+- Run `review.yaml` on a non-code project — show domain adaptation
+- Run `improve.yaml` for 3-5 cycles — convergence curves
+- Measure: issues found, fix rate, hallucination rate, token cost
+
+References: Claude Code Review (<1% FPR with cross-validation),
+SemaClaw (harness engineering), LangChain (Worker/Leader pattern).
+
+#### Shared bibliography (5 arXiv + 25 named systems)
+
+| Reference | Used in |
+|-----------|---------|
+| SemaClaw (2604.11548) | All papers |
+| PersonaVLM (2604.13074) | 10b (memory types, evolution) |
+| MTL (2604.14004) | 10b (abstract > raw traces) |
+| AgentSwing (2603.27490) | 10b (context compaction) |
+| BLD (2604.07466) | 10b (cross-tokenizer distillation) |
+| Goose | 10a (unsecured baseline) |
+| OpenShell | 10a (defense in depth) |
+| Kaiden | 10a (sandboxing patterns) |
+| AWS Agent Registry | 10b (governance layer) |
+| Claude Code Review | 10a, 10c (cross-validation) |
+| Strands / RTK | 10b (context compression) |
+| CodeAct | 10b (plan_execute) |
+| AutoData | 10a (adversarial eval, if 11c done) |
+| LangChain | 10a, 10c (Worker/Leader convergence) |
+| ZeroClaw | 10a (Rust competitor baseline) |
+| OWASP Top 10 for LLM | 10a (threat model) |
+| EU AI Act Article 14 | 10a (compliance) |
 
 ### Phase 11: Model & safety research (from tech watch 2026-05-06)
 
