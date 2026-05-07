@@ -47,6 +47,8 @@ pub struct Teammate {
     /// Elapsed seconds at the time of the last `team_bb_notifications` call.
     /// `None` means the agent has never checked, so all entries are returned.
     pub last_bb_check: Option<u64>,
+    pub iterations: Option<u32>,
+    pub agent_tokens: Option<u32>,
 }
 
 /// Re-export the composite model card from the hub.
@@ -228,6 +230,8 @@ impl TeamRegistry {
                 created_at: Instant::now(),
                 container_id: None,
                 last_bb_check: None,
+                iterations: None,
+                agent_tokens: None,
             },
         );
 
@@ -372,6 +376,25 @@ impl TeamRegistry {
         let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(team) = teams.get(team_id) {
             team.tokens_used.fetch_add(tokens, Ordering::Relaxed);
+        }
+    }
+
+    pub fn set_resolved_model(&self, team_id: &str, teammate: &str, model: &str) {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(team) = teams.get_mut(team_id) {
+            if let Some(tm) = team.teammates.get_mut(teammate) {
+                tm.model = model.to_string();
+            }
+        }
+    }
+
+    pub fn set_agent_metrics(&self, team_id: &str, teammate: &str, iterations: u32, tokens: u32) {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(team) = teams.get_mut(team_id) {
+            if let Some(tm) = team.teammates.get_mut(teammate) {
+                tm.iterations = Some(iterations);
+                tm.agent_tokens = Some(tokens);
+            }
         }
     }
 
@@ -1141,6 +1164,7 @@ fn spawn_containerized_agent(
 
             let container_name = format!("smgglrs-agent-{}-{}", team_id, teammate_id);
 
+            reg.set_resolved_model(&team_id, &teammate_id, &model);
             eprintln!("  [container] {} → model: {}, image: {}", teammate_id, model, agent_image);
 
             // Build persona env vars
@@ -1243,6 +1267,7 @@ fn spawn_containerized_agent(
 
                             let total_tokens = tokens_in + tokens_out;
                             reg.add_tokens(&team_id, total_tokens);
+                            reg.set_agent_metrics(&team_id, &teammate_id, iterations as u32, total_tokens);
 
                             tracing::info!(
                                 team = %team_id, teammate = %teammate_id,
@@ -1491,6 +1516,7 @@ pub fn spawn_teammate_agent(
                 }
             }
 
+            reg.set_resolved_model(&team_id, &teammate_id, &teammate_model);
             eprintln!("  [teammate] {} → model: {}", teammate_id, teammate_model);
 
             let is_claude = teammate_model.starts_with("claude");
@@ -1577,6 +1603,7 @@ pub fn spawn_teammate_agent(
                 Ok(result) => {
                     let tokens = result.input_tokens + result.output_tokens;
                     reg.add_tokens(&team_id, tokens);
+                    reg.set_agent_metrics(&team_id, &teammate_id, result.iterations as u32, tokens);
                     tracing::info!(
                         team = %team_id, to = %teammate_id,
                         iterations = result.iterations,

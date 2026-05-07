@@ -636,12 +636,7 @@ fn record_task_results_to_audit(
         let specialist = task_def.map(|t| t.specialist.as_str());
         let (model, iterations, tokens) = team
             .and_then(|t| t.teammates.get(task_id))
-            .map(|tm| {
-                let elapsed_tokens = team
-                    .map(|t| t.tokens_used.load(std::sync::atomic::Ordering::Relaxed))
-                    .unwrap_or(0);
-                (Some(tm.model.as_str()), None::<u32>, Some(elapsed_tokens))
-            })
+            .map(|tm| (Some(tm.model.as_str()), tm.iterations, tm.agent_tokens))
             .unwrap_or((None, None, None));
 
         let (status, output) = if let Some(out) = completed.get(task_id) {
@@ -922,6 +917,9 @@ async fn spawn_and_track_tasks(
         ctx.team_registry.store_handle(team_id, &task.id, handle);
 
         ctx.flow_registry.update_node_status(flow_id, &task.id, "running", None);
+        if let Some(ref audit) = ctx.audit_log {
+            let _ = audit.record_flow_task_start(flow_id, &task.id, Some(&task.specialist), Some(&model));
+        }
         tracing::info!(flow_id = %flow_id, task = %task.id, model = %model, "Flow task started");
         spawned_ids.push(task.id.clone());
 
