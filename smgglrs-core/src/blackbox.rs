@@ -294,6 +294,42 @@ fn sha256_hex(data: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Compute the hash chain preimage for a blackbox entry.
+/// Extracted as a pure function for formal verification.
+pub fn chain_preimage(
+    seq: u64,
+    prev_hash: &str,
+    agent_name: &str,
+    tool_name: &str,
+    tool_args: &str,
+    tool_result: &str,
+    outcome: &str,
+) -> String {
+    format!(
+        "{}|{}|{}|{}|{}|{}|{}",
+        seq, prev_hash, agent_name, tool_name, tool_args, tool_result, outcome
+    )
+}
+
+/// Verify a single chain link: recompute hash and check prev_hash linkage.
+pub fn verify_chain_link(
+    seq: u64,
+    prev_hash: &str,
+    expected_prev: &str,
+    agent_name: &str,
+    tool_name: &str,
+    tool_args: &str,
+    tool_result: &str,
+    outcome: &str,
+    stored_hash: &str,
+) -> bool {
+    if prev_hash != expected_prev {
+        return false;
+    }
+    let preimage = chain_preimage(seq, prev_hash, agent_name, tool_name, tool_args, tool_result, outcome);
+    sha256_hex(&preimage) == stored_hash
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,6 +461,31 @@ mod tests {
         let deleted = bb2.expire_older_than(5);
         assert_eq!(deleted, 1);
         assert_eq!(bb2.count(), 2);
+    }
+
+    #[test]
+    fn chain_preimage_deterministic() {
+        let p1 = chain_preimage(1, "abc", "agent", "tool", "{}", "ok", "allowed");
+        let p2 = chain_preimage(1, "abc", "agent", "tool", "{}", "ok", "allowed");
+        assert_eq!(p1, p2);
+    }
+
+    #[test]
+    fn chain_preimage_changes_on_any_field() {
+        let base = chain_preimage(1, "abc", "agent", "tool", "{}", "ok", "allowed");
+        assert_ne!(base, chain_preimage(2, "abc", "agent", "tool", "{}", "ok", "allowed"));
+        assert_ne!(base, chain_preimage(1, "def", "agent", "tool", "{}", "ok", "allowed"));
+        assert_ne!(base, chain_preimage(1, "abc", "other", "tool", "{}", "ok", "allowed"));
+        assert_ne!(base, chain_preimage(1, "abc", "agent", "tool", "{}", "tampered", "allowed"));
+    }
+
+    #[test]
+    fn verify_link_detects_tamper() {
+        let prev = "0".repeat(64);
+        let preimage = chain_preimage(1, &prev, "a", "t", "{}", "ok", "allowed");
+        let hash = sha256_hex(&preimage);
+        assert!(verify_chain_link(1, &prev, &prev, "a", "t", "{}", "ok", "allowed", &hash));
+        assert!(!verify_chain_link(1, &prev, &prev, "a", "t", "{}", "TAMPERED", "allowed", &hash));
     }
 
     #[test]

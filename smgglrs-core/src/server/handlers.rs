@@ -285,6 +285,46 @@ impl McpServer {
             }
         }
 
+        // IFC: Simple Security Property (no-read-up).
+        // If the result's confidentiality exceeds the agent's clearance,
+        // block the result based on the read clearance policy.
+        if crate::ifc::is_external_read_tool(&params.name) {
+            if let Some(clearance) = self.ifc_read_clearances.get(&ctx.agent.permissions) {
+                if !crate::ifc::DataLabel::can_read_from(
+                    clearance.level,
+                    result.label.confidentiality,
+                ) {
+                    match clearance.policy {
+                        crate::ifc::TaintedWritePolicy::Deny => {
+                            if let Some(bb) = &self.blackbox {
+                                bb.record(
+                                    &ctx.agent.name, &ctx.agent.permissions, &ctx.session_id,
+                                    &params.name, &arguments.to_string(),
+                                    &format!("[BLOCKED: no-read-up, classification {:?} > clearance {:?}]",
+                                        result.label.confidentiality, clearance.level),
+                                    "denied_ifc", tool_duration_us,
+                                    &result.label.to_string(),
+                                );
+                            }
+                            return CallToolResult::error(format!(
+                                "IFC: read blocked — data classified {:?} exceeds {:?} clearance",
+                                result.label.confidentiality, clearance.level
+                            ));
+                        }
+                        crate::ifc::TaintedWritePolicy::Approve => {
+                            tracing::warn!(
+                                tool = %params.name, agent = %ctx.agent.name,
+                                classification = ?result.label.confidentiality,
+                                clearance = ?clearance.level,
+                                "IFC: read exceeds clearance, approval would be required"
+                            );
+                        }
+                        crate::ifc::TaintedWritePolicy::Allow => {}
+                    }
+                }
+            }
+        }
+
         // IFC: absorb tool result label into session taint
         ctx.taint.absorb(result.label);
         // Persist taint to session for cross-request persistence

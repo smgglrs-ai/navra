@@ -1,0 +1,547 @@
+{
+  "label": "q8_0-turbo3",
+  "url": "http://127.0.0.1:8090",
+  "runs": 5,
+  "turns": 5,
+  "timestamp": "2026-05-07T19:09:13",
+  "per_turn_success": {
+    "1": {
+      "success": 5,
+      "total": 5
+    },
+    "2": {
+      "success": 5,
+      "total": 5
+    },
+    "3": {
+      "success": 5,
+      "total": 5
+    },
+    "4": {
+      "success": 5,
+      "total": 5
+    },
+    "5": {
+      "success": 5,
+      "total": 5
+    }
+  },
+  "overall_rate": 100.0,
+  "raw_runs": [
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Paris",
+            "units": "celsius"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "send_notification",
+          "args": {
+            "user_id": "user_123",
+            "message": "Meeting at 3pm",
+            "priority": "high",
+            "channel": "push"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Tokyo",
+            "units": "fahrenheit"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "recent purchases",
+            "table": "orders",
+            "limit": 10,
+            "order_by": "date"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      }
+    ],
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Paris",
+            "units": "celsius"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "send_notification",
+          "args": {
+            "user_id": "user_123",
+            "message": "Meeting at 3pm",
+            "priority": "high",
+            "channel": "push"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Tokyo",
+            "units": "fahrenheit"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "recent purchases",
+            "table": "orders",
+            "limit": 10,
+            "order_by": "date"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      }
+    ],
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Paris",
+            "units": "celsius"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "send_notification",
+          "args": {
+            "user_id": "user_123",
+            "message": "Meeting at 3pm",
+            "priority": "high",
+            "channel": "push"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Tokyo",
+            "units": "fahrenheit"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "recent purchases",
+            "table": "orders",
+            "limit": 10,
+            "order_by": "date"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      }
+    ],
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Paris",
+            "units": "celsius"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "send_notification",
+          "args": {
+            "user_id": "user_123",
+            "message": "Meeting at 3pm",
+            "priority": "high",
+            "channel": "push"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Tokyo",
+            "units": "fahrenheit"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "recent purchases",
+            "table": "orders",
+            "limit": 10,
+            "order_by": "date"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      }
+    ],
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Paris",
+            "units": "celsius"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "send_notification",
+          "args": {
+            "user_id": "user_123",
+            "message": "Meeting at 3pm",
+            "priority": "high",
+            "channel": "push"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "get_weather",
+          "args": {
+            "city": "Tokyo",
+            "units": "fahrenheit"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "recent purchases",
+            "table": "orders",
+            "limit": 10,
+            "order_by": "date"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      }
+    ]
+  ]
+}

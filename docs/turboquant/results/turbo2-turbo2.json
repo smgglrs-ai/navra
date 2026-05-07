@@ -1,0 +1,315 @@
+{
+  "label": "turbo2-turbo2",
+  "url": "http://127.0.0.1:8090",
+  "runs": 5,
+  "turns": 5,
+  "timestamp": "2026-05-07T19:08:10",
+  "per_turn_success": {
+    "1": {
+      "success": 0,
+      "total": 5
+    },
+    "2": {
+      "success": 4,
+      "total": 5
+    },
+    "3": {
+      "success": 0,
+      "total": 5
+    },
+    "4": {
+      "success": 0,
+      "total": 5
+    },
+    "5": {
+      "success": 0,
+      "total": 5
+    }
+  },
+  "overall_rate": 16.0,
+  "raw_runs": [
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "</think>\n\n</think>\n\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Paris\", \"units\": \"celsius\"}}"
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "{\"name\": \"search_database\", \"arguments\": {\"query\": \"users\", \"table\": \"users\", \"limit\": 5, \"order_by\": \"score\"}}"
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "{\"name\": \"send_notification\", \"arguments\": {\"user_id\": \"user_123\", \"message\": \"Meeting at 3pm\", \"priority\": \"high\", \"channel\": \"push\"}}"
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "</think>\n\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\", \"units\": \"fahrenheit\"}}"
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "{\"name\": \"search_database\", \"arguments\": {\"query\": \"recent purchases\", \"table\": \"orders\", \"limit\": 10, \"order_by\": \"date\"}}"
+      }
+    ],
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": ""
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "</think>\n\n{\"name\": \"send_notification\", \"arguments\": {\"user_id\": \"user_123\", \"message\": \"Meeting at 3pm\", \"priority\": \"high\", \"channel\": \"push\"}}"
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\", \"units\": \"fahrenheit\"}}"
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": ""
+      }
+    ],
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": ""
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "</think>\n\n{\"name\": \"send_notification\", \"arguments\": {\"user_id\": \"user_123\", \"message\": \"Meeting at 3pm\", \"priority\": \"high\", \"channel\": \"push\"}}"
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\", \"units\": \"fahrenheit\"}}"
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": ""
+      }
+    ],
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": ""
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "</think>\n\n{\"name\": \"send_notification\", \"arguments\": {\"user_id\": \"user_123\", \"message\": \"Meeting at 3pm\", \"priority\": \"high\", \"channel\": \"push\"}}"
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\", \"units\": \"fahrenheit\"}}"
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": ""
+      }
+    ],
+    [
+      {
+        "turn": 1,
+        "prompt": "What's the weather like in Paris? Use celsius.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": ""
+      },
+      {
+        "turn": 2,
+        "prompt": "Now search the users table for people named Alice, limit to 5 results, ordered by score.",
+        "expected_tool": "search_database",
+        "success": true,
+        "validation": {
+          "valid_json": true,
+          "correct_tool": true,
+          "valid_args": true,
+          "tool_name": "search_database",
+          "args": {
+            "query": "Alice",
+            "table": "users",
+            "limit": 5,
+            "order_by": "score"
+          },
+          "error": null
+        },
+        "finish_reason": "tool_calls",
+        "num_tool_calls": 1
+      },
+      {
+        "turn": 3,
+        "prompt": "Send a high priority push notification to user_123 saying 'Meeting at 3pm'.",
+        "expected_tool": "send_notification",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "</think>\n\n{\"name\": \"send_notification\", \"arguments\": {\"user_id\": \"user_123\", \"message\": \"Meeting at 3pm\", \"priority\": \"high\", \"channel\": \"push\"}}"
+      },
+      {
+        "turn": 4,
+        "prompt": "What's the weather in Tokyo? Use fahrenheit.",
+        "expected_tool": "get_weather",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": "{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Tokyo\", \"units\": \"fahrenheit\"}}"
+      },
+      {
+        "turn": 5,
+        "prompt": "Search the orders table for recent purchases, limit 10, order by date.",
+        "expected_tool": "search_database",
+        "success": false,
+        "error": "no tool call generated",
+        "finish_reason": "stop",
+        "content_preview": ""
+      }
+    ]
+  ]
+}

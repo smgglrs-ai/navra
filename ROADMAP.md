@@ -1830,6 +1830,139 @@ late 2025 are now contested.
 | Paper 1 venue | IEEE S&P workshop (ArtSec 2026) realistic. USENIX Security main requires adversarial eval + formal properties. | Decide |
 | Paper 3 venue | SCORED (supply chain security) or ISSTA/ASE workshop. | Decide |
 
+### Phase 14: Agentic OS completeness (2026-05-07)
+
+smgglrs already implements ~80% of an Agentic OS: process table,
+IPC (BLP-gated mailbox + taint-on-read blackboard), memory
+management (decay, budget, knowledge store), DAG scheduler with
+GPU semaphore, MAC (Bell-LaPadula, both properties), capability
+tokens, audit blackbox. Five gaps remain to complete the
+abstraction.
+
+#### 14a. Agent signal (async interrupt)
+
+**Crate**: `smgglrs-flow` (executor) + `smgglrs-agent` (tool loop)
+
+Currently agents can only be stopped via timeout or `team_shutdown`.
+Add async signal delivery to running agents:
+
+- `agent_signal(agent_id, signal)` with signal types: `Interrupt`
+  (cancel current tool call, return partial), `Terminate` (graceful
+  shutdown), `Pause` / `Resume` (per-agent, not global)
+- Wired via `tokio::sync::watch` channel on the Agent's tool loop
+- Checked between tool-call iterations (cooperative, not preemptive)
+- Preemption of in-flight inference: cancel via llama.cpp abort /
+  vLLM request cancellation API
+
+**Effort**: 1-2 days. **Priority**: Medium.
+**Acceptance**: `Interrupt` a running specialist mid-review, receive
+partial output. `Terminate` cleans up resources.
+
+#### 14b. Kernel state as MCP resources
+
+**Crate**: `smgglrs-core` (resource handlers)
+
+Expose internal kernel state through the existing MCP resource
+mechanism. No new namespace — use `smgglrs://` URI scheme:
+
+| Resource URI | Content |
+|---|---|
+| `smgglrs://proc` | Process table: connected agents, rings, call counts |
+| `smgglrs://proc/{agent}/taint` | Current IFC taint label for agent session |
+| `smgglrs://proc/{agent}/capabilities` | Active capability set |
+| `smgglrs://ifc/labels` | All session taint labels |
+| `smgglrs://audit/recent` | Last N blackbox entries |
+| `smgglrs://budget/gpu` | GPU semaphore: permits used/available |
+
+These are read-only MCP resources, accessible to agents with
+appropriate clearance. Enables self-awareness: an agent can
+check its own taint level before deciding whether to attempt a
+write.
+
+**Effort**: 1 day. **Priority**: Medium.
+**Acceptance**: `resources/read` on `smgglrs://proc` returns
+JSON with all connected agents and their privilege levels.
+
+#### 14c. Resource list filtering by agent permissions
+
+**Crate**: `smgglrs-core` (resource dispatch)
+
+Currently `resources/list` returns all resources regardless of
+agent permissions. Filter the resource list the same way tools
+are filtered — agents only see resources they have clearance
+to read.
+
+- Apply path ACLs to `file://` resources
+- Apply read clearance (Simple Security Property) to all resources
+- Apply tool globs from capability tokens to resource URIs
+
+This completes the capability namespace: an agent with restricted
+permissions doesn't know that restricted resources exist.
+
+**Effort**: 0.5 day. **Priority**: Medium.
+**Acceptance**: Agent with `readonly` permissions sees fewer
+resources in `resources/list` than agent with `developer`.
+
+#### 14d. Agent process hibernation (KV cache checkpoint)
+
+**Crate**: `smgglrs-model-runtime` + `smgglrs-agent`
+
+Save and restore full agent state including model KV cache for
+suspend/resume across sessions. The agent equivalent of process
+hibernation.
+
+**Two-tier save strategy:**
+
+| Tier | What's saved | Size | Resume | Always |
+|---|---|---|---|---|
+| Conversation | Turns, taint, variables, DAG position | ~KB | Re-prompt (rebuild KV) | Yes |
+| KV cache | llama.cpp state via `llama_state_save_file` | ~GB | Instant (no re-prompt) | Optional |
+
+**KV cache compression**: TurboQuant safe config (q8 keys, turbo3
+values) compresses KV cache ~3x with zero quality loss. A 128K
+context Gemma 4 KV cache drops from ~18GB to ~6GB — saveable to
+NVMe in seconds.
+
+**Runtime compatibility:**
+
+| Runtime | KV save | Mechanism |
+|---|---|---|
+| llama-server (direct) | Yes | `llama_state_save_file` / `llama_state_load_file` |
+| llama-server (Podman) | Yes | Same, via volume mount |
+| vLLM | No | Paged attention KV is internal, no save API |
+| Ollama | No | No state save API |
+
+Model runtime exposes a `supports_kv_checkpoint: bool` capability
+flag. When unavailable, fall back to conversation-only save
+(accept re-prompt latency on resume).
+
+**Effort**: 3-4 days. **Priority**: Medium-High.
+**Acceptance**: Suspend a running agent, restart smgglrs, resume
+agent with restored conversation and KV cache. Measure resume
+latency vs full re-prompt.
+
+#### 14e. Preemptive scheduling (cancel in-flight generation)
+
+**Crate**: `smgglrs-model` (backend trait) + `smgglrs-agent` (tool loop)
+
+Cancel an ongoing model inference to give priority to a
+higher-priority agent (e.g., voice input preempts batch review).
+
+- Add `cancel(&self)` to `ModelBackend` trait
+- `OpenAiBackend`: cancel via HTTP request abort
+  (vLLM: `DELETE /v1/completions/{id}`, Ollama: close connection)
+- llama.cpp: `llama_decode` supports abort flag
+- Fair scheduling: per-agent token quotas prevent starvation.
+  Agent exceeding quota gets deprioritized (next request queued
+  behind others, not cancelled)
+- Depends on 14a (agent signal) for the interrupt delivery path
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Depends on**: 14a, 14d (checkpoint before preemption).
+**Acceptance**: Voice agent interrupts a batch review agent.
+Batch agent's KV cache is checkpointed, voice agent gets GPU.
+After voice completes, batch resumes from checkpoint.
+
 ---
 
 ## Crate dependency diagram (planned)
