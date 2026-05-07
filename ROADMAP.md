@@ -14,9 +14,18 @@ agent execution via Podman (shared model server + per-agent sandboxes).
 
 ### Recent (2026-05-07)
 
+- Domain-agnostic review + improve flows with dynamic persona selection
+- build_test MCP tool, task-level tool/operation grants in flow YAML
+- Planner JSON resilience (markdown stripping, id-boundary recovery,
+  schema enforcement on generates_tasks agents)
+- response_format plumbed through ChatRequest → Ollama API
+- Container agent stdout fix (skip log lines before JSON)
+- Comparative flow evaluation: dynamic 3.5x more efficient than hardcoded
+- Paper 3 outline with evaluation data
+- Phase 12 added: observability + infrastructure debt (8 metrics gaps)
+- ROADMAP audit: stale sections updated, items assigned to phases
 - Tech watch: 5 articles (NVIDIA Vera Rubin, OpenAI PII filter,
   skill-based agents, systematic prompting, Vercel DeepSec)
-- ROADMAP updated with tech watch items (11d, 1g, 8h, CI DeepSec)
 
 ### Recent (2026-05-06)
 
@@ -75,84 +84,69 @@ agent execution via Podman (shared model server + per-agent sandboxes).
 
 ---
 
-## Self-analysis protocol
+## Review and improvement flows
 
-The framework can analyze its own codebase through its own gateway.
-This protocol ensures consistent, reproducible self-analysis runs.
+The framework reviews and improves projects through its own gateway
+using DAG-based multi-agent flows. Four flow templates are available:
 
-### Setup
-
-```bash
-# 1. Refresh the analysis copy (ALWAYS do this first)
-rm -rf /tmp/smgglrs-self-audit
-mkdir -p /tmp/smgglrs-self-audit
-
-# Preserve crate directory structure (src/ + Cargo.toml per crate)
-for d in smgglrs-*/; do
-  mkdir -p "/tmp/smgglrs-self-audit/$d"
-  cp -r "$d/src" "/tmp/smgglrs-self-audit/$d/"
-  cp "$d/Cargo.toml" "/tmp/smgglrs-self-audit/$d/" 2>/dev/null
-done
-
-cp -r cognitive_core /tmp/smgglrs-self-audit/
-cp CLAUDE.md DESIGN.md ROADMAP.md MODELS.md Cargo.toml /tmp/smgglrs-self-audit/
-
-# 2. Copy self-audit personas (planner, rust_security_auditor, etc.)
-cp -r examples/payments-app/personas /tmp/smgglrs-self-audit/ 2>/dev/null
-# Or use the leader persona from cognitive_core (general-purpose)
-```
+| Flow | Persona selection | Use case |
+|------|------------------|----------|
+| `comprehensive-review.yaml` | Hardcoded (5 personas) | Baseline code review |
+| `review.yaml` | Dynamic (scout classifies → planner picks) | Domain-agnostic review |
+| `self-improve.yaml` | Hardcoded | Code improvement cycle |
+| `improve.yaml` | Dynamic | Domain-agnostic improvement |
 
 ### Running
 
 ```bash
-# Security audit (default)
-just demo --live --model gemma4:26b --project /tmp/smgglrs-self-audit
+# Start the server
+smgglrs serve
 
-# Custom analysis with additional read access
-just demo --live --model gemma4:26b --project cognitive_core \
-  --allow-read /tmp \
-  --prompt "Read /tmp/smgglrs-analysis.md and verify against reality."
+# Run a review via MCP (from any MCP client)
+flow_start(flow_name="review", prompt="Review the project",
+  parameters={"target_dir": "/path/to/project"})
 
-# Business analysis
-just demo --live --model gemma4:26b --project cognitive_core \
-  --prompt "A company wants to license this. Should we pursue?"
+# Or use the hardcoded variant
+flow_start(flow_name="comprehensive-review", ...)
+
+# Improvement cycle (creates git worktree for isolation)
+smgglrs improve --target . --cycles 3 --branch self-improve
 ```
 
-### Model selection
+### Comparative results (2026-05-07)
 
-The lead selects teammate models from model cards (via `models_list`).
-Operator sets `[models.*.agentic]` in config.toml with:
-- `cost_tier`: "free" (local Ollama) or "high" (cloud API)
-- `speed_tier`: "fast", "medium", "slow" (derived from model size)
-- `locality`: "local" (on-device) or "remote" (cloud)
-- `reasoning`: "basic" or "extended"
-- `tool_use`: "basic" or "advanced"
+| Metric | Hardcoded | Dynamic | Ratio |
+|--------|-----------|---------|-------|
+| Wall clock | 32 min | 21 min | 0.66x |
+| Total tokens | 3.77M | 1.78M | 0.47x |
+| Specialists | 23 | 14 | — |
+| Precision (real findings) | 37.5% | 62.5% | 1.67x |
+| False positive rate | 25% | 12.5% | 0.50x |
+| Real findings / M tokens | 0.80 | 2.81 | 3.5x |
+| Cost per real finding | 1.26M tok | 0.36M tok | 3.5x cheaper |
 
-The lead prefers `locality=local` + `cost_tier=free` for data
-gathering, and reserves expensive remote models for synthesis.
+Dynamic persona selection dominates: better quality at lower cost.
+The planner picks personas that match the project domain rather
+than spreading evenly across hardcoded categories.
 
-### Interpreting results
+### Audit metrics (current state)
 
-Many findings from self-analysis of `/tmp/smgglrs-self-audit` are
-re-discoveries of issues already fixed in the live codebase.
-Always cross-reference findings against recent commits before
-acting on them. The stale copy is intentional — it tests the
-framework's ability to find real issues, not our discipline in
-keeping the copy fresh.
+**Captured in audit.db:**
+- `flow_results`: per-task output, specialist, model, tokens
+  (cumulative), started_at, completed_at
+- `flow_metadata`: YAML content, parameters, flow-level timing
+- `audit_runs`: per-agent run metadata
+- `audit_tool_calls`: schema exists but **not populated** for
+  flow agents (Phase 12a)
+- `audit_model_calls`: schema exists but **not populated** for
+  flow agents (Phase 12a)
 
-### Audit trail gap (2026-04-20 finding)
-
-Current demo runs produce only: final report text, teammate model
-assignments, iteration count, token usage. Missing for debug and
-legal audit:
-
-- Tool call log (name, args, result, duration, agent, iteration)
-- Model reasoning between tool calls (decision trace)
-- ACL decisions (allowed/denied per tool call)
-- Per-teammate tool call traces
-- Provenance chain (what data each agent saw, what it decided, why)
-
-This is addressed by Phase 3h (Structured Audit Log) below.
+**Known metrics gaps** (see Phase 12):
+- Per-task duration always 0 (started_at == completed_at)
+- Per-task iteration count always NULL
+- Per-task tokens are cumulative, not per-agent
+- Model name stored as "auto" instead of resolved name
+- No GPU utilization recording
 
 ---
 
@@ -252,18 +246,27 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Notification bus: notify()/notify_session() on McpServer | 2026-05-05 |
 | OAuth 2.0 endpoints wired into Axum router | 2026-05-05 |
 | smgglrs-macros crate: `#[tool]` proc macro (18th crate) | 2026-05-05 |
+| Domain-agnostic review + improve flows with dynamic persona selection | 2026-05-07 |
+| build_test MCP tool, task-level tool/operation grants in flow YAML | 2026-05-07 |
+| Git branch creation, `smgglrs improve` CLI | 2026-05-07 |
+| Planner JSON resilience (markdown stripping, id-boundary recovery) | 2026-05-07 |
+| Schema enforcement on generates_tasks agents (in-process + container) | 2026-05-07 |
+| response_format plumbed through ChatRequest → Ollama API | 2026-05-07 |
+| Container agent stdout parsing fix (skip log lines before JSON) | 2026-05-07 |
+| Comparative flow evaluation: hardcoded vs dynamic persona selection | 2026-05-07 |
 
 ### Remaining
 
-| Item | Detail | Effort | Priority |
-|------|--------|--------|----------|
-| ~~Agent process isolation~~ | ✅ **Done** (2026-05-03). Agents run in Podman containers via `smgglrs-agent` binary. Shared model server (1 container, GPU access) + per-agent sandboxes (no GPU). Network: `slirp4netns:allow_host_loopback=true`. GPU semaphore via `max_parallel`. Fallback: in-process when Podman unavailable. | — | **Done** |
-| **TensorRtRuntime backend** | Add TensorRT-LLM as a ModelRuntime backend alongside Direct/Podman/OpenShell. NVFP4 on Blackwell GPUs for max throughput. | 2-3 days | **Medium-High** |
-| **TurboQuant KV cache** | llama.cpp PR #21089 saves 42% memory at 64K context. Track merge, add --cache-type flags to smgglrs-model-runtime Direct backend config. Benchmark: 18.6GB→10.7GB at 64K. | 1 day (config) | **Medium** |
-| Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive | Low |
-| Session store sharding | Replace single `RwLock<HashMap>` with DashMap — known perf bottleneck under concurrent sessions | 1-2 days | Medium |
-| Streaming model download | `pull()` buffers entire model in `Vec<u8>` — stream to disk for large models | 2-3 days | Medium |
-| Feature-gate ONNX | Decouple `ort` from crates that don't directly use it | Architecturally invasive | Low |
+| Item | Phase | Effort | Priority |
+|------|-------|--------|----------|
+| **TensorRtRuntime backend** | 11a | 2-3 days | Medium-High |
+| **TurboQuant KV cache** (--cache-type flags) | 11a | 1 day | Medium |
+| Session store sharding (DashMap) | 12b | 1-2 days | Medium |
+| Streaming model download (pull → disk) | 12b | 2-3 days | Medium |
+| Feature-gate ONNX | 12b | Invasive | Low |
+| Upstream TLS (DESIGN.md gap) | 9 or 12b | 2-3 days | Medium |
+| Convert tools to `#[tool]` proc macro | 12b | 2 days | Low |
+| DeepSec CI integration | Evaluate | — | Low |
 
 ---
 
@@ -296,8 +299,8 @@ planned crate or enhancement.
 | Persistent memory (working, long-term, cases) | SQLite sessions + working memory + FTS5 + distillation + RRF retrieval + decay + MCP tools | **Done** |
 | Anti-drift (mandate validation, drift detection) | Mandate validator + success_criteria | **Done** |
 | Failure recovery (circular fix detection, attempt history) | Attempt history, circular fix detector, recovery strategies | **Done** |
-| Observability (structured metrics, monitoring) | tracing only | **Low** |
-| TUI (rich terminal interface) | CLI only | **Low** |
+| Observability (structured metrics, monitoring) | tracing + audit.db (flow_results, flow_metadata) + blackbox. Per-agent tool/model call tables exist but are not populated (Phase 12a) | **Partial** |
+| TUI (rich terminal interface) | CLI + web UI at localhost:9315. Rich TUI is a non-goal (Goose provides frontend) | **Non-goal** |
 
 ---
 
@@ -478,6 +481,26 @@ activates that specialization:
   with many specializations (some personas have 5+ specializations).
 
 Reference: SemaClaw skill lazy-loading (arXiv 2604.11548).
+
+#### 1g. Negative constraints in persona schema (NEW)
+
+Add `negative_constraints` as a first-class field in persona YAML.
+Currently directives only specify positive behavior ("do X"). Negative
+constraints ("do NOT do Y") are proven to narrow the output space and
+reduce noise without sacrificing essential information:
+
+- New field: `negative_constraints: [str]` in persona YAML
+- Weaver injects as "Do NOT" instructions after the mandate
+- Examples: "Do NOT use marketing language", "Do NOT pad responses
+  with caveats", "Do NOT explain what the code does"
+- Separate from heuristics (which are conditional guidance) — these
+  are absolute prohibitions
+
+**Effort**: 0.5 day. **Priority**: Low.
+**Acceptance**: Weaver emits negative constraints in system prompt.
+
+Reference: Systematic prompting guide (2026-05-03) — negative
+constraints as prompt-layer technique for precision.
 
 **Why first**: The cognitive core is Myelix's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
@@ -1272,6 +1295,29 @@ large tool lists:
 **Acceptance**: Small models (≤10B) succeed at tool calling with
 grouped tools where they previously failed with 40+ individual tools.
 
+#### 8h. Multi-hypothesis tool routing (NEW)
+
+Use verbalized sampling to improve tool selection in smgglrs-flow
+and smgglrs-agent tool loops:
+
+- Instead of the LLM picking one tool, prompt for 3 ranked
+  candidates with confidence scores and rationale
+- The router applies permissions/IFC checks to each candidate
+  in rank order, executing the first viable one
+- Reduces re-prompting on permission denials (currently the LLM
+  picks a tool, gets denied, re-reasons, picks another — wastes
+  iterations and tokens)
+- Config: `tool_routing = "single" | "ranked"` (default: single)
+- Adds ~200 tokens per tool selection but saves full re-prompt
+  cycles on denial (~2000+ tokens each)
+
+**Effort**: 1-2 days. **Priority**: Low.
+**Acceptance**: Permission denial triggers fallback to next-ranked
+tool without re-prompting the model.
+
+Reference: Verbalized sampling (2026-05-03) — multi-hypothesis
+output with confidence scores for decision-making.
+
 ### Phase 9: Full MCP spec coverage (2026-05-04, mostly complete)
 
 **Goal**: smgglrs-protocol covers 100% of the MCP 2025-03-26 spec,
@@ -1569,6 +1615,9 @@ SemaClaw (harness engineering), LangChain (Worker/Leader pattern).
 | ZeroClaw | 10a (Rust competitor baseline) |
 | OWASP Top 10 for LLM | 10a (threat model) |
 | EU AI Act Article 14 | 10a (compliance) |
+| NVIDIA Vera Rubin | 10b (agentic token economics, 15x multiplier) |
+| OpenAI Privacy Filter | 10a (PII detection, if 11d done) |
+| Vercel DeepSec | 10a, 10c (AI security scanning, multi-stage pattern) |
 
 ### Phase 11: Model & safety research (from tech watch 2026-05-06)
 
@@ -1607,6 +1656,36 @@ current cascaded ASR → LLM → TTS pipeline:
 **Gate**: Is Moshi exported to ONNX? Does latency improve in
 practice on our hardware (RTX 5090)?
 
+#### 11d. PII redaction via ONNX token classifier (NEW)
+
+**Crate**: `smgglrs-security` (new `pii_ner_hook.rs`)
+
+Evaluate OpenAI's `privacy-filter` model as an additional PII
+detection layer alongside the existing regex + ProtectAI NER:
+
+- Standard `AutoModelForTokenClassification` (HuggingFace)
+- 8 PII categories: names, emails, phones, addresses, account
+  numbers, secrets, dates, URLs
+- BIO tagging with configurable confidence threshold (default 0.50)
+- Typed redaction masks: `[PRIVATE_EMAIL]`, `[PRIVATE_PHONE]`, etc.
+  (more informative than current `[REDACTED:category]`)
+
+**Implementation as SafetyHook:**
+- Export model to ONNX (standard transformers → ONNX pipeline)
+- Load in-process via OnnxBackend (same as ProtectAI models)
+- Wire as `PiiRedactionHook` in the hook pipeline (pre-call for
+  outbound content, post-call for inbound results)
+- Reverse-order span replacement preserves index accuracy
+
+**Research gate**: Is the model ONNX-exportable without quality
+loss? How does it compare to ProtectAI on our test cases?
+
+**Effort**: 1-2 days (eval) + 1 day (integration). **Priority**: Medium.
+**Acceptance**: Model runs in-process, detects PII categories that
+regex misses, <50ms latency on typical tool outputs.
+
+Reference: OpenAI Privacy Filter pipeline (2026-04-29).
+
 #### 11c. Adversarial safety evaluation
 
 **Crates**: `smgglrs-security` (safety classifier),
@@ -1626,6 +1705,59 @@ using AutoData's Challenger/Weak/Strong/Verifier pattern:
 **Depends on**: Flow engine (Phase 2), safety classifier (done).
 **Acceptance**: Safety classifier F1 improves on held-out test
 set after fine-tuning on generated data.
+
+### Phase 12: Observability & infrastructure debt
+
+Items collected from Code Health, self-review findings, DESIGN.md
+gaps, and audit metrics gaps. Grouped into sub-phases by area.
+
+#### 12a. Flow audit completeness (HIGH — blocks paper data)
+
+**Crate**: `smgglrs-server/src/flow_tools.rs`, `smgglrs-agent`
+
+Fix 8 metrics gaps that prevent accurate paper evaluation:
+
+1. **Per-task duration**: `record_task_results_to_audit` sets
+   `started_at = completed_at`. Fix: capture start time when
+   task is spawned, end time when result is collected.
+2. **Per-task iterations**: always NULL. Fix: parse `iterations`
+   from containerized agent JSON output and store.
+3. **Per-task tokens**: cumulative not per-task. Fix: record
+   delta or per-agent token count.
+4. **Resolved model name**: stored as "auto". Fix: record the
+   model selected by `select_model_for_task`.
+5. **audit_tool_calls**: empty. Fix: wire `AuditLog::record_tool_call`
+   into the agent tool loop for flow agents.
+6. **audit_model_calls**: empty. Fix: same as above for model calls.
+7. **GPU utilization sampling**: no recording. Fix: periodic
+   `nvidia-smi` sampling during flow execution.
+8. **Structured finding format**: specialists output free-text.
+   Fix: define JSON schema for findings with severity, file, line,
+   category fields.
+
+**Effort**: 3-4 days. **Priority**: High (blocks papers).
+**Acceptance**: Rerun comparative flows, all 8 columns populated.
+
+#### 12b. Infrastructure debt (MEDIUM)
+
+Collected from Code Health, self-review findings, and DESIGN.md:
+
+| Item | Source | Effort |
+|------|--------|--------|
+| Session store sharding (DashMap) | Self-review perf-01 | 1-2 days |
+| Streaming model download | Self-review code-03 | 2-3 days |
+| Upstream TLS | DESIGN.md gap | 2-3 days |
+| Feature-gate ONNX | Code Health | Invasive |
+| Convert tools to `#[tool]` macro | Phase 9h | 2 days |
+| Sync ureq → async in authenticator | Self-review sec-01 | 1 day |
+
+#### 12c. Observability (LOW — nice to have)
+
+| Item | Detail |
+|------|--------|
+| OpenTelemetry | Normalized spans for tool calls, model calls |
+| Prometheus metrics | Request latency, token throughput, error rate |
+| Structured tracing | JSON-format log output for log aggregation |
 
 ---
 
