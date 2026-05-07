@@ -1218,8 +1218,14 @@ fn spawn_containerized_agent(
                         return;
                     }
 
-                    // Parse JSON output from the agent binary
-                    match serde_json::from_str::<serde_json::Value>(&stdout) {
+                    // Parse JSON output from the agent binary.
+                    // The stdout may contain log lines before the JSON
+                    // (tracing warnings from the tool loop). Find the
+                    // first '{' to locate the JSON object.
+                    let json_str = stdout.find('{')
+                        .map(|i| &stdout[i..])
+                        .unwrap_or(&stdout);
+                    match serde_json::from_str::<serde_json::Value>(json_str) {
                         Ok(result) => {
                             let response = result.get("output")
                                 .and_then(|v| v.as_str())
