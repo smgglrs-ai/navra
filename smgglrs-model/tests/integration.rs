@@ -6,10 +6,10 @@
 use smgglrs_model::{
     ClassifyLabel, ClassifyResponse, EmbedRequest,
     GenerateRequest, Locality, ModelBackend, ModelError,
-    OpenAiBackend, AnthropicBackend, CliBackend,
+    OpenAiBackend, AnthropicBackend, CliBackend, Device,
     CreateResponseRequest, InputItem, OutputItem, MessageItem,
     ResponseStatus, ModelResponse,
-    ClassifyRequest,
+    ClassifyRequest, ModelTask, OnnxBackend,
     safe_backend::{ModelSafetyFilter, SafeModelBackend},
 };
 use smgglrs_model::responses::response::Usage;
@@ -355,4 +355,236 @@ async fn cli_backend_nonzero_exit() {
     };
     let err = backend.generate(&req).await.unwrap_err();
     assert!(matches!(err, ModelError::Inference(_)));
+}
+
+// =====================================================================
+// Real ONNX model tests (skip if model files not present)
+// =====================================================================
+
+fn guardian_hap_paths() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let home = std::env::var("HOME").ok()?;
+    let model = std::path::PathBuf::from(&home)
+        .join(".local/share/smgglrs/models/granite-guardian-hap-38m-quantized.onnx");
+    let tokenizer = std::path::PathBuf::from(&home)
+        .join(".local/share/smgglrs/models/granite-guardian-hap-38m/tokenizer.json");
+    if model.exists() && tokenizer.exists() {
+        Some((model, tokenizer))
+    } else {
+        None
+    }
+}
+
+fn load_guardian_hap(device: Device) -> Option<OnnxBackend> {
+    let (model_path, tokenizer_path) = guardian_hap_paths()?;
+    let task = ModelTask::Classification {
+        labels: vec!["non-toxic".to_string(), "toxic".to_string()],
+    };
+    Some(OnnxBackend::load(
+        "guardian-hap-test",
+        &model_path,
+        Some(tokenizer_path.as_path()),
+        task,
+        device,
+    ).expect("Failed to load Guardian HAP model"))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guardian_hap_cpu_classifies_safe_text() {
+    let Some(backend) = load_guardian_hap(Device::Cpu) else {
+        eprintln!("Skipping: Guardian HAP model not found");
+        return;
+    };
+    let req = ClassifyRequest { text: "The weather is nice today.".to_string() };
+    let result = backend.classify(&req).await.unwrap();
+    assert_eq!(result.top_label().unwrap().label, "non-toxic");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guardian_hap_cpu_classifies_toxic_text() {
+    let Some(backend) = load_guardian_hap(Device::Cpu) else {
+        eprintln!("Skipping: Guardian HAP model not found");
+        return;
+    };
+    let req = ClassifyRequest { text: "I hate you, you stupid idiot!".to_string() };
+    let result = backend.classify(&req).await.unwrap();
+    assert_eq!(result.top_label().unwrap().label, "toxic");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guardian_hap_openvino_auto_classifies() {
+    let Some(backend) = load_guardian_hap(Device::parse("openvino:AUTO")) else {
+        eprintln!("Skipping: Guardian HAP model not found");
+        return;
+    };
+
+    let safe_req = ClassifyRequest { text: "Hello, how are you?".to_string() };
+    let safe_result = backend.classify(&safe_req).await.unwrap();
+    assert_eq!(safe_result.top_label().unwrap().label, "non-toxic");
+
+    let toxic_req = ClassifyRequest { text: "I hate you, you stupid idiot!".to_string() };
+    let toxic_result = backend.classify(&toxic_req).await.unwrap();
+    assert_eq!(toxic_result.top_label().unwrap().label, "toxic");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guardian_hap_device_benchmark() {
+    if guardian_hap_paths().is_none() {
+        eprintln!("Skipping: Guardian HAP model not found");
+        return;
+    }
+
+    let devices = vec![
+        ("CPU", "cpu"),
+        ("OpenVINO:AUTO", "openvino:AUTO"),
+        ("OpenVINO:NPU", "openvino:NPU"),
+        ("OpenVINO:GPU", "openvino:GPU"),
+    ];
+
+    let text = "The quick brown fox jumps over the lazy dog.";
+    let iterations = 50;
+
+    println!("\n--- Guardian HAP 38M benchmark ({iterations} iterations) ---");
+
+    for (label, device_str) in &devices {
+        let device = Device::parse(device_str);
+        let backend = match load_guardian_hap(device) {
+            Some(b) => b,
+            None => {
+                println!("{label:16} SKIP (load failed)");
+                continue;
+            }
+        };
+
+        let req = ClassifyRequest { text: text.to_string() };
+
+        // Warmup
+        for _ in 0..5 {
+            let _ = backend.classify(&req).await;
+        }
+
+        // Benchmark
+        let start = std::time::Instant::now();
+        for _ in 0..iterations {
+            backend.classify(&req).await.unwrap();
+        }
+        let elapsed = start.elapsed();
+        let per_call = elapsed / iterations;
+
+        println!("{label:16} {per_call:>8.2?}/call ({elapsed:.2?} total)");
+    }
+}
+
+// =====================================================================
+// Granite Embedding R2 149M tests
+// =====================================================================
+
+fn embedding_r2_paths() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let home = std::env::var("HOME").ok()?;
+    let model = std::path::PathBuf::from(&home)
+        .join(".local/share/smgglrs/models/granite-embedding-r2-onnx/model_int8.onnx");
+    let tokenizer = std::path::PathBuf::from(&home)
+        .join(".local/share/smgglrs/models/granite-embedding-r2-onnx/tokenizer.json");
+    if model.exists() && tokenizer.exists() {
+        Some((model, tokenizer))
+    } else {
+        None
+    }
+}
+
+fn load_embedding_r2(device: Device) -> Option<OnnxBackend> {
+    let (model_path, tokenizer_path) = embedding_r2_paths()?;
+    let task = ModelTask::Embedding { dimensions: 768 };
+    Some(OnnxBackend::load(
+        "embedding-r2-test",
+        &model_path,
+        Some(tokenizer_path.as_path()),
+        task,
+        device,
+    ).expect("Failed to load Granite Embedding R2 model"))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn embedding_r2_cpu_produces_vectors() {
+    let Some(backend) = load_embedding_r2(Device::Cpu) else {
+        eprintln!("Skipping: Embedding R2 model not found");
+        return;
+    };
+
+    let req = EmbedRequest { text: "Secure MCP gateway for Linux desktops.".to_string() };
+    let result = backend.embed(&req).await.unwrap();
+    assert_eq!(result.dimensions, 768);
+    assert_eq!(result.embedding.len(), 768);
+
+    // Embedding should be L2-normalized (norm ≈ 1.0)
+    let norm: f32 = result.embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+    assert!((norm - 1.0).abs() < 0.01, "expected unit norm, got {norm}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn embedding_r2_similar_texts_closer() {
+    let Some(backend) = load_embedding_r2(Device::Cpu) else {
+        eprintln!("Skipping: Embedding R2 model not found");
+        return;
+    };
+
+    let req_a = EmbedRequest { text: "The cat sat on the mat.".to_string() };
+    let req_b = EmbedRequest { text: "A kitten was sitting on a rug.".to_string() };
+    let req_c = EmbedRequest { text: "Quantum chromodynamics describes strong force interactions.".to_string() };
+
+    let emb_a = backend.embed(&req_a).await.unwrap().embedding;
+    let emb_b = backend.embed(&req_b).await.unwrap().embedding;
+    let emb_c = backend.embed(&req_c).await.unwrap().embedding;
+
+    let sim_ab: f32 = emb_a.iter().zip(&emb_b).map(|(a, b)| a * b).sum();
+    let sim_ac: f32 = emb_a.iter().zip(&emb_c).map(|(a, b)| a * b).sum();
+
+    assert!(sim_ab > sim_ac, "similar texts should be closer: sim(a,b)={sim_ab:.4} vs sim(a,c)={sim_ac:.4}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn embedding_r2_device_benchmark() {
+    if embedding_r2_paths().is_none() {
+        eprintln!("Skipping: Embedding R2 model not found");
+        return;
+    }
+
+    let devices = vec![
+        ("CPU", "cpu"),
+        ("OpenVINO:AUTO", "openvino:AUTO"),
+        ("OpenVINO:NPU", "openvino:NPU"),
+        ("OpenVINO:GPU", "openvino:GPU"),
+    ];
+
+    let text = "Secure MCP gateway for Linux desktops with deny-wins ACLs and safety filters.";
+    let iterations = 20;
+
+    println!("\n--- Granite Embedding R2 149M benchmark ({iterations} iterations) ---");
+
+    for (label, device_str) in &devices {
+        let device = Device::parse(device_str);
+        let backend = match load_embedding_r2(device) {
+            Some(b) => b,
+            None => {
+                println!("{label:16} SKIP (load failed)");
+                continue;
+            }
+        };
+
+        let req = EmbedRequest { text: text.to_string() };
+
+        // Warmup
+        for _ in 0..3 {
+            let _ = backend.embed(&req).await;
+        }
+
+        // Benchmark
+        let start = std::time::Instant::now();
+        for _ in 0..iterations {
+            backend.embed(&req).await.unwrap();
+        }
+        let elapsed = start.elapsed();
+        let per_call = elapsed / iterations as u32;
+
+        println!("{label:16} {per_call:>8.2?}/call ({elapsed:.2?} total)");
+    }
 }

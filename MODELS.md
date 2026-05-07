@@ -294,7 +294,7 @@ The same smgglrs binary automatically uses the best available
 accelerator, falling back to CPU:
 
 - **Desktop (RTX 5090):** CUDA EP claims the model
-- **Laptop (Core Ultra 7 258V):** OpenVINO `AUTO` picks NPU for
+- **Laptop (Core Ultra 7 268V):** OpenVINO `AUTO` picks NPU for
   supported ops, iGPU or CPU for the rest
 - **Headless / generic:** CPU EP handles everything
 
@@ -627,7 +627,7 @@ pub enum Platform {
     },
     /// Intel Core Ultra with NPU + iGPU
     IntelCoreUltra {
-        npu_tops: u32,            // 47 for 258V
+        npu_tops: u32,            // 47 for 268V
         igpu_vram_mb: u64,        // ~16GB shared
     },
     /// CPU only
@@ -1857,7 +1857,7 @@ to benefit from GPU and would waste VRAM.
 **Capabilities:** Everything — reasoning, multimodal vision, voice
 I/O with voice cloning, deep safety, visual RAG, code generation.
 
-### Laptop — Intel Core Ultra 7 258V (mobile stack)
+### Laptop — Intel Core Ultra 7 268V (mobile stack)
 
 **Hardware:**
 

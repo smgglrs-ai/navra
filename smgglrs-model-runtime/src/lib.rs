@@ -14,6 +14,7 @@
 
 mod error;
 mod gpu;
+mod npu;
 
 #[cfg(feature = "direct")]
 pub mod direct;
@@ -24,6 +25,7 @@ pub mod openshell;
 
 pub use error::RuntimeError;
 pub use gpu::{GpuDevice, GpuKind, detect_gpus};
+pub use npu::{NpuDevice, detect_npus};
 
 use std::future::Future;
 use std::path::PathBuf;

@@ -25,7 +25,7 @@ mod openai;
 
 pub use anthropic::AnthropicBackend;
 pub use cli::CliBackend;
-pub use onnx::{ModelTask, OnnxBackend};
+pub use onnx::{Device, ModelTask, OpenVinoDevice, OnnxBackend};
 pub use openai::OpenAiBackend;
 pub use safe_backend::{ModelSafetyFilter, SafeModelBackend};
 
