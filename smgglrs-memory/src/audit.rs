@@ -488,6 +488,33 @@ impl AuditLog {
         Ok(())
     }
 
+    /// Record the start of a flow task (sets started_at, status=running).
+    /// Call this when the task is spawned, before it produces output.
+    pub fn record_flow_task_start(
+        &self,
+        flow_id: &str,
+        task_id: &str,
+        specialist: Option<&str>,
+        model: Option<&str>,
+    ) -> Result<(), MemoryError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute(
+            "INSERT INTO flow_results (flow_id, task_id, specialist, model, status, started_at, completed_at)
+             VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?5)
+             ON CONFLICT(flow_id, task_id) DO UPDATE SET
+                 specialist = COALESCE(excluded.specialist, flow_results.specialist),
+                 model = COALESCE(excluded.model, flow_results.model),
+                 status = 'running',
+                 started_at = excluded.started_at",
+            params![flow_id, task_id, specialist, model, now],
+        )?;
+        Ok(())
+    }
+
     /// Save flow metadata for resumability.
     pub fn save_flow_metadata(
         &self,
