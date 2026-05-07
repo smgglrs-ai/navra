@@ -23,8 +23,8 @@ pub const DEFAULT_OPERATIONS: &[&str] = &["read", "search", "list"];
 
 /// Default tools granted to teammates.
 pub const DEFAULT_TOOLS: &[&str] = &[
-    "file_tree", "file_grep", "file_read", "team_bb_publish",
-    "team_bb_notifications",
+    "file_tree", "file_grep", "file_read",
+    "team_bb_publish", "team_bb_read", "team_bb_notifications",
     "models_list", "personas_list", "flow_escalate",
     "flow_status", "flow_result",
 ];
@@ -61,6 +61,9 @@ pub struct BlackboardEntry {
     pub value: String,
     pub author: String,
     pub timestamp_secs: u64,
+    /// IFC data label — propagated to readers via taint-on-read.
+    #[serde(default)]
+    pub label: smgglrs_core::protocol::label::DataLabel,
 }
 
 /// Lightweight notification about a blackboard publish event.
@@ -260,16 +263,19 @@ impl TeamRegistry {
         Ok(())
     }
 
-    pub fn bb_publish(&self, team_id: &str, key: &str, value: &str, author: &str) {
+    pub fn bb_publish(
+        &self, team_id: &str, key: &str, value: &str, author: &str,
+        label: smgglrs_core::protocol::label::DataLabel,
+    ) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(team) = teams.get_mut(team_id) {
-            // Upsert: replace existing entry with same key
             team.blackboard.retain(|e| e.key != key);
             team.blackboard.push(BlackboardEntry {
                 key: key.to_string(),
                 value: value.to_string(),
                 author: author.to_string(),
                 timestamp_secs: team.created_at.elapsed().as_secs(),
+                label,
             });
         }
     }
@@ -901,6 +907,7 @@ pub async fn handle_team_bb_publish(
     args: serde_json::Value,
     reg: std::sync::Arc<TeamRegistry>,
     agent_name: &str,
+    label: smgglrs_core::protocol::label::DataLabel,
 ) -> smgglrs_core::protocol::CallToolResult {
     use smgglrs_core::protocol::CallToolResult;
 
@@ -913,7 +920,7 @@ pub async fn handle_team_bb_publish(
     let value = match args.get("value").and_then(|v| v.as_str()) {
         Some(v) => v, None => return CallToolResult::error("Missing value"),
     };
-    reg.bb_publish(team_id, key, value, agent_name);
+    reg.bb_publish(team_id, key, value, agent_name, label);
     CallToolResult::text(format!("Published '{key}' to team blackboard"))
 }
 
@@ -1879,7 +1886,7 @@ mod tests {
         reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
 
         // Alice publishes
-        reg.bb_publish(&tid, "finding-1", "data", "alice");
+        reg.bb_publish(&tid, "finding-1", "data", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
 
         // Bob sees it
         let notifs = reg.bb_notifications(&tid, "bob").unwrap();
@@ -1899,7 +1906,7 @@ mod tests {
         reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
         reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
 
-        reg.bb_publish(&tid, "k1", "v1", "alice");
+        reg.bb_publish(&tid, "k1", "v1", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
 
         // First call returns the entry
         let n1 = reg.bb_notifications(&tid, "bob").unwrap();
@@ -1918,9 +1925,9 @@ mod tests {
         reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
         reg.add_teammate(&tid, "carol", None, "m", "local", vec![], vec![]).unwrap();
 
-        reg.bb_publish(&tid, "k1", "v1", "alice");
-        reg.bb_publish(&tid, "k2", "v2", "carol");
-        reg.bb_publish(&tid, "k3", "v3", "alice");
+        reg.bb_publish(&tid, "k1", "v1", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
+        reg.bb_publish(&tid, "k2", "v2", "carol", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
+        reg.bb_publish(&tid, "k3", "v3", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
 
         let notifs = reg.bb_notifications(&tid, "bob").unwrap();
         assert_eq!(notifs.len(), 3);
@@ -1943,7 +1950,7 @@ mod tests {
         let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
         reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
 
-        reg.bb_publish(&tid, "k1", "v1", "alice");
+        reg.bb_publish(&tid, "k1", "v1", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
 
         let notifs = reg.bb_notifications(&tid, "outsider").unwrap();
         // outsider sees alice's entry (since=0)

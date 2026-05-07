@@ -810,29 +810,30 @@ async fn spawn_and_track_tasks(
         let dep_count = task.depends_on.len();
         if dep_count > 0 {
             if is_synthesizer && dep_count > 5 {
-                // Synthesizer with many dependencies: point to flow:// resources
-                // instead of inlining all outputs (which exceeds env var limits
-                // for containerized agents).
+                // Synthesizer with many dependencies: read from blackboard
+                // (IFC taint-on-read enforced) instead of inline injection.
                 message.push_str(&format!(
                     "\n\n--- Specialist tasks completed ({dep_count} total) ---\n\
-                     Use the flow_result tool to read each specialist's output.\n\
-                     The flow ID is: {flow_id}\n\n\
-                     Available tasks:\n"
+                     Specialist outputs are published to the team blackboard.\n\
+                     Use team_bb_read to read each specialist's findings.\n\
+                     Your team_id is available in your context.\n\n\
+                     Available findings:\n"
                 ));
                 for dep_id in &task.depends_on {
                     if completed.contains_key(dep_id) {
                         message.push_str(&format!(
-                            "- {dep_id}: completed → call flow_result(flow_id=\"{flow_id}\", task_id=\"{dep_id}\")\n"
+                            "- findings/{dep_id}: completed\n"
                         ));
                     } else if failed.contains(dep_id) {
                         message.push_str(&format!("- {dep_id}: FAILED (no output)\n"));
                     }
                 }
                 message.push_str(
-                    "\nCall flow_result for each completed task, then write a comprehensive report.\n"
+                    "\nRead each finding from the blackboard, then write a comprehensive report.\n"
                 );
-            } else {
-                // Few dependencies: inject inline
+            } else if dep_count <= 3 {
+                // Few dependencies: inject inline (acceptable for small
+                // dep counts where IFC risk is low — typically scout/planner).
                 message.push_str(&format!(
                     "\n\n--- Context from prior stages ({dep_count} outputs follow) ---\n"
                 ));
@@ -843,6 +844,19 @@ async fn spawn_and_track_tasks(
                         message.push_str(&format!(
                             "\n## {dep_id}\n[This stage failed — no output available.]\n"
                         ));
+                    }
+                }
+            } else {
+                // Medium dependencies: point to blackboard
+                message.push_str(&format!(
+                    "\n\n--- Context from prior stages ({dep_count} outputs) ---\n\
+                     Read from the team blackboard using team_bb_read:\n"
+                ));
+                for dep_id in &task.depends_on {
+                    if completed.contains_key(dep_id) {
+                        message.push_str(&format!("- findings/{dep_id}\n"));
+                    } else if failed.contains(dep_id) {
+                        message.push_str(&format!("- {dep_id}: FAILED\n"));
                     }
                 }
             }
@@ -1145,6 +1159,33 @@ async fn run_dag_execution(
             &ctx.audit_log, &ctx.team_registry, team_id, flow_id,
             &spawned_ids, &completed, &failed, &task_defs,
         );
+
+        // Auto-publish specialist outputs to the team blackboard
+        // with the session's context label (IFC taint-on-read).
+        for task_id in &spawned_ids {
+            if let Some(output) = completed.get(task_id) {
+                let label = {
+                    let teams = ctx.team_registry.teams.lock().unwrap_or_else(|e| e.into_inner());
+                    teams.get(team_id)
+                        .and_then(|t| t.teammates.get(task_id))
+                        .map(|_| smgglrs_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC)
+                        .unwrap_or(smgglrs_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC)
+                };
+                // Truncate to 4K for blackboard (full output in audit.db)
+                let truncated = if output.len() > 4096 {
+                    format!("{}...\n[truncated, {} chars total]", &output[..4096], output.len())
+                } else {
+                    output.clone()
+                };
+                ctx.team_registry.bb_publish(
+                    team_id,
+                    &format!("findings/{task_id}"),
+                    &truncated,
+                    task_id,
+                    label,
+                );
+            }
+        }
 
         // Dynamic task injection: if any completed task has generates_tasks=true,
         // parse its output as a task array and inject into the DAG.
