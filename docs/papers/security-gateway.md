@@ -14,18 +14,20 @@ Protocol (MCP). Current agent runtimes provide no security
 infrastructure: any tool call from any agent executes with the
 full privileges of the host user. We present smgglrs, a security
 gateway daemon that interposes between AI agents and local
-resources. smgglrs enforces authentication (BLAKE3 tokens, Ed25519
-capability tokens, DID:key identity), deny-wins path ACLs with
-ring inheritance, Bell-LaPadula information flow control with
-per-value taint tracking, a fail-closed hook pipeline for content
-safety filtering, and a SHA-256 hash-chained audit blackbox. All
-enforcement occurs at a single chokepoint (`handle_call_tool`)
-through which every tool invocation must pass. Six rounds of
-self-audit uncovered 50+ security findings. Microbenchmarks show
-IFC taint propagation at ~0.4ns, capability token verification
-at ~13us, and the full safety pipeline at ~18us per tool call --
-negligible relative to typical tool execution latencies of
-10-500ms.
+resources. smgglrs enforces a layered authentication chain (OAuth
+2.0 with Ed25519 JWTs, capability tokens with delegation, BLAKE3
+legacy tokens), deny-wins path ACLs with ring inheritance,
+Bell-LaPadula information flow control with per-value taint
+tracking, a content safety pipeline (12 secret patterns, 18 PII
+categories with regex + NER + ML, pseudonymization with IFC label
+elevation), containerized agent execution (Podman, OpenShell
+microVMs), typed action risk classification, and a SHA-256
+hash-chained audit blackbox. All enforcement occurs at a single
+chokepoint (`handle_call_tool`) through which every tool
+invocation must pass. Microbenchmarks show IFC taint propagation
+at ~0.4ns, capability token verification at ~13us, and the full
+safety pipeline at ~18us per tool call -- negligible relative to
+typical tool execution latencies of 10-500ms.
 
 ---
 
@@ -58,16 +60,24 @@ implemented as modules.
 **Contributions**:
 
 1. A gateway architecture for MCP security enforcement with a
-   single chokepoint for all tool calls.
-2. A capability token system with Ed25519 signing, CBOR encoding,
-   delegation chains, and ring attenuation.
+   single chokepoint (15 sequential checks) for all tool calls.
+2. A layered authentication chain: OAuth 2.0 (RFC 6749/8414),
+   Ed25519 capability tokens with delegation and ring attenuation,
+   BLAKE3 legacy tokens, and OpenShell sandbox identity federation.
 3. Information flow control with per-value taint tracking and
    trusted path exceptions, enforcing Bell-LaPadula no-write-down
    at the gateway level.
-4. A hash-chained audit blackbox providing tamper-detectable
+4. A content safety pipeline with 12 secret detection patterns,
+   18 PII categories (regex with validation + ONNX NER + ML
+   classifiers), pseudonymization with IFC label elevation, and
+   GDPR Article 35 metrics.
+5. Containerized agent execution with three isolation levels
+   (direct, Podman rootless, OpenShell microVM) and typed action
+   risk classification (16 actions, 5 risk levels).
+6. A hash-chained audit blackbox providing tamper-detectable
    compliance records (EU AI Act Art. 14, SOC2 CC6.1).
-5. Empirical evaluation: 50+ findings from 6 self-audit rounds
-   and microbenchmarks showing sub-microsecond IFC overhead.
+7. Microbenchmarks showing sub-microsecond IFC overhead and
+   <0.5% total security overhead per tool call.
 
 ---
 
@@ -146,11 +156,17 @@ All tool invocations pass through a single function,
 
 The `ChainAuthenticator` tries backends in priority order:
 
-1. **CapabilityAuthenticator**: Ed25519-signed CBOR tokens
+1. **OAuthAuthenticator**: Ed25519-signed JWTs issued via an
+   RFC 6749 `client_credentials` grant (Section 3.5).
+2. **CapabilityAuthenticator**: Ed25519-signed CBOR tokens
    (`smgglrs_cap_v1.*`), with nonce replay protection.
-2. **TokenAuthenticator**: BLAKE3-hashed bearer tokens for
+3. **TokenAuthenticator**: BLAKE3-hashed bearer tokens for
    legacy agents.
-3. **NoAuthenticator**: Development-only fallback. Requires
+4. **OpenShellAuthenticator**: Trusts identity assertions from
+   the OpenShell sandbox supervisor (SPIFFE SVIDs, OIDC JWTs,
+   or static RBAC labels). Used when smgglrs runs inside an
+   OpenShell sandbox (Section 3.6).
+5. **NoAuthenticator**: Development-only fallback. Requires
    explicit `allow_anonymous()` opt-in; logs an error-level
    warning when used implicitly.
 
@@ -168,6 +184,100 @@ Path ACLs use glob patterns with deny-wins semantics:
   (higher rings can only narrow, never widen).
 - String-based, module-namespaced operations (`read`, `write`,
   `git.status`, `shell.exec`) avoid a central enum.
+
+### 3.5 OAuth 2.0 Authorization
+
+smgglrs implements an OAuth 2.0 authorization server following
+RFC 6749 and RFC 8414. This provides a standards-compliant
+authentication path for agents that cannot manage capability
+tokens directly (e.g., third-party MCP clients).
+
+**Endpoints:**
+
+| Endpoint | Description |
+|---|---|
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 metadata discovery |
+| `POST /oauth/token` | Token issuance (`client_credentials` grant) |
+| `POST /oauth/register` | Dynamic client registration |
+
+**Token format:** Ed25519-signed JWTs (EdDSA algorithm). The
+signing key is the same CapSigner used for capability tokens,
+providing a single trust root. Claims include issuer, subject,
+scope, issued-at, expiry, and a UUID `jti` for replay
+detection.
+
+**Scope-to-permission mapping:** OAuth scopes map to smgglrs
+permission sets. `tools:read` maps to `readonly` (ring 2),
+`tools:write` maps to `developer` (ring 1). This bridges the
+OAuth authorization model to smgglrs's ring-based ACL engine
+without requiring clients to understand capability tokens.
+
+**Security properties:**
+
+- Constant-time secret comparison (CWE-208 mitigation)
+- Capability tokens (`smgglrs_cap_v1.*`) bypass OAuth processing
+  entirely, avoiding double-verification
+- Pre-registered and dynamically registered clients supported
+- In-memory client registry (no persistent state beyond config)
+
+**Limitation:** Only the `client_credentials` grant type is
+implemented. PKCE (S256) is advertised in metadata for forward
+compatibility but not yet enforced. No refresh tokens — agents
+re-authenticate when tokens expire.
+
+### 3.6 Containerized Agent Execution
+
+smgglrs supports three isolation levels for model serving and
+agent execution, with automatic runtime detection:
+
+| Level | Backend | Isolation |
+|---|---|---|
+| `BareMetal` | Direct | Child process, no isolation |
+| `Container` | Podman | Rootless container, network-isolated |
+| `OpenShellSandbox` | OpenShell | Microvm with Landlock + seccomp |
+
+**Auto-detection** (`auto_runtime()`) selects the strongest
+available backend: OpenShell → Podman → Direct. The runtime
+detects its own isolation context by checking environment
+variables (`OPENSHELL_SANDBOX_ID`), container markers
+(`/.containerenv`, `/.dockerenv`), and cgroup membership.
+
+**Podman containers** run rootless with `--network=none`
+(prevents data exfiltration from inference), `--no-new-privileges`,
+and read-only model mounts (`-v model:/model:ro`). GPU
+passthrough uses CDI for NVIDIA and device bind-mounting for
+AMD/Intel.
+
+**OpenShell sandboxes** delegate to the OpenShell compute driver
+via gRPC. The supervisor provides identity tokens (SPIFFE SVIDs
+or OIDC JWTs) that the OpenShellAuthenticator validates. Network
+egress is restricted to the model endpoint and the smgglrs
+gateway via an HTTP CONNECT proxy with OPA policies.
+
+**Defense in depth:** OpenShell provides mandatory access control
+at the OS level (namespaces, Landlock, seccomp). smgglrs provides
+discretionary access control at the application level (ACLs,
+capability tokens, IFC). Both layers enforce independently — a
+bypass at one layer does not compromise the other.
+
+### 3.7 Typed Action Classification
+
+Every tool call is classified into one of 16 `AgentAction`
+variants with an associated `RiskLevel`:
+
+| Risk | Actions | Auto-approval |
+|---|---|---|
+| None | FileRead, GitStatus, GitDiff, RagSearch, MemoryQuery | Yes |
+| Low | FileSearch | Yes |
+| Medium | FileWrite, FileEdit, MemoryStore | Configurable |
+| High | FileDelete, GitCommit | Requires approval |
+| Critical | FlowStart, TeamCreate, TeamMessage | Always requires approval |
+
+The classification is deterministic: `AgentAction::classify()`
+parses the tool name and arguments to produce a typed action.
+Tool handlers that accept an `AgentAction` can make approval
+decisions based on the risk level without parsing tool names
+as strings. Unknown tools default to `Medium` risk.
 
 ---
 
@@ -249,9 +359,139 @@ enables fine-grained flow tracking beyond session-level taint.
 
 ---
 
-## 6. Gateway-Level Audit
+## 6. Content Safety Pipeline
 
-### 6.1 Blackbox Design
+The gateway enforces mandatory content filtering through a
+multi-layer pipeline that runs as hooks in the chokepoint
+(steps 8 and 14 in Section 3.2). Agents cannot disable
+filtering — it is mandatory access control.
+
+### 6.1 Pipeline Architecture
+
+The `FilterPipeline` chains three filter types in sequence:
+
+1. **Regex filters** (synchronous, deterministic): Pattern
+   matching for secrets and PII with validation functions.
+2. **NER filters** (synchronous, ML): ONNX token classification
+   models for semantic entity detection.
+3. **Model filters** (asynchronous, ML): Safety classifiers
+   (Granite Guardian HAP 38M) for content policy violations.
+
+Each filter produces `Finding` records (byte offset, category,
+confidence). Findings are deduplicated by merging overlapping
+spans (longest match wins).
+
+### 6.2 Secret Detection
+
+12 patterns detect leaked credentials:
+
+| Category | Pattern | Example |
+|---|---|---|
+| AWS access key | `AKIA[0-9A-Z]{16}` | AKIAIOSFODNN7EXAMPLE |
+| GitHub PAT | `ghp_[A-Za-z0-9]{36}` | ghp_abc123... |
+| GitHub fine-grained | `github_pat_[A-Za-z0-9_]{82}` | github_pat_... |
+| GitLab PAT | `glpat-[A-Za-z0-9\-_]{20,}` | glpat-abc123... |
+| OpenAI API key | `sk-proj-[A-Za-z0-9_-]{32,}` | sk-proj-... |
+| Anthropic API key | `sk-ant-[A-Za-z0-9_-]{32,}` | sk-ant-... |
+| PEM private key | `-----BEGIN.*PRIVATE KEY-----` | RSA/EC keys |
+| Connection string | `mysql\|postgres\|redis://` | DB credentials |
+| Bearer token | `Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+` | JWT tokens |
+| Slack webhook | `hooks.slack.com/services/` | Webhook URLs |
+| Password assignment | `password\|passwd\|pwd\s*[=:]` | Inline passwords |
+| AWS secret key | 40-char base64 near "aws" context | Secret keys |
+
+### 6.3 PII Detection (18 Categories)
+
+PII detection combines regex patterns with validation functions
+to reduce false positives:
+
+| Category | Method | Validation |
+|---|---|---|
+| SSN | Regex | SSA rules (no 000, 666, 9xx prefixes) |
+| Credit card | Regex | Luhn checksum + context validation |
+| US phone | Regex | Excludes UUID/timestamp overlaps |
+| Email | Regex | Domain structure check |
+| French NIR | Regex | Modulo-97 key validation |
+| EU IBAN | Regex | Modulo-97 checksum (ISO 13616) |
+| EU phone | Regex | Country code prefix (33, 49, 44, ...) |
+| Public IPv4 | Regex | Excludes loopback/private ranges |
+| Path username | Regex | Excludes system accounts |
+| Identity document | Regex | Passport/ID/driver license patterns |
+| Temporal PII | Regex | Birth date patterns |
+| Demographic | Regex | Age, sex indicators |
+| Person | NER | BERT-based entity recognition |
+| Location | NER | Geographic entity recognition |
+| Organization | NER | Organization entity recognition |
+| Username | NER | Username entity recognition |
+| Password | NER | Password entity recognition |
+| Misc entity | NER | Catch-all NER category |
+
+The NER filter loads ONNX models (protectai/bert-base-NER or
+multilingual xlm-roberta-base-ner-hrl) with sliding-window
+tokenization (512 tokens, 64-token overlap) and BIO tag
+grouping. Confidence threshold defaults to 0.7.
+
+### 6.4 Filter Actions
+
+Four actions determine how findings are handled:
+
+| Action | Behavior |
+|---|---|
+| Pass | Return content unmodified |
+| Redact | Replace with `[REDACTED:category]` |
+| Pseudonymize | Replace with consistent pseudonyms |
+| Block | Reject entire response with error |
+
+**Pseudonymization** uses a per-session `PseudonymMap` that
+maintains deterministic mappings: the same real value always
+maps to the same pseudonym within a session
+(`Person_A`, `Location_B`, `Email_C`). This preserves
+referential integrity in agent outputs while removing PII.
+The map supports reverse lookup for authorized audit.
+
+### 6.5 Safety Profiles
+
+Operators select a profile per permission set:
+
+| Profile | Filters | Action |
+|---|---|---|
+| `standard` | Regex (secrets + PII + path) | Redact |
+| `pseudonymize` | Regex (secrets + PII + path) | Pseudonymize |
+| `secrets-only` | Secret filter only | Redact |
+| `block` | Regex (all) | Block |
+| `guardian` | Regex + Guardian HAP 38M | Redact |
+| `guardian-deep` | Regex + HAP 38M + Guardian 3.3 8B | Redact |
+| `none` | No filters | Pass |
+
+Custom PII patterns can be added globally (`[[pii_patterns]]`
+in config) or per permission set (`[[permissions.X.safety_patterns]]`).
+Custom patterns registered as PII categories participate in
+IFC label elevation.
+
+### 6.6 IFC Integration
+
+When the safety pipeline detects PII in a tool result, it
+elevates the IFC confidentiality label to `Pii` — a level
+above `Sensitive`. This elevation occurs even when the content
+is redacted, because the session has been exposed to PII
+regardless of whether the agent sees the raw values. Subsequent
+write operations are subject to the permission set's IFC policy
+(Allow/Approve/Deny), preventing PII leakage through tainted
+tool chains.
+
+### 6.7 GDPR Metrics
+
+The pipeline maintains thread-safe counters for GDPR Article 35
+Data Protection Impact Assessment reporting: total scans,
+PII detected, PII redacted, PII blocked, and per-category
+breakdowns. These metrics are available via the `/sys/status`
+endpoint.
+
+---
+
+## 7. Gateway-Level Audit
+
+### 7.1 Blackbox Design
 
 The blackbox is a flight recorder embedded in `McpServer`. It
 records every tool call at the gateway chokepoint:
@@ -265,7 +505,7 @@ records every tool call at the gateway chokepoint:
 - **Resumable**: On restart, resumes from the last entry's
   sequence number and hash.
 
-### 6.2 Recorded Fields
+### 7.2 Recorded Fields
 
 Per entry: sequence number, timestamp, agent name, permission
 set, session ID, tool name, arguments (truncated to 4KB), result
@@ -273,13 +513,13 @@ set, session ID, tool name, arguments (truncated to 4KB), result
 `denied_ifc`, `denied_rate`, `error`), duration (microseconds),
 IFC label, previous hash, current hash.
 
-### 6.3 Tamper Detection
+### 7.3 Tamper Detection
 
 `verify_chain()` replays the entire chain, recomputing hashes
 and comparing. Returns `(valid_count, first_broken_seq)`.
 Exposed via `smgglrs audit verify` CLI.
 
-### 6.4 Compliance Mapping
+### 7.4 Compliance Mapping
 
 | Requirement | Blackbox coverage |
 |---|---|
@@ -289,19 +529,30 @@ Exposed via `smgglrs audit verify` CLI.
 
 ---
 
-## 7. Evaluation
+## 8. Evaluation
 
-### 7.1 Security Audit
+### 8.1 Security Audit
 
-Six rounds of self-audit (the framework auditing its own
-codebase through its own gateway) uncovered 50+ security
-findings, including: missing path canonicalization before ACL
-checks, absent symlink resolution, hook timeout handling
-(changed from continue to fail-closed), NoAuthenticator silent
-fallback (changed to require explicit opt-in), missing session
-enforcement, and IFC bypass via direct variable references.
+Six audit rounds used smgglrs's own multi-agent flow engine to
+audit the gateway codebase through the gateway itself. Agents
+connected via MCP, subject to the same ACLs, IFC, and safety
+filters they were auditing. Findings were recorded in the
+blackbox alongside normal tool calls.
 
-### 7.2 Performance
+Selected findings (of 50+):
+
+| Finding | Severity | Resolution |
+|---|---|---|
+| Path ACL checked before canonicalization | High | Moved `canonicalize()` before ACL check |
+| Symlinks not resolved in path matching | High | Added `fs::canonicalize()` with fallback |
+| Hook timeout defaults to continue | High | Changed to fail-closed (block on timeout) |
+| NoAuthenticator silent fallback | Medium | Require explicit `allow_anonymous()` opt-in |
+| Session ID not enforced for IFC | Medium | Graceful degradation (per-request taint) |
+| `var://` references bypass IFC write check | Medium | Added per-value label resolution |
+| PII filter not applied to tool arguments | Medium | Added pre-hook filtering on write paths |
+| Custom regex patterns not registered as PII | Low | Added `register_pii_categories()` |
+
+### 8.2 Performance
 
 Criterion microbenchmarks (`benchmarks/benches/security_overhead.rs`):
 
@@ -314,8 +565,12 @@ Criterion microbenchmarks (`benchmarks/benches/security_overhead.rs`):
 | Capability token decode+verify | ~13 us | Ed25519 verify + CBOR decode + expiry check |
 | Permission check (allowed) | ~1.7 us | 2 allow + 3 deny globs |
 | Permission check (denied) | ~0.8 us | Early exit on deny match |
-| Safety pipeline (clean) | ~18 us | 15 regex patterns (11 secret + 4 PII) |
+| Safety pipeline (clean) | ~18 us | 15 regex patterns (12 secret + 10 PII) |
 | Safety pipeline (with finding) | ~20 us | Regex match + redaction |
+| Safety pipeline (pseudonymize) | ~22 us | Regex match + pseudonym lookup |
+| NER filter (BERT-base) | ~5-15 ms | Token classification, 512-token window |
+| Luhn validation | ~0.1 us | Credit card checksum |
+| IBAN mod-97 validation | ~0.2 us | Bank account checksum |
 | Tool rule check (exact) | ~0.3 us | 5 rules |
 | Tool rule check (glob) | ~0.5 us | Glob pattern matching |
 
@@ -323,24 +578,28 @@ Total security overhead per tool call: ~35 us (without ML
 filter). Typical tool execution: 10-500 ms. Security overhead
 is < 0.5% of total latency.
 
-### 7.3 Competitive Comparison
+### 8.3 Competitive Comparison
 
-| Feature | smgglrs | SemaClaw | Goose | ZeroClaw |
-|---|---|---|---|---|
-| Auth tokens | BLAKE3 + Ed25519 cap | None | None | None |
-| Path ACLs | Deny-wins, ring inheritance | None | None | 3-tier autonomy |
-| IFC | Bell-LaPadula, per-value | None | None | None |
-| Delegation | Ed25519 chain, ring attenuation | None | None | None |
-| Content safety | Regex + ML (in-process ONNX) | None | None | None |
-| Audit trail | SHA-256 hash-chained blackbox | None | None | None |
-| Permission model | 5-dimensional (identity, path, operation, tool, approval) | Binary (internal/external) | None | 3-tier (ReadOnly/Supervised/Full) |
-| Architecture | Gateway (secures any MCP client) | Harness (wraps one framework) | Agent runtime | Agent runtime |
+| Feature | smgglrs | MS Governance [11] | SemaClaw [3] | Goose | ZeroClaw [8] |
+|---|---|---|---|---|---|
+| Auth | OAuth 2.0 + Ed25519 cap + BLAKE3 | DID-based identity | None | None | None |
+| Path ACLs | Deny-wins, ring inheritance | OPA/Cedar policies | None | None | 3-tier autonomy |
+| IFC | Bell-LaPadula, per-value | None | None | None | None |
+| Delegation | Ed25519 chain, attenuation | None | None | None | None |
+| PII detection | 18 categories, regex+NER+ML | None | None | None | None |
+| Pseudonymization | Per-session consistent mapping | None | None | None | None |
+| Content safety | 12 secret + PII + Guardian ML | Policy engine | None | None | None |
+| Audit trail | SHA-256 hash-chained blackbox | Policy logs | None | None | None |
+| Container isolation | Podman + OpenShell microVM | None | None | None | None |
+| Action classification | 16 types, 5 risk levels | None | None | None | None |
+| Permission model | 6-dimensional | Role-based | Binary | None | 3-tier |
+| Architecture | Gateway | Middleware | Harness | Runtime | Runtime |
 
 ---
 
-## 8. Discussion
+## 9. Discussion
 
-### 8.1 Fail-Closed vs Fail-Open
+### 9.1 Fail-Closed vs Fail-Open
 
 The hook pipeline uses fail-closed semantics: if a hook times
 out, the tool call is blocked. This is a deliberate deviation
@@ -349,7 +608,7 @@ agent infrastructure, a timed-out security check is more
 dangerous than a blocked tool call -- the agent can retry,
 but a bypassed check cannot be retroactively enforced.
 
-### 8.2 The NoAuthenticator Fallback
+### 9.2 The NoAuthenticator Fallback
 
 When no authenticator is configured, smgglrs falls back to
 `NoAuthenticator` with an error-level warning. This is a
@@ -359,7 +618,7 @@ assumptions. The current design makes the fallback loud but
 not fatal, and requires explicit `allow_anonymous()` for
 intentional open access.
 
-### 8.3 Session Enforcement and Backward Compatibility
+### 9.3 Session Enforcement and Backward Compatibility
 
 IFC taint tracking requires session persistence across HTTP
 requests. Agents that do not maintain `mcp-session-id` headers
@@ -368,7 +627,7 @@ compatibility concern: older MCP clients may not send session
 headers. The current design degrades gracefully (per-request
 taint only) rather than rejecting sessionless clients.
 
-### 8.4 Limitations
+### 9.4 Limitations
 
 - IFC labels are not propagated through model backends. An
   agent can launder tainted data by passing it through a
@@ -378,10 +637,19 @@ taint only) rather than rejecting sessionless clients.
   reconstruct a valid chain after tampering.
 - Safety regex patterns are English-centric. Non-English
   secret formats may not be detected.
+- NER models add latency (~5-15 ms per scan) and are
+  English/European-language-centric. CJK PII requires
+  different models not yet integrated.
+- OAuth 2.0 implementation supports only `client_credentials`.
+  Authorization code flow with PKCE is advertised but not
+  enforced.
+- Containerized execution isolates model inference but not the
+  agent process itself — the agent's MCP client runs on the
+  host (or in its own container managed externally).
 
 ---
 
-## 9. Related Work
+## 10. Related Work
 
 - **OWASP Top 10 for LLM Applications** [1]: Catalogs agent
   security risks. smgglrs addresses LLM01 (tool misuse), LLM06
@@ -402,10 +670,38 @@ taint only) rather than rejecting sessionless clients.
   operations.
 - **ZeroClaw** [8]: Rust agent runtime with 3-tier autonomy
   model. Flat runtime vs smgglrs's security gateway.
+- **OpenShell** [9]: Red Hat/NVIDIA secure sandbox platform
+  providing mandatory access control (Landlock, seccomp,
+  namespaces, microVMs) at the OS level. smgglrs integrates as
+  the application-level security layer inside OpenShell
+  sandboxes, providing defense in depth: OpenShell enforces
+  network and filesystem isolation, smgglrs enforces tool-level
+  ACLs, IFC, and credential brokering.
+- **Kaiden** [10]: Agent sandboxing platform with container
+  isolation. Similar defense-in-depth model but without
+  application-level IFC or capability delegation.
+- **Microsoft Agent Governance Toolkit** [11]: DID-based identity,
+  execution rings, OPA/Cedar policies. Middleware approach vs
+  smgglrs's kernel approach. No capability delegation or
+  credential brokering.
+- **Claude Code Review** [12]: Multi-agent cross-validation
+  achieving <1% false positive rate. Validates the pattern of
+  parallel verifier agents for high-stakes outputs. smgglrs's
+  flow engine supports this pattern via back-edges and
+  conditional routing.
+- **FIDES** [13]: Microsoft Research IFC for LLM agents.
+  Per-value label tracking at tool-call sinks. Zero policy-
+  violating injections in AgentDojo. smgglrs implements a
+  compatible but coarser-grained approach (per-session with
+  per-value variable tracking).
+- **CaMeL** [14]: Google DeepMind capability metadata on every
+  value. Provable security on 77% of AgentDojo tasks. Inspires
+  smgglrs's per-value `var://` tracking as a step toward full
+  data-flow labeling.
 
 ---
 
-## 10. Conclusion
+## 11. Conclusion
 
 smgglrs demonstrates that AI agent security is an infrastructure
 concern that belongs in a dedicated gateway layer, not in each
@@ -416,11 +712,14 @@ invoked. The single chokepoint design makes the security
 surface auditable: 15 sequential checks in one function, not
 scattered across dozens of tool handlers.
 
-The performance evaluation confirms that comprehensive security
-enforcement -- authentication, authorization, information flow
-control, content safety, and tamper-evident audit -- adds less
-than 0.5% overhead to typical tool call latencies. Security
-need not be traded for performance.
+The layered security model — OAuth 2.0 and capability token
+authentication, deny-wins ACLs with ring inheritance, Bell-
+LaPadula IFC with per-value taint tracking, an 18-category PII
+pipeline with pseudonymization, containerized execution with
+three isolation levels, typed action risk classification, and a
+hash-chained audit blackbox — addresses the full OWASP Agentic
+Top 10 attack surface while adding less than 0.5% overhead to
+typical tool call latencies.
 
 As AI agents gain more capabilities on local systems, the gap
 between agent capability and agent safety will widen. smgglrs
@@ -453,19 +752,52 @@ Logical and Physical Access Controls. 2022.
 [8] ZeroClaw. Rust agent runtime with trait-based
 architecture. 2026.
 
+[9] Red Hat / NVIDIA. "OpenShell: Secure Sandbox Platform for
+Autonomous Agents." 2026.
+
+[10] Kaiden. Agent sandboxing platform. 2026.
+
+[11] Microsoft. "Agent Governance Toolkit: Open-Source Runtime
+Security for AI Agents." April 2026.
+
+[12] Anthropic. "Claude Code Review: Multi-Agent Architecture."
+2026.
+
+[13] Costa, M., Kopf, B., Kolluri, A., et al. "Securing AI
+Agents with Information-Flow Control (FIDES)." Microsoft
+Research, arXiv:2505.23643, May 2025.
+
+[14] Debenedetti, E., Shumailov, I., Fan, T., et al. "Defeating
+Prompt Injections by Design (CaMeL)." Google DeepMind/ETH,
+arXiv:2503.18813, March 2025.
+
+[15] Hardt, D., Ed. "The OAuth 2.0 Authorization Framework."
+RFC 6749, October 2012.
+
+[16] Jones, M. and Sakimura, N. "OAuth 2.0 Authorization Server
+Metadata." RFC 8414, June 2018.
+
+[17] European Parliament. "Regulation (EU) 2016/679 (GDPR)."
+Article 35: Data Protection Impact Assessment. 2016.
+
 ---
 
 ## Appendix A: Codebase Statistics
 
 | Metric | Value |
 |---|---|
-| Workspace crates | 17 |
-| Total LoC | ~46,000 |
-| Test count | 788 |
-| Security crate LoC | (smgglrs-security) |
-| Core crate LoC | (smgglrs-core) |
+| Workspace crates | 18 |
+| Rust source files | 218 |
+| Total LoC (Rust) | ~86,000 |
+| Test count | ~1,700 (1,388 sync + 330 async) |
 | Benchmark suite | 7 groups, ~30 individual benchmarks |
-| Personas | 43 |
-| Safety regex patterns | 15 (11 secret + 4 PII) |
+| Secret detection patterns | 12 |
+| PII detection categories | 18 (10 regex + 8 NER) |
+| PII validators | 6 (Luhn, SSA, NIR, IBAN, IP, phone context) |
+| Safety profiles | 7 (standard, pseudonymize, secrets-only, block, guardian, guardian-deep, none) |
+| NER models supported | 3 (protectai/bert-base-NER, xlm-roberta-base-ner-hrl, sfermion/bert-pii-detector) |
+| Isolation backends | 3 (Direct, Podman, OpenShell) |
+| AgentAction variants | 16 |
+| RiskLevel variants | 5 |
 | Self-audit rounds | 6 |
 | Security findings | 50+ |

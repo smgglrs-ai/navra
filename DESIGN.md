@@ -239,8 +239,8 @@ McpServer::builder()
 ```
 
 Duplicate tool and prompt names are detected at startup (panic on
-conflict). Tool names must be prefixed with the module name:
-`file_read`, `git_status`, etc.
+conflict). Tool names follow a structured naming convention (see
+[Tool Naming Convention](#tool-naming-convention) below).
 
 ### Config-driven
 
@@ -502,9 +502,65 @@ The system tray Pause action sets a shared `AtomicBool` on the
 with "Server is paused" error. Resume clears the flag. The pause flag
 is accessible via `server.pause_flag()` for external integration.
 
+## Tool Naming Convention
+
+Tool names use a structured `<module>_<resource>_<action>` pattern
+that maps directly to MCP resource URIs. The module prefix matches
+the crate name suffix.
+
+### Layers
+
+**Layer 1 — Local tools (two-part names).**
+Tools that operate on local state use `<module>_<action>`:
+
+| Pattern | Examples | MCP Resource |
+|---------|----------|--------------|
+| `file_<action>` | `file_read`, `file_write`, `file_search` | `file:///path` |
+| `git_<action>` | `git_status`, `git_diff`, `git_commit` | — |
+
+**Layer 2 — Transport-level Git (two-part names).**
+Remote Git operations that are provider-agnostic:
+
+| Pattern | Examples | Notes |
+|---------|----------|-------|
+| `git_<action>` | `git_push`, `git_pull`, `git_fetch` | Pure Git transport, no forge API |
+
+**Layer 3 — Platform-specific (three-part names).**
+Operations that interact with forge/platform APIs use
+`<provider>_<resource>_<action>`:
+
+| Pattern | Examples | MCP Resource |
+|---------|----------|--------------|
+| `github_pr_<action>` | `github_pr_create`, `github_pr_list`, `github_pr_review` | `github://org/repo/pulls` |
+| `github_issue_<action>` | `github_issue_create`, `github_issue_comment` | `github://org/repo/issues` |
+| `gitlab_mr_<action>` | `gitlab_mr_create`, `gitlab_mr_approve` | `gitlab://group/project/merge_requests` |
+| `gitlab_issue_<action>` | `gitlab_issue_list` | `gitlab://group/project/issues` |
+| `jira_issue_<action>` | `jira_issue_create`, `jira_issue_transition` | `jira://PROJECT/issues` |
+
+### Rules
+
+1. **Module prefix = crate suffix.** `smgglrs-tools-github` → `github_*`.
+2. **Resource = noun from the MCP resource URI.** `pr`, `issue`, `mr`, `board`.
+3. **Action = verb.** `create`, `list`, `get`, `update`, `delete`,
+   `comment`, `review`, `approve`, `transition`.
+4. **No aliasing across providers.** GitHub has PRs, GitLab has MRs.
+   Different semantics, different tools, different names.
+5. **Permission globs follow tool names.** Grant `github_pr_*` without
+   `github_issue_*`, or `github_pr_list` without `github_pr_create`.
+
+### Crate mapping
+
+| Crate | Tool prefix | Scope |
+|-------|-------------|-------|
+| `smgglrs-tools-file` | `file_` | Local filesystem |
+| `smgglrs-tools-git` | `git_` | Local + transport (push/pull/fetch) |
+| `smgglrs-tools-github` | `github_` | GitHub API (PRs, issues, repos) |
+| `smgglrs-tools-gitlab` | `gitlab_` | GitLab API (MRs, issues, projects) |
+| `smgglrs-tools-jira` | `jira_` | Jira API (issues, boards, sprints) |
+
 ## MCP Tools
 
-### File Module (`smgglrs-tools-docs`)
+### File Module (`smgglrs-tools-file`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
