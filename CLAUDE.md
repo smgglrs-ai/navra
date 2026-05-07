@@ -33,7 +33,10 @@ package only provides shared libraries.
 | `smgglrs-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation |
 | `smgglrs-core` | Infrastructure | Server, module trait, session, transport, re-exports |
 | `smgglrs-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
-| `smgglrs-tools-git` | Tool | Git tools (status, diff, log, branch, commit) |
+| `smgglrs-tools-git` | Tool | Git tools (status, diff, log, branch, commit; planned: push, pull, fetch) |
+| `smgglrs-tools-github` | Tool | *(planned)* GitHub API tools (PRs, issues) — `github_pr_*`, `github_issue_*` |
+| `smgglrs-tools-gitlab` | Tool | *(planned)* GitLab API tools (MRs, issues) — `gitlab_mr_*`, `gitlab_issue_*` |
+| `smgglrs-tools-jira` | Tool | *(planned)* Jira API tools (issues, boards) — `jira_issue_*` |
 | `smgglrs-rag` | Context enrichment | Vector search, sqlite-vec, semantic chunking |
 | `smgglrs-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
 | `smgglrs-modal-vision` | Modality | Image/screen understanding (GPU tier) |

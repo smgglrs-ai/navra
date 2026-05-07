@@ -4,13 +4,19 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-05-06)
+## Current state (2026-05-07)
 
 18 crates, ~77K LoC, 1600+ tests, 0 warnings. 43 personas, 36
 heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
 Fully local multi-agent demos. Full PII pipeline (regex + NER + file
 paths, pseudonymization, GDPR tools, IFC integration). Containerized
 agent execution via Podman (shared model server + per-agent sandboxes).
+
+### Recent (2026-05-07)
+
+- Tech watch: 5 articles (NVIDIA Vera Rubin, OpenAI PII filter,
+  skill-based agents, systematic prompting, Vercel DeepSec)
+- ROADMAP updated with tech watch items (11d, 1g, 8h, CI DeepSec)
 
 ### Recent (2026-05-06)
 
@@ -356,6 +362,42 @@ push-to-fork-only, PR-create-without-merge, etc.
 
 **Effort**: 1 day **Priority**: High **Depends on**: U2
 **Acceptance**: Config examples in DESIGN.md, integration tests.
+
+#### U6. GraphQL scope escape prevention
+
+GitHub's GraphQL API allows a single query to span multiple
+repositories, bypassing per-repo permission checks. The GitHub
+module must either restrict to REST API only, or parse the GraphQL
+AST (via `graphql-parser`) to extract repository arguments and
+validate each against allowed repos before forwarding.
+
+**Effort**: 1-2 days **Priority**: High **Depends on**: U2
+**Acceptance**: GraphQL query spanning two repos where only one is
+allowed is rejected. Unit tests for query extraction.
+
+#### U7. OPA policy sidecar (optional)
+
+Add optional Open Policy Agent integration for conditional
+policies (time-based access, multi-approval gates, environment
+restrictions). OPA runs as a sidecar, queried via localhost HTTP.
+OPA can only further restrict access — never grant beyond what
+TOML ACLs allow. Enables enterprises to bring existing policy
+bundles.
+
+**Effort**: 3-4 days **Priority**: Medium **Depends on**: U5
+**Acceptance**: OPA sidecar denying a tool call that ACLs would
+allow. Feature-gated, zero overhead when disabled.
+
+#### U8. Kubernetes-friendly config reload
+
+Watch config parent directory (not file) via inotify for atomic
+symlink replacement (Kubernetes ConfigMap pattern). 50ms debounce
+for temp-file-then-rename. Graceful degradation: invalid config
+keeps the previous valid state, logs the error.
+
+**Effort**: 1-2 days **Priority**: Medium-High
+**Acceptance**: ConfigMap-mounted scope file update takes effect
+within 1s without restart. Invalid TOML keeps old config.
 
 ---
 
