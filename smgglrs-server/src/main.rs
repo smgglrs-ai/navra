@@ -2346,8 +2346,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         builder = builder.tool(team_tools::team_bb_publish_def(), move |args, ctx| {
             let reg = Arc::clone(&reg);
             let agent_name = ctx.agent.name.clone();
+            let label = ctx.taint.level();
             Box::pin(async move {
-                team_tools::handle_team_bb_publish(args, reg, &agent_name).await
+                team_tools::handle_team_bb_publish(args, reg, &agent_name, label).await
             })
         });
 
