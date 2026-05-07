@@ -810,6 +810,12 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
 
         // --- Choose backend based on task ---
+        let device = model_cfg
+            .device
+            .as_deref()
+            .map(smgglrs_model::Device::parse)
+            .unwrap_or_default();
+
         let backend: Arc<dyn smgglrs_model::ModelBackend> = match model_cfg.task.as_str() {
             "embedding" => {
                 let dims = model_cfg.dimensions.unwrap_or(768);
@@ -818,7 +824,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     .tokenizer_path
                     .as_ref()
                     .map(|p| std::path::PathBuf::from(expand_tilde(p)));
-                match smgglrs_model::OnnxBackend::load(name, &resolved_path, tokenizer_path.as_deref(), task) {
+                match smgglrs_model::OnnxBackend::load(name, &resolved_path, tokenizer_path.as_deref(), task, device.clone()) {
                     Ok(model) => Arc::new(model),
                     Err(e) => {
                         tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
@@ -837,7 +843,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     .tokenizer_path
                     .as_ref()
                     .map(|p| std::path::PathBuf::from(expand_tilde(p)));
-                match smgglrs_model::OnnxBackend::load(name, &resolved_path, tokenizer_path.as_deref(), task) {
+                match smgglrs_model::OnnxBackend::load(name, &resolved_path, tokenizer_path.as_deref(), task, device.clone()) {
                     Ok(model) => Arc::new(model),
                     Err(e) => {
                         tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");

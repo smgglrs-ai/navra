@@ -19,6 +19,11 @@ pub struct ModelConfig {
     /// Model task: "embedding", "classification", "chat", or "generate".
     #[serde(default = "default_model_task")]
     pub task: String,
+    /// Execution device for ONNX models: "cpu", "cuda", "openvino",
+    /// "openvino:AUTO", "openvino:NPU", "openvino:GPU".
+    /// Defaults to "cpu" if not specified.
+    #[serde(default)]
+    pub device: Option<String>,
     /// Embedding dimensions (for embedding models).
     #[serde(default)]
     pub dimensions: Option<usize>,

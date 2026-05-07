@@ -12,12 +12,64 @@ use crate::{
 use std::path::Path;
 use std::sync::Mutex;
 
+/// Execution device for ONNX models.
+#[derive(Debug, Clone, Default)]
+pub enum Device {
+    /// CPU execution provider (default, always available).
+    #[default]
+    Cpu,
+    /// OpenVINO execution provider with a specific device target.
+    /// Falls back to CPU if OpenVINO is not available.
+    OpenVino(OpenVinoDevice),
+    /// CUDA execution provider for NVIDIA GPUs.
+    /// Falls back to CPU if CUDA is not available.
+    Cuda,
+}
+
+/// OpenVINO device target.
+#[derive(Debug, Clone)]
+pub enum OpenVinoDevice {
+    /// Automatic device selection (NPU > iGPU > CPU).
+    Auto,
+    /// Intel NPU (AI Boost).
+    Npu,
+    /// Intel iGPU (Arc).
+    Gpu,
+    /// Heterogeneous: split across multiple devices.
+    Hetero(String),
+}
+
+impl Device {
+    /// Parse a device string from config.
+    ///
+    /// Supported values: `"cpu"`, `"cuda"`, `"openvino"`, `"openvino:AUTO"`,
+    /// `"openvino:NPU"`, `"openvino:GPU"`, `"openvino:HETERO:NPU,GPU"`.
+    pub fn parse(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "cpu" => Device::Cpu,
+            "cuda" => Device::Cuda,
+            "openvino" | "openvino:auto" => Device::OpenVino(OpenVinoDevice::Auto),
+            "openvino:npu" => Device::OpenVino(OpenVinoDevice::Npu),
+            "openvino:gpu" => Device::OpenVino(OpenVinoDevice::Gpu),
+            other if other.starts_with("openvino:hetero:") => {
+                let spec = &s["openvino:hetero:".len()..];
+                Device::OpenVino(OpenVinoDevice::Hetero(spec.to_uppercase()))
+            }
+            _ => {
+                tracing::warn!(device = s, "Unknown device, falling back to CPU");
+                Device::Cpu
+            }
+        }
+    }
+}
+
 /// An ONNX model loaded into the runtime.
 pub struct OnnxBackend {
     session: Mutex<ort::session::Session>,
     tokenizer: Option<tokenizers::Tokenizer>,
     task: ModelTask,
     name: String,
+    device: Device,
 }
 
 /// What this model is used for — determines how outputs are interpreted.
@@ -46,12 +98,14 @@ impl OnnxBackend {
         model_path: &Path,
         tokenizer_path: Option<&Path>,
         task: ModelTask,
+        device: Device,
     ) -> Result<Self, ModelError> {
+        let eps = build_execution_providers(&device);
+        let ep_desc = describe_device(&device);
+
         let mut builder = ort::session::Session::builder()
             .map_err(|e| ModelError::Inference(format!("session builder error: {e}")))?
-            .with_execution_providers([
-                ort::execution_providers::CPUExecutionProvider::default().build(),
-            ])
+            .with_execution_providers(eps)
             .map_err(|e| ModelError::Inference(format!("execution provider error: {e}")))?;
 
         let session = builder.commit_from_file(model_path).map_err(|e| {
@@ -99,6 +153,7 @@ impl OnnxBackend {
         tracing::info!(
             model = name,
             path = %model_path.display(),
+            device = %ep_desc,
             inputs = session.inputs().len(),
             outputs = session.outputs().len(),
             has_tokenizer = tokenizer.is_some(),
@@ -110,6 +165,7 @@ impl OnnxBackend {
             tokenizer,
             task,
             name: name.to_string(),
+            device,
         })
     }
 
@@ -273,6 +329,60 @@ impl OnnxBackend {
     /// Returns whether this model has a proper tokenizer loaded.
     pub fn has_tokenizer(&self) -> bool {
         self.tokenizer.is_some()
+    }
+
+    /// Returns the execution device this model was loaded with.
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+}
+
+fn build_execution_providers(device: &Device) -> Vec<ort::ep::ExecutionProviderDispatch> {
+    match device {
+        Device::Cpu => vec![ort::ep::CPU::default().build()],
+        Device::OpenVino(ov_device) => {
+            let cache_dir =
+                std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| {
+                    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                    format!("{home}/.cache")
+                });
+            let ov_cache = format!("{cache_dir}/smgglrs/openvino");
+
+            let device_type = match ov_device {
+                OpenVinoDevice::Auto => "AUTO",
+                OpenVinoDevice::Npu => "NPU",
+                OpenVinoDevice::Gpu => "GPU",
+                OpenVinoDevice::Hetero(spec) => {
+                    // Leak is fine: these are created once at startup.
+                    Box::leak(format!("HETERO:{spec}").into_boxed_str())
+                }
+            };
+
+            vec![
+                ort::ep::OpenVINO::default()
+                    .with_device_type(device_type)
+                    .with_cache_dir(&ov_cache)
+                    .build(),
+                ort::ep::CPU::default().build(),
+            ]
+        }
+        Device::Cuda => {
+            vec![
+                ort::ep::CUDA::default().build(),
+                ort::ep::CPU::default().build(),
+            ]
+        }
+    }
+}
+
+fn describe_device(device: &Device) -> &'static str {
+    match device {
+        Device::Cpu => "CPU",
+        Device::OpenVino(OpenVinoDevice::Auto) => "OpenVINO:AUTO",
+        Device::OpenVino(OpenVinoDevice::Npu) => "OpenVINO:NPU",
+        Device::OpenVino(OpenVinoDevice::Gpu) => "OpenVINO:GPU",
+        Device::OpenVino(OpenVinoDevice::Hetero(_)) => "OpenVINO:HETERO",
+        Device::Cuda => "CUDA",
     }
 }
 
