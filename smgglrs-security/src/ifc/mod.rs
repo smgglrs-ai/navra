@@ -35,6 +35,23 @@ impl TaintTracker {
         self.current
     }
 
+    /// Declassify: step down the confidentiality level.
+    ///
+    /// This is the ONLY exception to IFC monotonicity. It must only
+    /// be called by trusted declassification authorities (e.g., the
+    /// PII filter pipeline after full redaction).
+    ///
+    /// The new level must be LOWER than the current level — stepping
+    /// UP via declassify is rejected (use absorb for that).
+    pub fn declassify(&mut self, new_confidentiality: Confidentiality) -> bool {
+        if new_confidentiality < self.current.confidentiality {
+            self.current.confidentiality = new_confidentiality;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Is the session tainted with untrusted data?
     pub fn is_untrusted(&self) -> bool {
         self.current.integrity == Integrity::Untrusted
@@ -74,6 +91,44 @@ impl TaintedWritePolicy {
             "approve" => Self::Approve,
             "deny" => Self::Deny,
             _ => Self::Allow,
+        }
+    }
+}
+
+/// Read clearance for a permission set (Simple Security Property).
+///
+/// Defines the maximum confidentiality level an agent can read.
+/// Data classified above this level is blocked after the safety
+/// pipeline labels it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadClearance {
+    pub level: Confidentiality,
+    pub policy: TaintedWritePolicy,
+}
+
+impl ReadClearance {
+    pub fn new(level: Confidentiality, policy: TaintedWritePolicy) -> Self {
+        Self { level, policy }
+    }
+
+    /// Default: Secret clearance, Allow policy (backward compatible).
+    pub fn permissive() -> Self {
+        Self {
+            level: Confidentiality::Secret,
+            policy: TaintedWritePolicy::Allow,
+        }
+    }
+
+    pub fn from_config(level: &str, policy: &str) -> Self {
+        let l = match level {
+            "public" => Confidentiality::Public,
+            "sensitive" => Confidentiality::Sensitive,
+            "pii" => Confidentiality::Pii,
+            _ => Confidentiality::Secret,
+        };
+        Self {
+            level: l,
+            policy: TaintedWritePolicy::from_str(policy),
         }
     }
 }
@@ -280,5 +335,61 @@ mod tests {
         let patterns = vec!["/home/user/Code/**".to_string()];
         assert!(is_trusted_path("/home/user/Code/project/../other/file.rs", &patterns));
         // After normalization: /home/user/Code/other/file.rs — still matches
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn taint_never_decreases() {
+        let mut tracker = TaintTracker::new();
+        let label: DataLabel = kani::any();
+        let before = tracker.level();
+        tracker.absorb(label);
+        let after = tracker.level();
+        assert!(after.integrity >= before.integrity);
+        assert!(after.confidentiality >= before.confidentiality);
+    }
+
+    #[kani::proof]
+    fn taint_monotonic_over_sequence() {
+        let mut tracker = TaintTracker::new();
+        let l1: DataLabel = kani::any();
+        let l2: DataLabel = kani::any();
+        let l3: DataLabel = kani::any();
+
+        tracker.absorb(l1);
+        let after1 = tracker.level();
+        tracker.absorb(l2);
+        let after2 = tracker.level();
+        tracker.absorb(l3);
+        let after3 = tracker.level();
+
+        assert!(after2.integrity >= after1.integrity);
+        assert!(after2.confidentiality >= after1.confidentiality);
+        assert!(after3.integrity >= after2.integrity);
+        assert!(after3.confidentiality >= after2.confidentiality);
+    }
+
+    #[kani::proof]
+    fn pii_implies_sensitive() {
+        let mut tracker = TaintTracker::new();
+        let label: DataLabel = kani::any();
+        tracker.absorb(label);
+        if tracker.is_pii() {
+            assert!(tracker.is_sensitive());
+        }
+    }
+
+    #[kani::proof]
+    fn absorb_is_join() {
+        let mut tracker = TaintTracker::new();
+        let l1: DataLabel = kani::any();
+        let l2: DataLabel = kani::any();
+        tracker.absorb(l1);
+        tracker.absorb(l2);
+        assert_eq!(tracker.level(), l1.join(l2));
     }
 }

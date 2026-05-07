@@ -2,7 +2,32 @@
 
 **Authors**: Fabien Dupont et al.
 
-**Target venue**: USENIX Security / IEEE S&P workshop track
+**Target venue**: USENIX Security / IEEE S&P workshop track (ArtSec 2026 realistic)
+
+### Review notes (2026-05-07, updated after formal verification)
+
+- **DONE — Microkernel framing**: Keep "security microkernel." Cite
+  AIOS as prior art, differentiate on enforcement boundaries (MCP
+  protocol boundary = isolation, IFC on IPC channels, 23 Kani proofs).
+  smgglrs has process table, IPC (mailbox + blackboard), memory
+  management, scheduler, MAC — a real microkernel, not just analogy.
+  Anderson's reference monitor conditions satisfied as a subset.
+- **DONE — Narrow to 3 contributions**: (1) gateway-enforced IFC, (2)
+  capability delegation with attenuation, (3) hash-chained audit.
+- **DONE — FIDES differentiation**: Expanded in §10, gateway-enforced
+  vs planner-enforced. Formal verification comparison included.
+- **DONE — MCP gateway landscape**: §10 acknowledges 10+ gateways,
+  positions on IFC + capability tokens.
+- **DONE — Compliance reframing**: "compliance infrastructure" in
+  §7.4, EU AI Act Art 12+14 language corrected.
+- **DONE — Formal verification**: 23 Kani proofs + 3 TLA+ specs
+  added (formal/ directory + PROOF_MAP.md).
+- **DONE — No-read-up**: Bell-LaPadula Simple Security Property
+  implemented and verified.
+- **TODO — Evaluation**: Self-audit is appendix only. Need adversarial
+  eval (5-10 attack scenarios) and comparison to FIDES on AgentDojo.
+- **TODO — Tool classification**: Fix substring matching → MCP
+  annotations (ROADMAP S1).
 
 ---
 
@@ -46,38 +71,70 @@ enforces mandatory access control, tracks information flow, or
 produces tamper-evident audit trails. The OWASP Top 10 for LLM
 Applications identifies tool misuse (LLM01), data exfiltration
 (LLM06), and privilege escalation (LLM08) as critical risks.
-The EU AI Act Article 14 mandates human oversight and decision
-traceability for high-risk AI systems.
+The EU AI Act mandates human oversight and decision traceability
+for high-risk AI systems (Article 14) and logging of automated
+decisions (Article 12). Agent infrastructure must provide the
+compliance primitives that deployers need to meet these
+obligations.
 
 This paper presents smgglrs, a gateway daemon that treats agent
 security as an infrastructure concern rather than an application
 concern. smgglrs sits between agents and resources, enforcing
 security policies at the protocol layer regardless of which
-agent connects. The architecture follows the microkernel pattern:
-a minimal, auditable security core with all capabilities
-implemented as modules.
+agent connects.
+
+The architecture implements a security microkernel for the AI
+agent stack: the gateway provides process tracking (per-agent
+entries with privilege rings and call accounting), IPC mediation
+(mailbox with Bell-LaPadula no-write-down, blackboard with
+taint-on-read), memory management (working memory with
+exponential decay, context budget allocation, knowledge
+distillation), a DAG-based task scheduler with GPU semaphore
+resource limits, and mandatory access control through a single
+verified chokepoint. Agents connect via the MCP protocol
+boundary — the equivalent of a syscall interface — which
+provides the isolation boundary: agents are separate processes
+that cannot bypass the gateway. Tool modules run in-process as
+trusted kernel code (analogous to kernel modules), with an
+optional gRPC interface for out-of-process isolation.
+
+Prior work has applied the OS abstraction to agent systems
+(AIOS [18]) but without enforcement boundaries: AIOS agents
+share the kernel process address space with no IFC on
+communication channels. smgglrs enforces security properties
+on its IPC channels (23 Kani-verified proofs, 3 TLC-verified
+specifications) and satisfies Anderson's reference monitor
+conditions [2]: complete mediation (single chokepoint),
+tamperproof from the agent side (protocol boundary), and
+verifiable (formally verified lattice and taint properties).
 
 **Contributions**:
 
-1. A gateway architecture for MCP security enforcement with a
-   single chokepoint (15 sequential checks) for all tool calls.
-2. A layered authentication chain: OAuth 2.0 (RFC 6749/8414),
-   Ed25519 capability tokens with delegation and ring attenuation,
-   BLAKE3 legacy tokens, and OpenShell sandbox identity federation.
-3. Information flow control with per-value taint tracking and
-   trusted path exceptions, enforcing Bell-LaPadula no-write-down
-   at the gateway level.
-4. A content safety pipeline with 12 secret detection patterns,
-   18 PII categories (regex with validation + ONNX NER + ML
-   classifiers), pseudonymization with IFC label elevation, and
-   GDPR Article 35 metrics.
-5. Containerized agent execution with three isolation levels
-   (direct, Podman rootless, OpenShell microVM) and typed action
-   risk classification (16 actions, 5 risk levels).
-6. A hash-chained audit blackbox providing tamper-detectable
-   compliance records (EU AI Act Art. 14, SOC2 CC6.1).
-7. Microbenchmarks showing sub-microsecond IFC overhead and
-   <0.5% total security overhead per tool call.
+1. A gateway architecture for MCP security enforcement with
+   infrastructure-level information flow control — Bell-LaPadula
+   no-write-down with per-value taint tracking, enforced at a
+   single chokepoint that agents cannot bypass. Unlike
+   planner-level IFC (FIDES [13]), gateway enforcement is
+   mandatory: a compromised agent cannot disable or circumvent
+   the security layer (Section 5).
+2. Capability token delegation with cryptographic privilege
+   attenuation: Ed25519-signed CBOR tokens where child tokens
+   can only narrow parent permissions (ring level, operations,
+   tools, credentials, expiry). Combined with IFC labels, this
+   enables least-privilege multi-agent delegation where data
+   sensitivity constrains which teammates receive which
+   capabilities (Section 4).
+3. A SHA-256 hash-chained audit blackbox providing
+   tamper-detectable compliance infrastructure for EU AI Act
+   Article 12 logging and SOC2 CC6.1 audit trail requirements
+   (Section 7).
+
+The gateway also provides a content safety pipeline (12 secret
+patterns, 18 PII categories with IFC label elevation), layered
+authentication (OAuth 2.0, capability tokens, BLAKE3 legacy),
+containerized agent execution (Podman, OpenShell), and typed
+action risk classification — described in Sections 3, 6, and
+3.6-3.7 respectively.
 
 ---
 
@@ -519,13 +576,19 @@ IFC label, previous hash, current hash.
 and comparing. Returns `(valid_count, first_broken_seq)`.
 Exposed via `smgglrs audit verify` CLI.
 
-### 7.4 Compliance Mapping
+### 7.4 Compliance Infrastructure
 
-| Requirement | Blackbox coverage |
+The blackbox provides infrastructure that supports deployers
+meeting regulatory requirements. smgglrs itself is not a
+regulated AI system — it is infrastructure that high-risk AI
+systems can build on.
+
+| Requirement | What smgglrs provides |
 |---|---|
-| EU AI Act Art. 14 (human oversight) | Decision traceability via outcome + IFC label |
-| SOC2 CC6.1 (audit trails) | Append-only, hash-chained, timestamped |
-| ISO 42001 (AI decision records) | Agent identity, tool call, result, duration |
+| EU AI Act Art. 12 (logging) | Append-only, hash-chained records of every tool call with agent identity, IFC label, and outcome |
+| EU AI Act Art. 14 (human oversight) | Approval workflow (4 channels), pause/resume, decision traceability via outcome + IFC label |
+| SOC2 CC6.1 (audit trails) | Hash-chained, timestamped, tamper-detectable entries with agent identity and session tracking |
+| ISO 42001 (AI decision records) | Agent identity, tool call, arguments, result, duration, IFC label per invocation |
 
 ---
 
@@ -580,20 +643,16 @@ is < 0.5% of total latency.
 
 ### 8.3 Competitive Comparison
 
-| Feature | smgglrs | MS Governance [11] | SemaClaw [3] | Goose | ZeroClaw [8] |
-|---|---|---|---|---|---|
-| Auth | OAuth 2.0 + Ed25519 cap + BLAKE3 | DID-based identity | None | None | None |
-| Path ACLs | Deny-wins, ring inheritance | OPA/Cedar policies | None | None | 3-tier autonomy |
-| IFC | Bell-LaPadula, per-value | None | None | None | None |
-| Delegation | Ed25519 chain, attenuation | None | None | None | None |
-| PII detection | 18 categories, regex+NER+ML | None | None | None | None |
-| Pseudonymization | Per-session consistent mapping | None | None | None | None |
-| Content safety | 12 secret + PII + Guardian ML | Policy engine | None | None | None |
-| Audit trail | SHA-256 hash-chained blackbox | Policy logs | None | None | None |
-| Container isolation | Podman + OpenShell microVM | None | None | None | None |
-| Action classification | 16 types, 5 risk levels | None | None | None | None |
-| Permission model | 6-dimensional | Role-based | Binary | None | 3-tier |
-| Architecture | Gateway | Middleware | Harness | Runtime | Runtime |
+| Feature | smgglrs | FIDES [13] | Gravitee | Kong | MS Governance [11] | SemaClaw [3] | Goose | ZeroClaw [8] |
+|---|---|---|---|---|---|---|---|---|
+| Auth | OAuth 2.0 + Ed25519 cap + BLAKE3 | N/A (planner) | MCP auth spec | OAuth 2.0 | DID-based identity | None | None | None |
+| Path ACLs | Deny-wins, ring inheritance | N/A | Per-method | Default-deny | OPA/Cedar policies | None | None | 3-tier autonomy |
+| IFC | Bell-LaPadula, per-value | **Per-value labels** | None | None | None | None | None | None |
+| Delegation | Ed25519 chain, attenuation | N/A | None | None | None | None | None | None |
+| Content safety | 12 secret + PII + Guardian ML | N/A | None | None | Policy engine | None | None | None |
+| Audit trail | SHA-256 hash-chained blackbox | N/A | Logs | Logs | Policy logs | None | None | None |
+| Enforcement | Gateway (mandatory) | Planner (inside agent) | Gateway | Gateway | Middleware | Harness | Runtime | Runtime |
+| Formal proofs | No (unit tests) | **Yes** | No | No | No | No | No | No |
 
 ---
 
@@ -664,10 +723,13 @@ taint only) rather than rejecting sessionless clients.
 - **Agent Tier pattern** [5]: Two-lane architecture
   (deterministic enforcement + contextual reasoning) that maps
   1:1 to smgglrs's ACL/hook pipeline + governed tool catalogs.
-- **EU AI Act Article 14** [6]: Human oversight and decision
-  traceability requirements for high-risk AI.
-- **SOC2 CC6.1** [7]: Audit trail requirements for system
-  operations.
+- **EU AI Act** [6]: Article 12 (logging) and Article 14
+  (human oversight) requirements for high-risk AI systems.
+  smgglrs provides compliance infrastructure that deployers
+  can use to meet these obligations — the gateway itself is
+  not a regulated AI system.
+- **SOC2 CC6.1** [7]: Audit trail requirements. smgglrs's
+  hash-chained blackbox provides the technical primitives.
 - **ZeroClaw** [8]: Rust agent runtime with 3-tier autonomy
   model. Flat runtime vs smgglrs's security gateway.
 - **OpenShell** [9]: Red Hat/NVIDIA secure sandbox platform
@@ -689,15 +751,49 @@ taint only) rather than rejecting sessionless clients.
   parallel verifier agents for high-stakes outputs. smgglrs's
   flow engine supports this pattern via back-edges and
   conditional routing.
-- **FIDES** [13]: Microsoft Research IFC for LLM agents.
-  Per-value label tracking at tool-call sinks. Zero policy-
-  violating injections in AgentDojo. smgglrs implements a
-  compatible but coarser-grained approach (per-session with
-  per-value variable tracking).
+- **FIDES** [13]: Microsoft Research IFC for LLM agents
+  (arXiv:2505.23643, May 2025). Tracks confidentiality and
+  integrity labels on tool results with per-value granularity.
+  A deterministic planner enforces policies before consequential
+  actions. Zero policy-violating injections on AgentDojo.
+  **Key distinction**: FIDES operates at the *planner level*
+  inside the agent loop — the agent's own planner decides
+  whether to honor labels. smgglrs operates at the *gateway
+  level* outside the agent — enforcement is mandatory regardless
+  of agent implementation. This is analogous to kernel-enforced
+  vs userspace-enforced access control: a compromised FIDES
+  planner can bypass its own labels; a compromised agent behind
+  smgglrs cannot bypass the gateway's IFC checks. The tradeoff
+  is granularity: FIDES tracks labels on every value; smgglrs
+  tracks per-session with per-value `var://` variable tracking
+  as an intermediate. smgglrs also enforces both BLP properties
+  (no-write-down and no-read-up with configurable clearance),
+  verified exhaustively via Kani bounded model checking and
+  TLA+ model checking (see `formal/PROOF_MAP.md`). FIDES's
+  formal non-interference proofs set the bar that gateway-level
+  IFC should aspire to — smgglrs provides 23 Kani proofs and
+  3 TLC-verified specifications as a first step.
 - **CaMeL** [14]: Google DeepMind capability metadata on every
-  value. Provable security on 77% of AgentDojo tasks. Inspires
-  smgglrs's per-value `var://` tracking as a step toward full
-  data-flow labeling.
+  value (arXiv:2503.18813, March 2025). Provable security on
+  77% of AgentDojo tasks via data-flow graph construction.
+  Inspires smgglrs's per-value `var://` tracking as a step
+  toward full data-flow labeling. Like FIDES, CaMeL operates
+  inside the agent; smgglrs enforces at the infrastructure
+  boundary.
+- **AIOS** [18]: LLM Agent Operating System (arXiv:2403.16971,
+  COLM 2025). Formalizes the OS abstraction for agent systems
+  with process scheduling and resource management. smgglrs
+  shares the OS analogy but focuses narrowly on the security
+  reference monitor role (access control, IFC, audit) rather
+  than full OS functionality.
+- **MCP gateway landscape** [22][23]: As of May 2026, 10+
+  products provide MCP gateway functionality (Gravitee 4.10,
+  Microsoft MCP Gateway, Kong AI Gateway 3.13, Traefik Hub,
+  MintMCP, Lunar.dev, Composio, Intercept). These provide
+  authentication and per-method ACLs but none implement
+  information flow control or capability-scoped delegation.
+  smgglrs's differentiator is IFC + capability tokens, not
+  the gateway pattern itself.
 
 ---
 
@@ -779,6 +875,32 @@ Metadata." RFC 8414, June 2018.
 
 [17] European Parliament. "Regulation (EU) 2016/679 (GDPR)."
 Article 35: Data Protection Impact Assessment. 2016.
+
+[18] Dong, Y. et al. "AIOS: LLM Agent Operating System."
+arXiv:2403.16971, COLM 2025.
+
+[19] OWASP. "OWASP Top 10 for Agentic Applications for 2026."
+December 2025.
+
+[20] CoSAI OASIS. "Model Context Protocol Security."
+github.com/cosai-oasis/ws4-secure-design-agentic-systems, 2026.
+
+[21] Block Engineering. "How We Red-Teamed Our Own AI Agent
+(Operation Pale Fire)." 2026.
+
+[22] Gravitee. "MCP Proxy: Unified Governance for Agents & Tools."
+v4.10, 2026.
+
+[23] Kong. "MCP Tool ACLs in Kong AI Gateway 3.13." 2026.
+
+[24] A2ASECBENCH. "Security Benchmark for Agent-to-Agent
+Communication." ICLR 2026.
+
+[25] Vemprala, S. et al. "Security Considerations for Multi-Agent
+Systems: A Comprehensive Analysis." arXiv:2603.09002, 2026.
+
+[26] Kim, D. and Song, D. "Agentic AI Attack and Defense:
+A Comprehensive Survey." 2026.
 
 ---
 

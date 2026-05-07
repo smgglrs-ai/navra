@@ -1,5 +1,22 @@
 # Persona-Driven Multi-Agent Orchestration: A General-Purpose Cognitive Framework for AI Agent Teams
 
+### Review notes (2026-05-07)
+
+- **Consider folding into Paper 1** as the persona-driven security
+  policy mechanism. Standalone space is crowded (PersonaVLM CVPR 2026
+  Highlight, MTL, SemaClaw, MorphAgent all overlap).
+- **If standalone**: Must evaluate on 3-5 external OSS projects, not
+  own codebase. Need ablation: does persona selection actually matter
+  vs naive prompts on identical models?
+- **Missing related work**: MorphAgent (arXiv:2410.15048, self-evolving
+  profiles), c-CRAB (arXiv:2603.23448, code review benchmark), FadeMem
+  (arXiv:2601.18642, differential memory decay), Mem0 (graph+vector+KV
+  hybrid memory), FIDES (arXiv:2505.23643, IFC enforcement layer).
+- **Memory decay**: Flat rate is behind state of the art. FadeMem and
+  YourMemory use importance-modulated rates.
+- **HyDE channel**: Listed as feature but is a stub returning empty.
+  Fix or remove from claims.
+
 ## Abstract (~200 words)
 
 Multi-agent AI systems typically treat agents as interchangeable
@@ -643,3 +660,11 @@ budget approach provides a reference implementation.
 - Ollama API, https://github.com/ollama/ollama/blob/main/docs/api.md
 - Hermes Agent Reasoning Traces,
   https://huggingface.co/datasets/lambda/hermes-agent-reasoning-traces
+- MorphAgent, arXiv 2410.15048, "Self-Evolving Multi-Agent Collaboration
+  Networks," Lu et al., 2024.
+- c-CRAB, arXiv 2603.23448, "Code Review Agent Benchmark," 2026.
+- FadeMem, arXiv 2601.18642, "Differential Memory Decay for Agents,"
+  Alibaba, 2026.
+- Mem0, "Graph + Vector + KV Hybrid Memory," 2026.
+- FIDES, arXiv 2505.23643, "Securing AI Agents with Information-Flow
+  Control," Microsoft Research, 2025.

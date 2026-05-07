@@ -1759,6 +1759,77 @@ Collected from Code Health, self-review findings, and DESIGN.md:
 | Prometheus metrics | Request latency, token throughput, error rate |
 | Structured tracing | JSON-format log output for log aggregation |
 
+### Phase 13: Peer review readiness (2026-05-07 review)
+
+Findings from a comprehensive academic review (5 specialized research
+agents covering MCP security landscape, orchestration, memory/RAG,
+privacy/compliance, and paper positioning). The landscape moved faster
+than the documentation reflects — several claims that were novel in
+late 2025 are now contested.
+
+**Genuine differentiators** (confirmed unique after review):
+1. Gateway-enforced IFC (vs FIDES planner-enforced)
+2. IFC-gated inter-agent messaging (no orchestration framework does this)
+3. PII cascade into vector embeddings with IFC taint elevation
+4. Capability tokens + IFC + ring enforcement in single gateway
+
+#### 13a. Critical (blocks paper submission)
+
+| ID | Issue | Detail | Effort |
+|----|-------|--------|--------|
+| C1 | **FIDES differentiation** | Microsoft Research arXiv:2505.23643 (May 2025) does IFC for agents with formal proofs. Must expand from 1 sentence to full paragraph: gateway-enforced (smgglrs) vs planner-enforced (FIDES). Failure to cite prominently = fatal at security venues. | 0.5 day |
+| C2 | **10+ competing MCP gateways** | Gravitee 4.10, Microsoft MCP Gateway, Traefik Hub, Kong 3.13, MintMCP (SOC2 Type II), Lunar.dev, Composio, Intercept, systemprompt-template. "No existing gateway provides security" is false as of May 2026. Position on IFC/capability tokens, not on being a gateway. | 0.5 day |
+| C3 | **External evaluation** | Self-evaluation on own codebase is circular. Run on c-CRAB benchmark (code review), 5+ OSS projects, 3+ trials with statistical significance. Primary eval must be external; self-review becomes appendix case study. | 3-5 days |
+| C4 | **Compliance framing** | EU AI Act Article 14 applies to high-risk AI systems (Annex III), not infrastructure gateways. Reframe all claims: "compliance infrastructure" not "compliance." SOC2/ISO 42001 similarly. | 0.5 day |
+| C5 | **Microkernel analogy** | AIOS (COLM 2025, arXiv:2403.16971) and Agent-OS (2025) already use "microkernel" for agents. Either cite and differentiate, or switch to "security reference monitor" (more precise, less contested). | 0.5 day |
+| C6 | **Paper 1 scope** | 8 contributions screams "systems paper disguised as security." Narrow to 3: gateway-enforced IFC, capability delegation with attenuation, hash-chained audit. Drop PII (table stakes), containers, typed actions, OAuth (a standard). | 1 day |
+
+#### 13b. Significant (weakens credibility)
+
+| ID | Issue | Detail | Effort |
+|----|-------|--------|--------|
+| S1 | Tool classification | `is_write_tool` uses substring matching ("write", "commit"). Use MCP tool annotations (`destructiveHint`, `readOnlyHint`) instead. | 1 day |
+| S2 | Formal security invariants | FIDES has formal proofs. Add at least informal security invariants for IFC properties. | 1-2 days |
+| S3 | HyDE stub | Listed as feature in 6-channel retrieval. Code returns empty. Either implement or remove from claims. | 1 day |
+| S4 | Memory decay rate | Flat 0.001 for all entries. FadeMem (arXiv:2601.18642) and YourMemory use importance-modulated rates. Minimal code change. | 0.5 day |
+| S5 | Sentence splitting | `split_at_sentences` falls back to fixed-interval (acknowledged in comment). Use tree-sitter for code-heavy workloads. | 1 day |
+| S6 | EU identifier gap | Claims SIRET/passport regex but code only has IBAN/NIR. NER covers some via sfermion labels. Fix docs or add patterns. | 0.5 day |
+| S7 | PII benchmarks | No F1/precision/recall on any standard benchmark. OpenAI Privacy Filter achieves F1 0.96-0.97. Run on a PII benchmark. | 1-2 days |
+| S8 | Token revocation | Capability tokens have expiry/nonces but no revocation. DRS and Grantex emphasize this. | 1 day |
+| S9 | Statistical significance | 3.5x efficiency from N=1 run. Need 3+ projects, 3+ runs each, confidence intervals. | 2-3 days |
+| S10 | Pseudonym key separation | PseudonymMap reversal key in same process memory. GDPR Article 32 expects separate security domain. | 1 day |
+
+#### 13c. Missing related work (consolidated)
+
+| Reference | Paper | Priority |
+|-----------|-------|----------|
+| FIDES (arXiv:2505.23643, Microsoft Research) | 1, 2 | **Must cite** |
+| AIOS (arXiv:2403.16971, COLM 2025) | 1 | **Must cite** |
+| Agent-OS (2025, zero-trust microkernel) | 1 | **Must cite** |
+| Gravitee / Kong / Traefik MCP gateways | 1 | **Must cite** |
+| OWASP Top 10 for Agentic Applications 2026 | 1 | **Must cite** |
+| CoSAI OASIS MCP Security document | 1 | **Must cite** |
+| Block "Operation Pale Fire" red team | 1 | Should cite |
+| A2ASECBENCH (ICLR 2026) | 1 | Should cite |
+| 193-threat taxonomy (arXiv:2603.09002) | 1 | Should cite |
+| Open Challenges MAS Security (arXiv:2505.02077) | 1 | Should cite |
+| c-CRAB benchmark (arXiv:2603.23448) | 3 | **Must cite** |
+| CodeAgent (EMNLP 2024) | 3 | **Must cite** |
+| Code Broker (arXiv:2604.23088) | 3 | **Must cite** |
+| MorphAgent (arXiv:2410.15048) | 2 | Should cite |
+| Graph Harness (arXiv:2604.11378) | 2, 3 | Should cite |
+| FadeMem (arXiv:2601.18642) | 2 | Should cite |
+| Mem0 (graph + vector + KV hybrid memory) | 2 | Should cite |
+
+#### 13d. Paper restructuring decisions
+
+| Decision | Recommendation | Status |
+|----------|---------------|--------|
+| Paper 2 standalone vs fold into Paper 1 | Fold cognitive core into Paper 1 as persona-driven security policy. Paper 2's space (PersonaVLM, MTL, SemaClaw) is too crowded without external eval. | Decide |
+| Paper 3 contributions | Drop JSON parsing resilience and flow resumability as contributions. Keep dynamic persona selection. Add c-CRAB evaluation. | Decide |
+| Paper 1 venue | IEEE S&P workshop (ArtSec 2026) realistic. USENIX Security main requires adversarial eval + formal properties. | Decide |
+| Paper 3 venue | SCORED (supply chain security) or ISSTA/ASE workshop. | Decide |
+
 ---
 
 ## Crate dependency diagram (planned)
