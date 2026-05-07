@@ -4,6 +4,22 @@
 
 **Target venue**: ISSTA / ASE workshop, or SCORED
 
+### Review notes (2026-05-07)
+
+- **Most actionable path to publication** of the three papers.
+- **Run on c-CRAB benchmark** (arXiv:2603.23448) — the standard code
+  review agent benchmark. Also run on 5+ external OSS projects across
+  3+ languages. Self-review becomes appendix case study only.
+- **Compare against baselines**: CodeAgent (EMNLP 2024), Code Broker
+  (arXiv:2604.23088, five-agent hierarchy, April 2026).
+- **Drop contributions 3 and 4**: JSON parsing resilience and flow
+  resumability are engineering, not research contributions. Keep
+  dynamic persona selection as the core idea.
+- **"Domain-agnostic" is a strong claim**: Prove on at least 3
+  different domains/languages, not just one Rust codebase.
+- **3.5x claim needs statistics**: 3+ projects, 3+ runs, confidence
+  intervals. N=1 won't survive review.
+
 ---
 
 ## Abstract
@@ -539,3 +555,10 @@ personas — the flow infrastructure remains unchanged.
   2026.
 - OWASP, "OWASP Top 10 for Agentic Applications for 2026,"
   December 2025.
+- c-CRAB, arXiv 2603.23448, "Code Review Agent Benchmark," 2026.
+- CodeAgent, arXiv 2402.02172, "CodeAgent: Enhancing Code Generation
+  with Tool-Integrated Agent," EMNLP 2024.
+- Code Broker, arXiv 2604.23088, "Code Broker: A Multi-Agent
+  Hierarchical Code Review Framework," April 2026.
+- Graph Harness, arXiv 2604.11378, "Scheduler-Theoretic Framework
+  for LLM Agent Workflows," 2026.

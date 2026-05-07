@@ -156,6 +156,25 @@ pub fn resolve_capabilities(payload: &CapabilityPayload) -> ResolvedCapabilities
     }
 }
 
+/// Core delegation attenuation checks (pure, no anyhow).
+///
+/// Returns Ok(()) if child is a valid attenuation of parent.
+/// Used by Kani proofs and by validate_delegation.
+pub fn check_attenuation(
+    parent_ring: u8,
+    child_ring: u8,
+    parent_exp: u64,
+    child_exp: u64,
+) -> Result<(), &'static str> {
+    if child_ring < parent_ring {
+        return Err("ring escalation");
+    }
+    if child_exp > parent_exp {
+        return Err("expiry extension");
+    }
+    Ok(())
+}
+
 /// Validate that a delegated token's capabilities are a subset of the parent's.
 pub fn validate_delegation(
     parent: &CapabilityPayload,
@@ -168,19 +187,10 @@ pub fn validate_delegation(
         _ => anyhow::bail!("child token does not reference parent nonce"),
     }
 
-    // Ring attenuation: child must be same or less privileged
-    if child.ring < parent.ring {
-        anyhow::bail!(
-            "ring escalation: child ring {} < parent ring {}",
-            child.ring,
-            parent.ring
-        );
-    }
-
-    // Expiry attenuation: child cannot outlive parent
-    if child.exp > parent.exp {
-        anyhow::bail!("child expiry exceeds parent expiry");
-    }
+    // Ring and expiry attenuation
+    check_attenuation(parent.ring, child.ring, parent.exp, child.exp)
+        .map_err(|e| anyhow::anyhow!("{}: child ring={} exp={}, parent ring={} exp={}",
+            e, child.ring, child.exp, parent.ring, parent.exp))?;
 
     // Operations subset
     let parent_ops: HashSet<&str> = parent.cap.operations.iter().map(|s| s.as_str()).collect();
@@ -827,5 +837,75 @@ mod tests {
 
         // Paths are inherited from parent
         assert_eq!(child.cap.paths, parent.cap.paths);
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn ring_escalation_rejected() {
+        let parent_ring: u8 = kani::any();
+        let child_ring: u8 = kani::any();
+        kani::assume(parent_ring <= 3);
+        kani::assume(child_ring <= 3);
+        let result = check_attenuation(parent_ring, child_ring, 1000, 1000);
+        if child_ring < parent_ring {
+            assert!(result.is_err());
+        }
+    }
+
+    #[kani::proof]
+    fn valid_ring_accepted() {
+        let parent_ring: u8 = kani::any();
+        let child_ring: u8 = kani::any();
+        kani::assume(parent_ring <= 3);
+        kani::assume(child_ring <= 3);
+        kani::assume(child_ring >= parent_ring);
+        let result = check_attenuation(parent_ring, child_ring, 1000, 1000);
+        assert!(result.is_ok());
+    }
+
+    #[kani::proof]
+    fn expiry_extension_rejected() {
+        let parent_exp: u64 = kani::any();
+        let child_exp: u64 = kani::any();
+        kani::assume(parent_exp <= 10000);
+        kani::assume(child_exp <= 10000);
+        let result = check_attenuation(0, 0, parent_exp, child_exp);
+        if child_exp > parent_exp {
+            assert!(result.is_err());
+        }
+    }
+
+    #[kani::proof]
+    fn valid_expiry_accepted() {
+        let parent_exp: u64 = kani::any();
+        let child_exp: u64 = kani::any();
+        kani::assume(parent_exp <= 10000);
+        kani::assume(child_exp <= 10000);
+        kani::assume(child_exp <= parent_exp);
+        let result = check_attenuation(0, 0, parent_exp, child_exp);
+        assert!(result.is_ok());
+    }
+
+    #[kani::proof]
+    fn transitive_attenuation() {
+        let r0: u8 = kani::any();
+        let r1: u8 = kani::any();
+        let r2: u8 = kani::any();
+        kani::assume(r0 <= 3 && r1 <= 3 && r2 <= 3);
+        let e0: u64 = kani::any();
+        let e1: u64 = kani::any();
+        let e2: u64 = kani::any();
+        kani::assume(e0 <= 1000 && e1 <= 1000 && e2 <= 1000);
+
+        let parent_to_child = check_attenuation(r0, r1, e0, e1);
+        let child_to_grandchild = check_attenuation(r1, r2, e1, e2);
+
+        if parent_to_child.is_ok() && child_to_grandchild.is_ok() {
+            assert!(check_attenuation(r0, r2, e0, e2).is_ok());
+        }
     }
 }

@@ -97,6 +97,76 @@ pub enum FilterAction {
     Block,
 }
 
+/// Result of a declassification decision after PII filtering.
+///
+/// When the filter pipeline redacts all PII findings, it can recommend
+/// stepping down the confidentiality label. This is an explicit,
+/// audited declassification — the only exception to IFC monotonicity.
+#[derive(Debug, Clone)]
+pub struct Declassification {
+    /// Recommended new confidentiality level (None = no change).
+    pub new_confidentiality: Option<smgglrs_protocol::label::Confidentiality>,
+    /// Filter action that was applied.
+    pub action: FilterAction,
+    /// Number of PII findings detected.
+    pub findings_count: usize,
+    /// Whether ALL findings were successfully redacted/handled.
+    pub all_handled: bool,
+    /// Human-readable reason for the declassification decision.
+    pub reason: String,
+}
+
+impl Declassification {
+    /// Determine declassification after PII filtering.
+    ///
+    /// | Action       | Step-down to     | Reason                                        |
+    /// |-------------|-----------------|-----------------------------------------------|
+    /// | Redact      | Sensitive        | Markers reveal PII existed, actual data gone   |
+    /// | Pseudonymize| Pii (no change)  | Still personal data under GDPR Art. 4(5)       |
+    /// | Block       | N/A              | No result returned                            |
+    /// | Pass        | Pii (no change)  | Raw PII still present                         |
+    pub fn from_filter_result(action: &FilterAction, findings_count: usize, all_handled: bool) -> Self {
+        use smgglrs_protocol::label::Confidentiality;
+
+        let (new_conf, reason) = match action {
+            FilterAction::Redact if findings_count > 0 && all_handled => (
+                Some(Confidentiality::Sensitive),
+                format!("Full redaction: {findings_count} PII findings replaced with [REDACTED] markers. \
+                         Structural metadata retained (markers reveal PII existed). \
+                         Declassified Pii → Sensitive."),
+            ),
+            FilterAction::Redact if findings_count > 0 && !all_handled => (
+                None,
+                format!("Partial redaction: not all {findings_count} findings were handled. \
+                         Declassification denied — raw PII may remain."),
+            ),
+            FilterAction::Pseudonymize => (
+                None,
+                format!("Pseudonymization: {findings_count} findings replaced with pseudonyms. \
+                         No declassification — pseudonymized data is still personal data \
+                         under GDPR Article 4(5) (reversible with key)."),
+            ),
+            FilterAction::Pass => (
+                None,
+                "No filtering applied. Label unchanged.".to_string(),
+            ),
+            FilterAction::Block => (
+                None,
+                "Content blocked. No declassification needed.".to_string(),
+            ),
+            _ => (None, "No PII findings detected.".to_string()),
+        };
+
+        Self {
+            new_confidentiality: new_conf,
+            action: action.clone(),
+            findings_count,
+            all_handled,
+            reason,
+        }
+    }
+}
+
 /// Context passed to filters.
 pub struct FilterContext<'a> {
     pub agent_name: &'a str,
@@ -330,6 +400,27 @@ impl FilterPipeline {
         ctx: &FilterContext<'_>,
     ) -> (Result<String, String>, Vec<Finding>) {
         self.run_pipeline_with_findings(content, ctx, true).await
+    }
+
+    /// Filter content and return a declassification recommendation.
+    ///
+    /// Runs the full pipeline, then determines whether the
+    /// confidentiality label can be stepped down based on what
+    /// was filtered:
+    /// - Redact (all handled) → Sensitive (markers reveal PII existed)
+    /// - Pseudonymize → no change (GDPR Art. 4(5): still personal data)
+    /// - Pass/Block → no change
+    pub async fn process_with_declassification(
+        &self,
+        content: &str,
+        ctx: &FilterContext<'_>,
+    ) -> (Result<String, String>, Declassification) {
+        let (result, findings) = self.run_pipeline_with_findings(content, ctx, true).await;
+        let all_handled = result.is_ok();
+        let declass = Declassification::from_filter_result(
+            &self.action, findings.len(), all_handled,
+        );
+        (result, declass)
     }
 
     /// Backward-compatible sync process (for callers that don't have
