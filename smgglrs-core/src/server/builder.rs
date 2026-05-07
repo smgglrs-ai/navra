@@ -28,6 +28,7 @@ pub struct McpServerBuilder {
     hook_timeout: std::time::Duration,
     quota_engine: Option<QuotaEngine>,
     ifc_policies: Option<HashMap<String, crate::ifc::TaintedWritePolicy>>,
+    ifc_read_clearances: Option<HashMap<String, crate::ifc::ReadClearance>>,
     trusted_paths: Option<HashMap<String, Vec<String>>>,
     session_store: Option<SessionStore>,
     blackbox: Option<crate::blackbox::Blackbox>,
@@ -49,6 +50,7 @@ impl McpServerBuilder {
             hook_timeout: std::time::Duration::from_secs(10),
             quota_engine: None,
             ifc_policies: None,
+            ifc_read_clearances: None,
             trusted_paths: None,
             session_store: None,
             blackbox: None,
@@ -229,6 +231,18 @@ impl McpServerBuilder {
         self.ifc_policies
             .get_or_insert_with(HashMap::new)
             .insert(permission_set.into(), policy);
+        self
+    }
+
+    /// Set IFC read clearance for a permission set (Simple Security Property).
+    pub fn ifc_read_clearance(
+        mut self,
+        permission_set: impl Into<String>,
+        clearance: crate::ifc::ReadClearance,
+    ) -> Self {
+        self.ifc_read_clearances
+            .get_or_insert_with(HashMap::new)
+            .insert(permission_set.into(), clearance);
         self
     }
 
@@ -436,6 +450,7 @@ impl McpServerBuilder {
             process_table: crate::process::ProcessTable::new(),
             quota_engine: self.quota_engine.unwrap_or_default(),
             ifc_policies: self.ifc_policies.unwrap_or_default(),
+            ifc_read_clearances: self.ifc_read_clearances.unwrap_or_default(),
             trusted_paths: self.trusted_paths.unwrap_or_default(),
             value_stores,
             blackbox: self.blackbox,

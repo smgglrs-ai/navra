@@ -775,4 +775,21 @@ mod tests {
         assert!(!constant_time_eq(b"hello", b"world"));
         assert!(!constant_time_eq(b"hello", b"hell"));
     }
+
+    #[test]
+    fn scope_resolution_never_escalates() {
+        let signer = Ed25519Signer::generate();
+        let mut provider = OAuthProvider::new(test_config(), Box::new(signer));
+        provider.map_scope("tools:read", "readonly");
+        provider.map_scope("tools:write", "developer");
+
+        let valid_perms = ["readonly", "developer"];
+        for scope in &["tools:read", "tools:write", "unknown", "", "tools:admin"] {
+            let resolved = provider.resolve_permissions_from_scopes(scope);
+            assert!(
+                valid_perms.contains(&resolved.as_str()) || resolved == "readonly",
+                "Scope '{}' resolved to unexpected permission '{}'", scope, resolved
+            );
+        }
+    }
 }

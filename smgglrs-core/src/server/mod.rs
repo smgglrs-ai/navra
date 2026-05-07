@@ -45,6 +45,8 @@ pub struct McpServer {
     quota_engine: QuotaEngine,
     /// IFC policies per permission set (tainted write handling).
     ifc_policies: HashMap<String, crate::ifc::TaintedWritePolicy>,
+    /// IFC read clearance per permission set (no-read-up enforcement).
+    ifc_read_clearances: HashMap<String, crate::ifc::ReadClearance>,
     /// Trusted path patterns per permission set (skip Untrusted labeling).
     trusted_paths: HashMap<String, Vec<String>>,
     /// Per-value variable store for IFC tracking.
