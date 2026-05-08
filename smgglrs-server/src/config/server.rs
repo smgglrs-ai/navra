@@ -27,6 +27,52 @@ pub struct ServerConfig {
     /// Default: ~/.local/share/smgglrs/models/pii-ner-multilingual/
     #[serde(default)]
     pub pii_multilingual_model_path: Option<String>,
+    /// Use containerized agent execution.
+    /// `true` = always, `false` = never, absent = auto-detect Podman.
+    #[serde(default)]
+    pub containerized: Option<bool>,
+    /// Allow direct (unsandboxed) execution when no container runtime
+    /// is available. Default: `false`.
+    #[serde(default)]
+    pub allow_direct_execution: bool,
+    /// Container image for agent sandboxes.
+    #[serde(default = "default_agent_image")]
+    pub agent_image: String,
+    /// Container image for the shared model server.
+    #[serde(default = "default_model_server_image")]
+    pub model_server_image: String,
+    /// OpenShell compute driver gRPC endpoint for agent sandboxing.
+    #[serde(default)]
+    pub openshell_gateway: Option<String>,
+    /// Memory limit per agent container (e.g., "2g", "512m").
+    #[serde(default = "default_container_memory")]
+    pub container_memory: String,
+    /// CPU limit per agent container (e.g., "2", "0.5").
+    #[serde(default = "default_container_cpus")]
+    pub container_cpus: String,
+    /// Maximum PIDs per agent container.
+    #[serde(default = "default_container_pids")]
+    pub container_pids: u32,
+}
+
+fn default_agent_image() -> String {
+    "localhost/smgglrs-agent:latest".to_string()
+}
+
+fn default_model_server_image() -> String {
+    "ghcr.io/ggerganov/llama.cpp:server-cuda".to_string()
+}
+
+fn default_container_memory() -> String {
+    "2g".to_string()
+}
+
+fn default_container_cpus() -> String {
+    "2".to_string()
+}
+
+fn default_container_pids() -> u32 {
+    256
 }
 
 fn default_hook_timeout() -> u64 {
