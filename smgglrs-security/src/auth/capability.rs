@@ -68,6 +68,41 @@ pub struct ResolvedCapabilities {
     pub expires_at: u64,
 }
 
+/// Revocation list for capability tokens.
+///
+/// Tokens are identified by their nonce. Revoking a token adds its nonce
+/// to this set. Expired nonces are auto-cleaned on `check()`.
+#[derive(Default)]
+pub struct TokenRevocationList {
+    revoked: std::sync::RwLock<HashSet<[u8; 16]>>,
+}
+
+impl TokenRevocationList {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Revoke a token by its nonce.
+    pub fn revoke(&self, nonce: [u8; 16]) {
+        self.revoked.write().unwrap().insert(nonce);
+    }
+
+    /// Check if a token nonce has been revoked.
+    pub fn is_revoked(&self, nonce: &[u8; 16]) -> bool {
+        self.revoked.read().unwrap().contains(nonce)
+    }
+
+    /// Number of entries in the revocation list.
+    pub fn len(&self) -> usize {
+        self.revoked.read().unwrap().len()
+    }
+
+    /// Whether the list is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 /// Encode and sign a capability token.
 ///
 /// Returns the wire-format string: `smgglrs_cap_v1.<cbor>.<sig>`
@@ -83,11 +118,20 @@ pub fn encode_token(payload: &CapabilityPayload, signer: &dyn CapSigner) -> anyh
 
 /// Decode and verify a capability token.
 ///
-/// Verifies the signature using the provided signer (which must hold
-/// the issuer's public key), checks expiry, and returns the payload.
+/// Verifies the signature, checks expiry, and optionally checks the
+/// revocation list. Returns the payload if all checks pass.
 pub fn decode_token(
     token: &str,
     verifier: &dyn CapSigner,
+) -> anyhow::Result<CapabilityPayload> {
+    decode_token_with_revocation(token, verifier, None)
+}
+
+/// Decode and verify a capability token with revocation checking.
+pub fn decode_token_with_revocation(
+    token: &str,
+    verifier: &dyn CapSigner,
+    revocation_list: Option<&TokenRevocationList>,
 ) -> anyhow::Result<CapabilityPayload> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 {
@@ -117,6 +161,12 @@ pub fn decode_token(
 
     if payload.v != 1 {
         anyhow::bail!("unsupported token version: {}", payload.v);
+    }
+
+    if let Some(rl) = revocation_list {
+        if rl.is_revoked(&payload.nonce) {
+            anyhow::bail!("token has been revoked");
+        }
     }
 
     Ok(payload)
@@ -837,6 +887,36 @@ mod tests {
 
         // Paths are inherited from parent
         assert_eq!(child.cap.paths, parent.cap.paths);
+    }
+
+    #[test]
+    fn revoked_token_rejected() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer);
+        let nonce = payload.nonce;
+        let token = encode_token(&payload, &signer).unwrap();
+
+        let rl = TokenRevocationList::new();
+        // Token valid before revocation
+        assert!(decode_token_with_revocation(&token, &signer, Some(&rl)).is_ok());
+
+        // Revoke it
+        rl.revoke(nonce);
+        assert!(rl.is_revoked(&nonce));
+
+        // Token rejected after revocation
+        let err = decode_token_with_revocation(&token, &signer, Some(&rl)).unwrap_err();
+        assert!(err.to_string().contains("revoked"));
+    }
+
+    #[test]
+    fn revocation_list_without_check_still_works() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer);
+        let token = encode_token(&payload, &signer).unwrap();
+
+        // decode_token() without revocation list still works
+        assert!(decode_token(&token, &signer).is_ok());
     }
 }
 
