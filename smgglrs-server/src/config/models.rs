@@ -149,35 +149,6 @@ pub struct BudgetConfig {
     /// 0 means no limit.
     #[serde(default = "default_budget_max_parallel")]
     pub max_parallel: usize,
-    /// Allow direct (unsandboxed) Python execution when no container runtime
-    /// is available. Default: `false`. Set to `true` only in trusted dev
-    /// environments. Can also be enabled via `SMGGLRS_ALLOW_DIRECT_EXECUTION=true`.
-    #[serde(default)]
-    pub allow_direct_execution: bool,
-    /// Use containerized agent execution.
-    /// `true` = always, `false` = never, `None` = auto-detect Podman.
-    #[serde(default)]
-    pub containerized: Option<bool>,
-    /// Container image for the shared model server.
-    #[serde(default = "default_model_server_image")]
-    pub model_server_image: String,
-    /// Container image for agent sandboxes.
-    #[serde(default = "default_agent_image")]
-    pub agent_image: String,
-    /// OpenShell compute driver gRPC endpoint for agent sandboxing.
-    /// When set, agents are spawned via OpenShell instead of Podman.
-    /// Example: "http://[::1]:50051" or "unix:///run/openshell/gateway.sock"
-    #[serde(default)]
-    pub openshell_gateway: Option<String>,
-    /// Memory limit per agent container (e.g., "2g", "512m").
-    #[serde(default = "default_container_memory")]
-    pub container_memory: String,
-    /// CPU limit per agent container (e.g., "2", "0.5").
-    #[serde(default = "default_container_cpus")]
-    pub container_cpus: String,
-    /// Maximum PIDs per agent container.
-    #[serde(default = "default_container_pids")]
-    pub container_pids: u32,
 }
 
 impl Default for BudgetConfig {
@@ -188,14 +159,6 @@ impl Default for BudgetConfig {
             timeout_secs: default_budget_timeout(),
             max_iterations: default_budget_max_iterations(),
             max_parallel: default_budget_max_parallel(),
-            allow_direct_execution: false,
-            containerized: None,
-            openshell_gateway: None,
-            model_server_image: default_model_server_image(),
-            agent_image: default_agent_image(),
-            container_memory: default_container_memory(),
-            container_cpus: default_container_cpus(),
-            container_pids: default_container_pids(),
         }
     }
 }
@@ -220,22 +183,3 @@ fn default_budget_max_iterations() -> usize {
     200
 }
 
-fn default_model_server_image() -> String {
-    "ghcr.io/ggerganov/llama.cpp:server-cuda".to_string()
-}
-
-fn default_agent_image() -> String {
-    "localhost/smgglrs-agent:latest".to_string()
-}
-
-fn default_container_memory() -> String {
-    "2g".to_string()
-}
-
-fn default_container_cpus() -> String {
-    "2".to_string()
-}
-
-fn default_container_pids() -> u32 {
-    256
-}

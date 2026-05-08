@@ -378,7 +378,7 @@ async fn start_model_server_container(
     drop(listener);
 
     let container_name = "smgglrs-model-server".to_string();
-    let image = &cfg.budget.model_server_image;
+    let image = &cfg.server.model_server_image;
     let parallel = cfg.budget.max_parallel.max(2);
 
     tracing::info!(
@@ -1246,7 +1246,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
     // --- Exec module (OpenShell agent sandboxing) ---
     let exec_module: Option<Arc<smgglrs_tools_exec::ExecModule>> =
-        if let Some(ref gateway) = cfg.budget.openshell_gateway {
+        if let Some(ref gateway) = cfg.server.openshell_gateway {
             let channel = tonic::transport::Channel::from_shared(gateway.clone())
                 .expect("valid OpenShell gateway URL")
                 .connect_lazy();
@@ -2190,7 +2190,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         let team_registry = Arc::new(team_tools::TeamRegistry::new().with_models(model_cards));
 
         // Containerized agent execution: detect mode and start shared model server
-        let containerized = match cfg.budget.containerized {
+        let containerized = match cfg.server.containerized {
             Some(true) => {
                 if team_tools::is_podman_available() {
                     true
@@ -2233,7 +2233,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
         if containerized {
             tracing::info!(
-                agent_image = %cfg.budget.agent_image,
+                agent_image = %cfg.server.agent_image,
                 model_server = ?model_server_url,
                 "Containerized agent execution enabled"
             );
@@ -2313,12 +2313,12 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             model_server_url: model_server_url.clone(),
             gpu_semaphore: Arc::clone(&gpu_semaphore),
             containerized,
-            agent_image: cfg.budget.agent_image.clone(),
-            container_memory: cfg.budget.container_memory.clone(),
-            container_cpus: cfg.budget.container_cpus.clone(),
-            container_pids: cfg.budget.container_pids,
+            agent_image: cfg.server.agent_image.clone(),
+            container_memory: cfg.server.container_memory.clone(),
+            container_cpus: cfg.server.container_cpus.clone(),
+            container_pids: cfg.server.container_pids,
             embedding_model: embedding_model.clone(),
-            openshell_gateway: cfg.budget.openshell_gateway.clone(),
+            openshell_gateway: cfg.server.openshell_gateway.clone(),
             exec_state: exec_module.clone(),
             workspace_provider: None,
         });
@@ -2434,12 +2434,12 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             model_server_url: model_server_url.clone(),
             gpu_semaphore: Arc::clone(&gpu_semaphore),
             containerized,
-            agent_image: cfg.budget.agent_image.clone(),
-            container_memory: cfg.budget.container_memory.clone(),
-            container_cpus: cfg.budget.container_cpus.clone(),
-            container_pids: cfg.budget.container_pids,
+            agent_image: cfg.server.agent_image.clone(),
+            container_memory: cfg.server.container_memory.clone(),
+            container_cpus: cfg.server.container_cpus.clone(),
+            container_pids: cfg.server.container_pids,
             embedding_model: embedding_model.clone(),
-            openshell_gateway: cfg.budget.openshell_gateway.clone(),
+            openshell_gateway: cfg.server.openshell_gateway.clone(),
             exec_state: exec_module.clone(),
             workspace_provider: None,
         });
@@ -2707,7 +2707,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         Arc::new(std::sync::OnceLock::new());
     {
         let cell = Arc::clone(&server_cell);
-        let allow_direct = cfg.budget.allow_direct_execution;
+        let allow_direct = cfg.server.allow_direct_execution;
         builder = builder.tool(
             plan_execute::plan_execute_tool_def(),
             move |args, ctx| {
