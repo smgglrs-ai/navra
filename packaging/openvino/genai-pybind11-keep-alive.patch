@@ -1,0 +1,27 @@
+From: Fabien Dupont <fdupont@redhat.com>
+Subject: [PATCH] Fix pybind11 keep_alive with def_readwrite static assertion
+
+pybind11 >= 2.13 rejects py::keep_alive on def_readwrite and
+def_property with a static assertion:
+
+  "def_property family does not currently support keep_alive.
+   Use a py::cpp_function instead."
+
+Wrap getter and setter in py::cpp_function with keep_alive
+applied to the getter, as recommended by pybind11 docs.
+
+--- a/src/python/py_generation_config.cpp
++++ b/src/python/py_generation_config.cpp
+@@ -447,7 +447,11 @@
+         .def_readwrite("include_stop_str_in_output", &GenerationConfig::include_stop_str_in_output)
+         .def_readwrite("stop_token_ids", &GenerationConfig::stop_token_ids)
+         .def_readwrite("structured_output_config", &GenerationConfig::structured_output_config)
+-        .def_readwrite("parsers", &GenerationConfig::parsers, py::keep_alive<1, 2>())
++        .def_property("parsers",
++            py::cpp_function([](const GenerationConfig& self) -> const auto& { return self.parsers; },
++                py::keep_alive<0, 1>()),
++            py::cpp_function([](GenerationConfig& self, decltype(GenerationConfig::parsers) val) {
++                self.parsers = std::move(val); }))
+         .def_readwrite("adapters", &GenerationConfig::adapters)
+         .def_readwrite("apply_chat_template", &GenerationConfig::apply_chat_template)
+         .def("set_eos_token_id", &GenerationConfig::set_eos_token_id, py::arg("tokenizer_eos_token_id"))
