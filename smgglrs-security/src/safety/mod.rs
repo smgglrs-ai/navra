@@ -7,7 +7,7 @@ pub use self::ml::MlFilter;
 pub use self::ner::{
     default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter, NerFilter,
 };
-pub use self::pseudonym::PseudonymMap;
+pub use self::pseudonym::{PseudonymMap, PseudonymReverser};
 pub use self::regex::{CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, SecretFilter};
 
 use serde::Serialize;
@@ -976,14 +976,14 @@ mod tests {
     }
 
     #[test]
-    fn pseudonymize_reverse_map() {
+    fn pseudonymize_extract_reverser() {
         let map = PseudonymMap::new();
         let mut findings = vec![
             Finding { start: 0, end: 4, category: "person".to_string(), confidence: 1.0 },
         ];
         pseudonymize("Jean lives here", &mut findings, &map);
-        let reverse = map.reverse_map();
-        assert_eq!(reverse.get("Person_A"), Some(&"Jean".to_string()));
+        let reverser = map.extract_reverser();
+        assert_eq!(reverser.resolve("Person_A"), Some("Jean"));
     }
 
     #[test]
