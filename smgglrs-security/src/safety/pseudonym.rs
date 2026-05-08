@@ -92,13 +92,40 @@ impl PseudonymMap {
         pseudonym
     }
 
-    /// Returns a reverse mapping (pseudonym → real_value) for authorized
-    /// de-pseudonymization (audit only).
-    pub fn reverse_map(&self) -> HashMap<String, String> {
+    /// Extract a reverser for authorized de-pseudonymization.
+    ///
+    /// The reverser is a separate object that should only be passed to
+    /// GDPR audit tools, not to the agent process. This separation
+    /// ensures the forward-mapping process (agent) cannot de-pseudonymize
+    /// without explicit authorization (GDPR Article 32).
+    pub fn extract_reverser(&self) -> PseudonymReverser {
         let map = self.mapping.read().unwrap();
-        map.iter()
+        let reverse = map.iter()
             .map(|(real, pseudo)| (pseudo.clone(), real.clone()))
-            .collect()
+            .collect();
+        PseudonymReverser { reverse }
+    }
+
+}
+
+/// Separate holder for the de-pseudonymization mapping.
+///
+/// Must be held in a different security context than PseudonymMap.
+/// Only authorized consumers (GDPR data subject access tools) should
+/// receive this object.
+pub struct PseudonymReverser {
+    reverse: HashMap<String, String>,
+}
+
+impl PseudonymReverser {
+    /// Look up the real value for a pseudonym.
+    pub fn resolve(&self, pseudonym: &str) -> Option<&str> {
+        self.reverse.get(pseudonym).map(|s| s.as_str())
+    }
+
+    /// Returns the full reverse mapping.
+    pub fn into_map(self) -> HashMap<String, String> {
+        self.reverse
     }
 }
 
@@ -141,13 +168,14 @@ mod tests {
     }
 
     #[test]
-    fn reverse_map_returns_mapping() {
+    fn reverser_resolves_pseudonyms() {
         let map = PseudonymMap::new();
         map.get_or_create("Jean Dupont", "person");
         map.get_or_create("Paris", "location");
-        let reverse = map.reverse_map();
-        assert_eq!(reverse.get("Person_A"), Some(&"Jean Dupont".to_string()));
-        assert_eq!(reverse.get("Location_A"), Some(&"Paris".to_string()));
+        let reverser = map.extract_reverser();
+        assert_eq!(reverser.resolve("Person_A"), Some("Jean Dupont"));
+        assert_eq!(reverser.resolve("Location_A"), Some("Paris"));
+        assert_eq!(reverser.resolve("Unknown_X"), None);
     }
 
     #[test]
