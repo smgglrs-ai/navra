@@ -223,6 +223,12 @@ impl AgentBuilder {
         self
     }
 
+    /// Set an audit sink for recording tool and model calls.
+    pub fn audit_sink(mut self, sink: crate::audit::SharedAuditSink) -> Self {
+        self.config.audit_sink = Some(sink);
+        self
+    }
+
     /// Load a persona from the cognitive core and set system prompt +
     /// output schema automatically.
     ///

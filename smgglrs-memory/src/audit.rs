@@ -216,6 +216,24 @@ impl AuditLog {
                 completed_at INTEGER
             );",
         )?;
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS audit_findings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                flow_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                finding_id TEXT NOT NULL,
+                file TEXT NOT NULL,
+                line INTEGER,
+                severity TEXT NOT NULL,
+                category TEXT,
+                description TEXT NOT NULL,
+                evidence TEXT,
+                remediation TEXT,
+                confidence TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_findings_flow
+                ON audit_findings(flow_id, task_id);",
+        )?;
         Ok(())
     }
 
@@ -489,13 +507,14 @@ impl AuditLog {
     }
 
     /// Record the start of a flow task (sets started_at, status=running).
-    /// Call this when the task is spawned, before it produces output.
+    /// Model is NOT recorded here — it's unknown until the agent resolves
+    /// "auto" to a concrete model. Model is set by record_flow_task() at
+    /// completion time.
     pub fn record_flow_task_start(
         &self,
         flow_id: &str,
         task_id: &str,
         specialist: Option<&str>,
-        model: Option<&str>,
     ) -> Result<(), MemoryError> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -503,16 +522,65 @@ impl AuditLog {
             .as_secs() as i64;
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         db.execute(
-            "INSERT INTO flow_results (flow_id, task_id, specialist, model, status, started_at, completed_at)
-             VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?5)
+            "INSERT INTO flow_results (flow_id, task_id, specialist, status, started_at, completed_at)
+             VALUES (?1, ?2, ?3, 'running', ?4, NULL)
              ON CONFLICT(flow_id, task_id) DO UPDATE SET
                  specialist = COALESCE(excluded.specialist, flow_results.specialist),
-                 model = COALESCE(excluded.model, flow_results.model),
                  status = 'running',
                  started_at = excluded.started_at",
-            params![flow_id, task_id, specialist, model, now],
+            params![flow_id, task_id, specialist, now],
         )?;
         Ok(())
+    }
+
+    /// Record structured findings from a flow task.
+    ///
+    /// Attempts to parse the task output as JSON findings. If parsing
+    /// succeeds, stores individual findings in the `audit_findings` table.
+    /// Returns the number of findings recorded (0 if parsing failed).
+    pub fn record_flow_findings(
+        &self,
+        flow_id: &str,
+        task_id: &str,
+        output: &str,
+    ) -> Result<usize, MemoryError> {
+        let parsed: Result<serde_json::Value, _> = serde_json::from_str(output);
+        let findings = match parsed {
+            Ok(val) => {
+                if let Some(arr) = val.get("findings").and_then(|v| v.as_array()) {
+                    arr.clone()
+                } else if val.is_array() {
+                    val.as_array().cloned().unwrap_or_default()
+                } else {
+                    return Ok(0);
+                }
+            }
+            Err(_) => return Ok(0),
+        };
+
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut count = 0;
+        for f in &findings {
+            let id = f.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let file = f.get("file").and_then(|v| v.as_str()).unwrap_or("");
+            let severity = f.get("severity").and_then(|v| v.as_str()).unwrap_or("medium");
+            let description = f.get("description").and_then(|v| v.as_str()).unwrap_or("");
+            if description.is_empty() { continue; }
+
+            let line = f.get("line").and_then(|v| v.as_u64()).map(|v| v as i64);
+            let category = f.get("category").and_then(|v| v.as_str());
+            let evidence = f.get("evidence").and_then(|v| v.as_str());
+            let remediation = f.get("remediation").and_then(|v| v.as_str());
+            let confidence = f.get("confidence").and_then(|v| v.as_str());
+
+            db.execute(
+                "INSERT INTO audit_findings (flow_id, task_id, finding_id, file, line, severity, category, description, evidence, remediation, confidence)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![flow_id, task_id, id, file, line, severity, category, description, evidence, remediation, confidence],
+            )?;
+            count += 1;
+        }
+        Ok(count)
     }
 
     /// Save flow metadata for resumability.
@@ -935,5 +1003,102 @@ mod tests {
         let log = AuditLog::open_memory().unwrap();
         let results = log.get_flow_results("nonexistent").unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn flow_task_duration_gap1_fix() {
+        let log = AuditLog::open_memory().unwrap();
+
+        // Start a task — completed_at should be NULL
+        log.record_flow_task_start("flow-dur", "task-1", Some("reviewer"))
+            .unwrap();
+
+        let db = log.db.lock().unwrap();
+        let mut stmt = db.prepare(
+            "SELECT started_at, completed_at FROM flow_results WHERE flow_id = 'flow-dur'"
+        ).unwrap();
+        let (started, completed): (Option<i64>, Option<i64>) = stmt.query_row([], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        }).unwrap();
+        drop(stmt);
+        drop(db);
+
+        assert!(started.is_some(), "started_at should be set");
+        assert!(completed.is_none(), "completed_at should be NULL at start");
+
+        // Simulate 1 second delay
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        // Complete the task
+        log.record_flow_task(
+            "flow-dur", "task-1", Some("reviewer"), Some("granite3.3:8b"),
+            "done", Some("Found 3 issues"), Some(5), Some(1200),
+        ).unwrap();
+
+        let results = log.get_flow_results("flow-dur").unwrap();
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert!(r.started_at.is_some(), "started_at should be set");
+        assert!(r.completed_at.is_some(), "completed_at should be set");
+        let duration = r.completed_at.unwrap() - r.started_at.unwrap();
+        assert!(duration >= 1, "Duration should be >= 1 second, got {duration}");
+        assert_eq!(r.model.as_deref(), Some("granite3.3:8b"));
+        assert_eq!(r.iterations, Some(5));
+        assert_eq!(r.tokens, Some(1200));
+    }
+
+    #[test]
+    fn flow_findings_gap8_structured() {
+        let log = AuditLog::open_memory().unwrap();
+
+        let json_output = r#"{
+            "findings": [
+                {
+                    "id": "sec-001",
+                    "file": "src/auth.rs",
+                    "line": 42,
+                    "severity": "high",
+                    "description": "Token validation skipped on error path",
+                    "category": "CWE-287",
+                    "evidence": "if err.is_timeout() { return Ok(()) }",
+                    "remediation": "Return Err instead of Ok on timeout"
+                },
+                {
+                    "id": "sec-002",
+                    "file": "src/acl.rs",
+                    "severity": "medium",
+                    "description": "Path not canonicalized before ACL check"
+                }
+            ]
+        }"#;
+
+        let count = log.record_flow_findings("flow-f", "task-f", json_output).unwrap();
+        assert_eq!(count, 2);
+
+        let db = log.db.lock().unwrap();
+        let mut stmt = db.prepare(
+            "SELECT finding_id, file, line, severity, description, evidence, remediation
+             FROM audit_findings WHERE flow_id = 'flow-f' ORDER BY finding_id"
+        ).unwrap();
+        let rows: Vec<(String, String, Option<i64>, String, String, Option<String>, Option<String>)> = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?))
+        }).unwrap().filter_map(|r| r.ok()).collect();
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "sec-001");
+        assert_eq!(rows[0].1, "src/auth.rs");
+        assert_eq!(rows[0].2, Some(42));
+        assert_eq!(rows[0].3, "high");
+        assert!(rows[0].5.is_some(), "evidence should be present");
+        assert!(rows[0].6.is_some(), "remediation should be present");
+        assert_eq!(rows[1].0, "sec-002");
+        assert_eq!(rows[1].2, None, "line should be None when not specified");
+    }
+
+    #[test]
+    fn flow_findings_plain_text_returns_zero() {
+        let log = AuditLog::open_memory().unwrap();
+        let count = log.record_flow_findings("flow-x", "task-x", "Just plain text output").unwrap();
+        assert_eq!(count, 0);
     }
 }

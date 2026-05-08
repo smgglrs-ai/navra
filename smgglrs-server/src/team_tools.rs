@@ -13,10 +13,65 @@
 
 use smgglrs_core::identity::CapSigner;
 use smgglrs_core::protocol::{ToolDefinition, ToolInputSchema};
+use smgglrs_agent::AuditSink;
 use std::collections::HashMap;
 use std::sync::{atomic::{AtomicU32, Ordering}, Mutex};
 use std::time::Instant;
 use tokio::task::JoinHandle;
+
+/// Adapter that implements smgglrs-agent's AuditSink using smgglrs-memory's AuditLog.
+pub(crate) struct AuditLogSink(pub std::sync::Arc<smgglrs_memory::AuditLog>);
+
+impl AuditSink for AuditLogSink {
+    fn log_tool_call(
+        &self, run_id: &str, agent_id: &str, iteration: u32,
+        tool_name: &str, tool_args: &str, tool_result: &str, duration_ms: u64,
+    ) {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let entry = smgglrs_memory::AuditToolCall {
+            run_id: run_id.to_string(),
+            agent_id: agent_id.to_string(),
+            iteration,
+            timestamp_ms: now_ms,
+            tool_name: tool_name.to_string(),
+            tool_args: tool_args.to_string(),
+            tool_result: tool_result.to_string(),
+            duration_ms,
+            acl_decision: None,
+            ifc_label: None,
+        };
+        if let Err(e) = self.0.log_tool_call(&entry) {
+            tracing::debug!(error = %e, "Failed to log tool call to audit");
+        }
+    }
+
+    fn log_model_call(
+        &self, run_id: &str, agent_id: &str, iteration: u32,
+        model_name: &str, input_tokens: u32, output_tokens: u32, response_type: &str,
+    ) {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let entry = smgglrs_memory::AuditModelCall {
+            run_id: run_id.to_string(),
+            agent_id: agent_id.to_string(),
+            iteration,
+            timestamp_ms: now_ms,
+            model_name: if model_name.is_empty() { None } else { Some(model_name.to_string()) },
+            input_tokens,
+            output_tokens,
+            response_type: response_type.to_string(),
+            reasoning_text: None,
+        };
+        if let Err(e) = self.0.log_model_call(&entry) {
+            tracing::debug!(error = %e, "Failed to log model call to audit");
+        }
+    }
+}
 
 /// Default operations granted to teammates.
 pub const DEFAULT_OPERATIONS: &[&str] = &["read", "search", "list"];
@@ -1909,6 +1964,11 @@ pub fn spawn_teammate_agent(
                         }
                         if let Some(ref embed) = embedding_model {
                             builder = builder.embedding_model(std::sync::Arc::clone(embed));
+                        }
+                        if let Some(ref audit) = audit_log {
+                            let sink: smgglrs_agent::SharedAuditSink =
+                                std::sync::Arc::new(AuditLogSink(std::sync::Arc::clone(audit)));
+                            builder = builder.audit_sink(sink);
                         }
                         let mut agent = builder.build().await?;
                         agent.run(&message).await

@@ -186,6 +186,59 @@ impl PipeReadU64 for std::path::PathBuf {
     }
 }
 
+/// GPU memory usage snapshot.
+#[derive(Debug, Clone)]
+pub struct GpuMemoryUsage {
+    /// Device index.
+    pub index: u32,
+    /// Used memory in bytes.
+    pub used: u64,
+    /// Total memory in bytes.
+    pub total: u64,
+}
+
+/// Sample NVIDIA GPU memory usage from procfs.
+///
+/// Reads `/proc/driver/nvidia/gpus/*/fb_memory_usage` which provides
+/// free/used memory without requiring NVML bindings.
+pub fn sample_nvidia_memory() -> Vec<GpuMemoryUsage> {
+    let proc_nvidia = Path::new("/proc/driver/nvidia/gpus");
+    if !proc_nvidia.exists() {
+        return Vec::new();
+    }
+    let Ok(entries) = fs::read_dir(proc_nvidia) else {
+        return Vec::new();
+    };
+
+    let mut results = Vec::new();
+    for (index, entry) in entries.flatten().enumerate() {
+        let fb_path = entry.path().join("fb_memory_usage");
+        let Ok(content) = fs::read_to_string(&fb_path) else { continue };
+
+        let mut used_mb = 0u64;
+        let mut total_mb = 0u64;
+        for line in content.lines() {
+            if let Some(val) = line.strip_prefix("Used :") {
+                if let Some(num) = val.trim().strip_suffix(" MB") {
+                    used_mb = num.trim().parse().unwrap_or(0);
+                }
+            } else if let Some(val) = line.strip_prefix("Total :") {
+                if let Some(num) = val.trim().strip_suffix(" MB") {
+                    total_mb = num.trim().parse().unwrap_or(0);
+                }
+            }
+        }
+        if total_mb > 0 {
+            results.push(GpuMemoryUsage {
+                index: index as u32,
+                used: used_mb * 1024 * 1024,
+                total: total_mb * 1024 * 1024,
+            });
+        }
+    }
+    results
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,5 +256,14 @@ mod tests {
     fn gpu_kind_equality() {
         assert_eq!(GpuKind::Nvidia, GpuKind::Nvidia);
         assert_ne!(GpuKind::Nvidia, GpuKind::Amd);
+    }
+
+    #[test]
+    fn sample_nvidia_memory_does_not_panic() {
+        let samples = sample_nvidia_memory();
+        for s in &samples {
+            assert!(s.total > 0);
+            assert!(s.used <= s.total);
+        }
     }
 }
