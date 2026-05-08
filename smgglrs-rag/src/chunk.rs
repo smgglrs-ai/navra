@@ -51,7 +51,7 @@ pub fn chunk_text(text: &str, config: &ChunkConfig) -> Vec<Chunk> {
     let paragraphs = split_paragraphs(text);
 
     // Phase 2: merge short paragraphs, split long ones
-    let segments = normalize_segments(&paragraphs, config);
+    let segments = normalize_segments(text, &paragraphs, config);
 
     // Phase 3: build chunks with overlap
     build_chunks_with_overlap(&segments, text, config)
@@ -106,7 +106,7 @@ fn split_paragraphs(text: &str) -> Vec<Segment> {
 }
 
 /// Merge short segments and split long ones to approximate target_size.
-fn normalize_segments(paragraphs: &[Segment], config: &ChunkConfig) -> Vec<Segment> {
+fn normalize_segments(text: &str, paragraphs: &[Segment], config: &ChunkConfig) -> Vec<Segment> {
     let mut result = Vec::new();
     let mut current_start = None;
     let mut current_len = 0;
@@ -123,8 +123,8 @@ fn normalize_segments(paragraphs: &[Segment], config: &ChunkConfig) -> Vec<Segme
                 });
                 current_len = 0;
             }
-            // This paragraph is too long — split at sentence boundaries
-            result.extend(split_at_sentences(para.start, para.end, config.target_size));
+            // This paragraph is too long — split at sentence/statement boundaries
+            result.extend(split_at_sentences(text, para.start, para.end, config.target_size));
             continue;
         }
 
@@ -161,27 +161,95 @@ fn normalize_segments(paragraphs: &[Segment], config: &ChunkConfig) -> Vec<Segme
     result
 }
 
-/// Split a long text segment at sentence boundaries.
+/// Split a long text segment at sentence or statement boundaries.
 ///
-/// This function works on byte offsets into an external string.
-/// It finds ". ", "! ", "? ", or "\n" near the target split point.
-fn split_at_sentences(start: usize, end: usize, target: usize) -> Vec<Segment> {
-    // We don't have access to the text here (just byte offsets),
-    // so fall back to splitting at fixed intervals.
-    // The caller (normalize_segments) handles paragraph-level splits;
-    // this handles the rare case of a single paragraph > 2x target.
+/// For prose, splits at ". ", "! ", "? ", or paragraph breaks.
+/// For code, splits at blank lines or lines starting with `fn `,
+/// `pub `, `impl `, `struct `, `enum `, `mod `, `class `, `def `,
+/// `function ` — common top-level declaration patterns.
+fn split_at_sentences(text: &str, start: usize, end: usize, target: usize) -> Vec<Segment> {
     let mut result = Vec::new();
     let mut seg_start = start;
+    let slice = &text[start..end];
 
-    while seg_start < end {
-        let seg_end = (seg_start + target).min(end);
-        result.push(Segment {
-            start: seg_start,
-            end: seg_end,
-        });
-        seg_start = seg_end;
+    // Detect code-like content: high ratio of lines with leading whitespace
+    // or braces/semicolons.
+    let is_code = {
+        let lines: Vec<&str> = slice.lines().take(20).collect();
+        let code_indicators = lines.iter().filter(|l| {
+            let t = l.trim();
+            t.ends_with(';') || t.ends_with('{') || t.ends_with('}')
+                || t.starts_with("fn ") || t.starts_with("pub ")
+                || t.starts_with("def ") || t.starts_with("class ")
+                || t.starts_with("import ") || t.starts_with("use ")
+        }).count();
+        code_indicators > lines.len() / 3
+    };
+
+    if is_code {
+        // Code splitting: find function/struct/impl boundaries
+        let code_boundaries = [
+            "\nfn ", "\npub ", "\nimpl ", "\nstruct ", "\nenum ", "\nmod ",
+            "\nclass ", "\ndef ", "\nfunction ", "\n\n",
+        ];
+        while seg_start < end {
+            let remaining = &text[seg_start..end];
+            if remaining.len() <= target {
+                result.push(Segment { start: seg_start, end });
+                break;
+            }
+            // Search for a boundary near the target
+            let search_end = target.min(remaining.len());
+            let search_zone = &remaining[..search_end];
+            let best = code_boundaries.iter()
+                .filter_map(|b| search_zone.rfind(b).map(|p| p + 1)) // +1 to keep \n with previous
+                .max();
+            let split_at = match best {
+                Some(p) if p > target / 4 => seg_start + p,
+                _ => {
+                    // No boundary found — fall back to newline
+                    if let Some(nl) = search_zone.rfind('\n') {
+                        seg_start + nl + 1
+                    } else {
+                        seg_start + search_end
+                    }
+                }
+            };
+            result.push(Segment { start: seg_start, end: split_at });
+            seg_start = split_at;
+        }
+    } else {
+        // Prose splitting: find sentence boundaries
+        let sentence_ends = [". ", ".\n", "! ", "!\n", "? ", "?\n"];
+        while seg_start < end {
+            let remaining = &text[seg_start..end];
+            if remaining.len() <= target {
+                result.push(Segment { start: seg_start, end });
+                break;
+            }
+            let search_end = target.min(remaining.len());
+            let search_zone = &remaining[..search_end];
+            let best = sentence_ends.iter()
+                .filter_map(|s| search_zone.rfind(s).map(|p| p + s.len()))
+                .max();
+            let split_at = match best {
+                Some(p) if p > target / 4 => seg_start + p,
+                _ => {
+                    if let Some(nl) = search_zone.rfind('\n') {
+                        seg_start + nl + 1
+                    } else {
+                        seg_start + search_end
+                    }
+                }
+            };
+            result.push(Segment { start: seg_start, end: split_at });
+            seg_start = split_at;
+        }
     }
 
+    if result.is_empty() {
+        result.push(Segment { start, end });
+    }
     result
 }
 
@@ -331,5 +399,64 @@ mod tests {
         // Content is too short for min_size, but single-chunk fallback kicks in
         // Actually "Hi\n\nBye" is 7 chars which is < 100, so no chunks
         assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn code_splits_at_function_boundaries() {
+        let code = "\
+use std::fs;\n\
+\n\
+fn first_function() {\n\
+    let x = 1;\n\
+    let y = 2;\n\
+    println!(\"{}\", x + y);\n\
+}\n\
+\n\
+fn second_function() {\n\
+    let a = fs::read_to_string(\"test\");\n\
+    println!(\"{:?}\", a);\n\
+}\n\
+\n\
+pub fn third_function() {\n\
+    for i in 0..10 {\n\
+        println!(\"{}\", i);\n\
+    }\n\
+}\n";
+        let config = ChunkConfig {
+            target_size: 80,
+            overlap: 0,
+            min_size: 10,
+        };
+        let chunks = chunk_text(code, &config);
+        assert!(chunks.len() >= 2,
+            "Code should split into 2+ chunks at function boundaries, got {}", chunks.len());
+        // No chunk should start mid-line
+        for chunk in &chunks {
+            let first_char = chunk.content.chars().next().unwrap_or(' ');
+            assert!(first_char != ' ' && first_char != '\t',
+                "Chunk should not start with indentation: {:?}", &chunk.content[..20.min(chunk.content.len())]);
+        }
+    }
+
+    #[test]
+    fn prose_splits_at_sentence_boundaries() {
+        let prose = "This is the first sentence. This is the second sentence. \
+            This is the third sentence. And here is a fourth one. \
+            Finally the fifth sentence arrives. The sixth wraps it up.";
+        let config = ChunkConfig {
+            target_size: 60,
+            overlap: 0,
+            min_size: 10,
+        };
+        let chunks = chunk_text(prose, &config);
+        assert!(chunks.len() >= 2,
+            "Prose should split into 2+ chunks, got {}", chunks.len());
+        // Each chunk (except last) should end at a sentence boundary
+        for chunk in &chunks[..chunks.len()-1] {
+            let trimmed = chunk.content.trim_end();
+            assert!(trimmed.ends_with('.') || trimmed.ends_with('!') || trimmed.ends_with('?'),
+                "Chunk should end at sentence boundary: {:?}",
+                &trimmed[trimmed.len().saturating_sub(30)..]);
+        }
     }
 }
