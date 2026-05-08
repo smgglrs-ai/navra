@@ -133,11 +133,20 @@ impl ReadClearance {
     }
 }
 
-/// Classify a tool as read-only vs write/action.
+/// Classify a tool as read-only vs write/action using MCP tool annotations.
 ///
-/// Write tools are those that modify state: file writes, git commits,
-/// credential access, shell execution, A2A message sending.
-pub fn is_write_tool(tool_name: &str) -> bool {
+/// When annotations are available, uses `read_only_hint` (authoritative).
+/// Falls back to name-based heuristic only for tools without annotations.
+pub fn is_write_tool(tool_name: &str, annotations: Option<&smgglrs_protocol::ToolAnnotations>) -> bool {
+    if let Some(ann) = annotations {
+        if let Some(read_only) = ann.read_only_hint {
+            return !read_only;
+        }
+        if let Some(destructive) = ann.destructive_hint {
+            return destructive;
+        }
+    }
+    // Fallback: name-based heuristic for tools without annotations
     tool_name.contains("write")
         || tool_name.contains("commit")
         || tool_name.contains("push")
@@ -276,16 +285,49 @@ mod tests {
     }
 
     #[test]
-    fn write_tool_classification() {
-        assert!(is_write_tool("file_write"));
-        assert!(is_write_tool("git_commit"));
-        assert!(is_write_tool("git_push"));
-        assert!(is_write_tool("file_delete"));
-        assert!(is_write_tool("file_edit"));
-        assert!(is_write_tool("shell_exec"));
-        assert!(!is_write_tool("file_read"));
-        assert!(!is_write_tool("git_status"));
-        assert!(!is_write_tool("rag_search"));
+    fn write_tool_classification_fallback() {
+        // No annotations: falls back to name-based heuristic
+        assert!(is_write_tool("file_write", None));
+        assert!(is_write_tool("git_commit", None));
+        assert!(is_write_tool("git_push", None));
+        assert!(is_write_tool("file_delete", None));
+        assert!(is_write_tool("file_edit", None));
+        assert!(is_write_tool("shell_exec", None));
+        assert!(!is_write_tool("file_read", None));
+        assert!(!is_write_tool("git_status", None));
+        assert!(!is_write_tool("rag_search", None));
+    }
+
+    #[test]
+    fn write_tool_classification_annotations() {
+        use smgglrs_protocol::ToolAnnotations;
+
+        let read_only = ToolAnnotations {
+            read_only_hint: Some(true),
+            destructive_hint: None,
+            idempotent_hint: None,
+            open_world_hint: None,
+            title: None,
+        };
+        let writable = ToolAnnotations {
+            read_only_hint: Some(false),
+            destructive_hint: None,
+            idempotent_hint: None,
+            open_world_hint: None,
+            title: None,
+        };
+        let destructive = ToolAnnotations {
+            read_only_hint: None,
+            destructive_hint: Some(true),
+            idempotent_hint: None,
+            open_world_hint: None,
+            title: None,
+        };
+
+        // Annotations override name heuristic
+        assert!(!is_write_tool("file_write", Some(&read_only)));
+        assert!(is_write_tool("file_read", Some(&writable)));
+        assert!(is_write_tool("rag_search", Some(&destructive)));
     }
 
     #[test]
