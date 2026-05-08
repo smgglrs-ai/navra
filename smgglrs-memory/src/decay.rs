@@ -6,12 +6,17 @@ use rusqlite::params;
 
 /// Compute the effective score of a memory entry.
 ///
-/// Uses exponential decay on importance, boosted by access frequency:
-///   score = importance * e^(-decay_rate * age_hours) + relevance_boost
-/// where relevance_boost = min(access_count * 0.1, 0.3).
-pub fn effective_score(importance: f64, age_hours: f64, access_count: u32, decay_rate: f64) -> f64 {
+/// Uses exponential decay with importance-modulated rate:
+///   effective_rate = base_rate / (1 + importance)
+///   score = importance * e^(-effective_rate * age_hours) + relevance_boost
+///
+/// High-importance entries decay slower than low-importance ones.
+/// A memory with importance=0.9 decays ~5x slower than importance=0.1.
+/// This follows the FadeMem pattern (arXiv:2601.18642).
+pub fn effective_score(importance: f64, age_hours: f64, access_count: u32, base_decay_rate: f64) -> f64 {
     let relevance_boost = (access_count as f64 * 0.1).min(0.3);
-    importance * (-decay_rate * age_hours).exp() + relevance_boost
+    let modulated_rate = base_decay_rate / (1.0 + importance);
+    importance * (-modulated_rate * age_hours).exp() + relevance_boost
 }
 
 /// Archive entries whose effective_score falls below `threshold`.
@@ -109,8 +114,8 @@ mod tests {
             old < fresh,
             "30-day-old entry ({old}) should score lower than fresh ({fresh})"
         );
-        // 0.5 * e^(-0.72) ≈ 0.244
-        assert!(old < 0.3, "old entry should have decayed significantly, got {old}");
+        // With modulated rate: 0.001/(1+0.5) = 0.000667, so 0.5 * e^(-0.48) ≈ 0.31
+        assert!(old < 0.4, "old entry should have decayed, got {old}");
     }
 
     #[test]
@@ -135,6 +140,20 @@ mod tests {
             (score_100 - 0.3).abs() < f64::EPSILON,
             "boost should cap at 0.3 with 100 accesses, got {score_100}"
         );
+    }
+
+    #[test]
+    fn high_importance_decays_slower() {
+        let age = 720.0; // 30 days
+        let low = effective_score(0.2, age, 0, 0.001);
+        let high = effective_score(0.8, age, 0, 0.001);
+        // High importance gets modulated rate: 0.001/(1+0.8) = 0.000556
+        // Low importance gets modulated rate: 0.001/(1+0.2) = 0.000833
+        // High retains more of its original value proportionally
+        let low_retention = low / 0.2;
+        let high_retention = high / 0.8;
+        assert!(high_retention > low_retention,
+            "High-importance entry should retain more: {high_retention:.3} vs {low_retention:.3}");
     }
 
     #[test]

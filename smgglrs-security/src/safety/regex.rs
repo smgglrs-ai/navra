@@ -202,6 +202,24 @@ impl PiiFilter {
                     validator: Some(validate_iban),
                     context_validator: None,
                 },
+                // French SIRET (14 digits) / SIREN (9 digits)
+                PiiPattern {
+                    category: "siret",
+                    regex: regex_lite::Regex::new(
+                        r"\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b"
+                    ).unwrap(),
+                    validator: Some(validate_siret),
+                    context_validator: None,
+                },
+                // Passport numbers (country-specific formats)
+                PiiPattern {
+                    category: "passport",
+                    regex: regex_lite::Regex::new(
+                        r"\b\d{2}[A-Z]{2}\d{5}\b"
+                    ).unwrap(),
+                    validator: None,
+                    context_validator: None,
+                },
                 // EU phone numbers (+XX or 00XX prefix)
                 PiiPattern {
                     category: "phone-eu",
@@ -598,6 +616,19 @@ fn validate_iban(s: &str) -> bool {
         remainder = combined.parse::<u64>().unwrap_or(0) % 97;
     }
     remainder == 1
+}
+
+/// Validate a French SIRET using Luhn checksum on the full 14 digits.
+fn validate_siret(s: &str) -> bool {
+    let digits: Vec<u32> = s.chars().filter(|c| c.is_ascii_digit()).map(|c| c as u32 - '0' as u32).collect();
+    if digits.len() != 14 { return false; }
+    let mut sum = 0u32;
+    for (i, &d) in digits.iter().enumerate() {
+        let mut v = if i % 2 == 1 { d * 2 } else { d };
+        if v > 9 { v -= 9; }
+        sum += v;
+    }
+    sum % 10 == 0
 }
 
 /// Validate that an IPv4 address is not a well-known non-PII address
