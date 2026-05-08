@@ -156,6 +156,10 @@ pub struct Persona {
     /// Max context tokens for execution phases.
     #[serde(default)]
     pub execution_context_limit: Option<u32>,
+    /// Maximum tokens for a single tool result (default: framework default).
+    /// Overrides the agent's max_tool_output_tokens for this persona.
+    #[serde(default)]
+    pub max_tool_output_tokens: Option<u32>,
 }
 
 /// Reference to a heuristic module and specific facets to load.

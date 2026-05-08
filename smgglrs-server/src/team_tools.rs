@@ -1021,6 +1021,8 @@ pub struct TeammateSpawnContext {
     pub container_cpus: String,
     /// PID limit per container.
     pub container_pids: u32,
+    /// Optional embedding model for query-aware tool output compression.
+    pub embedding_model: Option<std::sync::Arc<dyn smgglrs_model::ModelBackend>>,
 }
 
 /// Check if Podman is available on this system.
@@ -1381,6 +1383,7 @@ pub fn spawn_teammate_agent(
     let root_payload = ctx.root_payload.clone();
     let pii_filter = ctx.pii_filter.clone();
     let audit_log = ctx.audit_log.clone();
+    let embedding_model = ctx.embedding_model.clone();
     let smgglrs_addr = ctx.smgglrs_addr.clone();
     let team_id = team_id.to_string();
     let teammate_id = teammate_id.to_string();
@@ -1547,6 +1550,9 @@ pub fn spawn_teammate_agent(
                         // recovers valid JSON from malformed model output.
                         if let Some(ref filter) = pii_filter {
                             builder = builder.pii_filter(std::sync::Arc::clone(filter));
+                        }
+                        if let Some(ref embed) = embedding_model {
+                            builder = builder.embedding_model(std::sync::Arc::clone(embed));
                         }
                         let mut agent = builder.build().await?;
                         agent.run(&message).await

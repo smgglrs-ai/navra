@@ -63,6 +63,9 @@ async fn run() -> Result<(), String> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(30);
+    let context_window: Option<u32> = env::var("SMGGLRS_CONTEXT_WINDOW")
+        .ok()
+        .and_then(|v| v.parse().ok());
 
     // Build model backend
     let backend = OpenAiBackend::new(&model_endpoint, &model_name, None, Locality::Remote);
@@ -81,6 +84,10 @@ async fn run() -> Result<(), String> {
         .model(backend)
         .max_iterations(max_iterations)
         .temperature(0.3);
+
+    if let Some(cw) = context_window {
+        builder = builder.context_window_tokens(cw);
+    }
 
     if let Some(schema) = output_schema {
         builder = builder.output_json_schema(schema);
@@ -112,6 +119,7 @@ async fn run() -> Result<(), String> {
         "iterations": result.iterations,
         "tokens_in": result.input_tokens,
         "tokens_out": result.output_tokens,
+        "compressed_chars_saved": result.compressed_chars_saved,
     });
     println!("{}", serde_json::to_string(&output).unwrap());
 

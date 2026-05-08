@@ -267,6 +267,11 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Upstream TLS (DESIGN.md gap) | 9 or 12b | 2-3 days | Medium |
 | Convert tools to `#[tool]` proc macro | 12b | 2 days | Low |
 | DeepSec CI integration | Evaluate | — | Low |
+| **Statistical guardrails** (cosine z-score drift + Shannon entropy) | 11 | 2-3 days | Medium-High |
+| **WebSocket transport** (alongside SSE for agentic loops) | 9/12 | 2-3 days | Medium-High |
+| **smgglrs-flow DAG test framework** (PTA/dominator validation) | 12 | 3-4 days | Medium |
+| **Event-driven triggers** (Jarvis: email/Slack/calendar → agent) | 5 | 3-5 days | Medium |
+| **fd-passing TOCTOU mitigation** (smgglrs-tools-file) | 12b | 1-2 days | Medium |
 
 ---
 
@@ -378,18 +383,37 @@ validate each against allowed repos before forwarding.
 **Acceptance**: GraphQL query spanning two repos where only one is
 allowed is rejected. Unit tests for query extraction.
 
-#### U7. OPA policy sidecar (optional)
+#### U7. Policy engine sidecar (optional)
 
-Add optional Open Policy Agent integration for conditional
+Add optional external policy engine integration for conditional
 policies (time-based access, multi-approval gates, environment
-restrictions). OPA runs as a sidecar, queried via localhost HTTP.
-OPA can only further restrict access — never grant beyond what
-TOML ACLs allow. Enables enterprises to bring existing policy
-bundles.
+restrictions). Policy engine runs as a sidecar, queried via
+localhost HTTP. Can only further restrict access — never grant
+beyond what TOML ACLs allow.
+
+**Cedar first** (preferred):
+- Formal verification of policy properties (addresses FIDES gap)
+- Explicit deny semantics match our deny-wins ACL model
+- 42-60x faster than Rego in benchmarks
+- Rust SDK (`cedar-policy` crate) — native integration, no sidecar
+  needed. Embed Cedar engine in-process for zero-latency evaluation.
+- Deterministic, safe (no loops, no side effects)
+- Emerging as the MCP access control standard (Natoma, AWS REX)
+
+**OPA/Rego as fallback** (enterprise compatibility):
+- CNCF graduated, massive enterprise adoption
+- Enterprises bring existing Rego policy bundles
+- Runs as sidecar, queried via localhost HTTP
+- Rego learning curve is steep (Datalog-like)
+
+**Other evaluated**: OpenFGA (Zanzibar-style, overkill for current
+ACLs), Polar/Oso (app-authz, SaaS pricing), CEL (no deny
+semantics), Sentinel (IaC only).
 
 **Effort**: 3-4 days **Priority**: Medium **Depends on**: U5
-**Acceptance**: OPA sidecar denying a tool call that ACLs would
-allow. Feature-gated, zero overhead when disabled.
+**Acceptance**: Cedar policy denying a tool call that TOML ACLs
+would allow. Feature-gated, zero overhead when disabled. OPA
+sidecar as alternative backend behind same interface.
 
 #### U8. Kubernetes-friendly config reload
 
@@ -1077,6 +1101,40 @@ Phase 3 (memory as context injector vs memory as tool).
 
 Reference: SemaClaw 4-layer plugin taxonomy (arXiv 2604.11548).
 
+#### 5j. Event-driven agent triggers (NEW — Jarvis)
+
+**Crate**: `smgglrs-server` (new `triggers/` module)
+
+Add push-triggered agent activation for Project Jarvis. Agents
+currently only activate on explicit MCP requests (pull model).
+Event triggers start agent flows when external events occur:
+
+- **Email trigger**: IMAP IDLE on configured mailboxes. On new
+  email, spawn a flow that reads, summarizes, classifies priority,
+  and alerts via D-Bus notification if urgent.
+- **Slack trigger**: Slack Events API webhook (or RTM for
+  self-hosted). Filter by channel/mention, summarize threads,
+  flag action items.
+- **Calendar trigger**: CalDAV polling (Google Calendar, Nextcloud).
+  Pre-meeting: pull context from relevant docs/emails. Post-meeting:
+  summarize notes if integrated with transcription.
+- **File trigger**: inotify on configured directories. New file
+  triggers indexing, classification, or processing flow.
+
+Each trigger maps to a flow template (Phase 2c) with event
+payload as parameters. Triggers respect IFC labels (email content
+tagged `Confidentiality::Sensitive` at minimum).
+
+**Use case**: "Agent that reads/summarizes/prioritizes/alerts on
+email and Slack so I focus on important things."
+
+**Effort**: 3-5 days (core + email trigger). **Priority**: Medium.
+**Acceptance**: New email arrives, agent summarizes and sends
+D-Bus notification with priority classification.
+
+Reference: Writer Playbook triggers (VentureBeat, 2026-05-08),
+Project Jarvis voice-first assistant design.
+
 ### Phase 6: OpenShell integration ✅
 
 See `docs/designs/openshell-sandbox.md` for full design.
@@ -1502,6 +1560,36 @@ Automated test suite verifying spec compliance:
 | Resilient upstream proxy | `upstream/` | 3 transports + exponential backoff, sleep detection, per-request timeout. |
 | Safety hook pipeline | smgglrs-security | Content filtering as hook, not hardcoded in request path. |
 
+#### 9j. WebSocket transport for agentic loops (NEW)
+
+**Crate**: `smgglrs-core` (transport) + `smgglrs-protocol` (client)
+
+Add WebSocket as an alternative transport alongside SSE for
+multi-step tool-use workflows. OpenAI measured 40% latency
+reduction for agentic workloads by eliminating repeated HTTP
+handshakes:
+
+- Server-side: `ws://` upgrade on existing Axum router, reuse
+  JSON-RPC dispatch. Single persistent connection per session.
+- Client-side: `smgglrs-protocol` WebSocket upstream client
+  alongside existing stdio/HTTP/SSE transports.
+- **Warm-up pattern**: Client sends system prompt + tool
+  definitions on connect, before first request. Reduces
+  first-tool-call latency.
+- Zero Data Retention compatible (same as SSE — no replay buffer).
+- Feature-gated: `transport-ws` feature flag.
+- Backward compatible: SSE remains the default transport.
+
+Particularly valuable for smgglrs-agent client SDK in tight
+tool-use loops (10+ tool calls per turn).
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Acceptance**: Agent tool loop over WebSocket shows measurable
+latency reduction vs SSE in 10+ call sequences.
+
+Reference: OpenAI WebSocket Responses API (InfoQ, 2026-05-08),
+40% latency reduction at Vercel, 30% at Cursor.
+
 ### Phase 10: Papers (restructured 2026-05-06)
 
 Restructured from 4 narrow papers to 3 stronger papers.
@@ -1706,6 +1794,44 @@ using AutoData's Challenger/Weak/Strong/Verifier pattern:
 **Acceptance**: Safety classifier F1 improves on held-out test
 set after fine-tuning on generated data.
 
+#### 11e. Statistical guardrails for SafetyHook (NEW)
+
+**Crate**: `smgglrs-security` (new `statistical_hook.rs`)
+
+Add statistical methods alongside regex and ML safety filters,
+inspired by two complementary techniques:
+
+- **Semantic drift detection**: Embed agent output, compute cosine
+  distance to baseline context, z-score flags statistical outliers.
+  High z-score = response drifted off-topic or into unsafe territory.
+  Baseline built from per-session context window (moving average of
+  recent embeddings).
+- **Confidence thresholding**: Shannon entropy on model output token
+  distribution detects uncertainty / likely hallucination. High
+  entropy = model is guessing. Requires logprobs from model backend
+  (available in llama-server, vLLM, OpenAI-compat).
+
+Both are lightweight (<5ms per check with cached embeddings) and
+complement the existing regex + ONNX classifier pipeline:
+
+| Layer | Method | Catches |
+|-------|--------|---------|
+| Regex | Pattern matching | Known-bad content (SSN, profanity) |
+| ONNX classifier | ML classification | Trained categories |
+| Cosine z-score | Statistical drift | Off-topic, jailbreak steering |
+| Shannon entropy | Confidence check | Hallucination, uncertainty |
+
+Wire as `StatisticalGuardrailHook` in the hook pipeline (post-call).
+Configurable thresholds per persona (creative personas tolerate
+higher drift).
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Acceptance**: Detects prompt injection that steers agent off-topic
+where regex misses it. <5ms latency overhead.
+
+Reference: Machine Learning Mastery statistical guardrails
+(2026-05-06), tech watch 2026-05-08.
+
 ### Phase 12: Observability & infrastructure debt
 
 Items collected from Code Health, self-review findings, DESIGN.md
@@ -1738,6 +1864,43 @@ Fix 8 metrics gaps that prevent accurate paper evaluation:
 **Effort**: 3-4 days. **Priority**: High (blocks papers).
 **Acceptance**: Rerun comparative flows, all 8 columns populated.
 
+#### 12d. smgglrs-flow DAG test framework (NEW)
+
+**Crate**: `smgglrs-flow` (new `validation/` module)
+
+Structural validation for non-deterministic flow execution,
+beyond unit tests and formal proofs. Adapts GitHub's Prefix
+Tree Acceptor / dominator analysis approach:
+
+- **Capture**: Record 2-10 successful flow execution traces
+  (agent states, tool calls, outputs at each DAG node).
+- **Generalize**: Merge traces into a PTA using semantic
+  equivalence (cosine similarity on node outputs, configurable
+  threshold).
+- **Extract dominators**: Apply compiler-theory dominator analysis
+  to identify essential states every successful path must traverse.
+  These are the mandatory milestones regardless of routing variation.
+- **Validate**: New executions pass if they contain all dominator
+  states in topological order, regardless of incidental variation
+  (extra tool calls, different specialist ordering).
+
+This addresses a real gap: flow execution is non-deterministic
+(model routing, handoff decisions, back-edge conditions), so
+exact-match testing is brittle. Dominator extraction gives
+stable invariants.
+
+GitHub measured 100% accuracy vs 82% self-assessment with this
+approach.
+
+**Effort**: 3-4 days. **Priority**: Medium.
+**Depends on**: 12a (flow audit completeness — needs trace data).
+**Acceptance**: Validate that a review flow always passes through
+scout → planner → specialist stages regardless of which
+specialists are selected.
+
+Reference: GitHub "Validating Agentic Behavior" (2026-05-08),
+Prefix Tree Acceptors, dominator analysis.
+
 #### 12b. Infrastructure debt (MEDIUM)
 
 Collected from Code Health, self-review findings, and DESIGN.md:
@@ -1750,6 +1913,7 @@ Collected from Code Health, self-review findings, and DESIGN.md:
 | Feature-gate ONNX | Code Health | Invasive |
 | Convert tools to `#[tool]` macro | Phase 9h | 2 days |
 | Sync ureq → async in authenticator | Self-review sec-01 | 1 day |
+| fd-passing TOCTOU mitigation in file tools | AWS REX (2026-05-08) | 1-2 days |
 
 #### 12c. Observability (LOW — nice to have)
 
@@ -1936,10 +2100,24 @@ Model runtime exposes a `supports_kv_checkpoint: bool` capability
 flag. When unavailable, fall back to conversation-only save
 (accept re-prompt latency on resume).
 
+**Compile-time KV cache safety** (inspired by TokenSpeed):
+Design the save/restore API so invalid cache states are
+unrepresentable in the type system. Use Rust ownership to
+enforce:
+- A saved cache is consumed on load (no double-restore)
+- Cache validity is tied to model identity + quantization config
+  (type-level association, not runtime check)
+- Reuse restrictions enforced at compile time, not by convention
+TokenSpeed's dual-plane scheduler achieves this in C++; Rust's
+affine types give us stronger guarantees natively.
+
 **Effort**: 3-4 days. **Priority**: Medium-High.
 **Acceptance**: Suspend a running agent, restart smgglrs, resume
 agent with restored conversation and KV cache. Measure resume
 latency vs full re-prompt.
+
+Reference: TokenSpeed compile-time KV cache safety (LightSeek
+Foundation, 2026-05-07).
 
 #### 14e. Preemptive scheduling (cancel in-flight generation)
 

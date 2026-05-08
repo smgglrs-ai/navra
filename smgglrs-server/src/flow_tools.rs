@@ -614,6 +614,8 @@ pub struct FlowContext {
     pub container_cpus: String,
     /// PID limit per container.
     pub container_pids: u32,
+    /// Optional embedding model for query-aware tool output compression.
+    pub embedding_model: Option<std::sync::Arc<dyn smgglrs_model::ModelBackend>>,
 }
 
 /// Record completed/failed task results to the audit log.
@@ -913,6 +915,7 @@ async fn spawn_and_track_tasks(
             container_memory: ctx.container_memory.clone(),
             container_cpus: ctx.container_cpus.clone(),
             container_pids: ctx.container_pids,
+            embedding_model: ctx.embedding_model.clone(),
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.
