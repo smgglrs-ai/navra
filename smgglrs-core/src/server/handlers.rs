@@ -189,7 +189,9 @@ impl McpServer {
         };
 
         // IFC pre-check: per-value write blocking (Bell-LaPadula no-write-down).
-        if crate::ifc::is_write_tool(&params.name) {
+        let tool_annotations = self.tools.get(&params.name)
+            .and_then(|t| t.definition.annotations.as_ref());
+        if crate::ifc::is_write_tool(&params.name, tool_annotations) {
             let check_label = if resolved.referenced_vars.is_empty() {
                 // No var:// refs — fall back to session context label
                 ctx.taint.level()
