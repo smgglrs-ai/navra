@@ -616,6 +616,12 @@ pub struct FlowContext {
     pub container_pids: u32,
     /// Optional embedding model for query-aware tool output compression.
     pub embedding_model: Option<std::sync::Arc<dyn smgglrs_model::ModelBackend>>,
+    /// OpenShell compute driver gRPC endpoint.
+    pub openshell_gateway: Option<String>,
+    /// Shared exec state for routing exec_run calls to sandboxes.
+    pub exec_state: Option<std::sync::Arc<smgglrs_tools_exec::ExecModule>>,
+    /// Workspace provider for populating agent sandbox workspaces.
+    pub workspace_provider: Option<std::sync::Arc<dyn crate::workspace::WorkspaceProvider>>,
 }
 
 /// Record completed/failed task results to the audit log.
@@ -916,6 +922,9 @@ async fn spawn_and_track_tasks(
             container_cpus: ctx.container_cpus.clone(),
             container_pids: ctx.container_pids,
             embedding_model: ctx.embedding_model.clone(),
+            openshell_gateway: ctx.openshell_gateway.clone(),
+            exec_state: ctx.exec_state.clone(),
+            workspace_provider: ctx.workspace_provider.clone(),
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.

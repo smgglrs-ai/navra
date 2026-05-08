@@ -3996,17 +3996,32 @@ dependencies = [
  "smgglrs-model-hub",
  "smgglrs-model-runtime",
  "smgglrs-rag",
+ "smgglrs-tools-exec",
  "smgglrs-tools-file",
  "smgglrs-tools-git",
  "tempfile",
  "tokio",
  "tokio-util",
  "toml",
+ "tonic",
  "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "smgglrs-tools-exec"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "smgglrs-core",
+ "smgglrs-model-runtime",
+ "tokio",
+ "tonic",
+ "tracing",
 ]
 
 [[package]]

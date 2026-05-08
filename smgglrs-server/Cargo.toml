@@ -19,9 +19,10 @@ smgglrs-flow = { path = "../smgglrs-flow" }
 smgglrs-memory = { path = "../smgglrs-memory" }
 smgglrs-model = { path = "../smgglrs-model" }
 smgglrs-model-hub = { path = "../smgglrs-model-hub" }
-smgglrs-model-runtime = { path = "../smgglrs-model-runtime" }
+smgglrs-model-runtime = { path = "../smgglrs-model-runtime", features = ["openshell"] }
 smgglrs-tools-file = { path = "../smgglrs-tools-file" }
 smgglrs-tools-git = { path = "../smgglrs-tools-git" }
+smgglrs-tools-exec = { path = "../smgglrs-tools-exec" }
 smgglrs-rag = { path = "../smgglrs-rag" }
 smgglrs-modal-vision = { path = "../smgglrs-modal-vision" }
 smgglrs-modal-voice = { path = "../smgglrs-modal-voice" }
@@ -47,6 +48,7 @@ ksni = "0.3"
 mdns-sd = "0.18"
 flume = "0.11"
 urlencoding = "2"
+tonic = { workspace = true }
 tokio-util = "0.7"
 tempfile = "3"
 

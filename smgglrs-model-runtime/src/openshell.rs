@@ -14,10 +14,11 @@ pub mod proto {
     tonic::include_proto!("openshell.compute.v1");
 }
 
-use proto::compute_driver_client::ComputeDriverClient;
-use proto::{
-    CreateSandboxRequest, DestroySandboxRequest, Mount, SandboxState,
-    SandboxStatusRequest, SupervisorConfig,
+pub use proto::compute_driver_client::ComputeDriverClient;
+pub use proto::{
+    CreateSandboxRequest, DestroySandboxRequest, ExecCommandRequest,
+    ExecCommandResponse, Mount, SandboxState, SandboxStatusRequest,
+    SupervisorConfig,
 };
 use tonic::transport::Channel;
 
@@ -60,6 +61,37 @@ impl OpenShellRuntime {
     /// The gateway URL this runtime is connected to.
     pub fn gateway(&self) -> &str {
         &self.gateway
+    }
+
+    /// Get a clone of the gRPC client for use by other components.
+    pub fn client(&self) -> ComputeDriverClient<Channel> {
+        self.client.clone()
+    }
+
+    /// Execute a command inside a running sandbox.
+    pub async fn exec_command(
+        &self,
+        sandbox_id: &str,
+        command: Vec<String>,
+        working_dir: &str,
+        env: std::collections::HashMap<String, String>,
+        timeout_secs: u32,
+    ) -> Result<ExecCommandResponse, RuntimeError> {
+        let resp = self
+            .client
+            .clone()
+            .exec_command(ExecCommandRequest {
+                sandbox_id: sandbox_id.to_string(),
+                command,
+                working_dir: working_dir.to_string(),
+                env,
+                timeout_secs,
+            })
+            .await
+            .map_err(|e| RuntimeError::Start(format!("OpenShell ExecCommand: {e}")))?
+            .into_inner();
+
+        Ok(resp)
     }
 }
 
