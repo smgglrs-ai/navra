@@ -34,6 +34,8 @@
 
 /// Typed agent action model for classification, risk assessment, and audit.
 pub mod action;
+/// Audit sink trait for recording tool and model calls from the tool loop.
+pub mod audit;
 mod agent;
 pub mod block;
 mod client;
@@ -74,3 +76,4 @@ pub use convert::tool_def_to_response;
 pub use smgglrs_security::identity::{CapSigner, Ed25519Signer, load_or_create_file_identity};
 pub use smgglrs_security::ifc::TaintTracker;
 pub use smgglrs_security::safety::FilterPipeline;
+pub use audit::{AuditSink, SharedAuditSink};

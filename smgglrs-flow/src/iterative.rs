@@ -72,6 +72,45 @@ pub struct Finding {
     /// Round in which this finding was discovered.
     #[serde(default)]
     pub round: u32,
+    /// Line number in the file (1-based).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    /// Column number (1-based).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column: Option<u32>,
+    /// Code snippet providing evidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    /// Suggested fix or remediation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
+    /// Confidence level: high, medium, low.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<String>,
+}
+
+/// Structured output wrapper for flow task findings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredFindings {
+    /// Individual findings.
+    pub findings: Vec<Finding>,
+    /// Summary counts by severity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<FindingsSummary>,
+}
+
+/// Summary statistics for a set of findings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FindingsSummary {
+    pub total: usize,
+    #[serde(default)]
+    pub critical: usize,
+    #[serde(default)]
+    pub high: usize,
+    #[serde(default)]
+    pub medium: usize,
+    #[serde(default)]
+    pub low: usize,
 }
 
 /// Result of a completed iterative analysis.
@@ -617,6 +656,11 @@ fn parse_findings(output: &str, round: u32) -> Vec<Finding> {
             description: l.trim().to_string(),
             category: String::new(),
             round,
+            line: None,
+            column: None,
+            evidence: None,
+            remediation: None,
+            confidence: None,
         })
         .collect()
 }

@@ -79,6 +79,8 @@ pub struct ToolLoopConfig {
     /// When set, tool outputs are compressed by selecting the most
     /// relevant paragraphs instead of truncating from the tail.
     pub embedding_model: Option<Arc<dyn ModelBackend>>,
+    /// Optional audit sink for recording tool and model calls.
+    pub audit_sink: Option<crate::audit::SharedAuditSink>,
 }
 
 impl Default for ToolLoopConfig {
@@ -100,6 +102,7 @@ impl Default for ToolLoopConfig {
             context_window_tokens: 128_000,
             max_tool_output_tokens: 4096,
             embedding_model: None,
+            audit_sink: None,
         }
     }
 }
@@ -527,6 +530,17 @@ pub async fn run_tool_loop(
             total_input += usage.input_tokens;
             total_output += usage.output_tokens;
 
+            if let Some(ref sink) = config.audit_sink {
+                let has_tool_calls = response.output.iter().any(|o| matches!(o, OutputItem::FunctionCall(_)));
+                let resp_type = if has_tool_calls { "tool_calls" }
+                    else if response.text().is_some() { "text" }
+                    else { "empty" };
+                sink.log_model_call(
+                    &run_id, &run_id, iteration as u32,
+                    "", usage.input_tokens, usage.output_tokens, resp_type,
+                );
+            }
+
             // Circuit breaker: token burn monitor
             total_tokens_consumed += (usage.input_tokens + usage.output_tokens) as u64;
             if total_tokens_consumed > config.max_tokens_per_run {
@@ -752,6 +766,18 @@ pub async fn run_tool_loop(
             let result = client.call_tool(&fc.name, args).await?;
             let duration_ms = call_start.elapsed().as_millis() as u64;
             let raw_text = extract_text(&result);
+
+            if let Some(ref sink) = config.audit_sink {
+                let truncated_result = if raw_text.len() > 4096 {
+                    format!("{}…", &raw_text[..4096])
+                } else {
+                    raw_text.clone()
+                };
+                sink.log_tool_call(
+                    &run_id, &run_id, iteration as u32,
+                    &fc.name, &fc.arguments, &truncated_result, duration_ms,
+                );
+            }
 
             let context_fill_ratio = if config.context_window_tokens > 0 {
                 total_input as f32 / config.context_window_tokens as f32
