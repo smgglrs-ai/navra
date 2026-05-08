@@ -12,6 +12,7 @@ mod registry_tools;
 mod team_tools;
 mod tray;
 mod ui;
+pub(crate) mod workspace;
 
 use clap::Parser;
 use smgglrs_core::auth::{AgentIdentity, TokenAuthenticator};
@@ -21,6 +22,20 @@ use smgglrs_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, Tool
 use std::sync::Arc;
 
 use cli::{Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
+
+/// Wrapper to register an `Arc<ExecModule>` as a `Module`.
+/// Allows sharing the same ExecState between the module (tool handlers)
+/// and the spawn context (sandbox registration).
+struct ExecModuleRef(Arc<smgglrs_tools_exec::ExecModule>);
+
+impl Module for ExecModuleRef {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
+        self.0.tools()
+    }
+}
 
 /// Wrapper around `Arc<CustomPiiFilter>` that implements `ContentFilter`.
 ///
@@ -1229,6 +1244,22 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         builder = builder.module(git);
     }
 
+    // --- Exec module (OpenShell agent sandboxing) ---
+    let exec_module: Option<Arc<smgglrs_tools_exec::ExecModule>> =
+        if let Some(ref gateway) = cfg.budget.openshell_gateway {
+            let channel = tonic::transport::Channel::from_shared(gateway.clone())
+                .expect("valid OpenShell gateway URL")
+                .connect_lazy();
+            let client =
+                smgglrs_model_runtime::openshell::ComputeDriverClient::new(channel);
+            let module = Arc::new(smgglrs_tools_exec::ExecModule::new(client));
+            tracing::info!(gateway = %gateway, "Module 'exec' enabled (OpenShell)");
+            builder = builder.module(ExecModuleRef(Arc::clone(&module)));
+            Some(module)
+        } else {
+            None
+        };
+
     // --- RAG module ---
     // Keep a shared reference to the chunk store so memory tools can
     // cascade-delete embedding vectors when knowledge entries are erased.
@@ -2287,6 +2318,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             container_cpus: cfg.budget.container_cpus.clone(),
             container_pids: cfg.budget.container_pids,
             embedding_model: embedding_model.clone(),
+            openshell_gateway: cfg.budget.openshell_gateway.clone(),
+            exec_state: exec_module.clone(),
+            workspace_provider: None,
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -2405,6 +2439,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             container_cpus: cfg.budget.container_cpus.clone(),
             container_pids: cfg.budget.container_pids,
             embedding_model: embedding_model.clone(),
+            openshell_gateway: cfg.budget.openshell_gateway.clone(),
+            exec_state: exec_module.clone(),
+            workspace_provider: None,
         });
 
         // flow_start

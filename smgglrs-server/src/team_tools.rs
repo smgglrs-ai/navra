@@ -44,6 +44,10 @@ pub struct Teammate {
     pub created_at: Instant,
     /// Podman container ID when running in containerized mode.
     pub container_id: Option<String>,
+    /// OpenShell sandbox ID when running in OpenShell mode.
+    pub sandbox_id: Option<String>,
+    /// Host path to the mounted workspace directory.
+    pub workspace_path: Option<std::path::PathBuf>,
     /// Elapsed seconds at the time of the last `team_bb_notifications` call.
     /// `None` means the agent has never checked, so all entries are returned.
     pub last_bb_check: Option<u64>,
@@ -232,6 +236,8 @@ impl TeamRegistry {
                 output: None,
                 created_at: Instant::now(),
                 container_id: None,
+                sandbox_id: None,
+                workspace_path: None,
                 last_bb_check: None,
                 iterations: None,
                 agent_tokens: None,
@@ -1023,6 +1029,13 @@ pub struct TeammateSpawnContext {
     pub container_pids: u32,
     /// Optional embedding model for query-aware tool output compression.
     pub embedding_model: Option<std::sync::Arc<dyn smgglrs_model::ModelBackend>>,
+    /// OpenShell compute driver gRPC endpoint (e.g., "http://[::1]:50051").
+    /// When set, agents are spawned via OpenShell instead of Podman.
+    pub openshell_gateway: Option<String>,
+    /// Shared exec state for routing exec_run calls to the correct sandbox.
+    pub exec_state: Option<std::sync::Arc<smgglrs_tools_exec::ExecModule>>,
+    /// Workspace provider for populating agent sandbox workspaces.
+    pub workspace_provider: Option<std::sync::Arc<dyn crate::workspace::WorkspaceProvider>>,
 }
 
 /// Check if Podman is available on this system.
@@ -1355,6 +1368,341 @@ fn spawn_containerized_agent(
     })
 }
 
+/// Spawn a teammate agent inside an OpenShell sandbox.
+///
+/// Uses the OpenShell compute driver to create a sandbox running
+/// `smgglrs-agent`. Workspace is mounted at `/workspace` read-write.
+/// The sandbox_id is registered in ExecState so the agent can call
+/// `exec_run` to execute commands inside the sandbox.
+fn spawn_openshell_agent(
+    ctx: &TeammateSpawnContext,
+    team_id: &str,
+    teammate_id: &str,
+    message: &str,
+    max_iterations: usize,
+    timeout_secs: u64,
+    _generates_tasks: bool,
+) -> tokio::task::JoinHandle<()> {
+    let reg = std::sync::Arc::clone(&ctx.team_registry);
+    let signer = std::sync::Arc::clone(&ctx.signer);
+    let root_payload = ctx.root_payload.clone();
+    let smgglrs_addr = ctx.smgglrs_addr.clone();
+    let gateway_url = ctx.openshell_gateway.clone().unwrap();
+    let agent_image = ctx.agent_image.clone();
+    let exec_state = ctx.exec_state.as_ref().map(std::sync::Arc::clone);
+    let workspace_provider = ctx.workspace_provider.as_ref().map(std::sync::Arc::clone);
+    let gpu_semaphore = std::sync::Arc::clone(&ctx.gpu_semaphore);
+    let cognitive_core_path = ctx.cognitive_core_path.clone();
+    let model_server_url = ctx.model_server_url.clone();
+    let team_id = team_id.to_string();
+    let teammate_id = teammate_id.to_string();
+    let message = message.to_string();
+
+    tokio::spawn(async move {
+        let deadline = std::time::Duration::from_secs(timeout_secs);
+        let timeout_reg = reg.clone();
+        let timeout_team = team_id.clone();
+        let timeout_task = teammate_id.clone();
+
+        let result = tokio::time::timeout(deadline, async {
+            let _permit = gpu_semaphore.acquire().await.unwrap();
+
+            // Build scoped capability token (same as Podman path)
+            let (tm_ops, tm_tools, tm_persona, teammate_model) = {
+                let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                teams.get(&team_id)
+                    .and_then(|t| t.teammates.get(&teammate_id))
+                    .map(|tm| (
+                        tm.operations.clone(),
+                        tm.tools.clone(),
+                        tm.persona.clone(),
+                        tm.model.clone(),
+                    ))
+                    .unwrap_or_else(|| (
+                        DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                        DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                        None,
+                        "auto".to_string(),
+                    ))
+            };
+
+            let did = format!("did:teammate:{}:{}", team_id, teammate_id);
+            let token = if let Some(ref root) = root_payload {
+                match smgglrs_core::auth::capability::build_delegated_payload(
+                    root, &did, tm_ops, tm_tools, 2, timeout_secs,
+                ) {
+                    Ok(payload) => match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        reg.set_failed(&team_id, &teammate_id, format!("Token delegation error: {e}"));
+                        return;
+                    }
+                }
+            } else {
+                let cap = smgglrs_core::auth::capability::CapabilitySet {
+                    paths: vec!["**".to_string()],
+                    operations: tm_ops,
+                    tools: tm_tools,
+                    credentials: vec![],
+                };
+                let payload = smgglrs_core::auth::capability::build_payload(
+                    signer.did(), &did, cap, 2, timeout_secs,
+                );
+                match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                        return;
+                    }
+                }
+            };
+
+            // Resolve model
+            let mut model = teammate_model;
+            if model == "auto" {
+                if let Some(selected) = select_model_for_task(
+                    &reg.model_cards, tm_persona.as_deref(), &message,
+                ) {
+                    model = selected;
+                } else {
+                    model = "granite3.3:8b".to_string();
+                }
+            }
+
+            let model_endpoint = model_server_url.clone()
+                .unwrap_or_else(|| "http://10.0.2.2:11434/v1".to_string());
+
+            let gateway_port = smgglrs_addr
+                .rsplit(':')
+                .next()
+                .unwrap_or("9315");
+            let mcp_url = format!("http://10.0.2.2:{gateway_port}/mcp");
+
+            reg.set_resolved_model(&team_id, &teammate_id, &model);
+            eprintln!("  [openshell] {} → model: {}, image: {}", teammate_id, model, agent_image);
+
+            // Prepare workspace
+            let workspace_dir = tempfile::tempdir().ok();
+            if let (Some(ref provider), Some(ref ws_dir)) = (&workspace_provider, &workspace_dir) {
+                if let Err(e) = provider.populate(ws_dir.path()) {
+                    reg.set_failed(&team_id, &teammate_id, format!("Workspace populate error: {e}"));
+                    return;
+                }
+            }
+
+            // Build mounts
+            let mut mounts = Vec::new();
+            if let Some(ref ws_dir) = workspace_dir {
+                mounts.push(smgglrs_model_runtime::openshell::Mount {
+                    source: ws_dir.path().to_string_lossy().to_string(),
+                    target: "/workspace".to_string(),
+                    read_only: false,
+                });
+            }
+            if let Some(ref core_path) = cognitive_core_path {
+                if tm_persona.is_some() {
+                    mounts.push(smgglrs_model_runtime::openshell::Mount {
+                        source: core_path.clone(),
+                        target: "/cognitive_core".to_string(),
+                        read_only: true,
+                    });
+                }
+            }
+
+            // Build env vars
+            let mut env = std::collections::HashMap::new();
+            env.insert("SMGGLRS_ENDPOINT".to_string(), mcp_url);
+            env.insert("SMGGLRS_TOKEN".to_string(), token);
+            env.insert("SMGGLRS_MODEL_ENDPOINT".to_string(), model_endpoint);
+            env.insert("SMGGLRS_MODEL_NAME".to_string(), model);
+            env.insert("SMGGLRS_TASK".to_string(), message.clone());
+            env.insert("SMGGLRS_MAX_ITERATIONS".to_string(), max_iterations.to_string());
+            if tm_persona.is_some() {
+                if let Some(ref name) = tm_persona {
+                    env.insert("SMGGLRS_PERSONA".to_string(), name.clone());
+                    env.insert("SMGGLRS_COGNITIVE_CORE".to_string(), "/cognitive_core".to_string());
+                }
+            }
+
+            // Build sandbox labels
+            let mut labels = std::collections::HashMap::new();
+            labels.insert("runtime".to_string(), "agent".to_string());
+            labels.insert("purpose".to_string(), "teammate".to_string());
+            labels.insert("team".to_string(), team_id.clone());
+            labels.insert("agent".to_string(), teammate_id.clone());
+
+            let request = smgglrs_model_runtime::openshell::CreateSandboxRequest {
+                labels,
+                supervisor: Some(smgglrs_model_runtime::openshell::SupervisorConfig {
+                    entrypoint: "smgglrs-agent".to_string(),
+                    args: vec![],
+                    env,
+                    mounts,
+                }),
+            };
+
+            // Connect to OpenShell compute driver
+            let channel = match tonic::transport::Channel::from_shared(gateway_url.clone()) {
+                Ok(c) => match c.connect().await {
+                    Ok(ch) => ch,
+                    Err(e) => {
+                        reg.set_failed(&team_id, &teammate_id, format!("OpenShell connect error: {e}"));
+                        return;
+                    }
+                },
+                Err(e) => {
+                    reg.set_failed(&team_id, &teammate_id, format!("OpenShell channel error: {e}"));
+                    return;
+                }
+            };
+
+            let mut client = smgglrs_model_runtime::openshell::ComputeDriverClient::new(channel);
+
+            // Create sandbox
+            let resp = match client.create_sandbox(request).await {
+                Ok(r) => r.into_inner(),
+                Err(e) => {
+                    reg.set_failed(&team_id, &teammate_id, format!("CreateSandbox error: {e}"));
+                    return;
+                }
+            };
+
+            let sandbox_id = resp.sandbox_id.clone();
+
+            // Record sandbox info
+            {
+                let mut teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(team) = teams.get_mut(&team_id) {
+                    if let Some(tm) = team.teammates.get_mut(&teammate_id) {
+                        tm.sandbox_id = Some(sandbox_id.clone());
+                        if let Some(ref ws_dir) = workspace_dir {
+                            tm.workspace_path = Some(ws_dir.path().to_path_buf());
+                        }
+                    }
+                }
+            }
+
+            // Register sandbox for exec_run routing
+            if let Some(ref exec) = exec_state {
+                exec.state().register_sandbox(did.clone(), sandbox_id.clone());
+            }
+
+            // Wait for sandbox to be running
+            let mut attempts = 0;
+            loop {
+                attempts += 1;
+                if attempts > 120 {
+                    reg.set_failed(&team_id, &teammate_id, "Sandbox failed to start (timeout)".to_string());
+                    let _ = client.destroy_sandbox(
+                        smgglrs_model_runtime::openshell::DestroySandboxRequest {
+                            sandbox_id: sandbox_id.clone(),
+                        },
+                    ).await;
+                    return;
+                }
+
+                match client.sandbox_status(
+                    smgglrs_model_runtime::openshell::SandboxStatusRequest {
+                        sandbox_id: sandbox_id.clone(),
+                    },
+                ).await {
+                    Ok(status) => {
+                        let state = status.into_inner().state;
+                        if state == smgglrs_model_runtime::openshell::SandboxState::Running as i32 {
+                            break;
+                        }
+                        if state == smgglrs_model_runtime::openshell::SandboxState::Failed as i32 {
+                            reg.set_failed(&team_id, &teammate_id, "Sandbox entered failed state".to_string());
+                            let _ = client.destroy_sandbox(
+                                smgglrs_model_runtime::openshell::DestroySandboxRequest {
+                                    sandbox_id: sandbox_id.clone(),
+                                },
+                            ).await;
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        reg.set_failed(&team_id, &teammate_id, format!("SandboxStatus error: {e}"));
+                        return;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+
+            {
+                let mut teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(team) = teams.get_mut(&team_id) {
+                    if let Some(tm) = team.teammates.get_mut(&teammate_id) {
+                        tm.status = "working".to_string();
+                    }
+                }
+            }
+
+            // Wait for sandbox to complete (agent finishes its ReAct loop)
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                match client.sandbox_status(
+                    smgglrs_model_runtime::openshell::SandboxStatusRequest {
+                        sandbox_id: sandbox_id.clone(),
+                    },
+                ).await {
+                    Ok(status) => {
+                        let state = status.into_inner().state;
+                        if state == smgglrs_model_runtime::openshell::SandboxState::Stopped as i32
+                            || state == smgglrs_model_runtime::openshell::SandboxState::Failed as i32
+                        {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            // Collect workspace results
+            if let (Some(ref provider), Some(ref ws_dir)) = (&workspace_provider, &workspace_dir) {
+                match provider.collect(ws_dir.path()) {
+                    Ok(result) => {
+                        let summary = format!(
+                            "Workspace: {} files",
+                            result.files.len(),
+                        );
+                        reg.set_output(&team_id, &teammate_id, summary);
+                    }
+                    Err(e) => {
+                        reg.set_output(&team_id, &teammate_id, format!("Done (workspace collect error: {e})"));
+                    }
+                }
+            } else {
+                reg.set_output(&team_id, &teammate_id, "Done".to_string());
+            }
+
+            // Cleanup: destroy sandbox and deregister exec state
+            let _ = client.destroy_sandbox(
+                smgglrs_model_runtime::openshell::DestroySandboxRequest {
+                    sandbox_id: sandbox_id.clone(),
+                },
+            ).await;
+            if let Some(ref exec) = exec_state {
+                exec.state().remove_sandbox(&did);
+            }
+        })
+        .await;
+
+        if result.is_err() {
+            tracing::warn!(
+                team = %timeout_team, teammate = %timeout_task,
+                "OpenShell teammate timed out after {timeout_secs}s"
+            );
+            timeout_reg.set_failed(&timeout_team, &timeout_task, format!("Timed out after {timeout_secs}s"));
+        }
+    })
+}
+
 /// Spawn a teammate agent in a background task.
 ///
 /// This is the shared logic used by team_message, flow_start, and
@@ -1368,6 +1716,14 @@ pub fn spawn_teammate_agent(
     timeout_secs: u64,
     generates_tasks: bool,
 ) -> tokio::task::JoinHandle<()> {
+    // OpenShell path: preferred when gateway is configured
+    if ctx.openshell_gateway.is_some() {
+        return spawn_openshell_agent(
+            ctx, team_id, teammate_id, message,
+            max_iterations, timeout_secs, generates_tasks,
+        );
+    }
+
     // Containerized path: spawn agent in a Podman container
     if ctx.containerized && is_podman_available() {
         return spawn_containerized_agent(

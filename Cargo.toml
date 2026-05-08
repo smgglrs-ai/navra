@@ -13,6 +13,7 @@ members = [
     "smgglrs-core",
     "smgglrs-tools-file",
     "smgglrs-tools-git",
+    "smgglrs-tools-exec",
     "smgglrs-rag",
     "smgglrs-modal-voice",
     "smgglrs-modal-vision",

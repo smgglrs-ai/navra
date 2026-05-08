@@ -8,6 +8,8 @@ service ComputeDriver {
         returns (DestroySandboxResponse);
     rpc SandboxStatus(SandboxStatusRequest)
         returns (SandboxStatusResponse);
+    rpc ExecCommand(ExecCommandRequest)
+        returns (ExecCommandResponse);
 }
 
 message CreateSandboxRequest {
@@ -51,6 +53,24 @@ message SandboxStatusResponse {
     string sandbox_id = 1;
     SandboxState state = 2;
     string endpoint_url = 3;
+}
+
+message ExecCommandRequest {
+    string sandbox_id = 1;
+    // Command and arguments, e.g. ["cargo", "build", "--release"]
+    repeated string command = 2;
+    // Working directory inside the sandbox (default: /workspace)
+    string working_dir = 3;
+    // Additional environment variables for the command
+    map<string, string> env = 4;
+    // Per-command timeout in seconds (0 = no timeout)
+    uint32 timeout_secs = 5;
+}
+
+message ExecCommandResponse {
+    int32 exit_code = 1;
+    string stdout = 2;
+    string stderr = 3;
 }
 
 enum SandboxState {

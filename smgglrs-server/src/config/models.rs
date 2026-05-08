@@ -164,6 +164,11 @@ pub struct BudgetConfig {
     /// Container image for agent sandboxes.
     #[serde(default = "default_agent_image")]
     pub agent_image: String,
+    /// OpenShell compute driver gRPC endpoint for agent sandboxing.
+    /// When set, agents are spawned via OpenShell instead of Podman.
+    /// Example: "http://[::1]:50051" or "unix:///run/openshell/gateway.sock"
+    #[serde(default)]
+    pub openshell_gateway: Option<String>,
     /// Memory limit per agent container (e.g., "2g", "512m").
     #[serde(default = "default_container_memory")]
     pub container_memory: String,
@@ -185,6 +190,7 @@ impl Default for BudgetConfig {
             max_parallel: default_budget_max_parallel(),
             allow_direct_execution: false,
             containerized: None,
+            openshell_gateway: None,
             model_server_image: default_model_server_image(),
             agent_image: default_agent_image(),
             container_memory: default_container_memory(),
