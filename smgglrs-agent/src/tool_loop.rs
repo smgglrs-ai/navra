@@ -7,8 +7,9 @@ use crate::action::{ActionRecord, AgentAction};
 use crate::client::McpClient;
 use crate::error::AgentError;
 use smgglrs_model::{
-    CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
-    InputItem, ItemStatus, ModelBackend, ModelResponse, OutputItem, ResponseTool,
+    CreateResponseRequest, EmbedRequest, FunctionCallItem, FunctionCallOutputItem,
+    FunctionCallOutputContent, InputItem, ItemStatus, ModelBackend, ModelResponse, OutputItem,
+    ResponseTool,
 };
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_protocol::{CallToolResult, Content};
@@ -68,6 +69,16 @@ pub struct ToolLoopConfig {
     /// When exceeded, a warning is logged. This detects runaway agents
     /// making rapid-fire tool calls without meaningful progress.
     pub max_calls_per_window: usize,
+    /// Total context window size in tokens (default: 128_000).
+    /// Used to compute fill ratio for progressive tool output compression.
+    pub context_window_tokens: u32,
+    /// Maximum tokens for a single tool result (default: 4096).
+    /// Dynamically reduced as context fills up.
+    pub max_tool_output_tokens: u32,
+    /// Optional embedding model for query-aware extractive compression.
+    /// When set, tool outputs are compressed by selecting the most
+    /// relevant paragraphs instead of truncating from the tail.
+    pub embedding_model: Option<Arc<dyn ModelBackend>>,
 }
 
 impl Default for ToolLoopConfig {
@@ -86,6 +97,9 @@ impl Default for ToolLoopConfig {
             repair_malformed_output: true,
             max_tokens_per_run: 500_000,
             max_calls_per_window: 20,
+            context_window_tokens: 128_000,
+            max_tool_output_tokens: 4096,
+            embedding_model: None,
         }
     }
 }
@@ -107,6 +121,8 @@ pub struct ToolLoopResult {
     pub taint: DataLabel,
     /// Classified action records for every tool call in this run.
     pub actions: Vec<ActionRecord>,
+    /// Total characters saved by tool output compression.
+    pub compressed_chars_saved: usize,
 }
 
 /// Extract text content from a [`CallToolResult`].
@@ -169,6 +185,156 @@ fn truncate_reasoning(text: &str, max_tokens: usize) -> String {
         &text[..end],
         max_tokens
     )
+}
+
+/// Compute effective token limit based on context fill ratio.
+///
+/// Progressive scaling: as context fills, the limit shrinks.
+fn effective_token_limit(max_tool_output_tokens: u32, context_fill_ratio: f32) -> u32 {
+    let limit = if context_fill_ratio < 0.5 {
+        max_tool_output_tokens
+    } else if context_fill_ratio < 0.7 {
+        (max_tool_output_tokens as f32 * 0.75) as u32
+    } else if context_fill_ratio < 0.8 {
+        (max_tool_output_tokens as f32 * 0.50) as u32
+    } else {
+        (max_tool_output_tokens as f32 * 0.25) as u32
+    };
+    limit.max(256)
+}
+
+/// Compress tool output, using extractive compression when an embedding
+/// model is available, falling back to truncation otherwise.
+async fn compress_tool_output(
+    text: &str,
+    max_tool_output_tokens: u32,
+    context_fill_ratio: f32,
+    embedding_model: Option<&dyn ModelBackend>,
+    query: Option<&str>,
+) -> String {
+    let effective_limit = effective_token_limit(max_tool_output_tokens, context_fill_ratio);
+    if smgglrs_cognitive::estimate_tokens(text) <= effective_limit {
+        return text.to_string();
+    }
+    if let (Some(model), Some(q)) = (embedding_model, query) {
+        match compress_extractive(text, q, model, effective_limit).await {
+            Ok(compressed) => return compressed,
+            Err(e) => {
+                tracing::debug!(error = %e, "Extractive compression failed, falling back to truncation");
+            }
+        }
+    }
+    smgglrs_cognitive::truncate_to_budget(text, effective_limit)
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let mut dot = 0.0f32;
+    let mut na = 0.0f32;
+    let mut nb = 0.0f32;
+    for (x, y) in a.iter().zip(b.iter()) {
+        dot += x * y;
+        na += x * x;
+        nb += y * y;
+    }
+    let denom = na.sqrt() * nb.sqrt();
+    if denom == 0.0 { 0.0 } else { dot / denom }
+}
+
+/// Split text into paragraphs. Uses double newline for prose,
+/// falls back to groups of lines for code-like content.
+fn split_paragraphs(text: &str) -> Vec<&str> {
+    let paragraphs: Vec<&str> = text.split("\n\n")
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
+    if paragraphs.len() >= 3 {
+        return paragraphs;
+    }
+    // Few or no double-newline splits — likely code. Group by 10 lines.
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() <= 10 {
+        return vec![text];
+    }
+    let mut groups = Vec::new();
+    let mut start = 0;
+    for (i, line) in lines.iter().enumerate() {
+        if (i + 1) % 10 == 0 || i == lines.len() - 1 {
+            let end = line.as_ptr() as usize + line.len() - text.as_ptr() as usize;
+            let start_ptr = lines[start].as_ptr() as usize - text.as_ptr() as usize;
+            groups.push(&text[start_ptr..end]);
+            start = i + 1;
+        }
+    }
+    groups
+}
+
+/// Extract the most relevant paragraphs from text using embedding similarity.
+async fn compress_extractive(
+    text: &str,
+    query: &str,
+    model: &dyn ModelBackend,
+    max_tokens: u32,
+) -> Result<String, AgentError> {
+    let paragraphs = split_paragraphs(text);
+    if paragraphs.len() <= 1 {
+        return Ok(smgglrs_cognitive::truncate_to_budget(text, max_tokens));
+    }
+
+    // Embed the query (use first 512 chars of mandate)
+    let query_text = if query.len() > 512 { &query[..512] } else { query };
+    let query_embedding = model
+        .embed(&EmbedRequest { text: query_text.to_string() })
+        .await?;
+
+    // Embed each paragraph and score
+    let mut scored: Vec<(usize, f32, &str)> = Vec::with_capacity(paragraphs.len());
+    for (i, para) in paragraphs.iter().enumerate() {
+        let para_text = if para.len() > 1024 { &para[..1024] } else { para };
+        match model.embed(&EmbedRequest { text: para_text.to_string() }).await {
+            Ok(resp) => {
+                let score = cosine_similarity(&query_embedding.embedding, &resp.embedding);
+                scored.push((i, score, para));
+            }
+            Err(_) => {
+                scored.push((i, 0.0, para));
+            }
+        }
+    }
+
+    // Sort by score descending, select top-K that fit budget
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut selected: Vec<(usize, &str)> = Vec::new();
+    let mut tokens_used: u32 = 0;
+    let notice_reserve: u32 = 20;
+    for (idx, _score, para) in &scored {
+        let para_tokens = smgglrs_cognitive::estimate_tokens(para);
+        if tokens_used + para_tokens + notice_reserve > max_tokens {
+            continue;
+        }
+        selected.push((*idx, para));
+        tokens_used += para_tokens;
+    }
+
+    if selected.is_empty() {
+        // All paragraphs too large — take the highest-scored one, truncated
+        if let Some((_, _, best)) = scored.first() {
+            return Ok(smgglrs_cognitive::truncate_to_budget(best, max_tokens));
+        }
+    }
+
+    // Re-sort by document position to preserve reading order
+    selected.sort_by_key(|(idx, _)| *idx);
+
+    let mut result: String = selected.iter()
+        .map(|(_, para)| *para)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    result.push_str(&format!(
+        "\n\n[extracted {}/{} paragraphs by relevance]",
+        selected.len(), paragraphs.len()
+    ));
+    Ok(result)
 }
 
 /// Attempt to repair malformed JSON from small model output.
@@ -292,6 +458,7 @@ pub async fn run_tool_loop(
     let mut prev_outputs: Vec<String> = Vec::new();
 
     let mut actions: Vec<ActionRecord> = Vec::new();
+    let mut compressed_chars_saved: usize = 0;
     let mut budget_exhausted = false;
 
     // Circuit breaker state: token burn monitor
@@ -381,6 +548,7 @@ pub async fn run_tool_loop(
                     output_tokens: total_output,
                     taint: client.taint(),
                     actions,
+                    compressed_chars_saved,
                 });
             }
         }
@@ -478,6 +646,7 @@ pub async fn run_tool_loop(
                 output_tokens: total_output,
                 taint: client.taint(),
                 actions,
+                compressed_chars_saved,
             });
         }
 
@@ -582,7 +751,33 @@ pub async fn run_tool_loop(
             let call_start = std::time::Instant::now();
             let result = client.call_tool(&fc.name, args).await?;
             let duration_ms = call_start.elapsed().as_millis() as u64;
-            let text = extract_text(&result);
+            let raw_text = extract_text(&result);
+
+            let context_fill_ratio = if config.context_window_tokens > 0 {
+                total_input as f32 / config.context_window_tokens as f32
+            } else {
+                0.0
+            };
+            let query = config.system_prompt.as_deref();
+            let embed_model: Option<&dyn ModelBackend> =
+                config.embedding_model.as_ref().map(|m| m.as_ref());
+            let text = compress_tool_output(
+                &raw_text,
+                config.max_tool_output_tokens,
+                context_fill_ratio,
+                embed_model,
+                query,
+            ).await;
+            if text.len() < raw_text.len() {
+                tracing::info!(
+                    tool = %fc.name,
+                    original_chars = raw_text.len(),
+                    compressed_chars = text.len(),
+                    fill_ratio = %format!("{:.1}%", context_fill_ratio * 100.0),
+                    "Compressed tool output to fit context budget"
+                );
+                compressed_chars_saved += raw_text.len() - text.len();
+            }
 
             actions.push(ActionRecord {
                 action,
@@ -1198,5 +1393,370 @@ mod tests {
         // The model should have received the error about the unknown tool
         // and produced a final response
         assert_eq!(result.response, "I used the available tools.");
+    }
+
+    #[tokio::test]
+    async fn compress_no_op_under_50_pct() {
+        let text = "Short tool output.";
+        let result = compress_tool_output(text, 4096, 0.3, None, None).await;
+        assert_eq!(result, text);
+    }
+
+    #[tokio::test]
+    async fn compress_progressive_scaling() {
+        let text = "x".repeat(50_000);
+        let at_40 = compress_tool_output(&text, 4096, 0.4, None, None).await;
+        let at_60 = compress_tool_output(&text, 4096, 0.6, None, None).await;
+        let at_75 = compress_tool_output(&text, 4096, 0.75, None, None).await;
+        let at_85 = compress_tool_output(&text, 4096, 0.85, None, None).await;
+        assert!(at_40.len() > at_60.len(), "60% fill should compress more than 40%");
+        assert!(at_60.len() > at_75.len(), "75% fill should compress more than 60%");
+        assert!(at_75.len() > at_85.len(), "85% fill should compress more than 75%");
+    }
+
+    #[tokio::test]
+    async fn compress_floor_prevents_empty() {
+        let text = "x".repeat(50_000);
+        let result = compress_tool_output(&text, 4096, 0.99, None, None).await;
+        // Floor is 256 tokens ≈ 896 chars, plus truncation notice
+        assert!(result.len() >= 800, "floor should prevent near-empty output: got {}", result.len());
+    }
+
+    #[tokio::test]
+    async fn compress_short_text_untouched() {
+        let text = "Small result";
+        // Even at high fill, text under the floor stays unchanged
+        let result = compress_tool_output(text, 4096, 0.95, None, None).await;
+        assert_eq!(result, text);
+    }
+
+    #[test]
+    fn cosine_similarity_identical() {
+        let a = vec![1.0, 0.0, 0.0];
+        let b = vec![1.0, 0.0, 0.0];
+        assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cosine_similarity_orthogonal() {
+        let a = vec![1.0, 0.0];
+        let b = vec![0.0, 1.0];
+        assert!(cosine_similarity(&a, &b).abs() < 1e-6);
+    }
+
+    #[test]
+    fn split_paragraphs_prose() {
+        let text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph.";
+        let paras = split_paragraphs(text);
+        assert_eq!(paras.len(), 3);
+        assert_eq!(paras[0], "First paragraph.");
+    }
+
+    #[test]
+    fn split_paragraphs_code_groups_by_10_lines() {
+        let lines: Vec<String> = (0..25).map(|i| format!("line {i}")).collect();
+        let text = lines.join("\n");
+        let paras = split_paragraphs(&text);
+        assert!(paras.len() >= 2, "25 lines should split into 2+ groups");
+    }
+
+    /// Simulate a realistic 10-tool-call review flow and measure savings.
+    ///
+    /// Models a code review agent reading files of varying sizes across
+    /// a session that progressively fills the context window.
+    #[tokio::test]
+    async fn compression_impact_simulation() {
+        let tool_outputs: Vec<(&str, usize)> = vec![
+            ("file_read (small config)", 800),
+            ("file_read (medium module)", 8_000),
+            ("file_read (large module)", 25_000),
+            ("git_diff", 15_000),
+            ("file_read (test file)", 20_000),
+            ("file_search (FTS5)", 12_000),
+            ("file_read (lib.rs)", 35_000),
+            ("git_log", 5_000),
+            ("file_read (handlers.rs)", 45_000),
+            ("file_read (main.rs)", 30_000),
+        ];
+
+        let context_window: u32 = 128_000;
+        let max_tool_output: u32 = 4096;
+        let mut total_raw: usize = 0;
+        let mut total_compressed: usize = 0;
+        let mut context_used: u32 = 5_000; // system prompt
+
+        println!("\n--- Compression Impact Simulation (128K context, 4096 cap) ---");
+        println!("{:<30} {:>8} {:>8} {:>6} {:>6}",
+            "Tool", "Raw", "Comp", "Saved", "Fill%");
+        println!("{}", "-".repeat(66));
+
+        for (name, size) in &tool_outputs {
+            let text = "x".repeat(*size);
+            let fill = context_used as f32 / context_window as f32;
+            let compressed = compress_tool_output(&text, max_tool_output, fill, None, None).await;
+
+            let saved = size - compressed.len();
+            total_raw += size;
+            total_compressed += compressed.len();
+
+            println!("{:<30} {:>8} {:>8} {:>6} {:>5.1}%",
+                name, size, compressed.len(), saved, fill * 100.0);
+
+            // Simulate context growth (compressed output + model reasoning)
+            context_used += smgglrs_cognitive::estimate_tokens(&compressed) + 500;
+        }
+
+        let total_saved = total_raw - total_compressed;
+        let saving_pct = total_saved as f64 / total_raw as f64 * 100.0;
+        println!("{}", "-".repeat(66));
+        println!("{:<30} {:>8} {:>8} {:>6} ({:.1}% saved)",
+            "TOTAL", total_raw, total_compressed, total_saved, saving_pct);
+
+        // The feature should save at least 30% across a typical session
+        assert!(saving_pct > 30.0,
+            "Expected >30% savings, got {:.1}%", saving_pct);
+    }
+
+    /// Test extractive compression with the Granite embedding model.
+    /// Skipped if the model files are not present.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn compress_extractive_keeps_relevant_content() {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let model_path = std::path::PathBuf::from(&home)
+            .join(".local/share/smgglrs/models/granite-embedding-r2-onnx/model.onnx");
+        if !model_path.exists() {
+            eprintln!("Skipping: Granite embedding model not found at {}", model_path.display());
+            return;
+        }
+
+        let tokenizer_path = model_path.parent().unwrap().join("tokenizer.json");
+        let model = smgglrs_model::OnnxBackend::load(
+            "test-embed",
+            &model_path,
+            Some(&tokenizer_path),
+            smgglrs_model::ModelTask::Embedding { dimensions: 384 },
+            smgglrs_model::Device::Cpu,
+        ).expect("Failed to load embedding model");
+
+        // Simulate a file with mixed-relevance content.
+        // Query is about security; paragraphs 2 and 4 are security-related.
+        let text = "\
+Configuration module for the application server.\n\
+Loads settings from TOML files with environment variable overrides.\n\
+\n\
+Authentication uses BLAKE3 tokens with configurable expiry.\n\
+Capability tokens support privilege attenuation and delegation chains.\n\
+All token validation runs through the security middleware.\n\
+\n\
+The logging subsystem writes structured JSON to stderr.\n\
+Log levels are configurable per module via RUST_LOG.\n\
+Rotation is handled by the systemd journal.\n\
+\n\
+Access control uses deny-wins ACL evaluation.\n\
+Path traversal attempts are blocked after canonicalization.\n\
+IFC labels propagate through the tool call chain.\n\
+\n\
+The metrics endpoint exposes Prometheus counters.\n\
+Request latency is tracked per tool and per session.\n\
+Memory usage is sampled every 30 seconds.";
+
+        let query = "Review the security model and access control mechanisms.";
+
+        let result = compress_extractive(text, query, &model, 120).await
+            .expect("Extractive compression should succeed");
+
+        println!("\n--- Extractive Compression Test ---");
+        println!("Query: {query}");
+        println!("Input: {} chars, {} paragraphs", text.len(), split_paragraphs(text).len());
+        println!("Output: {} chars", result.len());
+        println!("Result:\n{result}");
+
+        // Security-related paragraphs should be kept
+        assert!(result.contains("BLAKE3") || result.contains("deny-wins") || result.contains("IFC"),
+            "Extractive compression should keep security-related content");
+        assert!(result.contains("[extracted"),
+            "Should include extraction notice");
+    }
+
+    /// Compare truncation vs extractive compression on realistic content.
+    /// Measures: output size, relevance (keyword hits), and latency.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn compression_ab_comparison() {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let model_path = std::path::PathBuf::from(&home)
+            .join(".local/share/smgglrs/models/granite-embedding-r2-onnx/model.onnx");
+        if !model_path.exists() {
+            eprintln!("Skipping: Granite embedding model not found");
+            return;
+        }
+        let tokenizer_path = model_path.parent().unwrap().join("tokenizer.json");
+        let model = smgglrs_model::OnnxBackend::load(
+            "test-embed", &model_path, Some(&tokenizer_path),
+            smgglrs_model::ModelTask::Embedding { dimensions: 384 },
+            smgglrs_model::Device::Cpu,
+        ).expect("Failed to load embedding model");
+
+        // Realistic file content: a Rust module with security and non-security code.
+        // Security-relevant keywords: auth, token, ACL, deny, taint, IFC, permission
+        let file_content = "\
+use std::collections::HashMap;\n\
+use serde::{Deserialize, Serialize};\n\
+\n\
+/// Server configuration loaded from TOML.\n\
+#[derive(Debug, Clone, Deserialize)]\n\
+pub struct Config {\n\
+    pub listen_addr: String,\n\
+    pub port: u16,\n\
+    pub log_level: String,\n\
+    pub max_connections: usize,\n\
+}\n\
+\n\
+/// Authentication token with BLAKE3 hashing and expiry.\n\
+/// Tokens are capability-scoped: each token carries a set of\n\
+/// allowed operations and tool patterns. The deny-wins ACL\n\
+/// engine evaluates these against the request path.\n\
+pub struct AuthToken {\n\
+    pub hash: [u8; 32],\n\
+    pub capabilities: CapabilitySet,\n\
+    pub expires_at: u64,\n\
+    pub nonce: u64,\n\
+}\n\
+\n\
+impl AuthToken {\n\
+    pub fn validate(&self, signer: &dyn Signer) -> bool {\n\
+        let now = current_timestamp();\n\
+        self.expires_at > now && signer.verify(&self.hash)\n\
+    }\n\
+}\n\
+\n\
+/// Database connection pool with health checks.\n\
+pub struct DbPool {\n\
+    connections: Vec<Connection>,\n\
+    max_size: usize,\n\
+    timeout_ms: u64,\n\
+}\n\
+\n\
+impl DbPool {\n\
+    pub fn acquire(&self) -> Option<&Connection> {\n\
+        self.connections.iter().find(|c| c.is_idle())\n\
+    }\n\
+    pub fn health_check(&self) -> bool {\n\
+        self.connections.iter().all(|c| c.ping().is_ok())\n\
+    }\n\
+}\n\
+\n\
+/// IFC taint tracker implementing Bell-LaPadula.\n\
+/// Taint only rises: once a session reads sensitive data,\n\
+/// it cannot write to lower-classified destinations.\n\
+/// The no-write-down property prevents data exfiltration\n\
+/// through tool call chains.\n\
+pub struct TaintTracker {\n\
+    current_label: DataLabel,\n\
+}\n\
+\n\
+impl TaintTracker {\n\
+    pub fn absorb(&mut self, label: DataLabel) {\n\
+        self.current_label = self.current_label.join(label);\n\
+    }\n\
+    pub fn can_write_to(&self, target: &DataLabel) -> bool {\n\
+        self.current_label <= *target\n\
+    }\n\
+}\n\
+\n\
+/// Prometheus metrics endpoint.\n\
+pub fn metrics_handler() -> String {\n\
+    let mut output = String::new();\n\
+    output.push_str(\"# HELP request_count Total requests\\n\");\n\
+    output.push_str(\"# TYPE request_count counter\\n\");\n\
+    output\n\
+}\n\
+\n\
+/// Permission engine with deny-wins ACL evaluation.\n\
+/// Deny rules always beat allow rules. Path canonicalization\n\
+/// runs before ACL check to prevent traversal attacks.\n\
+pub fn check_permission(path: &str, agent: &str, acls: &[AclRule]) -> bool {\n\
+    let canonical = canonicalize(path);\n\
+    let dominated_by_deny = acls.iter()\n\
+        .filter(|r| r.matches(&canonical, agent))\n\
+        .any(|r| r.effect == Effect::Deny);\n\
+    if dominated_by_deny { return false; }\n\
+    acls.iter()\n\
+        .filter(|r| r.matches(&canonical, agent))\n\
+        .any(|r| r.effect == Effect::Allow)\n\
+}\n\
+\n\
+/// Template engine for rendering HTML responses.\n\
+pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n\
+    let template = load_template(name);\n\
+    vars.iter().fold(template, |acc, (k, v)| acc.replace(&format!(\"{{{{ {k} }}}}\"), v))\n\
+}";
+
+        let query = "Review the security model: authentication, authorization, and data flow controls.";
+        let budget: u32 = 350;
+
+        // --- Truncation ---
+        let trunc_start = std::time::Instant::now();
+        let truncated = smgglrs_cognitive::truncate_to_budget(file_content, budget);
+        let trunc_ms = trunc_start.elapsed().as_micros();
+
+        // --- Extractive ---
+        let extract_start = std::time::Instant::now();
+        let extracted = compress_extractive(file_content, query, &model, budget).await
+            .expect("Extractive compression should succeed");
+        let extract_ms = extract_start.elapsed().as_millis();
+
+        // --- Relevance scoring ---
+        let security_keywords = [
+            "auth", "token", "BLAKE3", "capability", "deny", "ACL",
+            "taint", "IFC", "Bell-LaPadula", "permission", "traversal",
+            "no-write-down", "exfiltration", "canonicalize",
+        ];
+
+        let trunc_hits: usize = security_keywords.iter()
+            .filter(|kw| truncated.contains(*kw))
+            .count();
+        let extract_hits: usize = security_keywords.iter()
+            .filter(|kw| extracted.contains(*kw))
+            .count();
+
+        let trunc_tokens = smgglrs_cognitive::estimate_tokens(&truncated);
+        let extract_tokens = smgglrs_cognitive::estimate_tokens(&extracted);
+
+        println!("\n=== Compression A/B Comparison ===");
+        println!("Input: {} chars, {} tokens (est.), {} paragraphs",
+            file_content.len(),
+            smgglrs_cognitive::estimate_tokens(file_content),
+            split_paragraphs(file_content).len());
+        println!("Budget: {} tokens", budget);
+        println!("Query: {query}");
+        println!();
+        println!("{:<20} {:>12} {:>12}", "", "Truncation", "Extractive");
+        println!("{}", "-".repeat(46));
+        println!("{:<20} {:>12} {:>12}", "Output chars",
+            truncated.len(), extracted.len());
+        println!("{:<20} {:>12} {:>12}", "Output tokens (est.)",
+            trunc_tokens, extract_tokens);
+        println!("{:<20} {:>10}/{:<2} {:>10}/{:<2}", "Security keywords",
+            trunc_hits, security_keywords.len(),
+            extract_hits, security_keywords.len());
+        println!("{:<20} {:>11}µs {:>11}ms", "Latency",
+            trunc_ms, extract_ms);
+        println!();
+
+        // Extractive should find MORE security keywords in same token budget
+        println!("Truncation kept:");
+        for kw in &security_keywords {
+            if truncated.contains(*kw) { print!("  ✓ {kw}"); }
+        }
+        println!();
+        println!("Extractive kept:");
+        for kw in &security_keywords {
+            if extracted.contains(*kw) { print!("  ✓ {kw}"); }
+        }
+        println!();
+
+        assert!(extract_hits >= trunc_hits,
+            "Extractive ({} hits) should keep at least as many security keywords as truncation ({} hits)",
+            extract_hits, trunc_hits);
     }
 }

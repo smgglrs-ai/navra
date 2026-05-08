@@ -412,6 +412,7 @@ impl ForgeService {
             skills: Vec::new(),
             planning_context_limit: None,
             execution_context_limit: None,
+            max_tool_output_tokens: None,
         };
 
         tracing::info!(

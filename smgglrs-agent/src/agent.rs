@@ -205,6 +205,24 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the context window size for tool output compression.
+    pub fn context_window_tokens(mut self, n: u32) -> Self {
+        self.config.context_window_tokens = n;
+        self
+    }
+
+    /// Set the max tool output token limit.
+    pub fn max_tool_output_tokens(mut self, n: u32) -> Self {
+        self.config.max_tool_output_tokens = n;
+        self
+    }
+
+    /// Set an embedding model for query-aware extractive compression.
+    pub fn embedding_model(mut self, model: Arc<dyn smgglrs_model::ModelBackend>) -> Self {
+        self.config.embedding_model = Some(model);
+        self
+    }
+
     /// Load a persona from the cognitive core and set system prompt +
     /// output schema automatically.
     ///
@@ -251,6 +269,13 @@ impl AgentBuilder {
             self.config.allowed_tools = Some(persona.tools.clone());
         }
 
+        if let Some(limit) = output.context_limit {
+            self.config.context_window_tokens = limit;
+        }
+        if let Some(max_output) = persona.max_tool_output_tokens {
+            self.config.max_tool_output_tokens = max_output;
+        }
+
         tracing::info!(
             persona = name,
             tokens = output.estimated_tokens,
@@ -288,6 +313,13 @@ impl AgentBuilder {
             .ok_or_else(|| AgentError::Config(format!("persona '{name}' not found")))?;
         if !persona.tools.is_empty() {
             self.config.allowed_tools = Some(persona.tools.clone());
+        }
+
+        if let Some(limit) = output.context_limit {
+            self.config.context_window_tokens = limit;
+        }
+        if let Some(max_output) = persona.max_tool_output_tokens {
+            self.config.max_tool_output_tokens = max_output;
         }
 
         tracing::info!(
@@ -352,6 +384,13 @@ impl AgentBuilder {
 
         if !persona.tools.is_empty() {
             self.config.allowed_tools = Some(persona.tools.clone());
+        }
+
+        if let Some(limit) = output.context_limit {
+            self.config.context_window_tokens = limit;
+        }
+        if let Some(max_output) = persona.max_tool_output_tokens {
+            self.config.max_tool_output_tokens = max_output;
         }
 
         tracing::info!(

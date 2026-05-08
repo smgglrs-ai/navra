@@ -2286,6 +2286,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             container_memory: cfg.budget.container_memory.clone(),
             container_cpus: cfg.budget.container_cpus.clone(),
             container_pids: cfg.budget.container_pids,
+            embedding_model: embedding_model.clone(),
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -2403,6 +2404,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             container_memory: cfg.budget.container_memory.clone(),
             container_cpus: cfg.budget.container_cpus.clone(),
             container_pids: cfg.budget.container_pids,
+            embedding_model: embedding_model.clone(),
         });
 
         // flow_start
