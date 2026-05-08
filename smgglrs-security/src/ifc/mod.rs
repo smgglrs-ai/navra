@@ -4,6 +4,39 @@
 //! defined in `smgglrs-protocol::label` because they annotate protocol
 //! messages. This module provides the enforcement logic: taint tracking,
 //! write policies, and tool classification.
+//!
+//! # Security Invariants (Bell-LaPadula)
+//!
+//! The following properties hold for any sequence of tool calls within
+//! a session. Lattice algebra proofs are in `smgglrs-protocol::label`
+//! (verified by Kani model checker). Enforcement invariants are tested
+//! as property-based tests below.
+//!
+//! **INV-1 Taint Monotonicity**: `absorb(label)` can only raise the
+//! session taint level, never lower it. `taint_after >= taint_before`
+//! on both dimensions. The only exception is explicit `declassify()`
+//! by a trusted authority.
+//!
+//! **INV-2 No-Write-Down** (★-property): A session with taint level C
+//! cannot write to a destination with classification < C. Enforced by
+//! `is_write_tool()` + `TaintedWritePolicy::Deny` in the dispatch layer.
+//!
+//! **INV-3 No-Read-Up** (Simple Security Property): An agent with
+//! read clearance C cannot access data classified above C. Enforced by
+//! `ReadClearance` comparison after the safety pipeline labels content.
+//!
+//! **INV-4 Taint Propagation**: Reading untrusted external data
+//! (tool results labeled `Untrusted`) raises the session integrity
+//! to `Untrusted`. Subsequent write tools see this taint.
+//!
+//! **INV-5 Declassification Safety**: Only `declassify()` can lower
+//! confidentiality. It must step DOWN, not up. And it requires a
+//! trusted declassification authority (PII filter after full redaction).
+//!
+//! **INV-6 Join Preservation**: If either input to a tool chain is
+//! restricted, the output remains restricted. Formally:
+//! `!a.can_write_to(t) || !b.can_write_to(t) → !a.join(b).can_write_to(t)`
+//! (proven by Kani in label.rs).
 
 pub mod value_store;
 
@@ -377,6 +410,106 @@ mod tests {
         let patterns = vec!["/home/user/Code/**".to_string()];
         assert!(is_trusted_path("/home/user/Code/project/../other/file.rs", &patterns));
         // After normalization: /home/user/Code/other/file.rs — still matches
+    }
+
+    // --- Security invariant property tests (INV-1 through INV-5) ---
+
+    #[test]
+    fn inv1_taint_monotonicity() {
+        let labels = [
+            DataLabel::TRUSTED_PUBLIC,
+            DataLabel::UNTRUSTED_PUBLIC,
+            DataLabel::UNTRUSTED_SENSITIVE,
+            DataLabel::UNTRUSTED_PII,
+            DataLabel::TRUSTED_SECRET,
+        ];
+        for &first in &labels {
+            for &second in &labels {
+                let mut tracker = TaintTracker::new();
+                tracker.absorb(first);
+                let after_first = tracker.level();
+                tracker.absorb(second);
+                let after_second = tracker.level();
+                assert!(after_second.integrity >= after_first.integrity,
+                    "INV-1: integrity must not decrease after absorb");
+                assert!(after_second.confidentiality >= after_first.confidentiality,
+                    "INV-1: confidentiality must not decrease after absorb");
+            }
+        }
+    }
+
+    #[test]
+    fn inv2_no_write_down() {
+        let levels = [
+            Confidentiality::Public,
+            Confidentiality::Sensitive,
+            Confidentiality::Pii,
+            Confidentiality::Secret,
+        ];
+        for &taint_level in &levels {
+            for &target_level in &levels {
+                let label = DataLabel {
+                    integrity: Integrity::Untrusted,
+                    confidentiality: taint_level,
+                };
+                let can_write = label.can_write_to(target_level);
+                if taint_level > target_level {
+                    assert!(!can_write,
+                        "INV-2: taint {:?} must NOT write to {:?}", taint_level, target_level);
+                } else {
+                    assert!(can_write,
+                        "INV-2: taint {:?} should write to {:?}", taint_level, target_level);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn inv3_no_read_up() {
+        let levels = [
+            Confidentiality::Public,
+            Confidentiality::Sensitive,
+            Confidentiality::Pii,
+            Confidentiality::Secret,
+        ];
+        for &clearance in &levels {
+            for &classification in &levels {
+                let can_read = DataLabel::can_read_from(clearance, classification);
+                if classification > clearance {
+                    assert!(!can_read,
+                        "INV-3: clearance {:?} must NOT read {:?}", clearance, classification);
+                } else {
+                    assert!(can_read,
+                        "INV-3: clearance {:?} should read {:?}", clearance, classification);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn inv4_taint_propagation_from_untrusted_read() {
+        let mut tracker = TaintTracker::new();
+        assert_eq!(tracker.level().integrity, Integrity::Trusted);
+        tracker.absorb(DataLabel::UNTRUSTED_PUBLIC);
+        assert_eq!(tracker.level().integrity, Integrity::Untrusted,
+            "INV-4: reading untrusted data must raise integrity to Untrusted");
+    }
+
+    #[test]
+    fn inv5_declassify_only_steps_down() {
+        let mut tracker = TaintTracker::new();
+        tracker.absorb(DataLabel::UNTRUSTED_PII);
+        assert_eq!(tracker.level().confidentiality, Confidentiality::Pii);
+
+        // Cannot step UP via declassify
+        assert!(!tracker.declassify(Confidentiality::Secret),
+            "INV-5: declassify must reject stepping UP");
+        assert_eq!(tracker.level().confidentiality, Confidentiality::Pii);
+
+        // Can step DOWN
+        assert!(tracker.declassify(Confidentiality::Sensitive),
+            "INV-5: declassify should allow stepping DOWN");
+        assert_eq!(tracker.level().confidentiality, Confidentiality::Sensitive);
     }
 }
 
