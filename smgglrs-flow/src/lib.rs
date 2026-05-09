@@ -28,6 +28,7 @@ mod engine;
 mod error;
 mod executor;
 mod handoff;
+pub mod eval;
 pub mod iterative;
 mod mailbox;
 pub mod mesh;
