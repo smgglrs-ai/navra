@@ -1,0 +1,77 @@
+kind: dag
+name: review-lite
+description: |
+  Lightweight review for evaluation: scout → 3 specialists → synthesizer.
+  Fixed specialists (no planner) to keep memory bounded.
+
+parameters:
+  target_dir:
+    type: string
+    description: Root directory of the project to review
+
+tasks:
+  - id: scout
+    specialist: analyst
+    model: auto
+    mandate: |
+      Examine the project at {{ target_dir }}. Use file_tree to get the
+      structure, then file_read on 3-5 key files (README, main entry point,
+      one config file).
+
+      Return a brief JSON summary:
+      {
+        "domain": "software|legal|other",
+        "languages": ["..."],
+        "file_count": N,
+        "key_files": ["path1", "path2", "path3"]
+      }
+    expected_output: JSON classification
+
+  - id: quality
+    specialist: assessor
+    model: auto
+    depends_on: [scout]
+    mandate: |
+      Review code quality in {{ target_dir }}. Read 5-8 source files
+      identified by the scout. Focus on:
+      - Error handling patterns
+      - Code organization
+      - Naming conventions
+      Report findings with file paths and line numbers.
+    expected_output: Quality findings
+
+  - id: security
+    specialist: security_sentinel
+    model: auto
+    depends_on: [scout]
+    mandate: |
+      Review security in {{ target_dir }}. Read 5-8 source files.
+      Focus on:
+      - Input validation
+      - Authentication/authorization
+      - Secrets management
+      Report findings with severity levels.
+    expected_output: Security findings
+
+  - id: architecture
+    specialist: principal_engineer
+    model: auto
+    depends_on: [scout]
+    mandate: |
+      Review architecture in {{ target_dir }}. Read the project structure
+      and key files. Focus on:
+      - Dependency management
+      - Module boundaries
+      - API design
+      Report findings with recommendations.
+    expected_output: Architecture findings
+
+  - id: synthesize
+    specialist: summarizer
+    model: auto
+    depends_on: [quality, security, architecture]
+    mandate: |
+      Read all specialist outputs via flow_result. Produce a structured
+      review report with: Executive Summary, Findings by Area (quality,
+      security, architecture), and Top 5 Action Items.
+    expected_output: Review report
