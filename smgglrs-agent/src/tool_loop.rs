@@ -340,6 +340,93 @@ async fn compress_extractive(
     Ok(result)
 }
 
+/// Estimate total tokens in the input vector without serialization.
+fn estimate_input_tokens(input: &[InputItem]) -> u32 {
+    let mut total = 0u32;
+    for item in input {
+        total += match item {
+            InputItem::FunctionCallOutput(fco) => match &fco.output {
+                FunctionCallOutputContent::Text(t) =>
+                    smgglrs_cognitive::estimate_tokens(t),
+                _ => 50,
+            },
+            InputItem::FunctionCall(fc) =>
+                smgglrs_cognitive::estimate_tokens(&fc.arguments) + 20,
+            InputItem::Message(m) => match &m.content {
+                smgglrs_model::MessageContent::Text(t) =>
+                    smgglrs_cognitive::estimate_tokens(t),
+                _ => 50,
+            },
+            _ => 50,
+        };
+    }
+    total
+}
+
+/// Compact old conversation history to bound memory usage.
+///
+/// Reasoning-first strategy: if the model produced reasoning about a
+/// tool result (next item is a Message), replace the tool output with
+/// a stub — the model's analysis is already in the conversation.
+/// Extractive fallback: if no reasoning follows, compress the output
+/// using the embedding model or truncate.
+async fn compact_conversation(
+    input: &mut Vec<InputItem>,
+    keep_recent: usize,
+    embedding_model: Option<&dyn ModelBackend>,
+    query: Option<&str>,
+) {
+    if input.len() <= keep_recent + 2 { return; }
+
+    let compact_end = input.len() - keep_recent;
+    let mut compacted = 0usize;
+
+    for i in 1..compact_end {
+        let is_tool_output = matches!(&input[i], InputItem::FunctionCallOutput(_));
+        if !is_tool_output { continue; }
+
+        let has_reasoning = i + 1 < compact_end && matches!(&input[i + 1], InputItem::Message(_));
+
+        let (call_id, text) = match &input[i] {
+            InputItem::FunctionCallOutput(fco) => {
+                let t = match &fco.output {
+                    FunctionCallOutputContent::Text(t) if t.len() > 200 => t.clone(),
+                    _ => continue,
+                };
+                (fco.call_id.clone(), t)
+            }
+            _ => continue,
+        };
+
+        let compressed = if has_reasoning {
+            "[compacted — model analysis follows]".to_string()
+        } else if let (Some(model), Some(q)) = (embedding_model, query) {
+            match compress_extractive(&text, q, model, 256).await {
+                Ok(c) => c,
+                Err(_) => smgglrs_cognitive::truncate_to_budget(&text, 256),
+            }
+        } else {
+            smgglrs_cognitive::truncate_to_budget(&text, 256)
+        };
+
+        input[i] = InputItem::FunctionCallOutput(FunctionCallOutputItem {
+            id: None,
+            call_id,
+            output: FunctionCallOutputContent::Text(compressed),
+            status: Some(ItemStatus::Completed),
+        });
+        compacted += 1;
+    }
+
+    if compacted > 0 {
+        tracing::info!(
+            compacted_items = compacted,
+            remaining_items = input.len(),
+            "Compacted old conversation history"
+        );
+    }
+}
+
 /// Attempt to repair malformed JSON from small model output.
 ///
 /// Handles common failures:
@@ -822,6 +909,15 @@ pub async fn run_tool_loop(
 
             // Record timestamp for rate monitoring
             call_timestamps.push(std::time::Instant::now());
+        }
+
+        // Compact old conversation history to bound memory
+        let est_tokens = estimate_input_tokens(&input);
+        if est_tokens > config.context_window_tokens / 2 {
+            let embed_ref: Option<&dyn ModelBackend> =
+                config.embedding_model.as_ref().map(|m| m.as_ref());
+            let query_ref = config.system_prompt.as_deref();
+            compact_conversation(&mut input, 6, embed_ref, query_ref).await;
         }
     }
 }
@@ -1784,5 +1880,86 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         assert!(extract_hits >= trunc_hits,
             "Extractive ({} hits) should keep at least as many security keywords as truncation ({} hits)",
             extract_hits, trunc_hits);
+    }
+
+    #[tokio::test]
+    async fn compact_replaces_old_output_when_reasoning_exists() {
+        let mut input = vec![
+            InputItem::system("You are a reviewer."),
+            // Iteration 1: tool call + big result + model reasoning
+            InputItem::FunctionCall(FunctionCallItem {
+                id: None, call_id: "c1".into(), name: "file_read".into(),
+                arguments: "{}".into(), status: None,
+            }),
+            InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                id: None, call_id: "c1".into(),
+                output: FunctionCallOutputContent::Text("x".repeat(5000)),
+                status: Some(ItemStatus::Completed),
+            }),
+            InputItem::user("The file contains important security patterns."),
+            // Iteration 2: recent items (should be kept)
+            InputItem::FunctionCall(FunctionCallItem {
+                id: None, call_id: "c2".into(), name: "file_read".into(),
+                arguments: "{}".into(), status: None,
+            }),
+            InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                id: None, call_id: "c2".into(),
+                output: FunctionCallOutputContent::Text("y".repeat(5000)),
+                status: Some(ItemStatus::Completed),
+            }),
+        ];
+
+        assert_eq!(input.len(), 6);
+
+        // keep_recent=2 means keep last 2 items (c2 call + result)
+        compact_conversation(&mut input, 2, None, None).await;
+
+        assert_eq!(input.len(), 6, "item count stays the same (in-place)");
+
+        // Old tool output (item 2) should be compacted
+        if let InputItem::FunctionCallOutput(fco) = &input[2] {
+            let text = match &fco.output {
+                FunctionCallOutputContent::Text(t) => t.clone(),
+                _ => panic!("expected text"),
+            };
+            assert!(text.len() < 100, "old output should be compacted, got {} chars", text.len());
+            assert!(text.contains("compacted"), "should contain compaction marker");
+        } else {
+            panic!("item 2 should still be FunctionCallOutput");
+        }
+
+        // Recent tool output (item 5) should be untouched
+        if let InputItem::FunctionCallOutput(fco) = &input[5] {
+            let text = match &fco.output {
+                FunctionCallOutputContent::Text(t) => t.clone(),
+                _ => panic!("expected text"),
+            };
+            assert_eq!(text.len(), 5000, "recent output should be untouched");
+        }
+    }
+
+    #[tokio::test]
+    async fn compact_noop_when_short() {
+        let mut input = vec![
+            InputItem::system("prompt"),
+            InputItem::user("hello"),
+        ];
+        compact_conversation(&mut input, 6, None, None).await;
+        assert_eq!(input.len(), 2);
+    }
+
+    #[test]
+    fn estimate_tokens_basic() {
+        let input = vec![
+            InputItem::system("You are helpful."),
+            InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                id: None, call_id: "c1".into(),
+                output: FunctionCallOutputContent::Text("x".repeat(3500)),
+                status: None,
+            }),
+        ];
+        let est = estimate_input_tokens(&input);
+        // "You are helpful." ≈ 5 tokens, 3500 chars ≈ 1000 tokens
+        assert!(est > 900 && est < 1200, "estimate should be ~1005, got {}", est);
     }
 }
