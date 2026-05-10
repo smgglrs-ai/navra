@@ -157,6 +157,15 @@ impl PiiFilter {
                     validator: Some(validate_ssn),
                     context_validator: None,
                 },
+                // French SIRET (14 digits) — must precede credit-card to win dedup
+                PiiPattern {
+                    category: "siret",
+                    regex: regex_lite::Regex::new(
+                        r"\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b"
+                    ).unwrap(),
+                    validator: Some(validate_siret),
+                    context_validator: None,
+                },
                 // Credit card numbers (13-19 digits, with or without separators)
                 PiiPattern {
                     category: "credit-card",
@@ -202,15 +211,6 @@ impl PiiFilter {
                     validator: Some(validate_iban),
                     context_validator: None,
                 },
-                // French SIRET (14 digits) / SIREN (9 digits)
-                PiiPattern {
-                    category: "siret",
-                    regex: regex_lite::Regex::new(
-                        r"\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b"
-                    ).unwrap(),
-                    validator: Some(validate_siret),
-                    context_validator: None,
-                },
                 // Passport numbers (country-specific formats)
                 PiiPattern {
                     category: "passport",
@@ -253,18 +253,24 @@ impl ContentFilter for PiiFilter {
         for pattern in &self.patterns {
             for m in pattern.regex.find_iter(content) {
                 let matched = m.as_str();
-                // If a validator exists, check it
                 if let Some(validate) = pattern.validator {
                     if !validate(matched) {
                         continue;
                     }
                 }
-                // If a context validator exists, check surrounding text
                 if let Some(validate_ctx) = pattern.context_validator {
                     if !validate_ctx(content, m.start(), m.end()) {
                         continue;
                     }
                 }
+                // Deduplicate: if a more specific pattern already matched
+                // this exact span, skip the broader one. E.g., SIRET (14
+                // digits) takes priority over credit-card (13-19 digits).
+                let dominated = findings.iter().any(|f: &Finding| {
+                    f.start == m.start() && f.end == m.end() && f.category != pattern.category
+                });
+                if dominated { continue; }
+
                 findings.push(Finding {
                     start: m.start(),
                     end: m.end(),
@@ -619,12 +625,13 @@ fn validate_iban(s: &str) -> bool {
 }
 
 /// Validate a French SIRET using Luhn checksum on the full 14 digits.
+/// French convention: double even-indexed digits (0, 2, 4, ...) from left.
 fn validate_siret(s: &str) -> bool {
     let digits: Vec<u32> = s.chars().filter(|c| c.is_ascii_digit()).map(|c| c as u32 - '0' as u32).collect();
     if digits.len() != 14 { return false; }
     let mut sum = 0u32;
     for (i, &d) in digits.iter().enumerate() {
-        let mut v = if i % 2 == 1 { d * 2 } else { d };
+        let mut v = if i % 2 == 0 { d * 2 } else { d };
         if v > 9 { v -= 9; }
         sum += v;
     }
