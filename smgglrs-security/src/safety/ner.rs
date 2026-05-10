@@ -649,7 +649,45 @@ impl NerFilter {
 /// Only applies to PERSON/PER entity types (and sfermion person
 /// subtypes). Returns `true` if the entity should be suppressed.
 fn suppress_technical_names(text: &str, span: &EntitySpan) -> bool {
-    // Only suppress person entities
+    let matched = &text[span.start..span.end];
+
+    // Suppress any entity type if the matched text is a known
+    // programming/technical term (data structures, formats, protocols)
+    const TECHNICAL_TERMS: &[&str] = &[
+        "HashMap", "HashSet", "BTreeMap", "BTreeSet", "LinkedList",
+        "Vec", "String", "Option", "Result", "Arc", "Mutex", "RwLock",
+        "JSON", "YAML", "TOML", "XML", "HTML", "CSS", "HTTP", "HTTPS",
+        "TCP", "UDP", "DNS", "SSH", "TLS", "SSL", "REST", "GraphQL",
+        "API", "SDK", "CLI", "GUI", "URL", "URI", "UUID", "GUID",
+        "ONNX", "CUDA", "OpenCL", "Wasm", "LLVM",
+        "OAuth", "JWT", "SAML", "OIDC", "RBAC", "ABAC",
+        "PostgreSQL", "MySQL", "SQLite", "Redis", "MongoDB",
+        "Kubernetes", "Docker", "Podman", "Linux", "Windows",
+        "Tokio", "Axum", "Hyper", "Serde", "Cargo", "Rustc",
+    ];
+    if TECHNICAL_TERMS.iter().any(|t| *t == matched) {
+        return true;
+    }
+
+    // Suppress if the matched text is all-uppercase (likely an acronym)
+    if matched.len() >= 2 && matched.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+        return true;
+    }
+
+    // Suppress if the matched text looks like a type name (CamelCase
+    // with no spaces, containing lowercase after uppercase)
+    if matched.len() >= 2
+        && matched.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+        && !matched.contains(' ')
+        && matched.chars().any(|c| c.is_ascii_lowercase())
+        && matched.chars().filter(|c| c.is_ascii_uppercase()).count() >= 2
+    {
+        // CamelCase like "HashMap", "BTreeMap", "OpenAI" — but NOT
+        // "Paris" or "John" (single capital). Require 2+ capitals.
+        return true;
+    }
+
+    // Person-specific suppression below
     let is_person = matches!(
         span.entity_type.as_str(),
         "PER" | "PERSON" | "GIVENNAME1" | "GIVENNAME2"

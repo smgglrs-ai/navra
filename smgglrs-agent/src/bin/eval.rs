@@ -230,9 +230,5 @@ async fn main() {
 }
 
 fn chrono_now() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    format!("{now}")
+    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }

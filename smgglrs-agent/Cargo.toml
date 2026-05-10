@@ -15,6 +15,7 @@ smgglrs-protocol = { path = "../smgglrs-protocol" }
 smgglrs-model = { path = "../smgglrs-model" }
 smgglrs-security = { path = "../smgglrs-security" }
 smgglrs-cognitive = { path = "../smgglrs-cognitive" }
+chrono = "0.4"
 regex-lite = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
