@@ -588,9 +588,11 @@ pub async fn run_tool_loop(
             }
         });
 
-        let request = CreateResponseRequest {
+        // Move input into request instead of cloning — avoids doubling
+        // memory. We take it back from the request after the model call.
+        let mut request = CreateResponseRequest {
             model: String::new(),
-            input: input.clone(),
+            input: std::mem::take(&mut input),
             instructions: None,
             tools: if budget_exhausted { vec![] } else { tools.clone() },
             tool_choice: Some(if budget_exhausted {
@@ -607,6 +609,9 @@ pub async fn run_tool_loop(
         };
 
         let response: ModelResponse = model.respond(&request).await?;
+
+        // Take input back from the request (avoids reallocation)
+        input = std::mem::take(&mut request.input);
 
         // Lightweight sensitive data check on model response
         if let Some(text) = response.text() {
