@@ -21,13 +21,15 @@
 - **DONE — Compliance reframing**: "compliance infrastructure" in
   §7.4, EU AI Act Art 12+14 language corrected.
 - **DONE — Formal verification**: 23 Kani proofs + 3 TLA+ specs
-  added (formal/ directory + PROOF_MAP.md).
+  added (formal/ directory + PROOF_MAP.md). 5 Bell-LaPadula
+  invariant property tests (INV-1 through INV-5) in ifc/mod.rs.
 - **DONE — No-read-up**: Bell-LaPadula Simple Security Property
   implemented and verified.
 - **TODO — Evaluation**: Self-audit is appendix only. Need adversarial
   eval (5-10 attack scenarios) and comparison to FIDES on AgentDojo.
-- **TODO — Tool classification**: Fix substring matching → MCP
-  annotations (ROADMAP S1).
+- **DONE — Tool classification**: `is_write_tool()` now uses MCP
+  `ToolAnnotations` (readOnlyHint, destructiveHint) when available,
+  falling back to name heuristic only for unannotated tools.
 
 ---
 
@@ -355,7 +357,8 @@ nonce, optional parent nonce.
 - **Encoding**: CBOR for compact binary representation (typical
   token < 500 bytes).
 - **Replay protection**: Server-side nonce map with 2-hour TTL
-  and periodic pruning.
+  and periodic pruning. `TokenRevocationList` enables explicit
+  revocation by nonce.
 - **Identity**: DID:key URIs (`did:key:z6Mk...`) for
   decentralized identity without PKI infrastructure.
 
@@ -471,6 +474,8 @@ to reduce false positives:
 | French NIR | Regex | Modulo-97 key validation |
 | EU IBAN | Regex | Modulo-97 checksum (ISO 13616) |
 | EU phone | Regex | Country code prefix (33, 49, 44, ...) |
+| French SIRET | Regex | Luhn checksum (French convention) |
+| Passport | Regex | Country-specific format patterns |
 | Public IPv4 | Regex | Excludes loopback/private ranges |
 | Path username | Regex | Excludes system accounts |
 | Identity document | Regex | Passport/ID/driver license patterns |
@@ -504,7 +509,9 @@ maintains deterministic mappings: the same real value always
 maps to the same pseudonym within a session
 (`Person_A`, `Location_B`, `Email_C`). This preserves
 referential integrity in agent outputs while removing PII.
-The map supports reverse lookup for authorized audit.
+De-pseudonymization is separated into a `PseudonymReverser`
+held in a distinct security context (GDPR Article 32 key
+separation). The agent process holds only the forward map.
 
 ### 6.5 Safety Profiles
 
@@ -914,8 +921,9 @@ A Comprehensive Survey." 2026.
 | Test count | ~1,700 (1,388 sync + 330 async) |
 | Benchmark suite | 7 groups, ~30 individual benchmarks |
 | Secret detection patterns | 12 |
-| PII detection categories | 18 (10 regex + 8 NER) |
-| PII validators | 6 (Luhn, SSA, NIR, IBAN, IP, phone context) |
+| PII detection categories | 20 (12 regex + 8 NER) |
+| PII validators | 8 (Luhn, SSA, NIR, IBAN, SIRET, IP, phone context, span dedup) |
+| PII benchmark F1 | 0.889 (regex), 1.000 (regex + NER) |
 | Safety profiles | 7 (standard, pseudonymize, secrets-only, block, guardian, guardian-deep, none) |
 | NER models supported | 3 (protectai/bert-base-NER, xlm-roberta-base-ner-hrl, sfermion/bert-pii-detector) |
 | Isolation backends | 3 (Direct, Podman, OpenShell) |
