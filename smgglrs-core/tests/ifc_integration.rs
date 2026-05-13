@@ -625,9 +625,8 @@ impl Drop for OllamaContainer {
 /// Real LLM integration test: a model follows prompt injection,
 /// IFC blocks the exfiltration attempt.
 ///
-/// Run with: cargo test -p smgglrs-core --test ifc_integration llm -- --ignored
+/// Set MYELIX_TEST_LLM_MODEL=qwen2.5:0.5b for faster execution.
 #[tokio::test]
-#[ignore]
 async fn llm_exfiltration_attempt_blocked() {
     // Start ollama via podman
     let container = match OllamaContainer::start() {

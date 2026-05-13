@@ -1374,10 +1374,7 @@ mod tests {
         assert!(ml.to_string_lossy().contains("pii-ner-multilingual"));
     }
 
-    // --- Integration test (ignored, requires model) ---
-
     #[test]
-    #[ignore]
     fn ner_multilingual_french_text() {
         // Requires: smgglrs pii download --multilingual
         let model_dir = default_pii_ner_multilingual_model_dir();

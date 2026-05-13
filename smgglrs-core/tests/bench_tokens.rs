@@ -4,7 +4,7 @@
 //! print results for the paper's evaluation section.
 
 use smgglrs_core::auth::capability::{
-    build_payload, decode_token, encode_token, validate_delegation, CapabilitySet,
+    build_payload, encode_token, validate_delegation, CapabilitySet,
 };
 use smgglrs_core::identity::{CapSigner, Ed25519Signer};
 use std::time::Instant;
@@ -31,66 +31,6 @@ fn test_cap_set() -> CapabilitySet {
         tools: vec!["docs_*".to_string(), "git_*".to_string(), "rag_*".to_string()],
         credentials: vec!["github.pat".to_string(), "jira.token".to_string()],
     }
-}
-
-#[test]
-#[ignore] // wall-clock threshold; use `cargo bench -p benchmarks` for Criterion
-fn bench_token_encode_sign() {
-    let signer = test_signer();
-    let payload = build_payload(signer.did(), "did:key:z6MkSubject", test_cap_set(), 1, 3600);
-
-    // Warmup
-    for _ in 0..100 {
-        encode_token(&payload, &signer).unwrap();
-    }
-
-    let start = Instant::now();
-    for _ in 0..ITERATIONS {
-        encode_token(&payload, &signer).unwrap();
-    }
-    let elapsed = start.elapsed();
-
-    let per_op = elapsed / ITERATIONS as u32;
-    eprintln!(
-        "Token encode+sign: {:?} total, {:?}/op ({} ops/sec)",
-        elapsed,
-        per_op,
-        ITERATIONS as f64 / elapsed.as_secs_f64()
-    );
-
-    // Debug builds: ~100μs. Release: ~10-20μs.
-    assert!(per_op.as_millis() < 5, "encode+sign too slow: {:?}", per_op);
-}
-
-#[test]
-#[ignore] // wall-clock threshold; use `cargo bench -p benchmarks` for Criterion
-fn bench_token_verify_decode() {
-    let signer = test_signer();
-    let payload = build_payload(signer.did(), "did:key:z6MkSubject", test_cap_set(), 1, 3600);
-    let token = encode_token(&payload, &signer).unwrap();
-
-    // Warmup
-    for _ in 0..100 {
-        decode_token(&token, &signer).unwrap();
-    }
-
-    let start = Instant::now();
-    for _ in 0..ITERATIONS {
-        decode_token(&token, &signer).unwrap();
-    }
-    let elapsed = start.elapsed();
-
-    let per_op = elapsed / ITERATIONS as u32;
-    eprintln!(
-        "Token verify+decode: {:?} total, {:?}/op ({} ops/sec)",
-        elapsed,
-        per_op,
-        ITERATIONS as f64 / elapsed.as_secs_f64()
-    );
-
-    // Ed25519 verification is inherently slower than signing.
-    // On debug builds (unoptimized), expect ~2-3ms. Release: ~50-100μs.
-    assert!(per_op.as_millis() < 10, "verify+decode too slow: {:?}", per_op);
 }
 
 #[test]

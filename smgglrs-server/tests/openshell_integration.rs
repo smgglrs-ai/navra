@@ -5,7 +5,6 @@
 //! components to simulate the sandbox environment without requiring
 //! real containers or an OpenShell supervisor.
 //!
-//! All tests are `#[ignore]` for CI — they require the smgglrs binary
 //! and ORT runtime to be available. Run explicitly with:
 //!
 //!   ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 \
@@ -36,7 +35,6 @@ fn free_port() -> u16 {
 /// smgglrs's ACLs (Layer 2 / DAC) also prevent unauthorized tool
 /// usage that could attempt network access.
 #[tokio::test]
-#[ignore]
 async fn agent_cannot_reach_unauthorized_endpoint() {
     // Start a mock "unauthorized" HTTP server
     let unauthorized_port = free_port();
@@ -63,6 +61,9 @@ async fn agent_cannot_reach_unauthorized_endpoint() {
     // The key insight: even if the network namespace were bypassed,
     // smgglrs's ACLs prevent the agent from using tools that could
     // make arbitrary HTTP requests.
+
+    // Wait for server to start listening
+    tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Verify the unauthorized server is reachable from this process
     // (proving that network isolation must be enforced, not assumed)
@@ -96,7 +97,6 @@ async fn agent_cannot_reach_unauthorized_endpoint() {
 /// even inside a sandbox with network access, the agent can only
 /// use tools its token authorizes.
 #[tokio::test]
-#[ignore]
 async fn authorized_tool_calls_respect_acls() {
     // In a real test:
     // 1. Start smgglrs with a config that allows "read" on /tmp/test-workspace/**
@@ -138,7 +138,6 @@ async fn authorized_tool_calls_respect_acls() {
 /// high-security sandbox must not leak sensitive data to a
 /// low-security sandbox via the A2A mesh.
 #[tokio::test]
-#[ignore]
 async fn ifc_taint_propagation_across_a2a_boundary() {
     use smgglrs_core::ifc::TaintTracker;
     use smgglrs_core::protocol::label::{Confidentiality, DataLabel};
@@ -182,7 +181,6 @@ async fn ifc_taint_propagation_across_a2a_boundary() {
 /// at position 2 and mapped to an AgentIdentity with the correct
 /// permission set based on label mapping.
 #[tokio::test]
-#[ignore]
 async fn openshell_identity_token_accepted() {
     // In a real test:
     // 1. Generate a test Ed25519 keypair
@@ -216,7 +214,6 @@ async fn openshell_identity_token_accepted() {
 /// with a token scoped to ["read", "search"] cannot call tools
 /// requiring "write" even if the underlying permission set allows it.
 #[tokio::test]
-#[ignore]
 async fn scoped_capability_token_limits_operations() {
     // In a real test:
     // 1. Create a root identity with Ed25519 keypair
@@ -254,7 +251,6 @@ async fn scoped_capability_token_limits_operations() {
 /// agent somehow obtains PII from a tool, smgglrs's safety filters
 /// prevent it from persisting or exfiltrating the raw data.
 #[tokio::test]
-#[ignore]
 async fn pii_filter_applied_to_cross_sandbox_data() {
     use smgglrs_core::safety::{ContentFilter, FilterContext, PiiFilter};
 

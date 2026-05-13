@@ -27,7 +27,6 @@ fn ctx() -> FilterContext<'static> {
 }
 
 #[test]
-#[ignore]
 fn ner_debug_thresholds() {
     let filter = NerFilter::load_from_dir(&model_dir())
         .expect("model not installed")
@@ -52,7 +51,6 @@ fn ner_debug_thresholds() {
 }
 
 #[test]
-#[ignore]
 fn ner_detects_person_names() {
     let filter = NerFilter::load_from_dir(&model_dir())
         .expect("model not installed")
@@ -66,7 +64,6 @@ fn ner_detects_person_names() {
 }
 
 #[test]
-#[ignore]
 fn ner_detects_location() {
     let filter = load_filter();
     let findings = filter.scan("I live at 15 rue de Rivoli, 75001 Paris", &ctx());
@@ -78,7 +75,6 @@ fn ner_detects_location() {
 }
 
 #[test]
-#[ignore]
 fn ner_detects_organization() {
     let filter = load_filter();
     let findings = filter.scan("She works at Red Hat in Raleigh", &ctx());
@@ -90,7 +86,6 @@ fn ner_detects_organization() {
 }
 
 #[test]
-#[ignore]
 fn ner_detects_multiple_entities() {
     let filter = load_filter();
     let findings = filter.scan("Jean Dupont works at Airbus in Toulouse", &ctx());
@@ -106,7 +101,6 @@ fn ner_detects_multiple_entities() {
 }
 
 #[test]
-#[ignore]
 fn ner_no_pii_in_technical_text() {
     let filter = load_filter();
     let findings = filter.scan(
