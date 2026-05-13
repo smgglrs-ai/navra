@@ -1544,7 +1544,7 @@ tcp = "127.0.0.1:9315"
 
 # --- Modules ---
 
-[modules.docs]
+[modules.file]
 enabled = true
 
 [modules.rag]

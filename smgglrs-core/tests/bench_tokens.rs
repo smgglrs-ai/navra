@@ -34,6 +34,7 @@ fn test_cap_set() -> CapabilitySet {
 }
 
 #[test]
+#[ignore] // wall-clock threshold; use `cargo bench -p benchmarks` for Criterion
 fn bench_token_encode_sign() {
     let signer = test_signer();
     let payload = build_payload(signer.did(), "did:key:z6MkSubject", test_cap_set(), 1, 3600);
@@ -62,6 +63,7 @@ fn bench_token_encode_sign() {
 }
 
 #[test]
+#[ignore] // wall-clock threshold; use `cargo bench -p benchmarks` for Criterion
 fn bench_token_verify_decode() {
     let signer = test_signer();
     let payload = build_payload(signer.did(), "did:key:z6MkSubject", test_cap_set(), 1, 3600);

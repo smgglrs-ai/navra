@@ -23,46 +23,53 @@ package only provides shared libraries.
 | Crate | Category | Role |
 |---|---|---|
 | `smgglrs-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports |
-| `smgglrs-model` | Infrastructure | Model backend trait + ONNX/OpenAI implementations |
+| `smgglrs-model` | Infrastructure | Model backend trait + ONNX/OpenAI/Anthropic implementations |
 | `smgglrs-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
-| `smgglrs-model-runtime` | Infrastructure | Serve models with pluggable isolation (Podman, direct, libkrun) |
+| `smgglrs-model-runtime` | Infrastructure | Serve models with pluggable isolation (direct, Podman, OpenShell) |
+| `smgglrs-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
 | `smgglrs-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks |
 | `smgglrs-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
 | `smgglrs-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
-| `smgglrs-agent` | Infrastructure | Client SDK: agent builder, MCP client, tool-use loop. Standalone `smgglrs-agent` binary for containerized execution (`Dockerfile.agent`) |
+| `smgglrs-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, standalone binary (`Dockerfile.agent`) |
 | `smgglrs-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation |
 | `smgglrs-core` | Infrastructure | Server, module trait, session, transport, re-exports |
 | `smgglrs-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
 | `smgglrs-tools-git` | Tool | Git tools (status, diff, log, branch, commit; planned: push, pull, fetch) |
-| `smgglrs-tools-github` | Tool | *(planned)* GitHub API tools (PRs, issues) — `github_pr_*`, `github_issue_*` |
-| `smgglrs-tools-gitlab` | Tool | *(planned)* GitLab API tools (MRs, issues) — `gitlab_mr_*`, `gitlab_issue_*` |
-| `smgglrs-tools-jira` | Tool | *(planned)* Jira API tools (issues, boards) — `jira_issue_*` |
-| `smgglrs-rag` | Context enrichment | Vector search, sqlite-vec, semantic chunking |
+| `smgglrs-tools-exec` | Tool | Command execution inside OpenShell sandboxes |
+| `smgglrs-rag` | Context enrichment | Vector search, sqlite-vec, semantic chunking, cross-encoder reranking |
 | `smgglrs-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
 | `smgglrs-modal-vision` | Modality | Image/screen understanding (GPU tier) |
-| `smgglrs-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
+| `smgglrs-macros` | Dev tooling | `#[tool]` proc macro for generating tool definitions from functions |
 | `smgglrs-server` | Binary | CLI, config, module wiring, systemd, tray (binary: `smgglrs`) |
+| `benchmarks` | Dev tooling | Criterion performance benchmarks |
 
 ### Dependency layering
 
 ```
 smgglrs-protocol          (no smgglrs deps)
-smgglrs-model             (no smgglrs deps)
 smgglrs-model-hub         (no smgglrs deps)
 smgglrs-model-runtime     (no smgglrs deps)
 smgglrs-responses         (no smgglrs deps)
+smgglrs-cognitive         (no smgglrs deps)
+smgglrs-macros            (no smgglrs deps, proc-macro)
+    ↓
+smgglrs-model             (responses)
     ↓
 smgglrs-security          (protocol + model)
     ↓
-smgglrs-cognitive         (no smgglrs deps)               PERSONAS
-smgglrs-memory            (no smgglrs deps)               PERSISTENCE
-smgglrs-agent             (protocol + model + security)  CLIENT
-smgglrs-flow              (agent)                        ORCHESTRATION
 smgglrs-core              (protocol + model + security)  SERVER
     ↓
-smgglrs-tools-*  ─────┐
-smgglrs-rag      ─────┼── (core only)
-smgglrs-modal-*  ─────┘
+smgglrs-memory            (core + model, opt: rag)       PERSISTENCE
+smgglrs-agent             (protocol + model + security   CLIENT
+                           + cognitive)
+smgglrs-tools-file ───┐
+smgglrs-tools-git  ───┤
+smgglrs-tools-exec ───┼── (core, exec also: model-runtime)
+smgglrs-rag        ───┤
+smgglrs-modal-*    ───┘── (core only)
+    ↓
+smgglrs-flow              (agent + cognitive + protocol  ORCHESTRATION
+                           + model + security)
     ↓
 smgglrs-server            (all + hub + runtime)
 ```
@@ -83,7 +90,7 @@ smgglrs-server / smgglrs (gateway)
     |-- Permission engine (path ACLs, tool rules)
     |-- Hook pipeline (pre/post tool-call)
     |-- Safety filters (regex + ML)
-    |-- Built-in modules (docs, git, rag, voice, vision)
+    |-- Built-in modules (file, git, exec, rag, voice, vision)
     |-- Upstream MCP servers (proxied, safety-filtered)
     |-- Discovery (AID, mDNS, MCP registry)
     v
@@ -120,9 +127,28 @@ Desktop (D-Bus notifications, system tray, systemd)
 
 ### Testing
 
+Prerequisites:
+- ONNX Runtime (`onnxruntime-devel` on Fedora)
+- Ollama with at least one model (e2e tests auto-detect the first
+  available model via the Ollama API)
+
+```bash
+# Unit + integration tests
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace
+
+# Single crate
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p smgglrs-core
+
+# E2e tests (require Ollama running)
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p smgglrs-server --test e2e
+```
+
+Conventions:
 - Unit tests live in `#[cfg(test)] mod tests` at the bottom of each file
 - Integration tests in `tests/` directories per crate
-- Test tools use `echo_tool_def()` and `test_ctx()` helpers from `server.rs`
+- `echo_tool_def()` and `test_ctx()` helpers are defined locally
+  in `smgglrs-core/src/server/tests.rs`; other crates define their own
+  `test_ctx()` for constructing `CallContext` in tests
 - All async tests use `#[tokio::test]`
 
 ### Adding a Module
@@ -134,11 +160,14 @@ Desktop (D-Bus notifications, system tray, systemd)
 
 ### Adding a Tool
 
-Tools within a module:
+Tools within a module (manual):
 1. Define `ToolDefinition` with name, description, input schema
 2. Create handler: `Arc<dyn Fn(Value, CallContext) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>> + Send + Sync>`
 3. Return `(definition, handler)` pair from `Module::tools()`
 4. Tool name must be prefixed with module name
+
+Or use the `#[tool]` proc macro from `smgglrs-macros` to generate
+both the definition and handler from an annotated async function.
 
 ## Config
 
@@ -163,6 +192,7 @@ See DESIGN.md for full config reference.
 ## Reference Documents
 
 - `DESIGN.md` — Full architecture, protocol, security model, config reference
+- `TESTING.md` — Test prerequisites, running tests, crate test counts
 - `ROADMAP.md` — Gap analysis vs Python Myelix, phased migration plan
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)

@@ -25,7 +25,7 @@ notify = "dbus"
 
 # --- Modules ---
 
-[modules.docs]
+[modules.file]
 enabled = true
 db_path = "/tmp/smgglrs-demo/docs.db"
 watch = []

@@ -95,17 +95,17 @@ impl Config {
             .unwrap_or(false)
     }
 
-    pub fn docs_enabled(&self) -> bool {
+    pub fn file_enabled(&self) -> bool {
         self.modules
-            .docs
+            .file
             .as_ref()
             .map(|d| d.enabled)
             .unwrap_or(true)
     }
 
-    pub fn docs_db_path(&self) -> String {
+    pub fn file_db_path(&self) -> String {
         self.modules
-            .docs
+            .file
             .as_ref()
             .map(|d| d.db.clone())
             .unwrap_or_else(modules::default_db_path)

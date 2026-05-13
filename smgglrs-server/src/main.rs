@@ -1141,8 +1141,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     // --- Docs module ---
     // Keep watcher handle alive for the lifetime of the server.
     let mut _watcher_handle: Option<smgglrs_tools_file::WatcherHandle> = None;
-    if cfg.docs_enabled() {
-        let db_path = cfg.docs_db_path();
+    if cfg.file_enabled() {
+        let db_path = cfg.file_db_path();
         let mut index = smgglrs_tools_file::IndexStore::open(&db_path)?;
 
         // Enable vector search if an embedding model is loaded
@@ -1175,9 +1175,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             )
         };
         // Set default root for file_tree.
-        // Priority: [modules.docs] default_root > top-level cognitive_core
+        // Priority: [modules.file] default_root > top-level cognitive_core
         let mut docs = docs;
-        let docs_root = cfg.modules.docs.as_ref()
+        let docs_root = cfg.modules.file.as_ref()
             .and_then(|d| d.default_root.as_deref())
             .or(cfg.cognitive_core.as_deref());
         if let Some(root_path) = docs_root {
@@ -1194,7 +1194,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // Start file watcher if watch directories are configured
         let watch_dirs: Vec<_> = cfg
             .modules
-            .docs
+            .file
             .as_ref()
             .map(|d| &d.watch)
             .into_iter()
@@ -2424,7 +2424,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             }),
             budget_cfg: cfg.budget.clone(),
             flow_dirs: resolved_flow_dirs.clone(),
-            docs_root: cfg.modules.docs.as_ref()
+            docs_root: cfg.modules.file.as_ref()
                 .and_then(|d| d.default_root.clone())
                 .or_else(|| cfg.cognitive_core.clone()),
             root_payload: Some(root_payload.clone()),
@@ -2981,7 +2981,18 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             tracing::info!("ACP endpoint at POST /acp");
 
             // --- Web UI: shared state + API routes ---
-            let router = ui::attach_ui_routes(router, &cfg, &server, &models);
+            // Detect first available Ollama model for UI chat fallback
+            let ollama_fallback: Option<String> = if let Ok(resp) = reqwest::Client::new()
+                .get("http://localhost:11434/api/tags")
+                .send()
+                .await
+            {
+                resp.json::<serde_json::Value>().await.ok()
+                    .and_then(|tags| tags["models"][0]["name"].as_str().map(String::from))
+            } else {
+                None
+            };
+            let router = ui::attach_ui_routes(router, &cfg, &server, &models, ollama_fallback.as_deref());
 
             tracing::info!("Web UI at http://localhost:{}", cfg.server.tcp.as_deref().and_then(|a| a.rsplit(':').next()).unwrap_or("9315"));
 

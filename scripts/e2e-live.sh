@@ -117,7 +117,7 @@ cognitive_core = "$REPO_ROOT/cognitive_core"
 [server]
 tcp = "127.0.0.1:$PORT"
 
-[modules.docs]
+[modules.file]
 enabled = true
 
 [modules.git]
@@ -671,7 +671,7 @@ cognitive_core = "$REPO_ROOT/cognitive_core"
 [server]
 tcp = "127.0.0.1:$DEMO_PORT"
 
-[modules.docs]
+[modules.file]
 enabled = true
 default_root = "$ABS_DEMO_PROJECT"
 

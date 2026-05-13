@@ -18,25 +18,30 @@ of origin.
 
 ## Crate Structure
 
-See CLAUDE.md for the full 14-crate workspace table. Summary:
+See CLAUDE.md for the full 20-crate workspace table. Summary:
 
 ```
 smgglrs/
 ├── smgglrs-protocol       MCP/A2A/JSON-RPC types, upstream transports
 ├── smgglrs-model          Model backend trait + ONNX/OpenAI/Anthropic impls
 ├── smgglrs-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
-├── smgglrs-model-runtime  Serve models (Podman, direct, libkrun)
+├── smgglrs-model-runtime  Serve models (direct, Podman, OpenShell)
+├── smgglrs-responses      Open Responses API types (spec-compliant)
 ├── smgglrs-security       Auth, permissions, IFC, trusted paths, safety, hooks
+├── smgglrs-cognitive       Persona/directive/heuristic YAML loader + prompt weaver
+├── smgglrs-memory         Working memory + knowledge store (FTS5)
 ├── smgglrs-agent          Client SDK: agent builder, MCP client, tool-use loop
 ├── smgglrs-flow           Declarative multi-agent flows with handoff routing
 ├── smgglrs-core           Server, module trait, session, transport
-├── smgglrs-tools-docs     Document tools (FTS5, file I/O)
+├── smgglrs-tools-file     File tools (FTS5, file I/O)
 ├── smgglrs-tools-git      Git tools (status, diff, log, branch, commit)
+├── smgglrs-tools-exec     Command execution inside OpenShell sandboxes
 ├── smgglrs-rag            Vector search, sqlite-vec, semantic chunking
 ├── smgglrs-modal-voice    Speech I/O (ASR + TTS via ONNX)
 ├── smgglrs-modal-vision   Image/screen understanding (GPU tier)
-├── smgglrs-responses      Open Responses API types (spec-compliant)
-└── smgglrs-server         Binary: CLI, config, module wiring (smgglrs)
+├── smgglrs-macros         #[tool] proc macro for tool definition generation
+├── smgglrs-server         Binary: CLI, config, module wiring (smgglrs)
+└── benchmarks             Criterion performance benchmarks
 ```
 
 | Crate | Role |
@@ -44,12 +49,12 @@ smgglrs/
 | `smgglrs-protocol` | MCP/A2A/JSON-RPC types, upstream client with stdio/HTTP/SSE + resilient transports |
 | `smgglrs-model` | Model backend trait with ONNX (in-process), OpenAI-compatible, and Anthropic (direct + Vertex AI) implementations |
 | `smgglrs-model-hub` | Pull and cache models from OCI, HuggingFace, and Ollama registries with content-addressed storage |
-| `smgglrs-model-runtime` | Serve models with pluggable isolation: direct (llama-server), Podman (rootless container), libkrun (microVM) |
+| `smgglrs-model-runtime` | Serve models with pluggable isolation: direct (llama-server), Podman (rootless container), OpenShell (gRPC sandbox) |
 | `smgglrs-security` | BLAKE3 token auth, capability tokens (CBOR+Ed25519), DID:key identity, path ACLs, per-tool rules, IFC with trusted paths, safety filters, hook pipeline, approval store, D-Bus notifier, process table, rate limiting |
 | `smgglrs-agent` | Client SDK for building agents: Agent builder, McpClient (IFC taint tracking), ReAct tool-use loop |
 | `smgglrs-flow` | Declarative multi-agent flow engine: directed graph of agents, handoff-based routing, TOML config |
 | `smgglrs-core` | MCP server (JSON-RPC 2.0, Streamable HTTP + SSE), Module trait, session store, IFC value store |
-| `smgglrs-tools-docs` | Document tools, SQLite FTS5 index, file I/O with path security |
+| `smgglrs-tools-file` | File tools, SQLite FTS5 index, file I/O with path security |
 | `smgglrs-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`) |
 | `smgglrs-rag` | Vector search with sqlite-vec, semantic chunking for context enrichment |
 | `smgglrs-modal-voice` | Speech I/O: ASR (Whisper) + TTS via ONNX models |
@@ -69,7 +74,7 @@ smgglrs/
 │                         smgglrs-server (gateway)                      │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐  │
 │  │ System Tray │  │    Config    │  │      Module Loader          │  │
-│  │   (ksni)    │  │    (TOML)    │  │ DocsModule, GitModule       │  │
+│  │   (ksni)    │  │    (TOML)    │  │ FileModule, GitModule       │  │
 │  │ Approve/Deny│  │              │  │ + upstream MCP servers      │  │
 │  │ Pause/Resume│  │              │  │                             │  │
 │  └──────┬──────┘  └──────────────┘  └──────────────┬──────────────┘  │
@@ -102,7 +107,7 @@ smgglrs/
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─ Built-in Modules ─────────────────────────────────────────────┐  │
-│  │  smgglrs-tools-docs: file_search, file_read, file_write, ...     │  │
+│  │  smgglrs-tools-file: file_search, file_read, file_write, ...     │  │
 │  │  smgglrs-tools-git:  git_status, git_diff, git_log, git_branch  │  │
 │  │                 git_commit (approval required)                 │  │
 │  └────────────────────────────────────────────────────────────────┘  │
@@ -230,7 +235,7 @@ Compile-time composition — modules are wired in `main.rs`:
 ```rust
 McpServer::builder()
     .name("smgglrs")
-    .module(DocsModule::new(perm_engine, index, approvals, notifier))
+    .module(FileModule::new(perm_engine, index, approvals, notifier))
     .module(GitModule::new(perm_engine, approvals, notifier))
     .authenticator(token_auth)
     .safety_profile("developer", build_pipeline("standard"))
@@ -247,7 +252,7 @@ conflict). Tool names follow a structured naming convention (see
 Modules are enabled/disabled in config:
 
 ```toml
-[modules.docs]
+[modules.file]
 enabled = true
 db = "$XDG_DATA_HOME/smgglrs/index.db"
 
@@ -1165,7 +1170,7 @@ Default path: `~/.config/smgglrs/config.toml`
 socket = "$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock"
 tcp = "127.0.0.1:9315"    # optional, for development
 
-[modules.docs]
+[modules.file]
 enabled = true
 # db = "$XDG_DATA_HOME/smgglrs/index.db"
 watch = ["~/Documents", "~/Notes"]   # auto-reindex on file changes
@@ -1336,12 +1341,12 @@ WantedBy=sockets.target
 
 ## File Watcher
 
-The docs module can watch directories for file changes using the
+The file module can watch directories for file changes using the
 `notify` crate (inotify on Linux). On create/modify, files are read
 and upserted into the FTS5 index. On delete, removed from the index.
 
 ```toml
-[modules.docs]
+[modules.file]
 watch = ["~/Documents", "~/Notes"]
 ```
 
@@ -1360,7 +1365,7 @@ Six core components identified for effective agent harnesses:
 
 1. **Live repository context** — Collect workspace metadata upfront
    (git status, project structure, conventions). smgglrs already provides
-   this via smgglrs-tools-git and smgglrs-tools-docs.
+   this via smgglrs-tools-git and smgglrs-tools-file.
 2. **Prompt cache separation** — Separate stable content (tool
    descriptions, system prompt) from dynamic state (conversation
    history). Enables prompt cache reuse across turns.

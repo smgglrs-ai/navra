@@ -62,7 +62,7 @@ cognitive_core = "cognitive_core"
 [server]
 tcp = "127.0.0.1:{port}"
 
-[modules.docs]
+[modules.file]
 enabled = false
 "#;
 
@@ -72,7 +72,7 @@ cognitive_core = "cognitive_core"
 [server]
 tcp = "127.0.0.1:{port}"
 
-[modules.docs]
+[modules.file]
 enabled = true
 "#;
 

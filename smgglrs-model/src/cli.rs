@@ -161,16 +161,14 @@ impl CliBackend {
             ))
         })?;
 
-        // Write prompt to stdin if needed
+        // Write prompt to stdin if needed.
+        // Ignore broken pipe — the subprocess may exit before reading all input
+        // (e.g. `echo` outputs its args and exits without reading stdin).
         if use_stdin {
             if let Some(mut stdin) = child.stdin.take() {
                 use tokio::io::AsyncWriteExt;
-                // Write and drop stdin to signal EOF
-                let write_result = stdin.write_all(prompt.as_bytes()).await;
+                let _ = stdin.write_all(prompt.as_bytes()).await;
                 drop(stdin);
-                write_result.map_err(|e| {
-                    ModelError::Inference(format!("failed to write to stdin: {e}"))
-                })?;
             }
         }
 

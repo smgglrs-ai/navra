@@ -4,9 +4,9 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-05-07)
+## Current state (2026-05-12)
 
-18 crates, ~77K LoC, 1600+ tests, 0 warnings. 43 personas, 36
+20 crates, ~84K LoC, 1600+ tests, 0 warnings. 43 personas, 36
 heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
 Fully local multi-agent demos. Full PII pipeline (regex + NER + file
 paths, pseudonymization, GDPR tools, IFC integration). Containerized
@@ -233,7 +233,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Make hardcoded values configurable | 2026-04-25 |
 | Per-teammate operation scoping (delegated capability tokens) | 2026-04-25 |
 | Split large files (server.rs, tools.rs, streamable.rs, config.rs, a2a.rs) | 2026-04-24 |
-| Per-crate README.md files (17 crates) | 2026-04-24 |
+| Per-crate README.md files | 2026-04-24 |
 | Module-level //! doc comments (all crates) | 2026-04-24 |
 | Rename docs_* → file_*, MCP resources for reads | 2026-04-25 |
 | Full PII pipeline (regex + NER + paths, pseudonymization, GDPR tools) | 2026-04-25 |
@@ -272,6 +272,10 @@ audit/blackbox logs, distillation output, and vector embeddings
 | **smgglrs-flow DAG test framework** (PTA/dominator validation) | 12 | 3-4 days | Medium |
 | **Event-driven triggers** (Jarvis: email/Slack/calendar → agent) | 5 | 3-5 days | Medium |
 | **fd-passing TOCTOU mitigation** (smgglrs-tools-file) | 12b | 1-2 days | Medium |
+| **Un-ignore NER tests**: auto-download PII model in CI (`smgglrs pii download`) | 12b | 0.5 day | Medium |
+| **Un-ignore OpenShell tests**: mock gRPC endpoint or test fixture | 12b | 1 day | Medium |
+| **Un-ignore IFC LLM test**: needs Ollama + model; gate on `SMGGLRS_TEST_LLM=1` | 12b | 0.5 day | Low |
+| **Move bench thresholds to Criterion**: `bench_token_encode_sign`, `bench_token_verify_decode` already duplicated in `benchmarks/` — remove from `bench_tokens.rs` | 12b | 0.5 day | Low |
 
 ---
 

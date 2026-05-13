@@ -33,6 +33,7 @@ pub(crate) fn attach_ui_routes(
     cfg: &config::Config,
     server: &Arc<smgglrs_core::McpServer>,
     models: &std::collections::HashMap<String, Arc<dyn smgglrs_model::ModelBackend>>,
+    ollama_fallback_model: Option<&str>,
 ) -> axum::Router {
     // Load cognitive core if configured
     let forge = if let Some(ref path) = cfg.cognitive_core {
@@ -121,9 +122,10 @@ pub(crate) fn attach_ui_routes(
 
         // Fall back to Ollama if no config-defined model
         from_config.or_else(|| {
+            let model_name = ollama_fallback_model?;
             Some(Arc::new(smgglrs_model::OpenAiBackend::new(
                 "http://localhost:11434/v1",
-                "gemma4:26b",
+                model_name,
                 None,
                 smgglrs_model::Locality::Local,
             )) as Arc<dyn smgglrs_model::ModelBackend>)
@@ -440,9 +442,61 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::util::ServiceExt;
 
+    struct StubBackend;
+
+    impl smgglrs_model::ModelBackend for StubBackend {
+        fn respond(
+            &self,
+            _request: &smgglrs_model::CreateResponseRequest,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<smgglrs_model::ModelResponse, smgglrs_model::ModelError>> + Send + '_>> {
+            Box::pin(async {
+                Ok(smgglrs_model::ModelResponse {
+                    id: "resp_stub".into(),
+                    object: "response".into(),
+                    created_at: None,
+                    completed_at: None,
+                    status: smgglrs_model::ResponseStatus::Completed,
+                    model: Some("stub".into()),
+                    output: vec![smgglrs_model::OutputItem::Message(
+                        smgglrs_model::MessageItem::assistant("hello"),
+                    )],
+                    usage: None,
+                    error: None,
+                    previous_response_id: None,
+                    instructions: None,
+                    tools: Vec::new(),
+                    tool_choice: None,
+                    text: None,
+                    reasoning: None,
+                    truncation: None,
+                    temperature: None,
+                    max_output_tokens: None,
+                    metadata: Default::default(),
+                    incomplete_details: None,
+                    extra: Default::default(),
+                })
+            })
+        }
+    }
+
     fn test_config() -> config::Config {
         let mut cfg = config::Config::default();
         cfg.cognitive_core = None;
+        cfg.models.insert("stub".into(), config::ModelConfig {
+            model_path: None,
+            source: None,
+            tokenizer_path: None,
+            task: "chat".into(),
+            device: None,
+            dimensions: None,
+            labels: Vec::new(),
+            threshold: None,
+            runtime: None,
+            context_size: None,
+            parallel: None,
+            model_name: None,
+            agentic: None,
+        });
         cfg
     }
 
@@ -451,7 +505,9 @@ mod tests {
     }
 
     fn test_models() -> std::collections::HashMap<String, Arc<dyn smgglrs_model::ModelBackend>> {
-        std::collections::HashMap::new()
+        let mut m = std::collections::HashMap::new();
+        m.insert("stub".into(), Arc::new(StubBackend) as Arc<dyn smgglrs_model::ModelBackend>);
+        m
     }
 
     fn build_test_router() -> axum::Router {
@@ -459,7 +515,7 @@ mod tests {
         let models = test_models();
         let cfg = test_config();
         let base = axum::Router::new();
-        attach_ui_routes(base, &cfg, &server, &models)
+        attach_ui_routes(base, &cfg, &server, &models, Some("stub"))
     }
 
     async fn post_json(

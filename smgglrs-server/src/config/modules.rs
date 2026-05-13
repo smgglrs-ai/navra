@@ -4,7 +4,8 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 pub struct ModulesConfig {
     #[serde(default)]
-    pub docs: Option<DocsModuleConfig>,
+    #[serde(alias = "docs")]
+    pub file: Option<FileModuleConfig>,
     #[serde(default)]
     pub git: Option<GitModuleConfig>,
     #[serde(default)]
@@ -164,7 +165,7 @@ fn default_silence_timeout_ms() -> u64 {
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
-pub struct DocsModuleConfig {
+pub struct FileModuleConfig {
     #[serde(default = "super::default_true")]
     pub enabled: bool,
     #[serde(default = "default_db_path")]
@@ -208,7 +209,7 @@ impl Default for RegistryModuleConfig {
     }
 }
 
-impl Default for DocsModuleConfig {
+impl Default for FileModuleConfig {
     fn default() -> Self {
         Self {
             enabled: true,

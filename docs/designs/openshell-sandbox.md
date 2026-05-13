@@ -1126,7 +1126,7 @@ impl GrpcModuleManager {
 
 ```toml
 # In-process module (existing, unchanged)
-[modules.docs]
+[modules.file]
 enabled = true
 
 # gRPC module (new)
@@ -1316,7 +1316,7 @@ default_permissions = "restricted"
 "role=lead"    = "developer"
 
 # Modules enabled for this sandbox
-[modules.docs]
+[modules.file]
 enabled = true
 [modules.git]
 enabled = true
