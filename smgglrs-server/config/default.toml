@@ -7,7 +7,7 @@ tcp = "127.0.0.1:9315"  # development default
 
 # --- Modules ---
 
-[modules.docs]
+[modules.file]
 enabled = true
 # db = "$XDG_DATA_HOME/smgglrs/index.db"
 

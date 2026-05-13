@@ -456,7 +456,7 @@ cognitive_core = "{project}"
 [server]
 tcp = "127.0.0.1:{demo_port}"
 
-[modules.docs]
+[modules.file]
 enabled = true
 db_path = "/tmp/smgglrs-demo/agent-docs.db"
 

@@ -588,7 +588,7 @@ message CallContext {
 
 ```toml
 # In-process module (existing)
-[modules.docs]
+[modules.file]
 enabled = true
 
 # gRPC module (new)

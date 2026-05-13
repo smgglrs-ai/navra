@@ -10,7 +10,7 @@ similarity search when an embedding model is available.
 
 ## Key types
 
-- `DocsModule` -- implements `Module` trait, registers document tools
+- `FileModule` -- implements `Module` trait, registers document tools
 - `IndexStore` -- SQLite-backed document index with FTS5 and
   optional vector embeddings
 - `start_watcher` / `start_watcher_with_embeddings` -- filesystem
