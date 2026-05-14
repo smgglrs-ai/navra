@@ -185,6 +185,74 @@ async fn handler_can_be_called() {
     }
 }
 
+// --- Tool with #[state] parameter ---
+
+use std::sync::Arc;
+
+struct TestState {
+    prefix: String,
+}
+
+#[tool(
+    name = "test_stateful",
+    description = "Tool with shared state",
+)]
+async fn test_stateful(
+    #[arg(description = "Input text")] text: String,
+    ctx: CallContext,
+    #[state] state: Arc<TestState>,
+) -> CallToolResult {
+    let _ = ctx;
+    CallToolResult {
+        content: vec![Content::Text(TextContent {
+            text: format!("{}{}", state.prefix, text),
+        })],
+        is_error: false,
+        label: Default::default(),
+    }
+}
+
+#[test]
+fn state_param_excluded_from_schema() {
+    let def = test_stateful_tool_def();
+    let props = def.input_schema.properties.as_ref().unwrap();
+    assert!(props.contains_key("text"));
+    assert!(!props.contains_key("state"));
+    let required = def.input_schema.required.as_ref().unwrap();
+    assert!(required.contains(&"text".to_string()));
+    assert!(!required.contains(&"state".to_string()));
+}
+
+#[test]
+fn state_handler_accepts_state_arg() {
+    let state = Arc::new(TestState { prefix: "hello: ".to_string() });
+    let (def, _handler) = test_stateful_handler(state);
+    assert_eq!(def.name, "test_stateful");
+}
+
+#[tokio::test]
+async fn state_handler_passes_state_to_function() {
+    let state = Arc::new(TestState { prefix: ">>".to_string() });
+    let (_, handler) = test_stateful_handler(state);
+    let args = serde_json::json!({"text": "world"});
+    let ctx = CallContext::new(
+        smgglrs_security::auth::AgentIdentity {
+            name: "test".to_string(),
+            permissions: "admin".to_string(),
+            signing_key: None,
+            did: None,
+            capabilities: None,
+        },
+        "test-session",
+    );
+    let result = handler(args, ctx).await;
+    assert!(!result.is_error);
+    match &result.content[0] {
+        Content::Text(t) => assert_eq!(t.text, ">>world"),
+        _ => panic!("expected text content"),
+    }
+}
+
 // --- Tool with no args (besides context) ---
 
 #[tool(

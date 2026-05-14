@@ -1,11 +1,9 @@
 use smgglrs_core::auth::CallContext;
 use smgglrs_core::notify::Notifier;
 use smgglrs_core::permissions::{ApprovalStore, PermissionEngine, PermissionResult};
-use smgglrs_core::protocol::{CallToolResult, Content, ToolDefinition, ToolInputSchema};
+use smgglrs_core::protocol::{CallToolResult, Content};
 use smgglrs_core::Module;
-use smgglrs_core::ToolHandler;
-use std::collections::HashMap;
-use std::future::Future;
+use smgglrs_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -21,7 +19,7 @@ pub struct GitModule {
     state: Arc<GitState>,
 }
 
-struct GitState {
+pub(crate) struct GitState {
     perm_engine: Arc<PermissionEngine>,
     approvals: Arc<ApprovalStore>,
     notifier: Arc<dyn Notifier>,
@@ -48,165 +46,233 @@ impl Module for GitModule {
         "git"
     }
 
-    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
         let s = self.state.clone();
         vec![
-            make_tool(status_tool_def(), s.clone(), handle_status),
-            make_tool(diff_tool_def(), s.clone(), handle_diff),
-            make_tool(log_tool_def(), s.clone(), handle_log),
-            make_tool(branch_tool_def(), s.clone(), handle_branch),
-            make_tool(commit_tool_def(), s.clone(), handle_commit),
+            handle_status_handler(s.clone()),
+            handle_diff_handler(s.clone()),
+            handle_log_handler(s.clone()),
+            handle_branch_handler(s.clone()),
+            handle_commit_handler(s.clone()),
         ]
     }
 }
 
-/// Helper to create a (ToolDefinition, ToolHandler) pair from an async handler.
-fn make_tool<F>(
-    def: ToolDefinition,
-    state: Arc<GitState>,
-    handler: fn(serde_json::Value, CallContext, Arc<GitState>) -> F,
-) -> (ToolDefinition, ToolHandler)
-where
-    F: Future<Output = CallToolResult> + Send + 'static,
-{
-    let h: ToolHandler = Arc::new(move |args, ctx| {
-        let s = state.clone();
-        Box::pin(handler(args, ctx, s))
-    });
-    (def, h)
-}
+// --- Tool implementations ---
 
-// --- Tool definitions ---
+#[tool(
+    name = "git_status",
+    description = "Show the working tree status of a git repository.",
+)]
+async fn handle_status(
+    #[arg(description = "Path to the git repository (directory)")] path: String,
+    ctx: CallContext,
+    #[state] state: Arc<GitState>,
+) -> CallToolResult {
+    let repo_path = match resolve_repo_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
 
-fn status_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "git_status".to_string(),
-        description: Some("Show the working tree status of a git repository.".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
-                "path".to_string(),
-                serde_json::json!({"type": "string", "description": "Path to the git repository (directory)"}),
-            )])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
+    if let Err(result) = check_perm(&state, &ctx, "git.status", &repo_path).await {
+        return result;
+    }
+
+    match run_git(&repo_path, &["status", "--short", "--branch"]).await {
+        Ok(output) => {
+            if output.trim().is_empty() {
+                CallToolResult::text("Working tree clean".to_string())
+            } else {
+                CallToolResult::text(output)
+            }
+        }
+        Err(e) => CallToolResult::error(e),
     }
 }
 
-fn diff_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "git_diff".to_string(),
-        description: Some(
-            "Show changes in a git repository. By default shows unstaged changes. \
-             Use 'staged: true' for staged changes, or provide 'ref' for a specific comparison."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "path".to_string(),
-                    serde_json::json!({"type": "string", "description": "Path to the git repository"}),
-                ),
-                (
-                    "staged".to_string(),
-                    serde_json::json!({"type": "boolean", "description": "Show staged changes (default: false)"}),
-                ),
-                (
-                    "ref".to_string(),
-                    serde_json::json!({"type": "string", "description": "Compare against a ref (e.g., HEAD~3, main)"}),
-                ),
-            ])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
+#[tool(
+    name = "git_diff",
+    description = "Show changes in a git repository. By default shows unstaged changes. Use 'staged: true' for staged changes, or provide 'ref' for a specific comparison.",
+)]
+async fn handle_diff(
+    #[arg(description = "Path to the git repository")] path: String,
+    #[arg(description = "Show staged changes (default: false)")] staged: Option<bool>,
+    #[arg(name = "ref", description = "Compare against a ref (e.g., HEAD~3, main)")] git_ref: Option<String>,
+    ctx: CallContext,
+    #[state] state: Arc<GitState>,
+) -> CallToolResult {
+    let repo_path = match resolve_repo_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(result) = check_perm(&state, &ctx, "git.diff", &repo_path).await {
+        return result;
+    }
+
+    let mut git_args = vec!["diff"];
+    if staged.unwrap_or(false) {
+        git_args.push("--cached");
+    }
+    if let Some(ref r) = git_ref {
+        if r.starts_with('-') {
+            return CallToolResult::error("Invalid ref: must not start with '-'");
+        }
+        git_args.push(r);
+    }
+
+    match run_git(&repo_path, &git_args).await {
+        Ok(output) => {
+            if output.trim().is_empty() {
+                CallToolResult::text("No changes".to_string())
+            } else {
+                CallToolResult::text(output)
+            }
+        }
+        Err(e) => CallToolResult::error(e),
     }
 }
 
-fn log_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "git_log".to_string(),
-        description: Some("Show commit history of a git repository.".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "path".to_string(),
-                    serde_json::json!({"type": "string", "description": "Path to the git repository"}),
-                ),
-                (
-                    "limit".to_string(),
-                    serde_json::json!({"type": "integer", "description": "Number of commits to show (default: 10)"}),
-                ),
-                (
-                    "oneline".to_string(),
-                    serde_json::json!({"type": "boolean", "description": "Use one-line format (default: false)"}),
-                ),
-            ])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
+#[tool(
+    name = "git_log",
+    description = "Show commit history of a git repository.",
+)]
+async fn handle_log(
+    #[arg(description = "Path to the git repository")] path: String,
+    #[arg(description = "Number of commits to show (default: 10)", default = "10")] limit: Option<u64>,
+    #[arg(description = "Use one-line format (default: false)")] oneline: Option<bool>,
+    ctx: CallContext,
+    #[state] state: Arc<GitState>,
+) -> CallToolResult {
+    let repo_path = match resolve_repo_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(result) = check_perm(&state, &ctx, "git.log", &repo_path).await {
+        return result;
+    }
+
+    let limit_val = limit.unwrap_or(10);
+    let limit_str = format!("-{limit_val}");
+    let mut git_args = vec!["log", &limit_str];
+    if oneline.unwrap_or(false) {
+        git_args.push("--oneline");
+    }
+
+    match run_git(&repo_path, &git_args).await {
+        Ok(output) => CallToolResult::text(output),
+        Err(e) => CallToolResult::error(e),
     }
 }
 
-fn branch_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "git_branch".to_string(),
-        description: Some(
-            "List branches, show current branch, or create a new branch.".to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "path".to_string(),
-                    serde_json::json!({"type": "string", "description": "Path to the git repository"}),
-                ),
-                (
-                    "all".to_string(),
-                    serde_json::json!({"type": "boolean", "description": "Show remote branches too (default: false)"}),
-                ),
-                (
-                    "create".to_string(),
-                    serde_json::json!({"type": "string", "description": "Create and switch to a new branch with this name"}),
-                ),
-            ])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
+#[tool(
+    name = "git_branch",
+    description = "List branches, show current branch, or create a new branch.",
+)]
+async fn handle_branch(
+    #[arg(description = "Path to the git repository")] path: String,
+    #[arg(description = "Show remote branches too (default: false)")] all: Option<bool>,
+    #[arg(description = "Create and switch to a new branch with this name")] create: Option<String>,
+    ctx: CallContext,
+    #[state] state: Arc<GitState>,
+) -> CallToolResult {
+    let repo_path = match resolve_repo_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(result) = check_perm(&state, &ctx, "git.branch", &repo_path).await {
+        return result;
+    }
+
+    if let Some(ref name) = create {
+        if name.starts_with('-') {
+            return CallToolResult::error("Branch name must not start with '-'");
+        }
+        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+            return CallToolResult::error("Branch name contains invalid characters");
+        }
+        return match run_git(&repo_path, &["checkout", "-b", name]).await {
+            Ok(output) => CallToolResult::text(format!("Created and switched to branch '{name}'\n{output}")),
+            Err(e) => CallToolResult::error(e),
+        };
+    }
+
+    let mut git_args = vec!["branch"];
+    if all.unwrap_or(false) {
+        git_args.push("-a");
+    }
+
+    match run_git(&repo_path, &git_args).await {
+        Ok(output) => CallToolResult::text(output),
+        Err(e) => CallToolResult::error(e),
     }
 }
 
-fn commit_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "git_commit".to_string(),
-        description: Some(
-            "Create a git commit with the staged changes. Requires approval.".to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "path".to_string(),
-                    serde_json::json!({"type": "string", "description": "Path to the git repository"}),
-                ),
-                (
-                    "message".to_string(),
-                    serde_json::json!({"type": "string", "description": "Commit message"}),
-                ),
-            ])),
-            required: Some(vec!["path".to_string(), "message".to_string()]),
-        },
-        annotations: None,
+#[tool(
+    name = "git_commit",
+    description = "Create a git commit with the staged changes. Requires approval.",
+)]
+async fn handle_commit(
+    #[arg(description = "Path to the git repository")] path: String,
+    #[arg(description = "Commit message")] message: String,
+    ctx: CallContext,
+    #[state] state: Arc<GitState>,
+) -> CallToolResult {
+    if message.is_empty() {
+        return CallToolResult::error("Missing required parameter: message");
+    }
+
+    let repo_path = match resolve_repo_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(result) = check_perm(&state, &ctx, "git.commit", &repo_path).await {
+        return result;
+    }
+
+    let full_message = format!(
+        "{}\n\nSigned-off-by: {} (via smgglrs)",
+        message, ctx.agent.name,
+    );
+
+    if let Some(ref key_path) = ctx.agent.signing_key {
+        let key = match std::path::Path::new(key_path).canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                return CallToolResult::error(format!(
+                    "Signing key not found or inaccessible: {key_path}: {e}"
+                ));
+            }
+        };
+        let canonical_key = key.to_string_lossy();
+        let signing_key_arg = format!("user.signingkey={canonical_key}");
+        match run_git(
+            &repo_path,
+            &[
+                "-c", "gpg.format=ssh",
+                "-c", &signing_key_arg,
+                "commit", "-S", "-m", &full_message,
+            ],
+        )
+        .await
+        {
+            Ok(output) => CallToolResult::text(output),
+            Err(e) => CallToolResult::error(e),
+        }
+    } else {
+        match run_git(&repo_path, &["commit", "-m", &full_message]).await {
+            Ok(output) => CallToolResult::text(output),
+            Err(e) => CallToolResult::error(e),
+        }
     }
 }
 
 // --- Path validation ---
 
 fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
-    // Reject paths containing ".." components before any filesystem access
-    // to prevent path traversal attacks (CWE-22).
     if raw.split('/').any(|c| c == "..") {
         return Err(format!("Path must not contain '..': {raw}"));
     }
@@ -224,8 +290,6 @@ fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
         return Err(format!("Path must be absolute: {raw}"));
     }
 
-    // Reject symlinks pointing outside the expanded path's parent.
-    // Check before canonicalize to detect symlink escapes.
     if expanded.is_symlink() {
         let target = std::fs::read_link(&expanded)
             .map_err(|e| format!("Cannot read symlink {raw}: {e}"))?;
@@ -237,7 +301,6 @@ fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
         let resolved = resolved
             .canonicalize()
             .map_err(|e| format!("Symlink target not accessible: {e}"))?;
-        // If the original path had a parent, ensure the symlink stays within it
         if let Some(parent) = expanded.parent() {
             if let Ok(canon_parent) = parent.canonicalize() {
                 if !resolved.starts_with(&canon_parent) {
@@ -255,7 +318,6 @@ fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
         .canonicalize()
         .map_err(|e| format!("Cannot resolve path {raw}: {e}"))?;
 
-    // Verify it's a git repo
     if !canonical.join(".git").exists() {
         return Err(format!("Not a git repository: {}", canonical.display()));
     }
@@ -278,7 +340,6 @@ async fn check_perm(
         PermissionResult::NeedsApproval => {
             let path_str = path.display().to_string();
 
-            // Check for a cached grant
             if state
                 .approvals
                 .check_grant(&ctx.agent.name, op, &path_str)
@@ -290,7 +351,6 @@ async fn check_perm(
                 return Ok(());
             }
 
-            // Create approval request
             let (req, _rx) = state.approvals.request(&ctx.agent.name, op, &path_str);
 
             if let Err(e) = state
@@ -342,239 +402,6 @@ async fn run_git(
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(format!("git error: {stderr}"))
-    }
-}
-
-// --- Tool handlers ---
-
-async fn handle_status(
-    args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<GitState>,
-) -> CallToolResult {
-    let path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let repo_path = match resolve_repo_path(path) {
-        Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
-    };
-
-    if let Err(result) = check_perm(&state, &ctx, "git.status", &repo_path).await {
-        return result;
-    }
-
-    match run_git(&repo_path, &["status", "--short", "--branch"]).await {
-        Ok(output) => {
-            if output.trim().is_empty() {
-                CallToolResult::text("Working tree clean".to_string())
-            } else {
-                CallToolResult::text(output)
-            }
-        }
-        Err(e) => CallToolResult::error(e),
-    }
-}
-
-async fn handle_diff(
-    args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<GitState>,
-) -> CallToolResult {
-    let path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let repo_path = match resolve_repo_path(path) {
-        Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
-    };
-
-    if let Err(result) = check_perm(&state, &ctx, "git.diff", &repo_path).await {
-        return result;
-    }
-
-    let staged = args
-        .get("staged")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let ref_name = args.get("ref").and_then(|v| v.as_str());
-
-    let mut git_args = vec!["diff"];
-    if staged {
-        git_args.push("--cached");
-    }
-    if let Some(r) = ref_name {
-        if r.starts_with('-') {
-            return CallToolResult::error("Invalid ref: must not start with '-'");
-        }
-        git_args.push(r);
-    }
-
-    match run_git(&repo_path, &git_args).await {
-        Ok(output) => {
-            if output.trim().is_empty() {
-                CallToolResult::text("No changes".to_string())
-            } else {
-                CallToolResult::text(output)
-            }
-        }
-        Err(e) => CallToolResult::error(e),
-    }
-}
-
-async fn handle_log(
-    args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<GitState>,
-) -> CallToolResult {
-    let path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let repo_path = match resolve_repo_path(path) {
-        Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
-    };
-
-    if let Err(result) = check_perm(&state, &ctx, "git.log", &repo_path).await {
-        return result;
-    }
-
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(10);
-    let oneline = args
-        .get("oneline")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let limit_str = format!("-{limit}");
-    let mut git_args = vec!["log", &limit_str];
-    if oneline {
-        git_args.push("--oneline");
-    }
-
-    match run_git(&repo_path, &git_args).await {
-        Ok(output) => CallToolResult::text(output),
-        Err(e) => CallToolResult::error(e),
-    }
-}
-
-async fn handle_branch(
-    args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<GitState>,
-) -> CallToolResult {
-    let path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let repo_path = match resolve_repo_path(path) {
-        Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
-    };
-
-    if let Err(result) = check_perm(&state, &ctx, "git.branch", &repo_path).await {
-        return result;
-    }
-
-    // Branch creation
-    if let Some(name) = args.get("create").and_then(|v| v.as_str()) {
-        if name.starts_with('-') {
-            return CallToolResult::error("Branch name must not start with '-'");
-        }
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
-            return CallToolResult::error("Branch name contains invalid characters");
-        }
-        return match run_git(&repo_path, &["checkout", "-b", name]).await {
-            Ok(output) => CallToolResult::text(format!("Created and switched to branch '{name}'\n{output}")),
-            Err(e) => CallToolResult::error(e),
-        };
-    }
-
-    let show_all = args
-        .get("all")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let mut git_args = vec!["branch"];
-    if show_all {
-        git_args.push("-a");
-    }
-
-    match run_git(&repo_path, &git_args).await {
-        Ok(output) => CallToolResult::text(output),
-        Err(e) => CallToolResult::error(e),
-    }
-}
-
-async fn handle_commit(
-    args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<GitState>,
-) -> CallToolResult {
-    let path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-    let message = match args.get("message").and_then(|v| v.as_str()) {
-        Some(m) if !m.is_empty() => m,
-        _ => return CallToolResult::error("Missing required parameter: message"),
-    };
-
-    let repo_path = match resolve_repo_path(path) {
-        Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
-    };
-
-    // Commit requires approval
-    if let Err(result) = check_perm(&state, &ctx, "git.commit", &repo_path).await {
-        return result;
-    }
-
-    // Append Signed-off-by trailer
-    let full_message = format!(
-        "{}\n\nSigned-off-by: {} (via smgglrs)",
-        message, ctx.agent.name,
-    );
-
-    // Sign commits when the agent has a signing key configured
-    if let Some(ref key_path) = ctx.agent.signing_key {
-        let key = match std::path::Path::new(key_path).canonicalize() {
-            Ok(p) => p,
-            Err(e) => {
-                return CallToolResult::error(format!(
-                    "Signing key not found or inaccessible: {key_path}: {e}"
-                ));
-            }
-        };
-        let canonical_key = key.to_string_lossy();
-        let signing_key_arg = format!("user.signingkey={canonical_key}");
-        match run_git(
-            &repo_path,
-            &[
-                "-c", "gpg.format=ssh",
-                "-c", &signing_key_arg,
-                "commit", "-S", "-m", &full_message,
-            ],
-        )
-        .await
-        {
-            Ok(output) => CallToolResult::text(output),
-            Err(e) => CallToolResult::error(e),
-        }
-    } else {
-        match run_git(&repo_path, &["commit", "-m", &full_message]).await {
-            Ok(output) => CallToolResult::text(output),
-            Err(e) => CallToolResult::error(e),
-        }
     }
 }
 
@@ -633,7 +460,6 @@ mod tests {
         CallContext::new(AgentIdentity::new("reader", "readonly"), "test-session")
     }
 
-    /// Create a temporary git repo for testing.
     fn init_test_repo(dir: &Path) {
         std::process::Command::new("git")
             .args(["init"])
@@ -653,7 +479,6 @@ mod tests {
             .output()
             .expect("git config name failed");
 
-        // Create initial commit
         std::fs::write(dir.join("README.md"), "# Test Repo\n").unwrap();
         std::process::Command::new("git")
             .args(["add", "README.md"])
@@ -710,17 +535,12 @@ mod tests {
         let repo_str = tmp.path().to_str().unwrap();
         let state = test_state(repo_str);
 
-        let result = handle_status(
-            serde_json::json!({"path": repo_str}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_status_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
             Content::Text(t) => {
-                // Branch line should be present
                 assert!(t.text.contains("##") || t.text.contains("clean"));
             }
             _ => panic!("expected text content"),
@@ -733,16 +553,11 @@ mod tests {
         init_test_repo(tmp.path());
         let repo_str = tmp.path().to_str().unwrap();
 
-        // Modify a file
         std::fs::write(tmp.path().join("README.md"), "# Modified\n").unwrap();
 
         let state = test_state(repo_str);
-        let result = handle_status(
-            serde_json::json!({"path": repo_str}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_status_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -762,12 +577,8 @@ mod tests {
         std::fs::write(tmp.path().join("README.md"), "# Changed content\n").unwrap();
 
         let state = test_state(repo_str);
-        let result = handle_diff(
-            serde_json::json!({"path": repo_str}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_diff_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -785,12 +596,8 @@ mod tests {
         let repo_str = tmp.path().to_str().unwrap();
 
         let state = test_state(repo_str);
-        let result = handle_diff(
-            serde_json::json!({"path": repo_str}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_diff_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -808,12 +615,8 @@ mod tests {
         let repo_str = tmp.path().to_str().unwrap();
 
         let state = test_state(repo_str);
-        let result = handle_log(
-            serde_json::json!({"path": repo_str, "limit": 5}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_log_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str, "limit": 5}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -831,17 +634,12 @@ mod tests {
         let repo_str = tmp.path().to_str().unwrap();
 
         let state = test_state(repo_str);
-        let result = handle_log(
-            serde_json::json!({"path": repo_str, "oneline": true}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_log_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str, "oneline": true}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
             Content::Text(t) => {
-                // Oneline format: hash + message on one line
                 let lines: Vec<_> = t.text.lines().collect();
                 assert!(!lines.is_empty());
                 assert!(lines[0].contains("Initial commit"));
@@ -857,17 +655,12 @@ mod tests {
         let repo_str = tmp.path().to_str().unwrap();
 
         let state = test_state(repo_str);
-        let result = handle_branch(
-            serde_json::json!({"path": repo_str}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_branch_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
             Content::Text(t) => {
-                // Current branch should be marked with *
                 assert!(t.text.contains("*"));
             }
             _ => panic!("expected text content"),
@@ -880,7 +673,6 @@ mod tests {
         init_test_repo(tmp.path());
         let repo_str = tmp.path().to_str().unwrap();
 
-        // Stage a change
         std::fs::write(tmp.path().join("new.txt"), "new file\n").unwrap();
         std::process::Command::new("git")
             .args(["add", "new.txt"])
@@ -889,14 +681,12 @@ mod tests {
             .unwrap();
 
         let state = test_state(repo_str);
-        let result = handle_commit(
+        let (_, handler) = handle_commit_handler(state);
+        let result = handler(
             serde_json::json!({"path": repo_str, "message": "Add new file"}),
             test_ctx(),
-            state,
-        )
-        .await;
+        ).await;
 
-        // Should return approval-needed (not an error, but a success with approval request)
         assert!(!result.is_error);
         match &result.content[0] {
             Content::Text(t) => {
@@ -914,12 +704,11 @@ mod tests {
         let repo_str = tmp.path().to_str().unwrap();
 
         let state = test_state(repo_str);
-        let result = handle_commit(
+        let (_, handler) = handle_commit_handler(state);
+        let result = handler(
             serde_json::json!({"path": repo_str, "message": "test"}),
             readonly_ctx(),
-            state,
-        )
-        .await;
+        ).await;
 
         assert!(result.is_error);
         match &result.content[0] {
@@ -936,7 +725,6 @@ mod tests {
         init_test_repo(tmp.path());
         let repo_str = tmp.path().to_str().unwrap();
 
-        // Create state with a permission engine that only allows /home/user/**
         let mut engine = PermissionEngine::new();
         engine.add_permission_set(
             "developer".to_string(),
@@ -954,12 +742,8 @@ mod tests {
             notifier: Arc::new(smgglrs_core::notify::NoopNotifier),
         });
 
-        let result = handle_status(
-            serde_json::json!({"path": repo_str}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_status_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
 
         assert!(result.is_error);
         match &result.content[0] {
@@ -970,23 +754,10 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn missing_path_returns_error() {
-        let state = test_state("/tmp");
-        let result = handle_status(
-            serde_json::json!({}),
-            test_ctx(),
-            state,
-        )
-        .await;
-
-        assert!(result.is_error);
-        match &result.content[0] {
-            Content::Text(t) => {
-                assert!(t.text.contains("Missing"));
-            }
-            _ => panic!("expected text content"),
-        }
+    #[test]
+    fn missing_path_marked_required_in_schema() {
+        let def = handle_status_tool_def();
+        assert!(def.input_schema.required.as_ref().unwrap().contains(&"path".to_string()));
     }
 
     #[tokio::test]
@@ -995,12 +766,8 @@ mod tests {
         let repo_str = tmp.path().to_str().unwrap();
         let state = test_state(repo_str);
 
-        let result = handle_status(
-            serde_json::json!({"path": repo_str}),
-            test_ctx(),
-            state,
-        )
-        .await;
+        let (_, handler) = handle_status_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
 
         assert!(result.is_error);
         match &result.content[0] {
@@ -1044,7 +811,6 @@ mod tests {
         std::fs::create_dir(&repo_dir).unwrap();
         init_test_repo(&repo_dir);
 
-        // Create a symlink that points outside the parent directory
         let link_path = tmp.path().join("escape_link");
         std::os::unix::fs::symlink("/tmp", &link_path).unwrap();
 
