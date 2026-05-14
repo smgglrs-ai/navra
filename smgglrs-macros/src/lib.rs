@@ -98,11 +98,19 @@ impl Parse for MetaKeyValue {
 
 struct ArgInfo {
     name: String,
+    json_name: Option<String>,
     ty: Type,
     description: Option<String>,
     default: Option<String>,
     is_option: bool,
     is_context: bool,
+    is_state: bool,
+}
+
+impl ArgInfo {
+    fn field_name(&self) -> &str {
+        self.json_name.as_deref().unwrap_or(&self.name)
+    }
 }
 
 fn extract_args(func: &ItemFn) -> syn::Result<Vec<ArgInfo>> {
@@ -126,12 +134,16 @@ fn extract_args(func: &ItemFn) -> syn::Result<Vec<ArgInfo>> {
         // Check if this is a CallContext parameter (by type name)
         let is_context = is_call_context_type(&ty);
 
-        // Parse #[arg(...)] attributes
+        // Parse #[arg(...)] and #[state] attributes
         let mut description = None;
         let mut default = None;
+        let mut json_name = None;
+        let mut is_state = false;
 
         for attr in &pat_type.attrs {
-            if attr.path().is_ident("arg") {
+            if attr.path().is_ident("state") {
+                is_state = true;
+            } else if attr.path().is_ident("arg") {
                 let nested = attr.parse_args_with(
                     Punctuated::<MetaKeyValue, Token![,]>::parse_terminated,
                 )?;
@@ -139,6 +151,7 @@ fn extract_args(func: &ItemFn) -> syn::Result<Vec<ArgInfo>> {
                     match kv.key.to_string().as_str() {
                         "description" => description = Some(kv.value),
                         "default" => default = Some(kv.value),
+                        "name" => json_name = Some(kv.value),
                         other => {
                             return Err(syn::Error::new_spanned(
                                 kv.key,
@@ -154,11 +167,13 @@ fn extract_args(func: &ItemFn) -> syn::Result<Vec<ArgInfo>> {
 
         args.push(ArgInfo {
             name: arg_name,
+            json_name,
             ty,
             description,
             default,
             is_option,
             is_context,
+            is_state,
         });
     }
 
@@ -322,14 +337,15 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
 
     let args = extract_args(func)?;
 
-    // Separate tool args from context
-    let tool_args: Vec<&ArgInfo> = args.iter().filter(|a| !a.is_context).collect();
+    // Separate tool args from context/state (only tool args go in schema)
+    let tool_args: Vec<&ArgInfo> = args.iter().filter(|a| !a.is_context && !a.is_state).collect();
+    let state_args: Vec<&ArgInfo> = args.iter().filter(|a| a.is_state).collect();
 
     // Build properties map entries
     let property_inserts: Vec<TokenStream2> = tool_args
         .iter()
         .map(|arg| {
-            let name = &arg.name;
+            let name = arg.field_name();
             let schema = build_property_schema(&arg.ty, &arg.description, &arg.default);
             quote! {
                 properties.insert(#name.to_string(), #schema);
@@ -341,7 +357,7 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
     let required_names: Vec<&str> = tool_args
         .iter()
         .filter(|a| !a.is_option && a.default.is_none())
-        .map(|a| a.name.as_str())
+        .map(|a| a.field_name())
         .collect();
 
     let required_tokens = if required_names.is_empty() {
@@ -350,44 +366,52 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
         quote! { Some(vec![#(#required_names.to_string()),*]) }
     };
 
-    // Build argument extraction code for the handler closure
+    // State clones run in the Fn closure body (before the async block)
+    // so the captured state can be cloned on each invocation.
+    let state_clones: Vec<TokenStream2> = args
+        .iter()
+        .filter(|a| a.is_state)
+        .map(|arg| {
+            let ident = format_ident!("{}", &arg.name);
+            quote! { let #ident = #ident.clone(); }
+        })
+        .collect();
+
+    // Arg extractions run inside the async block
     let arg_extractions: Vec<TokenStream2> = args
         .iter()
+        .filter(|a| !a.is_state)
         .map(|arg| {
             let ident = format_ident!("{}", &arg.name);
 
             if arg.is_context {
-                // Context is passed through directly
                 return quote! { let #ident = ctx.clone(); };
             }
 
-            let name = &arg.name;
+            let field = arg.field_name();
             let ty = &arg.ty;
 
             if arg.is_option {
                 if let Some(ref default_val) = arg.default {
-                    // Option with default: extract, fall back to default
                     let inner_ty = unwrap_option_inner(ty);
                     let default_expr = parse_default(default_val, &inner_ty);
                     quote! {
-                        let #ident: #ty = args.get(#name)
+                        let #ident: #ty = args.get(#field)
                             .and_then(|v| serde_json::from_value(v.clone()).ok())
                             .or_else(|| Some(#default_expr));
                     }
                 } else {
-                    // Plain Option: extract or None
                     quote! {
-                        let #ident: #ty = args.get(#name)
+                        let #ident: #ty = args.get(#field)
                             .and_then(|v| serde_json::from_value(v.clone()).ok());
                     }
                 }
             } else {
-                // Required arg
                 quote! {
-                    let #ident: #ty = args.get(#name)
+                    let #ident: #ty = args.get(#field)
                         .and_then(|v| serde_json::from_value(v.clone()).ok())
                         .unwrap_or_else(|| {
-                            panic!("missing required argument `{}`", #name)
+                            panic!("missing required argument `{}`", #field)
                         });
                 }
             }
@@ -403,11 +427,21 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
         })
         .collect();
 
-    // Strip #[arg(...)] attributes from the original function
+    // Build state parameter list for _handler() signature
+    let state_params: Vec<TokenStream2> = state_args
+        .iter()
+        .map(|arg| {
+            let ident = format_ident!("{}", &arg.name);
+            let ty = &arg.ty;
+            quote! { #ident: #ty }
+        })
+        .collect();
+
+    // Strip #[arg(...)] and #[state] attributes from the original function
     let mut clean_func = func.clone();
     for input in &mut clean_func.sig.inputs {
         if let FnArg::Typed(pat_type) = input {
-            pat_type.attrs.retain(|attr| !attr.path().is_ident("arg"));
+            pat_type.attrs.retain(|attr| !attr.path().is_ident("arg") && !attr.path().is_ident("state"));
         }
     }
 
@@ -430,7 +464,7 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
             }
         }
 
-        fn #handler_fn() -> (smgglrs_protocol::ToolDefinition, std::sync::Arc<
+        fn #handler_fn(#(#state_params),*) -> (smgglrs_protocol::ToolDefinition, std::sync::Arc<
             dyn Fn(serde_json::Value, smgglrs_security::auth::CallContext)
                 -> std::pin::Pin<Box<dyn std::future::Future<Output = smgglrs_protocol::CallToolResult> + Send>>
                 + Send + Sync
@@ -440,6 +474,7 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
                     -> std::pin::Pin<Box<dyn std::future::Future<Output = smgglrs_protocol::CallToolResult> + Send>>
                     + Send + Sync
             > = std::sync::Arc::new(move |args: serde_json::Value, ctx: smgglrs_security::auth::CallContext| {
+                #(#state_clones)*
                 Box::pin(async move {
                     #(#arg_extractions)*
                     #func_name(#(#call_args),*).await
@@ -468,10 +503,8 @@ fn unwrap_option_inner(ty: &Type) -> Type {
 
 /// Parse a default value string into a token expression for a given type.
 fn parse_default(val: &str, _ty: &Type) -> TokenStream2 {
-    // Try to parse as integer
     if let Ok(n) = val.parse::<i64>() {
-        let n = n as u32; // Common case for tool args
-        return quote! { #n };
+        return quote! { #n as _ };
     }
     if let Ok(b) = val.parse::<bool>() {
         return quote! { #b };
