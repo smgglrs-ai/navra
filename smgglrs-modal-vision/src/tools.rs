@@ -10,13 +10,12 @@
 //! - `vision_screen` — capture screen and describe or OCR it
 
 use crate::screenshot;
-use smgglrs_core::auth::CallContext;
 use smgglrs_core::models::{GenerateRequest, ImageInput, ModelBackend};
 use smgglrs_core::permissions::{PermissionEngine, PermissionResult};
-use smgglrs_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
+use smgglrs_core::protocol::CallToolResult;
 use smgglrs_core::{Module, ToolHandler};
-use std::collections::HashMap;
-use std::future::Future;
+use smgglrs_macros::tool;
+use smgglrs_security::auth::CallContext;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -38,16 +37,16 @@ impl Module for VisionModule {
         "vision"
     }
 
-    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, ToolHandler)> {
         let s = Arc::new(VisionState {
             vision_model: self.vision_model.clone(),
             perm_engine: self.perm_engine.clone(),
         });
         vec![
-            make_tool(describe_tool_def(), s.clone(), handle_describe),
-            make_tool(ocr_tool_def(), s.clone(), handle_ocr),
-            make_tool(ask_tool_def(), s.clone(), handle_ask),
-            make_tool(screen_tool_def(), s.clone(), handle_screen),
+            handle_describe_handler(s.clone()),
+            handle_ocr_handler(s.clone()),
+            handle_ask_handler(s.clone()),
+            handle_screen_handler(s.clone()),
         ]
     }
 }
@@ -56,103 +55,6 @@ impl Module for VisionModule {
 struct VisionState {
     vision_model: Arc<dyn ModelBackend>,
     perm_engine: Arc<PermissionEngine>,
-}
-
-fn make_tool<F>(
-    def: ToolDefinition,
-    state: Arc<VisionState>,
-    handler: fn(serde_json::Value, CallContext, Arc<VisionState>) -> F,
-) -> (ToolDefinition, ToolHandler)
-where
-    F: Future<Output = CallToolResult> + Send + 'static,
-{
-    let h: ToolHandler = Arc::new(move |args, ctx| {
-        let s = state.clone();
-        Box::pin(handler(args, ctx, s))
-    });
-    (def, h)
-}
-
-// --- Tool definitions ---
-
-fn describe_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "vision_describe".to_string(),
-        description: Some("Describe the contents of an image file.".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
-                "path".to_string(),
-                serde_json::json!({"type": "string", "description": "Absolute path to image file"}),
-            )])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
-    }
-}
-
-fn ocr_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "vision_ocr".to_string(),
-        description: Some(
-            "Extract text from an image file using OCR. Returns the recognized text.".to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
-                "path".to_string(),
-                serde_json::json!({"type": "string", "description": "Absolute path to image file"}),
-            )])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
-    }
-}
-
-fn ask_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "vision_ask".to_string(),
-        description: Some("Answer a question about an image file.".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "path".to_string(),
-                    serde_json::json!({"type": "string", "description": "Absolute path to image file"}),
-                ),
-                (
-                    "question".to_string(),
-                    serde_json::json!({"type": "string", "description": "Question about the image"}),
-                ),
-            ])),
-            required: Some(vec!["path".to_string(), "question".to_string()]),
-        },
-        annotations: None,
-    }
-}
-
-fn screen_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "vision_screen".to_string(),
-        description: Some(
-            "Capture a screenshot and describe or OCR it. Uses the XDG Desktop Portal \
-             (works on Wayland and X11). May show a consent dialog."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
-                "mode".to_string(),
-                serde_json::json!({
-                    "type": "string",
-                    "description": "What to do with the screenshot: 'describe' (default) or 'ocr'",
-                    "default": "describe"
-                }),
-            )])),
-            required: None,
-        },
-        annotations: None,
-    }
 }
 
 // --- Image loading ---
@@ -248,28 +150,27 @@ fn check_perm(
     }
 }
 
-// --- Tool handlers ---
+// --- Tool implementations ---
 
+#[tool(
+    name = "vision_describe",
+    description = "Describe the contents of an image file.",
+)]
 async fn handle_describe(
-    args: serde_json::Value,
+    #[arg(description = "Absolute path to image file")] path: String,
     ctx: CallContext,
-    state: Arc<VisionState>,
+    #[state] state: Arc<VisionState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let path = match resolve_path(raw_path) {
+    let resolved = match resolve_path(&path) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
         return e;
     }
 
-    let image = match load_image(&path) {
+    let image = match load_image(&resolved) {
         Ok(img) => img,
         Err(e) => return CallToolResult::error(e),
     };
@@ -288,26 +189,25 @@ async fn handle_describe(
     }
 }
 
+#[tool(
+    name = "vision_ocr",
+    description = "Extract text from an image file using OCR. Returns the recognized text.",
+)]
 async fn handle_ocr(
-    args: serde_json::Value,
+    #[arg(description = "Absolute path to image file")] path: String,
     ctx: CallContext,
-    state: Arc<VisionState>,
+    #[state] state: Arc<VisionState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let path = match resolve_path(raw_path) {
+    let resolved = match resolve_path(&path) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
         return e;
     }
 
-    let image = match load_image(&path) {
+    let image = match load_image(&resolved) {
         Ok(img) => img,
         Err(e) => return CallToolResult::error(e),
     };
@@ -326,36 +226,36 @@ async fn handle_ocr(
     }
 }
 
+#[tool(
+    name = "vision_ask",
+    description = "Answer a question about an image file.",
+)]
 async fn handle_ask(
-    args: serde_json::Value,
+    #[arg(description = "Absolute path to image file")] path: String,
+    #[arg(description = "Question about the image")] question: String,
     ctx: CallContext,
-    state: Arc<VisionState>,
+    #[state] state: Arc<VisionState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-    let question = match args.get("question").and_then(|v| v.as_str()) {
-        Some(q) if !q.is_empty() => q,
-        _ => return CallToolResult::error("Missing required parameter: question"),
-    };
+    if question.is_empty() {
+        return CallToolResult::error("Missing required parameter: question");
+    }
 
-    let path = match resolve_path(raw_path) {
+    let resolved = match resolve_path(&path) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
         return e;
     }
 
-    let image = match load_image(&path) {
+    let image = match load_image(&resolved) {
         Ok(img) => img,
         Err(e) => return CallToolResult::error(e),
     };
 
     let request = GenerateRequest {
-        prompt: question.to_string(),
+        prompt: question,
         max_tokens: Some(1024),
         temperature: Some(0.2),
         system: None,
@@ -368,19 +268,20 @@ async fn handle_ask(
     }
 }
 
+#[tool(
+    name = "vision_screen",
+    description = "Capture a screenshot and describe or OCR it. Uses the XDG Desktop Portal (works on Wayland and X11). May show a consent dialog.",
+)]
 async fn handle_screen(
-    args: serde_json::Value,
+    #[arg(description = "What to do with the screenshot: 'describe' (default) or 'ocr'", default = "describe")] mode: Option<String>,
     ctx: CallContext,
-    state: Arc<VisionState>,
+    #[state] state: Arc<VisionState>,
 ) -> CallToolResult {
     if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
         return e;
     }
 
-    let mode = args
-        .get("mode")
-        .and_then(|v| v.as_str())
-        .unwrap_or("describe");
+    let mode = mode.as_deref().unwrap_or("describe");
 
     // Capture screenshot via XDG portal
     let screenshot_path = match screenshot::capture_screen().await {
@@ -434,7 +335,7 @@ async fn handle_screen(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use smgglrs_core::auth::AgentIdentity;
+    use smgglrs_security::auth::AgentIdentity;
     use smgglrs_core::models::{GenerateResponse, ModelBackend, ModelError};
     use smgglrs_core::permissions::{PathAcl, PermissionEngine};
     use std::collections::HashSet;
@@ -756,16 +657,19 @@ mod tests {
 
     #[tokio::test]
     async fn describe_rejects_missing_path() {
-        let result = handle_describe(serde_json::json!({}), test_ctx(), make_state()).await;
+        let state = make_state();
+        let (_, handler) = handle_describe_handler(state);
+        let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(result.is_error);
     }
 
     #[tokio::test]
     async fn describe_rejects_nonexistent_file() {
-        let result = handle_describe(
+        let state = make_state();
+        let (_, handler) = handle_describe_handler(state);
+        let result = handler(
             serde_json::json!({"path": "/nonexistent/image.png"}),
             test_ctx(),
-            make_state(),
         )
         .await;
         assert!(result.is_error);
@@ -773,10 +677,11 @@ mod tests {
 
     #[tokio::test]
     async fn describe_rejects_relative_path() {
-        let result = handle_describe(
+        let state = make_state();
+        let (_, handler) = handle_describe_handler(state);
+        let result = handler(
             serde_json::json!({"path": "relative/image.png"}),
             test_ctx(),
-            make_state(),
         )
         .await;
         assert!(result.is_error);
@@ -788,10 +693,11 @@ mod tests {
         let path = dir.path().join("test.png");
         std::fs::write(&path, &tiny_png()).unwrap();
 
-        let result = handle_describe(
+        let state = make_state();
+        let (_, handler) = handle_describe_handler(state);
+        let result = handler(
             serde_json::json!({"path": path.to_str().unwrap()}),
             test_ctx(),
-            make_state(),
         )
         .await;
         assert!(!result.is_error, "describe should succeed with valid PNG");
@@ -799,7 +705,9 @@ mod tests {
 
     #[tokio::test]
     async fn ocr_rejects_missing_path() {
-        let result = handle_ocr(serde_json::json!({}), test_ctx(), make_state()).await;
+        let state = make_state();
+        let (_, handler) = handle_ocr_handler(state);
+        let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(result.is_error);
     }
 
@@ -809,10 +717,11 @@ mod tests {
         let path = dir.path().join("test.png");
         std::fs::write(&path, &tiny_png()).unwrap();
 
-        let result = handle_ocr(
+        let state = make_state();
+        let (_, handler) = handle_ocr_handler(state);
+        let result = handler(
             serde_json::json!({"path": path.to_str().unwrap()}),
             test_ctx(),
-            make_state(),
         )
         .await;
         assert!(!result.is_error);
@@ -820,10 +729,11 @@ mod tests {
 
     #[tokio::test]
     async fn ask_rejects_missing_question() {
-        let result = handle_ask(
+        let state = make_state();
+        let (_, handler) = handle_ask_handler(state);
+        let result = handler(
             serde_json::json!({"path": "/tmp/test.png"}),
             test_ctx(),
-            make_state(),
         )
         .await;
         assert!(result.is_error);
@@ -831,10 +741,15 @@ mod tests {
 
     #[tokio::test]
     async fn ask_rejects_empty_question() {
-        let result = handle_ask(
-            serde_json::json!({"path": "/tmp/test.png", "question": ""}),
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.png");
+        std::fs::write(&path, &tiny_png()).unwrap();
+
+        let state = make_state();
+        let (_, handler) = handle_ask_handler(state);
+        let result = handler(
+            serde_json::json!({"path": path.to_str().unwrap(), "question": ""}),
             test_ctx(),
-            make_state(),
         )
         .await;
         assert!(result.is_error);
@@ -842,10 +757,11 @@ mod tests {
 
     #[tokio::test]
     async fn ask_rejects_missing_path() {
-        let result = handle_ask(
+        let state = make_state();
+        let (_, handler) = handle_ask_handler(state);
+        let result = handler(
             serde_json::json!({"question": "What is this?"}),
             test_ctx(),
-            make_state(),
         )
         .await;
         assert!(result.is_error);
@@ -857,13 +773,14 @@ mod tests {
         let path = dir.path().join("test.png");
         std::fs::write(&path, &tiny_png()).unwrap();
 
-        let result = handle_ask(
+        let state = make_state();
+        let (_, handler) = handle_ask_handler(state);
+        let result = handler(
             serde_json::json!({
                 "path": path.to_str().unwrap(),
                 "question": "What color is this?"
             }),
             test_ctx(),
-            make_state(),
         )
         .await;
         assert!(!result.is_error);
@@ -889,10 +806,10 @@ mod tests {
         let path = dir.path().join("test.png");
         std::fs::write(&path, &tiny_png()).unwrap();
 
-        let result = handle_describe(
+        let (_, handler) = handle_describe_handler(state);
+        let result = handler(
             serde_json::json!({"path": path.to_str().unwrap()}),
             ctx,
-            state,
         )
         .await;
         // With an unknown permission set, the engine should deny
@@ -903,7 +820,7 @@ mod tests {
 
     #[test]
     fn describe_tool_def_has_required_path() {
-        let def = describe_tool_def();
+        let def = handle_describe_tool_def();
         assert_eq!(def.name, "vision_describe");
         assert!(def.description.is_some());
         let required = def.input_schema.required.as_ref().unwrap();
@@ -912,7 +829,7 @@ mod tests {
 
     #[test]
     fn ocr_tool_def_has_required_path() {
-        let def = ocr_tool_def();
+        let def = handle_ocr_tool_def();
         assert_eq!(def.name, "vision_ocr");
         let required = def.input_schema.required.as_ref().unwrap();
         assert!(required.contains(&"path".to_string()));
@@ -920,7 +837,7 @@ mod tests {
 
     #[test]
     fn ask_tool_def_has_required_fields() {
-        let def = ask_tool_def();
+        let def = handle_ask_tool_def();
         assert_eq!(def.name, "vision_ask");
         let required = def.input_schema.required.as_ref().unwrap();
         assert!(required.contains(&"path".to_string()));
@@ -929,7 +846,7 @@ mod tests {
 
     #[test]
     fn screen_tool_def_has_no_required_fields() {
-        let def = screen_tool_def();
+        let def = handle_screen_tool_def();
         assert_eq!(def.name, "vision_screen");
         assert!(def.input_schema.required.is_none());
     }

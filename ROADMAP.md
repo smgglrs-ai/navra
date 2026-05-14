@@ -265,17 +265,17 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Streaming model download (pull → disk) | 12b | 2-3 days | Medium |
 | Feature-gate ONNX | 12b | Invasive | Low |
 | Upstream TLS (DESIGN.md gap) | 9 or 12b | 2-3 days | Medium |
-| Convert tools to `#[tool]` proc macro | 12b | 2 days | Low |
+| ~~Convert tools to `#[tool]` proc macro~~ | ✅ 2026-05-15 | — | — |
 | DeepSec CI integration | Evaluate | — | Low |
 | **Statistical guardrails** (cosine z-score drift + Shannon entropy) | 11 | 2-3 days | Medium-High |
 | **WebSocket transport** (alongside SSE for agentic loops) | 9/12 | 2-3 days | Medium-High |
 | **smgglrs-flow DAG test framework** (PTA/dominator validation) | 12 | 3-4 days | Medium |
 | **Event-driven triggers** (Jarvis: email/Slack/calendar → agent) | 5 | 3-5 days | Medium |
 | **fd-passing TOCTOU mitigation** (smgglrs-tools-file) | 12b | 1-2 days | Medium |
-| **Un-ignore NER tests**: auto-download PII model in CI (`smgglrs pii download`) | 12b | 0.5 day | Medium |
-| **Un-ignore OpenShell tests**: mock gRPC endpoint or test fixture | 12b | 1 day | Medium |
-| **Un-ignore IFC LLM test**: needs Ollama + model; gate on `SMGGLRS_TEST_LLM=1` | 12b | 0.5 day | Low |
-| **Move bench thresholds to Criterion**: `bench_token_encode_sign`, `bench_token_verify_decode` already duplicated in `benchmarks/` — remove from `bench_tokens.rs` | 12b | 0.5 day | Low |
+| ~~Un-ignore NER tests~~ | ✅ 2026-05-13 | — | — |
+| ~~Un-ignore OpenShell tests~~ | ✅ 2026-05-13 | — | — |
+| ~~Un-ignore IFC LLM test~~ | ✅ 2026-05-13 | — | — |
+| ~~Delete redundant bench timing tests~~ | ✅ 2026-05-13 | — | — |
 
 ---
 
@@ -328,14 +328,10 @@ local git tools but no remote operations or forge API integration.
 The tool naming convention (`<provider>_<resource>_<action>`) is
 documented in DESIGN.md.
 
-#### U1. Git remote operations
+#### U1. Git remote operations ✅ (2026-05-15)
 
-Add `git_push`, `git_pull`, `git_fetch` to `smgglrs-tools-git`.
-Provider-agnostic, pure Git transport. Permissions: `git.push`,
-`git.pull`, `git.fetch`. Push requires approval by default.
-
-**Effort**: 2 days **Priority**: High
-**Acceptance**: `git_push` with approval flow, ACL-gated per-repo.
+`git_push`, `git_pull`, `git_fetch` added to `smgglrs-tools-git`.
+Push requires approval. Input validation for remote/branch names.
 
 #### U2. GitHub module (`smgglrs-tools-github`)
 

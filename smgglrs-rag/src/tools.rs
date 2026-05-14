@@ -13,10 +13,9 @@ use crate::store::ChunkStore;
 use smgglrs_core::auth::CallContext;
 use smgglrs_core::models::ModelBackend;
 use smgglrs_core::permissions::{PermissionEngine, PermissionResult};
-use smgglrs_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
-use smgglrs_core::{Module, ToolHandler};
-use std::collections::HashMap;
-use std::future::Future;
+use smgglrs_core::protocol::CallToolResult;
+use smgglrs_core::Module;
+use smgglrs_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -103,116 +102,14 @@ impl Module for RagModule {
         "rag"
     }
 
-    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
         let s = self.state.clone();
         vec![
-            make_tool(index_tool_def(), s.clone(), handle_index),
-            make_tool(query_tool_def(), s.clone(), handle_query),
-            make_tool(similar_tool_def(), s.clone(), handle_similar),
-            make_tool(status_tool_def(), s.clone(), handle_status),
+            handle_index_handler(s.clone()),
+            handle_query_handler(s.clone()),
+            handle_similar_handler(s.clone()),
+            handle_status_handler(s.clone()),
         ]
-    }
-}
-
-fn make_tool<F>(
-    def: ToolDefinition,
-    state: Arc<RagState>,
-    handler: fn(serde_json::Value, CallContext, Arc<RagState>) -> F,
-) -> (ToolDefinition, ToolHandler)
-where
-    F: Future<Output = CallToolResult> + Send + 'static,
-{
-    let h: ToolHandler = Arc::new(move |args, ctx| {
-        let s = state.clone();
-        Box::pin(handler(args, ctx, s))
-    });
-    (def, h)
-}
-
-// --- Tool definitions ---
-
-fn index_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "rag_index".to_string(),
-        description: Some(
-            "Index a document for semantic search. Splits into chunks, \
-             generates embeddings, and stores vectors."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
-                "path".to_string(),
-                serde_json::json!({"type": "string", "description": "Absolute path to document"}),
-            )])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
-    }
-}
-
-fn query_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "rag_query".to_string(),
-        description: Some(
-            "Semantic search across indexed documents. Finds chunks with \
-             similar meaning to the query using vector similarity."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "query".to_string(),
-                    serde_json::json!({"type": "string", "description": "Natural language query"}),
-                ),
-                (
-                    "limit".to_string(),
-                    serde_json::json!({"type": "integer", "description": "Max results (default 5)", "default": 5}),
-                ),
-            ])),
-            required: Some(vec!["query".to_string()]),
-        },
-        annotations: None,
-    }
-}
-
-fn similar_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "rag_similar".to_string(),
-        description: Some(
-            "Find documents similar to a given document. The document \
-             must already be indexed."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "path".to_string(),
-                    serde_json::json!({"type": "string", "description": "Path of indexed document to find similar to"}),
-                ),
-                (
-                    "limit".to_string(),
-                    serde_json::json!({"type": "integer", "description": "Max results (default 5)", "default": 5}),
-                ),
-            ])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
-    }
-}
-
-fn status_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "rag_status".to_string(),
-        description: Some("Show RAG index statistics (document count, chunk count, dimensions).".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: None,
-            required: None,
-        },
-        annotations: None,
     }
 }
 
@@ -269,34 +166,33 @@ fn check_perm(
     }
 }
 
-// --- Tool handlers ---
+// --- Tool implementations ---
 
+#[tool(
+    name = "rag_index",
+    description = "Index a document for semantic search. Splits into chunks, generates embeddings, and stores vectors.",
+)]
 async fn handle_index(
-    args: serde_json::Value,
+    #[arg(description = "Absolute path to document")] path: String,
     ctx: CallContext,
-    state: Arc<RagState>,
+    #[state] state: Arc<RagState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let path = match resolve_path(raw_path) {
+    let resolved = match resolve_path(&path) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+    if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
         return e;
     }
 
-    if !path.is_file() {
-        return CallToolResult::error(format!("Not a file: {}", path.display()));
+    if !resolved.is_file() {
+        return CallToolResult::error(format!("Not a file: {}", resolved.display()));
     }
 
-    let content = match std::fs::read_to_string(&path) {
+    let content = match std::fs::read_to_string(&resolved) {
         Ok(c) => c,
-        Err(e) => return CallToolResult::error(format!("Failed to read {}: {e}", path.display())),
+        Err(e) => return CallToolResult::error(format!("Failed to read {}: {e}", resolved.display())),
     };
 
     // Chunk the document
@@ -304,7 +200,7 @@ async fn handle_index(
     if chunks.is_empty() {
         return CallToolResult::text(format!(
             "No indexable content in {}",
-            path.display()
+            resolved.display()
         ));
     }
 
@@ -326,39 +222,41 @@ async fn handle_index(
     }
 
     // Store chunks and embeddings
-    let path_str = path.to_string_lossy();
+    let path_str = resolved.to_string_lossy();
     match state.store.index_document(&path_str, &chunks, &embeddings) {
         Ok(count) => CallToolResult::text(format!(
             "Indexed {} ({} chunks, {} dimensions)",
-            path.display(),
+            resolved.display(),
             count,
             embeddings.first().map(|e| e.len()).unwrap_or(0),
         )),
-        Err(e) => CallToolResult::error(format!("Failed to index {}: {e}", path.display())),
+        Err(e) => CallToolResult::error(format!("Failed to index {}: {e}", resolved.display())),
     }
 }
 
+#[tool(
+    name = "rag_query",
+    description = "Semantic search across indexed documents. Finds chunks with similar meaning to the query using vector similarity.",
+)]
 async fn handle_query(
-    args: serde_json::Value,
+    #[arg(description = "Natural language query")] query: String,
+    #[arg(description = "Max results (default 5)", default = "5")] limit: Option<u64>,
     ctx: CallContext,
-    state: Arc<RagState>,
+    #[state] state: Arc<RagState>,
 ) -> CallToolResult {
     if let Err(e) = check_perm(&state, &ctx, "search", Path::new("/")) {
         return e;
     }
 
-    let query = match args.get("query").and_then(|v| v.as_str()) {
-        Some(q) if !q.is_empty() => q,
-        _ => return CallToolResult::error("Missing required parameter: query"),
-    };
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(5) as usize;
+    if query.is_empty() {
+        return CallToolResult::error("Missing required parameter: query");
+    }
+
+    let limit = limit.unwrap_or(5) as usize;
 
     // Embed the query
     let request = smgglrs_core::models::EmbedRequest {
-        text: query.to_string(),
+        text: query.clone(),
     };
     let embed_response = match state.embedding_model.embed(&request).await {
         Ok(r) => r,
@@ -374,7 +272,7 @@ async fn handle_query(
     };
 
     // Search for similar chunks (with optional query cache)
-    match state.store.cached_search(query, &embed_response.embedding, fetch_limit) {
+    match state.store.cached_search(&query, &embed_response.embedding, fetch_limit) {
         Ok(candidates) => {
             if candidates.is_empty() {
                 return CallToolResult::text("No results found.");
@@ -383,7 +281,7 @@ async fn handle_query(
             // Rerank and truncate to the requested limit
             let results: Vec<_> = state
                 .reranker
-                .rerank(query, candidates)
+                .rerank(&query, candidates)
                 .into_iter()
                 .take(limit)
                 .collect();
@@ -406,34 +304,32 @@ async fn handle_query(
     }
 }
 
+#[tool(
+    name = "rag_similar",
+    description = "Find documents similar to a given document. The document must already be indexed.",
+)]
 async fn handle_similar(
-    args: serde_json::Value,
+    #[arg(description = "Path of indexed document to find similar to")] path: String,
+    #[arg(description = "Max results (default 5)", default = "5")] limit: Option<u64>,
     ctx: CallContext,
-    state: Arc<RagState>,
+    #[state] state: Arc<RagState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(5) as usize;
-
-    let path = match resolve_path(raw_path) {
+    let resolved = match resolve_path(&path) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
+    let limit = limit.unwrap_or(5) as usize;
+
+    if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
         return e;
     }
 
-    let path_str = path.to_string_lossy().to_string();
+    let path_str = resolved.to_string_lossy().to_string();
     if !state.store.is_indexed(&path_str).unwrap_or(false) {
         return CallToolResult::error(format!(
             "Document not indexed: {}. Run rag_index first.",
-            path.display()
+            resolved.display()
         ));
     }
 
@@ -458,10 +354,13 @@ async fn handle_similar(
     }
 }
 
+#[tool(
+    name = "rag_status",
+    description = "Show RAG index statistics (document count, chunk count, dimensions).",
+)]
 async fn handle_status(
-    _args: serde_json::Value,
     ctx: CallContext,
-    state: Arc<RagState>,
+    #[state] state: Arc<RagState>,
 ) -> CallToolResult {
     if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
         return e;
@@ -581,7 +480,8 @@ mod tests {
             reranker: Arc::new(NoopReranker),
         });
 
-        let result = handle_status(serde_json::json!({}), test_ctx(), state).await;
+        let (_, handler) = handle_status_handler(state);
+        let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(!result.is_error);
         match &result.content[0] {
             smgglrs_core::protocol::Content::Text(t) => {
@@ -695,10 +595,10 @@ mod tests {
             reranker: Arc::new(ReversingReranker),
         });
 
-        let result = handle_query(
+        let (_, handler) = handle_query_handler(state);
+        let result = handler(
             serde_json::json!({"query": "test query", "limit": 3}),
             test_ctx(),
-            state,
         )
         .await;
 
@@ -731,10 +631,10 @@ mod tests {
             reranker: Arc::new(NoopReranker),
         });
 
-        let result = handle_query(
+        let (_, handler) = handle_query_handler(state);
+        let result = handler(
             serde_json::json!({"query": "test query", "limit": 3}),
             test_ctx(),
-            state,
         )
         .await;
 
@@ -766,11 +666,12 @@ mod tests {
             reranker: Arc::new(NoopReranker),
         });
 
+        let (_, handler) = handle_query_handler(state);
+
         // First query — cache miss, populates cache
-        let result1 = handle_query(
+        let result1 = handler(
             serde_json::json!({"query": "test query", "limit": 3}),
             test_ctx(),
-            state.clone(),
         )
         .await;
         assert!(!result1.is_error);
@@ -781,10 +682,9 @@ mod tests {
         assert_eq!(metrics.hits, 0, "first query should be a cache miss");
 
         // Second query with same text — cache hit
-        let result2 = handle_query(
+        let result2 = handler(
             serde_json::json!({"query": "test query", "limit": 3}),
             test_ctx(),
-            state.clone(),
         )
         .await;
         assert!(!result2.is_error);
@@ -806,11 +706,12 @@ mod tests {
             reranker: Arc::new(NoopReranker),
         });
 
+        let (_, handler) = handle_query_handler(state);
+
         // First query
-        handle_query(
+        handler(
             serde_json::json!({"query": "alpha query", "limit": 3}),
             test_ctx(),
-            state.clone(),
         )
         .await;
 
@@ -818,10 +719,9 @@ mod tests {
         // nearly identical embeddings, but the text differs so exact-match
         // will miss; semantic match may or may not hit depending on
         // similarity threshold, so we use a very different text)
-        handle_query(
+        handler(
             serde_json::json!({"query": "completely unrelated question about cooking", "limit": 3}),
             test_ctx(),
-            state.clone(),
         )
         .await;
 
@@ -850,10 +750,10 @@ mod tests {
 
         // Request limit=1, but RERANK_OVERFETCH_FACTOR=4 so it should
         // fetch 4 candidates then return 1 after reranking.
-        let result = handle_query(
+        let (_, handler) = handle_query_handler(state);
+        let result = handler(
             serde_json::json!({"query": "test", "limit": 1}),
             test_ctx(),
-            state,
         )
         .await;
 
