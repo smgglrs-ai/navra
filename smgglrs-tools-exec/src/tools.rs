@@ -1,24 +1,18 @@
 use smgglrs_core::auth::CallContext;
-use smgglrs_core::protocol::{CallToolResult, Content, ToolDefinition, ToolInputSchema};
+use smgglrs_core::protocol::{CallToolResult, Content};
 use smgglrs_core::Module;
-use smgglrs_core::ToolHandler;
+use smgglrs_macros::tool;
 use smgglrs_model_runtime::openshell::{ComputeDriverClient, ExecCommandRequest};
 use std::collections::HashMap;
-use std::future::Future;
 use std::sync::{Arc, Mutex};
 use tonic::transport::Channel;
 
-/// Exec module — run commands inside OpenShell agent sandboxes.
-///
-/// Agents call `exec_run` as a normal MCP tool. The gateway looks up
-/// the agent's sandbox via its DID and forwards the command to OpenShell.
 pub struct ExecModule {
     state: Arc<ExecState>,
 }
 
 pub struct ExecState {
     client: ComputeDriverClient<Channel>,
-    /// DID -> sandbox_id, populated by spawn_openshell_agent().
     pub sandboxes: Mutex<HashMap<String, String>>,
 }
 
@@ -58,109 +52,36 @@ impl Module for ExecModule {
         "exec"
     }
 
-    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
-        let s = self.state.clone();
-        vec![make_tool(exec_run_def(), s, handle_exec_run)]
+    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
+        vec![handle_exec_run_handler(self.state.clone())]
     }
 }
 
-fn make_tool<F>(
-    def: ToolDefinition,
-    state: Arc<ExecState>,
-    handler: fn(serde_json::Value, CallContext, Arc<ExecState>) -> F,
-) -> (ToolDefinition, ToolHandler)
-where
-    F: Future<Output = CallToolResult> + Send + 'static,
-{
-    let h: ToolHandler = Arc::new(move |args, ctx| {
-        let s = state.clone();
-        Box::pin(handler(args, ctx, s))
-    });
-    (def, h)
-}
-
-fn exec_run_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "exec_run".to_string(),
-        description: Some(
-            "Execute a command inside the agent's sandbox workspace. \
-             Returns stdout, stderr, and exit code."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "command".to_string(),
-                    serde_json::json!({
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Command and arguments, e.g. [\"cargo\", \"build\", \"--release\"]"
-                    }),
-                ),
-                (
-                    "working_dir".to_string(),
-                    serde_json::json!({
-                        "type": "string",
-                        "description": "Working directory inside the sandbox (default: /workspace)"
-                    }),
-                ),
-                (
-                    "timeout_secs".to_string(),
-                    serde_json::json!({
-                        "type": "integer",
-                        "description": "Command timeout in seconds (default: 60, max: 300)"
-                    }),
-                ),
-                (
-                    "env".to_string(),
-                    serde_json::json!({
-                        "type": "object",
-                        "additionalProperties": {"type": "string"},
-                        "description": "Additional environment variables for the command"
-                    }),
-                ),
-            ])),
-            required: Some(vec!["command".to_string()]),
-        },
-        annotations: None,
-    }
-}
-
+#[tool(
+    name = "exec_run",
+    description = "Execute a command inside the agent's sandbox workspace. Returns stdout, stderr, and exit code.",
+)]
 async fn handle_exec_run(
-    args: serde_json::Value,
+    #[arg(description = "Command and arguments, e.g. [\"cargo\", \"build\", \"--release\"]")] command: Vec<String>,
+    #[arg(description = "Working directory inside the sandbox (default: /workspace)")] working_dir: Option<String>,
+    #[arg(description = "Command timeout in seconds (default: 60, max: 300)")] timeout_secs: Option<u64>,
+    #[arg(description = "Additional environment variables for the command")] env: Option<HashMap<String, String>>,
     ctx: CallContext,
-    state: Arc<ExecState>,
+    #[state] state: Arc<ExecState>,
 ) -> CallToolResult {
-    let command: Vec<String> = match args.get("command").and_then(|v| {
-        serde_json::from_value::<Vec<String>>(v.clone()).ok()
-    }) {
-        Some(c) if !c.is_empty() => c,
-        _ => return CallToolResult::error("exec_run requires a non-empty 'command' array"),
-    };
+    if command.is_empty() {
+        return CallToolResult::error("exec_run requires a non-empty 'command' array");
+    }
 
-    let working_dir = args
-        .get("working_dir")
-        .and_then(|v| v.as_str())
-        .unwrap_or("/workspace")
-        .to_string();
-
+    let working_dir = working_dir.unwrap_or_else(|| "/workspace".to_string());
     if !working_dir.starts_with("/workspace") {
         return CallToolResult::error(
             "working_dir must be within /workspace (path traversal denied)",
         );
     }
 
-    let timeout_secs = args
-        .get("timeout_secs")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(60)
-        .min(300) as u32;
-
-    let env: HashMap<String, String> = args
-        .get("env")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
+    let timeout_secs = timeout_secs.unwrap_or(60).min(300) as u32;
+    let env = env.unwrap_or_default();
 
     let did = match &ctx.agent.did {
         Some(d) => d.clone(),
@@ -253,18 +174,14 @@ mod tests {
         let channel = Channel::from_static("http://[::1]:50051")
             .connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
+        let (_, handler) = handle_exec_run_handler(module.state.clone());
 
         let args = serde_json::json!({
             "command": ["ls"],
             "working_dir": "/etc/passwd"
         });
 
-        let result = handle_exec_run(
-            args,
-            test_ctx(Some("did:test:agent")),
-            module.state.clone(),
-        )
-        .await;
+        let result = handler(args, test_ctx(Some("did:test:agent"))).await;
 
         assert!(result.is_error);
         let text = match &result.content[0] {
@@ -279,14 +196,10 @@ mod tests {
         let channel = Channel::from_static("http://[::1]:50051")
             .connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
+        let (_, handler) = handle_exec_run_handler(module.state.clone());
 
         let args = serde_json::json!({"command": ["ls"]});
-        let result = handle_exec_run(
-            args,
-            test_ctx(None),
-            module.state.clone(),
-        )
-        .await;
+        let result = handler(args, test_ctx(None)).await;
 
         assert!(result.is_error);
         let text = match &result.content[0] {
@@ -301,14 +214,10 @@ mod tests {
         let channel = Channel::from_static("http://[::1]:50051")
             .connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
+        let (_, handler) = handle_exec_run_handler(module.state.clone());
 
         let args = serde_json::json!({"command": ["ls"]});
-        let result = handle_exec_run(
-            args,
-            test_ctx(Some("did:test:unknown")),
-            module.state.clone(),
-        )
-        .await;
+        let result = handler(args, test_ctx(Some("did:test:unknown"))).await;
 
         assert!(result.is_error);
         let text = match &result.content[0] {
@@ -323,14 +232,10 @@ mod tests {
         let channel = Channel::from_static("http://[::1]:50051")
             .connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
+        let (_, handler) = handle_exec_run_handler(module.state.clone());
 
         let args = serde_json::json!({"command": []});
-        let result = handle_exec_run(
-            args,
-            test_ctx(Some("did:test:agent")),
-            module.state.clone(),
-        )
-        .await;
+        let result = handler(args, test_ctx(Some("did:test:agent"))).await;
 
         assert!(result.is_error);
         let text = match &result.content[0] {
