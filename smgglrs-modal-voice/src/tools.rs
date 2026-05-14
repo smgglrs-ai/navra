@@ -12,10 +12,9 @@ use crate::audio;
 use smgglrs_core::auth::CallContext;
 use smgglrs_core::models::ModelBackend;
 use smgglrs_core::permissions::{PermissionEngine, PermissionResult};
-use smgglrs_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
-use smgglrs_core::{Module, ToolHandler};
-use std::collections::HashMap;
-use std::future::Future;
+use smgglrs_core::protocol::CallToolResult;
+use smgglrs_core::Module;
+use smgglrs_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -24,7 +23,7 @@ pub struct VoiceModule {
     state: Arc<VoiceState>,
 }
 
-struct VoiceState {
+pub(crate) struct VoiceState {
     /// ASR model (Whisper, Granite Speech, etc.)
     asr_model: Arc<dyn ModelBackend>,
     /// TTS model (Kokoro, Voxtral, etc.)
@@ -89,121 +88,193 @@ impl Module for VoiceModule {
         "voice"
     }
 
-    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
         let s = self.state.clone();
         vec![
-            make_tool(listen_tool_def(), s.clone(), handle_listen),
-            make_tool(speak_tool_def(), s.clone(), handle_speak),
-            make_tool(transcribe_tool_def(), s.clone(), handle_transcribe),
-            make_tool(status_tool_def(), s.clone(), handle_status),
+            handle_listen_handler(s.clone()),
+            handle_speak_handler(s.clone()),
+            handle_transcribe_handler(s.clone()),
+            handle_status_handler(s.clone()),
         ]
     }
 }
 
-fn make_tool<F>(
-    def: ToolDefinition,
-    state: Arc<VoiceState>,
-    handler: fn(serde_json::Value, CallContext, Arc<VoiceState>) -> F,
-) -> (ToolDefinition, ToolHandler)
-where
-    F: Future<Output = CallToolResult> + Send + 'static,
-{
-    let h: ToolHandler = Arc::new(move |args, ctx| {
-        let s = state.clone();
-        Box::pin(handler(args, ctx, s))
-    });
-    (def, h)
-}
+// --- Tool implementations ---
 
-// --- Tool definitions ---
+#[tool(
+    name = "voice_listen",
+    description = "Record audio from the microphone and transcribe it to text. Automatically stops when silence is detected after speech.",
+)]
+async fn handle_listen(
+    #[arg(description = "Language hint (ISO 639-1, e.g. 'en', 'fr'). Auto-detect if omitted.")] language: Option<String>,
+    #[arg(description = "Maximum recording duration in seconds (default: 30)")] max_seconds: Option<u64>,
+    ctx: CallContext,
+    #[state] state: Arc<VoiceState>,
+) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
+        return e;
+    }
 
-fn listen_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "voice_listen".to_string(),
-        description: Some(
-            "Record audio from the microphone and transcribe it to text. \
-             Automatically stops when silence is detected after speech."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "language".to_string(),
-                    serde_json::json!({"type": "string", "description": "Language hint (ISO 639-1, e.g. 'en', 'fr'). Auto-detect if omitted."}),
-                ),
-                (
-                    "max_seconds".to_string(),
-                    serde_json::json!({"type": "integer", "description": "Maximum recording duration in seconds (default: 30)"}),
-                ),
-            ])),
-            required: None,
-        },
-        annotations: None,
+    let max_secs = max_seconds.unwrap_or(state.max_record_secs);
+
+    tracing::info!("Recording from microphone (max {max_secs}s)...");
+
+    // Record audio
+    let audio = match audio::record(
+        std::time::Duration::from_secs(max_secs),
+        state.vad_threshold,
+        std::time::Duration::from_millis(state.silence_timeout_ms),
+    )
+    .await
+    {
+        Ok(samples) => samples,
+        Err(e) => return CallToolResult::error(format!("Recording failed: {e}")),
+    };
+
+    if audio.is_empty() {
+        return CallToolResult::text("No audio recorded.");
+    }
+
+    let duration_secs = audio.len() as f64 / 16000.0;
+    tracing::info!("Recorded {:.1}s, transcribing...", duration_secs);
+
+    // Transcribe
+    let request = smgglrs_core::models::TranscribeRequest {
+        audio,
+        language,
+    };
+    match state.asr_model.transcribe(&request).await {
+        Ok(response) => {
+            let mut output = response.text.clone();
+            if let Some(lang) = &response.language {
+                output.push_str(&format!("\n\n_Detected language: {lang}_"));
+            }
+            CallToolResult::text(output)
+        }
+        Err(e) => CallToolResult::error(format!("Transcription failed: {e}")),
     }
 }
 
-fn speak_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "voice_speak".to_string(),
-        description: Some(
-            "Synthesize text to speech and play it on the speaker.".to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "text".to_string(),
-                    serde_json::json!({"type": "string", "description": "Text to speak"}),
-                ),
-                (
-                    "voice".to_string(),
-                    serde_json::json!({"type": "string", "description": "Voice identifier (backend-specific). Uses default if omitted."}),
-                ),
-            ])),
-            required: Some(vec!["text".to_string()]),
-        },
-        annotations: None,
+#[tool(
+    name = "voice_speak",
+    description = "Synthesize text to speech and play it on the speaker.",
+)]
+async fn handle_speak(
+    #[arg(description = "Text to speak")] text: String,
+    #[arg(description = "Voice identifier (backend-specific). Uses default if omitted.")] voice: Option<String>,
+    ctx: CallContext,
+    #[state] state: Arc<VoiceState>,
+) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "write", Path::new("/")) {
+        return e;
+    }
+
+    if text.is_empty() {
+        return CallToolResult::error("Missing required parameter: text");
+    }
+    let voice = voice.or_else(|| state.default_voice.clone());
+
+    // Synthesize
+    let request = smgglrs_core::models::SynthesizeRequest {
+        text: text.to_string(),
+        voice,
+    };
+    let response = match state.tts_model.synthesize(&request).await {
+        Ok(r) => r,
+        Err(e) => return CallToolResult::error(format!("Speech synthesis failed: {e}")),
+    };
+
+    if response.audio.is_empty() {
+        return CallToolResult::error("TTS produced no audio");
+    }
+
+    let duration_secs = response.audio.len() as f64 / response.sample_rate as f64;
+
+    // Play audio
+    if let Err(e) = audio::play(response.audio, response.sample_rate).await {
+        return CallToolResult::error(format!("Playback failed: {e}"));
+    }
+
+    CallToolResult::text(format!("Spoke {:.1}s of audio.", duration_secs))
+}
+
+#[tool(
+    name = "voice_transcribe",
+    description = "Transcribe an audio file to text. Supports WAV files (16-bit PCM).",
+)]
+async fn handle_transcribe(
+    #[arg(description = "Absolute path to audio file")] path: String,
+    #[arg(description = "Language hint (ISO 639-1). Auto-detect if omitted.")] language: Option<String>,
+    ctx: CallContext,
+    #[state] state: Arc<VoiceState>,
+) -> CallToolResult {
+    let resolved = match resolve_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
+        return e;
+    }
+
+    // Read WAV file
+    let audio = match read_wav_file(&resolved) {
+        Ok(samples) => samples,
+        Err(e) => return CallToolResult::error(format!("Failed to read audio file: {e}")),
+    };
+
+    if audio.is_empty() {
+        return CallToolResult::error("Audio file is empty");
+    }
+
+    let duration_secs = audio.len() as f64 / 16000.0;
+    tracing::info!(path = %resolved.display(), duration = duration_secs, "Transcribing audio file");
+
+    let request = smgglrs_core::models::TranscribeRequest { audio, language };
+    match state.asr_model.transcribe(&request).await {
+        Ok(response) => {
+            let mut output = response.text.clone();
+            if let Some(lang) = &response.language {
+                output.push_str(&format!("\n\n_Detected language: {lang}_"));
+            }
+            CallToolResult::text(output)
+        }
+        Err(e) => CallToolResult::error(format!("Transcription failed: {e}")),
     }
 }
 
-fn transcribe_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "voice_transcribe".to_string(),
-        description: Some(
-            "Transcribe an audio file to text. Supports WAV files (16-bit PCM).".to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                (
-                    "path".to_string(),
-                    serde_json::json!({"type": "string", "description": "Absolute path to audio file"}),
-                ),
-                (
-                    "language".to_string(),
-                    serde_json::json!({"type": "string", "description": "Language hint (ISO 639-1). Auto-detect if omitted."}),
-                ),
-            ])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
+#[tool(
+    name = "voice_status",
+    description = "Show audio device information and model availability.",
+)]
+async fn handle_status(
+    ctx: CallContext,
+    #[state] state: Arc<VoiceState>,
+) -> CallToolResult {
+    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
+        return e;
     }
-}
 
-fn status_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "voice_status".to_string(),
-        description: Some(
-            "Show audio device information and model availability.".to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: None,
-            required: None,
-        },
-        annotations: None,
+    let info = audio::device_info();
+
+    let mut output = String::from("Voice Module Status:\n\n");
+    output.push_str(&format!("Audio host: {}\n", info.host));
+    output.push_str(&format!(
+        "Input:  {}\n",
+        info.input_device.as_deref().unwrap_or("(none)")
+    ));
+    if let Some(rate) = info.input_sample_rate {
+        output.push_str(&format!("  Sample rate: {} Hz\n", rate));
     }
+    output.push_str(&format!(
+        "Output: {}\n",
+        info.output_device.as_deref().unwrap_or("(none)")
+    ));
+    if let Some(rate) = info.output_sample_rate {
+        output.push_str(&format!("  Sample rate: {} Hz\n", rate));
+    }
+
+    CallToolResult::text(output)
 }
 
 // --- Path helpers ---
@@ -257,181 +328,6 @@ fn check_perm(
             path.display()
         ))),
     }
-}
-
-// --- Tool handlers ---
-
-async fn handle_listen(
-    args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<VoiceState>,
-) -> CallToolResult {
-    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
-        return e;
-    }
-
-    let language = args.get("language").and_then(|v| v.as_str()).map(String::from);
-    let max_secs = args
-        .get("max_seconds")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(state.max_record_secs);
-
-    tracing::info!("Recording from microphone (max {max_secs}s)...");
-
-    // Record audio
-    let audio = match audio::record(
-        std::time::Duration::from_secs(max_secs),
-        state.vad_threshold,
-        std::time::Duration::from_millis(state.silence_timeout_ms),
-    )
-    .await
-    {
-        Ok(samples) => samples,
-        Err(e) => return CallToolResult::error(format!("Recording failed: {e}")),
-    };
-
-    if audio.is_empty() {
-        return CallToolResult::text("No audio recorded.");
-    }
-
-    let duration_secs = audio.len() as f64 / 16000.0;
-    tracing::info!("Recorded {:.1}s, transcribing...", duration_secs);
-
-    // Transcribe
-    let request = smgglrs_core::models::TranscribeRequest {
-        audio,
-        language,
-    };
-    match state.asr_model.transcribe(&request).await {
-        Ok(response) => {
-            let mut output = response.text.clone();
-            if let Some(lang) = &response.language {
-                output.push_str(&format!("\n\n_Detected language: {lang}_"));
-            }
-            CallToolResult::text(output)
-        }
-        Err(e) => CallToolResult::error(format!("Transcription failed: {e}")),
-    }
-}
-
-async fn handle_speak(
-    args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<VoiceState>,
-) -> CallToolResult {
-    if let Err(e) = check_perm(&state, &ctx, "write", Path::new("/")) {
-        return e;
-    }
-
-    let text = match args.get("text").and_then(|v| v.as_str()) {
-        Some(t) if !t.is_empty() => t,
-        _ => return CallToolResult::error("Missing required parameter: text"),
-    };
-    let voice = args
-        .get("voice")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or_else(|| state.default_voice.clone());
-
-    // Synthesize
-    let request = smgglrs_core::models::SynthesizeRequest {
-        text: text.to_string(),
-        voice,
-    };
-    let response = match state.tts_model.synthesize(&request).await {
-        Ok(r) => r,
-        Err(e) => return CallToolResult::error(format!("Speech synthesis failed: {e}")),
-    };
-
-    if response.audio.is_empty() {
-        return CallToolResult::error("TTS produced no audio");
-    }
-
-    let duration_secs = response.audio.len() as f64 / response.sample_rate as f64;
-
-    // Play audio
-    if let Err(e) = audio::play(response.audio, response.sample_rate).await {
-        return CallToolResult::error(format!("Playback failed: {e}"));
-    }
-
-    CallToolResult::text(format!("Spoke {:.1}s of audio.", duration_secs))
-}
-
-async fn handle_transcribe(
-    args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<VoiceState>,
-) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-    let language = args.get("language").and_then(|v| v.as_str()).map(String::from);
-
-    let path = match resolve_path(raw_path) {
-        Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
-    };
-
-    if let Err(e) = check_perm(&state, &ctx, "read", &path) {
-        return e;
-    }
-
-    // Read WAV file
-    let audio = match read_wav_file(&path) {
-        Ok(samples) => samples,
-        Err(e) => return CallToolResult::error(format!("Failed to read audio file: {e}")),
-    };
-
-    if audio.is_empty() {
-        return CallToolResult::error("Audio file is empty");
-    }
-
-    let duration_secs = audio.len() as f64 / 16000.0;
-    tracing::info!(path = %path.display(), duration = duration_secs, "Transcribing audio file");
-
-    let request = smgglrs_core::models::TranscribeRequest { audio, language };
-    match state.asr_model.transcribe(&request).await {
-        Ok(response) => {
-            let mut output = response.text.clone();
-            if let Some(lang) = &response.language {
-                output.push_str(&format!("\n\n_Detected language: {lang}_"));
-            }
-            CallToolResult::text(output)
-        }
-        Err(e) => CallToolResult::error(format!("Transcription failed: {e}")),
-    }
-}
-
-async fn handle_status(
-    _args: serde_json::Value,
-    ctx: CallContext,
-    state: Arc<VoiceState>,
-) -> CallToolResult {
-    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
-        return e;
-    }
-
-    let info = audio::device_info();
-
-    let mut output = String::from("Voice Module Status:\n\n");
-    output.push_str(&format!("Audio host: {}\n", info.host));
-    output.push_str(&format!(
-        "Input:  {}\n",
-        info.input_device.as_deref().unwrap_or("(none)")
-    ));
-    if let Some(rate) = info.input_sample_rate {
-        output.push_str(&format!("  Sample rate: {} Hz\n", rate));
-    }
-    output.push_str(&format!(
-        "Output: {}\n",
-        info.output_device.as_deref().unwrap_or("(none)")
-    ));
-    if let Some(rate) = info.output_sample_rate {
-        output.push_str(&format!("  Sample rate: {} Hz\n", rate));
-    }
-
-    CallToolResult::text(output)
 }
 
 /// Read a WAV file and return 16kHz mono f32 PCM samples.
@@ -596,6 +492,20 @@ mod tests {
         CallContext::new(AgentIdentity::new("test", "dev"), "test")
     }
 
+    fn test_state() -> Arc<VoiceState> {
+        let asr: Arc<dyn ModelBackend> = Arc::new(FakeAsrModel);
+        let tts: Arc<dyn ModelBackend> = Arc::new(FakeTtsModel);
+        Arc::new(VoiceState {
+            asr_model: asr,
+            tts_model: tts,
+            vad_threshold: 0.01,
+            max_record_secs: 30,
+            silence_timeout_ms: 1500,
+            default_voice: None,
+            perm_engine: Arc::new(test_perm_engine()),
+        })
+    }
+
     #[test]
     fn module_provides_all_tools() {
         let asr: Arc<dyn ModelBackend> = Arc::new(FakeAsrModel);
@@ -614,19 +524,9 @@ mod tests {
 
     #[tokio::test]
     async fn status_shows_device_info() {
-        let asr: Arc<dyn ModelBackend> = Arc::new(FakeAsrModel);
-        let tts: Arc<dyn ModelBackend> = Arc::new(FakeTtsModel);
-        let state = Arc::new(VoiceState {
-            asr_model: asr,
-            tts_model: tts,
-            vad_threshold: 0.01,
-            max_record_secs: 30,
-            silence_timeout_ms: 1500,
-            default_voice: None,
-            perm_engine: Arc::new(test_perm_engine()),
-        });
-
-        let result = handle_status(serde_json::json!({}), test_ctx(), state).await;
+        let state = test_state();
+        let (_, handler) = handle_status_handler(state);
+        let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(!result.is_error);
         match &result.content[0] {
             smgglrs_core::protocol::Content::Text(t) => {
@@ -639,37 +539,17 @@ mod tests {
 
     #[tokio::test]
     async fn transcribe_rejects_missing_path() {
-        let asr: Arc<dyn ModelBackend> = Arc::new(FakeAsrModel);
-        let tts: Arc<dyn ModelBackend> = Arc::new(FakeTtsModel);
-        let state = Arc::new(VoiceState {
-            asr_model: asr,
-            tts_model: tts,
-            vad_threshold: 0.01,
-            max_record_secs: 30,
-            silence_timeout_ms: 1500,
-            default_voice: None,
-            perm_engine: Arc::new(smgglrs_core::permissions::PermissionEngine::new()),
-        });
-
-        let result = handle_transcribe(serde_json::json!({}), test_ctx(), state).await;
+        let state = test_state();
+        let (_, handler) = handle_transcribe_handler(state);
+        let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(result.is_error);
     }
 
     #[tokio::test]
     async fn speak_rejects_empty_text() {
-        let asr: Arc<dyn ModelBackend> = Arc::new(FakeAsrModel);
-        let tts: Arc<dyn ModelBackend> = Arc::new(FakeTtsModel);
-        let state = Arc::new(VoiceState {
-            asr_model: asr,
-            tts_model: tts,
-            vad_threshold: 0.01,
-            max_record_secs: 30,
-            silence_timeout_ms: 1500,
-            default_voice: None,
-            perm_engine: Arc::new(smgglrs_core::permissions::PermissionEngine::new()),
-        });
-
-        let result = handle_speak(serde_json::json!({}), test_ctx(), state).await;
+        let state = test_state();
+        let (_, handler) = handle_speak_handler(state);
+        let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(result.is_error);
     }
 }
