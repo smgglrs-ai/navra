@@ -54,6 +54,9 @@ impl Module for GitModule {
             handle_log_handler(s.clone()),
             handle_branch_handler(s.clone()),
             handle_commit_handler(s.clone()),
+            handle_fetch_handler(s.clone()),
+            handle_pull_handler(s.clone()),
+            handle_push_handler(s.clone()),
         ]
     }
 }
@@ -270,6 +273,154 @@ async fn handle_commit(
     }
 }
 
+#[tool(
+    name = "git_fetch",
+    description = "Fetch updates from a remote repository without merging.",
+)]
+async fn handle_fetch(
+    #[arg(description = "Path to the git repository")] path: String,
+    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<String>,
+    #[arg(description = "Prune deleted remote branches")] prune: Option<bool>,
+    ctx: CallContext,
+    #[state] state: Arc<GitState>,
+) -> CallToolResult {
+    let repo_path = match resolve_repo_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(result) = check_perm(&state, &ctx, "git.fetch", &repo_path).await {
+        return result;
+    }
+
+    let remote_name = remote.as_deref().unwrap_or("origin");
+    if let Err(e) = validate_ref_name(remote_name, "Remote") {
+        return CallToolResult::error(e);
+    }
+
+    let mut git_args = vec!["fetch", remote_name];
+    if prune.unwrap_or(false) {
+        git_args.push("--prune");
+    }
+
+    match run_git(&repo_path, &git_args).await {
+        Ok(output) => {
+            if output.trim().is_empty() {
+                CallToolResult::text(format!("Already up to date ({remote_name})."))
+            } else {
+                CallToolResult::text(output)
+            }
+        }
+        Err(e) => CallToolResult::error(e),
+    }
+}
+
+#[tool(
+    name = "git_pull",
+    description = "Pull commits from a remote repository (fetch + merge).",
+)]
+async fn handle_pull(
+    #[arg(description = "Path to the git repository")] path: String,
+    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<String>,
+    #[arg(description = "Branch to pull (default: tracked branch)")] branch: Option<String>,
+    #[arg(description = "Rebase instead of merge")] rebase: Option<bool>,
+    ctx: CallContext,
+    #[state] state: Arc<GitState>,
+) -> CallToolResult {
+    let repo_path = match resolve_repo_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(result) = check_perm(&state, &ctx, "git.pull", &repo_path).await {
+        return result;
+    }
+
+    let remote_name = remote.as_deref().unwrap_or("origin");
+    if let Err(e) = validate_ref_name(remote_name, "Remote") {
+        return CallToolResult::error(e);
+    }
+
+    let mut git_args = vec!["pull"];
+    if rebase.unwrap_or(false) {
+        git_args.push("--rebase");
+    }
+    git_args.push(remote_name);
+    if let Some(ref b) = branch {
+        if let Err(e) = validate_ref_name(b, "Branch") {
+            return CallToolResult::error(e);
+        }
+        git_args.push(b);
+    }
+
+    match run_git(&repo_path, &git_args).await {
+        Ok(output) => CallToolResult::text(output),
+        Err(e) => CallToolResult::error(e),
+    }
+}
+
+#[tool(
+    name = "git_push",
+    description = "Push commits to a remote repository. Requires approval.",
+)]
+async fn handle_push(
+    #[arg(description = "Path to the git repository")] path: String,
+    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<String>,
+    #[arg(description = "Branch to push (default: current branch)")] branch: Option<String>,
+    #[arg(description = "Force push (overwrites remote history)")] force: Option<bool>,
+    ctx: CallContext,
+    #[state] state: Arc<GitState>,
+) -> CallToolResult {
+    let repo_path = match resolve_repo_path(&path) {
+        Ok(p) => p,
+        Err(e) => return CallToolResult::error(e),
+    };
+
+    if let Err(result) = check_perm(&state, &ctx, "git.push", &repo_path).await {
+        return result;
+    }
+
+    let remote_name = remote.as_deref().unwrap_or("origin");
+    if let Err(e) = validate_ref_name(remote_name, "Remote") {
+        return CallToolResult::error(e);
+    }
+
+    let mut git_args = vec!["push"];
+    if force.unwrap_or(false) {
+        git_args.push("--force");
+    }
+    git_args.push(remote_name);
+    if let Some(ref b) = branch {
+        if let Err(e) = validate_ref_name(b, "Branch") {
+            return CallToolResult::error(e);
+        }
+        git_args.push(b);
+    }
+
+    match run_git(&repo_path, &git_args).await {
+        Ok(output) => {
+            if output.trim().is_empty() {
+                CallToolResult::text("Push successful.".to_string())
+            } else {
+                CallToolResult::text(output)
+            }
+        }
+        Err(e) => CallToolResult::error(e),
+    }
+}
+
+// --- Ref name validation ---
+
+fn validate_ref_name(name: &str, label: &str) -> Result<(), String> {
+    if name.starts_with('-') {
+        return Err(format!("{label} name must not start with '-'"));
+    }
+    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+        return Err(format!("{label} name contains invalid characters"));
+    }
+    Ok(())
+}
+
 // --- Path validation ---
 
 fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
@@ -426,11 +577,14 @@ mod tests {
                     "git.log",
                     "git.branch",
                     "git.commit",
+                    "git.fetch",
+                    "git.pull",
+                    "git.push",
                 ]
                 .into_iter()
                 .map(String::from)
                 .collect(),
-                requires_approval: ["git.commit"]
+                requires_approval: ["git.commit", "git.push"]
                     .into_iter()
                     .map(String::from)
                     .collect(),
@@ -509,13 +663,16 @@ mod tests {
         );
         assert_eq!(module.name(), "git");
         let tools = module.tools();
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 8);
         let names: Vec<_> = tools.iter().map(|(d, _)| d.name.as_str()).collect();
         assert!(names.contains(&"git_status"));
         assert!(names.contains(&"git_diff"));
         assert!(names.contains(&"git_log"));
         assert!(names.contains(&"git_branch"));
         assert!(names.contains(&"git_commit"));
+        assert!(names.contains(&"git_fetch"));
+        assert!(names.contains(&"git_pull"));
+        assert!(names.contains(&"git_push"));
     }
 
     #[test]
@@ -841,5 +998,98 @@ mod tests {
         init_test_repo(tmp.path());
         let result = resolve_repo_path(tmp.path().to_str().unwrap());
         assert!(result.is_ok(), "Valid absolute repo path should succeed");
+    }
+
+    // --- Remote operation tests ---
+
+    fn init_repo_with_remote(dir: &Path) -> PathBuf {
+        init_test_repo(dir);
+        let bare = dir.parent().unwrap().join("remote.git");
+        std::process::Command::new("git")
+            .args(["clone", "--bare", dir.to_str().unwrap(), bare.to_str().unwrap()])
+            .output()
+            .expect("git clone --bare failed");
+        std::process::Command::new("git")
+            .args(["remote", "add", "origin", bare.to_str().unwrap()])
+            .current_dir(dir)
+            .output()
+            .expect("git remote add failed");
+        bare
+    }
+
+    #[tokio::test]
+    async fn fetch_succeeds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let _bare = init_repo_with_remote(&repo);
+        let repo_str = repo.to_str().unwrap();
+        let state = test_state(repo_str);
+
+        let (_, handler) = handle_fetch_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
+
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn push_requires_approval() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let _bare = init_repo_with_remote(&repo);
+        let repo_str = repo.to_str().unwrap();
+
+        std::fs::write(repo.join("new.txt"), "push test\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "new.txt"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "push commit"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+
+        let state = test_state(repo_str);
+        let (_, handler) = handle_push_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), test_ctx()).await;
+
+        assert!(!result.is_error);
+        match &result.content[0] {
+            Content::Text(t) => {
+                assert!(t.text.contains("Approval required"));
+                assert!(t.text.contains("git.push"));
+            }
+            _ => panic!("expected text content"),
+        }
+    }
+
+    #[tokio::test]
+    async fn push_denied_for_readonly() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let _bare = init_repo_with_remote(&repo);
+        let repo_str = repo.to_str().unwrap();
+        let state = test_state(repo_str);
+
+        let (_, handler) = handle_push_handler(state);
+        let result = handler(serde_json::json!({"path": repo_str}), readonly_ctx()).await;
+
+        assert!(result.is_error);
+        match &result.content[0] {
+            Content::Text(t) => assert!(t.text.contains("not permitted")),
+            _ => panic!("expected text content"),
+        }
+    }
+
+    #[test]
+    fn invalid_remote_name_rejected() {
+        assert!(validate_ref_name("-evil", "Remote").is_err());
+        assert!(validate_ref_name("origin;rm -rf /", "Remote").is_err());
+        assert!(validate_ref_name("origin", "Remote").is_ok());
+        assert!(validate_ref_name("my-remote_1", "Remote").is_ok());
     }
 }
