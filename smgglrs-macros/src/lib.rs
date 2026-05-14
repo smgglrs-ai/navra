@@ -334,6 +334,7 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
     let func_name = &func.sig.ident;
     let tool_def_fn = format_ident!("{}_tool_def", func_name);
     let handler_fn = format_ident!("{}_handler", func_name);
+    let vis = &func.vis;
 
     let tool_name = &attrs.name;
     let tool_desc = &attrs.description;
@@ -454,7 +455,7 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
     Ok(quote! {
         #clean_func
 
-        fn #tool_def_fn() -> smgglrs_protocol::ToolDefinition {
+        #vis fn #tool_def_fn() -> smgglrs_protocol::ToolDefinition {
             let mut properties = std::collections::HashMap::new();
             #(#property_inserts)*
 
@@ -470,7 +471,7 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
             }
         }
 
-        fn #handler_fn(#(#state_params),*) -> (smgglrs_protocol::ToolDefinition, std::sync::Arc<
+        #vis fn #handler_fn(#(#state_params),*) -> (smgglrs_protocol::ToolDefinition, std::sync::Arc<
             dyn Fn(serde_json::Value, smgglrs_security::auth::CallContext)
                 -> std::pin::Pin<Box<dyn std::future::Future<Output = smgglrs_protocol::CallToolResult> + Send>>
                 + Send + Sync

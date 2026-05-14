@@ -1,25 +1,27 @@
 use smgglrs_core::auth::CallContext;
 use smgglrs_core::permissions::PermissionResult;
 use smgglrs_core::protocol::CallToolResult;
+use smgglrs_macros::tool;
 use std::path::Path;
 use std::sync::Arc;
 
 use super::path_security::*;
 use super::state::DocsState;
 
-pub(super) async fn handle_search(
-    args: serde_json::Value,
+#[tool(
+    name = "file_search",
+    description = "Full-text search across indexed documents",
+)]
+pub(crate) async fn handle_search(
+    #[arg(description = "Search query")] query: String,
+    #[arg(description = "Max results (default 10)", default = "10")] limit: Option<u64>,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let query = match args.get("query").and_then(|v| v.as_str()) {
-        Some(q) if !q.is_empty() => q,
-        _ => return CallToolResult::error("Missing required parameter: query"),
-    };
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(10) as usize;
+    if query.is_empty() {
+        return CallToolResult::error("Missing required parameter: query");
+    }
+    let limit = limit.unwrap_or(10) as usize;
 
     if !state.perm_engine.has_operation(&ctx.agent.permissions, "search")
         && !ctx.agent.capabilities.as_ref().map_or(false, |c| c.operations.contains("search"))
@@ -30,7 +32,7 @@ pub(super) async fn handle_search(
         ));
     }
 
-    let results = match state.index.search(query, limit) {
+    let results = match state.index.search(&query, limit) {
         Ok(r) => r,
         Err(e) => return CallToolResult::error(format!("Search failed: {e}")),
     };
@@ -65,50 +67,46 @@ pub(super) async fn handle_search(
     CallToolResult::text(output)
 }
 
-pub(super) async fn handle_read(
-    args: serde_json::Value,
+#[tool(
+    name = "file_read",
+    description = "Read a document by path. Supports partial reads with offset and limit (line-based).",
+)]
+pub(crate) async fn handle_read(
+    #[arg(description = "Absolute path to document")] path: String,
+    #[arg(description = "Line number to start from (1-based, default 1)")] offset: Option<u64>,
+    #[arg(description = "Number of lines to read (default: all)")] limit: Option<u64>,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
+    let resolved = match resolve_path_with_root(&path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "read", &path).await {
+    if let Err(e) = check_perm(&state, &ctx, "read", &resolved).await {
         return e;
     }
 
-    if !path.is_file() {
-        return CallToolResult::error(format!("Not a file: {}", path.display()));
+    if !resolved.is_file() {
+        return CallToolResult::error(format!("Not a file: {}", resolved.display()));
     }
 
-    let content = match std::fs::read_to_string(&path) {
+    let content = match std::fs::read_to_string(&resolved) {
         Ok(c) => c,
-        Err(e) => return { tracing::warn!(path = %path.display(), error = %e, "File read failed"); CallToolResult::error("Read operation failed") },
+        Err(e) => return { tracing::warn!(path = %resolved.display(), error = %e, "File read failed"); CallToolResult::error("Read operation failed") },
     };
 
     let total_lines = content.lines().count();
-    let offset = args
-        .get("offset")
-        .and_then(|v| v.as_u64())
+    let offset = offset
         .map(|v| v.max(1) as usize)
         .unwrap_or(1);
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as usize);
+    let limit = limit.map(|v| v as usize);
 
     // Full read if no offset/limit specified
     if offset == 1 && limit.is_none() {
         return CallToolResult::text(format!(
             "{} ({} lines)\n\n{}",
-            path.display(),
+            resolved.display(),
             total_lines,
             content
         ));
@@ -131,7 +129,7 @@ pub(super) async fn handle_read(
 
     CallToolResult::text(format!(
         "{} (lines {}-{} of {})\n\n{}",
-        path.display(),
+        resolved.display(),
         start + 1,
         end,
         total_lines,
@@ -139,33 +137,32 @@ pub(super) async fn handle_read(
     ))
 }
 
-pub(super) async fn handle_list(
-    args: serde_json::Value,
+#[tool(
+    name = "file_list",
+    description = "List files and directories at a path",
+)]
+pub(crate) async fn handle_list(
+    #[arg(description = "Directory path")] path: String,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
+    let resolved = match resolve_path_with_root(&path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "list", &path).await {
+    if let Err(e) = check_perm(&state, &ctx, "list", &resolved).await {
         return e;
     }
 
-    if !path.is_dir() {
-        return CallToolResult::error(format!("Not a directory: {}", path.display()));
+    if !resolved.is_dir() {
+        return CallToolResult::error(format!("Not a directory: {}", resolved.display()));
     }
 
-    let entries = match std::fs::read_dir(&path) {
+    let entries = match std::fs::read_dir(&resolved) {
         Ok(rd) => rd,
         Err(e) => {
-            return { tracing::warn!(path = %path.display(), error = %e, "Directory list failed"); CallToolResult::error("List operation failed") }
+            return { tracing::warn!(path = %resolved.display(), error = %e, "Directory list failed"); CallToolResult::error("List operation failed") }
         }
     };
 
@@ -209,11 +206,11 @@ pub(super) async fn handle_list(
     if dirs.is_empty() && files.is_empty() {
         return CallToolResult::text(format!(
             "{}: (empty or no accessible entries)",
-            path.display()
+            resolved.display()
         ));
     }
 
-    let mut output = format!("{}:\n\n", path.display());
+    let mut output = format!("{}:\n\n", resolved.display());
     for d in &dirs {
         output.push_str(&format!("  {d}\n"));
     }
@@ -223,146 +220,134 @@ pub(super) async fn handle_list(
     CallToolResult::text(output)
 }
 
-pub(super) async fn handle_write(
-    args: serde_json::Value,
+#[tool(
+    name = "file_write",
+    description = "Create or overwrite a document",
+)]
+pub(crate) async fn handle_write(
+    #[arg(description = "Absolute path")] path: String,
+    #[arg(description = "Document content")] content: String,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let content = match args.get("content").and_then(|v| v.as_str()) {
-        Some(c) => c,
-        None => return CallToolResult::error("Missing required parameter: content"),
-    };
-
-    let path = match resolve_path_with_root(raw_path, false, state.default_root.as_deref()) {
+    let resolved = match resolve_path_with_root(&path, false, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "write", &path).await {
+    if let Err(e) = check_perm(&state, &ctx, "write", &resolved).await {
         return e;
     }
 
     // TOCTOU mitigation: verify the path hasn't become a symlink between
     // resolve and write. If the file exists, check symlink_metadata to
     // detect symlinks without following them.
-    if path.exists() {
-        match std::fs::symlink_metadata(&path) {
+    if resolved.exists() {
+        match std::fs::symlink_metadata(&resolved) {
             Ok(meta) if meta.file_type().is_symlink() => {
                 return CallToolResult::error("Write denied: target is a symlink");
             }
             Err(e) => {
-                tracing::warn!(path = %path.display(), error = %e, "Failed to check symlink status before write");
+                tracing::warn!(path = %resolved.display(), error = %e, "Failed to check symlink status before write");
                 return CallToolResult::error("Write denied: cannot verify path safety");
             }
             _ => {}
         }
     }
 
-    if let Err(e) = std::fs::write(&path, content) {
-        return { tracing::warn!(path = %path.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
+    if let Err(e) = std::fs::write(&resolved, &content) {
+        return { tracing::warn!(path = %resolved.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
     }
 
     let size = content.len() as i64;
-    let mime = mime_from_path(&path);
-    let title = extract_title(&path, content);
-    let path_str = path.to_string_lossy();
+    let mime = mime_from_path(&resolved);
+    let title = extract_title(&resolved, &content);
+    let path_str = resolved.to_string_lossy();
     let modified = chrono_now();
     let checksum = simple_checksum(content.as_bytes());
 
     match state
         .index
-        .upsert(&path_str, mime, size, &modified, &checksum, &title, content)
+        .upsert(&path_str, mime, size, &modified, &checksum, &title, &content)
     {
         Ok(doc_id) => {
-            maybe_embed(&state, doc_id, content).await;
+            maybe_embed(&state, doc_id, &content).await;
         }
         Err(e) => {
-            tracing::warn!("Failed to index {}: {e}", path.display());
+            tracing::warn!("Failed to index {}: {e}", resolved.display());
         }
     }
 
-    CallToolResult::text(format!("Written {} bytes to {}", size, path.display()))
+    CallToolResult::text(format!("Written {} bytes to {}", size, resolved.display()))
 }
 
-pub(super) async fn handle_edit(
-    args: serde_json::Value,
+#[tool(
+    name = "file_edit",
+    description = "Edit a document by replacing a string. The old_string must be unique in the file. Use enough surrounding context to ensure uniqueness.",
+)]
+pub(crate) async fn handle_edit(
+    #[arg(description = "Absolute path to file")] path: String,
+    #[arg(description = "Exact string to find and replace")] old_string: String,
+    #[arg(description = "Replacement string")] new_string: String,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-    let old_string = match args.get("old_string").and_then(|v| v.as_str()) {
-        Some(s) => s,
-        None => return CallToolResult::error("Missing required parameter: old_string"),
-    };
-    let new_string = match args.get("new_string").and_then(|v| v.as_str()) {
-        Some(s) => s,
-        None => return CallToolResult::error("Missing required parameter: new_string"),
-    };
-
-    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
+    let resolved = match resolve_path_with_root(&path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "write", &path).await {
+    if let Err(e) = check_perm(&state, &ctx, "write", &resolved).await {
         return e;
     }
 
-    if !path.is_file() {
-        return CallToolResult::error(format!("Not a file: {}", path.display()));
+    if !resolved.is_file() {
+        return CallToolResult::error(format!("Not a file: {}", resolved.display()));
     }
 
-    let content = match std::fs::read_to_string(&path) {
+    let file_content = match std::fs::read_to_string(&resolved) {
         Ok(c) => c,
-        Err(e) => return { tracing::warn!(path = %path.display(), error = %e, "File read failed"); CallToolResult::error("Read operation failed") },
+        Err(e) => return { tracing::warn!(path = %resolved.display(), error = %e, "File read failed"); CallToolResult::error("Read operation failed") },
     };
 
-    let count = content.matches(old_string).count();
+    let count = file_content.matches(&*old_string).count();
     if count == 0 {
         return CallToolResult::error(format!(
             "old_string not found in {}",
-            path.display()
+            resolved.display()
         ));
     }
     if count > 1 {
         return CallToolResult::error(format!(
             "old_string found {} times in {} — must be unique. Include more surrounding context.",
             count,
-            path.display()
+            resolved.display()
         ));
     }
 
-    let new_content = content.replacen(old_string, new_string, 1);
+    let new_content = file_content.replacen(&*old_string, &new_string, 1);
 
     // TOCTOU mitigation: verify the path hasn't become a symlink
-    match std::fs::symlink_metadata(&path) {
+    match std::fs::symlink_metadata(&resolved) {
         Ok(meta) if meta.file_type().is_symlink() => {
             return CallToolResult::error("Write denied: target is a symlink");
         }
         Err(e) => {
-            tracing::warn!(path = %path.display(), error = %e, "Failed to check symlink status before write");
+            tracing::warn!(path = %resolved.display(), error = %e, "Failed to check symlink status before write");
             return CallToolResult::error("Write denied: cannot verify path safety");
         }
         _ => {}
     }
 
-    if let Err(e) = std::fs::write(&path, &new_content) {
-        return { tracing::warn!(path = %path.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
+    if let Err(e) = std::fs::write(&resolved, &new_content) {
+        return { tracing::warn!(path = %resolved.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
     }
 
     // Re-index
     let size = new_content.len() as i64;
-    let mime = mime_from_path(&path);
-    let title = extract_title(&path, &new_content);
-    let path_str = path.to_string_lossy();
+    let mime = mime_from_path(&resolved);
+    let title = extract_title(&resolved, &new_content);
+    let path_str = resolved.to_string_lossy();
     let modified = chrono_now();
     let checksum = simple_checksum(new_content.as_bytes());
 
@@ -373,41 +358,40 @@ pub(super) async fn handle_edit(
             maybe_embed(&state, doc_id, &new_content).await;
         }
         Err(e) => {
-            tracing::warn!("Failed to index {}: {e}", path.display());
+            tracing::warn!("Failed to index {}: {e}", resolved.display());
         }
     }
 
-    CallToolResult::text(format!("Edited {}", path.display()))
+    CallToolResult::text(format!("Edited {}", resolved.display()))
 }
 
-pub(super) async fn handle_info(
-    args: serde_json::Value,
+#[tool(
+    name = "file_info",
+    description = "Get file metadata without reading content (size, type, line count, modified time)",
+)]
+pub(crate) async fn handle_info(
+    #[arg(description = "Absolute path to file")] path: String,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
+    let resolved = match resolve_path_with_root(&path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "read", &path).await {
+    if let Err(e) = check_perm(&state, &ctx, "read", &resolved).await {
         return e;
     }
 
-    let metadata = match std::fs::metadata(&path) {
+    let metadata = match std::fs::metadata(&resolved) {
         Ok(m) => m,
         Err(e) => {
-            tracing::warn!(path = %path.display(), error = %e, "File stat failed");
+            tracing::warn!(path = %resolved.display(), error = %e, "File stat failed");
             return CallToolResult::error("Metadata read failed");
         }
     };
 
-    let mime = mime_from_path(&path);
+    let mime = mime_from_path(&resolved);
     let size = metadata.len();
     let modified = metadata
         .modified()
@@ -420,7 +404,7 @@ pub(super) async fn handle_info(
         .unwrap_or_else(|| "unknown".to_string());
 
     let line_count = if metadata.is_file() {
-        std::fs::read_to_string(&path)
+        std::fs::read_to_string(&resolved)
             .map(|c| c.lines().count())
             .unwrap_or(0)
     } else {
@@ -430,14 +414,14 @@ pub(super) async fn handle_info(
     let is_dir = metadata.is_dir();
     let indexed = state
         .index
-        .get_by_path(&path.to_string_lossy())
+        .get_by_path(&resolved.to_string_lossy())
         .ok()
         .flatten()
         .is_some();
 
     let output = format!(
         "path: {}\ntype: {}\nsize: {} bytes\nlines: {}\nmodified: {}\nmime: {}\nindexed: {}{}",
-        path.display(),
+        resolved.display(),
         if is_dir { "directory" } else { "file" },
         size,
         line_count,
@@ -450,50 +434,56 @@ pub(super) async fn handle_info(
     CallToolResult::text(output)
 }
 
-pub(super) async fn handle_delete(
-    args: serde_json::Value,
+#[tool(
+    name = "file_delete",
+    description = "Delete a document. Requires write permission.",
+)]
+pub(crate) async fn handle_delete(
+    #[arg(description = "Absolute path to file")] path: String,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let path = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
+    let resolved = match resolve_path_with_root(&path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
 
-    if let Err(e) = check_perm(&state, &ctx, "write", &path).await {
+    if let Err(e) = check_perm(&state, &ctx, "write", &resolved).await {
         return e;
     }
 
-    if !path.is_file() {
-        return CallToolResult::error(format!("Not a file: {}", path.display()));
+    if !resolved.is_file() {
+        return CallToolResult::error(format!("Not a file: {}", resolved.display()));
     }
 
-    if let Err(e) = std::fs::remove_file(&path) {
-        return { tracing::warn!(path = %path.display(), error = %e, "File delete failed"); CallToolResult::error("Delete operation failed") };
+    if let Err(e) = std::fs::remove_file(&resolved) {
+        return { tracing::warn!(path = %resolved.display(), error = %e, "File delete failed"); CallToolResult::error("Delete operation failed") };
     }
 
     // Remove from index
-    let path_str = path.to_string_lossy();
+    let path_str = resolved.to_string_lossy();
     if let Err(e) = state.index.delete(&path_str) {
-        tracing::warn!("Failed to remove {} from index: {e}", path.display());
+        tracing::warn!("Failed to remove {} from index: {e}", resolved.display());
     }
 
-    CallToolResult::text(format!("Deleted {}", path.display()))
+    CallToolResult::text(format!("Deleted {}", resolved.display()))
 }
 
 /// Recursively list all files under a directory with line counts.
-pub(super) async fn handle_tree(
-    args: serde_json::Value,
+#[tool(
+    name = "file_tree",
+    description = "List files under a directory. Returns relative paths and line counts. For large projects, use max_depth to get a high-level overview first, then drill into specific directories. Default max_files is 500 — if the project has more, increase it or use max_depth=2 to get the directory structure without listing every file.",
+)]
+pub(crate) async fn handle_tree(
+    #[arg(description = "Directory path (optional — defaults to project root)")] path: Option<String>,
+    #[arg(description = "Optional file extension filter (e.g. 'rs', 'py')")] pattern: Option<String>,
+    #[arg(description = "Max directory depth to recurse (default: unlimited)")] max_depth: Option<u64>,
+    #[arg(description = "Max files to return (default: 500). Truncated results show total count.")] max_files: Option<u64>,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path")
-        .and_then(|v| v.as_str())
+    let raw_path = match path
+        .as_deref()
         .filter(|p| !p.is_empty() && *p != "." && *p != "./")
         .or(state.default_root.as_deref())
     {
@@ -512,17 +502,13 @@ pub(super) async fn handle_tree(
         return e;
     }
 
-    let extension_filter = args
-        .get("pattern")
-        .and_then(|v| v.as_str())
+    let extension_filter = pattern
+        .as_deref()
         .map(|s| s.trim_start_matches('.').to_string());
 
-    let max_depth = args.get("max_depth")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as usize);
+    let max_depth = max_depth.map(|v| v as usize);
 
-    let max_files = args.get("max_files")
-        .and_then(|v| v.as_u64())
+    let max_files = max_files
         .map(|v| v as usize)
         .unwrap_or(500);
 
@@ -601,22 +587,19 @@ fn collect_tree(
 }
 
 /// Search for a text pattern across all files in a directory.
-pub(super) async fn handle_grep(
-    args: serde_json::Value,
+#[tool(
+    name = "file_grep",
+    description = "Search for a text pattern across all files in a directory. Returns matching lines with file paths and line numbers. Use this for broad codebase searches like finding all .unwrap() calls, unsafe blocks, or specific function names across the entire project.",
+)]
+pub(crate) async fn handle_grep(
+    #[arg(description = "Root directory to search")] path: String,
+    #[arg(description = "Text pattern to search for (substring match, not regex)")] pattern: String,
+    #[arg(description = "Optional file extension filter (e.g. 'rs')")] extension: Option<String>,
+    #[arg(description = "Maximum matches to return (default: 100)")] max_results: Option<u64>,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let raw_path = match args.get("path").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
-    };
-
-    let pattern = match args.get("pattern").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: pattern"),
-    };
-
-    let root = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
+    let root = match resolve_path_with_root(&path, true, state.default_root.as_deref()) {
         Ok(p) => p,
         Err(e) => return CallToolResult::error(e),
     };
@@ -625,20 +608,16 @@ pub(super) async fn handle_grep(
         return e;
     }
 
-    let ext_filter = args
-        .get("extension")
-        .and_then(|v| v.as_str())
+    let ext_filter = extension
+        .as_deref()
         .map(|s| s.trim_start_matches('.').to_string());
 
-    let max_results = args
-        .get("max_results")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(100) as usize;
+    let max_results = max_results.unwrap_or(100) as usize;
 
     let mut matches: Vec<String> = Vec::new();
     let mut files_searched = 0u32;
     let mut files_matched = 0u32;
-    grep_recursive(&root, &root, pattern, &ext_filter, max_results, &mut matches, &mut files_searched, &mut files_matched);
+    grep_recursive(&root, &root, &pattern, &ext_filter, max_results, &mut matches, &mut files_searched, &mut files_matched);
 
     let mut output = format!(
         "{} matches in {} files (searched {} files)\n\n",
@@ -720,18 +699,17 @@ fn grep_recursive(
     }
 }
 
-pub(super) async fn handle_approve(
-    args: serde_json::Value,
+#[tool(
+    name = "file_approve",
+    description = "Approve a pending operation. Call this with the request_id returned by a tool that requires approval.",
+)]
+pub(crate) async fn handle_approve(
+    #[arg(description = "Approval request ID")] request_id: String,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let request_id = match args.get("request_id").and_then(|v| v.as_str()) {
-        Some(id) => id,
-        None => return CallToolResult::error("Missing required parameter: request_id"),
-    };
-
     // Validate the request exists
-    let meta = match state.approvals.get_pending(request_id) {
+    let meta = match state.approvals.get_pending(&request_id) {
         Some(m) => m,
         None => {
             return CallToolResult::error(format!(
@@ -748,13 +726,13 @@ pub(super) async fn handle_approve(
         );
     }
 
-    state.approvals.approve(request_id);
+    state.approvals.approve(&request_id);
 
     // Dismiss D-Bus notification
-    let _ = state.notifier.dismiss(request_id).await;
+    let _ = state.notifier.dismiss(&request_id).await;
 
     tracing::info!(
-        request_id = request_id,
+        request_id = %request_id,
         approved_by = %ctx.agent.name,
         agent = %meta.agent_name,
         operation = %meta.operation,
@@ -767,17 +745,16 @@ pub(super) async fn handle_approve(
     ))
 }
 
-pub(super) async fn handle_deny(
-    args: serde_json::Value,
+#[tool(
+    name = "file_deny",
+    description = "Deny a pending operation. Call this with the request_id returned by a tool that requires approval.",
+)]
+pub(crate) async fn handle_deny(
+    #[arg(description = "Approval request ID")] request_id: String,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let request_id = match args.get("request_id").and_then(|v| v.as_str()) {
-        Some(id) => id,
-        None => return CallToolResult::error("Missing required parameter: request_id"),
-    };
-
-    let meta = match state.approvals.get_pending(request_id) {
+    let meta = match state.approvals.get_pending(&request_id) {
         Some(m) => m,
         None => {
             return CallToolResult::error(format!(
@@ -793,12 +770,12 @@ pub(super) async fn handle_deny(
         );
     }
 
-    state.approvals.deny(request_id);
+    state.approvals.deny(&request_id);
 
-    let _ = state.notifier.dismiss(request_id).await;
+    let _ = state.notifier.dismiss(&request_id).await;
 
     tracing::info!(
-        request_id = request_id,
+        request_id = %request_id,
         denied_by = %ctx.agent.name,
         agent = %meta.agent_name,
         operation = %meta.operation,
@@ -811,19 +788,20 @@ pub(super) async fn handle_deny(
     ))
 }
 
-pub(super) async fn handle_semantic_search(
-    args: serde_json::Value,
+#[tool(
+    name = "file_semantic_search",
+    description = "Semantic search across indexed documents using vector similarity. Finds documents with similar meaning, even if they don't share exact words.",
+)]
+pub(crate) async fn handle_semantic_search(
+    #[arg(description = "Natural language search query")] query: String,
+    #[arg(description = "Max results (default 5)", default = "5")] limit: Option<u64>,
     ctx: CallContext,
-    state: Arc<DocsState>,
+    #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
-    let query = match args.get("query").and_then(|v| v.as_str()) {
-        Some(q) if !q.is_empty() => q,
-        _ => return CallToolResult::error("Missing required parameter: query"),
-    };
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(5) as usize;
+    if query.is_empty() {
+        return CallToolResult::error("Missing required parameter: query");
+    }
+    let limit = limit.unwrap_or(5) as usize;
 
     // ACL is checked per-result below (not against "/" which is too permissive)
 

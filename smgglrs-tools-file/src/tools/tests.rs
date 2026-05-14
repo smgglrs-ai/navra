@@ -1,5 +1,4 @@
 use super::*;
-use super::handlers::*;
 use super::path_security::resolve_path;
 use crate::store::IndexStore;
 use smgglrs_core::auth::{AgentIdentity, CallContext};
@@ -94,10 +93,10 @@ async fn read_full_file() {
     let file = tmp.path().join("hello.txt");
     std::fs::write(&file, "Hello, world!").unwrap();
 
-    let result = handle_read(
+    let (_, handler) = handle_read_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("Hello, world!"));
@@ -111,10 +110,10 @@ async fn read_partial_with_offset_and_limit() {
     let file = tmp.path().join("multi.txt");
     std::fs::write(&file, "line1\nline2\nline3\nline4\nline5\n").unwrap();
 
-    let result = handle_read(
+    let (_, handler) = handle_read_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap(), "offset": 2, "limit": 2}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     let text = text_of(&result);
@@ -134,10 +133,10 @@ async fn read_denied_path() {
     let file = secret_dir.join("key.pem");
     std::fs::write(&file, "private key").unwrap();
 
-    let result = handle_read(
+    let (_, handler) = handle_read_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(result.is_error);
     assert!(text_of(&result).contains("denied"));
@@ -151,10 +150,10 @@ async fn write_new_file() {
     let state = test_state(&tmp);
     let file = tmp.path().join("new.md");
 
-    let result = handle_write(
+    let (_, handler) = handle_write_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "# Hello\n\nWorld"}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "# Hello\n\nWorld");
@@ -166,10 +165,10 @@ async fn write_denied_for_readonly() {
     let state = test_state(&tmp);
     let file = tmp.path().join("nope.txt");
 
-    let result = handle_write(
+    let (_, handler) = handle_write_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "fail"}),
         readonly_ctx(),
-        state.clone(),
     ).await;
     assert!(result.is_error);
     assert!(!file.exists());
@@ -184,14 +183,14 @@ async fn edit_replaces_unique_string() {
     let file = tmp.path().join("doc.md");
     std::fs::write(&file, "Hello world, this is a test.").unwrap();
 
-    let result = handle_edit(
+    let (_, handler) = handle_edit_handler(state);
+    let result = handler(
         serde_json::json!({
             "path": file.to_str().unwrap(),
             "old_string": "Hello world",
             "new_string": "Goodbye world"
         }),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     assert_eq!(
@@ -207,14 +206,14 @@ async fn edit_fails_if_not_found() {
     let file = tmp.path().join("doc.md");
     std::fs::write(&file, "Hello world").unwrap();
 
-    let result = handle_edit(
+    let (_, handler) = handle_edit_handler(state);
+    let result = handler(
         serde_json::json!({
             "path": file.to_str().unwrap(),
             "old_string": "nonexistent",
             "new_string": "replacement"
         }),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(result.is_error);
     assert!(text_of(&result).contains("not found"));
@@ -227,14 +226,14 @@ async fn edit_fails_if_not_unique() {
     let file = tmp.path().join("doc.md");
     std::fs::write(&file, "foo bar foo baz").unwrap();
 
-    let result = handle_edit(
+    let (_, handler) = handle_edit_handler(state);
+    let result = handler(
         serde_json::json!({
             "path": file.to_str().unwrap(),
             "old_string": "foo",
             "new_string": "qux"
         }),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(result.is_error);
     assert!(text_of(&result).contains("2 times"));
@@ -249,14 +248,14 @@ async fn edit_denied_for_readonly() {
     let file = tmp.path().join("doc.md");
     std::fs::write(&file, "content").unwrap();
 
-    let result = handle_edit(
+    let (_, handler) = handle_edit_handler(state);
+    let result = handler(
         serde_json::json!({
             "path": file.to_str().unwrap(),
             "old_string": "content",
             "new_string": "modified"
         }),
         readonly_ctx(),
-        state.clone(),
     ).await;
     assert!(result.is_error);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "content");
@@ -271,10 +270,10 @@ async fn info_returns_metadata() {
     let file = tmp.path().join("info.md");
     std::fs::write(&file, "line1\nline2\nline3\n").unwrap();
 
-    let result = handle_info(
+    let (_, handler) = handle_info_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     let text = text_of(&result);
@@ -293,10 +292,10 @@ async fn delete_removes_file() {
     let file = tmp.path().join("doomed.txt");
     std::fs::write(&file, "goodbye").unwrap();
 
-    let result = handle_delete(
+    let (_, handler) = handle_delete_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     assert!(!file.exists());
@@ -309,10 +308,10 @@ async fn delete_denied_for_readonly() {
     let file = tmp.path().join("safe.txt");
     std::fs::write(&file, "safe").unwrap();
 
-    let result = handle_delete(
+    let (_, handler) = handle_delete_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         readonly_ctx(),
-        state.clone(),
     ).await;
     assert!(result.is_error);
     assert!(file.exists());
@@ -327,10 +326,10 @@ async fn list_directory() {
     std::fs::write(tmp.path().join("a.txt"), "aaa").unwrap();
     std::fs::create_dir(tmp.path().join("subdir")).unwrap();
 
-    let result = handle_list(
+    let (_, handler) = handle_list_handler(state);
+    let result = handler(
         serde_json::json!({"path": tmp.path().to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     let text = text_of(&result);
@@ -351,10 +350,10 @@ async fn search_returns_results() {
         "Notes", "rust programming guide",
     ).unwrap();
 
-    let result = handle_search(
+    let (_, handler) = handle_search_handler(state);
+    let result = handler(
         serde_json::json!({"query": "rust programming"}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("1 result"));
@@ -395,16 +394,16 @@ async fn write_then_read_roundtrip() {
     let state = test_state(&tmp);
     let file = tmp.path().join("rt.md");
 
-    handle_write(
+    let (_, write_h) = handle_write_handler(state.clone());
+    write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "# RT\n\nContent."}),
         dev_ctx(),
-        state.clone(),
     ).await;
 
-    let result = handle_read(
+    let (_, read_h) = handle_read_handler(state);
+    let result = read_h(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(text_of(&result).contains("# RT\n\nContent."));
 }
@@ -415,26 +414,26 @@ async fn write_edit_read_roundtrip() {
     let state = test_state(&tmp);
     let file = tmp.path().join("edit_rt.md");
 
-    handle_write(
+    let (_, write_h) = handle_write_handler(state.clone());
+    write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "Hello world"}),
         dev_ctx(),
-        state.clone(),
     ).await;
 
-    handle_edit(
+    let (_, edit_h) = handle_edit_handler(state.clone());
+    edit_h(
         serde_json::json!({
             "path": file.to_str().unwrap(),
             "old_string": "Hello world",
             "new_string": "Goodbye world"
         }),
         dev_ctx(),
-        state.clone(),
     ).await;
 
-    let result = handle_read(
+    let (_, read_h) = handle_read_handler(state);
+    let result = read_h(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(text_of(&result).contains("Goodbye world"));
 }
@@ -445,19 +444,19 @@ async fn write_then_search_roundtrip() {
     let state = test_state(&tmp);
     let file = tmp.path().join("searchable.md");
 
-    handle_write(
+    let (_, write_h) = handle_write_handler(state.clone());
+    write_h(
         serde_json::json!({
             "path": file.to_str().unwrap(),
             "content": "# K8s Guide\n\nDeploy pods with kubectl."
         }),
         dev_ctx(),
-        state.clone(),
     ).await;
 
-    let result = handle_search(
+    let (_, search_h) = handle_search_handler(state);
+    let result = search_h(
         serde_json::json!({"query": "kubectl deploy"}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(text_of(&result).contains("1 result"));
 }
@@ -468,22 +467,22 @@ async fn write_delete_read_fails() {
     let state = test_state(&tmp);
     let file = tmp.path().join("temp.txt");
 
-    handle_write(
+    let (_, write_h) = handle_write_handler(state.clone());
+    write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "temporary"}),
         dev_ctx(),
-        state.clone(),
     ).await;
 
-    handle_delete(
+    let (_, delete_h) = handle_delete_handler(state.clone());
+    delete_h(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
 
-    let result = handle_read(
+    let (_, read_h) = handle_read_handler(state);
+    let result = read_h(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-        state.clone(),
     ).await;
     assert!(result.is_error);
 }
@@ -530,10 +529,10 @@ async fn write_needs_approval_returns_request_id() {
     let state = test_state_with_approval(&tmp);
     let file = tmp.path().join("needs_approval.md");
 
-    let result = handle_write(
+    let (_, handler) = handle_write_handler(state.clone());
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-        state.clone(),
     ).await;
 
     assert!(!result.is_error);
@@ -551,25 +550,25 @@ async fn approve_then_retry_succeeds() {
     let state = test_state_with_approval(&tmp);
     let file = tmp.path().join("approved.md");
 
-    handle_write(
+    let (_, write_h) = handle_write_handler(state.clone());
+    write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "approved content"}),
         approval_ctx(),
-        state.clone(),
     ).await;
 
     let pending = state.approvals.pending_requests();
-    let result = handle_approve(
+    let (_, approve_h) = handle_approve_handler(state.clone());
+    let result = approve_h(
         serde_json::json!({"request_id": pending[0].id}),
         admin_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("Approved"));
 
-    let result = handle_write(
+    let (_, write_h2) = handle_write_handler(state);
+    let result = write_h2(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "approved content"}),
         approval_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("Written"));
@@ -582,25 +581,25 @@ async fn deny_then_retry_still_needs_approval() {
     let state = test_state_with_approval(&tmp);
     let file = tmp.path().join("denied.md");
 
-    handle_write(
+    let (_, write_h) = handle_write_handler(state.clone());
+    write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-        state.clone(),
     ).await;
 
     let pending = state.approvals.pending_requests();
-    let result = handle_deny(
+    let (_, deny_h) = handle_deny_handler(state.clone());
+    let result = deny_h(
         serde_json::json!({"request_id": pending[0].id}),
         admin_ctx(),
-        state.clone(),
     ).await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("Denied"));
 
-    let result = handle_write(
+    let (_, write_h2) = handle_write_handler(state);
+    let result = write_h2(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-        state.clone(),
     ).await;
     assert!(text_of(&result).contains("Approval required"));
     assert!(!file.exists());
@@ -611,10 +610,10 @@ async fn approve_unknown_request_fails() {
     let tmp = TempDir::new().unwrap();
     let state = test_state_with_approval(&tmp);
 
-    let result = handle_approve(
+    let (_, handler) = handle_approve_handler(state);
+    let result = handler(
         serde_json::json!({"request_id": "nonexistent"}),
         admin_ctx(),
-        state,
     ).await;
     assert!(result.is_error);
     assert!(text_of(&result).contains("No pending"));
@@ -626,29 +625,29 @@ async fn grant_is_single_use() {
     let state = test_state_with_approval(&tmp);
     let file = tmp.path().join("single_use.md");
 
-    handle_write(
+    let (_, write_h) = handle_write_handler(state.clone());
+    write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "first"}),
         approval_ctx(),
-        state.clone(),
     ).await;
     let pending = state.approvals.pending_requests();
-    handle_approve(
+    let (_, approve_h) = handle_approve_handler(state.clone());
+    approve_h(
         serde_json::json!({"request_id": pending[0].id}),
         admin_ctx(),
-        state.clone(),
     ).await;
 
-    let result = handle_write(
+    let (_, write_h2) = handle_write_handler(state.clone());
+    let result = write_h2(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "first"}),
         approval_ctx(),
-        state.clone(),
     ).await;
     assert!(text_of(&result).contains("Written"));
 
-    let result = handle_write(
+    let (_, write_h3) = handle_write_handler(state);
+    let result = write_h3(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "second"}),
         approval_ctx(),
-        state.clone(),
     ).await;
     assert!(text_of(&result).contains("Approval required"));
 }
@@ -660,10 +659,10 @@ async fn read_without_approval_still_works() {
     let file = tmp.path().join("readable.txt");
     std::fs::write(&file, "no approval needed").unwrap();
 
-    let result = handle_read(
+    let (_, handler) = handle_read_handler(state);
+    let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         approval_ctx(),
-        state,
     ).await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("no approval needed"));
@@ -675,19 +674,19 @@ async fn dbus_approval_also_creates_grant() {
     let state = test_state_with_approval(&tmp);
     let file = tmp.path().join("dbus_approved.md");
 
-    handle_write(
+    let (_, write_h) = handle_write_handler(state.clone());
+    write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-        state.clone(),
     ).await;
 
     let pending = state.approvals.pending_requests();
     state.approvals.approve(&pending[0].id);
 
-    let result = handle_write(
+    let (_, write_h2) = handle_write_handler(state);
+    let result = write_h2(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-        state.clone(),
     ).await;
     assert!(text_of(&result).contains("Written"));
 }

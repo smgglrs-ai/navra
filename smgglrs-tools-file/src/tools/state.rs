@@ -4,7 +4,7 @@ use smgglrs_core::notify::Notifier;
 use smgglrs_core::permissions::{ApprovalStore, PermissionEngine};
 use std::sync::Arc;
 
-pub(super) struct DocsState {
+pub(crate) struct DocsState {
     pub perm_engine: Arc<PermissionEngine>,
     pub index: Arc<IndexStore>,
     pub approvals: Arc<ApprovalStore>,
