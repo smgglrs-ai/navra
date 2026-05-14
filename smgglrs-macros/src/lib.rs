@@ -408,11 +408,14 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
                 }
             } else {
                 quote! {
-                    let #ident: #ty = args.get(#field)
+                    let #ident: #ty = match args.get(#field)
                         .and_then(|v| serde_json::from_value(v.clone()).ok())
-                        .unwrap_or_else(|| {
-                            panic!("missing required argument `{}`", #field)
-                        });
+                    {
+                        Some(v) => v,
+                        None => return smgglrs_protocol::CallToolResult::error(
+                            format!("Missing required parameter: {}", #field)
+                        ),
+                    };
                 }
             }
         })
