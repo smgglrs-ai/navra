@@ -761,6 +761,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_path_returns_error() {
+        let state = test_state("/tmp");
+        let (_, handler) = handle_status_handler(state);
+        let result = handler(serde_json::json!({}), test_ctx()).await;
+        assert!(result.is_error);
+        match &result.content[0] {
+            Content::Text(t) => assert!(t.text.contains("Missing required parameter")),
+            _ => panic!("expected text content"),
+        }
+    }
+
+    #[tokio::test]
     async fn not_a_repo_returns_error() {
         let tmp = tempfile::tempdir().unwrap();
         let repo_str = tmp.path().to_str().unwrap();

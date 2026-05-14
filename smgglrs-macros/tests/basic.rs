@@ -185,6 +185,30 @@ async fn handler_can_be_called() {
     }
 }
 
+// --- Missing required arg returns error, not panic ---
+
+#[tokio::test]
+async fn missing_required_arg_returns_error() {
+    let (_, handler) = test_echo_handler();
+    let args = serde_json::json!({});
+    let ctx = CallContext::new(
+        smgglrs_security::auth::AgentIdentity {
+            name: "test".to_string(),
+            permissions: "admin".to_string(),
+            signing_key: None,
+            did: None,
+            capabilities: None,
+        },
+        "test-session",
+    );
+    let result = handler(args, ctx).await;
+    assert!(result.is_error);
+    match &result.content[0] {
+        Content::Text(t) => assert!(t.text.contains("Missing required parameter: message")),
+        _ => panic!("expected text content"),
+    }
+}
+
 // --- Tool with #[state] parameter ---
 
 use std::sync::Arc;
