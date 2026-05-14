@@ -38,7 +38,7 @@ fn module_name_is_git() {
 fn module_registers_five_tools() {
     let module = build_git_module();
     let tools = module.tools();
-    assert_eq!(tools.len(), 5);
+    assert_eq!(tools.len(), 8);
 }
 
 #[test]
