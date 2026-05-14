@@ -232,6 +232,9 @@ fn type_to_json_schema(ty: &Type) -> TokenStream2 {
                 "Vec" => {
                     return quote! { "array" };
                 }
+                "HashMap" | "BTreeMap" => {
+                    return quote! { "object" };
+                }
                 _ => {}
             }
         }
