@@ -22,6 +22,7 @@ pub(super) async fn handle_post(
     let agent = match server.authenticator().authenticate(&headers) {
         Ok(agent) => agent,
         Err(_) => {
+            state.metrics.auth_failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(JsonRpcResponse::error(

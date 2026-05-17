@@ -73,6 +73,7 @@ impl McpServer {
             last_accessed: now,
         };
         self.sessions.create(session);
+        self.metrics.sessions_created.fetch_add(1, Ordering::Relaxed);
 
         let result = InitializeResult {
             protocol_version: crate::protocol::PROTOCOL_VERSION.to_string(),
@@ -100,6 +101,8 @@ impl McpServer {
         params: CallToolParams,
         mut ctx: CallContext,
     ) -> CallToolResult {
+        self.metrics.tool_calls_total.fetch_add(1, Ordering::Relaxed);
+
         // Reject all tool calls when paused
         if self.paused.load(Ordering::Relaxed) {
             return CallToolResult::error(
@@ -133,6 +136,7 @@ impl McpServer {
                 self.process_table.record_denied(
                     &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
                 );
+                self.metrics.tool_calls_denied.fetch_add(1, Ordering::Relaxed);
                 return CallToolResult::error(format!(
                     "Permission denied: tool '{}' not in capability token grants",
                     params.name
@@ -214,6 +218,7 @@ impl McpServer {
                 self.process_table.record_denied(
                     &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
                 );
+                self.metrics.tool_calls_denied.fetch_add(1, Ordering::Relaxed);
                 return CallToolResult::error(msg);
             }
         };
@@ -297,6 +302,10 @@ impl McpServer {
             }
         };
         let tool_duration_us = tool_start.elapsed().as_micros() as u64;
+        self.metrics.tool_duration_us_sum.fetch_add(tool_duration_us, Ordering::Relaxed);
+        if result.is_error {
+            self.metrics.tool_calls_errors.fetch_add(1, Ordering::Relaxed);
+        }
 
         // IFC: auto-label external read tool outputs as Untrusted,
         // unless the tool's path argument matches a trusted path pattern.
@@ -314,6 +323,7 @@ impl McpServer {
             });
             if !is_trusted {
                 result.label.integrity = crate::ifc::Integrity::Untrusted;
+                self.metrics.ifc_taint_elevations.fetch_add(1, Ordering::Relaxed);
             }
         }
 
