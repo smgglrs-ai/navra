@@ -6,6 +6,7 @@
 use crate::action::{ActionRecord, AgentAction};
 use crate::client::McpClient;
 use crate::error::AgentError;
+use crate::signal::{AgentSignal, SignalReceiver};
 use smgglrs_model::{
     CreateResponseRequest, EmbedRequest, FunctionCallItem, FunctionCallOutputItem,
     FunctionCallOutputContent, InputItem, ItemStatus, ModelBackend, ModelResponse, OutputItem,
@@ -81,6 +82,9 @@ pub struct ToolLoopConfig {
     pub embedding_model: Option<Arc<dyn ModelBackend>>,
     /// Optional audit sink for recording tool and model calls.
     pub audit_sink: Option<crate::audit::SharedAuditSink>,
+    /// Optional signal receiver for cooperative interruption.
+    /// When set, the tool loop checks for signals between iterations.
+    pub signal_rx: Option<SignalReceiver>,
 }
 
 impl Default for ToolLoopConfig {
@@ -103,6 +107,7 @@ impl Default for ToolLoopConfig {
             max_tool_output_tokens: 4096,
             embedding_model: None,
             audit_sink: None,
+            signal_rx: None,
         }
     }
 }
@@ -126,6 +131,8 @@ pub struct ToolLoopResult {
     pub actions: Vec<ActionRecord>,
     /// Total characters saved by tool output compression.
     pub compressed_chars_saved: usize,
+    /// Whether the run was stopped by a signal (Interrupt or Terminate).
+    pub interrupted: bool,
 }
 
 /// Extract text content from a [`CallToolResult`].
@@ -507,9 +514,12 @@ pub async fn run_tool_loop(
     model: &dyn ModelBackend,
     client: &mut McpClient,
     user_prompt: &str,
-    config: &ToolLoopConfig,
+    config: &mut ToolLoopConfig,
     run_id: String,
 ) -> Result<ToolLoopResult, AgentError> {
+    // Take the signal receiver out of config so we can mutably borrow it
+    // across await points without holding a mutable borrow on config.
+    let mut signal_rx = config.signal_rx.take();
     // Discover tools from MCP server, filtered by allowed_tools if set
     let mcp_tools = client.list_tools().await?;
     let tools: Vec<ResponseTool> = mcp_tools
@@ -559,6 +569,62 @@ pub async fn run_tool_loop(
     let rate_window = std::time::Duration::from_secs(30);
 
     loop {
+        // Check for cooperative signals between iterations
+        if let Some(ref mut rx) = signal_rx {
+            match rx.check() {
+                AgentSignal::Interrupt => {
+                    tracing::info!(run_id = %run_id, "Agent interrupted, returning partial result");
+                    let text = if progress_iterations > 0 {
+                        format!(
+                            "[interrupted after {} iterations]",
+                            progress_iterations
+                        )
+                    } else {
+                        "[interrupted before first iteration]".to_string()
+                    };
+                    return Ok(ToolLoopResult {
+                        run_id,
+                        response: text,
+                        iterations: progress_iterations,
+                        input_tokens: total_input,
+                        output_tokens: total_output,
+                        taint: client.taint(),
+                        actions,
+                        compressed_chars_saved,
+                        interrupted: true,
+                    });
+                }
+                AgentSignal::Terminate => {
+                    tracing::info!(run_id = %run_id, "Agent terminated");
+                    let text = if progress_iterations > 0 {
+                        format!(
+                            "[terminated after {} iterations]",
+                            progress_iterations
+                        )
+                    } else {
+                        "[terminated before first iteration]".to_string()
+                    };
+                    return Ok(ToolLoopResult {
+                        run_id,
+                        response: text,
+                        iterations: progress_iterations,
+                        input_tokens: total_input,
+                        output_tokens: total_output,
+                        taint: client.taint(),
+                        actions,
+                        compressed_chars_saved,
+                        interrupted: true,
+                    });
+                }
+                AgentSignal::Pause => {
+                    tracing::info!(run_id = %run_id, "Agent paused, waiting for resume");
+                    rx.wait_for_resume().await;
+                    tracing::info!(run_id = %run_id, "Agent resumed");
+                }
+                AgentSignal::None | AgentSignal::Resume => {}
+            }
+        }
+
         if progress_iterations >= config.max_iterations {
             if budget_exhausted {
                 return Err(AgentError::MaxIterations(config.max_iterations));
@@ -655,6 +721,7 @@ pub async fn run_tool_loop(
                     taint: client.taint(),
                     actions,
                     compressed_chars_saved,
+                    interrupted: false,
                 });
             }
         }
@@ -753,6 +820,7 @@ pub async fn run_tool_loop(
                 taint: client.taint(),
                 actions,
                 compressed_chars_saved,
+                interrupted: false,
             });
         }
 
@@ -1111,9 +1179,9 @@ mod tests {
     async fn immediate_stop() {
         let model = MockModel::new(vec![stop_response("Hello!")]);
         let mut client = mock_client(vec![]).await;
-        let config = ToolLoopConfig::default();
+        let mut config = ToolLoopConfig::default();
 
-        let result = run_tool_loop(&model, &mut client, "Hi", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "Hi", &mut config, "test-run".into())
             .await
             .unwrap();
         assert_eq!(result.response, "Hello!");
@@ -1137,9 +1205,9 @@ mod tests {
             "id": 4
         })])
         .await;
-        let config = ToolLoopConfig::default();
+        let mut config = ToolLoopConfig::default();
 
-        let result = run_tool_loop(&model, &mut client, "What's the git status?", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "What's the git status?", &mut config, "test-run".into())
             .await
             .unwrap();
         assert_eq!(result.response, "Status is clean.");
@@ -1167,12 +1235,12 @@ mod tests {
         });
         let mut client =
             mock_client(vec![tool_result.clone(), tool_result.clone(), tool_result]).await;
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             max_iterations: 3,
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "loop forever", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "loop forever", &mut config, "test-run".into())
             .await
             .unwrap();
         assert_eq!(result.response, "Partial findings from 3 iterations.");
@@ -1206,13 +1274,13 @@ mod tests {
         ])
         .await;
 
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             max_iterations: 2, // would fail without non_progress_tools
             non_progress_tools: Some(vec!["team_status".to_string()]),
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "poll then act", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "poll then act", &mut config, "test-run".into())
             .await
             .unwrap();
         assert_eq!(result.response, "Done.");
@@ -1245,13 +1313,13 @@ mod tests {
         ])
         .await;
 
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             max_iterations: 2,
             non_progress_tools: Some(vec!["team_status".to_string()]),
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "overflow", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "overflow", &mut config, "test-run".into())
             .await
             .unwrap();
         assert_eq!(result.response, "Synthesized from partial work.");
@@ -1279,12 +1347,12 @@ mod tests {
             "The patient's SSN is 123-45-6789 and email is john@example.com",
         )]);
         let mut client = mock_client(vec![]).await;
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             pii_filter: Some(pipeline),
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "Hi", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "Hi", &mut config, "test-run".into())
             .await
             .unwrap();
         assert!(
@@ -1313,12 +1381,12 @@ mod tests {
             "The patient's SSN is 123-45-6789",
         )]);
         let mut client = mock_client(vec![]).await;
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             pii_filter: None,
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "Hi", &config, "test-run".into())
+        let result = run_tool_loop(&model, &mut client, "Hi", &mut config, "test-run".into())
             .await
             .unwrap();
         assert!(
@@ -1345,13 +1413,13 @@ mod tests {
             "id": 4
         })])
         .await;
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             pii_filter: Some(pipeline),
             ..Default::default()
         };
 
         let result = run_tool_loop(
-            &model, &mut client, "What's the git status?", &config, "test-run".into(),
+            &model, &mut client, "What's the git status?", &mut config, "test-run".into(),
         )
         .await
         .unwrap();
@@ -1455,12 +1523,12 @@ mod tests {
                 tool_result.clone(), tool_result.clone(), tool_result.clone(),
                 tool_result.clone(), tool_result,
             ]).await;
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             max_iterations: 10,
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "loop", &config, "test-run".into()).await;
+        let result = run_tool_loop(&model, &mut client, "loop", &mut config, "test-run".into()).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
@@ -1490,12 +1558,12 @@ mod tests {
         });
         let mut client =
             mock_client(vec![tool_result.clone(), tool_result.clone(), tool_result]).await;
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             max_iterations: 10,
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "read file", &config, "test-run".into()).await;
+        let result = run_tool_loop(&model, &mut client, "read file", &mut config, "test-run".into()).await;
         assert!(result.is_ok(), "3 identical calls should not abort (threshold is 5)");
         assert_eq!(result.unwrap().response, "Done after re-reading.");
     }
@@ -1510,10 +1578,10 @@ mod tests {
             stop_response("I used the available tools."),
         ]);
         let mut client = mock_client(vec![]).await;
-        let config = ToolLoopConfig::default();
+        let mut config = ToolLoopConfig::default();
 
         let result = run_tool_loop(
-            &model, &mut client, "Do something", &config, "test-run".into(),
+            &model, &mut client, "Do something", &mut config, "test-run".into(),
         )
         .await
         .unwrap();
@@ -1966,5 +2034,153 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         let est = estimate_input_tokens(&input);
         // "You are helpful." ≈ 5 tokens, 3500 chars ≈ 1000 tokens
         assert!(est > 900 && est < 1200, "estimate should be ~1005, got {}", est);
+    }
+
+    // --- Signal delivery tests ---
+
+    #[tokio::test]
+    async fn signal_interrupt_breaks_loop() {
+        use crate::signal::SignalHandle;
+
+        let model = MockModel::new(vec![
+            tool_call_response("git_status", "{}"),
+            tool_call_response("git_status", r#"{"verbose": true}"#),
+            stop_response("Should not reach here."),
+        ]);
+        let tool_result = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": false
+            },
+            "id": 4
+        });
+        let mut client = mock_client(vec![tool_result.clone(), tool_result]).await;
+
+        let (handle, rx) = SignalHandle::new();
+        // Send interrupt before the loop starts — it will be caught
+        // at the top of the second iteration
+        handle.send(AgentSignal::Interrupt);
+
+        let mut config = ToolLoopConfig {
+            signal_rx: Some(rx),
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(
+            &model, &mut client, "Do work", &mut config, "test-run".into(),
+        )
+        .await
+        .unwrap();
+        assert!(result.interrupted, "Result should be marked as interrupted");
+        assert!(
+            result.response.contains("interrupted"),
+            "Response should mention interruption: {}",
+            result.response
+        );
+    }
+
+    #[tokio::test]
+    async fn signal_terminate_breaks_loop() {
+        use crate::signal::SignalHandle;
+
+        let model = MockModel::new(vec![
+            tool_call_response("git_status", "{}"),
+            stop_response("Should not reach here."),
+        ]);
+        let tool_result = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": false
+            },
+            "id": 4
+        });
+        let mut client = mock_client(vec![tool_result]).await;
+
+        let (handle, rx) = SignalHandle::new();
+        handle.send(AgentSignal::Terminate);
+
+        let mut config = ToolLoopConfig {
+            signal_rx: Some(rx),
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(
+            &model, &mut client, "Do work", &mut config, "test-run".into(),
+        )
+        .await
+        .unwrap();
+        assert!(result.interrupted);
+        assert!(result.response.contains("terminated"));
+    }
+
+    #[tokio::test]
+    async fn signal_pause_resume_continues() {
+        use crate::signal::SignalHandle;
+
+        let model = MockModel::new(vec![stop_response("Hello after resume!")]);
+        let mut client = mock_client(vec![]).await;
+
+        let (handle, rx) = SignalHandle::new();
+        handle.send(AgentSignal::Pause);
+
+        // Resume after a short delay
+        let handle2 = handle.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            handle2.send(AgentSignal::Resume);
+        });
+
+        let mut config = ToolLoopConfig {
+            signal_rx: Some(rx),
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(
+            &model, &mut client, "Hi", &mut config, "test-run".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.response, "Hello after resume!");
+        assert!(!result.interrupted);
+    }
+
+    #[tokio::test]
+    async fn no_signal_continues_normally() {
+        use crate::signal::SignalHandle;
+
+        let model = MockModel::new(vec![stop_response("Hello!")]);
+        let mut client = mock_client(vec![]).await;
+
+        let (_handle, rx) = SignalHandle::new();
+        let mut config = ToolLoopConfig {
+            signal_rx: Some(rx),
+            ..Default::default()
+        };
+
+        let result = run_tool_loop(
+            &model, &mut client, "Hi", &mut config, "test-run".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.response, "Hello!");
+        assert!(!result.interrupted);
+    }
+
+    #[tokio::test]
+    async fn no_signal_rx_continues_normally() {
+        // Default config (no signal_rx) should work as before
+        let model = MockModel::new(vec![stop_response("Hello!")]);
+        let mut client = mock_client(vec![]).await;
+        let mut config = ToolLoopConfig::default();
+
+        let result = run_tool_loop(
+            &model, &mut client, "Hi", &mut config, "test-run".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.response, "Hello!");
+        assert!(!result.interrupted);
     }
 }

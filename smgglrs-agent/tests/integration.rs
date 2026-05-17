@@ -269,9 +269,9 @@ async fn client_call_non_read_stays_trusted() {
 async fn tool_loop_immediate_text_response() {
     let model = MockModel::new(vec![text_response("Hello!")]);
     let mut client = mock_client(vec![]).await;
-    let config = ToolLoopConfig::default();
+    let mut config = ToolLoopConfig::default();
 
-    let result = run_tool_loop(&model, &mut client, "Hi", &config, "run-1".into())
+    let result = run_tool_loop(&model, &mut client, "Hi", &mut config, "run-1".into())
         .await
         .unwrap();
     assert_eq!(result.response, "Hello!");
@@ -294,9 +294,9 @@ async fn tool_loop_one_tool_call() {
         "id": 4
     })])
     .await;
-    let config = ToolLoopConfig::default();
+    let mut config = ToolLoopConfig::default();
 
-    let result = run_tool_loop(&model, &mut client, "status?", &config, "run-2".into())
+    let result = run_tool_loop(&model, &mut client, "status?", &mut config, "run-2".into())
         .await
         .unwrap();
     assert_eq!(result.response, "Repo is clean.");
