@@ -2405,6 +2405,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             Box::pin(team_tools::handle_team_shutdown(args, reg))
         });
 
+        // agent_signal
+        let reg = Arc::clone(&team_registry);
+        builder = builder.tool(team_tools::agent_signal_def(), move |args, _ctx| {
+            let reg = Arc::clone(&reg);
+            Box::pin(team_tools::handle_agent_signal(args, reg))
+        });
+
         // models_list
         let cards = team_registry.model_cards.clone();
         builder = builder.tool(team_tools::models_list_def(), move |_args, _ctx| {

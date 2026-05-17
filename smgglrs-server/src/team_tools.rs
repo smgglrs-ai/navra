@@ -108,6 +108,8 @@ pub struct Teammate {
     pub last_bb_check: Option<u64>,
     pub iterations: Option<u32>,
     pub agent_tokens: Option<u32>,
+    /// Signal handle for cooperative interruption of in-process agents.
+    pub signal_handle: Option<smgglrs_agent::SignalHandle>,
 }
 
 /// Re-export the composite model card from the hub.
@@ -296,11 +298,53 @@ impl TeamRegistry {
                 last_bb_check: None,
                 iterations: None,
                 agent_tokens: None,
+                signal_handle: None,
             },
         );
 
         self.total_agents.fetch_add(1, Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Store a signal handle for a teammate (for cooperative interruption).
+    pub fn store_signal_handle(
+        &self,
+        team_id: &str,
+        teammate: &str,
+        handle: smgglrs_agent::SignalHandle,
+    ) {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(team) = teams.get_mut(team_id) {
+            if let Some(tm) = team.teammates.get_mut(teammate) {
+                tm.signal_handle = Some(handle);
+            }
+        }
+    }
+
+    /// Send a signal to a teammate's running agent.
+    pub fn send_signal(
+        &self,
+        team_id: &str,
+        teammate: &str,
+        signal: smgglrs_agent::AgentSignal,
+    ) -> Result<(), String> {
+        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        let team = teams
+            .get(team_id)
+            .ok_or_else(|| format!("Unknown team: {team_id}"))?;
+        let tm = team
+            .teammates
+            .get(teammate)
+            .ok_or_else(|| format!("Unknown teammate: {teammate}"))?;
+        match &tm.signal_handle {
+            Some(handle) => {
+                handle.send(signal);
+                Ok(())
+            }
+            None => Err(format!(
+                "No signal handle for {teammate} (not an in-process agent)"
+            )),
+        }
     }
 
     pub fn send_message(&self, team_id: &str, to: &str, message: &str) -> Result<(), String> {
@@ -538,6 +582,14 @@ impl TeamRegistry {
         let mut team = teams
             .remove(team_id)
             .ok_or_else(|| format!("Unknown team: {team_id}"))?;
+
+        // Send Terminate signal to all in-process agents before aborting
+        for (name, tm) in &team.teammates {
+            if let Some(ref handle) = tm.signal_handle {
+                tracing::info!(team = team_id, teammate = %name, "Sending Terminate signal on shutdown");
+                handle.send(smgglrs_agent::AgentSignal::Terminate);
+            }
+        }
 
         // Abort all running teammate tasks
         let aborted: Vec<String> = team.task_handles.drain()
@@ -779,6 +831,80 @@ pub fn team_shutdown_def() -> ToolDefinition {
             required: Some(vec!["team_id".to_string()]),
         },
         annotations: None,
+    }
+}
+
+pub fn agent_signal_def() -> ToolDefinition {
+    ToolDefinition {
+        name: "agent_signal".to_string(),
+        description: Some(
+            "Send a cooperative signal to a running teammate agent. \
+             Signals: 'interrupt' (cancel and return partial result), \
+             'terminate' (graceful shutdown after current iteration), \
+             'pause' (stop until resumed), 'resume' (continue after pause). \
+             Only works for in-process agents."
+                .to_string(),
+        ),
+        input_schema: ToolInputSchema {
+            schema_type: "object".to_string(),
+            properties: Some(HashMap::from([
+                ("team_id".to_string(), serde_json::json!({"type": "string"})),
+                ("agent_id".to_string(), serde_json::json!({"type": "string", "description": "Name of the teammate to signal"})),
+                ("signal".to_string(), serde_json::json!({
+                    "type": "string",
+                    "enum": ["interrupt", "terminate", "pause", "resume"],
+                    "description": "Signal to send"
+                })),
+            ])),
+            required: Some(vec![
+                "team_id".to_string(),
+                "agent_id".to_string(),
+                "signal".to_string(),
+            ]),
+        },
+        annotations: None,
+    }
+}
+
+/// Handle agent_signal tool call.
+pub async fn handle_agent_signal(
+    args: serde_json::Value,
+    registry: std::sync::Arc<TeamRegistry>,
+) -> smgglrs_core::protocol::CallToolResult {
+    use smgglrs_core::protocol::CallToolResult;
+
+    let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => return CallToolResult::error("Missing team_id"),
+    };
+    let agent_id = match args.get("agent_id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => return CallToolResult::error("Missing agent_id"),
+    };
+    let signal_str = match args.get("signal").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return CallToolResult::error("Missing signal"),
+    };
+
+    let signal = match signal_str {
+        "interrupt" => smgglrs_agent::AgentSignal::Interrupt,
+        "terminate" => smgglrs_agent::AgentSignal::Terminate,
+        "pause" => smgglrs_agent::AgentSignal::Pause,
+        "resume" => smgglrs_agent::AgentSignal::Resume,
+        other => return CallToolResult::error(format!("Unknown signal: {other}")),
+    };
+
+    match registry.send_signal(team_id, agent_id, signal) {
+        Ok(()) => {
+            tracing::info!(
+                team = team_id, agent = agent_id, signal = signal_str,
+                "Signal delivered to agent"
+            );
+            CallToolResult::success(vec![smgglrs_core::protocol::Content::text(format!(
+                "Signal '{signal_str}' delivered to {agent_id}"
+            ))])
+        }
+        Err(e) => CallToolResult::error(e),
     }
 }
 
@@ -1954,6 +2080,10 @@ pub fn spawn_teammate_agent(
                             .force_tool_iterations(1)
                             .temperature(0.3)
                             .max_tokens(8192);
+                        // Enable cooperative signal delivery
+                        let (builder_with_signal, signal_handle) = builder.with_signal();
+                        builder = builder_with_signal;
+                        reg.store_signal_handle(&team_id, &teammate_id, signal_handle);
                         // Note: generates_tasks schema enforcement is NOT
                         // applied here. Ollama can't handle format + tools
                         // simultaneously, and ignores format on large prompts.
