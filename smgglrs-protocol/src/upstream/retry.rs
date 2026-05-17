@@ -81,6 +81,7 @@ impl TransportFactory for StdioTransportFactory {
 pub struct HttpTransportFactory {
     name: String,
     url: String,
+    tls: Option<super::tls::TlsConfig>,
 }
 
 impl HttpTransportFactory {
@@ -88,6 +89,15 @@ impl HttpTransportFactory {
         Self {
             name: name.to_string(),
             url: url.to_string(),
+            tls: None,
+        }
+    }
+
+    pub fn with_tls(name: &str, url: &str, tls: &super::tls::TlsConfig) -> Self {
+        Self {
+            name: name.to_string(),
+            url: url.to_string(),
+            tls: Some(tls.clone()),
         }
     }
 }
@@ -95,7 +105,11 @@ impl HttpTransportFactory {
 #[async_trait]
 impl TransportFactory for HttpTransportFactory {
     async fn create(&self) -> Result<Box<dyn Transport>, UpstreamError> {
-        let transport = super::http::HttpTransport::new(&self.name, &self.url);
+        let transport = if let Some(ref tls) = self.tls {
+            super::http::HttpTransport::with_tls(&self.name, &self.url, tls)?
+        } else {
+            super::http::HttpTransport::new(&self.name, &self.url)
+        };
         Ok(Box::new(transport))
     }
 }
@@ -104,6 +118,7 @@ impl TransportFactory for HttpTransportFactory {
 pub struct SseTransportFactory {
     name: String,
     url: String,
+    tls: Option<super::tls::TlsConfig>,
 }
 
 impl SseTransportFactory {
@@ -111,6 +126,15 @@ impl SseTransportFactory {
         Self {
             name: name.to_string(),
             url: url.to_string(),
+            tls: None,
+        }
+    }
+
+    pub fn with_tls(name: &str, url: &str, tls: &super::tls::TlsConfig) -> Self {
+        Self {
+            name: name.to_string(),
+            url: url.to_string(),
+            tls: Some(tls.clone()),
         }
     }
 }
@@ -118,7 +142,11 @@ impl SseTransportFactory {
 #[async_trait]
 impl TransportFactory for SseTransportFactory {
     async fn create(&self) -> Result<Box<dyn Transport>, UpstreamError> {
-        let transport = super::sse::SseTransport::new(&self.name, &self.url);
+        let transport = if let Some(ref tls) = self.tls {
+            super::sse::SseTransport::with_tls(&self.name, &self.url, tls)?
+        } else {
+            super::sse::SseTransport::new(&self.name, &self.url)
+        };
         Ok(Box::new(transport))
     }
 }

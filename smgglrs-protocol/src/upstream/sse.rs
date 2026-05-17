@@ -10,6 +10,7 @@
 //! 3. Client sends JSON-RPC requests via POST to that URL
 //! 4. Server sends responses as `message` events on the SSE stream
 
+use super::tls::TlsConfig;
 use super::transport::Transport;
 use super::UpstreamError;
 use async_trait::async_trait;
@@ -40,6 +41,17 @@ impl SseTransport {
             post_url: None,
             client: reqwest::Client::new(),
         }
+    }
+
+    /// Create an SSE transport with TLS configuration.
+    pub fn with_tls(name: &str, url: &str, tls: &TlsConfig) -> Result<Self, UpstreamError> {
+        let client = tls.build_client(name)?;
+        Ok(Self {
+            name: name.to_string(),
+            base_url: url.to_string(),
+            post_url: None,
+            client,
+        })
     }
 
     /// Discover the POST endpoint by connecting to the SSE stream.
