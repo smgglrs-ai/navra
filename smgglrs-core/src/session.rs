@@ -35,6 +35,8 @@ pub trait SessionBackend: Send + Sync {
     fn touch(&self, id: &str);
     /// Remove sessions older than `max_age_secs`.
     fn expire(&self, max_age_secs: u64);
+    /// List all sessions (for introspection resources).
+    fn list_all(&self) -> Vec<Session>;
 }
 
 /// Thread-safe session store wrapping a pluggable backend.
@@ -98,6 +100,10 @@ impl SessionStore {
     pub fn expire(&self, max_age_secs: u64) {
         self.backend.expire(max_age_secs);
     }
+
+    pub fn list_all(&self) -> Vec<Session> {
+        self.backend.list_all()
+    }
 }
 
 /// In-memory session backend (default). Sessions lost on restart.
@@ -160,6 +166,11 @@ impl SessionBackend for InMemorySessionBackend {
         let cutoff = now_epoch() - max_age_secs as i64;
         sessions.retain(|_, s| s.last_accessed > cutoff);
     }
+
+    fn list_all(&self) -> Vec<Session> {
+        let sessions = self.sessions.read().unwrap_or_else(|e| e.into_inner());
+        sessions.values().cloned().collect()
+    }
 }
 
 /// DashMap-based session backend for lock-free concurrent access.
@@ -216,6 +227,10 @@ impl SessionBackend for DashMapSessionBackend {
     fn expire(&self, max_age_secs: u64) {
         let cutoff = now_epoch() - max_age_secs as i64;
         self.sessions.retain(|_, s| s.last_accessed > cutoff);
+    }
+
+    fn list_all(&self) -> Vec<Session> {
+        self.sessions.iter().map(|entry| entry.value().clone()).collect()
     }
 }
 
@@ -358,5 +373,26 @@ mod tests {
         };
         store.update_context_label("d1", tainted);
         assert_eq!(store.context_label("d1").integrity, crate::ifc::Integrity::Untrusted);
+    }
+
+    #[test]
+    fn list_all_returns_all_sessions() {
+        let store = SessionStore::new();
+        store.create(test_session("a"));
+        store.create(test_session("b"));
+        store.create(test_session("c"));
+        let all = store.list_all();
+        assert_eq!(all.len(), 3);
+        let ids: std::collections::HashSet<&str> =
+            all.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains("a"));
+        assert!(ids.contains("b"));
+        assert!(ids.contains("c"));
+    }
+
+    #[test]
+    fn list_all_empty_store() {
+        let store = SessionStore::new();
+        assert!(store.list_all().is_empty());
     }
 }
