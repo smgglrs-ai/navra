@@ -2,6 +2,7 @@
 
 use crate::client::McpClient;
 use crate::error::AgentError;
+use crate::signal::SignalHandle;
 use crate::tool_loop::{run_tool_loop, ToolLoopConfig, ToolLoopResult};
 use smgglrs_model::ModelBackend;
 use smgglrs_protocol::label::DataLabel;
@@ -32,7 +33,7 @@ impl Agent {
     /// in the returned [`ToolLoopResult`] and passed to the audit callback.
     pub async fn run(&mut self, prompt: &str) -> Result<ToolLoopResult, AgentError> {
         let run_id = uuid::Uuid::new_v4().to_string();
-        run_tool_loop(self.model.as_ref(), &mut self.client, prompt, &self.config, run_id).await
+        run_tool_loop(self.model.as_ref(), &mut self.client, prompt, &mut self.config, run_id).await
     }
 
     /// Direct access to the MCP client.
@@ -227,6 +228,17 @@ impl AgentBuilder {
     pub fn audit_sink(mut self, sink: crate::audit::SharedAuditSink) -> Self {
         self.config.audit_sink = Some(sink);
         self
+    }
+
+    /// Enable cooperative signal delivery for this agent.
+    ///
+    /// Returns the modified builder and a [`SignalHandle`] that the
+    /// caller retains to send signals (Interrupt, Terminate, Pause,
+    /// Resume) to the running agent.
+    pub fn with_signal(mut self) -> (Self, SignalHandle) {
+        let (handle, rx) = SignalHandle::new();
+        self.config.signal_rx = Some(rx);
+        (self, handle)
     }
 
     /// Load a persona from the cognitive core and set system prompt +
