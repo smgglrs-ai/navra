@@ -46,11 +46,29 @@ pub struct ModelConfig {
     /// Model name for the OpenAI-compatible API. Defaults to the config key.
     #[serde(default)]
     pub model_name: Option<String>,
+    /// KV cache quantization type for runtime-served models.
+    #[serde(default)]
+    pub cache_type: Option<smgglrs_model_runtime::KvCacheType>,
+    /// Speculative decoding configuration.
+    #[serde(default)]
+    pub speculative: Option<SpeculativeModelConfig>,
     /// Operator-defined agentic capabilities for model selection.
-    /// These fields help the lead agent choose the right model
-    /// for each teammate based on task requirements.
     #[serde(default)]
     pub agentic: Option<AgenticConfig>,
+}
+
+/// Speculative decoding configuration for runtime-served models.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct SpeculativeModelConfig {
+    pub draft_model: String,
+    #[serde(default = "default_draft_tokens")]
+    pub draft_tokens: u32,
+    #[serde(default)]
+    pub draft_min_p: f32,
+}
+
+fn default_draft_tokens() -> u32 {
+    5
 }
 
 /// Operator-defined agentic capabilities for a model.

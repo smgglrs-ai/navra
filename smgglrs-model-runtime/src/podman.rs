@@ -94,6 +94,21 @@ impl ModelRuntime for PodmanRuntime {
                 ]);
             }
 
+            if let Some(ref spec) = config.speculative {
+                cmd.extend_from_slice(&[
+                    "--model-draft".to_string(),
+                    spec.draft_model.to_string_lossy().to_string(),
+                    "--draft-max".to_string(),
+                    spec.draft_tokens.to_string(),
+                ]);
+                if spec.draft_min_p > 0.0 {
+                    cmd.extend_from_slice(&[
+                        "--draft-min-p".to_string(),
+                        spec.draft_min_p.to_string(),
+                    ]);
+                }
+            }
+
             cmd.extend(config.extra_args.iter().cloned());
 
             let mut devices = Vec::new();

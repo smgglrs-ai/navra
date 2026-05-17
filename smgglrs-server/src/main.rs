@@ -904,11 +904,20 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 };
 
                 let gpus = smgglrs_model_runtime::detect_gpus();
+                let speculative = model_cfg.speculative.as_ref().map(|s| {
+                    smgglrs_model_runtime::SpeculativeConfig {
+                        draft_model: std::path::PathBuf::from(crate::expand_tilde(&s.draft_model)),
+                        draft_tokens: s.draft_tokens,
+                        draft_min_p: s.draft_min_p,
+                    }
+                });
                 let serve_cfg = smgglrs_model_runtime::ServeConfig {
                     model_path: resolved_path,
                     gpus,
                     context_size: model_cfg.context_size.unwrap_or(4096),
                     parallel: model_cfg.parallel.unwrap_or(1),
+                    cache_type: model_cfg.cache_type,
+                    speculative,
                     ..Default::default()
                 };
 
