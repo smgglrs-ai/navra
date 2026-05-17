@@ -3297,6 +3297,22 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
+
+    // Config watcher for hot reload (K8s ConfigMap pattern)
+    let _config_watcher = if cfg.server.config_watch {
+        let config_path = config::Config::default_config_path();
+        let (tx, _rx) = tokio::sync::watch::channel(std::sync::Arc::new(cfg.clone()));
+        match config_watcher::ConfigWatcher::new(config_path, cfg.server.config_watch_debounce_ms, tx) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to start config watcher");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     tracing::info!(
         tools = server.tool_count(),
         prompts = server.prompt_count(),
