@@ -630,6 +630,13 @@ impl McpServer {
         self.tools.len()
     }
 
+    /// Returns sorted list of registered tool names.
+    pub fn tool_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.tools.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
     /// Returns the shared pause flag. Use this to wire pause/resume
     /// from external sources (e.g., system tray).
     pub fn pause_flag(&self) -> Arc<std::sync::atomic::AtomicBool> {
