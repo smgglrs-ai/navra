@@ -111,6 +111,43 @@ Desktop (D-Bus notifications, system tray, systemd)
   load directly into the smgglrs process. No external dependencies
   for CPU tier.
 
+## Agent Workflow (MANDATORY)
+
+### Commit after every verified feature
+
+After tests pass for a feature, commit immediately. Never accumulate
+unstaged changes across multiple features. One feature = one commit.
+
+```bash
+git add -A && git commit -s -m "description"
+```
+
+### Agents must commit in their worktrees
+
+Every agent prompt MUST include this instruction:
+
+> Before finishing, commit all your changes:
+> `git add -A && git commit -s -m "your summary"`
+
+This ensures the worktree branch survives cleanup. Without a commit,
+worktree removal destroys all agent work.
+
+### Merge agent work via git merge, not file copy
+
+When an agent completes in a worktree, merge its branch:
+
+```bash
+git merge --no-ff worktree-agent-xxx -m "Merge: feature description"
+```
+
+Do NOT copy files manually — that loses history, misses files, and
+creates merge conflicts with other agents.
+
+### Never let worktrees accumulate
+
+Merge or discard each worktree as soon as the agent completes.
+Stale worktrees with uncommitted changes will be lost on cleanup.
+
 ## Conventions
 
 ### Naming

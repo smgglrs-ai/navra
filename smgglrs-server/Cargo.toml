@@ -22,6 +22,8 @@ smgglrs-model-hub = { path = "../smgglrs-model-hub" }
 smgglrs-model-runtime = { path = "../smgglrs-model-runtime", features = ["openshell"] }
 smgglrs-tools-file = { path = "../smgglrs-tools-file" }
 smgglrs-tools-git = { path = "../smgglrs-tools-git" }
+smgglrs-tools-github = { path = "../smgglrs-tools-github" }
+smgglrs-tools-gitlab = { path = "../smgglrs-tools-gitlab" }
 smgglrs-tools-exec = { path = "../smgglrs-tools-exec" }
 smgglrs-rag = { path = "../smgglrs-rag" }
 smgglrs-modal-vision = { path = "../smgglrs-modal-vision" }
@@ -39,6 +41,8 @@ serde_yaml = "0.9"
 reqwest = { workspace = true, features = ["stream"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 futures-util = "0.3"
+async-stream = "0.3"
+async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 anyhow = "1"
@@ -51,6 +55,10 @@ urlencoding = "2"
 tonic = { workspace = true }
 tokio-util = "0.7"
 tempfile = "3"
+notify = "7"
+
+[features]
+cedar = ["smgglrs-core/cedar"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

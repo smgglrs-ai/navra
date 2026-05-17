@@ -775,6 +775,7 @@ fn cap_ctx(tools: Vec<&str>) -> CallContext {
                 tools: tools.into_iter().map(String::from).collect(),
                 credentials: vec![],
                 expires_at: u64::MAX,
+                obo_sub: None,
             }),
         },
         "cap-session",
@@ -973,7 +974,7 @@ async fn dispatch_logging_set_level_returns_success() {
 }
 
 #[tokio::test]
-async fn dispatch_resources_subscribe_returns_success() {
+async fn dispatch_resources_subscribe_unknown_resource_fails() {
     let (server, session_id) = init_test_session();
     let resp = dispatch_request(
         &server,
@@ -982,12 +983,11 @@ async fn dispatch_resources_subscribe_returns_success() {
         Some(session_id),
     )
     .await;
-    assert!(resp.error.is_none());
-    assert_eq!(resp.result.unwrap(), serde_json::json!({}));
+    assert!(resp.error.is_some());
 }
 
 #[tokio::test]
-async fn dispatch_resources_unsubscribe_returns_success() {
+async fn dispatch_resources_unsubscribe_without_subscribe_fails() {
     let (server, session_id) = init_test_session();
     let resp = dispatch_request(
         &server,
@@ -996,8 +996,7 @@ async fn dispatch_resources_unsubscribe_returns_success() {
         Some(session_id),
     )
     .await;
-    assert!(resp.error.is_none());
-    assert_eq!(resp.result.unwrap(), serde_json::json!({}));
+    assert!(resp.error.is_some());
 }
 
 #[tokio::test]

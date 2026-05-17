@@ -96,6 +96,22 @@ pub fn memory_store_def() -> ToolDefinition {
                     "items": {"type": "string"},
                     "description": "Optional tags for categorization"
                 })),
+                ("entity_id".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Optional: scope to a specific user/entity identity"
+                })),
+                ("process_id".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Optional: scope to a flow/workflow execution"
+                })),
+                ("session_id".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Optional: scope to a session"
+                })),
+                ("ttl_secs".to_string(), serde_json::json!({
+                    "type": "integer",
+                    "description": "Optional: time-to-live in seconds (entry expires after this duration)"
+                })),
             ])),
             required: Some(vec![
                 "kind".to_string(),
@@ -131,6 +147,18 @@ pub fn memory_query_def() -> ToolDefinition {
                 ("limit".to_string(), serde_json::json!({
                     "type": "integer",
                     "description": "Maximum number of results (default: 10)"
+                })),
+                ("entity_id".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Optional: filter to entries scoped to this user/entity"
+                })),
+                ("process_id".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Optional: filter to entries scoped to this flow/workflow"
+                })),
+                ("session_id".to_string(), serde_json::json!({
+                    "type": "string",
+                    "description": "Optional: filter to entries scoped to this session"
                 })),
             ])),
             required: Some(vec!["query".to_string()]),
@@ -186,6 +214,14 @@ pub async fn handle_memory_store(
     let sanitized_title = sanitize_for_storage(title, &sanitizer).await;
     let sanitized_content = sanitize_for_storage(content, &sanitizer).await;
 
+    // Extract scope parameters
+    let scope = smgglrs_memory::MemoryScope {
+        entity_id: args.get("entity_id").and_then(|v| v.as_str()).map(String::from),
+        process_id: args.get("process_id").and_then(|v| v.as_str()).map(String::from),
+        session_id: args.get("session_id").and_then(|v| v.as_str()).map(String::from),
+    };
+    let ttl_secs = args.get("ttl_secs").and_then(|v| v.as_u64());
+
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -203,7 +239,23 @@ pub async fn handle_memory_store(
     };
 
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
-    match store.store_with_pii(&entry, has_pii) {
+
+    // Use scoped storage if any scope or TTL is provided, otherwise preserve
+    // backward-compatible path with PII flagging.
+    let result = if !scope.is_global() || ttl_secs.is_some() {
+        let valid_until = ttl_secs.map(|ttl| now + ttl as i64);
+        // Store with scope first, then set PII flag if needed
+        store.store_scoped(&entry, &scope, valid_until).and_then(|()| {
+            if has_pii {
+                store.set_pii_flag(&id, true)?;
+            }
+            Ok(())
+        })
+    } else {
+        store.store_with_pii(&entry, has_pii)
+    };
+
+    match result {
         Ok(()) => CallToolResult::text(
             serde_json::json!({"id": id, "status": "stored", "has_pii": has_pii}).to_string()
         ),
@@ -231,8 +283,23 @@ pub async fn handle_memory_query(
         .and_then(|v| v.as_str())
         .and_then(|k| smgglrs_memory::MemoryType::from_str(k).ok());
 
+    // Extract scope parameters
+    let scope = smgglrs_memory::MemoryScope {
+        entity_id: args.get("entity_id").and_then(|v| v.as_str()).map(String::from),
+        process_id: args.get("process_id").and_then(|v| v.as_str()).map(String::from),
+        session_id: args.get("session_id").and_then(|v| v.as_str()).map(String::from),
+    };
+
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
-    match store.search(query) {
+
+    // Use scoped search if any scope is provided, otherwise use global search
+    let search_result = if !scope.is_global() {
+        store.search_scoped(query, &scope, 100)
+    } else {
+        store.search(query)
+    };
+
+    match search_result {
         Ok(entries) => {
             let mut results: Vec<&smgglrs_memory::MemoryEntry> = entries.iter()
                 .filter(|e| {

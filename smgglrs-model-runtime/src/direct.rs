@@ -71,6 +71,12 @@ impl ModelRuntime for DirectRuntime {
                 cmd.arg("--n-gpu-layers").arg("999");
             }
 
+            // KV cache quantization
+            if let Some(cache_type) = &config.cache_type {
+                cmd.arg("--cache-type-k").arg(cache_type.as_llama_arg());
+                cmd.arg("--cache-type-v").arg(cache_type.as_llama_arg());
+            }
+
             for arg in &config.extra_args {
                 cmd.arg(arg);
             }

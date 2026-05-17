@@ -30,7 +30,7 @@ impl McpServer {
                 None
             } else {
                 Some(crate::protocol::ResourcesCapability {
-                    subscribe: false,
+                    subscribe: true,
                     list_changed: false,
                 })
             },
@@ -83,10 +83,15 @@ impl McpServer {
         Ok((result, session_id))
     }
 
-    pub fn handle_list_tools(&self, _agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListToolsResult {
+    pub fn handle_list_tools(&self, agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListToolsResult {
         let all_tools: Vec<_> = self.tools.values().map(|t| t.definition.clone()).collect();
+        let visible = if let Some(disclosure) = self.tool_disclosure.get(&agent.permissions) {
+            disclosure.filter(&all_tools)
+        } else {
+            all_tools
+        };
         let offset = pagination.decode_offset().unwrap_or(0);
-        let (tools, next_cursor) = crate::protocol::paginate(&all_tools, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        let (tools, next_cursor) = crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
         ListToolsResult { tools, next_cursor }
     }
 
@@ -170,6 +175,31 @@ impl McpServer {
                     );
                 }
                 crate::permissions::tool_rules::ToolPolicy::Allow => {}
+            }
+        }
+
+        // Cedar policy check (second gate — can only further restrict)
+        #[cfg(feature = "cedar")]
+        if let Some(ref cedar) = self.cedar_engine {
+            let context = std::collections::HashMap::from([
+                ("permission_set".to_string(), ctx.agent.permissions.clone()),
+                ("session_id".to_string(), ctx.session_id.clone()),
+            ]);
+            let resource = params.arguments.get("path")
+                .or_else(|| params.arguments.get("repo"))
+                .or_else(|| params.arguments.get("uri"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("_default");
+            match cedar.is_authorized(&ctx.agent.name, &params.name, resource, &context) {
+                crate::permissions::CedarDecision::Allow => {}
+                crate::permissions::CedarDecision::Deny(reason) => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                    );
+                    return CallToolResult::error(format!(
+                        "Policy denied: tool '{}' — {}", params.name, reason
+                    ));
+                }
             }
         }
 
@@ -605,6 +635,167 @@ impl McpServer {
         smgglrs_protocol::permissions::PermissionListResult { grants }
     }
 
+    /// Handle completion/complete: suggest argument values for prompts or resources.
+    pub fn handle_complete(
+        &self,
+        params: crate::protocol::CompleteParams,
+    ) -> crate::protocol::CompleteResult {
+        let values = match params.ref_type.as_str() {
+            "ref/prompt" => {
+                let matching: Vec<String> = self
+                    .prompts
+                    .values()
+                    .filter_map(|p| {
+                        p.definition
+                            .arguments
+                            .iter()
+                            .find(|a| a.name == params.argument.name)
+                            .map(|_| p.definition.name.clone())
+                    })
+                    .filter(|name| {
+                        params.argument.value.is_empty()
+                            || name.starts_with(&params.argument.value)
+                    })
+                    .collect();
+                if matching.is_empty() {
+                    self.prompts
+                        .values()
+                        .flat_map(|p| p.definition.arguments.iter())
+                        .filter(|a| a.name == params.argument.name)
+                        .filter_map(|a| a.description.clone())
+                        .collect()
+                } else {
+                    matching
+                }
+            }
+            "ref/resource" => self
+                .resources
+                .keys()
+                .filter(|uri| {
+                    params.argument.value.is_empty()
+                        || uri.starts_with(&params.argument.value)
+                })
+                .cloned()
+                .take(100)
+                .collect(),
+            _ => Vec::new(),
+        };
+        let total = values.len() as u32;
+        let has_more = total > 100;
+        let values: Vec<String> = values.into_iter().take(100).collect();
+        crate::protocol::CompleteResult {
+            values,
+            total: Some(total),
+            has_more: Some(has_more),
+        }
+    }
+
+    /// Handle logging/setLevel: set the minimum log level for a session.
+    pub fn handle_set_log_level(
+        &self,
+        params: crate::protocol::SetLevelParams,
+        session_id: &str,
+    ) {
+        let mut levels = self.session_log_levels.write().unwrap_or_else(|e| {
+            tracing::warn!("session_log_levels RwLock poisoned, recovering");
+            e.into_inner()
+        });
+        tracing::info!(
+            session_id = %session_id,
+            level = ?params.level,
+            "Client set log level"
+        );
+        levels.insert(session_id.to_string(), params.level);
+    }
+
+    /// Handle resources/subscribe: register a session's interest in a resource URI.
+    pub fn handle_resource_subscribe(
+        &self,
+        uri: &str,
+        session_id: &str,
+    ) -> Result<(), String> {
+        if !self.resources.contains_key(uri) {
+            return Err(format!("Unknown resource: {}", uri));
+        }
+        let mut subs = self.resource_subscriptions.write().unwrap_or_else(|e| {
+            tracing::warn!("resource_subscriptions RwLock poisoned, recovering");
+            e.into_inner()
+        });
+        subs.entry(session_id.to_string())
+            .or_default()
+            .insert(uri.to_string());
+        tracing::info!(session_id = %session_id, uri = %uri, "Resource subscription added");
+        Ok(())
+    }
+
+    /// Handle resources/unsubscribe: remove a session's subscription to a resource URI.
+    pub fn handle_resource_unsubscribe(
+        &self,
+        uri: &str,
+        session_id: &str,
+    ) -> Result<(), String> {
+        let mut subs = self.resource_subscriptions.write().unwrap_or_else(|e| {
+            tracing::warn!("resource_subscriptions RwLock poisoned, recovering");
+            e.into_inner()
+        });
+        if let Some(uris) = subs.get_mut(session_id) {
+            if !uris.remove(uri) {
+                return Err(format!("Not subscribed to: {}", uri));
+            }
+            if uris.is_empty() {
+                subs.remove(session_id);
+            }
+            tracing::info!(session_id = %session_id, uri = %uri, "Resource subscription removed");
+            Ok(())
+        } else {
+            Err(format!("No subscriptions for session: {}", session_id))
+        }
+    }
+
+    /// Notify all sessions subscribed to a resource that it has been updated.
+    pub fn notify_resource_updated(&self, uri: &str) {
+        let subs = self.resource_subscriptions.read().unwrap_or_else(|e| {
+            tracing::warn!("resource_subscriptions RwLock poisoned, recovering");
+            e.into_inner()
+        });
+        for (session_id, uris) in subs.iter() {
+            if uris.contains(uri) {
+                self.notify_session(
+                    session_id,
+                    crate::protocol::NOTIFY_RESOURCES_UPDATED,
+                    Some(serde_json::json!({ "uri": uri })),
+                );
+            }
+        }
+    }
+
+    /// Send a log message notification to sessions with appropriate log level.
+    pub fn send_log_message(
+        &self,
+        level: crate::protocol::LoggingLevel,
+        logger: Option<&str>,
+        data: serde_json::Value,
+    ) {
+        let levels = self.session_log_levels.read().unwrap_or_else(|e| {
+            tracing::warn!("session_log_levels RwLock poisoned, recovering");
+            e.into_inner()
+        });
+        let params = serde_json::json!({
+            "level": level,
+            "logger": logger,
+            "data": data,
+        });
+        if levels.is_empty() {
+            self.notify("notifications/message", Some(params));
+        } else {
+            for (session_id, min_level) in levels.iter() {
+                if level.severity() >= min_level.severity() {
+                    self.notify_session(session_id, "notifications/message", Some(params.clone()));
+                }
+            }
+        }
+    }
+
     /// Get the session permission store (for checking dynamic grants in tool dispatch).
     pub fn session_permission_store(&self) -> &crate::permissions::SessionPermissionStore {
         &self.session_permissions
@@ -624,6 +815,10 @@ impl McpServer {
 
     pub fn process_table(&self) -> &crate::process::ProcessTable {
         &self.process_table
+    }
+
+    pub fn blackbox(&self) -> Option<&crate::blackbox::Blackbox> {
+        self.blackbox.as_ref()
     }
 
     pub fn tool_count(&self) -> usize {

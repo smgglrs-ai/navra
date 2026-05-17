@@ -108,6 +108,28 @@ impl MemoryType {
     }
 }
 
+/// Scoping dimensions for memory isolation.
+///
+/// When all fields are `None`, the operation targets global (unscoped) memory.
+/// Each non-`None` field narrows the scope: entity_id restricts to a specific
+/// user/identity, process_id to a workflow execution, session_id to a session.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MemoryScope {
+    /// Scope to a specific user or human identity.
+    pub entity_id: Option<String>,
+    /// Scope to a flow or workflow execution.
+    pub process_id: Option<String>,
+    /// Scope to a session.
+    pub session_id: Option<String>,
+}
+
+impl MemoryScope {
+    /// Returns true if all scope fields are None (global scope).
+    pub fn is_global(&self) -> bool {
+        self.entity_id.is_none() && self.process_id.is_none() && self.session_id.is_none()
+    }
+}
+
 /// A persistent knowledge memory entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {

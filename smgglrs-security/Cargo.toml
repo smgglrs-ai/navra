@@ -36,6 +36,10 @@ ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray"
 ndarray = "0.17"
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 zbus = { version = "5", default-features = false, features = ["tokio"] }
+cedar-policy = { version = "4", optional = true }
+
+[features]
+cedar = ["dep:cedar-policy"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

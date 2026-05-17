@@ -1,3 +1,4 @@
+pub(crate) mod fd_resolve;
 mod handlers;
 mod path_security;
 mod state;

@@ -29,12 +29,14 @@ pub use jsonrpc::{
     JsonRpcResponse, RequestId, REQUEST_CANCELLED, CONTENT_TOO_LARGE,
 };
 pub use mcp::{
-    CallToolParams, CallToolResult, ClientCapabilities, ClientInfo, Content, ContentType,
+    CallToolParams, CallToolResult, ClientCapabilities, ClientInfo, CompleteParams,
+    CompleteResult, CompletionArgument, Content, ContentType,
     GetPromptParams, GetPromptResult, InitializeParams, InitializeResult, ListPromptsResult,
-    ListResourcesResult, ListToolsResult, PaginatedRequest, PromptArgument, PromptDefinition,
+    ListResourcesResult, ListToolsResult, LoggingLevel, LoggingMessageNotification,
+    PaginatedRequest, PromptArgument, PromptDefinition,
     PromptMessage, PromptRole, PromptsCapability, ReadResourceParams, ReadResourceResult,
     ResourceContent, ResourceDefinition, ResourcesCapability, ServerCapabilities, ServerInfo,
-    TextContent, ToolAnnotations, ToolDefinition, ToolInputSchema, ToolsCapability,
+    SetLevelParams, TextContent, ToolAnnotations, ToolDefinition, ToolInputSchema, ToolsCapability,
     ProgressParams, RequestMeta, ResourceUpdatedParams,
     DEFAULT_PAGE_SIZE, PROTOCOL_VERSION, encode_cursor, paginate,
     NOTIFY_TOOLS_LIST_CHANGED, NOTIFY_RESOURCES_LIST_CHANGED,

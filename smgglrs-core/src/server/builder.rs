@@ -33,6 +33,9 @@ pub struct McpServerBuilder {
     session_store: Option<SessionStore>,
     blackbox: Option<crate::blackbox::Blackbox>,
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
+    #[cfg(feature = "cedar")]
+    cedar_engine: Option<smgglrs_security::permissions::CedarEngine>,
+    tool_disclosure: HashMap<String, smgglrs_security::permissions::ToolDisclosure>,
 }
 
 impl McpServerBuilder {
@@ -55,6 +58,9 @@ impl McpServerBuilder {
             session_store: None,
             blackbox: None,
             broadcaster: None,
+            #[cfg(feature = "cedar")]
+            cedar_engine: None,
+            tool_disclosure: HashMap::new(),
         }
     }
 
@@ -267,6 +273,23 @@ impl McpServerBuilder {
         self
     }
 
+    /// Set tool disclosure rules for a permission set (progressive tool disclosure).
+    pub fn tool_disclosure(
+        mut self,
+        permission_set: impl Into<String>,
+        disclosure: smgglrs_security::permissions::ToolDisclosure,
+    ) -> Self {
+        self.tool_disclosure.insert(permission_set.into(), disclosure);
+        self
+    }
+
+    /// Set the Cedar policy engine for conditional access control.
+    #[cfg(feature = "cedar")]
+    pub fn cedar_engine(mut self, engine: smgglrs_security::permissions::CedarEngine) -> Self {
+        self.cedar_engine = Some(engine);
+        self
+    }
+
     /// Set the SSE broadcaster for server-initiated notifications.
     pub fn broadcaster(mut self, b: crate::transport::sse::SseBroadcaster) -> Self {
         self.broadcaster = Some(b);
@@ -459,6 +482,15 @@ impl McpServerBuilder {
                 std::collections::HashMap::new(),
             )),
             broadcaster: self.broadcaster,
+            #[cfg(feature = "cedar")]
+            cedar_engine: self.cedar_engine,
+            tool_disclosure: self.tool_disclosure,
+            resource_subscriptions: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            session_log_levels: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         }
     }
 }

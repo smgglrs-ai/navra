@@ -27,6 +27,8 @@ pub use error::RuntimeError;
 pub use gpu::{GpuDevice, GpuKind, detect_gpus};
 pub use npu::{NpuDevice, detect_npus};
 
+use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -53,6 +55,51 @@ pub enum RuntimeBackend {
     OpenShell,
 }
 
+/// KV cache quantization type for llama-server.
+///
+/// Controls the `--cache-type-k` and `--cache-type-v` flags.
+/// Lower precision reduces VRAM usage at the cost of quality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum KvCacheType {
+    /// Full 16-bit precision (llama-server default).
+    F16,
+    /// 8-bit quantized KV cache.
+    Q8_0,
+    /// 4-bit quantized KV cache.
+    Q4_0,
+}
+
+impl KvCacheType {
+    /// Return the llama-server CLI argument value.
+    pub fn as_llama_arg(&self) -> &str {
+        match self {
+            Self::F16 => "f16",
+            Self::Q8_0 => "q8_0",
+            Self::Q4_0 => "q4_0",
+        }
+    }
+}
+
+impl fmt::Display for KvCacheType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_llama_arg())
+    }
+}
+
+impl std::str::FromStr for KvCacheType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "f16" => Ok(Self::F16),
+            "q8_0" => Ok(Self::Q8_0),
+            "q4_0" => Ok(Self::Q4_0),
+            other => Err(format!("unknown KV cache type: {other} (expected f16, q8_0, or q4_0)")),
+        }
+    }
+}
+
 /// Configuration for serving a model.
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -68,6 +115,9 @@ pub struct ServeConfig {
     pub context_size: u32,
     /// Number of parallel request slots.
     pub parallel: u32,
+    /// KV cache quantization type. When set, passes `--cache-type-k`
+    /// and `--cache-type-v` to llama-server. None = llama-server default (f16).
+    pub cache_type: Option<KvCacheType>,
     /// Additional backend-specific arguments.
     pub extra_args: Vec<String>,
 }
@@ -81,6 +131,7 @@ impl Default for ServeConfig {
             gpus: Vec::new(),
             context_size: 4096,
             parallel: 1,
+            cache_type: None,
             extra_args: Vec::new(),
         }
     }
@@ -239,6 +290,7 @@ mod tests {
         assert_eq!(cfg.context_size, 4096);
         assert_eq!(cfg.parallel, 1);
         assert!(cfg.gpus.is_empty());
+        assert!(cfg.cache_type.is_none());
     }
 
     #[test]
@@ -258,6 +310,56 @@ mod tests {
         let ctx2 = IsolationContext::detect();
         assert_eq!(ctx1.level, ctx2.level);
         assert!(std::ptr::eq(ctx1, ctx2));
+    }
+
+    #[test]
+    fn kv_cache_type_as_llama_arg() {
+        assert_eq!(KvCacheType::F16.as_llama_arg(), "f16");
+        assert_eq!(KvCacheType::Q8_0.as_llama_arg(), "q8_0");
+        assert_eq!(KvCacheType::Q4_0.as_llama_arg(), "q4_0");
+    }
+
+    #[test]
+    fn kv_cache_type_display() {
+        assert_eq!(KvCacheType::F16.to_string(), "f16");
+        assert_eq!(KvCacheType::Q8_0.to_string(), "q8_0");
+        assert_eq!(KvCacheType::Q4_0.to_string(), "q4_0");
+    }
+
+    #[test]
+    fn kv_cache_type_from_str() {
+        assert_eq!("f16".parse::<KvCacheType>().unwrap(), KvCacheType::F16);
+        assert_eq!("q8_0".parse::<KvCacheType>().unwrap(), KvCacheType::Q8_0);
+        assert_eq!("q4_0".parse::<KvCacheType>().unwrap(), KvCacheType::Q4_0);
+        assert!("invalid".parse::<KvCacheType>().is_err());
+    }
+
+    #[test]
+    fn kv_cache_type_serde_roundtrip() {
+        let json = serde_json::to_string(&KvCacheType::Q8_0).unwrap();
+        assert_eq!(json, "\"q8_0\"");
+        let parsed: KvCacheType = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, KvCacheType::Q8_0);
+
+        // All variants
+        for variant in [KvCacheType::F16, KvCacheType::Q8_0, KvCacheType::Q4_0] {
+            let s = serde_json::to_string(&variant).unwrap();
+            let back: KvCacheType = serde_json::from_str(&s).unwrap();
+            assert_eq!(back, variant);
+        }
+    }
+
+    #[test]
+    fn kv_cache_type_deserialize_optional() {
+        #[derive(Deserialize)]
+        struct Wrapper {
+            cache_type: Option<KvCacheType>,
+        }
+        let with: Wrapper = serde_json::from_str(r#"{"cache_type":"q4_0"}"#).unwrap();
+        assert_eq!(with.cache_type, Some(KvCacheType::Q4_0));
+
+        let without: Wrapper = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(without.cache_type.is_none());
     }
 
     #[test]

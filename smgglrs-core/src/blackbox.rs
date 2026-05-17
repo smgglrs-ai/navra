@@ -13,7 +13,7 @@ use rusqlite::{params, Connection};
 use std::sync::{Arc, Mutex};
 
 /// A single blackbox entry — one tool call through the gateway.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct BlackboxEntry {
     pub seq: u64,
     pub timestamp_ms: i64,
@@ -28,6 +28,8 @@ pub struct BlackboxEntry {
     pub ifc_label: String,
     pub prev_hash: String, // SHA-256 of previous entry
     pub hash: String,      // SHA-256 of this entry
+    /// On-behalf-of human subject identifier (when agent acts for a human).
+    pub obo_sub: Option<String>,
 }
 
 /// The gateway blackbox. Embedded in McpServer.
@@ -59,13 +61,17 @@ impl Blackbox {
                 duration_us   INTEGER NOT NULL,
                 ifc_label     TEXT NOT NULL,
                 prev_hash     TEXT NOT NULL,
-                hash          TEXT NOT NULL
+                hash          TEXT NOT NULL,
+                obo_sub       TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_bb_agent ON blackbox(agent_name);
             CREATE INDEX IF NOT EXISTS idx_bb_tool ON blackbox(tool_name);
             CREATE INDEX IF NOT EXISTS idx_bb_ts ON blackbox(timestamp_ms);",
         )
         .map_err(|e| format!("blackbox schema failed: {e}"))?;
+
+        // Migrate existing databases: add obo_sub column if missing.
+        let _ = db.execute_batch("ALTER TABLE blackbox ADD COLUMN obo_sub TEXT;");
 
         // Resume from last entry
         let (last_seq, last_hash) = db
@@ -126,6 +132,26 @@ impl Blackbox {
         duration_us: u64,
         ifc_label: &str,
     ) {
+        self.record_with_obo(
+            agent_name, agent_permissions, session_id, tool_name,
+            tool_args, tool_result, outcome, duration_us, ifc_label, None,
+        );
+    }
+
+    /// Record a tool call with optional on-behalf-of human identity.
+    pub fn record_with_obo(
+        &self,
+        agent_name: &str,
+        agent_permissions: &str,
+        session_id: &str,
+        tool_name: &str,
+        tool_args: &str,
+        tool_result: &str,
+        outcome: &str,
+        duration_us: u64,
+        ifc_label: &str,
+        obo_sub: Option<&str>,
+    ) {
         let mut seq = self.seq.lock().unwrap_or_else(|e| e.into_inner());
         let mut prev_hash = self.prev_hash.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -156,12 +182,12 @@ impl Blackbox {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let _ = db.execute(
             "INSERT INTO blackbox (seq, timestamp_ms, agent_name, agent_perms, session_id, \
-             tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash, obo_sub) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 *seq, now, agent_name, agent_permissions, session_id,
                 tool_name, args_trunc, result_trunc, outcome, duration_us as i64,
-                ifc_label, *prev_hash, hash,
+                ifc_label, *prev_hash, hash, obo_sub,
             ],
         );
 
@@ -223,7 +249,7 @@ impl Blackbox {
             .prepare(
                 "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
                  tool_name, tool_args, tool_result, outcome, duration_us, \
-                 ifc_label, prev_hash, hash \
+                 ifc_label, prev_hash, hash, obo_sub \
                  FROM blackbox ORDER BY seq DESC LIMIT ?1",
             )
             .unwrap();
@@ -243,11 +269,92 @@ impl Blackbox {
                 ifc_label: row.get(10)?,
                 prev_hash: row.get(11)?,
                 hash: row.get(12)?,
+                obo_sub: row.get(13)?,
             })
         })
         .unwrap()
         .filter_map(|r| r.ok())
         .collect()
+    }
+
+    /// Paginated query with optional agent and tool filters.
+    pub fn query(
+        &self,
+        limit: usize,
+        offset: usize,
+        agent_filter: Option<&str>,
+        tool_filter: Option<&str>,
+    ) -> (Vec<BlackboxEntry>, u64) {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut where_clauses = Vec::new();
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(agent) = agent_filter {
+            if !agent.is_empty() {
+                where_clauses.push("agent_name LIKE ?");
+                param_values.push(Box::new(format!("%{agent}%")));
+            }
+        }
+        if let Some(tool) = tool_filter {
+            if !tool.is_empty() {
+                where_clauses.push("tool_name LIKE ?");
+                param_values.push(Box::new(format!("%{tool}%")));
+            }
+        }
+
+        let where_sql = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+
+        let count_sql = format!("SELECT COUNT(*) FROM blackbox {where_sql}");
+        let total: u64 = {
+            let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+                param_values.iter().map(|p| p.as_ref()).collect();
+            db.query_row(&count_sql, params_ref.as_slice(), |row| row.get(0))
+                .unwrap_or(0)
+        };
+
+        let query_sql = format!(
+            "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
+             tool_name, tool_args, tool_result, outcome, duration_us, \
+             ifc_label, prev_hash, hash, obo_sub \
+             FROM blackbox {where_sql} ORDER BY seq DESC LIMIT ? OFFSET ?"
+        );
+
+        let mut all_params: Vec<Box<dyn rusqlite::types::ToSql>> = param_values;
+        all_params.push(Box::new(limit as i64));
+        all_params.push(Box::new(offset as i64));
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            all_params.iter().map(|p| p.as_ref()).collect();
+
+        let mut stmt = db.prepare(&query_sql).unwrap();
+        let entries = stmt
+            .query_map(params_ref.as_slice(), |row| {
+                Ok(BlackboxEntry {
+                    seq: row.get(0)?,
+                    timestamp_ms: row.get(1)?,
+                    agent_name: row.get(2)?,
+                    agent_permissions: row.get(3)?,
+                    session_id: row.get(4)?,
+                    tool_name: row.get(5)?,
+                    tool_args: row.get(6)?,
+                    tool_result: row.get(7)?,
+                    outcome: row.get(8)?,
+                    duration_us: row.get(9)?,
+                    ifc_label: row.get(10)?,
+                    prev_hash: row.get(11)?,
+                    hash: row.get(12)?,
+                    obo_sub: row.get(13)?,
+                })
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        (entries, total)
     }
 
     /// Delete entries older than the specified number of days.
@@ -507,5 +614,48 @@ mod tests {
         let (valid, broken) = bb.verify_chain();
         assert_eq!(valid, 3);
         assert!(broken.is_none());
+    }
+
+    #[test]
+    fn record_with_obo_stores_human_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
+
+        bb.record_with_obo(
+            "agent1", "dev", "sess1", "file_read",
+            r#"{"path":"/tmp"}"#, "content", "allowed", 5,
+            "Trusted:Public", Some("alice@example.com"),
+        );
+
+        let entries = bb.recent(1);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].obo_sub.as_deref(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn record_without_obo_stores_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
+
+        bb.record("agent1", "dev", "sess1", "file_read", "{}", "ok", "allowed", 5, "T:P");
+
+        let entries = bb.recent(1);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].obo_sub.is_none());
+    }
+
+    #[test]
+    fn record_with_obo_mixed_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
+
+        bb.record("agent1", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P");
+        bb.record_with_obo("agent2", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P", Some("bob@corp.com"));
+
+        let entries = bb.recent(10);
+        assert_eq!(entries.len(), 2);
+        // Most recent first
+        assert_eq!(entries[0].obo_sub.as_deref(), Some("bob@corp.com"));
+        assert!(entries[1].obo_sub.is_none());
     }
 }

@@ -84,6 +84,16 @@ impl ModelRuntime for PodmanRuntime {
                 cmd.extend_from_slice(&["--n-gpu-layers".to_string(), "999".to_string()]);
             }
 
+            // KV cache quantization
+            if let Some(cache_type) = &config.cache_type {
+                cmd.extend_from_slice(&[
+                    "--cache-type-k".to_string(),
+                    cache_type.as_llama_arg().to_string(),
+                    "--cache-type-v".to_string(),
+                    cache_type.as_llama_arg().to_string(),
+                ]);
+            }
+
             cmd.extend(config.extra_args.iter().cloned());
 
             let mut devices = Vec::new();

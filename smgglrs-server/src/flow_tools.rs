@@ -622,6 +622,8 @@ pub struct FlowContext {
     pub exec_state: Option<std::sync::Arc<smgglrs_tools_exec::ExecModule>>,
     /// Workspace provider for populating agent sandbox workspaces.
     pub workspace_provider: Option<std::sync::Arc<dyn crate::workspace::WorkspaceProvider>>,
+    /// Optional SQLite checkpoint store for DAG crash resilience.
+    pub checkpoint: Option<std::sync::Arc<smgglrs_flow::DagCheckpoint>>,
 }
 
 /// Record completed/failed task results to the audit log.
@@ -1190,6 +1192,27 @@ async fn run_dag_execution(
             &spawned_ids, &completed, &failed, &task_defs,
         );
 
+        // Save checkpoint after each batch for crash resilience
+        if let Some(ref cp) = ctx.checkpoint {
+            let remaining: Vec<smgglrs_flow::TaskDefinition> = task_defs.iter()
+                .filter(|t| !completed.contains_key(&t.id) && !failed.contains(&t.id))
+                .cloned()
+                .collect();
+            let state = smgglrs_flow::CheckpointState {
+                flow_id: flow_id.to_string(),
+                completed: completed.clone(),
+                failed: failed.clone(),
+                task_defs: remaining,
+                team_id: team_id.to_string(),
+                prompt: prompt.to_string(),
+            };
+            if let Err(e) = cp.save(&state) {
+                tracing::warn!(flow_id = %flow_id, error = %e, "Failed to save checkpoint");
+            } else {
+                tracing::debug!(flow_id = %flow_id, "Checkpoint saved");
+            }
+        }
+
         // Auto-publish specialist outputs to the team blackboard
         // with the session's context label (IFC taint-on-read).
         for task_id in &spawned_ids {
@@ -1343,6 +1366,15 @@ async fn run_dag_execution(
         &task_defs, &completed, &failed, bb_start_seq,
     );
     final_output.push_str(&summary);
+
+    // Delete checkpoint on successful completion
+    if let Some(ref cp) = ctx.checkpoint {
+        if let Err(e) = cp.delete(flow_id) {
+            tracing::warn!(flow_id = %flow_id, error = %e, "Failed to delete checkpoint");
+        } else {
+            tracing::debug!(flow_id = %flow_id, "Checkpoint deleted (flow complete)");
+        }
+    }
 
     ctx.flow_registry.complete(flow_id, final_output.clone());
     let _ = ctx.team_registry.shutdown(team_id);
@@ -1848,8 +1880,8 @@ pub fn flow_resume_tool_def() -> ToolDefinition {
     }
 }
 
-/// Resume a timed-out flow by loading its metadata and completed tasks
-/// from audit.db, then re-running only the remaining tasks.
+/// Resume a timed-out flow by loading checkpoint state (preferred) or
+/// audit.db metadata, then re-running only the remaining tasks.
 pub async fn handle_flow_resume(
     args: serde_json::Value,
     ctx: std::sync::Arc<FlowContext>,
@@ -1862,14 +1894,96 @@ pub async fn handle_flow_resume(
         None => return CallToolResult::error("Missing required parameter: flow_id"),
     };
 
-    // Load flow metadata
+    // Try checkpoint first — it has the most complete state
+    if let Some(ref cp) = ctx.checkpoint {
+        if let Ok(Some(cp_state)) = cp.load(&flow_id) {
+            tracing::info!(
+                flow_id = %flow_id,
+                completed = cp_state.completed.len(),
+                failed = cp_state.failed.len(),
+                remaining = cp_state.task_defs.len(),
+                "Resuming flow from checkpoint"
+            );
+
+            if cp_state.task_defs.is_empty() {
+                return CallToolResult::text(format!(
+                    "Flow {flow_id} has no remaining tasks. {} completed, {} failed.",
+                    cp_state.completed.len(), cp_state.failed.len()
+                ));
+            }
+
+            // Re-register the flow
+            let new_flow_id = ctx.flow_registry.register(&format!("{flow_id}-resumed"));
+
+            // Copy completed results to audit log for the new flow
+            if let Some(ref audit) = ctx.audit_log {
+                for (task_id, output) in &cp_state.completed {
+                    let _ = audit.record_flow_task(
+                        &new_flow_id, task_id, None, None, "done", Some(output), None, None,
+                    );
+                }
+            }
+
+            // Publish completed outputs to blackboard so downstream tasks
+            // can see their dependencies' results
+            let team_budget = crate::team_tools::TeamBudget {
+                max_agents: ctx.budget_cfg.max_agents.max(cp_state.task_defs.len() as u32 + 2),
+                max_depth: ctx.budget_cfg.max_depth,
+                max_iterations: ctx.budget_cfg.max_iterations,
+                timeout_secs: ctx.budget_cfg.timeout_secs.max(600),
+                ..Default::default()
+            };
+            let team_id = match ctx.team_registry.create_team(
+                &format!("{flow_id}-resumed"), None, agent_name, 0, team_budget,
+            ) {
+                Ok(id) => id,
+                Err(e) => return CallToolResult::error(format!("Failed to create resume team: {e}")),
+            };
+            ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
+
+            // Publish completed outputs to blackboard for dependency resolution
+            for (task_id, output) in &cp_state.completed {
+                let truncated = if output.len() > 4096 {
+                    format!("{}...\n[truncated, {} chars total]", &output[..4096], output.len())
+                } else {
+                    output.clone()
+                };
+                ctx.team_registry.bb_publish(
+                    &team_id,
+                    &format!("findings/{task_id}"),
+                    &truncated,
+                    task_id,
+                    smgglrs_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC,
+                );
+            }
+
+            let final_output = run_dag_execution(
+                &ctx, &new_flow_id, &team_id, &cp_state.prompt, cp_state.task_defs,
+            ).await;
+
+            // Clean up the old checkpoint
+            let _ = cp.delete(&flow_id);
+
+            if let Some(ref audit) = ctx.audit_log {
+                let _ = audit.complete_flow_metadata(&new_flow_id, "completed");
+            }
+
+            return CallToolResult::text(format!(
+                "Flow resumed from checkpoint.\nOriginal: {flow_id}\nResumed as: {new_flow_id}\n\
+                 Previously completed: {} tasks\n\n{final_output}",
+                cp_state.completed.len()
+            ));
+        }
+    }
+
+    // Fall back to audit log recovery
     let metadata = match &ctx.audit_log {
         Some(audit) => match audit.load_flow_metadata(&flow_id) {
             Ok(Some(m)) => m,
-            Ok(None) => return CallToolResult::error(format!("Flow {flow_id} not found in audit.db")),
+            Ok(None) => return CallToolResult::error(format!("Flow {flow_id} not found in audit.db or checkpoint")),
             Err(e) => return CallToolResult::error(format!("Failed to load flow metadata: {e}")),
         },
-        None => return CallToolResult::error("Audit log not configured"),
+        None => return CallToolResult::error("Audit log not configured and no checkpoint available"),
     };
 
     // Load completed task results
@@ -1929,7 +2043,7 @@ pub async fn handle_flow_resume(
         flow_id = %flow_id,
         completed = already_done.len(),
         remaining = remaining.len(),
-        "Resuming flow"
+        "Resuming flow from audit log"
     );
 
     // Re-register the flow and run remaining tasks
@@ -2079,4 +2193,40 @@ mod tests {
         assert_eq!(result["status"], "done");
         assert_eq!(result["output"], "result");
     }
+}
+
+pub(crate) fn spawn_gpu_sampler(
+    audit_log: std::sync::Arc<smgglrs_memory::AuditLog>,
+    flow_id: String,
+    interval: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(interval).await;
+            match sample_gpu().await {
+                Some((gpu, mem, used)) => {
+                    if let Err(e) = audit_log.record_gpu_sample(&flow_id, gpu, mem, used) {
+                        tracing::debug!(error = %e, "Failed to record GPU sample");
+                    }
+                }
+                None => {
+                    tracing::debug!("nvidia-smi not available, stopping GPU sampler");
+                    break;
+                }
+            }
+        }
+    })
+}
+
+async fn sample_gpu() -> Option<(f64, f64, f64)> {
+    let output = tokio::process::Command::new("nvidia-smi")
+        .args(["--query-gpu=utilization.gpu,utilization.memory,memory.used", "--format=csv,noheader,nounits"])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() { return None; }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parts: Vec<&str> = stdout.lines().next()?.split(',').map(|s| s.trim()).collect();
+    if parts.len() < 3 { return None; }
+    Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
 }

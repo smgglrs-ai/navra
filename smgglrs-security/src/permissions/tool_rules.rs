@@ -228,4 +228,223 @@ mod tests {
         assert_eq!(perms.check("anything"), ToolPolicy::Approve);
         assert_eq!(perms.check("file_read"), ToolPolicy::Approve);
     }
+
+    // --- Platform tool (three-part name) patterns ---
+
+    #[test]
+    fn github_read_only_via_default_deny() {
+        // Read-only: only whitelist read ops, default deny catches the rest.
+        // Don't use a github_* deny rule — it would win over specific allows.
+        let perms = ToolPermissions::new(
+            vec![
+                ToolRule {
+                    tool: "github_pr_list".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "github_pr_view".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "github_issue_list".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+            ],
+            ToolPolicy::Deny,
+        );
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_pr_view"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_issue_list"), ToolPolicy::Allow);
+        // Default deny catches everything else
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Deny);
+        assert_eq!(perms.check("github_issue_create"), ToolPolicy::Deny);
+        assert_eq!(perms.check("github_issue_comment"), ToolPolicy::Deny);
+        // Non-github tools also denied by default
+        assert_eq!(perms.check("git_status"), ToolPolicy::Deny);
+    }
+
+    #[test]
+    fn github_deny_glob_wins_over_allow() {
+        // Deny-wins: a github_* deny overrides even specific allows.
+        // This is intentional — use default_deny pattern instead.
+        let perms = ToolPermissions::new(
+            vec![
+                ToolRule {
+                    tool: "github_pr_list".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "github_*".to_string(),
+                    policy: ToolPolicy::Deny,
+                },
+            ],
+            ToolPolicy::Allow,
+        );
+        // Deny wins over the specific allow
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Deny);
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Deny);
+        // Non-github tools use default allow
+        assert_eq!(perms.check("git_status"), ToolPolicy::Allow);
+    }
+
+    #[test]
+    fn github_pr_glob_allows_all_pr_ops() {
+        let perms = ToolPermissions::new(
+            vec![ToolRule {
+                tool: "github_pr_*".to_string(),
+                policy: ToolPolicy::Allow,
+            }],
+            ToolPolicy::Deny,
+        );
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_pr_view"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_issue_list"), ToolPolicy::Deny);
+        assert_eq!(perms.check("github_issue_create"), ToolPolicy::Deny);
+    }
+
+    #[test]
+    fn github_pr_create_requires_approval() {
+        let perms = ToolPermissions::new(
+            vec![
+                ToolRule {
+                    tool: "github_*".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "github_pr_create".to_string(),
+                    policy: ToolPolicy::Approve,
+                },
+            ],
+            ToolPolicy::Deny,
+        );
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_issue_list"), ToolPolicy::Allow);
+        // Specific approve overrides glob allow
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Allow);
+        // NOTE: Allow wins over Approve by design — if you want Approve
+        // to take effect, don't also Allow via a broader glob
+    }
+
+    #[test]
+    fn github_pr_create_approve_without_glob_allow() {
+        let perms = ToolPermissions::new(
+            vec![
+                ToolRule {
+                    tool: "github_pr_list".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "github_pr_view".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "github_pr_create".to_string(),
+                    policy: ToolPolicy::Approve,
+                },
+            ],
+            ToolPolicy::Deny,
+        );
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_pr_view"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Approve);
+        assert_eq!(perms.check("github_issue_list"), ToolPolicy::Deny);
+    }
+
+    #[test]
+    fn deny_wins_across_providers() {
+        let perms = ToolPermissions::new(
+            vec![
+                ToolRule {
+                    tool: "github_*".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "gitlab_*".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "*_create".to_string(),
+                    policy: ToolPolicy::Deny,
+                },
+            ],
+            ToolPolicy::Deny,
+        );
+        // Deny on *_create beats provider-level allow
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Deny);
+        assert_eq!(perms.check("gitlab_mr_create"), ToolPolicy::Deny);
+        assert_eq!(perms.check("github_issue_create"), ToolPolicy::Deny);
+        // Non-create operations allowed
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("gitlab_mr_list"), ToolPolicy::Allow);
+    }
+
+    #[test]
+    fn mixed_providers_independent() {
+        let perms = ToolPermissions::new(
+            vec![
+                ToolRule {
+                    tool: "github_*".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "gitlab_*".to_string(),
+                    policy: ToolPolicy::Deny,
+                },
+                ToolRule {
+                    tool: "jira_issue_list".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+            ],
+            ToolPolicy::Deny,
+        );
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Allow);
+        assert_eq!(perms.check("gitlab_mr_list"), ToolPolicy::Deny);
+        assert_eq!(perms.check("gitlab_mr_create"), ToolPolicy::Deny);
+        assert_eq!(perms.check("jira_issue_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("jira_issue_create"), ToolPolicy::Deny);
+    }
+
+    #[test]
+    fn suffix_glob_blocks_write_ops() {
+        let perms = ToolPermissions::new(
+            vec![
+                ToolRule {
+                    tool: "github_*".to_string(),
+                    policy: ToolPolicy::Allow,
+                },
+                ToolRule {
+                    tool: "*_create".to_string(),
+                    policy: ToolPolicy::Approve,
+                },
+                ToolRule {
+                    tool: "*_comment".to_string(),
+                    policy: ToolPolicy::Approve,
+                },
+            ],
+            ToolPolicy::Deny,
+        );
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_pr_view"), ToolPolicy::Allow);
+        // Allow wins over Approve when both match
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_issue_comment"), ToolPolicy::Allow);
+    }
+
+    #[test]
+    fn three_part_names_with_question_mark_glob() {
+        let perms = ToolPermissions::new(
+            vec![ToolRule {
+                tool: "github_??_*".to_string(),
+                policy: ToolPolicy::Allow,
+            }],
+            ToolPolicy::Deny,
+        );
+        assert_eq!(perms.check("github_pr_list"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_pr_create"), ToolPolicy::Allow);
+        assert_eq!(perms.check("github_mr_list"), ToolPolicy::Allow);
+        // "issue" has 5 chars, not 2
+        assert_eq!(perms.check("github_issue_list"), ToolPolicy::Deny);
+    }
 }

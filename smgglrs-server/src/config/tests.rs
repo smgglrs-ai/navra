@@ -366,3 +366,54 @@ tcp = "127.0.0.1:9315"
     let config: Config = toml::from_str(toml).unwrap();
     assert!(config.pii_patterns.is_empty());
 }
+
+#[test]
+fn parse_routing_config() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[routing]
+enabled = true
+default_tier = "medium"
+
+[[routing.tiers]]
+name = "small"
+model = "qwen2.5:3b"
+max_tokens = 500
+patterns = ["file_read", "git_status", "git_log"]
+
+[[routing.tiers]]
+name = "medium"
+model = "granite3:8b"
+max_tokens = 2000
+patterns = ["file_write", "git_commit", "github_*"]
+
+[[routing.tiers]]
+name = "large"
+model = "llama3.3:70b"
+max_tokens = 8000
+patterns = ["*_create", "*_review"]
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert!(config.routing.enabled);
+    assert_eq!(config.routing.default_tier, "medium");
+    assert_eq!(config.routing.tiers.len(), 3);
+    assert_eq!(config.routing.tiers[0].name, "small");
+    assert_eq!(config.routing.tiers[0].model, "qwen2.5:3b");
+    assert_eq!(config.routing.tiers[0].max_tokens, 500);
+    assert_eq!(config.routing.tiers[1].patterns, vec!["file_write", "git_commit", "github_*"]);
+    assert_eq!(config.routing.tiers[2].name, "large");
+}
+
+#[test]
+fn routing_defaults_when_absent() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert!(!config.routing.enabled);
+    assert_eq!(config.routing.default_tier, "medium");
+    assert!(config.routing.tiers.is_empty());
+}

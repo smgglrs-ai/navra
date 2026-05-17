@@ -4,6 +4,12 @@ use axum::response::IntoResponse;
 
 use crate::config;
 use crate::expand_tilde;
+use crate::ui_events::UiBroadcaster;
+
+#[allow(dead_code)]
+#[path = "ui_assets_gen.rs"]
+mod ui_assets_gen;
+use ui_assets_gen::UI_DIST_AVAILABLE;
 
 /// Axum middleware that authenticates requests against the MCP server's
 /// authenticator. Applied as a route layer on all `/api/*` routes.
@@ -34,6 +40,7 @@ pub(crate) fn attach_ui_routes(
     server: &Arc<smgglrs_core::McpServer>,
     models: &std::collections::HashMap<String, Arc<dyn smgglrs_model::ModelBackend>>,
     ollama_fallback_model: Option<&str>,
+    ui_broadcaster: Option<Arc<UiBroadcaster>>,
 ) -> axum::Router {
     // Load cognitive core if configured
     let forge = if let Some(ref path) = cfg.cognitive_core {
@@ -290,10 +297,103 @@ pub(crate) fn attach_ui_routes(
             })
         })
 
+        // --- API: Process table (active sessions) ---
+        .route("/process", {
+            let server = Arc::clone(server);
+            axum::routing::get(move || {
+                let server = server.clone();
+                async move {
+                    let snapshots = server.process_table().snapshot();
+                    axum::Json(serde_json::json!(snapshots))
+                }
+            })
+        })
+
+        // --- API: Audit log (blackbox entries with pagination) ---
+        .route("/audit", {
+            let server = Arc::clone(server);
+            axum::routing::get(move |query: axum::extract::Query<std::collections::HashMap<String, String>>| {
+                let server = server.clone();
+                async move {
+                    let limit: usize = query.get("limit").and_then(|s| s.parse().ok()).unwrap_or(50);
+                    let offset: usize = query.get("offset").and_then(|s| s.parse().ok()).unwrap_or(0);
+                    let agent = query.get("agent").map(|s| s.as_str());
+                    let tool = query.get("tool").map(|s| s.as_str());
+
+                    if let Some(bb) = server.blackbox() {
+                        let (entries, total) = bb.query(limit, offset, agent, tool);
+                        axum::Json(serde_json::json!({
+                            "entries": entries,
+                            "total": total,
+                        }))
+                    } else {
+                        axum::Json(serde_json::json!({
+                            "entries": [],
+                            "total": 0,
+                        }))
+                    }
+                }
+            })
+        })
+
+        // --- API: Permissions ---
+        .route("/permissions", {
+            let permissions = cfg.permissions.clone();
+            axum::routing::get(move || {
+                let permissions = permissions.clone();
+                async move {
+                    let sets: serde_json::Map<String, serde_json::Value> = permissions.iter().map(|(name, pset)| {
+                        (name.clone(), serde_json::json!({
+                            "ring": pset.ring,
+                            "allow": pset.allow,
+                            "deny": pset.deny,
+                            "operations": pset.operations,
+                            "safety": pset.safety,
+                            "tool_rules": pset.tool_rules.iter().map(|r| {
+                                serde_json::json!({
+                                    "tool": r.tool,
+                                    "policy": r.policy,
+                                })
+                            }).collect::<Vec<_>>(),
+                        }))
+                    }).collect();
+                    axum::Json(serde_json::json!({ "permission_sets": sets }))
+                }
+            })
+        })
+
         .route_layer(axum::middleware::from_fn_with_state(
             Arc::clone(server),
             auth_middleware,
         ));
+
+    // --- Agentic chat routes (ReAct tool-use loop) ---
+    let agent_api_router = if let Some(ref backend) = ui_chat_backend {
+        let memory_db = smgglrs_memory::WorkingMemory::open(
+            &dirs::data_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+                .join("smgglrs/ui_chat.db"),
+        ).unwrap_or_else(|e| {
+            tracing::warn!("Failed to open UI chat memory: {e}, using in-memory");
+            smgglrs_memory::WorkingMemory::open_memory().expect("in-memory WorkingMemory")
+        });
+        let memory = Arc::new(crate::ui_agent::SharedMemory::new(memory_db));
+
+        let agent_state = Arc::new(crate::ui_agent::AgentChatState {
+            server: Arc::clone(server),
+            model: Arc::clone(backend),
+            forge: forge.clone(),
+            memory,
+            listen_addr: cfg.server.listen_addr(),
+        });
+        Some(crate::ui_agent::build_agent_routes(agent_state)
+            .route_layer(axum::middleware::from_fn_with_state(
+                Arc::clone(server),
+                auth_middleware,
+            )))
+    } else {
+        None
+    };
 
     // --- OpenAI-compatible model proxy ---
     // Goose (or any OpenAI client) can use http://localhost:9315/v1
@@ -417,21 +517,87 @@ pub(crate) fn attach_ui_routes(
             auth_middleware,
         ));
 
-    router
+    let mut r = router
         .nest("/v1", v1_router)
-        // --- Static assets (no auth) ---
-        .route("/", axum::routing::get(|| async {
-            ([("content-type", "text/html")], include_str!("../ui/index.html"))
-        }))
-        .route("/ui/style.css", axum::routing::get(|| async {
-            ([("content-type", "text/css")], include_str!("../ui/style.css"))
-        }))
-        .route("/ui/app.js", axum::routing::get(|| async {
-            ([("content-type", "application/javascript")], include_str!("../ui/app.js"))
-        }))
+        .nest("/api", api_router);
 
-        // --- Authenticated API routes ---
-        .nest("/api", api_router)
+    if let Some(agent_router) = agent_api_router {
+        r = r.nest("/api", agent_router);
+    }
+
+    r = r.route("/ws/ui", {
+            let broadcaster = ui_broadcaster;
+            axum::routing::get(move |
+                ws: axum::extract::WebSocketUpgrade,
+                query: axum::extract::Query<std::collections::HashMap<String, String>>,
+            | {
+                let broadcaster = broadcaster.clone();
+                async move {
+                    let _token = query.get("token").cloned().unwrap_or_default();
+                    ws.on_upgrade(move |socket| handle_ui_ws(socket, broadcaster))
+                }
+            })
+        });
+
+    if UI_DIST_AVAILABLE {
+        r = r
+            .route("/", axum::routing::get(|| async {
+                let body = ui_assets_gen::index_html();
+                ([("content-type", "text/html; charset=utf-8")], body)
+            }))
+            .route("/assets/{*path}", axum::routing::get(|
+                axum::extract::Path(path): axum::extract::Path<String>,
+            | async move {
+                serve_ui_asset(&format!("assets/{path}"))
+            }));
+    } else {
+        r = r
+            .route("/", axum::routing::get(|| async {
+                ([("content-type", "text/html")], include_str!("../ui/index.html"))
+            }))
+            .route("/ui/style.css", axum::routing::get(|| async {
+                ([("content-type", "text/css")], include_str!("../ui/style.css"))
+            }))
+            .route("/ui/app.js", axum::routing::get(|| async {
+                ([("content-type", "application/javascript")], include_str!("../ui/app.js"))
+            }));
+    }
+
+    r
+}
+
+fn serve_ui_asset(path: &str) -> axum::response::Response {
+    match ui_assets_gen::get_asset(&format!("/{path}")) {
+        Some((bytes, mime)) => (
+            [(axum::http::header::CONTENT_TYPE, mime)],
+            bytes,
+        ).into_response(),
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            "not found",
+        ).into_response(),
+    }
+}
+
+async fn handle_ui_ws(
+    socket: axum::extract::ws::WebSocket,
+    broadcaster: Option<Arc<UiBroadcaster>>,
+) {
+    use axum::extract::ws::Message;
+    use futures_util::{SinkExt, StreamExt};
+
+    let Some(broadcaster) = broadcaster else {
+        return;
+    };
+
+    let (mut sender, _receiver) = socket.split();
+    let mut rx = broadcaster.subscribe();
+
+    while let Ok(msg) = rx.recv().await {
+        if sender.send(Message::Text(msg.into())).await.is_err() {
+            break;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -515,7 +681,7 @@ mod tests {
         let models = test_models();
         let cfg = test_config();
         let base = axum::Router::new();
-        attach_ui_routes(base, &cfg, &server, &models, Some("stub"))
+        attach_ui_routes(base, &cfg, &server, &models, Some("stub"), None)
     }
 
     async fn post_json(

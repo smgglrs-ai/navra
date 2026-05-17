@@ -3,7 +3,7 @@ pub mod ner;
 pub mod pseudonym;
 mod regex;
 
-pub use self::ml::MlFilter;
+pub use self::ml::{CategoryPolicy, MlFilter, MultiLabelFilter};
 pub use self::ner::{
     default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter, NerFilter,
 };
@@ -720,6 +720,16 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             pipeline.add_filter(PathPiiFilter::new());
             pipeline
         }
+        "multi-label" => {
+            // Regex tier (same as standard). Multi-label ML model
+            // filters are added by the server when models are loaded,
+            // using per-category thresholds from config.
+            let mut pipeline = FilterPipeline::new(FilterAction::Block);
+            pipeline.add_filter(SecretFilter::new());
+            pipeline.add_filter(PiiFilter::new());
+            pipeline.add_filter(PathPiiFilter::new());
+            pipeline
+        }
         "none" | "" => FilterPipeline::new(FilterAction::Pass),
         _ => {
             tracing::warn!(profile, "Unknown safety profile, defaulting to 'standard'");
@@ -872,6 +882,13 @@ mod tests {
         assert!(!findings.is_empty());
         // Only secret findings, no PII
         assert!(!findings.iter().any(|f| is_pii_category(&f.category)));
+    }
+
+    #[test]
+    fn build_pipeline_multi_label() {
+        let pipeline = build_pipeline("multi-label");
+        assert!(pipeline.has_filters());
+        assert_eq!(pipeline.action, FilterAction::Block);
     }
 
     #[test]

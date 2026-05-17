@@ -1,0 +1,20 @@
+[package]
+name = "smgglrs-tools-gitlab"
+description = "GitLab forge module for smgglrs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+smgglrs-core = { path = "../smgglrs-core" }
+smgglrs-macros = { path = "../smgglrs-macros" }
+smgglrs-protocol = { path = "../smgglrs-protocol" }
+smgglrs-security = { path = "../smgglrs-security" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }

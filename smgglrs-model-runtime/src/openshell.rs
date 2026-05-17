@@ -128,6 +128,14 @@ pub fn build_create_request(config: &ServeConfig) -> CreateSandboxRequest {
         args.push("999".to_string());
     }
 
+    // KV cache quantization
+    if let Some(cache_type) = &config.cache_type {
+        args.push("--cache-type-k".to_string());
+        args.push(cache_type.as_llama_arg().to_string());
+        args.push("--cache-type-v".to_string());
+        args.push(cache_type.as_llama_arg().to_string());
+    }
+
     for arg in &config.extra_args {
         args.push(arg.clone());
     }
@@ -221,6 +229,7 @@ mod tests {
             gpus: vec![],
             context_size: 4096,
             parallel: 2,
+            cache_type: None,
             extra_args: vec![],
         };
 
@@ -269,6 +278,7 @@ mod tests {
             ],
             context_size: 8192,
             parallel: 4,
+            cache_type: None,
             extra_args: vec!["--flash-attn".to_string()],
         };
 
@@ -299,6 +309,35 @@ mod tests {
         let sup = req.supervisor.unwrap();
         assert!(sup.args.contains(&"--threads".to_string()));
         assert!(sup.args.contains(&"8".to_string()));
+    }
+
+    #[test]
+    fn build_request_with_cache_type() {
+        let config = ServeConfig {
+            model_path: PathBuf::from("/models/test.gguf"),
+            cache_type: Some(crate::KvCacheType::Q8_0),
+            ..ServeConfig::default()
+        };
+
+        let req = build_create_request(&config);
+        let sup = req.supervisor.unwrap();
+        assert!(sup.args.contains(&"--cache-type-k".to_string()));
+        assert!(sup.args.contains(&"--cache-type-v".to_string()));
+        assert!(sup.args.contains(&"q8_0".to_string()));
+    }
+
+    #[test]
+    fn build_request_without_cache_type() {
+        let config = ServeConfig {
+            model_path: PathBuf::from("/models/test.gguf"),
+            cache_type: None,
+            ..ServeConfig::default()
+        };
+
+        let req = build_create_request(&config);
+        let sup = req.supervisor.unwrap();
+        assert!(!sup.args.contains(&"--cache-type-k".to_string()));
+        assert!(!sup.args.contains(&"--cache-type-v".to_string()));
     }
 
     #[test]

@@ -15,6 +15,9 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{AgentIdentity, AuthError, Authenticator};
+use super::capability::{
+    self, CapabilitySet, OboIdentity,
+};
 use crate::identity::CapSigner;
 
 /// OAuth 2.0 server metadata per RFC 8414 / MCP spec.
@@ -70,6 +73,43 @@ pub struct TokenRequest {
     pub scope: Option<String>,
 }
 
+/// RFC 8693 token exchange request.
+///
+/// Exchanges a human's OAuth access token for a smgglrs capability
+/// token that carries the human's identity as an `obo` claim.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TokenExchangeRequest {
+    pub grant_type: String,
+    /// The human's OAuth access token (JWT or opaque).
+    pub subject_token: String,
+    /// Must be `urn:ietf:params:oauth:token-type:access_token`.
+    pub subject_token_type: String,
+    /// Must be `urn:ietf:params:oauth:token-type:access_token`.
+    #[serde(default)]
+    pub requested_token_type: Option<String>,
+    /// Requested scopes for the issued capability token.
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+/// RFC 8693 token exchange response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenExchangeResponse {
+    pub access_token: String,
+    pub issued_token_type: String,
+    pub token_type: String,
+    pub expires_in: Option<u64>,
+    pub scope: Option<String>,
+}
+
+/// Claims extracted from a subject token for OBO identity.
+#[derive(Debug, Clone)]
+pub struct SubjectTokenClaims {
+    pub sub: String,
+    pub iss: String,
+    pub auth_time: Option<i64>,
+}
+
 /// JWT header (minimal, Ed25519).
 #[derive(Debug, Serialize, Deserialize)]
 struct JwtHeader {
@@ -101,6 +141,11 @@ pub struct OAuthConfig {
     pub issuer: String,
     pub token_ttl_secs: u64,
     pub scopes: Vec<String>,
+    /// Default capability set for tokens issued via token exchange.
+    /// When None, tokens get an empty capability set.
+    pub exchange_cap: Option<CapabilitySet>,
+    /// Default ring level for tokens issued via token exchange.
+    pub exchange_ring: u8,
 }
 
 /// Registered OAuth client (in-memory).
@@ -207,7 +252,10 @@ impl OAuthProvider {
             registration_endpoint: Some(format!("{}/oauth/register", self.config.issuer)),
             scopes_supported: Some(self.config.scopes.clone()),
             response_types_supported: vec!["code".to_string()],
-            grant_types_supported: Some(vec!["client_credentials".to_string()]),
+            grant_types_supported: Some(vec![
+                "client_credentials".to_string(),
+                "urn:ietf:params:oauth:grant-type:token-exchange".to_string(),
+            ]),
             token_endpoint_auth_methods_supported: Some(vec![
                 "client_secret_post".to_string(),
             ]),
@@ -279,6 +327,94 @@ impl OAuthProvider {
             expires_in: Some(self.config.token_ttl_secs),
             refresh_token: None,
             scope: if scope.is_empty() { None } else { Some(scope) },
+        })
+    }
+
+    /// RFC 8693 token exchange: exchange a human's access token for a
+    /// smgglrs capability token with an `obo` claim.
+    ///
+    /// The `validate_subject` callback decodes/introspects the subject token
+    /// and returns the human's identity claims. If None, a built-in JWT
+    /// decoder is used (same signer as the provider).
+    pub fn exchange_token(
+        &self,
+        request: &TokenExchangeRequest,
+        validate_subject: Option<&dyn Fn(&str) -> Result<SubjectTokenClaims, String>>,
+    ) -> Result<TokenExchangeResponse, String> {
+        // Validate grant type
+        if request.grant_type != "urn:ietf:params:oauth:grant-type:token-exchange" {
+            return Err("unsupported_grant_type".to_string());
+        }
+
+        // Validate subject_token_type
+        if request.subject_token_type != "urn:ietf:params:oauth:token-type:access_token" {
+            return Err("invalid_request: unsupported subject_token_type".to_string());
+        }
+
+        // Validate requested_token_type if present
+        if let Some(ref rtt) = request.requested_token_type {
+            if rtt != "urn:ietf:params:oauth:token-type:access_token" {
+                return Err("invalid_request: unsupported requested_token_type".to_string());
+            }
+        }
+
+        // Extract human identity from the subject token
+        let claims = if let Some(validator) = validate_subject {
+            validator(&request.subject_token)?
+        } else {
+            // Default: decode as JWT signed by this provider
+            let jwt_claims = decode_jwt(&request.subject_token, self.signer.as_ref())
+                .map_err(|e| format!("invalid_grant: {e}"))?;
+
+            // Check expiry
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            if jwt_claims.exp < now {
+                return Err("invalid_grant: subject token expired".to_string());
+            }
+
+            SubjectTokenClaims {
+                sub: jwt_claims.sub,
+                iss: jwt_claims.iss,
+                auth_time: None,
+            }
+        };
+
+        // Build the OBO identity
+        let obo = OboIdentity {
+            sub: claims.sub.clone(),
+            iss: claims.iss.clone(),
+            auth_time: claims.auth_time,
+        };
+
+        // Build a capability token with the OBO identity
+        let cap = self.config.exchange_cap.clone().unwrap_or_else(|| CapabilitySet {
+            paths: vec![],
+            operations: vec![],
+            tools: vec![],
+            credentials: vec![],
+        });
+
+        let mut payload = capability::build_payload(
+            &self.config.issuer,
+            &format!("obo:{}", claims.sub),
+            cap,
+            self.config.exchange_ring,
+            self.config.token_ttl_secs,
+        );
+        payload.obo = Some(obo);
+
+        let cap_token = capability::encode_token(&payload, self.signer.as_ref())
+            .map_err(|e| format!("server_error: token encoding failed: {e}"))?;
+
+        Ok(TokenExchangeResponse {
+            access_token: cap_token,
+            issued_token_type: "urn:ietf:params:oauth:token-type:access_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_in: Some(self.config.token_ttl_secs),
+            scope: request.scope.clone(),
         })
     }
 
@@ -468,6 +604,8 @@ mod tests {
                 "tools:write".to_string(),
                 "resources:read".to_string(),
             ],
+            exchange_cap: None,
+            exchange_ring: 2,
         }
     }
 
@@ -494,7 +632,10 @@ mod tests {
         assert!(meta.registration_endpoint.is_some());
         assert_eq!(
             meta.grant_types_supported,
-            Some(vec!["client_credentials".to_string()])
+            Some(vec![
+                "client_credentials".to_string(),
+                "urn:ietf:params:oauth:grant-type:token-exchange".to_string(),
+            ])
         );
         assert_eq!(
             meta.scopes_supported,
@@ -605,6 +746,8 @@ mod tests {
             issuer: "http://localhost:9315".to_string(),
             token_ttl_secs: 3600,
             scopes: vec!["tools:read".to_string()],
+            exchange_cap: None,
+            exchange_ring: 2,
         };
         let provider = Arc::new(OAuthProvider::new(config, Box::new(signer)));
         provider.register_client("c", "s", None, "dev");
@@ -791,5 +934,140 @@ mod tests {
                 "Scope '{}' resolved to unexpected permission '{}'", scope, resolved
             );
         }
+    }
+
+    // --- RFC 8693 token exchange tests ---
+
+    #[test]
+    fn token_exchange_with_custom_validator() {
+        let provider = test_provider();
+        let request = TokenExchangeRequest {
+            grant_type: "urn:ietf:params:oauth:grant-type:token-exchange".to_string(),
+            subject_token: "human-token-abc".to_string(),
+            subject_token_type: "urn:ietf:params:oauth:token-type:access_token".to_string(),
+            requested_token_type: Some("urn:ietf:params:oauth:token-type:access_token".to_string()),
+            scope: Some("tools:read".to_string()),
+        };
+
+        let validator = |_token: &str| -> Result<SubjectTokenClaims, String> {
+            Ok(SubjectTokenClaims {
+                sub: "alice@example.com".to_string(),
+                iss: "https://idp.example.com".to_string(),
+                auth_time: Some(1700000000),
+            })
+        };
+
+        let response = provider.exchange_token(&request, Some(&validator)).unwrap();
+        assert_eq!(response.token_type, "Bearer");
+        assert_eq!(response.issued_token_type, "urn:ietf:params:oauth:token-type:access_token");
+        assert!(response.access_token.starts_with("smgglrs_cap_v1."));
+
+        // Decode the capability token and verify obo
+        let decoded = capability::decode_token_unchecked(&response.access_token).unwrap();
+        let obo = decoded.obo.unwrap();
+        assert_eq!(obo.sub, "alice@example.com");
+        assert_eq!(obo.iss, "https://idp.example.com");
+        assert_eq!(obo.auth_time, Some(1700000000));
+        assert_eq!(decoded.sub, "obo:alice@example.com");
+    }
+
+    #[test]
+    fn token_exchange_wrong_grant_type_rejected() {
+        let provider = test_provider();
+        let request = TokenExchangeRequest {
+            grant_type: "client_credentials".to_string(),
+            subject_token: "x".to_string(),
+            subject_token_type: "urn:ietf:params:oauth:token-type:access_token".to_string(),
+            requested_token_type: None,
+            scope: None,
+        };
+
+        let err = provider.exchange_token(&request, None).unwrap_err();
+        assert!(err.contains("unsupported_grant_type"));
+    }
+
+    #[test]
+    fn token_exchange_wrong_subject_token_type_rejected() {
+        let provider = test_provider();
+        let request = TokenExchangeRequest {
+            grant_type: "urn:ietf:params:oauth:grant-type:token-exchange".to_string(),
+            subject_token: "x".to_string(),
+            subject_token_type: "urn:ietf:params:oauth:token-type:refresh_token".to_string(),
+            requested_token_type: None,
+            scope: None,
+        };
+
+        let err = provider.exchange_token(&request, None).unwrap_err();
+        assert!(err.contains("unsupported subject_token_type"));
+    }
+
+    #[test]
+    fn token_exchange_invalid_subject_token_rejected() {
+        let provider = test_provider();
+        let request = TokenExchangeRequest {
+            grant_type: "urn:ietf:params:oauth:grant-type:token-exchange".to_string(),
+            subject_token: "not-a-valid-jwt".to_string(),
+            subject_token_type: "urn:ietf:params:oauth:token-type:access_token".to_string(),
+            requested_token_type: None,
+            scope: None,
+        };
+
+        let err = provider.exchange_token(&request, None).unwrap_err();
+        assert!(err.contains("invalid_grant"));
+    }
+
+    #[test]
+    fn token_exchange_with_jwt_subject_token() {
+        let signer = Ed25519Signer::generate();
+        let config = OAuthConfig {
+            issuer: "http://localhost:9315".to_string(),
+            token_ttl_secs: 3600,
+            scopes: vec!["tools:read".to_string()],
+            exchange_cap: Some(CapabilitySet {
+                paths: vec!["/home/**".to_string()],
+                operations: vec!["read".to_string()],
+                tools: vec!["file_*".to_string()],
+                credentials: vec![],
+            }),
+            exchange_ring: 2,
+        };
+        let provider = Arc::new(OAuthProvider::new(config, Box::new(signer)));
+        provider.register_client("human-client", "human-secret", Some("Human"), "developer");
+
+        // Issue a JWT as the "human's" token
+        let human_token_req = TokenRequest {
+            grant_type: "client_credentials".to_string(),
+            client_id: Some("human-client".to_string()),
+            client_secret: Some("human-secret".to_string()),
+            scope: None,
+        };
+        let human_jwt = provider.issue_token(&human_token_req).unwrap();
+
+        // Exchange it for a capability token with obo
+        let exchange_req = TokenExchangeRequest {
+            grant_type: "urn:ietf:params:oauth:grant-type:token-exchange".to_string(),
+            subject_token: human_jwt.access_token,
+            subject_token_type: "urn:ietf:params:oauth:token-type:access_token".to_string(),
+            requested_token_type: None,
+            scope: None,
+        };
+        let response = provider.exchange_token(&exchange_req, None).unwrap();
+
+        let decoded = capability::decode_token_unchecked(&response.access_token).unwrap();
+        let obo = decoded.obo.unwrap();
+        assert_eq!(obo.sub, "human-client");
+        assert_eq!(obo.iss, "http://localhost:9315");
+        // Token should have the configured exchange capabilities
+        assert_eq!(decoded.cap.paths, vec!["/home/**"]);
+        assert_eq!(decoded.cap.operations, vec!["read"]);
+        assert_eq!(decoded.ring, 2);
+    }
+
+    #[test]
+    fn metadata_includes_token_exchange_grant() {
+        let provider = test_provider();
+        let meta = provider.metadata();
+        let grants = meta.grant_types_supported.unwrap();
+        assert!(grants.contains(&"urn:ietf:params:oauth:grant-type:token-exchange".to_string()));
     }
 }

@@ -162,6 +162,63 @@ impl SessionBackend for InMemorySessionBackend {
     }
 }
 
+/// DashMap-based session backend for lock-free concurrent access.
+///
+/// Uses sharded concurrent hashmap instead of a global RwLock.
+/// Better performance under high concurrency (many concurrent sessions).
+#[derive(Debug, Default)]
+pub struct DashMapSessionBackend {
+    sessions: dashmap::DashMap<String, Session>,
+}
+
+impl DashMapSessionBackend {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl SessionBackend for DashMapSessionBackend {
+    fn create(&self, session: Session) {
+        self.sessions.insert(session.id.clone(), session);
+    }
+
+    fn get(&self, id: &str) -> Option<Session> {
+        self.sessions.get(id).map(|s| s.clone())
+    }
+
+    fn remove(&self, id: &str) -> Option<Session> {
+        self.sessions.remove(id).map(|(_, s)| s)
+    }
+
+    fn count(&self) -> usize {
+        self.sessions.len()
+    }
+
+    fn update_context_label(&self, id: &str, label: DataLabel) {
+        if let Some(mut session) = self.sessions.get_mut(id) {
+            session.context_label = session.context_label.join(label);
+        }
+    }
+
+    fn context_label(&self, id: &str) -> DataLabel {
+        self.sessions
+            .get(id)
+            .map(|s| s.context_label)
+            .unwrap_or(DataLabel::TRUSTED_PUBLIC)
+    }
+
+    fn touch(&self, id: &str) {
+        if let Some(mut session) = self.sessions.get_mut(id) {
+            session.last_accessed = now_epoch();
+        }
+    }
+
+    fn expire(&self, max_age_secs: u64) {
+        let cutoff = now_epoch() - max_age_secs as i64;
+        self.sessions.retain(|_, s| s.last_accessed > cutoff);
+    }
+}
+
 fn now_epoch() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -234,5 +291,72 @@ mod tests {
         assert_eq!(store.count(), 1);
         assert!(store.get("fresh").is_some());
         assert!(store.get("old").is_none());
+    }
+
+    // --- DashMap backend tests ---
+
+    fn dashmap_store() -> SessionStore {
+        SessionStore::with_backend(Arc::new(DashMapSessionBackend::new()))
+    }
+
+    #[test]
+    fn dashmap_create_and_get() {
+        let store = dashmap_store();
+        store.create(test_session("d1"));
+        let s = store.get("d1").unwrap();
+        assert_eq!(s.id, "d1");
+    }
+
+    #[test]
+    fn dashmap_remove() {
+        let store = dashmap_store();
+        store.create(test_session("d1"));
+        assert_eq!(store.count(), 1);
+        store.remove("d1");
+        assert_eq!(store.count(), 0);
+    }
+
+    #[test]
+    fn dashmap_expire() {
+        let store = dashmap_store();
+        let mut old = test_session("old");
+        old.last_accessed = now_epoch() - 7200;
+        store.create(old);
+        store.create(test_session("fresh"));
+        store.expire(3600);
+        assert_eq!(store.count(), 1);
+        assert!(store.get("fresh").is_some());
+    }
+
+    #[test]
+    fn dashmap_concurrent_access() {
+        let store = Arc::new(dashmap_store());
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let store = store.clone();
+                std::thread::spawn(move || {
+                    let id = format!("session-{i}");
+                    store.create(test_session(&id));
+                    assert!(store.get(&id).is_some());
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert_eq!(store.count(), 10);
+    }
+
+    #[test]
+    fn dashmap_context_label() {
+        let store = dashmap_store();
+        store.create(test_session("d1"));
+        assert_eq!(store.context_label("d1"), DataLabel::TRUSTED_PUBLIC);
+        let tainted = DataLabel {
+            integrity: crate::ifc::Integrity::Untrusted,
+            confidentiality: crate::ifc::Confidentiality::Public,
+        };
+        store.update_context_label("d1", tainted);
+        assert_eq!(store.context_label("d1").integrity, crate::ifc::Integrity::Untrusted);
     }
 }
