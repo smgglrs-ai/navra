@@ -112,6 +112,30 @@ impl ClassifyResponse {
     pub fn is_unsafe(&self, threshold: f32) -> bool {
         self.labels.iter().any(|l| l.label != "safe" && l.score >= threshold)
     }
+
+    /// Check labels against per-category thresholds.
+    ///
+    /// Returns the labels that exceed their category threshold,
+    /// sorted by score descending. Categories not in the threshold
+    /// map are ignored.
+    pub fn exceeds_thresholds(
+        &self,
+        thresholds: &std::collections::HashMap<String, f32>,
+    ) -> Vec<&ClassifyLabel> {
+        let mut triggered: Vec<&ClassifyLabel> = self
+            .labels
+            .iter()
+            .filter(|l| {
+                if let Some(&thresh) = thresholds.get(&l.label) {
+                    l.score >= thresh
+                } else {
+                    false
+                }
+            })
+            .collect();
+        triggered.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        triggered
+    }
 }
 
 // --- Text generation ---

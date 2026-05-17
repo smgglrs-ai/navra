@@ -654,6 +654,30 @@ impl WorkingMemory {
         Ok(())
     }
 
+    /// List all distinct session IDs with their turn counts and timestamps.
+    pub fn list_sessions(&self) -> Result<Vec<(String, usize, i64, i64)>, MemoryError> {
+        let mut stmt = self.db.prepare(
+            "SELECT session_id, COUNT(*), MIN(created_at), MAX(created_at)
+             FROM memory_turns
+             WHERE fork_id IS NULL
+             GROUP BY session_id
+             ORDER BY MAX(created_at) DESC",
+        )?;
+
+        let sessions = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)? as usize,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(sessions)
+    }
+
     fn load_messages(&self, turn_id: &str) -> Result<Vec<Message>, MemoryError> {
         let mut stmt = self.db.prepare(
             "SELECT role, content, timestamp, metadata
@@ -1269,5 +1293,40 @@ mod tests {
         mem.add_turn(&ft).unwrap();
         assert_eq!(mem.get_session_turns("s1").unwrap().len(), 3);
         assert_eq!(mem.get_fork_turns("s1", "branch").unwrap().len(), 3);
+    }
+
+    #[test]
+    fn list_sessions_returns_distinct_sessions() {
+        let mem = WorkingMemory::open_memory().unwrap();
+        mem.add_turn(&make_turn("s1", "dev", 1000)).unwrap();
+        mem.add_turn(&make_turn("s1", "dev", 2000)).unwrap();
+        mem.add_turn(&make_turn("s2", "dev", 3000)).unwrap();
+
+        let sessions = mem.list_sessions().unwrap();
+        assert_eq!(sessions.len(), 2);
+
+        // Ordered by MAX(created_at) DESC, so s2 (3000) comes first
+        assert_eq!(sessions[0].0, "s2");
+        assert_eq!(sessions[0].1, 1); // 1 turn in s2
+        assert_eq!(sessions[0].2, 3000); // min
+        assert_eq!(sessions[0].3, 3000); // max
+
+        assert_eq!(sessions[1].0, "s1");
+        assert_eq!(sessions[1].1, 2); // 2 turns in s1
+        assert_eq!(sessions[1].2, 1000); // min
+        assert_eq!(sessions[1].3, 2000); // max
+    }
+
+    #[test]
+    fn list_sessions_excludes_forks() {
+        let mem = WorkingMemory::open_memory().unwrap();
+        mem.add_turn(&make_turn("s1", "dev", 1000)).unwrap();
+        mem.fork("s1", "branch").unwrap();
+
+        // Fork adds copies but list_sessions should only count main timeline
+        let sessions = mem.list_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].0, "s1");
+        assert_eq!(sessions[0].1, 1);
     }
 }

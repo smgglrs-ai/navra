@@ -406,6 +406,58 @@ policy = "allow"
 Priority: deny wins > allow > approve > default policy.
 Default policy is configurable: `default_tool_policy = "allow"`.
 
+#### Platform tool permission recipes
+
+Platform tools use three-part names (`<provider>_<resource>_<action>`).
+Glob patterns work across all segments:
+
+```toml
+# Read-only GitHub access (whitelist reads, default deny)
+# Note: don't use a github_* deny — deny always wins over
+# specific allows. Use default_tool_policy = "deny" instead.
+[permissions.reader]
+default_tool_policy = "deny"
+[[permissions.reader.tool_rules]]
+tool = "github_pr_list"
+policy = "allow"
+[[permissions.reader.tool_rules]]
+tool = "github_pr_view"
+policy = "allow"
+[[permissions.reader.tool_rules]]
+tool = "github_issue_list"
+policy = "allow"
+
+# PR create with approval, everything else allowed
+[[permissions.contributor.tool_rules]]
+tool = "github_*"
+policy = "allow"
+[[permissions.contributor.tool_rules]]
+tool = "github_pr_create"
+policy = "approve"
+
+# Block all write operations across all providers
+[[permissions.observer.tool_rules]]
+tool = "github_*_list"
+policy = "allow"
+[[permissions.observer.tool_rules]]
+tool = "gitlab_*_list"
+policy = "allow"
+[[permissions.observer.tool_rules]]
+tool = "*_create"
+policy = "deny"
+[[permissions.observer.tool_rules]]
+tool = "*_comment"
+policy = "deny"
+
+# Full GitHub, no GitLab
+[[permissions.github_only.tool_rules]]
+tool = "github_*"
+policy = "allow"
+[[permissions.github_only.tool_rules]]
+tool = "gitlab_*"
+policy = "deny"
+```
+
 ### 5. Human-in-the-Loop Approval
 
 Operations can require explicit user approval:

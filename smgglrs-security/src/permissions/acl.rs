@@ -728,6 +728,7 @@ mod tests {
             tools: vec![],
             credentials: vec![],
             expires_at: u64::MAX,
+            obo_sub: None,
         };
         let result = engine.check_with_capabilities(
             "cap:ring2", "read", Path::new("/home/user/project/file.rs"), Some(&caps),
@@ -747,6 +748,7 @@ mod tests {
             tools: vec![],
             credentials: vec![],
             expires_at: u64::MAX,
+            obo_sub: None,
         };
         let result = engine.check_with_capabilities(
             "cap:ring2", "write", Path::new("/home/user/file.rs"), Some(&caps),

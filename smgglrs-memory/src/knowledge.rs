@@ -1,7 +1,7 @@
 //! Knowledge store: persistent key-value entries with FTS5 search.
 
 use crate::error::MemoryError;
-use crate::types::{DistilledEntry, MemoryEntry, MemoryType};
+use crate::types::{DistilledEntry, MemoryEntry, MemoryScope, MemoryType};
 use rusqlite::{params, Connection};
 use std::path::Path;
 
@@ -68,6 +68,7 @@ impl KnowledgeStore {
             END;",
         )?;
         self.migrate_distillation_columns()?;
+        self.migrate_scope_columns()?;
         Ok(())
     }
 
@@ -555,6 +556,183 @@ impl KnowledgeStore {
         }
     }
 
+    /// Add entity/process/session scoping and temporal validity columns.
+    fn migrate_scope_columns(&self) -> Result<(), MemoryError> {
+        let columns = [
+            ("entity_id", "TEXT"),
+            ("process_id", "TEXT"),
+            ("session_id", "TEXT"),
+            ("valid_from", "INTEGER"),
+            ("valid_until", "INTEGER"),
+        ];
+        for (name, typ) in &columns {
+            let exists: bool = self.db.query_row(
+                &format!(
+                    "SELECT COUNT(*) > 0 FROM pragma_table_info('memory_knowledge') WHERE name = '{name}'"
+                ),
+                [],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                self.db.execute_batch(&format!(
+                    "ALTER TABLE memory_knowledge ADD COLUMN {name} {typ};"
+                ))?;
+            }
+        }
+        // Indexes for scoped lookups.
+        self.db.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_entity_id
+                ON memory_knowledge(entity_id) WHERE entity_id IS NOT NULL;
+             CREATE INDEX IF NOT EXISTS idx_knowledge_process_id
+                ON memory_knowledge(process_id) WHERE process_id IS NOT NULL;
+             CREATE INDEX IF NOT EXISTS idx_knowledge_session_id
+                ON memory_knowledge(session_id) WHERE session_id IS NOT NULL;
+             CREATE INDEX IF NOT EXISTS idx_knowledge_valid_until
+                ON memory_knowledge(valid_until) WHERE valid_until IS NOT NULL;",
+        )?;
+        Ok(())
+    }
+
+    /// Store a memory entry with scope and optional temporal validity.
+    pub fn store_scoped(
+        &self,
+        entry: &MemoryEntry,
+        scope: &MemoryScope,
+        valid_until: Option<i64>,
+    ) -> Result<(), MemoryError> {
+        let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
+        self.db.execute(
+            "INSERT INTO memory_knowledge
+                (id, memory_type, title, content, tags_json, created_at, updated_at,
+                 entity_id, process_id, session_id, valid_from, valid_until)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(id) DO UPDATE SET
+                 title = excluded.title,
+                 content = excluded.content,
+                 tags_json = excluded.tags_json,
+                 updated_at = excluded.updated_at,
+                 entity_id = excluded.entity_id,
+                 process_id = excluded.process_id,
+                 session_id = excluded.session_id,
+                 valid_from = excluded.valid_from,
+                 valid_until = excluded.valid_until",
+            params![
+                entry.id,
+                entry.memory_type.as_str(),
+                entry.title,
+                entry.content,
+                tags_json,
+                entry.created_at,
+                entry.updated_at,
+                scope.entity_id,
+                scope.process_id,
+                scope.session_id,
+                entry.created_at, // valid_from defaults to creation time
+                valid_until,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Store an entry with a time-to-live (TTL) in seconds.
+    pub fn store_with_ttl(
+        &self,
+        entry: &MemoryEntry,
+        ttl_secs: u64,
+    ) -> Result<(), MemoryError> {
+        let valid_until = entry.created_at + ttl_secs as i64;
+        self.store_scoped(entry, &MemoryScope::default(), Some(valid_until))
+    }
+
+    /// Full-text search filtered by scope and temporal validity.
+    ///
+    /// Scope fields that are `None` are not filtered. When a scope field
+    /// is set, only entries matching that field (or entries with NULL in
+    /// that column, i.e. global entries) are returned.
+    ///
+    /// Temporal validity: entries whose `valid_until` has passed are excluded.
+    pub fn search_scoped(
+        &self,
+        query: &str,
+        scope: &MemoryScope,
+        limit: usize,
+    ) -> Result<Vec<MemoryEntry>, MemoryError> {
+        let now = Self::now_epoch();
+
+        // Build dynamic WHERE clauses for scope filtering.
+        // For each scope dimension, match entries that either:
+        // - Have the same value as the scope, OR
+        // - Have NULL (global entries visible to all scopes)
+        let mut conditions = vec![
+            "memory_knowledge_fts MATCH ?1".to_string(),
+            "(k.valid_until IS NULL OR k.valid_until > ?2)".to_string(),
+        ];
+        let mut param_index = 3u32;
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+            Box::new(query.to_string()),
+            Box::new(now),
+        ];
+
+        if let Some(ref entity_id) = scope.entity_id {
+            conditions.push(format!(
+                "(k.entity_id IS NULL OR k.entity_id = ?{param_index})"
+            ));
+            param_values.push(Box::new(entity_id.clone()));
+            param_index += 1;
+        }
+        if let Some(ref process_id) = scope.process_id {
+            conditions.push(format!(
+                "(k.process_id IS NULL OR k.process_id = ?{param_index})"
+            ));
+            param_values.push(Box::new(process_id.clone()));
+            param_index += 1;
+        }
+        if let Some(ref session_id) = scope.session_id {
+            conditions.push(format!(
+                "(k.session_id IS NULL OR k.session_id = ?{param_index})"
+            ));
+            param_values.push(Box::new(session_id.clone()));
+            let _ = param_index; // suppress unused warning
+        }
+
+        let where_clause = conditions.join(" AND ");
+        let sql = format!(
+            "SELECT k.id, k.memory_type, k.title, k.content, k.tags_json, k.created_at, k.updated_at
+             FROM memory_knowledge k
+             JOIN memory_knowledge_fts f ON k.rowid = f.rowid
+             WHERE {where_clause}
+             ORDER BY rank
+             LIMIT {limit}"
+        );
+
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.db.prepare(&sql)?;
+        let entries = stmt
+            .query_map(params_ref.as_slice(), row_to_entry)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    /// Delete entries whose `valid_until` is in the past.
+    ///
+    /// Returns the number of expired entries deleted.
+    pub fn expire_stale(&self) -> Result<usize, MemoryError> {
+        let now = Self::now_epoch();
+        let count = self.db.execute(
+            "DELETE FROM memory_knowledge WHERE valid_until IS NOT NULL AND valid_until <= ?1",
+            params![now],
+        )?;
+        Ok(count)
+    }
+
+    fn now_epoch() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64
+    }
+
     /// Update access_count and last_accessed timestamp for an entry.
     pub fn touch(&self, id: &str) -> Result<(), MemoryError> {
         let now = std::time::SystemTime::now()
@@ -993,5 +1171,180 @@ mod tests {
         store.store(&e2).unwrap();
 
         assert_eq!(store.count_pii_entries().unwrap(), 1);
+    }
+
+    // --- Scoping and temporal validity tests ---
+
+    fn scope(entity: Option<&str>, process: Option<&str>, session: Option<&str>) -> MemoryScope {
+        MemoryScope {
+            entity_id: entity.map(String::from),
+            process_id: process.map(String::from),
+            session_id: session.map(String::from),
+        }
+    }
+
+    #[test]
+    fn store_scoped_isolates_by_entity() {
+        let store = KnowledgeStore::open_memory().unwrap();
+
+        let e1 = entry("e1", MemoryType::Fact, "Alice auth", "Alice uses OAuth");
+        let e2 = entry("e2", MemoryType::Fact, "Bob auth", "Bob uses SAML");
+        store.store_scoped(&e1, &scope(Some("alice"), None, None), None).unwrap();
+        store.store_scoped(&e2, &scope(Some("bob"), None, None), None).unwrap();
+
+        // Alice's scope should see only her entry + global entries
+        let alice_results = store.search_scoped("auth", &scope(Some("alice"), None, None), 10).unwrap();
+        assert_eq!(alice_results.len(), 1);
+        assert_eq!(alice_results[0].id, "e1");
+
+        // Bob's scope should see only his entry
+        let bob_results = store.search_scoped("auth", &scope(Some("bob"), None, None), 10).unwrap();
+        assert_eq!(bob_results.len(), 1);
+        assert_eq!(bob_results[0].id, "e2");
+    }
+
+    #[test]
+    fn scoped_search_returns_matching_scope() {
+        let store = KnowledgeStore::open_memory().unwrap();
+
+        let e1 = entry("e1", MemoryType::Fact, "Flow result", "Flow completed successfully");
+        let e2 = entry("e2", MemoryType::Fact, "Another flow", "Different flow result");
+        store.store_scoped(&e1, &scope(None, Some("flow-1"), None), None).unwrap();
+        store.store_scoped(&e2, &scope(None, Some("flow-2"), None), None).unwrap();
+
+        let results = store.search_scoped("flow", &scope(None, Some("flow-1"), None), 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "e1");
+    }
+
+    #[test]
+    fn global_entries_visible_to_all_scopes() {
+        let store = KnowledgeStore::open_memory().unwrap();
+
+        // Store a global (unscoped) entry
+        let global = entry("g1", MemoryType::Fact, "Global config", "Shared configuration value");
+        store.store(&global).unwrap();
+
+        // Store a scoped entry
+        let scoped = entry("s1", MemoryType::Fact, "Scoped config", "Entity-specific configuration");
+        store.store_scoped(&scoped, &scope(Some("alice"), None, None), None).unwrap();
+
+        // Alice's scope should see both global and her scoped entry
+        let results = store.search_scoped("config", &scope(Some("alice"), None, None), 10).unwrap();
+        assert_eq!(results.len(), 2);
+        let ids: Vec<&str> = results.iter().map(|e| e.id.as_str()).collect();
+        assert!(ids.contains(&"g1"));
+        assert!(ids.contains(&"s1"));
+
+        // Bob's scope should see only the global entry
+        let results = store.search_scoped("config", &scope(Some("bob"), None, None), 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "g1");
+    }
+
+    #[test]
+    fn temporal_validity_filtering() {
+        let store = KnowledgeStore::open_memory().unwrap();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        // Entry valid for 1 hour
+        let future = entry("f1", MemoryType::Fact, "Future valid", "Valid for a while");
+        store.store_scoped(&future, &MemoryScope::default(), Some(now + 3600)).unwrap();
+
+        // Entry already expired
+        let expired = entry("x1", MemoryType::Fact, "Expired entry", "Already expired");
+        store.store_scoped(&expired, &MemoryScope::default(), Some(now - 1)).unwrap();
+
+        // Scoped search should exclude expired entries
+        let results = store.search_scoped("valid OR expired", &MemoryScope::default(), 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "f1");
+    }
+
+    #[test]
+    fn ttl_expiration() {
+        let store = KnowledgeStore::open_memory().unwrap();
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        // Store entry with TTL of 0 (already expired)
+        let e = MemoryEntry {
+            id: "ttl1".to_string(),
+            memory_type: MemoryType::Fact,
+            title: "Short lived".to_string(),
+            content: "Expires immediately".to_string(),
+            tags: vec![],
+            created_at: now - 10,
+            updated_at: None,
+        };
+        store.store_with_ttl(&e, 5).unwrap(); // valid_until = (now-10)+5 = now-5, already past
+
+        // Store a permanent entry
+        let perm = entry("perm1", MemoryType::Fact, "Permanent entry", "Stays forever");
+        store.store(&perm).unwrap();
+
+        assert_eq!(store.count().unwrap(), 2);
+
+        let expired = store.expire_stale().unwrap();
+        assert_eq!(expired, 1);
+        assert_eq!(store.count().unwrap(), 1);
+        assert!(store.get("perm1").unwrap().is_some());
+        assert!(store.get("ttl1").unwrap().is_none());
+    }
+
+    #[test]
+    fn backward_compat_unscoped_operations() {
+        // Ensure existing unscoped operations still work after migration
+        let store = KnowledgeStore::open_memory().unwrap();
+
+        let e = entry("bc1", MemoryType::User, "Legacy entry", "Created without scope");
+        store.store(&e).unwrap();
+
+        let retrieved = store.get("bc1").unwrap().unwrap();
+        assert_eq!(retrieved.title, "Legacy entry");
+
+        let results = store.search("Legacy").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "bc1");
+
+        // Scoped search with empty scope should still find it
+        let results = store.search_scoped("Legacy", &MemoryScope::default(), 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "bc1");
+
+        // Scoped search with a scope should also find it (it's global)
+        let results = store.search_scoped("Legacy", &scope(Some("anyone"), None, None), 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "bc1");
+    }
+
+    #[test]
+    fn scope_is_global() {
+        assert!(MemoryScope::default().is_global());
+        assert!(!scope(Some("alice"), None, None).is_global());
+        assert!(!scope(None, Some("flow-1"), None).is_global());
+        assert!(!scope(None, None, Some("sess-1")).is_global());
+    }
+
+    #[test]
+    fn multi_dimension_scope() {
+        let store = KnowledgeStore::open_memory().unwrap();
+
+        let e1 = entry("e1", MemoryType::Fact, "Full scope", "Entity and process scoped");
+        store.store_scoped(&e1, &scope(Some("alice"), Some("flow-1"), Some("sess-1")), None).unwrap();
+
+        let e2 = entry("e2", MemoryType::Fact, "Entity only", "Just entity scoped");
+        store.store_scoped(&e2, &scope(Some("alice"), None, None), None).unwrap();
+
+        // Search with full scope should find both (e2 has NULL process_id, matches any)
+        let results = store.search_scoped("scope OR scoped", &scope(Some("alice"), Some("flow-1"), Some("sess-1")), 10).unwrap();
+        assert_eq!(results.len(), 2);
     }
 }

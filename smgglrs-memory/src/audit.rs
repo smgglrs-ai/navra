@@ -234,6 +234,18 @@ impl AuditLog {
             CREATE INDEX IF NOT EXISTS idx_audit_findings_flow
                 ON audit_findings(flow_id, task_id);",
         )?;
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS gpu_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                flow_id TEXT NOT NULL,
+                timestamp_ms INTEGER NOT NULL,
+                gpu_util_pct REAL,
+                mem_util_pct REAL,
+                mem_used_mb REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_gpu_samples_flow
+                ON gpu_samples(flow_id);",
+        )?;
         Ok(())
     }
 
@@ -581,6 +593,27 @@ impl AuditLog {
             count += 1;
         }
         Ok(count)
+    }
+
+    /// Record a GPU utilization sample for a flow execution.
+    pub fn record_gpu_sample(
+        &self,
+        flow_id: &str,
+        gpu_util_pct: f64,
+        mem_util_pct: f64,
+        mem_used_mb: f64,
+    ) -> Result<(), MemoryError> {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute(
+            "INSERT INTO gpu_samples (flow_id, timestamp_ms, gpu_util_pct, mem_util_pct, mem_used_mb)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![flow_id, now_ms, gpu_util_pct, mem_util_pct, mem_used_mb],
+        )?;
+        Ok(())
     }
 
     /// Save flow metadata for resumability.
@@ -1100,5 +1133,23 @@ mod tests {
         let log = AuditLog::open_memory().unwrap();
         let count = log.record_flow_findings("flow-x", "task-x", "Just plain text output").unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn gpu_sample_recording() {
+        let log = AuditLog::open_memory().unwrap();
+        log.record_gpu_sample("flow-gpu-1", 85.0, 45.0, 4096.0).unwrap();
+        log.record_gpu_sample("flow-gpu-1", 92.0, 50.0, 4200.0).unwrap();
+
+        let db = log.db.lock().unwrap();
+        let count: i64 = db
+            .query_row("SELECT COUNT(*) FROM gpu_samples WHERE flow_id = ?1", ["flow-gpu-1"], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+
+        let gpu_util: f64 = db
+            .query_row("SELECT gpu_util_pct FROM gpu_samples WHERE flow_id = ?1 ORDER BY id LIMIT 1", ["flow-gpu-1"], |row| row.get(0))
+            .unwrap();
+        assert!((gpu_util - 85.0).abs() < 0.01);
     }
 }

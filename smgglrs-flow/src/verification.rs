@@ -6,12 +6,12 @@
 
 use crate::error::FlowError;
 use crate::task::Task;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use smgglrs_agent::Agent;
 use std::collections::HashMap;
 
 /// How many verifier agents must approve for the result to pass.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VerificationThreshold {
     /// At least one verifier must approve.
@@ -29,7 +29,7 @@ impl Default for VerificationThreshold {
 }
 
 /// Configuration for cross-validation of a task's output.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerificationConfig {
     /// Number of verifier agents to spawn (default: 2).
     #[serde(default = "default_verifier_count")]

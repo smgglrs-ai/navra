@@ -482,6 +482,21 @@ pub enum LoggingLevel {
     Debug,
 }
 
+impl LoggingLevel {
+    pub fn severity(&self) -> u8 {
+        match self {
+            Self::Debug => 0,
+            Self::Info => 1,
+            Self::Notice => 2,
+            Self::Warning => 3,
+            Self::Error => 4,
+            Self::Critical => 5,
+            Self::Alert => 6,
+            Self::Emergency => 7,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetLevelParams {
     pub level: LoggingLevel,

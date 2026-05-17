@@ -235,6 +235,15 @@ pub(super) async fn handle_sys_status(
     })).into_response()
 }
 
+pub(super) async fn handle_metrics(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        state.metrics.render(),
+    )
+}
+
 /// Convert a broadcast receiver into an SSE event stream.
 fn make_sse_stream(
     mut rx: tokio::sync::broadcast::Receiver<crate::transport::sse::SseEvent>,

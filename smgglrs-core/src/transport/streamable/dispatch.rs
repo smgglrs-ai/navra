@@ -382,24 +382,63 @@ pub(crate) async fn dispatch(
         }
 
         "completion/complete" => {
-            // Stub: return empty completion list. Full implementation
-            // would suggest argument values for prompts/resources.
+            let params: crate::protocol::CompleteParams = match request
+                .params
+                .and_then(|p| {
+                    let ref_obj = p.get("ref")?;
+                    let argument = p.get("argument")?;
+                    Some(crate::protocol::CompleteParams {
+                        ref_type: ref_obj.get("type")?.as_str()?.to_string(),
+                        ref_name: ref_obj.get("name")?.as_str()?.to_string(),
+                        argument: serde_json::from_value::<crate::protocol::CompletionArgument>(argument.clone()).ok()?,
+                    })
+                })
+            {
+                Some(p) => p,
+                None => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid completion/complete params"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            let result = server.handle_complete(params);
             (
-                JsonRpcResponse::success(id, serde_json::json!({
-                    "completion": {
-                        "values": [],
-                        "hasMore": false,
-                    }
-                })),
+                JsonRpcResponse::success(
+                    id,
+                    serde_json::json!({
+                        "completion": {
+                            "values": result.values,
+                            "total": result.total,
+                            "hasMore": result.has_more,
+                        }
+                    }),
+                ),
                 session_id,
             )
         }
 
         "logging/setLevel" => {
-            let level = request.params
-                .and_then(|p| p.get("level").and_then(|l| l.as_str().map(String::from)));
-            if let Some(level) = level {
-                tracing::info!(level = %level, "Client requested log level change");
+            let params: crate::protocol::SetLevelParams = match request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+            {
+                Some(p) => p,
+                None => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid logging/setLevel params"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            if let Some(ref sid) = session_id {
+                server.handle_set_log_level(params, sid);
             }
             (
                 JsonRpcResponse::success(id, serde_json::json!({})),
@@ -408,10 +447,31 @@ pub(crate) async fn dispatch(
         }
 
         "resources/subscribe" => {
-            let uri = request.params
-                .and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from)));
-            if let Some(uri) = uri {
-                tracing::debug!(uri = %uri, "Resource subscription registered");
+            let uri = match request
+                .params
+                .and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from)))
+            {
+                Some(u) => u,
+                None => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Missing 'uri' parameter"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            if let Some(ref sid) = session_id {
+                if let Err(e) = server.handle_resource_subscribe(&uri, sid) {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params(&e),
+                        ),
+                        session_id,
+                    );
+                }
             }
             (
                 JsonRpcResponse::success(id, serde_json::json!({})),
@@ -420,10 +480,31 @@ pub(crate) async fn dispatch(
         }
 
         "resources/unsubscribe" => {
-            let uri = request.params
-                .and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from)));
-            if let Some(uri) = uri {
-                tracing::debug!(uri = %uri, "Resource subscription removed");
+            let uri = match request
+                .params
+                .and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from)))
+            {
+                Some(u) => u,
+                None => {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Missing 'uri' parameter"),
+                        ),
+                        session_id,
+                    );
+                }
+            };
+            if let Some(ref sid) = session_id {
+                if let Err(e) = server.handle_resource_unsubscribe(&uri, sid) {
+                    return (
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params(&e),
+                        ),
+                        session_id,
+                    );
+                }
             }
             (
                 JsonRpcResponse::success(id, serde_json::json!({})),

@@ -22,6 +22,7 @@ pub use smgglrs_model as models;
 // Core modules (owned by this crate)
 pub mod a2a;
 pub mod blackbox;
+pub mod metrics;
 pub mod transport;
 
 pub mod grpc_module;

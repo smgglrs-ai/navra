@@ -9,6 +9,10 @@ pub struct ModulesConfig {
     #[serde(default)]
     pub git: Option<GitModuleConfig>,
     #[serde(default)]
+    pub github: Option<GithubModuleConfig>,
+    #[serde(default)]
+    pub gitlab: Option<GitlabModuleConfig>,
+    #[serde(default)]
     pub rag: Option<RagModuleConfig>,
     #[serde(default)]
     pub voice: Option<VoiceModuleConfig>,
@@ -66,6 +70,18 @@ impl Default for MemoryModuleConfig {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct GitModuleConfig {
+    #[serde(default = "super::default_true")]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct GithubModuleConfig {
+    #[serde(default = "super::default_true")]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct GitlabModuleConfig {
     #[serde(default = "super::default_true")]
     pub enabled: bool,
 }

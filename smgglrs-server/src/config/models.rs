@@ -134,6 +134,8 @@ fn default_threshold() -> Option<f32> {
 /// timeout_secs = 1800   # 30 minutes per flow tree
 /// max_iterations = 200  # per agent ReAct iterations
 /// max_parallel = 4      # concurrent agents (GPU bound)
+/// checkpoint = true     # enable SQLite checkpoint for crash recovery
+/// checkpoint_db = "~/.local/share/smgglrs/checkpoints.db"
 /// ```
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct BudgetConfig {
@@ -149,6 +151,21 @@ pub struct BudgetConfig {
     /// 0 means no limit.
     #[serde(default = "default_budget_max_parallel")]
     pub max_parallel: usize,
+    /// Maximum tool output tokens before truncation (0 = disabled).
+    #[serde(default = "default_max_tool_output_tokens")]
+    pub max_tool_output_tokens: usize,
+    /// Truncation strategy: "truncate", "head_tail", "summarize".
+    #[serde(default = "default_truncation_strategy")]
+    pub truncation_strategy: String,
+    /// Ratio of budget allocated to head in head_tail strategy.
+    #[serde(default = "default_head_ratio")]
+    pub head_ratio: f32,
+    /// Enable SQLite-backed checkpointing for DAG execution crash resilience.
+    #[serde(default)]
+    pub checkpoint: bool,
+    /// Path to the checkpoint SQLite database.
+    #[serde(default = "default_checkpoint_db")]
+    pub checkpoint_db: String,
 }
 
 impl Default for BudgetConfig {
@@ -159,8 +176,25 @@ impl Default for BudgetConfig {
             timeout_secs: default_budget_timeout(),
             max_iterations: default_budget_max_iterations(),
             max_parallel: default_budget_max_parallel(),
+            max_tool_output_tokens: default_max_tool_output_tokens(),
+            truncation_strategy: default_truncation_strategy(),
+            head_ratio: default_head_ratio(),
+            checkpoint: false,
+            checkpoint_db: default_checkpoint_db(),
         }
     }
+}
+
+fn default_max_tool_output_tokens() -> usize {
+    0
+}
+
+fn default_truncation_strategy() -> String {
+    "head_tail".to_string()
+}
+
+fn default_head_ratio() -> f32 {
+    0.7
 }
 
 fn default_budget_max_agents() -> u32 {
@@ -181,5 +215,13 @@ fn default_budget_max_parallel() -> usize {
 
 fn default_budget_max_iterations() -> usize {
     200
+}
+
+fn default_checkpoint_db() -> String {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("smgglrs/checkpoints.db")
+        .display()
+        .to_string()
 }
 

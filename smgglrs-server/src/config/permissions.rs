@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct PermissionSet {
@@ -15,9 +16,26 @@ pub struct PermissionSet {
     pub operations: Vec<String>,
     #[serde(default)]
     pub approve: Vec<String>,
-    /// Safety profile: "standard", "pseudonymize", "secrets-only", "block", "none"
+    /// Safety profile: "standard", "pseudonymize", "secrets-only", "block",
+    /// "multi-label", "guardian", "guardian-deep", "none"
     #[serde(default = "default_safety")]
     pub safety: String,
+    /// Per-category confidence thresholds for multi-label safety models.
+    ///
+    /// Used when `safety = "multi-label"`. Each key is a category name
+    /// (e.g., "harm", "jailbreak", "pii") and the value is the minimum
+    /// confidence score (0.0-1.0) to trigger filtering for that category.
+    ///
+    /// Example:
+    /// ```toml
+    /// [permissions.dev.safety_thresholds]
+    /// harm = 0.7
+    /// jailbreak = 0.9
+    /// pii = 0.5
+    /// refusal = 0.8
+    /// ```
+    #[serde(default)]
+    pub safety_thresholds: HashMap<String, f32>,
     /// Custom regex patterns for content safety filtering.
     #[serde(default)]
     pub safety_patterns: Vec<SafetyPatternConfig>,
@@ -51,6 +69,14 @@ pub struct PermissionSet {
     /// Example: ["~/Code/myproject/**", "~/Documents/**"]
     #[serde(default)]
     pub trusted_paths: Vec<String>,
+    /// Tool disclosure: glob patterns of tools to show in tools/list.
+    /// Empty = show all tools. This is UI-level filtering only — agents
+    /// can still call hidden tools if they know the name.
+    #[serde(default)]
+    pub tool_disclosure_include: Vec<String>,
+    /// Tool disclosure: glob patterns of tools to hide from tools/list.
+    #[serde(default)]
+    pub tool_disclosure_exclude: Vec<String>,
 }
 
 fn default_tainted_write_policy() -> String {

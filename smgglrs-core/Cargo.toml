@@ -21,6 +21,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 async-stream = "0.3"
 futures-util = "0.3"
+dashmap = "6"
 glob = "0.3"
 hex = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -30,6 +31,9 @@ thiserror = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }
 tokio-stream = "0.1"
+
+[features]
+cedar = ["smgglrs-security/cedar"]
 
 [build-dependencies]
 tonic-build = "0.12"

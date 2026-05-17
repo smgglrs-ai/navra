@@ -5,12 +5,20 @@
 //! can modify results. Safety filtering is implemented as a built-in
 //! post-hook.
 
+mod budget;
+mod memory_extraction;
 mod pipeline;
+mod routing;
 mod safety_hook;
+pub mod statistical;
 mod tool_guard;
 
+pub use budget::{BudgetHook, TruncationStrategy, estimate_tokens};
+pub use memory_extraction::{ExtractionStore, MemoryExtractionConfig, MemoryExtractionHook};
 pub use pipeline::HookPipeline;
+pub use routing::{ModelTier, ModelTierConfig, RoutingConfig, RoutingHook};
 pub use safety_hook::SafetyHook;
+pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
 pub use tool_guard::ToolGuardHook;
 
 use crate::auth::CallContext;

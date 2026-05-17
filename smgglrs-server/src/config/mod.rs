@@ -16,6 +16,9 @@ pub use permissions::{PiiPatternConfig, PermissionSet};
 pub use server::{RegistryEntry, ServerConfig};
 pub use crate::grpc_manager::GrpcModuleConfig;
 
+pub use security::StatisticalGuardrailServerConfig;
+mod security;
+
 fn default_true() -> bool {
     true
 }
@@ -63,6 +66,12 @@ pub struct Config {
     /// Out-of-process gRPC modules.
     #[serde(default)]
     pub grpc_modules: Vec<GrpcModuleConfig>,
+    /// Statistical guardrail configuration for anomaly detection.
+    #[serde(default)]
+    pub statistical: StatisticalGuardrailServerConfig,
+    /// Cost-aware model routing configuration.
+    #[serde(default)]
+    pub routing: smgglrs_core::hooks::RoutingConfig,
 }
 
 impl Config {
@@ -90,6 +99,22 @@ impl Config {
     pub fn git_enabled(&self) -> bool {
         self.modules
             .git
+            .as_ref()
+            .map(|g| g.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn github_enabled(&self) -> bool {
+        self.modules
+            .github
+            .as_ref()
+            .map(|g| g.enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn gitlab_enabled(&self) -> bool {
+        self.modules
+            .gitlab
             .as_ref()
             .map(|g| g.enabled)
             .unwrap_or(false)
@@ -274,6 +299,8 @@ impl Default for Config {
                 container_memory: "2g".to_string(),
                 container_cpus: "2".to_string(),
                 container_pids: 256,
+                config_watch: false,
+                config_watch_debounce_ms: 50,
             },
             modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),
@@ -289,6 +316,8 @@ impl Default for Config {
             budget: BudgetConfig::default(),
             pii_patterns: Vec::new(),
             grpc_modules: Vec::new(),
+            statistical: StatisticalGuardrailServerConfig::default(),
+            routing: smgglrs_core::hooks::RoutingConfig::default(),
         }
     }
 }

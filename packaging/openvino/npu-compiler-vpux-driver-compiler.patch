@@ -1,0 +1,33 @@
+--- a/src/vpux_driver_compiler/CMakeLists.txt
++++ b/src/vpux_driver_compiler/CMakeLists.txt
+@@ -20,8 +20,10 @@ ov_cpack_add_component(${CIP_COMPONENT})
+
+ if(BUILD_COMPILER_FOR_DRIVER)
+     set(INSTALL_COMPONENT ${CID_COMPONENT})
+-    set(INSTALL_DESTINATION cid)
++    set(INSTALL_DESTINATION ${CMAKE_INSTALL_PREFIX})
+ else()
+     set(INSTALL_COMPONENT ${CIP_COMPONENT})
+     set(INSTALL_DESTINATION cip)
+ endif()
++
++include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../vpux_compiler/include)
+--- a/src/vpux_driver_compiler/cmake/install_target_with_debug_files.cmake
++++ b/src/vpux_driver_compiler/cmake/install_target_with_debug_files.cmake
+@@ -30,7 +30,7 @@ function(install_target_with_debug_files target destination component)
+     else()
+         install(TARGETS ${target}
+-            LIBRARY DESTINATION ${destination}
++            LIBRARY DESTINATION lib64
+             COMPONENT ${component})
+     endif()
+ endfunction()
+--- a/src/vpux_driver_compiler/src/vpux_compiler_l0/CMakeLists.txt
++++ b/src/vpux_driver_compiler/src/vpux_compiler_l0/CMakeLists.txt
+@@ -97,7 +97,7 @@ install_target_with_debug_files(${TARGET_NAME} ${INSTALL_DESTINATION}/lib ${INST
+ install(
+         FILES
+             "${PROJECT_SOURCE_DIR}/src/vpux_driver_compiler/include/npu_driver_compiler.h"
+-        DESTINATION ${INSTALL_DESTINATION}
++        DESTINATION include
+         COMPONENT ${INSTALL_COMPONENT})

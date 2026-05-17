@@ -1,6 +1,7 @@
 mod build_tools;
 mod cli;
 mod config;
+mod config_watcher;
 mod demo;
 mod discover;
 mod flow_tools;
@@ -12,6 +13,8 @@ mod registry_tools;
 mod team_tools;
 mod tray;
 mod ui;
+mod ui_agent;
+mod ui_events;
 pub(crate) mod workspace;
 
 use clap::Parser;
@@ -1008,7 +1011,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // Add global custom PII filter to profiles that use content filtering
         if let Some(ref pii_filter) = custom_pii_filter {
             match pset.safety.as_str() {
-                "standard" | "guardian" | "guardian-deep" | "block" => {
+                "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
                     pipeline.add_filter(SharedCustomPiiFilter(Arc::clone(pii_filter)));
                 }
                 _ => {}
@@ -1037,12 +1040,28 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         for (model_name, model_cfg) in &cfg.models {
             if model_cfg.task == "classification" {
                 if let Some(model) = models.get(model_name) {
-                    let threshold = model_cfg.threshold.unwrap_or(0.5);
-                    pipeline.add_model_filter(smgglrs_core::safety::MlFilter::new(
-                        model.clone(),
-                        threshold,
-                        "ml-unsafe",
-                    ));
+                    if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
+                        // Multi-label filter with per-category thresholds
+                        pipeline.add_model_filter(
+                            smgglrs_core::safety::MultiLabelFilter::from_thresholds(
+                                model.clone(),
+                                pset.safety_thresholds.clone(),
+                            ),
+                        );
+                        tracing::info!(
+                            permission_set = %name,
+                            categories = pset.safety_thresholds.len(),
+                            "Multi-label safety filter"
+                        );
+                    } else {
+                        // Single-label (binary) filter
+                        let threshold = model_cfg.threshold.unwrap_or(0.5);
+                        pipeline.add_model_filter(smgglrs_core::safety::MlFilter::new(
+                            model.clone(),
+                            threshold,
+                            "ml-unsafe",
+                        ));
+                    }
                 }
             }
         }
@@ -1050,7 +1069,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // Add PII NER filter to profiles that use content filtering
         if let Some(ref ner) = pii_ner_filter {
             match pset.safety.as_str() {
-                "standard" | "guardian" | "guardian-deep" | "block" => {
+                "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
                     pipeline.add_ner_filter_shared(Arc::clone(ner));
                     tracing::info!(
                         permission_set = %name,
@@ -1103,6 +1122,31 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             );
             builder = builder.tool_permissions(name.clone(), ToolPermissions::new(rules, default));
         }
+
+        if !pset.tool_disclosure_include.is_empty() || !pset.tool_disclosure_exclude.is_empty() {
+            let disclosure = smgglrs_core::permissions::ToolDisclosure::new(
+                pset.tool_disclosure_include.clone(),
+                pset.tool_disclosure_exclude.clone(),
+            );
+            tracing::info!(
+                permission_set = %name,
+                include = pset.tool_disclosure_include.len(),
+                exclude = pset.tool_disclosure_exclude.len(),
+                "Tool disclosure rules"
+            );
+            builder = builder.tool_disclosure(name.clone(), disclosure);
+        }
+    }
+
+    // Cost-aware model routing hook
+    if cfg.routing.enabled {
+        let hook = smgglrs_core::hooks::RoutingHook::from_config(&cfg.routing);
+        tracing::info!(
+            tiers = cfg.routing.tiers.len(),
+            default = %cfg.routing.default_tier,
+            "Routing hook enabled"
+        );
+        builder = builder.hook(hook);
     }
 
     // Build shared approval infrastructure
@@ -1242,6 +1286,16 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         );
         tracing::info!("Module 'git' enabled");
         builder = builder.module(git);
+    }
+
+    if cfg.github_enabled() {
+        tracing::info!("Module 'github' enabled");
+        builder = builder.module(smgglrs_tools_github::GithubModule);
+    }
+
+    if cfg.gitlab_enabled() {
+        tracing::info!("Module 'gitlab' enabled");
+        builder = builder.module(smgglrs_tools_gitlab::GitlabModule);
     }
 
     // --- Exec module (OpenShell agent sandboxing) ---
@@ -1872,6 +1926,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                             exp: parent_caps.expires_at,
                             nonce: smgglrs_core::auth::capability::generate_nonce(),
                             parent: None,
+                            obo: None,
                         };
 
                     // Set parent nonce reference
@@ -2412,6 +2467,32 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
         tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, team_bb_notifications, models_list)");
 
+        // Initialize checkpoint store if enabled
+        let checkpoint = if cfg.budget.checkpoint {
+            let db_path = expand_tilde(&cfg.budget.checkpoint_db);
+            match smgglrs_flow::DagCheckpoint::open(std::path::Path::new(&db_path)) {
+                Ok(cp) => {
+                    tracing::info!(path = %db_path, "Flow checkpoint store opened");
+                    if let Ok(incomplete) = cp.list_incomplete() {
+                        if !incomplete.is_empty() {
+                            tracing::info!(
+                                count = incomplete.len(),
+                                flows = ?incomplete,
+                                "Found incomplete flows from previous run (use flow_resume to continue)"
+                            );
+                        }
+                    }
+                    Some(Arc::new(cp))
+                }
+                Err(e) => {
+                    tracing::warn!(path = %db_path, error = %e, "Failed to open checkpoint store — checkpointing disabled");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         // flow_start and flow_escalate — shared context
         let flow_ctx = Arc::new(flow_tools::FlowContext {
             flow_registry: Arc::clone(&flow_registry),
@@ -2442,6 +2523,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             openshell_gateway: cfg.server.openshell_gateway.clone(),
             exec_state: exec_module.clone(),
             workspace_provider: None,
+            checkpoint,
         });
 
         // flow_start
@@ -2820,7 +2902,127 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     }
 
     let broadcaster = smgglrs_core::transport::SseBroadcaster::new();
-    let builder = builder.broadcaster(broadcaster.clone());
+    let mut builder = builder.broadcaster(broadcaster.clone());
+
+    // Wire BudgetHook for context budget enforcement on tool outputs.
+    // When enabled, this also activates the hook pipeline path (instead
+    // of the legacy safety_profile path), so we add a SafetyHook too.
+    if cfg.budget.max_tool_output_tokens > 0 {
+        use smgglrs_core::hooks::{BudgetHook, TruncationStrategy};
+
+        let strategy = match cfg.budget.truncation_strategy.as_str() {
+            "truncate" => TruncationStrategy::Truncate,
+            "head_tail" => TruncationStrategy::HeadTail {
+                head_ratio: cfg.budget.head_ratio,
+            },
+            "summarize" => TruncationStrategy::Summarize,
+            other => {
+                tracing::warn!(
+                    strategy = %other,
+                    "Unknown truncation strategy, defaulting to head_tail"
+                );
+                TruncationStrategy::HeadTail {
+                    head_ratio: cfg.budget.head_ratio,
+                }
+            }
+        };
+
+        // Budget hook runs first in post-hook order (added first, runs
+        // last in reverse order — but since we want truncation before
+        // safety filtering, we add safety first then budget).
+        // Post-hooks run in reverse registration order, so:
+        //   registered: [SafetyHook, BudgetHook]
+        //   post execution: BudgetHook -> SafetyHook
+        // This means truncation happens first, then safety filtering.
+
+        // Collect safety pipelines for the SafetyHook
+        let mut safety_hook = smgglrs_core::hooks::SafetyHook::new(
+            std::collections::HashMap::new(),
+        );
+        for (name, pset) in &cfg.permissions {
+            let mut pipeline = smgglrs_core::safety::build_pipeline(&pset.safety);
+            // Re-add custom PII filter
+            if let Some(ref pii_filter) = custom_pii_filter {
+                match pset.safety.as_str() {
+                    "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
+                        pipeline.add_filter(SharedCustomPiiFilter(Arc::clone(pii_filter)));
+                    }
+                    _ => {}
+                }
+            }
+            // Re-add custom regex patterns
+            if !pset.safety_patterns.is_empty() {
+                let patterns: Vec<(String, String)> = pset
+                    .safety_patterns
+                    .iter()
+                    .map(|p| (p.category.clone(), p.pattern.clone()))
+                    .collect();
+                let custom = smgglrs_core::safety::CustomFilter::new(patterns);
+                if custom.has_patterns() {
+                    pipeline.add_filter(custom);
+                }
+            }
+            // Re-add ML filters
+            for (model_name, model_cfg) in &cfg.models {
+                if model_cfg.task == "classification" {
+                    if let Some(model) = models.get(model_name) {
+                        if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
+                            pipeline.add_model_filter(
+                                smgglrs_core::safety::MultiLabelFilter::from_thresholds(
+                                    model.clone(),
+                                    pset.safety_thresholds.clone(),
+                                ),
+                            );
+                        } else {
+                            let threshold = model_cfg.threshold.unwrap_or(0.5);
+                            pipeline.add_model_filter(smgglrs_core::safety::MlFilter::new(
+                                model.clone(),
+                                threshold,
+                                "ml-unsafe",
+                            ));
+                        }
+                    }
+                }
+            }
+            // Re-add PII NER filter
+            if let Some(ref ner) = pii_ner_filter {
+                match pset.safety.as_str() {
+                    "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
+                        pipeline.add_ner_filter_shared(Arc::clone(ner));
+                    }
+                    _ => {}
+                }
+            }
+            safety_hook.add_pipeline(name.clone(), pipeline);
+        }
+        builder = builder.hook(safety_hook);
+
+        builder = builder.hook(BudgetHook::new(
+            cfg.budget.max_tool_output_tokens,
+            strategy,
+        ));
+        tracing::info!(
+            max_tokens = cfg.budget.max_tool_output_tokens,
+            strategy = %cfg.budget.truncation_strategy,
+            "Context budget enforcement enabled"
+        );
+    }
+
+    // Statistical guardrail hook for anomaly detection
+    if cfg.statistical.enabled {
+        let hook_config = cfg.statistical.to_hook_config();
+        tracing::info!(
+            cosine_window = hook_config.cosine_window,
+            cosine_z_threshold = hook_config.cosine_z_threshold,
+            entropy_window = hook_config.entropy_window,
+            entropy_min = hook_config.entropy_min,
+            entropy_max = hook_config.entropy_max,
+            block_on_anomaly = hook_config.block_on_anomaly,
+            "Statistical guardrail enabled"
+        );
+        builder = builder.hook(smgglrs_core::hooks::StatisticalGuardrailHook::new(hook_config));
+    }
+
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
     tracing::info!(
@@ -2992,7 +3194,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             } else {
                 None
             };
-            let router = ui::attach_ui_routes(router, &cfg, &server, &models, ollama_fallback.as_deref());
+            let ui_broadcaster = Arc::new(ui_events::UiBroadcaster::new(256));
+            ui_events::start_polling_bridge(Arc::clone(&ui_broadcaster), Arc::clone(&server));
+            let router = ui::attach_ui_routes(router, &cfg, &server, &models, ollama_fallback.as_deref(), Some(ui_broadcaster));
 
             tracing::info!("Web UI at http://localhost:{}", cfg.server.tcp.as_deref().and_then(|a| a.rsplit(':').next()).unwrap_or("9315"));
 

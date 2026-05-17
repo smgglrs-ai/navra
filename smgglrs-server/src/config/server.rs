@@ -53,6 +53,16 @@ pub struct ServerConfig {
     /// Maximum PIDs per agent container.
     #[serde(default = "default_container_pids")]
     pub container_pids: u32,
+    /// Watch the config file for changes and hot-reload.
+    #[serde(default)]
+    pub config_watch: bool,
+    /// Debounce interval in ms for config file watch events.
+    #[serde(default = "default_config_watch_debounce_ms")]
+    pub config_watch_debounce_ms: u64,
+}
+
+fn default_config_watch_debounce_ms() -> u64 {
+    50
 }
 
 fn default_agent_image() -> String {

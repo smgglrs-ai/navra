@@ -13,6 +13,8 @@ members = [
     "smgglrs-core",
     "smgglrs-tools-file",
     "smgglrs-tools-git",
+    "smgglrs-tools-github",
+    "smgglrs-tools-gitlab",
     "smgglrs-tools-exec",
     "smgglrs-rag",
     "smgglrs-modal-voice",
@@ -31,7 +33,7 @@ rust-version = "1.75"
 
 [workspace.dependencies]
 async-trait = "0.1"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 hyper = "1"
 hyper-util = "0.1"
 reqwest = { version = "0.12", features = ["json", "multipart"] }

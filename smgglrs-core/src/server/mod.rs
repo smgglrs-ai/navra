@@ -11,9 +11,9 @@ use crate::process::ProcessTable;
 use crate::quota::QuotaEngine;
 use crate::safety::FilterPipeline;
 use crate::session::SessionStore;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub use builder::McpServerBuilder;
 pub use types::ToolHandler;
@@ -60,6 +60,15 @@ pub struct McpServer {
         std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, PendingPermissionRequest>>>,
     /// SSE broadcaster for server-initiated notifications.
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
+    /// Resource subscriptions: session_id → set of subscribed resource URIs.
+    resource_subscriptions: Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    /// Per-session log level filter (MCP logging/setLevel).
+    session_log_levels: Arc<RwLock<HashMap<String, smgglrs_protocol::LoggingLevel>>>,
+    /// Tool disclosure rules per permission set (progressive tool disclosure).
+    tool_disclosure: HashMap<String, smgglrs_security::permissions::ToolDisclosure>,
+    /// Optional Cedar policy engine for conditional access control.
+    #[cfg(feature = "cedar")]
+    cedar_engine: Option<smgglrs_security::permissions::CedarEngine>,
 }
 
 /// A pending permission request awaiting grant or deny.

@@ -20,8 +20,10 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 toml = "0.8"
 serde_yaml = "0.9"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 smgglrs-responses = { path = "../smgglrs-responses" }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"

@@ -1,0 +1,82 @@
+#
+# Copyright (C) 2022-2026 Intel Corporation.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+#
+# Replace compiler flags
+#
+
+foreach(flag IN ITEMS "-Werror" "-fvisibility=hidden" "-fvisibility-inlines-hidden")
+    string(REGEX REPLACE "${flag}=?[A-Za-z0-9-]*" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+    string(REGEX REPLACE "${flag}=?[A-Za-z0-9-]*" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    string(REGEX REPLACE "${flag}=?[A-Za-z0-9-]*" "" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+    string(REGEX REPLACE "${flag}=?[A-Za-z0-9-]*" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+endforeach()
+
+set(BUILD_SHARED_LIBS OFF)
+
+#
+# LLVM/MLIR
+#
+if(NOT ENABLE_PREBUILT_LLVM_MLIR_LIBS)
+    set_llvm_flags()
+    add_subdirectory(llvm-project/llvm EXCLUDE_FROM_ALL)
+    set(MLIR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/llvm-project/mlir/include")
+    set(MLIR_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/llvm-project/llvm/tools/mlir/include")
+    include_directories(SYSTEM ${MLIR_SOURCE_DIR} ${MLIR_BINARY_DIR})
+endif()
+
+#
+# flatbuffers
+#
+
+if(CMAKE_SOURCE_DIR STREQUAL OpenVINO_SOURCE_DIR AND
+    ENABLE_OV_TF_LITE_FRONTEND AND (NOT ENABLE_SYSTEM_FLATBUFFERS OR NOT Flatbuffers_FOUND))
+    # flatbuffers is already built as part of OpenVINO in a single tree
+else()
+    set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(FLATBUFFERS_INSTALL OFF CACHE BOOL "" FORCE)
+    set(FLATBUFFERS_BUILD_FLATC ON CACHE BOOL "" FORCE)
+
+    add_subdirectory(flatbuffers EXCLUDE_FROM_ALL)
+
+    if(NOT MSVC)
+        target_compile_options(flatbuffers PRIVATE -Wno-suggest-override)
+        target_compile_options(flatc PRIVATE -Wno-suggest-override)
+        if ((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") AND (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 13))
+            target_compile_options(flatbuffers PRIVATE -Wno-unused-but-set-variable)
+            target_compile_options(flatc PRIVATE -Wno-unused-but-set-variable)
+        endif()
+    endif()
+endif()
+
+set(flatc_TARGET flatc)
+set(flatc_COMMAND $<TARGET_FILE:flatc>)
+
+#
+# npu_elf
+#
+
+if (ENABLE_NPU_MONO)
+    if (NOT TARGET npu_elf)
+        message(FATAL_ERROR "elf target must exist since ENABLE_NPU_MONO is ON")
+    endif()
+else()
+    add_subdirectory(elf EXCLUDE_FROM_ALL)
+    target_include_directories(npu_elf PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU37XX/dialect/NPUReg37XX/firmware_headers/details"
+        "${PROJECT_SOURCE_DIR}/src/vpux_compiler/include/vpux/compiler/NPU40XX/dialect/NPUReg40XX/firmware_headers/details")
+endif()
+
+#
+# nn cost model
+#
+
+set(VPUNN_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
+set(VPUNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(VPUNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(VPUNN_OPT_LEGACY_ZTILING ON CACHE BOOL "" FORCE)
+set(VPUNN_OPT_LEGACY_DMA_TH_4 ON CACHE BOOL "" FORCE)
+set(VPUNN_OPT_LEGACY_DMA_TH_5 OFF CACHE BOOL "" FORCE)
+add_subdirectory(vpucostmodel EXCLUDE_FROM_ALL)

@@ -4,13 +4,54 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform — the Rust replacement for the Python Myelix framework.
 
-## Current state (2026-05-12)
+## Current state (2026-05-17)
 
-20 crates, ~84K LoC, 1600+ tests, 0 warnings. 43 personas, 36
+21 crates, ~87K LoC, 1834 tests, 0 warnings. 43 personas, 36
 heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
 Fully local multi-agent demos. Full PII pipeline (regex + NER + file
 paths, pseudonymization, GDPR tools, IFC integration). Containerized
 agent execution via Podman (shared model server + per-agent sandboxes).
+Full MCP spec coverage (~39/39). WebSocket transport. GitHub forge
+tools. Statistical guardrails. Context budget enforcement.
+
+### Recent (2026-05-17)
+
+- **Tech watch** (15 articles, 7 research agents): GLiGuard 300M
+  safety model (encoder-based, ONNX, Apache 2.0), Microsoft AGT
+  competitor analysis, OTel GenAI semantic conventions for
+  observability, Power of Attorney auth model (smgglrs cap tokens
+  are superset), cost-aware LLM routing (vLLM Semantic Router),
+  prompt compression (ACON/LLMLingua-2), Memori agent memory
+  (3D scoping), hybrid attention (Qwen3.5), ADK durable execution,
+  12-metric evaluation framework
+- **New roadmap items**: GLiGuard eval (11f), speculative decoding
+  (11g), RoutingHook (11h), OTel observability upgrade (12c→HIGH),
+  memory scoping (3i), durable DAG execution (2d), auth delegation
+  chain (9k-9l), progressive tool disclosure (8i)
+
+### Recent (2026-05-15)
+
+- **MCP spec complete**: All 4 remaining method gaps implemented —
+  completion/complete (prompt arg + resource URI suggestions),
+  logging/setLevel (per-session log level filtering),
+  resources/subscribe + unsubscribe (session-scoped subscription
+  tracking with notifications/resources/updated delivery)
+- **GitHub forge module** (smgglrs-tools-github, 21st crate): 6
+  tools via `gh` CLI (github_pr_list, github_pr_create,
+  github_pr_view, github_issue_list, github_issue_create,
+  github_issue_comment). Input validation, config wiring
+- **WebSocket transport**: `/ws` endpoint alongside SSE. Axum
+  built-in WS, authenticates on upgrade, dispatches through
+  existing dispatch(), forwards SSE notifications per-session
+- **Statistical guardrails**: Cosine drift detector (z-score on
+  sliding window) + Shannon entropy monitor (tool call distribution).
+  StatisticalGuardrailHook as post-hook, per-session state, optional
+  blocking. 27 tests
+- **Context budget enforcement**: BudgetHook post-hook with
+  head+tail truncation strategy, line-boundary preservation,
+  proportional multi-content distribution. 8 tests
+- All tools migrated to `#[tool]` proc macro (completed 2026-05-15)
+- Git remote operations: git_push, git_pull, git_fetch
 
 ### Recent (2026-05-07)
 
@@ -57,7 +98,7 @@ agent execution via Podman (shared model server + per-agent sandboxes).
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| smgglrs-protocol | Done (Phase 9) | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry). ~35/39 MCP spec features. |
+| smgglrs-protocol | Done (Phase 9) | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry). 39/39 MCP spec features. |
 | smgglrs-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
 | smgglrs-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
 | smgglrs-model-runtime | Done | Serve models via llama-server or Podman. libkrun delegated to OpenShell (see OPENSHELL.md) |
@@ -254,6 +295,13 @@ audit/blackbox logs, distillation output, and vector embeddings
 | response_format plumbed through ChatRequest → Ollama API | 2026-05-07 |
 | Container agent stdout parsing fix (skip log lines before JSON) | 2026-05-07 |
 | Comparative flow evaluation: hardcoded vs dynamic persona selection | 2026-05-07 |
+| MCP spec complete: completion/complete, logging/setLevel, resources/subscribe+unsubscribe | 2026-05-15 |
+| WebSocket transport (`/ws` endpoint alongside SSE) | 2026-05-15 |
+| GitHub forge module (smgglrs-tools-github, 21st crate, 6 tools via `gh` CLI) | 2026-05-15 |
+| Statistical guardrails (cosine drift + Shannon entropy, post-hook) | 2026-05-15 |
+| Context budget enforcement (BudgetHook, head+tail truncation) | 2026-05-15 |
+| All tools migrated to `#[tool]` proc macro | 2026-05-15 |
+| Git remote operations (git_push, git_pull, git_fetch) | 2026-05-15 |
 
 ### Remaining
 
@@ -267,8 +315,17 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Upstream TLS (DESIGN.md gap) | 9 or 12b | 2-3 days | Medium |
 | ~~Convert tools to `#[tool]` proc macro~~ | ✅ 2026-05-15 | — | — |
 | DeepSec CI integration | Evaluate | — | Low |
-| **Statistical guardrails** (cosine z-score drift + Shannon entropy) | 11 | 2-3 days | Medium-High |
-| **WebSocket transport** (alongside SSE for agentic loops) | 9/12 | 2-3 days | Medium-High |
+| ~~Statistical guardrails~~ (cosine z-score drift + Shannon entropy) | ✅ 2026-05-15 | — | — |
+| ~~WebSocket transport~~ (alongside SSE for agentic loops) | ✅ 2026-05-15 | — | — |
+| **GLiGuard safety model evaluation** (ONNX, multi-label) | 11f | 2-3 days | High |
+| **OTel GenAI observability** (traces + Prometheus /metrics) | 12c | 3-4 days | High |
+| **`obo` identity claim** + RFC 8693 token exchange | 9k-9l | 3-4 days | High |
+| **RoutingHook** (cost-aware model routing via ONNX classifier) | 11h | 3-4 days | Medium-High |
+| **Durable DAG execution** (SQLite checkpoint, crash recovery) | 2d | 3-4 days | Medium-High |
+| **Memory scoping** (entity/process/session, temporal validity) | 3i | 2 days | Medium |
+| **Trace-based memory extraction** (MemoryExtractionHook) | 3j | 3-4 days | Medium |
+| **Progressive tool disclosure** (session-scoped tool sets) | 8i | 1-2 days | Medium |
+| **Speculative decoding** (EAGLE3/FastDraft in model-runtime) | 11g | 2-3 days | Medium |
 | **smgglrs-flow DAG test framework** (PTA/dominator validation) | 12 | 3-4 days | Medium |
 | **Event-driven triggers** (Jarvis: email/Slack/calendar → agent) | 5 | 3-5 days | Medium |
 | **fd-passing TOCTOU mitigation** (smgglrs-tools-file) | 12b | 1-2 days | Medium |
@@ -650,6 +707,43 @@ Flow templates encode orchestration expertise once and reuse it.
 The planner's domain knowledge goes into choosing the right
 template and parameters, not reinventing the workflow each time.
 
+#### 2d. Durable DAG execution with crash recovery (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-flow` (executor, new `checkpoint.rs`)
+
+Add SQLite-backed checkpointing to the DAG executor for crash
+recovery, inspired by Google ADK's pause/resume and DBOS:
+
+- **Checkpoint after each node**: Persist DAG node completion
+  state and tool-call results to SQLite after each node completes.
+  On crash recovery, skip completed nodes and resume from last
+  checkpoint.
+- **Structured workflow state**: Separate workflow state (DAG
+  progress, pending signals, entity data) from conversation
+  history. Inject structured state into prompts on resume rather
+  than replaying conversation turns (ADK pattern — avoids context
+  pollution and token cost explosion).
+- **Idempotency tracking**: Track tool-call UUIDs and cache results
+  for non-idempotent operations (file writes, git commits, command
+  execution). If an agent crashes after calling a tool but before
+  checkpointing, the replay skips the tool call and uses the
+  cached result.
+- **Atomic state transitions**: Use SQLite transactions to ensure
+  checkpoint consistency. `state_delta` pattern: hydrate session,
+  apply delta, persist atomically.
+
+DBOS validates this pattern: SQLite-backed, in-process library,
+each agent gets its own database, no external infrastructure.
+This maps cleanly to smgglrs's existing SQLite usage.
+
+**Effort**: 3-4 days. **Priority**: Medium-High.
+**Acceptance**: Kill smgglrs mid-flow, restart, flow resumes from
+last checkpoint without re-running completed nodes. Non-idempotent
+tool calls not repeated.
+
+Reference: Google ADK pause/resume (2026-05), DBOS durable
+execution, Inngest durable execution for AI agents.
+
 ### Phase 3: Persistent memory (smgglrs-memory)
 
 **Goal**: Working memory that survives sessions, knowledge
@@ -792,6 +886,72 @@ terminal_precision.
 - Wired into main.rs module registration
 - Remaining: agents auto-load relevant memory into context,
   semantic query caching (paraphrase detection, ~76% savings)
+
+#### 3i. Multi-user/multi-agent memory scoping (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-memory` (schema + query)
+
+Add three-dimensional memory scoping inspired by Memori's data model
+and validated by the agent memory landscape survey:
+
+- **`entity_id`** (user/tenant): Isolates memory per human user.
+  Bob's facts never leak into Alice's recall. Maps to the `obo`
+  claim being added to capability tokens (Phase 9k).
+- **`process_id`** (agent/role): Same user can maintain separate
+  memory contexts per agent persona (e.g., "fitness-coach" vs
+  "legal-analyst"). Maps to smgglrs-cognitive persona names.
+- **`session_id`**: Already exists. Scopes ephemeral conversation
+  state.
+
+Schema change: Add `entity_id TEXT` and `process_id TEXT` columns
+to working memory and knowledge store tables. Index for fast
+scoped retrieval. Backward compatible (NULL = unscoped, legacy
+behavior).
+
+Also add **temporal validity windows**:
+- `valid_from TIMESTAMP` and `superseded_at TIMESTAMP` on knowledge
+  entries. Enables temporal reasoning that gives Zep/Graphiti its
+  22-point benchmark advantage over pure vector similarity.
+- Query API: `memory_query` gains optional `as_of` parameter for
+  point-in-time retrieval.
+
+**Effort**: 2 days. **Priority**: Medium.
+**Acceptance**: Two users querying the same smgglrs instance get
+isolated memory. Temporal query returns facts valid at a given time.
+
+Reference: Memori (MemoriLabs), Zep/Graphiti temporal KG,
+Memory for Autonomous LLM Agents survey (arXiv:2603.07670).
+
+#### 3j. Trace-based memory extraction (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-security` (new `memory_hook.rs`) +
+`smgglrs-memory` (consolidation)
+
+smgglrs's hook pipeline intercepts every tool call — exactly the
+data that Memori captures for trace-based memory. Implement a
+`MemoryExtractionHook` that distills tool-call patterns into
+semantic facts:
+
+- **Post-hook**: After each tool call, evaluate whether the
+  call+result contains a memorable fact (user preference,
+  project state, correction).
+- **Batch extraction**: On session close, run a small ONNX model
+  over the session's episodic turns to extract durable facts into
+  the FTS5 knowledge store. Reuses existing in-process ONNX infra.
+- **Contradiction detection**: On write, run NLI (DeBERTa-v3 ONNX,
+  ~100M params) against existing facts. Contradictions supersede
+  old facts (using temporal validity from 3i).
+- **Memory decay integration**: Four-step consolidation pipeline
+  (decay → contradiction → merge → synthesis) aligned with
+  AIngram's approach and previous tech watch notes.
+
+**Effort**: 3-4 days. **Priority**: Medium.
+**Depends on**: 3i (scoping columns).
+**Acceptance**: After a 10-tool-call session, ≥3 durable facts
+extracted automatically. Contradicting facts supersede old ones.
+
+Reference: Memori trace extraction, AIngram consolidation pipeline,
+Memory survey (arXiv:2603.07670), sqlite-memory (SQLiteAI).
 
 #### 3h. Structured audit log ✅ (gateway blackbox)
 
@@ -1376,6 +1536,37 @@ tool without re-prompting the model.
 Reference: Verbalized sampling (2026-05-03) — multi-hypothesis
 output with confidence scores for decision-making.
 
+#### 8i. Progressive tool disclosure (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-core` (server, dispatch)
+
+Filter the tool list returned by `tools/list` based on session
+state, declared skills, or query context. Currently smgglrs loads
+all module tools at startup and exposes all to every agent.
+
+- **Session-scoped tool sets**: A `tools_filter` hook that reduces
+  the tool list based on agent capabilities, current workflow
+  stage, or explicit skill declarations
+- **Skill-based progressive disclosure**: Inspired by Genkit's
+  Skills middleware and Osmani's harness engineering — tools
+  become available as the agent demonstrates need or enters a
+  relevant workflow phase
+- **Intent-based fallback**: When the agent queries for a tool not
+  in its current set, expand the set dynamically rather than
+  returning an error
+
+This is infrastructure-layer work that fits the gateway role.
+It complements Phase 8g (intent-based tool grouping) — grouping
+reduces tool count per request, disclosure controls which tools
+are available at all.
+
+**Effort**: 1-2 days. **Priority**: Medium.
+**Acceptance**: Agent in "read-only" mode sees only read tools in
+`tools/list`. Entering "edit" mode expands the visible tool set.
+
+Reference: Genkit Skills middleware (2026-05), Osmani harness
+engineering (O'Reilly Radar, 2026-05).
+
 ### Phase 9: Full MCP spec coverage (2026-05-04, mostly complete)
 
 **Goal**: smgglrs-protocol covers 100% of the MCP 2025-03-26 spec,
@@ -1559,6 +1750,62 @@ Automated test suite verifying spec compliance:
 | A2A protocol client | `a2a.rs` + `a2a_client.rs` | Full A2A v0.2.5 types + HTTP client with IFC header propagation. |
 | Resilient upstream proxy | `upstream/` | 3 transports + exponential backoff, sleep detection, per-request timeout. |
 | Safety hook pipeline | smgglrs-security | Content filtering as hook, not hardcoded in request path. |
+
+#### 9k. On-behalf-of identity binding (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-security` (capability tokens)
+
+Add an `obo` (on-behalf-of) claim to `CapabilityPayload` for the
+delegating human's OIDC subject identifier. This completes the
+Power of Attorney audit chain: agent actions trace back to the
+human who authorized them.
+
+- Add `obo: Option<String>` to `CapabilityPayload` with
+  `#[serde(default)]` for backward compatibility
+- `ChainAuthenticator` propagates `obo` into `CallContext` so
+  hooks can audit which human authorized the agent
+- Delegation chain validation: child tokens inherit parent's `obo`
+  (cannot change the delegating human)
+- Audit events include `obo` for compliance trails (EU AI Act
+  Article 14, SOC 2 CC6.1)
+
+smgglrs's capability tokens already have ring attenuation, glob
+scoping, and IFC taint — this adds the missing identity provenance
+that connects agent authority to a human identity provider.
+
+**Effort**: 1 day. **Priority**: High.
+**Acceptance**: Capability token with `obo` claim traces agent
+actions to human delegator in audit log.
+
+Reference: MIT Media Lab PoA (arXiv:2501.09674), MCP OAuth 2.1.
+
+#### 9l. RFC 8693 token exchange (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-security` (oauth.rs)
+
+Implement OAuth Token Exchange (RFC 8693) so MCP clients can swap
+a user's OAuth token for a scoped smgglrs capability token:
+
+- Grant type: `urn:ietf:params:oauth:grant-type:token-exchange`
+- The `act` claim preserves delegation chains: "Agent X acting on
+  behalf of User Y" is the standard representation
+- Validates the incoming user token against the configured OIDC
+  provider, issues a scoped capability token with `obo` (from 9k)
+- Enables upstream MCP servers to receive delegated authority
+  through smgglrs while preserving the full chain
+
+This is the standard mechanism for chained delegation recommended
+by multiple 2026 agent identity guides. SPIFFE/SPIRE + Vault 2.0
+also support this flow.
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Depends on**: 9k (obo claim).
+**Acceptance**: MCP client exchanges user OAuth token for scoped
+smgglrs capability token with `act` claim. Upstream server
+receives delegated authority.
+
+Reference: RFC 8693, SPIFFE/SPIRE for agent identity,
+Agentic JWT draft (IETF).
 
 #### 9j. WebSocket transport for agentic loops (NEW)
 
@@ -1774,6 +2021,110 @@ regex misses, <50ms latency on typical tool outputs.
 
 Reference: OpenAI Privacy Filter pipeline (2026-04-29).
 
+#### 11f. GLiGuard safety model evaluation (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-security` (safety classifier)
+
+Evaluate GLiGuard (Fastino Labs, `fastino/gliguard-LLMGuardrails-300M`,
+Apache 2.0) as upgrade/replacement for the current binary ML safety
+classifier. GLiGuard reframes safety as encoder-based classification:
+
+- **Performance**: 87.7 F1 on prompt classification, 82.7 F1 on
+  response classification — matches LlamaGuard4-12B (23x larger)
+  and ShieldGemma-27B (90x larger)
+- **Speed**: 26ms latency on A100 vs 426ms for decoder models (16x)
+- **Multi-label**: Single forward pass classifies safety (safe/unsafe),
+  jailbreak strategy (11 types), harm category (14 types), and
+  refusal detection — no latency increase for more labels
+- **ONNX ready**: Already benchmarked under ONNX CUDA FP16 and
+  ONNX TensorRT, 193.6 req/s with dynamic batching
+
+**Compact variant**: GLiNER Guard (145-147M) for CPU-only deployments.
+Authors recommend tiered moderation: compact encoder for high-volume
+traffic, heavier model for uncertain inputs.
+
+**Implementation**:
+1. Export GLiGuard ONNX and test on Lunar Lake NPU/iGPU (300M
+   params should fit comfortably)
+2. Extend `ClassifyResponse` to multi-label output (harm categories,
+   jailbreak type, refusal) beyond current binary safe/unsafe
+3. Update `FilterPipeline` for tiered moderation: regex (tier 0) →
+   GLiGuard compact 145M (tier 1) → heavier model for uncertain
+   cases (tier 2)
+4. Add verbosity scoring to `StatisticalGuardrailHook` — readability
+   index as cheap hallucination proxy (KDNuggets research)
+
+Also track: Qwen3Guard 8B tri-class pattern (safe/controversial/unsafe)
+maps to smgglrs's configurable safety profiles.
+
+**Research gate**: Does GLiGuard ONNX export run on OpenVINO EP?
+How does it perform on adversarial prompts (Qwen3Guard showed 57-point
+gap between public and adversarial prompts)?
+
+**Effort**: 1-2 days (eval) + 1 day (multi-label integration).
+**Priority**: High.
+**Acceptance**: Multi-label safety classification in <30ms on NPU,
+F1 ≥ 85 on standard benchmarks.
+
+Reference: GLiGuard (Fastino Labs, 2026-05-13), GLiNER Guard
+(arXiv:2605.05277), PolyGuard-Qwen, Qwen3Guard.
+
+#### 11g. Speculative decoding in model-runtime (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-model-runtime`
+
+Add EAGLE3/FastDraft speculative decoding to the OpenVINO execution
+path. A small draft model (0.5-1B) generates candidate tokens, the
+main model (7-8B) verifies in parallel:
+
+- OpenVINO 2026.1 supports EAGLE3-based speculative decoding with
+  INT4 draft models natively
+- FastDraft achieves up to 3x speedup on edge devices
+- Minimal memory overhead: draft model is INT4, ~500MB
+- Applicable to the Lunar Lake 268V NPU/GPU pipeline
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Gate**: Is EAGLE3 support stable in OpenVINO 2026.1?
+**Acceptance**: 2x+ speedup on 7B model inference on 268V vs
+non-speculative baseline.
+
+Reference: OpenVINO speculative decoding docs, FastDraft (Intel).
+
+#### 11h. Gateway-level cost-aware routing (NEW — tech watch 2026-05-17)
+
+**Crate**: `smgglrs-security` (new `routing_hook.rs`) +
+`smgglrs-model` (backend selection)
+
+Add a `RoutingHook` that classifies prompts and routes to
+appropriate model tiers, transparent to agents:
+
+- **Classification**: In-process ONNX classifier (MiniLM or
+  ModernBERT) runs on each prompt, ~10ms. Classifies
+  simple/complex/agentic tiers
+- **Routing policy**: Configurable per-agent or per-session
+  (eco/balanced/premium). Maps tiers to model backends in config
+- **Cascading**: Low-confidence classifications escalate to
+  premium models. Self-consistency checks (generate twice,
+  escalate on disagreement) for critical operations
+- **Session pinning**: Multi-turn stays on one model to avoid
+  context fragmentation
+
+Validated by:
+- **vLLM Semantic Router** (Red Hat, Rust+Candle): 47% latency
+  reduction, 48% token reduction, 10% accuracy improvement
+- **NadirClaw**: 40-70% cost reduction with MiniLM centroid routing
+- **RouteLLM** (Berkeley/LMSYS): 85% cost reduction on MT Bench
+
+Reuses existing infrastructure: ONNX runtime (already loaded for
+safety), hook pipeline, model backend trait.
+
+**Effort**: 3-4 days. **Priority**: Medium-High.
+**Acceptance**: Simple prompts routed to cheap model, complex to
+premium, with measurable cost reduction and no quality loss.
+
+Reference: vLLM Semantic Router (Red Hat), NadirClaw, RouteLLM
+(Berkeley), R2-Router (UIUC).
+
 #### 11c. Adversarial safety evaluation
 
 **Crates**: `smgglrs-security` (safety classifier),
@@ -1915,13 +2266,58 @@ Collected from Code Health, self-review findings, and DESIGN.md:
 | Sync ureq → async in authenticator | Self-review sec-01 | 1 day |
 | fd-passing TOCTOU mitigation in file tools | AWS REX (2026-05-08) | 1-2 days |
 
-#### 12c. Observability (LOW — nice to have)
+#### 12c. Observability (HIGH — table-stakes for gateways, updated 2026-05-17)
 
-| Item | Detail |
-|------|--------|
-| OpenTelemetry | Normalized spans for tool calls, model calls |
-| Prometheus metrics | Request latency, token throughput, error rate |
-| Structured tracing | JSON-format log output for log aggregation |
+**Upgraded from LOW to HIGH**: All competing MCP gateways (Lunar MCPX,
+MintMCP, Kong, Bifrost) now advertise OTel traces + Prometheus metrics.
+78% enterprise adoption. This is no longer optional — it's competitive
+table-stakes.
+
+**Standard**: OpenTelemetry GenAI semantic conventions (OTel GenAI SIG,
+experimental since April 2024). The agentic extension (Issue #2664)
+adds Execute Tool span type. All major agent frameworks (OpenAI Agents
+SDK, LangChain, LlamaIndex, AutoGen) shipped OTel emitters by Q1 2026.
+
+**Implementation**:
+
+1. **`tracing-opentelemetry` in smgglrs-core**: Emit spans using
+   `gen_ai.*` semantic conventions for every tool call transiting
+   the gateway. Use Execute Tool span type from agentic conventions.
+2. **Hook pipeline as span tree**: Each hook (auth, permission,
+   safety, budget) becomes a child span with duration and result
+   attributes (`smgglrs.permission.result`, `smgglrs.safety.result`).
+3. **Prometheus `/metrics` endpoint**: Expose gateway-specific
+   counters (see below).
+4. **Structured audit events**: OTel log events for every permission
+   check, safety filter decision, deny-wins ACL activation.
+   Satisfies SOC 2/GDPR compliance without a separate audit system.
+
+**Security-specific metrics** (unique to smgglrs — no proxy gateway
+can compute these):
+
+| Metric | What it measures |
+|--------|-----------------|
+| `smgglrs.permission.denial_rate` | Per-tool, per-agent permission denials |
+| `smgglrs.safety.filter_trigger_rate` | Safety hook triggers by category |
+| `smgglrs.safety.filter_latency_p95` | ONNX inference time for safety |
+| `smgglrs.acl.deny_wins_count` | Deny-wins ACL activations |
+| `smgglrs.hook.pipeline_duration` | Total hook pipeline execution time |
+| `smgglrs.tool.execution_success_rate` | Per-tool success rate (>0.98 threshold) |
+| `smgglrs.session.tool_call_count` | Tool calls per session (runaway loop detection) |
+| `smgglrs.guardrail.anomaly_score` | Statistical deviation from baseline patterns |
+
+**Backend choice**: smgglrs emits OTel-compatible spans + Prometheus
+counters. Operators choose their backend (Phoenix, Langfuse,
+Datadog, Grafana). OpenLLMetry-style instrumentation for portability.
+
+**Effort**: 3-4 days. **Priority**: High.
+**Acceptance**: Tool calls visible in any OTel-compatible backend
+with security decision attributes. Prometheus endpoint scraped
+by standard monitoring.
+
+Reference: OTel GenAI semantic conventions, 12-metric evaluation
+framework (TDS), OpenLLMetry, Arize Phoenix, MintMCP enterprise
+requirements.
 
 ### Phase 13: Peer review readiness (2026-05-07 review)
 
@@ -1984,6 +2380,17 @@ late 2025 are now contested.
 | Graph Harness (arXiv:2604.11378) | 2, 3 | Should cite |
 | FadeMem (arXiv:2601.18642) | 2 | Should cite |
 | Mem0 (graph + vector + KV hybrid memory) | 2 | Should cite |
+| Microsoft AGT (agent-governance-toolkit) | 1 | **Must cite** |
+| GLiGuard / GLiNER Guard (arXiv:2605.05277) | 1 | **Must cite** |
+| PoA: Authenticated Delegation (arXiv:2501.09674) | 1 | Should cite |
+| OTel GenAI semantic conventions (SIG) | 1 | Should cite |
+| vLLM Semantic Router (Red Hat, Rust) | 1, 2 | Should cite |
+| ACON agent-specific compression (ICLR 2026) | 2 | Should cite |
+| Memori agent memory (MemoriLabs) | 2 | Should cite |
+| DBOS durable execution | 2 | Should cite |
+| Zep/Graphiti temporal knowledge graph | 2 | Should cite |
+| Claw-Eval-Live workflow benchmark (CUHK) | 3 | Should cite |
+| SkillOS skill curation (Google Cloud AI) | 2 | Should cite |
 
 #### 13d. Paper restructuring decisions
 
@@ -2141,6 +2548,142 @@ higher-priority agent (e.g., voice input preempts batch review).
 Batch agent's KV cache is checkpointed, voice agent gets GPU.
 After voice completes, batch resumes from checkpoint.
 
+### Phase 15: Web UI & agent dashboard (2026-05-15)
+
+smgglrs already has a basic web UI (`smgglrs-server/ui/`) with chat,
+flows, models, and agents panels served by axum. This phase evolves
+it into a production-quality interface for non-developer users
+(e.g., lawyer assistants, ops teams) and agent observability.
+
+**Motivation**: The *Claw landscape analysis (May 2026) revealed that
+smgglrs is architecturally a *Claw — a self-hosted AI agent gateway.
+Every successful *Claw (OpenClaw, SemaClaw, Hermes) has a web UI.
+The "CLI is sufficient" assumption holds for developer agents but
+breaks for domain-specific use cases where the assistant is embedded
+in professional workflows. A lawyer, analyst, or ops engineer needs
+a chat interface and agent dashboard without installing dev tools.
+
+**Design principle**: The web UI is a thin client to smgglrs's
+existing backend capabilities. No new business logic in the UI layer
+— chat uses smgglrs-agent's ReAct loop, persistence uses
+smgglrs-memory, orchestration uses smgglrs-flow, security uses
+smgglrs-security. The UI renders what the gateway already computes.
+
+#### 15a. Multi-turn agentic chat (HIGH)
+
+**Crate**: `smgglrs-server/src/ui.rs`
+
+The current `/api/chat` endpoint does a single model call with no
+tool use. Wire it to smgglrs-agent's ReAct tool-use loop for
+agentic conversations:
+
+- Replace direct `backend.respond()` with an Agent instance that
+  has access to the gateway's registered tools
+- Stream tool calls and results back to the UI via NDJSON events
+  (the streaming format already exists, add `tool_call`,
+  `tool_result`, `thinking` event types)
+- Multi-turn: send conversation history with each request
+  (smgglrs-memory's `WorkingMemory` already stores turns)
+- Session management: create/resume sessions via `/api/sessions`
+  endpoint, persist to smgglrs-memory's SQLite backend
+- Conversation sidebar: list past sessions, resume, delete
+
+**Effort**: 3-4 days. **Priority**: High.
+**Depends on**: None (all backend pieces exist).
+**Acceptance**: Chat in the web UI can use tools (file_read,
+git_status, etc.), maintain multi-turn context, and resume
+sessions across page reloads.
+
+#### 15b. Live agent dashboard via SSE (HIGH)
+
+**Crate**: `smgglrs-server/src/ui.rs`, `smgglrs-core`
+
+Add a Server-Sent Events endpoint for real-time agent and system
+state updates:
+
+- `/api/events` SSE stream with event types:
+  - `agent_connected` / `agent_disconnected` (name, permissions,
+    ring, taint label)
+  - `tool_call` (agent, tool name, arguments, IFC taint, timing)
+  - `tool_result` (agent, tool name, result summary, duration)
+  - `approval_requested` / `approval_resolved` (agent, operation,
+    path, decision)
+  - `flow_task_started` / `flow_task_completed` (flow name, task
+    id, specialist, status)
+  - `ifc_taint_changed` (agent, old label, new label)
+  - `safety_filter_triggered` (agent, filter name, action)
+- Agent panel: live-updating cards with current taint, active
+  tool call, token usage, session duration
+- Approval queue: approve/deny pending requests from the web UI
+  (mirror tray functionality for headless/remote deployments)
+
+**Effort**: 2-3 days. **Priority**: High.
+**Acceptance**: Open agents panel, connect an MCP client, see the
+agent appear in real time with live tool call updates.
+
+#### 15c. Interactive flow DAG visualization (MEDIUM)
+
+**Crate**: `smgglrs-server/ui/app.js`, `smgglrs-server/src/ui.rs`
+
+The current DAG renderer is CSS-based with static level layout.
+Upgrade to interactive visualization:
+
+- Replace CSS layout with a lightweight graph library (e.g.,
+  Cytoscape.js or ELK.js — both MIT, no build step needed)
+- Live DAG execution: nodes change color/state as tasks execute,
+  fed by SSE events from 15b
+- Click a node to see: specialist persona, prompt, tool calls,
+  output, timing, IFC taint at entry/exit
+- Edge labels: show data flow (which task output feeds which input)
+- Back-edge visualization: distinguish forward edges, back-edges,
+  and mesh channels (mailbox vs blackboard)
+- Flow launcher: select a flow, configure parameters (target path,
+  model override), execute from UI
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Depends on**: 15b (SSE for live updates).
+**Acceptance**: Run a review flow from the UI, watch DAG nodes
+progress through pending → running → completed with live output.
+
+#### 15d. Branding and polish (LOW)
+
+**Crate**: `smgglrs-server/ui/`
+
+- Rename from "myelix" to "smgglrs" throughout the UI
+  (title, welcome message, header brand)
+- Responsive layout for mobile/tablet (ops dashboard on phone)
+- Dark/light theme toggle (currently dark-only)
+- Token usage charts (per-session, per-agent, historical)
+- Model health indicators (loaded, latency, error rate)
+- Keyboard shortcuts (Cmd/Ctrl+Enter to send, Cmd+K for
+  command palette)
+
+**Effort**: 1-2 days. **Priority**: Low.
+
+#### 15e. Embeddable chat widget (LOW-MEDIUM)
+
+**Crate**: `smgglrs-server/src/ui.rs`, new `smgglrs-server/ui/widget.js`
+
+A self-contained chat widget that domain apps can embed via
+`<script>` tag or iframe. This is the interface for the lawyer
+app pattern — the domain app embeds smgglrs's chat in its own UI
+rather than building a chat interface from scratch:
+
+- Standalone JS bundle (no framework dependency, <50KB)
+- Configuration via data attributes: endpoint URL, auth token,
+  default persona, theme
+- Bidirectional: widget sends user messages to smgglrs, receives
+  streaming responses with tool call visualization
+- IFC badge: shows current taint level so the user knows what
+  data boundary they're in
+- Events API: `onToolCall`, `onApprovalRequired`, `onError` for
+  the host app to hook into
+
+**Effort**: 2-3 days. **Priority**: Low-Medium.
+**Acceptance**: Embed widget in a minimal HTML page, chat with
+smgglrs, see tool calls and IFC labels. Host page receives
+`onToolCall` events.
+
 ---
 
 ## Crate dependency diagram (planned)
@@ -2169,15 +2712,78 @@ smgglrs-server            (all + hub + runtime)
 
 ## Ecosystem positioning
 
-smgglrs is infrastructure, not an end-user agent. Desktop agents
-(Goose, Claude Code, etc.) connect to smgglrs as an MCP server.
-smgglrs provides the security layer; the agent provides the UX.
+smgglrs is a *Claw — a self-hosted AI agent gateway in the same
+category as OpenClaw, NemoClaw, and IronClaw. It differentiates on
+security depth (gateway-enforced IFC, deny-wins ACLs, in-process ML
+safety) and orchestration (smgglrs-flow DAG + mesh + mandates).
+
+smgglrs is domain-agnostic, not developer-only. Developer agents
+(Claude Code, Goose) are one client type. Domain apps (lawyer
+assistants, ops dashboards) connect as MCP clients and expose their
+data as MCP servers — the bidirectional MCP pattern. See Phase 15
+for the web UI that serves non-developer users directly.
 
 ```
-Goose (desktop)  ──┐              ┌── downstream MCP servers
-Claude Code      ──┼── MCP/ACP ──> smgglrs ──┼── built-in modules
-Zed/JetBrains    ──┘              └── local ONNX models
+Developer agents ──┐              ┌── downstream MCP servers
+  Claude Code      │              │
+  Goose            ├── MCP/SSE ──> smgglrs ──┼── built-in modules
+  Zed/JetBrains    │              │          └── local ONNX models
+Domain apps      ──┘              │
+  Lawyer app (↔ bidirectional)    └── domain MCP servers
+  Ops dashboard                        (legal DBs, case law, etc.)
+  Web UI (Phase 15)
 ```
+
+### *Claw landscape (May 2026 analysis)
+
+smgglrs sits in the OpenClaw ecosystem — same architectural category
+(self-hosted MCP gateway), different depth. Key comparisons:
+
+- **OpenClaw**: Largest ecosystem (370k stars), messaging channels,
+  ClawHub marketplace. Weak security (9 CVEs in 4 days, 12% malware
+  rate on ClawHub, 135k exposed instances). Node.js.
+- **NemoClaw** (NVIDIA): OpenClaw + OpenShell sandbox + YAML policies.
+  Wrapper, not purpose-built. Closest to smgglrs's security model
+  but bolted-on rather than native.
+- **IronClaw** (NEAR AI): Rust, TEEs, WebAssembly tool sandboxes,
+  zero-trust capabilities. Independently validates smgglrs's design
+  choices. No orchestration.
+- **SemaClaw** (Midea AI): DAG orchestration, PermissionBridge,
+  three-tier context. Closest to smgglrs-flow. Node.js. No gateway
+  security model.
+- **Kaiden** (Red Hat/Podman Desktop): Workspace + sandbox management
+  for AI coding agents. Complementary layer — Kaiden manages where
+  agents run, smgglrs manages what they can access.
+
+What smgglrs has that no *Claw has: IFC as first-class primitive,
+in-process ML safety filters, integrated multi-agent orchestration,
+cognitive layer, Rust coherent system. What *Claws have that smgglrs
+is building: web UI (Phase 15), marketplace/registry (planned).
+
+### Microsoft AGT relationship (May 2026 analysis)
+
+- **Agent Governance Toolkit**: 7-package system (Python, TypeScript,
+  Rust, Go, .NET) with Agent OS as stateless policy engine
+- Sub-millisecond p99 latency, 13,000+ tests, covers all 10 OWASP
+  Agentic Top 10 risks
+- Framework-agnostic: hooks into LangChain, CrewAI, Google ADK,
+  Microsoft Agent Framework
+- **Architecture difference**: AGT is a library (agent embeds it) vs
+  smgglrs is a gateway (agent cannot bypass it). Different trust
+  models — AGT trusts the agent runtime, smgglrs does not.
+- POSIX-inspired capability-based access controls (what agents *can*
+  do), vs smgglrs's deny-wins ACLs + IFC (what agents *must not* do
+  + information flow tracking)
+- **AGT lacks**: IFC/taint tracking, statistical guardrails, budget
+  hooks, in-process ML safety, orchestration. These remain smgglrs
+  differentiators.
+- **AGT has**: Better framework integration story (works with any
+  framework via callbacks/decorators), wider language coverage
+- **Watch**: AGT Rust package closely — if it gains IFC or gateway
+  mode, it becomes a direct competitor
+
+Reference: Microsoft AGT (github.com/microsoft/agent-governance-toolkit),
+AGT architecture deep dive (TechCommunity blog, April 2026).
 
 ### Goose relationship (April 2026 analysis)
 
@@ -2251,14 +2857,17 @@ These capabilities from Python Myelix are intentionally NOT replicated:
 
 - **Docker deployment**: Rust binary is self-contained
 - **Python engine wrappers**: replaced by ModelBackend trait
-- **Rich TUI**: CLI is sufficient; Goose or GNOME shell provides UX.
-  Warp fork evaluated (2026-05-04) — warpui (MIT) is architecturally
-  clean but AGPL contamination from internal deps makes extraction
-  impractical. Adopt Warp's UX *patterns* (Phase 8) instead.
+- **Rich TUI**: Warp fork evaluated (2026-05-04) — warpui (MIT) is
+  architecturally clean but AGPL contamination from internal deps
+  makes extraction impractical. Adopt Warp's UX *patterns* (Phase 8)
+  instead. Note: a *web* UI is in scope (Phase 15) — the non-goal
+  is a native terminal UI, not a UI altogether.
 - **A2A server**: smgglrs already serves Agent Cards; A2A orchestration
   belongs in smgglrs-flow, not as a separate service
-- **Desktop app**: Goose (or similar) serves as the frontend;
-  smgglrs handles GNOME integration (D-Bus notifications, tray)
+- **Desktop app**: No Electron/Tauri wrapper. The web UI (Phase 15)
+  runs in the browser. System tray + D-Bus for desktop integration.
+  Domain apps embed the chat widget (Phase 15e) rather than smgglrs
+  shipping a standalone desktop app
 - **Adopt rmcp**: Evaluated (2026-05-04). Our hand-rolled MCP types
   carry IFC labels and permissions extensions that rmcp doesn't
   support. Full spec coverage (Phase 9) closes the gap while

@@ -123,7 +123,7 @@ pub struct ParameterDef {
 }
 
 /// Definition of a task in a DAG.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskDefinition {
     /// Unique task identifier.
     pub id: String,
@@ -290,7 +290,7 @@ pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
 }
 
 /// A conditional back-edge that can route execution backward in the DAG.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackEdgeDefinition {
     /// Target task ID to re-execute.
     pub target: String,

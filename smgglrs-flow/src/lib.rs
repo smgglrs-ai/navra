@@ -22,6 +22,7 @@
 mod backedge;
 mod blackboard;
 mod builder;
+pub mod checkpoint;
 mod dag;
 mod definition;
 mod engine;
@@ -40,6 +41,7 @@ pub mod verification;
 pub mod yaml_loader;
 
 pub use backedge::{BackEdgeTracker, ConditionalEdge, EdgeCondition};
+pub use checkpoint::{CheckpointState, DagCheckpoint};
 pub use blackboard::{Blackboard, BlackboardEntry};
 pub use builder::FlowBuilder;
 pub use dag::DependencyGraph;
@@ -59,7 +61,11 @@ pub use recovery::{
     classify_failure, detect_circular_fix, FailureType, RecoveryAction, RecoveryStrategy,
 };
 pub use task::{Attempt, Task, TaskResult, TaskStatus};
-pub use validation::{validate_mandate, ValidationResult};
+pub use validation::{
+    validate_mandate, ValidationResult,
+    ExecutionTrace, TraceEvent, PrefixTreeAcceptor,
+    DominatorTree, extract_dominators, validate_against_dominators,
+};
 pub use verification::{
     verify_result, VerificationConfig, VerificationResult, VerificationThreshold,
     VerificationVerdict,

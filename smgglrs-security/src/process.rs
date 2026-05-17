@@ -19,6 +19,8 @@ pub struct ProcessEntry {
     pub did: Option<String>,
     /// Privilege ring level (None for legacy agents).
     pub ring: Option<u8>,
+    /// On-behalf-of human subject identifier.
+    pub obo_sub: Option<String>,
     /// Number of tool calls made.
     pub call_count: u64,
     /// Number of tool calls denied.
@@ -38,6 +40,7 @@ pub struct ProcessSnapshot {
     pub permissions: String,
     pub did: Option<String>,
     pub ring: Option<u8>,
+    pub obo_sub: Option<String>,
     pub call_count: u64,
     pub denied_count: u64,
     pub uptime_secs: u64,
@@ -58,6 +61,11 @@ impl ProcessTable {
 
     /// Record a tool call for an agent. Creates the entry if absent.
     pub fn record_call(&self, agent_name: &str, permissions: &str, did: Option<&str>, ring: Option<u8>, tool_name: &str) {
+        self.record_call_with_obo(agent_name, permissions, did, ring, tool_name, None);
+    }
+
+    /// Record a tool call with optional on-behalf-of human identity.
+    pub fn record_call_with_obo(&self, agent_name: &str, permissions: &str, did: Option<&str>, ring: Option<u8>, tool_name: &str, obo_sub: Option<&str>) {
         let mut entries = self.entries.write().unwrap();
         let now = Instant::now();
         let entry = entries
@@ -67,6 +75,7 @@ impl ProcessTable {
                 permissions: permissions.to_string(),
                 did: did.map(String::from),
                 ring,
+                obo_sub: obo_sub.map(String::from),
                 call_count: 0,
                 denied_count: 0,
                 connected_at: now,
@@ -80,6 +89,11 @@ impl ProcessTable {
 
     /// Record a denied tool call.
     pub fn record_denied(&self, agent_name: &str, permissions: &str, did: Option<&str>, ring: Option<u8>) {
+        self.record_denied_with_obo(agent_name, permissions, did, ring, None);
+    }
+
+    /// Record a denied tool call with optional on-behalf-of human identity.
+    pub fn record_denied_with_obo(&self, agent_name: &str, permissions: &str, did: Option<&str>, ring: Option<u8>, obo_sub: Option<&str>) {
         let mut entries = self.entries.write().unwrap();
         let now = Instant::now();
         let entry = entries
@@ -89,6 +103,7 @@ impl ProcessTable {
                 permissions: permissions.to_string(),
                 did: did.map(String::from),
                 ring,
+                obo_sub: obo_sub.map(String::from),
                 call_count: 0,
                 denied_count: 0,
                 connected_at: now,
@@ -120,6 +135,7 @@ impl ProcessTable {
                 permissions: e.permissions.clone(),
                 did: e.did.clone(),
                 ring: e.ring,
+                obo_sub: e.obo_sub.clone(),
                 call_count: e.call_count,
                 denied_count: e.denied_count,
                 uptime_secs: now.duration_since(e.connected_at).as_secs(),
@@ -201,5 +217,36 @@ mod tests {
     fn complete_nonexistent_is_noop() {
         let table = ProcessTable::new();
         table.complete_call("ghost", "tool"); // should not panic
+    }
+
+    #[test]
+    fn record_call_with_obo() {
+        let table = ProcessTable::new();
+        table.record_call_with_obo("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "file_read", Some("alice@example.com"));
+
+        let snap = table.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].obo_sub.as_deref(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn record_call_without_obo() {
+        let table = ProcessTable::new();
+        table.record_call("agent-1", "dev", None, None, "file_read");
+
+        let snap = table.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert!(snap[0].obo_sub.is_none());
+    }
+
+    #[test]
+    fn record_denied_with_obo() {
+        let table = ProcessTable::new();
+        table.record_denied_with_obo("agent-1", "dev", None, None, Some("bob@corp.com"));
+
+        let snap = table.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].obo_sub.as_deref(), Some("bob@corp.com"));
+        assert_eq!(snap[0].denied_count, 1);
     }
 }

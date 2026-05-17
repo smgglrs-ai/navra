@@ -9,7 +9,7 @@ use super::handlers::*;
 
 /// Shared state for the axum router.
 #[derive(Clone)]
-pub(super) struct AppState {
+pub(crate) struct AppState {
     pub server: Arc<McpServer>,
     pub broadcaster: SseBroadcaster,
     /// AID (Agent Identity & Discovery) record, served at /.well-known/agent.
@@ -22,6 +22,8 @@ pub(super) struct AppState {
     pub root_did: Option<String>,
     /// OAuth 2.0 provider (None = OAuth disabled).
     pub oauth: Option<Arc<smgglrs_security::auth::oauth::OAuthProvider>>,
+    /// Prometheus metrics registry.
+    pub metrics: Arc<crate::metrics::Metrics>,
 }
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
@@ -34,12 +36,15 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
         a2a_endpoint: None,
         root_did: None,
         oauth: None,
+        metrics: Arc::new(crate::metrics::Metrics::new()),
     };
     Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
+        .route("/ws", get(crate::transport::websocket::handle_ws_upgrade))
         .route("/.well-known/mcp.json", get(handle_server_card))
         .route("/sys/status", get(handle_sys_status))
+        .route("/metrics", get(handle_metrics))
         .with_state(state)
 }
 
@@ -56,12 +61,15 @@ pub fn build_router_with_broadcaster(
         a2a_endpoint: None,
         root_did: None,
         oauth: None,
+        metrics: Arc::new(crate::metrics::Metrics::new()),
     };
     Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
+        .route("/ws", get(crate::transport::websocket::handle_ws_upgrade))
         .route("/.well-known/mcp.json", get(handle_server_card))
         .route("/sys/status", get(handle_sys_status))
+        .route("/metrics", get(handle_metrics))
         .with_state(state)
 }
 
@@ -94,11 +102,14 @@ pub fn build_router_with_discovery(
         a2a_endpoint,
         root_did,
         oauth: None,
+        metrics: Arc::new(crate::metrics::Metrics::new()),
     };
 
     let mut router = Router::new()
         .route("/mcp", post(handle_post))
         .route("/mcp", get(handle_get))
+        .route("/ws", get(crate::transport::websocket::handle_ws_upgrade))
+        .route("/metrics", get(handle_metrics))
         .route("/.well-known/mcp.json", get(handle_server_card))
         .route("/v0.1/servers", get(handle_registry))
         .route("/sys/status", get(handle_sys_status));

@@ -6,30 +6,17 @@
 # Changes from 2025.1.0:
 #   - Version bump to 2026.1.0
 #   - SO version bump 2510 -> 2610
-#   - Add openvino-genai as OPENVINO_EXTRA_MODULES
-#   - Add openvino-tokenizers as OPENVINO_EXTRA_MODULES
-#   - New subpackages: openvino-genai, openvino-genai-devel,
-#     python3-openvino-genai, python3-openvino-tokenizers
-#   - NPU compiler sources will need updating (commit hashes TBD)
-#   - gcc 15 cstdint patches may be upstreamed — verify before applying
+#   - GenAI moved to separate openvino-genai.spec
+#   - NPU compiler updated to npu_ud_2026_12_1_rc1
+#   - gcc 15 cstdint patches dropped (upstreamed)
+#   - KeepConstsPrecision typo fix dropped (fixed upstream)
 #
 # Build:
 #   dnf builddep openvino.spec
 #   rpmbuild -ba openvino.spec
-#
-# TODO for the build agent:
-#   1. Fetch openvino 2026.1.0 tarball and verify sha256
-#   2. Identify matching oneDNN, MLAS, level-zero-npu-extensions,
-#      npu_compiler commits from 2026.1.0 tag's submodule pins
-#   3. Identify matching openvino.genai and openvino_tokenizers
-#      release tags compatible with 2026.1.0
-#   4. Verify which gcc 15 cstdint patches are still needed
-#   5. Update flatbuffers snapshot if needed
-#   6. Test build in mock
 
 %global so_ver 2610
 %global ov_version 2026.1.0
-%global genai_version 2026.1.0
 
 %global desc %{expand: \
 OpenVINO is an open-source toolkit for optimizing and deploying deep learning
@@ -46,46 +33,30 @@ License:        Apache-2.0 AND MIT AND BSL-1.0 AND HPND AND BSD-3-Clause AND (GP
 URL:            https://github.com/openvinotoolkit/openvino
 
 # --- Sources ---
-# Core OpenVINO
 Source0:        %{url}/archive/%{version}/%{name}-%{version}.tar.gz
 Source1:        dependencies.cmake
 Source2:        pyproject.toml
 
-# Bundled dependencies (update commit hashes from 2026.1.0 submodule pins)
-# TODO: replace these placeholder hashes with actual 2026.1.0 submodule commits
-Source3:        https://github.com/openvinotoolkit/oneDNN/archive/COMMIT/onednn-COMMIT.tar.gz
-Source4:        https://github.com/openvinotoolkit/mlas/archive/COMMIT/mlas-COMMIT.tar.gz
-Source5:        https://github.com/intel/level-zero-npu-extensions/archive/COMMIT/level-zero-npu-extensions-COMMIT.tar.gz
+# Bundled dependencies (from 2026.1.0 submodule pins)
+Source3:        https://github.com/openvinotoolkit/oneDNN/archive/6b6492b1ea9ef5ca9ff3c5c59ed71dcca683a446/onednn-6b6492b.tar.gz
+Source4:        https://github.com/openvinotoolkit/mlas/archive/d1bc25ec4660cddd87804fcf03b2411b5dfb2e94/mlas-d1bc25e.tar.gz
+Source5:        https://github.com/intel/level-zero-npu-extensions/archive/42768cc73e74f6d371bd9dd51b1860b07774e7ec/level-zero-npu-extensions-42768cc.tar.gz
 
-# NPU compiler and dependencies
-# TODO: identify the npu_compiler release tag for 2026.1.0
-Source6:        https://github.com/openvinotoolkit/npu_compiler/archive/RELEASE_TAG/npu_compiler-RELEASE_TAG.tar.gz
+# NPU compiler and dependencies (npu_ud_2026_12_1_rc1 targets OV commit
+# b7f9dbfa which is 227 commits behind 2026.1.0 — compatible)
+Source6:        https://github.com/openvinotoolkit/npu_compiler/archive/npu_ud_2026_12_1_rc1/npu_compiler-npu_ud_2026_12_1_rc1.tar.gz
 Source7:        npu-compiler-thirdparty-CMakeLists.txt
-Source8:        https://github.com/openvinotoolkit/npu_plugin_elf/archive/COMMIT/npu_plugin_elf-COMMIT.tar.gz
-Source9:        https://github.com/intel/npu-nn-cost-model/archive/COMMIT/npu-nn-cost-model-COMMIT.tar.gz
-Source10:       https://github.com/intel/npu-plugin-llvm/archive/COMMIT/npu-plugin-llvm-COMMIT.tar.gz
-Source11:       https://github.com/google/flatbuffers/archive/COMMIT/flatbuffers-COMMIT.tar.gz
-
-# OpenVINO GenAI (built as OPENVINO_EXTRA_MODULES)
-Source20:       https://github.com/openvinotoolkit/openvino.genai/archive/%{genai_version}/openvino.genai-%{genai_version}.tar.gz
-# OpenVINO Tokenizers (dependency of GenAI, also extra module)
-Source21:       https://github.com/openvinotoolkit/openvino_tokenizers/archive/%{genai_version}/openvino_tokenizers-%{genai_version}.tar.gz
+Source8:        https://github.com/openvinotoolkit/npu_plugin_elf/archive/82c444bcb9feb0f55fa33e18fbd711ec35426fba/npu_plugin_elf-82c444b.tar.gz
+Source9:        https://github.com/intel/npu-nn-cost-model/archive/33ef9a69b4e694ad5bfc521af829a9cc9ce19b4c/npu-nn-cost-model-33ef9a6.tar.gz
+Source10:       https://github.com/intel/npu-plugin-llvm/archive/cf3934f4e8ada928544a743481e037935a21e857/npu-plugin-llvm-cf3934f.tar.gz
+Source11:       https://github.com/google/flatbuffers/archive/595bf0007ab1929570c7671f091313c8fc20644e/flatbuffers-595bf00.tar.gz
 
 # --- Patches ---
-# Fedora-specific build fixes
 Patch0:         openvino-fedora.patch
 Patch1:         npu-level-zero.patch
 Patch2:         npu-compiler-disable-git.patch
 Patch3:         npu-compiler-fix-install.patch
 Patch4:         npu-compiler-vpux-driver-compiler.patch
-# TODO: check if gcc 15 cstdint patches are still needed in 2026.1.0
-# Patch5:       openvino-gcc15-cstdint.patch
-# GenAI pybind11 compat: def_readwrite does not support keep_alive in
-# pybind11 >= 2.13. Replace with def_property + explicit lambdas.
-Patch10:        genai-pybind11-keep-alive.patch
-# GenAI gguf format() template: GCC 16 strips instantiation from .so
-# when defined in .cpp with -fvisibility=hidden. Move to header.
-Patch11:        genai-gguf-format-template.patch
 
 ExclusiveArch:  x86_64
 
@@ -127,8 +98,6 @@ BuildRequires:  protobuf-devel
 BuildRequires:  opencv-devel
 BuildRequires:  pkgconfig(OpenCL)
 BuildRequires:  opencl-headers
-# GenAI additional deps
-BuildRequires:  jinja2-cli
 
 Requires:       lib%{name}-ir-frontend = %{version}
 Requires:       lib%{name}-pytorch-frontend = %{version}
@@ -238,44 +207,6 @@ Requires:       python3-numpy
 OpenVINO Python API allowing users to use the OpenVINO library in their
 Python code.
 
-# --- GenAI subpackages ---
-
-%package genai
-Summary:        OpenVINO GenAI library
-Requires:       %{name}%{?_isa} = %{version}-%{release}
-
-%description genai
-OpenVINO GenAI provides optimized pipelines for generative AI models
-including LLMs, image generation, and speech. Features continuous
-batching, speculative decoding (EAGLE-3), sparse attention, and KV
-cache management. Supports CPU, GPU, and NPU inference.
-
-%package genai-devel
-Summary:        Development files for OpenVINO GenAI
-Requires:       %{name}-genai%{?_isa} = %{version}-%{release}
-Requires:       %{name}-devel%{?_isa} = %{version}-%{release}
-
-%description genai-devel
-Headers and CMake config for building against the OpenVINO GenAI library.
-
-%package -n python3-%{name}-genai
-Summary:        OpenVINO GenAI Python API
-Requires:       python3-%{name} = %{version}-%{release}
-Requires:       %{name}-genai%{?_isa} = %{version}-%{release}
-
-%description -n python3-%{name}-genai
-Python bindings for OpenVINO GenAI providing LLMPipeline,
-WhisperPipeline, ImageGenerationPipeline and other high-level
-generative AI interfaces.
-
-%package -n python3-%{name}-tokenizers
-Summary:        OpenVINO Tokenizers
-Requires:       python3-%{name} = %{version}-%{release}
-
-%description -n python3-%{name}-tokenizers
-OpenVINO Tokenizers converts HuggingFace tokenizers to OpenVINO
-models for efficient text preprocessing on CPU, GPU, and NPU.
-
 # =====================================================================
 # Prep
 # =====================================================================
@@ -308,51 +239,33 @@ cp -r level-*/* src/plugins/intel_npu/thirdparty/level-zero-ext
 # Intel GPU plugin cache.json install path
 sed -i -e 's|CACHE_JSON_INSTALL_DIR ${OV_CPACK_PLUGINSDIR}|CACHE_JSON_INSTALL_DIR %{_datadir}/%{name}|g' src/plugins/intel_gpu/src/kernel_selector/CMakeLists.txt
 
-# TODO: verify gcc 15 cstdint patches are still needed in 2026.1.0
-# If the upstream fixed these, remove the sed lines below.
-# sed -i '/#include <vector>.*/a#include <cstdint>' ...
-
 # Intel NPU compiler
 tar xf %{SOURCE6} -C thirdparty
-rm -rf thirdparty/npu_compiler-*/thirdparty/*
-cp %{SOURCE7} thirdparty/npu_compiler-*/thirdparty/CMakeLists.txt
-%patch -d thirdparty/npu_compiler-* -P 2 -p1
-%patch -d thirdparty/npu_compiler-* -P 3 -p1
-%patch -d thirdparty/npu_compiler-* -P 4 -p1
-# ov::pass::KeepConstPrecision fix — verify still needed
-# sed -i -e 's|ov::pass::KeepConstsPrecision|ov::pass::KeepConstPrecision|g' thirdparty/npu_compiler-*/src/vpux_compiler/src/frontend/IE.cpp
+rm -rf thirdparty/npu_compiler-npu_ud_2026_12_1_rc1/thirdparty/*
+cp %{SOURCE7} thirdparty/npu_compiler-npu_ud_2026_12_1_rc1/thirdparty/CMakeLists.txt
+%patch -d thirdparty/npu_compiler-npu_ud_2026_12_1_rc1 -P 2 -p1
+%patch -d thirdparty/npu_compiler-npu_ud_2026_12_1_rc1 -P 3 -p1
+%patch -d thirdparty/npu_compiler-npu_ud_2026_12_1_rc1 -P 4 -p1
 # Disable npu_compiler tests
-sed -i '/^add_subdirectory(test)/s/^/#/' thirdparty/npu_compiler-*/src/vpux_driver_compiler/CMakeLists.txt
+sed -i '/^add_subdirectory(test)/s/^/#/' thirdparty/npu_compiler-npu_ud_2026_12_1_rc1/src/vpux_driver_compiler/CMakeLists.txt
 
 # Intel NPU compiler thirdparty deps
 tar xf %{SOURCE8}
-mv npu_plugin_elf-* thirdparty/npu_compiler-*/thirdparty/elf
+mv npu_plugin_elf-* thirdparty/npu_compiler-npu_ud_2026_12_1_rc1/thirdparty/elf
 tar xf %{SOURCE9}
-mv npu-nn-cost-model-* thirdparty/npu_compiler-*/thirdparty/vpucostmodel
+mv npu-nn-cost-model-* thirdparty/npu_compiler-npu_ud_2026_12_1_rc1/thirdparty/vpucostmodel
 tar xf %{SOURCE10}
-mv npu-plugin-llvm-* thirdparty/npu_compiler-*/thirdparty/llvm-project
-sed -i '/^include(CheckAtomic)/s/^/#/' thirdparty/npu_compiler-*/thirdparty/llvm-project/llvm/cmake/config-ix.cmake
+mv npu-plugin-llvm-* thirdparty/npu_compiler-npu_ud_2026_12_1_rc1/thirdparty/llvm-project
+sed -i '/^include(CheckAtomic)/s/^/#/' thirdparty/npu_compiler-npu_ud_2026_12_1_rc1/thirdparty/llvm-project/llvm/cmake/config-ix.cmake
 tar xf %{SOURCE11}
-mv flatbuffers-* thirdparty/npu_compiler-*/thirdparty/flatbuffers
-
-# OpenVINO GenAI (extra module)
-tar xf %{SOURCE20}
-mv openvino.genai-* openvino.genai
-%patch -d openvino.genai -P 10 -p1
-%patch -d openvino.genai -P 11 -p1
-
-# OpenVINO Tokenizers (extra module, used by GenAI)
-tar xf %{SOURCE21}
-mv openvino_tokenizers-* openvino_tokenizers
+mv flatbuffers-* thirdparty/npu_compiler-npu_ud_2026_12_1_rc1/thirdparty/flatbuffers
 
 # =====================================================================
 # Build
 # =====================================================================
 
 %build
-export NPU_PLUGIN_HOME="$PWD/thirdparty/npu_compiler-*"
-# Expand the glob for NPU_PLUGIN_HOME
-NPU_PLUGIN_HOME=$(echo $NPU_PLUGIN_HOME)
+export NPU_PLUGIN_HOME="$PWD/thirdparty/npu_compiler-npu_ud_2026_12_1_rc1"
 
 export CFLAGS="${CFLAGS/-Werror=format-security/} -Wno-error=stringop-overflow -Wno-error=maybe-uninitialized -Wno-error=dangling-reference -Wno-error=template-id-cdtor"
 export CXXFLAGS="${CXXFLAGS/-Werror=format-security/} -Wno-error=stringop-overflow -Wno-error=maybe-uninitialized -Wno-error=dangling-reference -Wno-error=template-id-cdtor"
@@ -431,7 +344,7 @@ export CXXFLAGS="${CXXFLAGS/-Werror=format-security/} -Wno-error=stringop-overfl
     -DENABLE_TESTS=OFF \
     -DBUILD_SHARED_LIBS=ON \
     -DBLAS_LIBRARIES=%{_libdir} \
-    -DOPENVINO_EXTRA_MODULES="$PWD/openvino.genai;$PWD/openvino_tokenizers;$NPU_PLUGIN_HOME" \
+    -DOPENVINO_EXTRA_MODULES="$NPU_PLUGIN_HOME" \
     -DDENABLE_PRIVATE_TESTS=OFF \
     -DENABLE_NPU_LSP_SERVER=OFF \
     -DENABLE_PREBUILT_LLVM_MLIR_LIBS=OFF \
@@ -538,24 +451,6 @@ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:%{buildroot}%{_libdir} PYTHONPATH=%{buildroot}%
 %{python3_sitearch}/%{name}
 %{python3_sitearch}/%{name}-%{version}.dist-info
 
-# --- GenAI files ---
-# TODO: verify exact library names and paths after first successful build
-
-%files genai
-%{_libdir}/lib%{name}_genai.so.%{genai_version}
-%{_libdir}/lib%{name}_genai.so.%{so_ver}
-
-%files genai-devel
-%{_libdir}/lib%{name}_genai.so
-%{_includedir}/%{name}/genai
-%{_libdir}/cmake/openvino_genai
-
-%files -n python3-%{name}-genai
-%{python3_sitearch}/%{name}_genai
-
-%files -n python3-%{name}-tokenizers
-%{python3_sitearch}/%{name}_tokenizers
-
 # =====================================================================
 # Changelog
 # =====================================================================
@@ -563,6 +458,3 @@ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:%{buildroot}%{_libdir} PYTHONPATH=%{buildroot}%
 %changelog
 * Thu May 08 2026 Fabien Dupont <fdupont@redhat.com> - 2026.1.0-1
 - Update to 2026.1.0
-- Add openvino-genai and openvino-tokenizers as extra modules
-- New subpackages: openvino-genai, openvino-genai-devel,
-  python3-openvino-genai, python3-openvino-tokenizers

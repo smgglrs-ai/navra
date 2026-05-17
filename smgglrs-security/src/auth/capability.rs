@@ -17,6 +17,22 @@ use crate::identity::CapSigner;
 /// Token version prefix.
 const TOKEN_PREFIX: &str = "smgglrs_cap_v1";
 
+/// On-behalf-of identity: the human this agent acts for.
+///
+/// Carries the human's identity from the root token through the
+/// entire delegation chain, enabling human -> agent accountability
+/// in audit trails. Set via RFC 8693 token exchange.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OboIdentity {
+    /// Human subject identifier (email, employee ID, etc.)
+    pub sub: String,
+    /// Identity provider that authenticated the human.
+    pub iss: String,
+    /// When the human authenticated (Unix timestamp, seconds).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_time: Option<i64>,
+}
+
 /// Set of capabilities granted by a token.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CapabilitySet {
@@ -53,6 +69,10 @@ pub struct CapabilityPayload {
     /// Parent token nonce (for delegation chains).
     #[serde(default)]
     pub parent: Option<[u8; 16]>,
+    /// On-behalf-of: the human identity this agent acts for.
+    /// Propagated through delegation chains; cannot be added during attenuation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub obo: Option<OboIdentity>,
 }
 
 /// Resolved capabilities extracted from a verified token.
@@ -66,6 +86,8 @@ pub struct ResolvedCapabilities {
     pub tools: Vec<String>,
     pub credentials: Vec<String>,
     pub expires_at: u64,
+    /// On-behalf-of human subject identifier, for audit trails.
+    pub obo_sub: Option<String>,
 }
 
 /// Revocation list for capability tokens.
@@ -203,6 +225,7 @@ pub fn resolve_capabilities(payload: &CapabilityPayload) -> ResolvedCapabilities
         tools: payload.cap.tools.clone(),
         credentials: payload.cap.credentials.clone(),
         expires_at: payload.exp,
+        obo_sub: payload.obo.as_ref().map(|o| o.sub.clone()),
     }
 }
 
@@ -256,6 +279,25 @@ pub fn validate_delegation(
         if !parent_creds.contains(cred.as_str()) {
             anyhow::bail!("credential escalation: child has '{}' not in parent", cred);
         }
+    }
+
+    // OBO identity: must be inherited, never added during attenuation.
+    // If the parent has no obo, the child must not introduce one.
+    // If the parent has obo, the child must carry the same identity.
+    match (&parent.obo, &child.obo) {
+        (None, Some(_)) => {
+            anyhow::bail!("obo escalation: child introduces obo identity not present in parent");
+        }
+        (Some(parent_obo), Some(child_obo)) => {
+            if parent_obo.sub != child_obo.sub || parent_obo.iss != child_obo.iss {
+                anyhow::bail!(
+                    "obo mismatch: child obo (sub={}, iss={}) differs from parent (sub={}, iss={})",
+                    child_obo.sub, child_obo.iss, parent_obo.sub, parent_obo.iss
+                );
+            }
+        }
+        _ => {} // (Some, None) is allowed (child drops obo — unusual but not an escalation)
+                // (None, None) is the common case
     }
 
     // Depth check: max_depth indicates how many more delegations are allowed.
@@ -314,6 +356,7 @@ pub fn build_payload(
         exp: now + ttl_secs,
         nonce: generate_nonce(),
         parent: None,
+        obo: None,
     }
 }
 
@@ -403,6 +446,7 @@ pub fn build_delegated_payload(
         exp: effective_exp,
         nonce: generate_nonce(),
         parent: Some(parent.nonce),
+        obo: parent.obo.clone(),
     })
 }
 
@@ -589,6 +633,7 @@ mod tests {
             exp: parent.exp - 100,
             nonce: generate_nonce(),
             parent: Some(parent.nonce),
+            obo: None,
         };
 
         assert!(validate_delegation(&parent, &child, 3).is_ok());
@@ -642,6 +687,7 @@ mod tests {
             exp: parent.exp,
             nonce: generate_nonce(),
             parent: Some(parent.nonce),
+            obo: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -668,6 +714,7 @@ mod tests {
             exp: parent.exp,
             nonce: generate_nonce(),
             parent: Some(parent.nonce),
+            obo: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -917,6 +964,179 @@ mod tests {
 
         // decode_token() without revocation list still works
         assert!(decode_token(&token, &signer).is_ok());
+    }
+
+    // --- OBO identity tests ---
+
+    fn test_obo() -> OboIdentity {
+        OboIdentity {
+            sub: "alice@example.com".to_string(),
+            iss: "https://idp.example.com".to_string(),
+            auth_time: Some(1700000000),
+        }
+    }
+
+    #[test]
+    fn obo_roundtrip_serialization() {
+        let signer = Ed25519Signer::generate();
+        let mut payload = test_payload(&signer);
+        payload.obo = Some(test_obo());
+
+        let token = encode_token(&payload, &signer).unwrap();
+        let decoded = decode_token(&token, &signer).unwrap();
+
+        let obo = decoded.obo.unwrap();
+        assert_eq!(obo.sub, "alice@example.com");
+        assert_eq!(obo.iss, "https://idp.example.com");
+        assert_eq!(obo.auth_time, Some(1700000000));
+    }
+
+    #[test]
+    fn obo_none_backward_compat() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer);
+        assert!(payload.obo.is_none());
+
+        let token = encode_token(&payload, &signer).unwrap();
+        let decoded = decode_token(&token, &signer).unwrap();
+        assert!(decoded.obo.is_none());
+    }
+
+    #[test]
+    fn obo_preserved_through_delegation() {
+        let signer = Ed25519Signer::generate();
+        let mut parent = test_payload(&signer);
+        parent.obo = Some(test_obo());
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:teammate:team-1:worker",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        // OBO must be propagated from parent
+        let child_obo = child.obo.as_ref().unwrap();
+        assert_eq!(child_obo.sub, "alice@example.com");
+        assert_eq!(child_obo.iss, "https://idp.example.com");
+        assert_eq!(child_obo.auth_time, Some(1700000000));
+
+        // Validate delegation passes
+        assert!(validate_delegation(&parent, &child, 3).is_ok());
+    }
+
+    #[test]
+    fn obo_cannot_be_added_during_attenuation() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer); // no obo
+
+        let mut child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec![],
+                operations: vec!["read".to_string()],
+                tools: vec![],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: Some(test_obo()), // trying to inject obo
+        };
+
+        let err = validate_delegation(&parent, &child, 3).unwrap_err();
+        assert!(err.to_string().contains("obo escalation"));
+    }
+
+    #[test]
+    fn obo_mismatch_rejected_during_delegation() {
+        let signer = Ed25519Signer::generate();
+        let mut parent = test_payload(&signer);
+        parent.obo = Some(test_obo());
+
+        let mut child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec![],
+                operations: vec!["read".to_string()],
+                tools: vec![],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: Some(OboIdentity {
+                sub: "bob@evil.com".to_string(),
+                iss: "https://evil.com".to_string(),
+                auth_time: None,
+            }),
+        };
+
+        let err = validate_delegation(&parent, &child, 3).unwrap_err();
+        assert!(err.to_string().contains("obo mismatch"));
+    }
+
+    #[test]
+    fn obo_resolved_in_capabilities() {
+        let signer = Ed25519Signer::generate();
+        let mut payload = test_payload(&signer);
+        payload.obo = Some(test_obo());
+
+        let resolved = resolve_capabilities(&payload);
+        assert_eq!(resolved.obo_sub.as_deref(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn obo_none_in_resolved_capabilities() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer);
+
+        let resolved = resolve_capabilities(&payload);
+        assert!(resolved.obo_sub.is_none());
+    }
+
+    #[test]
+    fn obo_multi_hop_delegation_preserves() {
+        let signer = Ed25519Signer::generate();
+        let mut root = test_payload(&signer);
+        root.obo = Some(test_obo());
+
+        // First delegation
+        let child1 = build_delegated_payload(
+            &root,
+            "did:agent:child1",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+        assert!(child1.obo.is_some());
+
+        // Second delegation (grandchild)
+        let child2 = build_delegated_payload(
+            &child1,
+            "did:agent:child2",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            3,
+            300,
+        )
+        .unwrap();
+        let obo = child2.obo.unwrap();
+        assert_eq!(obo.sub, "alice@example.com");
+        assert_eq!(obo.iss, "https://idp.example.com");
     }
 }
 
