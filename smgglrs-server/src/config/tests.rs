@@ -366,3 +366,68 @@ tcp = "127.0.0.1:9315"
     let config: Config = toml::from_str(toml).unwrap();
     assert!(config.pii_patterns.is_empty());
 }
+
+#[test]
+fn parse_trigger_config() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[[triggers]]
+type = "webhook"
+path = "/hook/deploy"
+secret = "my-webhook-secret"
+flow_name = "review"
+
+[[triggers]]
+type = "cron"
+schedule = "0 9 * * 1-5"
+flow_name = "daily-review"
+
+[[triggers]]
+type = "file_watch"
+path = "~/Documents/inbox"
+pattern = "*.pdf"
+flow_name = "process-document"
+debounce_ms = 1000
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert_eq!(config.triggers.len(), 3);
+
+    match &config.triggers[0] {
+        crate::triggers::TriggerConfig::Webhook { path, secret, flow_name } => {
+            assert_eq!(path, "/hook/deploy");
+            assert_eq!(secret.as_deref(), Some("my-webhook-secret"));
+            assert_eq!(flow_name, "review");
+        }
+        _ => panic!("Expected Webhook trigger"),
+    }
+
+    match &config.triggers[1] {
+        crate::triggers::TriggerConfig::Cron { schedule, flow_name } => {
+            assert_eq!(schedule, "0 9 * * 1-5");
+            assert_eq!(flow_name, "daily-review");
+        }
+        _ => panic!("Expected Cron trigger"),
+    }
+
+    match &config.triggers[2] {
+        crate::triggers::TriggerConfig::FileWatch { path, pattern, flow_name, debounce_ms } => {
+            assert_eq!(path, "~/Documents/inbox");
+            assert_eq!(pattern.as_deref(), Some("*.pdf"));
+            assert_eq!(flow_name, "process-document");
+            assert_eq!(*debounce_ms, Some(1000));
+        }
+        _ => panic!("Expected FileWatch trigger"),
+    }
+}
+
+#[test]
+fn triggers_default_empty() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert!(config.triggers.is_empty());
+}
