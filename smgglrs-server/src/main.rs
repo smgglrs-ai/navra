@@ -3260,6 +3260,41 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         builder = builder.hook(smgglrs_core::hooks::StatisticalGuardrailHook::new(hook_config));
     }
 
+    // Memory extraction hook (observation-only, stores tool results as knowledge)
+    if let Some(ref ks) = knowledge_store {
+        struct KnowledgeExtractionStore(Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>);
+        impl smgglrs_core::hooks::ExtractionStore for KnowledgeExtractionStore {
+            fn store_extraction(&self, title: &str, content: &str, session_id: &str, tags: &[String]) {
+                if let Ok(store) = self.0.lock() {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    let entry = smgglrs_memory::MemoryEntry {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        memory_type: smgglrs_memory::MemoryType::Fact,
+                        title: title.to_string(),
+                        content: content.to_string(),
+                        tags: tags.to_vec(),
+                        created_at: now,
+                        updated_at: None,
+                    };
+                    let scope = smgglrs_memory::MemoryScope {
+                        session_id: Some(session_id.to_string()),
+                        ..Default::default()
+                    };
+                    let _ = store.store_scoped(&entry, &scope, None);
+                }
+            }
+        }
+        let hook = smgglrs_core::hooks::MemoryExtractionHook::new(
+            Arc::new(KnowledgeExtractionStore(Arc::clone(ks))),
+            smgglrs_core::hooks::MemoryExtractionConfig::default(),
+        );
+        builder = builder.hook(hook);
+        tracing::info!("Memory extraction hook enabled");
+    }
+
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
     tracing::info!(
