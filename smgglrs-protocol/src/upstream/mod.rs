@@ -8,11 +8,13 @@ pub mod http;
 pub mod retry;
 pub mod sse;
 pub mod stdio;
+pub mod tls;
 mod transport;
 #[cfg(feature = "webmcp")]
 pub mod webmcp;
 
 pub use retry::{RetryConfig, TransportFactory};
+pub use tls::TlsConfig;
 pub use transport::Transport;
 
 use crate::mcp::{
@@ -119,9 +121,29 @@ impl Upstream {
         Self::connect(name, transport).await
     }
 
+    /// Connect via HTTP with TLS configuration and initialize.
+    pub async fn http_with_tls(
+        name: &str,
+        url: &str,
+        tls: &TlsConfig,
+    ) -> Result<Self, UpstreamError> {
+        let transport = http::HttpTransport::with_tls(name, url, tls)?;
+        Self::connect(name, transport).await
+    }
+
     /// Connect via SSE and initialize.
     pub async fn sse(name: &str, url: &str) -> Result<Self, UpstreamError> {
         let transport = sse::SseTransport::new(name, url);
+        Self::connect(name, transport).await
+    }
+
+    /// Connect via SSE with TLS configuration and initialize.
+    pub async fn sse_with_tls(
+        name: &str,
+        url: &str,
+        tls: &TlsConfig,
+    ) -> Result<Self, UpstreamError> {
+        let transport = sse::SseTransport::with_tls(name, url, tls)?;
         Self::connect(name, transport).await
     }
 
@@ -149,6 +171,23 @@ impl Upstream {
         config: RetryConfig,
     ) -> Result<Self, UpstreamError> {
         let factory = retry::HttpTransportFactory::new(name, url);
+        let transport = retry::ResilientTransport::from_factory(
+            name,
+            Box::new(factory),
+            config,
+        )
+        .await?;
+        Self::connect(name, transport).await
+    }
+
+    /// Connect via HTTP with TLS and resilient reconnection.
+    pub async fn http_resilient_with_tls(
+        name: &str,
+        url: &str,
+        tls: &TlsConfig,
+        config: RetryConfig,
+    ) -> Result<Self, UpstreamError> {
+        let factory = retry::HttpTransportFactory::with_tls(name, url, tls);
         let transport = retry::ResilientTransport::from_factory(
             name,
             Box::new(factory),
@@ -186,6 +225,23 @@ impl Upstream {
         config: RetryConfig,
     ) -> Result<Self, UpstreamError> {
         let factory = retry::SseTransportFactory::new(name, url);
+        let transport = retry::ResilientTransport::from_factory(
+            name,
+            Box::new(factory),
+            config,
+        )
+        .await?;
+        Self::connect(name, transport).await
+    }
+
+    /// Connect via SSE with TLS and resilient reconnection.
+    pub async fn sse_resilient_with_tls(
+        name: &str,
+        url: &str,
+        tls: &TlsConfig,
+        config: RetryConfig,
+    ) -> Result<Self, UpstreamError> {
+        let factory = retry::SseTransportFactory::with_tls(name, url, tls);
         let transport = retry::ResilientTransport::from_factory(
             name,
             Box::new(factory),
