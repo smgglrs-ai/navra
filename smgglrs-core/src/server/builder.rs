@@ -31,6 +31,7 @@ pub struct McpServerBuilder {
     ifc_read_clearances: Option<HashMap<String, crate::ifc::ReadClearance>>,
     trusted_paths: Option<HashMap<String, Vec<String>>>,
     session_store: Option<SessionStore>,
+    process_table: Option<crate::process::ProcessTable>,
     blackbox: Option<crate::blackbox::Blackbox>,
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
     #[cfg(feature = "cedar")]
@@ -56,6 +57,7 @@ impl McpServerBuilder {
             ifc_read_clearances: None,
             trusted_paths: None,
             session_store: None,
+            process_table: None,
             blackbox: None,
             broadcaster: None,
             #[cfg(feature = "cedar")]
@@ -303,6 +305,13 @@ impl McpServerBuilder {
         self
     }
 
+    /// Use a pre-created process table (e.g. for sharing with resource handlers).
+    /// If not set, a new empty table is created during build.
+    pub fn process_table(mut self, table: crate::process::ProcessTable) -> Self {
+        self.process_table = Some(table);
+        self
+    }
+
     /// Opt in to unauthenticated mode. Required when no authenticator
     /// is configured — prevents silent fallback to open access.
     pub fn allow_anonymous(mut self) -> Self {
@@ -470,7 +479,7 @@ impl McpServerBuilder {
             hooks,
             paused: Arc::new(AtomicBool::new(false)),
             task_store: crate::a2a::TaskStore::new(),
-            process_table: crate::process::ProcessTable::new(),
+            process_table: self.process_table.unwrap_or_default(),
             quota_engine: self.quota_engine.unwrap_or_default(),
             ifc_policies: self.ifc_policies.unwrap_or_default(),
             ifc_read_clearances: self.ifc_read_clearances.unwrap_or_default(),

@@ -7,4 +7,3 @@ smgglrs-ui/node_modules/
 smgglrs-server/ui-dist/
 smgglrs-server/src/ui_assets_gen.rs
 .claude/worktrees/
-smgglrs-ui/
