@@ -3,6 +3,7 @@
 //! Sends JSON-RPC requests as POST to the upstream URL and reads
 //! JSON-RPC responses from the response body.
 
+use super::tls::TlsConfig;
 use super::transport::Transport;
 use super::UpstreamError;
 use async_trait::async_trait;
@@ -28,6 +29,21 @@ impl HttpTransport {
             session_id: None,
             auth_token: None,
         }
+    }
+
+    /// Create an HTTP transport with TLS configuration.
+    ///
+    /// Builds a reqwest client configured with the given TLS settings
+    /// (custom CA, client certs, skip-verify).
+    pub fn with_tls(name: &str, url: &str, tls: &TlsConfig) -> Result<Self, UpstreamError> {
+        let client = tls.build_client(name)?;
+        Ok(Self {
+            name: name.to_string(),
+            url: url.to_string(),
+            client,
+            session_id: None,
+            auth_token: None,
+        })
     }
 
     /// Set an authentication token (sent as `Authorization: Bearer <token>`).

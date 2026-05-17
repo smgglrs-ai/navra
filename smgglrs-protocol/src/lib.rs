@@ -43,4 +43,4 @@ pub use mcp::{
     NOTIFY_RESOURCES_UPDATED, NOTIFY_PROMPTS_LIST_CHANGED,
     NOTIFY_PROGRESS, NOTIFY_INITIALIZED,
 };
-pub use upstream::{RetryConfig, Upstream};
+pub use upstream::{RetryConfig, TlsConfig, Upstream};
