@@ -11,6 +11,7 @@ mod memory_tools;
 mod plan_execute;
 mod registry_tools;
 mod team_tools;
+mod triggers;
 mod tray;
 mod ui;
 mod ui_agent;
@@ -2087,6 +2088,10 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         tracing::info!("Registered flow orchestration tools (flow_start, flow_status, flow_result, flow_list, flow_escalate)");
     }
 
+    // Trigger infrastructure: initialized after flow_ctx is built.
+    let mut _trigger_registry: Option<triggers::TriggerRegistry> = None;
+    let mut trigger_webhook_router: Option<axum::Router> = None;
+
     // Register team orchestration tools
     {
         // Pre-fetch Ollama model metadata for all locally running models.
@@ -2582,6 +2587,20 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         );
 
         tracing::info!("Registered flow tools (flow_escalate, flow_resume)");
+
+        // --- Event-driven triggers ---
+        if !cfg.triggers.is_empty() {
+            let (registry, webhook_router) = triggers::TriggerRegistry::start(
+                &cfg.triggers,
+                Arc::clone(&flow_ctx),
+            );
+            tracing::info!(
+                count = cfg.triggers.len(),
+                "Trigger infrastructure started"
+            );
+            _trigger_registry = Some(registry);
+            trigger_webhook_router = Some(webhook_router);
+        }
     }
 
     // --- Knowledge memory tools ---
@@ -3390,6 +3409,14 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             let acp_router = smgglrs_core::transport::build_acp_router(server.clone());
             let router = router.merge(acp_router);
             tracing::info!("ACP endpoint at POST /acp");
+
+            // --- Webhook triggers ---
+            let router = if let Some(webhook_router) = trigger_webhook_router.take() {
+                tracing::info!("Webhook trigger routes merged at /hook/{{name}}");
+                router.merge(webhook_router)
+            } else {
+                router
+            };
 
             // --- Web UI: shared state + API routes ---
             // Detect first available Ollama model for UI chat fallback

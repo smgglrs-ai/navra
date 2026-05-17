@@ -360,7 +360,7 @@ pub(crate) async fn handle_agentic_chat(
         let mut client = McpClient::new(upstream);
 
         // Configure tool loop
-        let config = ToolLoopConfig {
+        let mut config = ToolLoopConfig {
             max_iterations,
             system_prompt,
             temperature: Some(0.7),
@@ -373,7 +373,7 @@ pub(crate) async fn handle_agentic_chat(
             model.as_ref(),
             &mut client,
             &prompt,
-            &config,
+            &mut config,
             run_id,
         )
         .await;
