@@ -1121,6 +1121,14 @@ async fn run_dag_execution(
     let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut total = task_defs.len();
 
+    let gpu_handle = ctx.audit_log.as_ref().map(|audit| {
+        spawn_gpu_sampler(
+            std::sync::Arc::clone(audit),
+            flow_id.to_string(),
+            std::time::Duration::from_secs(5),
+        )
+    });
+
     let project_file_tree = compute_file_tree(&ctx.docs_root);
     let bb_start_seq = current_bb_seq();
     let max_parallel = ctx.budget_cfg.max_parallel;
@@ -1374,6 +1382,10 @@ async fn run_dag_execution(
         } else {
             tracing::debug!(flow_id = %flow_id, "Checkpoint deleted (flow complete)");
         }
+    }
+
+    if let Some(handle) = gpu_handle {
+        handle.abort();
     }
 
     ctx.flow_registry.complete(flow_id, final_output.clone());
