@@ -500,6 +500,7 @@ impl McpServerBuilder {
             session_log_levels: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            metrics: std::sync::Arc::new(crate::metrics::Metrics::new()),
         }
     }
 }

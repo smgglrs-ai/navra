@@ -66,6 +66,8 @@ pub struct McpServer {
     session_log_levels: Arc<RwLock<HashMap<String, smgglrs_protocol::LoggingLevel>>>,
     /// Tool disclosure rules per permission set (progressive tool disclosure).
     tool_disclosure: HashMap<String, smgglrs_security::permissions::ToolDisclosure>,
+    /// Prometheus metrics counters.
+    pub(crate) metrics: Arc<crate::metrics::Metrics>,
     /// Optional Cedar policy engine for conditional access control.
     #[cfg(feature = "cedar")]
     cedar_engine: Option<smgglrs_security::permissions::CedarEngine>,
