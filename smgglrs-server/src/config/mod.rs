@@ -72,6 +72,9 @@ pub struct Config {
     /// Cost-aware model routing configuration.
     #[serde(default)]
     pub routing: smgglrs_core::hooks::RoutingConfig,
+    /// Event-driven triggers that start flows automatically.
+    #[serde(default)]
+    pub triggers: Vec<crate::triggers::TriggerConfig>,
 }
 
 impl Config {
@@ -318,6 +321,7 @@ impl Default for Config {
             grpc_modules: Vec::new(),
             statistical: StatisticalGuardrailServerConfig::default(),
             routing: smgglrs_core::hooks::RoutingConfig::default(),
+            triggers: Vec::new(),
         }
     }
 }
