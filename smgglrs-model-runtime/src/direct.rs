@@ -77,6 +77,14 @@ impl ModelRuntime for DirectRuntime {
                 cmd.arg("--cache-type-v").arg(cache_type.as_llama_arg());
             }
 
+            if let Some(ref spec) = config.speculative {
+                cmd.arg("--model-draft").arg(&spec.draft_model);
+                cmd.arg("--draft-max").arg(spec.draft_tokens.to_string());
+                if spec.draft_min_p > 0.0 {
+                    cmd.arg("--draft-min-p").arg(spec.draft_min_p.to_string());
+                }
+            }
+
             for arg in &config.extra_args {
                 cmd.arg(arg);
             }

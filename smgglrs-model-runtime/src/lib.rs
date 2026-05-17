@@ -118,8 +118,21 @@ pub struct ServeConfig {
     /// KV cache quantization type. When set, passes `--cache-type-k`
     /// and `--cache-type-v` to llama-server. None = llama-server default (f16).
     pub cache_type: Option<KvCacheType>,
+    /// Speculative decoding: use a draft model for faster generation.
+    pub speculative: Option<SpeculativeConfig>,
     /// Additional backend-specific arguments.
     pub extra_args: Vec<String>,
+}
+
+/// Speculative decoding configuration.
+#[derive(Debug, Clone)]
+pub struct SpeculativeConfig {
+    /// Path to the draft model (smaller, faster).
+    pub draft_model: PathBuf,
+    /// Number of draft tokens per verification step (default: 5).
+    pub draft_tokens: u32,
+    /// Minimum probability for draft acceptance (0.0 = accept all).
+    pub draft_min_p: f32,
 }
 
 impl Default for ServeConfig {
@@ -132,6 +145,7 @@ impl Default for ServeConfig {
             context_size: 4096,
             parallel: 1,
             cache_type: None,
+            speculative: None,
             extra_args: Vec::new(),
         }
     }
