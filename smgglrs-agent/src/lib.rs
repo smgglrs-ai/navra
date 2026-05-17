@@ -43,6 +43,8 @@ mod convert;
 mod error;
 /// Upstream MCP prompt resolution utilities.
 pub mod resolve;
+/// Cooperative signal delivery for running agents.
+pub mod signal;
 mod tool_loop;
 /// Hermes-format trace export for agent conversations.
 pub mod trace;
@@ -53,6 +55,7 @@ pub use client::McpClient;
 pub use error::AgentError;
 pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};
 pub use action::{AgentAction, ActionRecord, RiskLevel};
+pub use signal::{AgentSignal, SignalHandle, SignalReceiver};
 pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
 pub use trace::{HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, TraceExporter};
 
