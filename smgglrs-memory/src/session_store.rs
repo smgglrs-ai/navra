@@ -189,6 +189,54 @@ impl SessionBackend for SqliteSessionBackend {
         let cutoff = Self::now_epoch() - max_age_secs as i64;
         let _ = db.execute("DELETE FROM sessions WHERE last_accessed < ?1", [cutoff]);
     }
+
+    fn list_all(&self) -> Vec<Session> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = match db.prepare(
+            "SELECT id, agent_name, agent_permissions, agent_signing_key, agent_did,
+                    client_name, client_version, initialized,
+                    integrity, confidentiality, created_at, last_accessed
+             FROM sessions ORDER BY created_at",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        stmt.query_map([], |row| {
+            let integrity_str: String = row.get(8)?;
+            let conf_str: String = row.get(9)?;
+            Ok(Session {
+                id: row.get(0)?,
+                agent: AgentIdentity {
+                    name: row.get(1)?,
+                    permissions: row.get(2)?,
+                    signing_key: row.get(3)?,
+                    did: row.get(4)?,
+                    capabilities: None,
+                },
+                client_info: ClientInfo {
+                    name: row.get(5)?,
+                    version: row.get(6)?,
+                },
+                initialized: row.get::<_, i32>(7)? != 0,
+                context_label: DataLabel {
+                    integrity: if integrity_str == "Untrusted" {
+                        Integrity::Untrusted
+                    } else {
+                        Integrity::Trusted
+                    },
+                    confidentiality: match conf_str.as_str() {
+                        "Secret" => Confidentiality::Secret,
+                        "Sensitive" => Confidentiality::Sensitive,
+                        _ => Confidentiality::Public,
+                    },
+                },
+                created_at: row.get(10)?,
+                last_accessed: row.get(11)?,
+            })
+        })
+        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -290,5 +338,24 @@ mod tests {
         store.create(test_session("b"));
         store.create(test_session("c"));
         assert_eq!(store.count(), 3);
+    }
+
+    #[test]
+    fn list_all_returns_all_sessions() {
+        let store = SqliteSessionBackend::open_memory().unwrap();
+        store.create(test_session("x"));
+        store.create(test_session("y"));
+        let all = store.list_all();
+        assert_eq!(all.len(), 2);
+        let ids: std::collections::HashSet<&str> =
+            all.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains("x"));
+        assert!(ids.contains("y"));
+    }
+
+    #[test]
+    fn list_all_empty() {
+        let store = SqliteSessionBackend::open_memory().unwrap();
+        assert!(store.list_all().is_empty());
     }
 }

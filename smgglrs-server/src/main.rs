@@ -506,10 +506,17 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     }
 
     // Build server, registering enabled modules
+    // Shared process table — created early so kernel resource handlers can capture it.
+    let process_table = smgglrs_core::process::ProcessTable::new();
+
+    // Shared session store — created early so kernel resource handlers can capture it.
+    let session_store: smgglrs_core::session::SessionStore;
+
     let mut builder = smgglrs_core::McpServer::builder()
         .name("smgglrs")
         .version(env!("CARGO_PKG_VERSION"))
-        .hook_timeout(std::time::Duration::from_secs(cfg.server.hook_timeout_secs));
+        .hook_timeout(std::time::Duration::from_secs(cfg.server.hook_timeout_secs))
+        .process_table(process_table.clone());
 
     // Persistent session store (SQLite) — sessions survive restarts
     {
@@ -528,6 +535,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 let store = smgglrs_core::session::SessionStore::with_backend(
                     std::sync::Arc::new(backend),
                 );
+                session_store = store.clone();
                 builder = builder.session_store(store);
                 tracing::info!(
                     path = %session_db_path.display(),
@@ -540,6 +548,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     error = %e,
                     "Failed to open session DB, falling back to in-memory sessions"
                 );
+                session_store = smgglrs_core::session::SessionStore::new();
+                builder = builder.session_store(session_store.clone());
             }
         }
     }
@@ -2819,6 +2829,198 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         tracing::info!("Registered flow:// resources (backed by audit.db)");
     }
 
+    // --- Kernel introspection resources (smgglrs://) ---
+    // These expose gateway internal state to agents via MCP resources/read.
+    let boot_instant = std::time::Instant::now();
+
+    // smgglrs://proc — Process table (active agents, call counts)
+    {
+        let pt = process_table.clone();
+        builder = builder.resource(
+            smgglrs_core::protocol::ResourceDefinition {
+                uri: "smgglrs://proc".to_string(),
+                name: "Process Table".to_string(),
+                description: Some("Active agent sessions and call counts".to_string()),
+                mime_type: Some("application/json".to_string()),
+                size: None,
+            },
+            Arc::new(move |uri: String| {
+                let pt = pt.clone();
+                Box::pin(async move {
+                    let agents = pt.snapshot();
+                    let json = serde_json::json!({ "agents": agents });
+                    smgglrs_core::protocol::ReadResourceResult {
+                        contents: vec![smgglrs_core::protocol::ResourceContent {
+                            uri,
+                            mime_type: Some("application/json".to_string()),
+                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
+                            blob: None,
+                        }],
+                    }
+                })
+            }),
+        );
+    }
+
+    // smgglrs://sessions — Active sessions
+    {
+        let ss = session_store.clone();
+        builder = builder.resource(
+            smgglrs_core::protocol::ResourceDefinition {
+                uri: "smgglrs://sessions".to_string(),
+                name: "Active Sessions".to_string(),
+                description: Some("List of active MCP sessions".to_string()),
+                mime_type: Some("application/json".to_string()),
+                size: None,
+            },
+            Arc::new(move |uri: String| {
+                let ss = ss.clone();
+                Box::pin(async move {
+                    let sessions = ss.list_all();
+                    let count = sessions.len();
+                    let session_list: Vec<serde_json::Value> = sessions
+                        .iter()
+                        .map(|s| {
+                            serde_json::json!({
+                                "id": s.id,
+                                "agent": s.agent.name,
+                                "created_at": s.created_at,
+                            })
+                        })
+                        .collect();
+                    let json = serde_json::json!({
+                        "count": count,
+                        "sessions": session_list,
+                    });
+                    smgglrs_core::protocol::ReadResourceResult {
+                        contents: vec![smgglrs_core::protocol::ResourceContent {
+                            uri,
+                            mime_type: Some("application/json".to_string()),
+                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
+                            blob: None,
+                        }],
+                    }
+                })
+            }),
+        );
+    }
+
+    // smgglrs://metrics — Gateway metrics summary
+    {
+        let pt = process_table.clone();
+        let ss = session_store.clone();
+        let boot = boot_instant;
+        builder = builder.resource(
+            smgglrs_core::protocol::ResourceDefinition {
+                uri: "smgglrs://metrics".to_string(),
+                name: "Gateway Metrics".to_string(),
+                description: Some("Gateway metrics: call counts, sessions, uptime".to_string()),
+                mime_type: Some("text/plain".to_string()),
+                size: None,
+            },
+            Arc::new(move |uri: String| {
+                let pt = pt.clone();
+                let ss = ss.clone();
+                Box::pin(async move {
+                    let snapshot = pt.snapshot();
+                    let total_calls: u64 = snapshot.iter().map(|a| a.call_count).sum();
+                    let total_denied: u64 = snapshot.iter().map(|a| a.denied_count).sum();
+                    let session_count = ss.count();
+                    let uptime = boot.elapsed().as_secs();
+                    let text = format!(
+                        "# smgglrs gateway metrics\n\
+                         smgglrs_uptime_seconds {uptime}\n\
+                         smgglrs_sessions_active {session_count}\n\
+                         smgglrs_agents_active {}\n\
+                         smgglrs_tool_calls_total {total_calls}\n\
+                         smgglrs_tool_calls_denied_total {total_denied}\n",
+                        snapshot.len(),
+                    );
+                    smgglrs_core::protocol::ReadResourceResult {
+                        contents: vec![smgglrs_core::protocol::ResourceContent {
+                            uri,
+                            mime_type: Some("text/plain".to_string()),
+                            text: Some(text),
+                            blob: None,
+                        }],
+                    }
+                })
+            }),
+        );
+    }
+
+    // smgglrs://tools — Registered tool list (uses OnceLock, populated after build)
+    {
+        let cell = Arc::clone(&server_cell);
+        builder = builder.resource(
+            smgglrs_core::protocol::ResourceDefinition {
+                uri: "smgglrs://tools".to_string(),
+                name: "Registered Tools".to_string(),
+                description: Some("List of all registered MCP tools".to_string()),
+                mime_type: Some("application/json".to_string()),
+                size: None,
+            },
+            Arc::new(move |uri: String| {
+                let cell = Arc::clone(&cell);
+                Box::pin(async move {
+                    let (count, tools) = match cell.get() {
+                        Some(server) => {
+                            let names = server.tool_names();
+                            (names.len(), names)
+                        }
+                        None => (0, vec!["(server not yet initialized)".to_string()]),
+                    };
+                    let json = serde_json::json!({
+                        "count": count,
+                        "tools": tools,
+                    });
+                    smgglrs_core::protocol::ReadResourceResult {
+                        contents: vec![smgglrs_core::protocol::ResourceContent {
+                            uri,
+                            mime_type: Some("application/json".to_string()),
+                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
+                            blob: None,
+                        }],
+                    }
+                })
+            }),
+        );
+    }
+
+    // smgglrs://version — Server version info
+    {
+        let boot = boot_instant;
+        builder = builder.resource(
+            smgglrs_core::protocol::ResourceDefinition {
+                uri: "smgglrs://version".to_string(),
+                name: "Server Version".to_string(),
+                description: Some("Server name, version, protocol version, uptime".to_string()),
+                mime_type: Some("application/json".to_string()),
+                size: None,
+            },
+            Arc::new(move |uri: String| {
+                Box::pin(async move {
+                    let json = serde_json::json!({
+                        "name": "smgglrs",
+                        "version": env!("CARGO_PKG_VERSION"),
+                        "protocol_version": smgglrs_core::protocol::PROTOCOL_VERSION,
+                        "crates": 20,
+                        "uptime_secs": boot.elapsed().as_secs(),
+                    });
+                    smgglrs_core::protocol::ReadResourceResult {
+                        contents: vec![smgglrs_core::protocol::ResourceContent {
+                            uri,
+                            mime_type: Some("application/json".to_string()),
+                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
+                            blob: None,
+                        }],
+                    }
+                })
+            }),
+        );
+    }
+    tracing::info!("Registered smgglrs:// kernel introspection resources");
+
     let broadcaster = smgglrs_core::transport::SseBroadcaster::new();
     let builder = builder.broadcaster(broadcaster.clone());
     let server = Arc::new(builder.build());
@@ -3661,4 +3863,205 @@ fn audit_command(limit: usize, detail: bool, agent: Option<String>, tool: Option
 
     println!("\n{} entries shown", filtered.len());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use smgglrs_core::protocol::{ReadResourceResult, ResourceContent};
+
+    /// Helper: build a resource handler closure for smgglrs://proc.
+    fn proc_handler(
+        pt: &smgglrs_core::process::ProcessTable,
+    ) -> smgglrs_core::ResourceHandler {
+        let pt = pt.clone();
+        Arc::new(move |uri: String| {
+            let pt = pt.clone();
+            Box::pin(async move {
+                let agents = pt.snapshot();
+                let json = serde_json::json!({ "agents": agents });
+                ReadResourceResult {
+                    contents: vec![ResourceContent {
+                        uri,
+                        mime_type: Some("application/json".to_string()),
+                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
+                        blob: None,
+                    }],
+                }
+            })
+        })
+    }
+
+    /// Helper: build a resource handler closure for smgglrs://sessions.
+    fn sessions_handler(
+        ss: &smgglrs_core::session::SessionStore,
+    ) -> smgglrs_core::ResourceHandler {
+        let ss = ss.clone();
+        Arc::new(move |uri: String| {
+            let ss = ss.clone();
+            Box::pin(async move {
+                let sessions = ss.list_all();
+                let count = sessions.len();
+                let session_list: Vec<serde_json::Value> = sessions
+                    .iter()
+                    .map(|s| {
+                        serde_json::json!({
+                            "id": s.id,
+                            "agent": s.agent.name,
+                            "created_at": s.created_at,
+                        })
+                    })
+                    .collect();
+                let json = serde_json::json!({
+                    "count": count,
+                    "sessions": session_list,
+                });
+                ReadResourceResult {
+                    contents: vec![ResourceContent {
+                        uri,
+                        mime_type: Some("application/json".to_string()),
+                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
+                        blob: None,
+                    }],
+                }
+            })
+        })
+    }
+
+    /// Helper: build a resource handler closure for smgglrs://version.
+    fn version_handler() -> smgglrs_core::ResourceHandler {
+        let boot = std::time::Instant::now();
+        Arc::new(move |uri: String| {
+            Box::pin(async move {
+                let json = serde_json::json!({
+                    "name": "smgglrs",
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "protocol_version": smgglrs_core::protocol::PROTOCOL_VERSION,
+                    "crates": 20,
+                    "uptime_secs": boot.elapsed().as_secs(),
+                });
+                ReadResourceResult {
+                    contents: vec![ResourceContent {
+                        uri,
+                        mime_type: Some("application/json".to_string()),
+                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
+                        blob: None,
+                    }],
+                }
+            })
+        })
+    }
+
+    #[tokio::test]
+    async fn kernel_proc_returns_valid_json() {
+        let pt = smgglrs_core::process::ProcessTable::new();
+        pt.record_call("claude", "dev", None, None, "file_read");
+        pt.complete_call("claude", "file_read");
+        pt.record_denied("claude", "dev", None, None);
+
+        let handler = proc_handler(&pt);
+        let result = handler("smgglrs://proc".to_string()).await;
+
+        assert_eq!(result.contents.len(), 1);
+        let text = result.contents[0].text.as_deref().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let agents = parsed["agents"].as_array().unwrap();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0]["name"], "claude");
+        assert_eq!(agents[0]["call_count"], 1);
+        assert_eq!(agents[0]["denied_count"], 1);
+    }
+
+    #[tokio::test]
+    async fn kernel_sessions_returns_valid_json() {
+        let ss = smgglrs_core::session::SessionStore::new();
+        ss.create(smgglrs_core::session::Session {
+            id: "abc-123".to_string(),
+            agent: smgglrs_core::auth::AgentIdentity::new("claude", "dev"),
+            client_info: smgglrs_core::protocol::ClientInfo {
+                name: "test".to_string(),
+                version: None,
+            },
+            initialized: true,
+            context_label: smgglrs_core::ifc::DataLabel::TRUSTED_PUBLIC,
+            created_at: 1715000000,
+            last_accessed: 1715000000,
+        });
+
+        let handler = sessions_handler(&ss);
+        let result = handler("smgglrs://sessions".to_string()).await;
+
+        assert_eq!(result.contents.len(), 1);
+        let text = result.contents[0].text.as_deref().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(parsed["count"], 1);
+        let sessions = parsed["sessions"].as_array().unwrap();
+        assert_eq!(sessions[0]["id"], "abc-123");
+        assert_eq!(sessions[0]["agent"], "claude");
+        assert_eq!(sessions[0]["created_at"], 1715000000);
+    }
+
+    #[tokio::test]
+    async fn kernel_version_has_expected_fields() {
+        let handler = version_handler();
+        let result = handler("smgglrs://version".to_string()).await;
+
+        assert_eq!(result.contents.len(), 1);
+        let text = result.contents[0].text.as_deref().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(parsed["name"], "smgglrs");
+        assert!(parsed["version"].is_string());
+        assert_eq!(parsed["protocol_version"], smgglrs_core::protocol::PROTOCOL_VERSION);
+        assert!(parsed["crates"].is_number());
+        assert!(parsed["uptime_secs"].is_number());
+    }
+
+    #[tokio::test]
+    async fn kernel_tools_via_server() {
+        // Build a minimal server with a couple of tools, then verify
+        // the tool_names() method that smgglrs://tools relies on.
+        use smgglrs_core::protocol::{ToolDefinition, ToolInputSchema};
+
+        let server = smgglrs_core::McpServer::builder()
+            .name("test")
+            .version("0.1.0")
+            .allow_anonymous()
+            .tool(
+                ToolDefinition {
+                    name: "file_read".to_string(),
+                    description: Some("Read a file".to_string()),
+                    input_schema: ToolInputSchema {
+                        schema_type: "object".to_string(),
+                        properties: None,
+                        required: None,
+                    },
+                    annotations: None,
+                },
+                |_args, _ctx| {
+                    Box::pin(async { smgglrs_core::protocol::CallToolResult::text("ok") })
+                },
+            )
+            .tool(
+                ToolDefinition {
+                    name: "git_status".to_string(),
+                    description: Some("Git status".to_string()),
+                    input_schema: ToolInputSchema {
+                        schema_type: "object".to_string(),
+                        properties: None,
+                        required: None,
+                    },
+                    annotations: None,
+                },
+                |_args, _ctx| {
+                    Box::pin(async { smgglrs_core::protocol::CallToolResult::text("ok") })
+                },
+            )
+            .build();
+
+        let names = server.tool_names();
+        assert!(names.contains(&"file_read".to_string()));
+        assert!(names.contains(&"git_status".to_string()));
+        // Also includes gateway IFC tools registered in build()
+        assert!(names.contains(&"smgglrs_var_list".to_string()));
+    }
 }
