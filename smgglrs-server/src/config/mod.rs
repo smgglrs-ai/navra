@@ -63,6 +63,9 @@ pub struct Config {
     /// Out-of-process gRPC modules.
     #[serde(default)]
     pub grpc_modules: Vec<GrpcModuleConfig>,
+    /// Event-driven triggers that start flows automatically.
+    #[serde(default)]
+    pub triggers: Vec<crate::triggers::TriggerConfig>,
 }
 
 impl Config {
@@ -289,6 +292,7 @@ impl Default for Config {
             budget: BudgetConfig::default(),
             pii_patterns: Vec::new(),
             grpc_modules: Vec::new(),
+            triggers: Vec::new(),
         }
     }
 }
