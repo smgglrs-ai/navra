@@ -737,7 +737,56 @@ Maps to ROADMAP.md Phase 6 (OpenShell integration).
 | **6c** | Remove libkrun stub, add OpenShell compute backend | Medium | OpenShell compute driver spec |
 | **6d** | gRPC module protobuf + GrpcModule adapter | Medium | — |
 | **6e** | Defense-in-depth network security model (OPA templates, integration tests, paper section) | Medium | 6a, 6c |
-| **6f** | OpenShell credential backend for MappedCredentialStore | Low | OpenShell credentials driver spec |
+| **6f** | MCP tunnel compatibility (Anthropic + OpenAI) | High | — |
+| **6g** | NemoClaw MCP bridge alternative design | Medium | — |
+| **6h** | Privacy Router coordination | Medium | 8e |
+
+## May 2026 updates (Red Hat Summit + Code with Claude)
+
+### Claude self-hosted sandboxes (public beta, 2026-05-19)
+
+Anthropic shipped self-hosted sandboxes for Claude Managed Agents.
+Architecture: Anthropic hosts agent loop, customer hosts environment
+worker that polls Anthropic's work queue, executes tool calls inside
+OpenShell sandboxes, posts results back. Worker uses environment key,
+never org API key. Red Hat replaced default `spawn.sh` with OpenShell
+sandboxes requiring **no changes to Anthropic's worker model**.
+
+### MCP tunnels (research preview, 2026-05-19)
+
+Outbound-only encrypted connection from customer network to Anthropic's
+routing. Agents reach private MCP servers through the tunnel. smgglrs
+is the natural target — one tunnel, one gateway, aggregated security.
+
+### Three-mode sandboxing taxonomy
+
+| Mode | What's sandboxed | smgglrs role |
+|------|-----------------|--------------|
+| **Mode 1** | Entire agent | smgglrs inside sandbox alongside agent |
+| **Mode 2** | Execution environment (brain decoupled from hands) | smgglrs as tool execution layer |
+| **Mode 3** | Code execution only | smgglrs irrelevant (agent has direct credentials) |
+
+### NemoClaw MCP bridge alternative
+
+NemoClaw Issue #566 proposes per-server MCP bridges (stdio-to-HTTP
+proxy per server, each with own egress rule). smgglrs is architecturally
+superior: one gateway, one egress rule, aggregated security. The
+NemoClaw proposal validates the single-gateway model.
+
+### Layer 0 + Layer 1 architecture (validated)
+
+Deconvolute Labs analysis confirms OpenShell operates at OS/network
+layers and **cannot inspect MCP request bodies** (tool names, arguments,
+schemas). smgglrs sits at exactly this application layer:
+- Layer 0 (OpenShell): kernel sandbox, Landlock, seccomp, namespaces
+- Layer 1 (smgglrs): application-layer governance, IFC, ACLs, ML safety
+
+### New competitors at Layer 1
+
+- DefenseClaw (Cisco): admission control + runtime guardrails + OpenShell
+  support. Lacks IFC.
+- AgentGuard (chitinhq, Issue #1036): governance hooks. Similar thesis,
+  less mature.
 
 ## References
 
@@ -747,3 +796,10 @@ Maps to ROADMAP.md Phase 6 (OpenShell integration).
 - Terraform provider model (HashiCorp, gRPC plugins)
 - DESIGN.md — smgglrs architecture
 - DISCOVERY.md — A2A/AID/MCP discovery protocols
+- [Red Hat: Claude self-hosted sandboxes on OpenShell](https://www.redhat.com/en/blog/bringing-claude-self-hosted-sandboxes-to-openshell-on-red-hat-ai)
+- [Red Hat: Security-enhanced agent execution](https://www.redhat.com/en/blog/red-hat-ai-and-openshell-driving-security-enhanced-agent-execution-for-enterprise-ai)
+- [Anthropic: MCP tunnels and self-hosted sandboxes](https://thenewstack.io/anthropic-mcp-tunnels-sandboxes/)
+- [NemoClaw MCP bridge proposal (Issue #566)](https://github.com/NVIDIA/NemoClaw/issues/566)
+- [NemoClaw MCPS signing (Issue #204)](https://github.com/NVIDIA/NemoClaw/issues/204)
+- [Deconvolute Labs: OpenShell MCP gap](https://deconvoluteai.com/blog/nvidia-openshell-mcp-protocol-layer)
+- [DefenseClaw (Cisco)](https://github.com/cisco-ai-defense/defenseclaw)

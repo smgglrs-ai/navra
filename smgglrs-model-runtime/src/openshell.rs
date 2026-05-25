@@ -230,6 +230,7 @@ mod tests {
             context_size: 4096,
             parallel: 2,
             cache_type: None,
+            speculative: None,
             extra_args: vec![],
         };
 
@@ -279,6 +280,7 @@ mod tests {
             context_size: 8192,
             parallel: 4,
             cache_type: None,
+            speculative: None,
             extra_args: vec!["--flash-attn".to_string()],
         };
 
