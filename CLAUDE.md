@@ -81,7 +81,7 @@ resources. It aggregates built-in modules and upstream MCP servers
 behind a unified security layer.
 
 ```
-AI Agent (Claude Code, Myelix, etc.)
+AI Agent (Claude Code, etc.)
     |
     | MCP Streamable HTTP + SSE (Unix socket or TCP)
     v
@@ -100,7 +100,7 @@ Desktop (D-Bus notifications, system tray, systemd)
 ## Key Design Decisions
 
 - **Gateway, not framework**: smgglrs enforces security at the
-  infrastructure layer. Orchestration belongs in the agent (Myelix).
+  infrastructure layer. Orchestration belongs in the agent.
 - **Module trait**: All capabilities are modules implementing
   `Module` trait. Upstream MCP servers are wrapped in `UpstreamModule`.
 - **Deny-wins ACLs**: Path deny rules always beat allow rules.
@@ -217,11 +217,8 @@ See DESIGN.md for full config reference.
 
 ## Related Projects
 
-- **Myelix (Python)** (`~/Code/gitlab.cee.redhat.com/smgglrs/smgglrs/smgglrs/`):
-  Original multi-agent orchestration platform. Being replaced by the
-  smgglrs-* Rust crate family. See `ROADMAP.md` for migration status.
-- **Project Jarvis**: Voice-first local assistant combining smgglrs
-  (secure tools) + smgglrs-flow (orchestration) + local models.
+- **Voice-first local assistant**: Combining smgglrs (secure tools)
+  + smgglrs-flow (orchestration) + local models.
 - **OpenShell** (Red Hat/NVIDIA): Secure sandbox platform for
   autonomous agents. smgglrs integrates as the tool access layer
   inside OpenShell sandboxes. See `OPENSHELL.md` for design.
@@ -230,7 +227,7 @@ See DESIGN.md for full config reference.
 
 - `DESIGN.md` — Full architecture, protocol, security model, config reference
 - `TESTING.md` — Test prerequisites, running tests, crate test counts
-- `ROADMAP.md` — Gap analysis vs Python Myelix, phased migration plan
+- `ROADMAP.md` — Phased development plan
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)
 - `OPENSHELL.md` — OpenShell integration: identity federation, A2A mesh, gRPC modules

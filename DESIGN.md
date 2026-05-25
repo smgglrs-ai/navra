@@ -11,7 +11,7 @@ and custom regex), human-in-the-loop approval, and a hook/middleware
 system.
 
 Built-in **modules** contribute tools and prompts directly. External
-**upstream** MCP servers (e.g., Myelix for cognitive personas, or
+**upstream** MCP servers (e.g., cognitive personas, or
 specialized tool servers) are proxied through smgglrs, which applies the
 same auth, permissions, and safety policies to all traffic regardless
 of origin.
@@ -113,7 +113,7 @@ smgglrs/
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─ Upstream MCP Servers (proxied) ───────────────────────────────┐  │
-│  │  Myelix, other MCP servers — stdio / HTTP / SSE                │  │
+│  │  External MCP servers — stdio / HTTP / SSE                     │  │
 │  │  Discovered at startup, registered as Module, safety-filtered  │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────┘

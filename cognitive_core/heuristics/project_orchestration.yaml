@@ -110,5 +110,5 @@ facets:
 references:
   - description: "ADR-056: Hierarchical Agent Orchestration"
     source: "docs/architecture/decisions/ADR-056-Hierarchical-Agent-Orchestration.md"
-  - description: "ADR-044: The Myelix Cognitive Architecture"
-    source: "docs/architecture/decisions/ADR-044-The-Myelix-Cognitive-Architecture.md"
+  - description: "ADR-044: The Cognitive Architecture"
+    source: "docs/architecture/decisions/ADR-044-The-Cognitive-Architecture.md"

@@ -2,8 +2,8 @@
 
 ## Goal
 
-Integrate local AI models into smgglrs to support a local "Jarvis"
-assistant combining smgglrs (secure tool execution) with Myelix
+Integrate local AI models into smgglrs to support a local voice-first
+assistant combining smgglrs (secure tool execution) with smgglrs-flow
 (multi-agent orchestration). Models handle RAG, voice I/O, content
 safety, and vision — all self-hosted, all open source.
 
@@ -770,7 +770,7 @@ insights not in the paper:
 The **Safe** and **V-only** configs are the sweet spots — meaningful
 compression with zero quality loss, because V compression is free.
 
-#### Impact on Jarvis: context length unlocked
+#### Impact on voice assistant: context length unlocked
 
 **RTX 5090 (32GB) — Gemma 4 26B-A4B with NVFP4 weights:**
 
@@ -944,7 +944,7 @@ When the reasoning model is remote (e.g. Claude API), the data flow
 is:
 
 ```
-Local files ──► smgglrs ──► Myelix agent ──► Remote Claude API
+Local files ──► smgglrs ──► smgglrs agent ──► Remote Claude API
                  │                              ▲
                  │ safety filters here     user's data
                  │                         leaves the box
@@ -967,20 +967,20 @@ model is outside smgglrs's control.
 
 ### Solution: Bidirectional Safety + Perimeter Enforcement
 
-#### Gap 1 — Myelix's Own File Tools Bypass smgglrs
+#### Gap 1 — smgglrs-flow's Own File Tools Bypass smgglrs
 
-Myelix has 22 built-in MCP tools including file I/O (`file_read`,
+smgglrs-flow has 22 built-in MCP tools including file I/O (`file_read`,
 `directory_list`, `environment_variable`). If a specialist uses these
 instead of `file_read`, smgglrs's safety filters never fire.
 
-**Solution: Tool exclusion in Myelix config.**
+**Solution: Tool exclusion in smgglrs-flow config.**
 
-When smgglrs is configured as an MCP server, Myelix should disable its
+When smgglrs is configured as an MCP server, smgglrs-flow should disable its
 overlapping built-in tools for specialists that connect to smgglrs.
-This is a Myelix-side configuration concern, not an smgglrs change:
+This is a smgglrs-flow-side configuration concern, not an smgglrs change:
 
 ```yaml
-# Myelix specialist config when smgglrs is the file gateway
+# smgglrs-flow specialist config when smgglrs is the file gateway
 mcp_servers:
   smgglrs:
     transport: unix
@@ -1000,7 +1000,7 @@ disabled_tools:
 Additionally, smgglrs's systemd hardening (`ProtectHome=read-only`,
 `ReadWritePaths` limited to `~/.local/share/smgglrs`) ensures that even
 if a process tries to access files outside smgglrs, the OS enforces the
-boundary. For Myelix running in a container (its default deployment),
+boundary. For smgglrs-flow running in a container (its default deployment),
 the container's filesystem view can be restricted to only expose the
 smgglrs socket.
 
@@ -1141,7 +1141,7 @@ already covers this because ASR output is just a tool response.
 │                  └────────────────┬────────────────────────┘    │
 │                                   │ MCP (Unix socket)           │
 │                  ┌────────────────▼────────────────────────┐    │
-│                  │           Myelix Agent                   │    │
+│                  │           smgglrs agent                   │    │
 │                  │  (disabled: file_read, file_write, etc.) │    │
 │                  └────────────────┬────────────────────────┘    │
 │                                   │                             │
@@ -1298,25 +1298,25 @@ smgglrs-rag (vector, semantic)
 Hybrid search: keyword recall + semantic precision
 ```
 
-#### Relationship to Myelix's Existing RAG
+#### Relationship to smgglrs-flow's Existing RAG
 
-Myelix already has a RAG system (FAISS + all-MiniLM-L6-v2, 384-dim)
+smgglrs-flow already has a RAG system (FAISS + all-MiniLM-L6-v2, 384-dim)
 in `/src/smgglrs/cognitive/knowledge/`. The two serve different
 purposes:
 
-| | smgglrs-rag | Myelix Knowledge |
+| | smgglrs-rag | smgglrs-flow Knowledge |
 |---|---|---|
 | **What it indexes** | User documents (~/Documents, ~/Code, ~/Notes) | Internal knowledge (heuristics, code snippets, personas) |
-| **Access control** | Path ACLs, deny-wins, approval workflow | None (internal to Myelix) |
+| **Access control** | Path ACLs, deny-wins, approval workflow | None (internal to smgglrs-flow) |
 | **Safety filtering** | Content filtered before embedding + before returning | None (trusted internal data) |
 | **Embedding model** | Granite Embedding R2 149M (768-dim, in-process ONNX) | all-MiniLM-L6-v2 (384-dim) |
 | **Vector store** | sqlite-vec (single file, aligns with smgglrs's SQLite) | FAISS (in-memory, pre-built indices) |
 | **Visual docs** | Granite Vision 3.3 2B Embedding (GPU tier) | Text-only |
 | **Persistence** | `$XDG_DATA_HOME/smgglrs/index.db` | `knowledge_index.faiss` |
 
-They are complementary: Myelix's RAG is the agent's internal memory;
+They are complementary: smgglrs-flow's RAG is the agent's internal memory;
 smgglrs-rag is the agent's view of the user's documents, mediated
-by permissions and safety filters. Myelix specialists query smgglrs's
+by permissions and safety filters. smgglrs-flow specialists query smgglrs's
 `rag_query` tool for user documents, and their own knowledge system
 for heuristics and learned patterns.
 
@@ -1533,7 +1533,7 @@ smgglrs-server            (all + hub + runtime)
 ```
 
 The `smgglrs-model-*` crates form a reusable family with no smgglrs
-dependencies — usable by Myelix agents or any Rust project that needs
+dependencies — usable by smgglrs agents or any Rust project that needs
 to pull and serve AI models.
 
 ## Full Configuration Example
@@ -1678,11 +1678,11 @@ approve = []
 safety = "standard"
 ```
 
-## Myelix Integration
+## smgglrs-flow Integration
 
-### Current Myelix State (March 2026)
+### Current smgglrs-flow State (March 2026)
 
-Myelix is at Phase 5.5+ with:
+smgglrs-flow is at Phase 5.5+ with:
 
 - **MCP server**: FastMCP-based, 22 production tools (dev, web, data,
   system, file), stdio/SSE/Streamable HTTP transports
@@ -1699,12 +1699,12 @@ Myelix is at Phase 5.5+ with:
 
 ### Integration Architecture
 
-Myelix connects to smgglrs as an MCP client. Each Myelix specialist
+smgglrs-flow connects to smgglrs as an MCP client. Each smgglrs-flow specialist
 maps to an smgglrs agent identity with scoped permissions.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                        Myelix                                │
+│                        smgglrs-flow                                │
 │                                                              │
 │  Leader (Claude API, 1M context)                             │
 │    │                                                         │
@@ -1730,7 +1730,7 @@ maps to an smgglrs agent identity with scoped permissions.
 
 ### MCP Client Configuration
 
-Myelix already has MCP client support. Addition for smgglrs:
+smgglrs-flow already has MCP client support. Addition for smgglrs:
 
 ```yaml
 # smgglrs config
@@ -1754,17 +1754,17 @@ specialists:
 
 ### A2A Interoperability
 
-Myelix's A2A implementation and smgglrs's MCP interface are
+smgglrs-flow's A2A implementation and smgglrs's MCP interface are
 complementary:
 
-- **MCP** (smgglrs ↔ Myelix): Tool invocation. Myelix calls smgglrs tools
+- **MCP** (smgglrs ↔ smgglrs-flow): Tool invocation. smgglrs-flow calls smgglrs tools
   for file access, RAG, voice, vision.
-- **A2A** (Myelix ↔ other agents): Task delegation. Other agents
-  on the network discover Myelix via agent cards and delegate tasks.
+- **A2A** (smgglrs-flow ↔ other agents): Task delegation. Other agents
+  on the network discover smgglrs-flow via agent cards and delegate tasks.
 
 Future: smgglrs could expose an A2A endpoint so external agents
-discover its tools directly, without going through Myelix. This
-would let any A2A-compatible agent (not just Myelix) use smgglrs's
+discover its tools directly, without going through smgglrs-flow. This
+would let any A2A-compatible agent (not just smgglrs-flow) use smgglrs's
 secure file access.
 
 ## Implementation Order
@@ -1809,12 +1809,12 @@ secure file access.
 4. Outbound filter on vision model descriptions
 5. Wire into approval workflow
 
-### Phase 5 — Myelix integration
+### Phase 5 — smgglrs-flow integration
 
-1. Configure Myelix MCP client to connect to smgglrs
+1. Configure smgglrs-flow MCP client to connect to smgglrs
 2. Map specialist roles to smgglrs agent identities
-3. Disable overlapping Myelix built-in tools per specialist
-4. End-to-end test: voice command → Myelix → smgglrs → result → voice
+3. Disable overlapping smgglrs-flow built-in tools per specialist
+4. End-to-end test: voice command → smgglrs-flow → smgglrs → result → voice
 
 ## Platform Profiles
 

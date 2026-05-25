@@ -236,7 +236,7 @@ the approval workflow.
 
 - [DESIGN.md](DESIGN.md) — full architecture, protocol, security model, config reference
 - [TESTING.md](TESTING.md) — test prerequisites, running tests, crate test counts
-- [ROADMAP.md](ROADMAP.md) — gap analysis vs Python Myelix, phased migration plan
+- [ROADMAP.md](ROADMAP.md) — phased development plan
 - [MODELS.md](MODELS.md) — model integration architecture, CPU/GPU tiers, hardware profiles
 - [DISCOVERY.md](DISCOVERY.md) — agent/tool discovery landscape (AID, A2A, MCP Server Cards)
 - [OPENSHELL.md](OPENSHELL.md) — OpenShell integration for sandboxed agent execution

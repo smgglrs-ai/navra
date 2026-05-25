@@ -1,7 +1,7 @@
 # Opportunities — Industry Landscape Analysis (April 2026)
 
 Research from industry developments and their implications
-for smgglrs and Myelix. Updated April 10, 2026.
+for smgglrs and the original Python framework. Updated April 10, 2026.
 
 ## Sources
 
@@ -29,13 +29,13 @@ tool discovery. A2A protocol support forthcoming.
 
 ### Relevance
 
-MAF is an orchestration SDK — comparable to Myelix, not to smgglrs.
+MAF is an orchestration SDK — comparable to the original Python framework, not to smgglrs.
 It **uses** MCP servers for tool discovery, meaning it would
-connect to smgglrs the same way Myelix does.
+connect to smgglrs the same way the original Python framework does.
 
 Key parallels:
 
-| MAF v1.0 | Myelix | smgglrs |
+| MAF v1.0 | the original Python framework | smgglrs |
 |---|---|---|
 | Multi-agent orchestration patterns | ConcurrentOrchestrator, Leader | N/A (infrastructure) |
 | Middleware pipeline (intercept/transform) | Cognitive Immune System | Hook pipeline (pre/post) |
@@ -51,13 +51,13 @@ Key parallels:
 - MAF's A2A direction validates smgglrs's DISCOVERY.md research and
   existing `/.well-known/agent-card.json` endpoint.
 
-**For Myelix:**
-- MAF's **declarative workflow YAML** is a pattern Myelix lacks.
-  Myelix defines *who* agents are in YAML but hardcodes *how* they
+**For the original Python framework:**
+- MAF's **declarative workflow YAML** is a pattern the original Python framework lacks.
+  the original Python framework defines *who* agents are in YAML but hardcodes *how* they
   collaborate in Python. A workflow definition layer could let users
   compose multi-agent flows without code.
 - MAF's **DevUI** (browser-based execution debugger) could inspire
-  a similar visualization for Myelix's multi-agent orchestration.
+  a similar visualization for the original Python framework's multi-agent orchestration.
 
 ## 2. Claude Code Agent Teams
 
@@ -69,9 +69,9 @@ direct inter-agent communication, and plan approval mode.
 
 ### Relevance
 
-This is the ad-hoc version of what Myelix does natively with
+This is the ad-hoc version of what the original Python framework does natively with
 Leader + specialist personas. The article validates the pattern
-Myelix chose is becoming mainstream.
+the original Python framework chose is becoming mainstream.
 
 ### Opportunities
 
@@ -81,8 +81,8 @@ Myelix chose is becoming mainstream.
   this creates: each agent maps to a distinct identity with scoped
   permissions. This is a selling point for smgglrs.
 
-**For Myelix:**
-- No direct action items. Myelix already implements this pattern
+**For the original Python framework:**
+- No direct action items. the original Python framework already implements this pattern
   with more structure (ReAct loops, task planning, drift detection).
 
 ## 3. Agent Governance Toolkit
@@ -111,7 +111,7 @@ feature mapping:
 | Agent Runtime (execution rings) | 2-level permissions + Pause/Resume | **Partial** |
 | Agent SRE (SLOs, circuit breakers) | Resilient Transports (backoff) | **Partial** |
 | Agent Compliance (regulatory mapping) | Content safety profiles | **Gap** |
-| Agent Marketplace (signed plugins) | N/A (Myelix has OCI + sigstore) | N/A |
+| Agent Marketplace (signed plugins) | N/A (the original Python framework has OCI + sigstore) | N/A |
 | Agent Lightning (policy RL) | N/A | N/A |
 
 ### Opportunities
@@ -145,7 +145,7 @@ feature mapping:
    agent gets a DID anchored to its Ed25519 key, enabling
    cryptographic identity verification across systems.
 
-**For Myelix (medium priority):**
+**For the original Python framework (medium priority):**
 
 5. The Cognitive Immune System could adopt more formal policy
    language (OPA Rego or Cedar) rather than Python-based anomaly
@@ -180,11 +180,11 @@ authored it.
    making provenance visible in `git log` even without GPG
    verification.
 
-**For Myelix (low priority):**
+**For the original Python framework (low priority):**
 
-3. When Myelix's autonomous agent (EPIC-009/EPIC-026) executes
+3. When the original Python framework's autonomous agent (EPIC-009/EPIC-026) executes
    commits via its own tools (not through smgglrs), it should also
-   sign them. This is a Myelix-side concern only when smgglrs is
+   sign them. This is a the original Python framework-side concern only when smgglrs is
    not in the path.
 
 ## 5. IBM Granite 4.0 3B Vision
@@ -215,12 +215,12 @@ understanding (GPU tier). Granite 4.0 3B Vision is the successor.
    in watched directories, extracting text and indexing via FTS5
    + sqlite-vec.
 
-**For Myelix (low priority):**
+**For the original Python framework (low priority):**
 
 3. A **document analyst persona** that knows when to delegate
    `vision_ocr`/`vision_describe` calls through smgglrs. The model
    runs in smgglrs; the cognitive framing (when to use vision, how
-   to interpret results) is a Myelix persona concern.
+   to interpret results) is a the original Python framework persona concern.
 
 ## Summary: Priority Matrix
 
@@ -230,11 +230,11 @@ understanding (GPU tier). Granite 4.0 3B Vision is the successor.
 | **High** | Compliance tags on permission sets | smgglrs | Governance Toolkit | **Done** |
 | **Medium** | Granite 4.0 3B Vision in model registry | smgglrs | IBM Granite | Planned (awaiting GA) |
 | **Medium** | Graduated permission rings | smgglrs | Governance Toolkit | **Done** |
-| **Medium** | Declarative workflow YAML | Myelix | MAF v1.0 | |
+| **Medium** | Declarative workflow YAML | the original Python framework | MAF v1.0 | |
 | **Low** | DID-based agent identity | smgglrs | Governance Toolkit | |
-| **Low** | Activate A2A endpoint in smgglrs | smgglrs | MAF + Myelix A2A | **Done** |
-| **Low** | Document analyst persona | Myelix | Granite Vision | |
-| **Low** | Multi-agent execution debugger | Myelix | MAF DevUI | |
+| **Low** | Activate A2A endpoint in smgglrs | smgglrs | MAF + the original Python framework A2A | **Done** |
+| **Low** | Document analyst persona | the original Python framework | Granite Vision | |
+| **Low** | Multi-agent execution debugger | the original Python framework | MAF DevUI | |
 
 ## Validation
 
@@ -298,7 +298,7 @@ interrupts (`HandoffAgentUserRequest`).
 
 ### Relevance
 
-Two patterns directly applicable to smgglrs/Myelix:
+Two patterns directly applicable to smgglrs/the original Python framework:
 - HandoffBuilder's declarative agent graph → flow DSL design
 - Interrupt/resume model → hook pipeline human-in-the-loop
 
@@ -315,7 +315,7 @@ Two patterns directly applicable to smgglrs/Myelix:
    validates the event-streaming approach.
 3. **SSE event streaming** — AG-UI's event types (`RUN_STARTED`,
    `STEP_STARTED`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `RUN_FINISHED`)
-   could inform how Myelix exposes workflow progress to UIs.
+   could inform how the original Python framework exposes workflow progress to UIs.
 
 ## 8. Google SCION — Multi-Agent Orchestration
 
@@ -330,8 +330,8 @@ specialization. OpenTelemetry observability.
 
 ### Relevance
 
-Validates Myelix's multi-agent problem space. Different approach:
-SCION is decentralized (agents negotiate), smgglrs/Myelix is
+Validates the original Python framework's multi-agent problem space. Different approach:
+SCION is decentralized (agents negotiate), smgglrs/the original Python framework is
 centralized (gateway enforces security). SCION's container
 isolation per agent is similar to our model runtime isolation.
 

@@ -21,7 +21,7 @@ capability-based security, graduated privilege rings, and
 cryptographic process identity — to the domain of LLM-powered
 agents. Our implementation comprises two systems: smgglrs, a Rust
 microkernel that enforces security and mediates access to local
-resources, and Myelix, a Python userland that provides multi-agent
+resources, and smgglrs, a Python userland that provides multi-agent
 orchestration, cognitive personas, and task planning. Agents
 communicate via the Model Context Protocol (MCP) for tool
 invocation and the Agent-to-Agent (A2A) protocol for inter-process
@@ -95,7 +95,7 @@ layer rather than relying on model compliance.
 
 3. **Microkernel/userland separation** — A clean architectural
    boundary between security enforcement (smgglrs, Rust) and
-   orchestration logic (Myelix, Python), communicating via standard
+   orchestration logic (smgglrs, Python), communicating via standard
    protocols (MCP, A2A).
 
 4. **Credential brokering** — Agents never access raw secrets. The
@@ -281,7 +281,7 @@ extends zero-trust to agent-to-agent interactions.
 2. **Microkernel separation** — The kernel (smgglrs) provides
    mechanism: identity, capability verification, resource mediation,
    IPC transport. Policy decisions (which agent does what task) live
-   in userland (Myelix).
+   in userland (smgglrs).
 
 3. **Deny-wins** — In all permission checks (path ACLs, tool rules,
    ring inheritance), deny rules take absolute precedence over allow
@@ -308,7 +308,7 @@ extends zero-trust to agent-to-agent interactions.
 └──────────────────────┬───────────────────────────────┘
                        │ approve / deny / inspect
 ┌──────────────────────▼───────────────────────────────┐
-│                  Myelix (Userland)                    │
+│                  smgglrs (Userland)                    │
 │                                                      │
 │  ┌─────────┐  ┌────────────┐  ┌──────────────────┐  │
 │  │ Leader  │  │ Specialist │  │   Specialist      │  │
@@ -387,9 +387,9 @@ Everything else is userland:
 | Plugin distribution | OCI containers + sigstore |
 | User experience | CLI, chat interface, voice |
 
-### 3.4 Userland Architecture (Myelix)
+### 3.4 Userland Architecture (smgglrs)
 
-Myelix is the AI OS's userland — a Python-based multi-agent
+smgglrs is the AI OS's userland — a Python-based multi-agent
 orchestration framework providing the cognitive layer that
 the microkernel deliberately excludes.
 
@@ -471,7 +471,7 @@ persona artifact from the registry.
 
 ### 3.5 Microkernel Boundary in Practice
 
-The boundary between smgglrs and Myelix follows one rule: **if it
+The boundary between smgglrs and smgglrs follows one rule: **if it
 requires trust, it's kernel; if it requires intelligence, it's
 userland.**
 
@@ -482,13 +482,13 @@ userland.**
 | Credential injection | smgglrs (kernel) | Agent must never see raw secrets |
 | Content safety filtering | smgglrs (kernel) | Mandatory access control |
 | Rate limiting | smgglrs (kernel) | Agent cannot increase its quota |
-| Persona selection | Myelix (userland) | Policy, not mechanism |
-| Task decomposition | Myelix (userland) | Requires LLM reasoning |
-| Drift detection | Myelix (userland) | Domain-specific cognitive heuristics |
-| Model selection | Myelix (userland) | Cost/quality tradeoff |
-| Plugin signing/distribution | Myelix (userland) | OCI + sigstore (userland trust chain) |
+| Persona selection | smgglrs (userland) | Policy, not mechanism |
+| Task decomposition | smgglrs (userland) | Requires LLM reasoning |
+| Drift detection | smgglrs (userland) | Domain-specific cognitive heuristics |
+| Model selection | smgglrs (userland) | Cost/quality tradeoff |
+| Plugin signing/distribution | smgglrs (userland) | OCI + sigstore (userland trust chain) |
 
-**Overlap resolution:** Myelix has its own `PermissionManager`
+**Overlap resolution:** smgglrs has its own `PermissionManager`
 with read-only vs write-enabled toolbelts. This is discretionary
 access control (the orchestrator's policy). smgglrs's path ACLs and
 tool rules are mandatory access control (the kernel's enforcement).
@@ -506,7 +506,7 @@ three problems:
    to audit.
 
 2. **Language lock-in** — smgglrs is Rust (memory safety, performance
-   for cryptographic operations). Myelix is Python (LLM ecosystem,
+   for cryptographic operations). smgglrs is Python (LLM ecosystem,
    rapid iteration). A monolithic design forces one language.
 
 3. **Composability** — Other orchestrators (Claude Code Agent Teams,
@@ -899,7 +899,7 @@ and approval UI.
 - **Discovery:** `mdns-sd` crate, custom AID implementation
 - **Lines of code:** ~24K (Rust)
 
-### 7.2 Myelix (Userland)
+### 7.2 smgglrs (Userland)
 
 - **Language:** Python (Poetry, Python 3.14)
 - **Orchestration:** Three-tier hierarchy:
@@ -1245,7 +1245,7 @@ Matzinger's danger model [69] suggests an orthogonal approach:
 instead of classifying instructions as legitimate or injected,
 monitor for *damage patterns* in system behavior (unexpected
 writes, anomalous API calls, credential access outside normal
-patterns). Myelix's Cognitive Immune System already implements
+patterns). smgglrs's Cognitive Immune System already implements
 this via the watchdog/analyst supervisory architecture — the
 same principle that Forrest et al. [70][71] applied to intrusion
 detection by monitoring system call sequences for anomalies.
@@ -1306,7 +1306,7 @@ We presented an AI Operating System architecture that applies
 classical OS principles to multi-agent AI systems. The microkernel
 (smgglrs) provides capability-based security with DID:key identity,
 graduated privilege rings, credential brokering, and mandatory
-content filtering. The userland (Myelix) provides multi-agent
+content filtering. The userland (smgglrs) provides multi-agent
 orchestration, cognitive personas, and task planning. The two
 communicate via standard protocols (MCP for tool invocation, A2A
 for inter-agent messaging), enabling clean separation of mechanism

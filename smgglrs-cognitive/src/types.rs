@@ -1,7 +1,7 @@
 //! Cognitive core types: Persona, Directive, Heuristic, Specialization.
 //!
 //! These types map directly to the YAML schemas in the cognitive_core
-//! directory, maintaining compatibility with the Python Myelix format.
+//! directory, maintaining compatibility with the the original Python prototype format.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
