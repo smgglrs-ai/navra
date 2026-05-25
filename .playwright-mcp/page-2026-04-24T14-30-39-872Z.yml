@@ -1,7 +1,0 @@
-- generic [ref=e2]:
-  - generic [ref=e3]:
-    - heading "Original PNG" [level=2] [ref=e4]
-    - img [ref=e5]
-  - generic [ref=e6]:
-    - heading "vtracer SVG" [level=2] [ref=e7]
-    - img [ref=e8]

@@ -1,5 +1,5 @@
 heuristic_name: "mission_and_identity"
-description: "Defines the universal mission and identity of the Myelix Guardian agent."
+description: "Defines the universal mission and identity of the smgglrs Guardian agent."
 facets:
   - facet_name: "universal_mission"
     display_name: "Universal Mission"

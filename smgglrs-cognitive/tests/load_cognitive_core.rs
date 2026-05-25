@@ -14,7 +14,7 @@ fn cognitive_core_path() -> std::path::PathBuf {
     }
     panic!(
         "cognitive_core/ not found — run from repo root. \
-         This test validates the ported Python Myelix artifacts."
+         This test validates the ported the original Python prototype artifacts."
     );
 }
 

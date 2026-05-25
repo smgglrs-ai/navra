@@ -3,7 +3,7 @@
 //!
 //! Loads persona, directive, and heuristic YAML files from a cognitive
 //! core directory, then assembles them into structured prompts via the
-//! Weaver. Compatible with the Python Myelix cognitive core format.
+//! Weaver. Compatible with the the original Python prototype cognitive core format.
 //!
 //! # Quick start
 //!

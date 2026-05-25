@@ -3,7 +3,7 @@
 ## Source
 
 ```
-/home/fdupont/Code/github.com/craftogrammer/llama.cpp-adaptive-turboquant
+<path-to>/llama.cpp-adaptive-turboquant
 ```
 
 Lineage: TurboQuant paper -> TheTom -> signalnine -> Madreag -> craftogrammer
@@ -35,7 +35,7 @@ Native build on Fedora 44 fails because:
 ### Step 1: Configure
 
 ```bash
-cd /home/fdupont/Code/github.com/craftogrammer/llama.cpp-adaptive-turboquant
+cd <path-to>/llama.cpp-adaptive-turboquant
 
 podman run --rm \
   -v $(pwd):/src:Z \

@@ -265,7 +265,7 @@ This enables multi-axis evaluation without single-judge bias.
 
 ### 4.3 General-Purpose Expansion
 
-5 personas added beyond the original Python Myelix set to cover
+5 personas added beyond the original Python smgglrs set to cover
 non-engineering domains: executive_coach, creative_director,
 strategic_advisor, ethics_compliance_officer, financial_analyst.
 These validate that the persona framework generalizes beyond

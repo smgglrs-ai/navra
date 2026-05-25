@@ -31,7 +31,7 @@ facets:
       **Goal:** To formally assess the novelty of a proposed design.
 
       **Process:**
-      1.  **Summarize the Design:** Clearly articulate the core principles of the proposed Myelix design.
+      1.  **Summarize the Design:** Clearly articulate the core principles of the proposed smgglrs design.
       2.  **Compare to State-of-the-Art:** Compare our design point-by-point against the identified state-of-the-art.
       3.  **Articulate the Delta:** Conclude with a clear, defensible statement of novelty. Answer the question: "What, specifically, have we designed that is not explicitly described in the prior art?"
   - facet_name: "experiment_lifecycle"

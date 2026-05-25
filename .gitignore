@@ -6,4 +6,26 @@
 smgglrs-ui/node_modules/
 smgglrs-server/ui-dist/
 smgglrs-server/src/ui_assets_gen.rs
+
+# Claude Code
 .claude/worktrees/
+.claude/settings.local.json
+
+# Development artifacts
+.playwright-mcp/
+ONBOARDING.md
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Model weights
+*.onnx
+*.gguf
+*.safetensors
+*.bin
+!build.rs

@@ -397,7 +397,7 @@ pub(crate) fn attach_ui_routes(
 
     // --- OpenAI-compatible model proxy ---
     // Goose (or any OpenAI client) can use http://localhost:9315/v1
-    // as its model endpoint. Myelix injects persona, runs safety
+    // as its model endpoint. the original prototype injects persona, runs safety
     // filters, records in blackbox, and forwards to the real model.
     let proxy_backend = ui_chat_backend.clone();
     let proxy_forge = ui_forge.clone();
@@ -661,6 +661,8 @@ mod tests {
             context_size: None,
             parallel: None,
             model_name: None,
+            cache_type: None,
+            speculative: None,
             agentic: None,
         });
         cfg
