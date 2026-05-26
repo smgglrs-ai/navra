@@ -18,6 +18,10 @@ pub struct Chunk {
     pub end_byte: usize,
     /// Zero-based chunk index within the document.
     pub index: usize,
+    /// Structural breadcrumb: heading hierarchy path for this chunk.
+    /// Example: `"AMD > Financial Statements > Cash Flows"`.
+    /// Set by [`inject_breadcrumbs`] after chunking.
+    pub breadcrumb: Option<String>,
 }
 
 /// Configuration for the chunking engine.
@@ -312,6 +316,7 @@ fn build_chunks_with_overlap(segments: &[Segment], text: &str, config: &ChunkCon
             start_byte: start,
             end_byte: end,
             index: chunks.len(),
+            breadcrumb: None,
         });
     }
 
@@ -322,10 +327,80 @@ fn build_chunks_with_overlap(segments: &[Segment], text: &str, config: &ChunkCon
             start_byte: 0,
             end_byte: text.len(),
             index: 0,
+            breadcrumb: None,
         });
     }
 
     chunks
+}
+
+/// Inject breadcrumbs into chunks based on the source document's heading structure.
+///
+/// Parses Markdown `#` headings from the source text, builds a hierarchical
+/// path, and assigns the active heading path to each chunk based on its byte
+/// position. The breadcrumb is prepended to `content` so embeddings capture
+/// both structural position and semantic content.
+///
+/// For documents without headings, chunks are left unchanged.
+pub fn inject_breadcrumbs(chunks: &mut [Chunk], source: &str) {
+    let headings = parse_headings(source);
+    if headings.is_empty() {
+        return;
+    }
+
+    for chunk in chunks.iter_mut() {
+        let path = heading_path_at(&headings, chunk.start_byte);
+        if !path.is_empty() {
+            let breadcrumb = path.join(" > ");
+            chunk.breadcrumb = Some(breadcrumb.clone());
+            chunk.content = format!("{breadcrumb}\n\n{}", chunk.content);
+        }
+    }
+}
+
+struct Heading {
+    level: usize,
+    title: String,
+    byte_offset: usize,
+}
+
+fn parse_headings(text: &str) -> Vec<Heading> {
+    let mut headings = Vec::new();
+    let mut offset = 0;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('#') {
+            let level = trimmed.chars().take_while(|&c| c == '#').count();
+            if level <= 6 {
+                let title = trimmed[level..].trim_start_matches(' ').trim().to_string();
+                if !title.is_empty() {
+                    headings.push(Heading {
+                        level,
+                        title,
+                        byte_offset: offset,
+                    });
+                }
+            }
+        }
+        offset += line.len() + 1; // +1 for newline
+    }
+    headings
+}
+
+fn heading_path_at(headings: &[Heading], byte_pos: usize) -> Vec<String> {
+    let mut stack: Vec<(usize, String)> = Vec::new();
+
+    for h in headings {
+        if h.byte_offset > byte_pos {
+            break;
+        }
+        while stack.last().is_some_and(|(lvl, _)| *lvl >= h.level) {
+            stack.pop();
+        }
+        stack.push((h.level, h.title.clone()));
+    }
+
+    stack.into_iter().map(|(_, title)| title).collect()
 }
 
 #[cfg(test)]
@@ -504,5 +579,71 @@ pub fn third_function() {\n\
                 &trimmed[trimmed.len().saturating_sub(30)..]
             );
         }
+    }
+
+    #[test]
+    fn breadcrumb_parse_markdown_headings() {
+        let headings = parse_headings("# Top\n## Sub\nContent\n### Deep\nMore");
+        assert_eq!(headings.len(), 3);
+        assert_eq!(headings[0].title, "Top");
+        assert_eq!(headings[0].level, 1);
+        assert_eq!(headings[1].title, "Sub");
+        assert_eq!(headings[1].level, 2);
+        assert_eq!(headings[2].title, "Deep");
+        assert_eq!(headings[2].level, 3);
+    }
+
+    #[test]
+    fn breadcrumb_heading_path_at_position() {
+        let text = "# A\n## B\nContent here\n## C\nMore content\n### D\n";
+        let headings = parse_headings(text);
+        let pos = text.find("Content").unwrap();
+        let path = heading_path_at(&headings, pos);
+        assert_eq!(path, vec!["A", "B"]);
+
+        let pos = text.find("More").unwrap();
+        let path = heading_path_at(&headings, pos);
+        assert_eq!(path, vec!["A", "C"]);
+    }
+
+    #[test]
+    fn breadcrumb_inject_prepends_to_content() {
+        let source = "# Project\n## Setup\nInstall dependencies.\n## Usage\nRun the app.";
+        let config = ChunkConfig {
+            target_size: 30,
+            overlap: 0,
+            min_size: 5,
+        };
+        let mut chunks = chunk_text(source, &config);
+        inject_breadcrumbs(&mut chunks, source);
+
+        for chunk in &chunks {
+            assert!(chunk.breadcrumb.is_some());
+            assert!(chunk.content.contains(" > ") || chunk.content.starts_with("Project"));
+        }
+    }
+
+    #[test]
+    fn breadcrumb_no_headings_unchanged() {
+        let source = "Just plain text without any headings at all.";
+        let config = ChunkConfig {
+            target_size: 1000,
+            overlap: 0,
+            min_size: 5,
+        };
+        let mut chunks = chunk_text(source, &config);
+        let original_content = chunks[0].content.clone();
+        inject_breadcrumbs(&mut chunks, source);
+        assert!(chunks[0].breadcrumb.is_none());
+        assert_eq!(chunks[0].content, original_content);
+    }
+
+    #[test]
+    fn breadcrumb_sibling_headings_reset() {
+        let text = "# Root\n## A\nUnder A\n## B\nUnder B";
+        let headings = parse_headings(text);
+        let pos = text.find("Under B").unwrap();
+        let path = heading_path_at(&headings, pos);
+        assert_eq!(path, vec!["Root", "B"]);
     }
 }
