@@ -190,11 +190,13 @@ impl MeshRouter {
                     FlowError::TeammateNotFound(format!("{to} (no mailbox sender)"))
                 })?;
 
+                let now = Instant::now();
                 let msg = MailboxMessage {
                     sender: from.to_string(),
                     body,
                     label: data_label,
-                    timestamp: Instant::now(),
+                    timestamp: now,
+                    provenance: vec![(from.to_string(), now)],
                 };
 
                 sender

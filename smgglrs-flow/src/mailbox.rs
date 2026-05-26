@@ -12,13 +12,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::mpsc;
 
-/// A labeled message between agents.
+/// A labeled message between agents with provenance tracking.
 #[derive(Debug, Clone)]
 pub struct MailboxMessage {
     pub sender: String,
     pub body: String,
     pub label: DataLabel,
     pub timestamp: Instant,
+    /// Provenance chain: ordered list of (agent_id, timestamp) pairs
+    /// tracking all agents that contributed to this message's content.
+    pub provenance: Vec<(String, Instant)>,
 }
 
 /// Per-agent mailbox backed by tokio mpsc.
@@ -27,19 +30,27 @@ struct AgentMailbox {
     rx: Mutex<mpsc::Receiver<MailboxMessage>>,
     agent_id: String,
     clearance: Confidentiality,
+    send_count: std::sync::atomic::AtomicU64,
 }
 
 /// Flow-level mailbox registry. Shared across all agents in a flow.
 pub struct MailboxRegistry {
     mailboxes: HashMap<String, AgentMailbox>,
     audit_log: Arc<Mutex<Vec<MailboxMessage>>>,
+    rate_limit: u64,
 }
 
 impl MailboxRegistry {
     /// Create a registry with one mpsc channel per agent.
     ///
     /// All agents start with `Confidentiality::Public` clearance.
+    /// `rate_limit` is the max messages per agent (0 = unlimited).
     pub fn new(agent_ids: &[String], capacity: usize) -> Self {
+        Self::with_rate_limit(agent_ids, capacity, 0)
+    }
+
+    /// Create a registry with a per-agent message rate limit.
+    pub fn with_rate_limit(agent_ids: &[String], capacity: usize, rate_limit: u64) -> Self {
         let mut mailboxes = HashMap::new();
         for id in agent_ids {
             let (tx, rx) = mpsc::channel(capacity);
@@ -50,17 +61,20 @@ impl MailboxRegistry {
                     rx: Mutex::new(rx),
                     agent_id: id.clone(),
                     clearance: Confidentiality::Public,
+                    send_count: std::sync::atomic::AtomicU64::new(0),
                 },
             );
         }
         Self {
             mailboxes,
             audit_log: Arc::new(Mutex::new(Vec::new())),
+            rate_limit,
         }
     }
 
     /// Post a labeled message from one agent to another.
     ///
+    /// Includes provenance tracking and optional rate limiting.
     /// Returns `FlowError::IfcViolation` if the sender's label
     /// confidentiality exceeds the target's clearance (no write-down).
     /// Returns `FlowError::UnknownAgent` if the target does not exist.
@@ -72,6 +86,46 @@ impl MailboxRegistry {
         target_id: &str,
         body: String,
     ) -> Result<(), FlowError> {
+        self.post_with_provenance(sender_id, sender_label, target_id, body, Vec::new())
+    }
+
+    /// Post a message with an inherited provenance chain.
+    ///
+    /// When an agent forwards content from another agent's message,
+    /// pass the original message's provenance chain here. The sender
+    /// is appended to the chain. Circular provenance is detected and
+    /// logged.
+    pub fn post_with_provenance(
+        &self,
+        sender_id: &str,
+        sender_label: DataLabel,
+        target_id: &str,
+        body: String,
+        inherited_provenance: Vec<(String, Instant)>,
+    ) -> Result<(), FlowError> {
+        // Rate limit check
+        if self.rate_limit > 0 {
+            if let Some(sender_mailbox) = self.mailboxes.get(sender_id) {
+                let count = sender_mailbox.send_count.fetch_add(
+                    1,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                if count >= self.rate_limit {
+                    tracing::warn!(
+                        sender = sender_id,
+                        count,
+                        limit = self.rate_limit,
+                        "Agent rate limited — quarantine triggered"
+                    );
+                    return Err(FlowError::Other(anyhow::anyhow!(
+                        "agent '{}' exceeded message rate limit ({} messages)",
+                        sender_id,
+                        self.rate_limit,
+                    )));
+                }
+            }
+        }
+
         let target = self
             .mailboxes
             .get(target_id)
@@ -88,11 +142,27 @@ impl MailboxRegistry {
             });
         }
 
+        let mut provenance = inherited_provenance;
+        let now = Instant::now();
+
+        // Circular provenance detection
+        if provenance.iter().any(|(id, _)| id == sender_id) {
+            tracing::warn!(
+                sender = sender_id,
+                target = target_id,
+                chain_len = provenance.len(),
+                "Circular provenance detected in message chain"
+            );
+        }
+
+        provenance.push((sender_id.to_string(), now));
+
         let msg = MailboxMessage {
             sender: sender_id.to_string(),
             body,
             label: sender_label,
-            timestamp: Instant::now(),
+            timestamp: now,
+            provenance,
         };
 
         target
