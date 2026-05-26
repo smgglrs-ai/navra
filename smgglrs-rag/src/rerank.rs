@@ -245,6 +245,76 @@ pub fn load_reranker(
     }
 }
 
+/// Configuration for confidence-based abstention.
+#[derive(Debug, Clone)]
+pub struct ConfidenceGate {
+    pub threshold: f32,
+    pub abstain_message: String,
+}
+
+impl Default for ConfidenceGate {
+    fn default() -> Self {
+        Self {
+            threshold: 0.4,
+            abstain_message: "Insufficient information to answer this query.".to_string(),
+        }
+    }
+}
+
+/// Reranker wrapper that filters results below a confidence threshold.
+///
+/// After the inner reranker scores candidates, computes the mean score
+/// of the top-k results. If below the gate threshold, returns an empty
+/// Vec (abstention). The caller checks for empty results and surfaces
+/// the abstain message.
+pub struct GatedReranker {
+    inner: Box<dyn Reranker>,
+    gate: ConfidenceGate,
+}
+
+impl GatedReranker {
+    pub fn new(inner: Box<dyn Reranker>, gate: ConfidenceGate) -> Self {
+        Self { inner, gate }
+    }
+
+    pub fn gate(&self) -> &ConfidenceGate {
+        &self.gate
+    }
+}
+
+impl Reranker for GatedReranker {
+    fn rerank(&self, query: &str, candidates: Vec<ChunkResult>) -> Vec<ChunkResult> {
+        let reranked = self.inner.rerank(query, candidates);
+        if reranked.is_empty() {
+            return reranked;
+        }
+
+        // Cross-encoder reranker negates scores (lower = better).
+        // Compute mean of the absolute scores for gating.
+        let mean_score: f32 = reranked
+            .iter()
+            .map(|c| c.distance.abs() as f32)
+            .sum::<f32>()
+            / reranked.len() as f32;
+
+        if mean_score < self.gate.threshold {
+            tracing::info!(
+                mean_score,
+                threshold = self.gate.threshold,
+                candidates = reranked.len(),
+                "Confidence gate: abstaining (mean score below threshold)"
+            );
+            return Vec::new();
+        }
+
+        reranked
+    }
+
+    fn is_active(&self) -> bool {
+        self.inner.is_active()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,5 +401,61 @@ mod tests {
         let candidates = sample_results();
         let reranked = reranker.rerank("query", candidates);
         assert_eq!(reranked.len(), 3);
+    }
+
+    /// A test reranker that assigns known scores for confidence gating tests.
+    struct FixedScoreReranker(f64);
+
+    impl Reranker for FixedScoreReranker {
+        fn rerank(&self, _query: &str, candidates: Vec<ChunkResult>) -> Vec<ChunkResult> {
+            candidates
+                .into_iter()
+                .map(|mut c| {
+                    c.distance = -self.0; // negated score convention
+                    c
+                })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn gated_reranker_passes_high_confidence() {
+        let gate = ConfidenceGate {
+            threshold: 0.3,
+            abstain_message: "abstain".to_string(),
+        };
+        let reranker = GatedReranker::new(Box::new(FixedScoreReranker(0.8)), gate);
+        let results = reranker.rerank("query", sample_results());
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn gated_reranker_abstains_low_confidence() {
+        let gate = ConfidenceGate {
+            threshold: 0.5,
+            abstain_message: "not enough info".to_string(),
+        };
+        let reranker = GatedReranker::new(Box::new(FixedScoreReranker(0.2)), gate);
+        let results = reranker.rerank("query", sample_results());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn gated_reranker_empty_input_returns_empty() {
+        let gate = ConfidenceGate::default();
+        let reranker = GatedReranker::new(Box::new(NoopReranker), gate);
+        let results = reranker.rerank("query", Vec::new());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn gated_reranker_at_threshold_passes() {
+        let gate = ConfidenceGate {
+            threshold: 0.5,
+            abstain_message: "abstain".to_string(),
+        };
+        let reranker = GatedReranker::new(Box::new(FixedScoreReranker(0.5)), gate);
+        let results = reranker.rerank("query", sample_results());
+        assert_eq!(results.len(), 3);
     }
 }
