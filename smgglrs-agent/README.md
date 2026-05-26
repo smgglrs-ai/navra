@@ -5,9 +5,12 @@ Client SDK for building AI agents that connect to MCP servers.
 ## Overview
 
 Provides a high-level `Agent` with a builder pattern, an MCP client
-with IFC taint tracking, and a tool-use loop implementing the ReAct
-pattern. External consumers depend only on this crate and reach
-protocol/model/security types through its re-exports.
+with IFC taint tracking, a tool-use loop implementing the ReAct
+pattern, and deterministic replay for repetitive tasks. Supports
+cooperative signal delivery (interrupt/terminate/pause/resume) and
+typed action classification with risk levels. External consumers
+depend only on this crate and reach protocol/model/security types
+through its re-exports.
 
 ## Standalone Binary
 

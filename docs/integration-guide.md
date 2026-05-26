@@ -22,10 +22,16 @@ tool call passes through:
   prevents it from flowing to lower-trust outputs.
 - **Safety filters** -- Regex and ML-based filters redact secrets,
   PII, and custom patterns from all tool inputs and outputs.
+- **Upstream tool scanning** -- Your server's tool definitions are
+  scanned for 8 threat categories (poisoning, typosquatting, schema
+  abuse, hidden Unicode, injection, cross-server refs, intent-behavior
+  mismatch, rug pull) before being exposed to agents.
 - **Human-in-the-loop approval** -- Sensitive operations pause and
   notify the user via D-Bus, system tray, CLI, or MCP.
 - **Audit trail** -- Every tool call is logged with agent identity,
   arguments, result, duration, and ACL decision.
+- **Observability** -- Prometheus `/metrics` endpoint and optional
+  OTel trace export for every tool call through the gateway.
 
 Your server does not need to implement any of this. smgglrs
 applies it uniformly to all upstream traffic.
