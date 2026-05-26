@@ -28,6 +28,7 @@ mod definition;
 mod engine;
 mod error;
 pub mod eval;
+pub mod event_log;
 mod executor;
 mod handoff;
 pub mod iterative;
