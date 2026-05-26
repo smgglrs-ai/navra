@@ -433,7 +433,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Item | Phase | Effort | Priority |
 |------|-------|--------|----------|
 | **TensorRtRuntime backend** | 11a | 2-3 days | Medium-High |
-| **TurboQuant KV cache** (--cache-type flags) | 11a | 1 day | Medium |
+| ~~TurboQuant KV cache~~ (--cache-type-k/v flags) | ✅ | — | — |
 | Session store sharding (DashMap) | 12b | 1-2 days | Medium |
 | Streaming model download (pull → disk) | 12b | 2-3 days | Medium |
 | Feature-gate ONNX | 12b | Invasive | Low |
