@@ -20,6 +20,8 @@ hibernation, preemptive scheduling, kernel resources).
 
 ### Recent (2026-05-26)
 
+- **Sprint 6 (Implementable now)**: 11 items resolved (5 already done,
+    6 newly implemented: 9q, 7j, 9s, 9r, 12e, 2h)
 - **Sprint 5 (Quick wins)**: 6 items implemented
   - **Phase 8j+8k**: Loop detection + reasoning sandwich in tool loop
   - **Phase 2k**: Per-agent temperature in flow YAML
@@ -1091,7 +1093,7 @@ Circular provenance detected and logged.
 Reference: Microsoft network-level red teaming (2026-05),
 NIST AI RMF Playbook (2026-03 update).
 
-#### 2h. Formalize Stochastic-Deterministic Boundary (NEW — tech watch 2026-05-25)
+#### 2h. Formalize Stochastic-Deterministic Boundary ✅ (2026-05-26)
 
 **Crate**: `smgglrs-flow` (executor, new `sdb.rs`)
 
@@ -1126,7 +1128,7 @@ Invalid proposals are rejected before tool execution.
 Reference: arXiv 2605.20173 (Runtime Architecture Patterns for
 Production LLM Agents).
 
-#### 2i. Trajectory branching / checkpoint forking (NEW — tech watch 2026-05-25)
+#### 2i. Trajectory branching / checkpoint forking ✅
 
 **Crate**: `smgglrs-flow` (executor, event_log)
 
@@ -1150,7 +1152,7 @@ both branches complete independently, outputs compared.
 
 Reference: Google AX trajectory branching.
 
-#### 2j. Self-verification gate for DAG nodes (NEW — tech watch 2026-05-25)
+#### 2j. Self-verification gate for DAG nodes ✅
 
 **Crate**: `smgglrs-flow` (executor)
 
@@ -1370,7 +1372,7 @@ terminal_precision.
 - Remaining: agents auto-load relevant memory into context,
   semantic query caching (paraphrase detection, ~76% savings)
 
-#### 3i. Multi-user/multi-agent memory scoping (NEW — tech watch 2026-05-17)
+#### 3i. Multi-user/multi-agent memory scoping ✅
 
 **Crate**: `smgglrs-memory` (schema + query)
 
@@ -2154,7 +2156,7 @@ truncated chunks. LLM answers are more accurate on structured docs.
 
 Reference: Proxy-Pointer RAG pointer-based context.
 
-#### 7j. Metadata pre-filtering in RAG search (NEW — tech watch 2026-05-25)
+#### 7j. Metadata pre-filtering ✅ (2026-05-26)
 
 **Crate**: `smgglrs-rag` (store.rs)
 
@@ -2311,7 +2313,7 @@ tool without re-prompting the model.
 Reference: Verbalized sampling (2026-05-03) — multi-hypothesis
 output with confidence scores for decision-making.
 
-#### 8i. Progressive tool disclosure (NEW — tech watch 2026-05-17)
+#### 8i. Progressive tool disclosure ✅
 
 **Crate**: `smgglrs-core` (server, dispatch)
 
@@ -2805,7 +2807,7 @@ model retraining.
 
 Reference: HASP (arXiv 2605.17734), smgglrs-security hook pipeline.
 
-#### 9q. Response sanitization pattern audit (NEW — tech watch 2026-05-25)
+#### 9q. Response sanitization ✅ (2026-05-26)
 
 **Crate**: `smgglrs-security` (safety filters)
 
@@ -2831,7 +2833,7 @@ are detected and sanitized. Coverage checklist documented.
 Reference: Microsoft AGT response sanitization, OWASP Agentic
 Top 10 (ASI01 Goal Hijack).
 
-#### 9r. Dynamic trust scoring with decay (NEW — tech watch 2026-05-25)
+#### 9r. Dynamic trust scoring ✅ (2026-05-26)
 
 **Crate**: `smgglrs-security` (new `trust_score.rs`)
 
@@ -2868,7 +2870,7 @@ read-only operations.
 Reference: Microsoft AGT trust decay, OWASP Agentic Top 10
 (ASI10 Rogue Agents).
 
-#### 9s. Risk-tiered approval (NEW — tech watch 2026-05-25)
+#### 9s. Risk-tiered approval ✅ (2026-05-26)
 
 **Crate**: `smgglrs-security` (permissions)
 
@@ -3405,7 +3407,7 @@ specialists are selected.
 Reference: GitHub "Validating Agentic Behavior" (2026-05-08),
 Prefix Tree Acceptors, dominator analysis.
 
-#### 12e. Trajectory-level evaluation metrics (NEW — tech watch 2026-05-25)
+#### 12e. Trajectory-level evaluation ✅ (2026-05-26)
 
 **Crate**: `smgglrs-flow` (eval.rs)
 
