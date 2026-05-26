@@ -443,17 +443,17 @@ audit/blackbox logs, distillation output, and vector embeddings
 | ~~Statistical guardrails~~ (cosine z-score drift + Shannon entropy) | ✅ 2026-05-15 | — | — |
 | ~~WebSocket transport~~ (alongside SSE for agentic loops) | ✅ 2026-05-15 | — | — |
 | ~~GLiGuard safety model evaluation~~ (ONNX, multi-label) | ✅ | — | — |
-| **OTel GenAI observability** (traces + Prometheus /metrics) | 12c | 3-4 days | High |
+| ~~OTel GenAI observability~~ (traces + Prometheus /metrics) | ✅ | — | — |
 | ~~`obo` identity claim + RFC 8693 token exchange~~ | ✅ | — | — |
-| **RoutingHook** (cost-aware model routing via ONNX classifier) | 11h | 3-4 days | Medium-High |
+| ~~RoutingHook~~ (cost-aware model routing via ONNX classifier) | ✅ | — | — |
 | ~~Durable DAG execution~~ (per-node checkpoint, idempotency cache) | ✅ 2026-05-26 | — | — |
-| **Memory scoping** (entity/process/session, temporal validity) | 3i | 2 days | Medium |
-| **Trace-based memory extraction** (MemoryExtractionHook) | 3j | 3-4 days | Medium |
-| **Progressive tool disclosure** (session-scoped tool sets) | 8i | 1-2 days | Medium |
+| ~~Memory scoping~~ (entity/process/session, temporal validity) | ✅ | — | — |
+| ~~Trace-based memory extraction~~ (MemoryExtractionHook) | ✅ | — | — |
+| ~~Progressive tool disclosure~~ (session-scoped tool sets) | ✅ | — | — |
 | **Speculative decoding** (EAGLE3/FastDraft in model-runtime) | 11g | 2-3 days | Medium |
-| **smgglrs-flow DAG test framework** (PTA/dominator validation) | 12 | 3-4 days | Medium |
-| **Event-driven triggers** (voice assistant: email/Slack/calendar → agent) | 5 | 3-5 days | Medium |
-| **fd-passing TOCTOU mitigation** (smgglrs-tools-file) | 12b | 1-2 days | Medium |
+| ~~smgglrs-flow DAG test framework~~ (PTA/dominator validation) | ✅ | — | — |
+| ~~Event-driven triggers~~ (webhook, cron, file watch) | ✅ | — | — |
+| ~~fd-passing TOCTOU mitigation~~ (smgglrs-tools-file) | ✅ | — | — |
 | ~~Upstream tool scanning~~ (poisoning, typosquatting, schema abuse) | ✅ 2026-05-26 | — | — |
 | ~~Cognitive file integrity~~ (SHA-256 + semantic drift detection) | ✅ 2026-05-26 | — | — |
 | ~~Hybrid FTS5+vector in ChunkStore~~ (RAG consensus) | ✅ 2026-05-26 | — | — |
@@ -465,27 +465,27 @@ audit/blackbox logs, distillation output, and vector embeddings
 | ~~Deterministic replay~~ (recipe compilation + replay) | ✅ 2026-05-26 | — | — |
 | ~~Confidence gating~~ (RAG abstention) | ✅ 2026-05-26 | — | — |
 | ~~MCP tunnel compatibility~~ (documentation + validation) | ✅ 2026-05-26 | — | — |
-| **Gateway field filtering** (token optimization) | 9o | 1-2 days | Medium-High |
+| ~~Gateway field filtering~~ (token optimization) | ✅ | — | — |
 | ~~HASP Program Functions~~ (SkillHook in hook pipeline) | ✅ 2026-05-26 | — | — |
 | ~~Batch cross-encoder scoring~~ | ✅ 2026-05-26 | — | — |
-| **Early commitment fast paths** | 1i | 1-2 days | Medium-High |
-| **Section-level pointer retrieval** | 7i | 1-2 days | Medium-High |
+| ~~Early commitment fast paths~~  | ✅ | — | — |
+| ~~Section-level pointer retrieval~~  | ✅ | — | — |
 | ~~RAMPART-style safety test suite~~ (129 variants, 5 categories) | ✅ 2026-05-26 | — | — |
-| **SDB formalization** | 2h | 2-3 days | Medium |
-| **Self-verification gate** | 2j | 1-2 days | Medium |
-| **Loop detection middleware** | 8j | 0.5-1 day | Medium |
-| **Reasoning sandwich** | 8k | 0.5-1 day | Medium |
-| **Per-agent temperature** | 2k | 0.5-1 day | Medium |
-| **Response sanitization audit** | 9q | 0.5-1 day | Medium |
-| **Trust decay scoring** | 9r | 2-3 days | Medium |
-| **Risk-tiered approval** | 9s | 1-2 days | Medium |
-| **Trajectory evaluation metrics** | 12e | 2-3 days | Medium |
-| **Metadata pre-filtering** | 7j | 0.5-1 day | Medium |
+| ~~SDB formalization~~  | ✅ | — | — |
+| ~~Self-verification gate~~  | ✅ | — | — |
+| ~~Loop detection middleware~~  | ✅ | — | — |
+| ~~Reasoning sandwich~~  | ✅ | — | — |
+| ~~Per-agent temperature~~  | ✅ | — | — |
+| ~~Response sanitization audit~~  | ✅ | — | — |
+| ~~Trust decay scoring~~ | ✅ | — | — |
+| ~~Risk-tiered approval~~ | ✅ | — | — |
+| ~~Trajectory evaluation metrics~~ | ✅ | — | — |
+| ~~Metadata pre-filtering~~ | ✅ | — | — |
 | **Skill source pipeline** | 1j | 2-3 days | Medium |
 | **NemoClaw alternative design** | 6g | 1 day | Medium |
 | **Privacy Router coordination** | 6h | 1 day | Medium |
 | **delta-mem OSAM evaluation** | 11i | 2 days | Medium |
-| **Trajectory branching** | 2i | 2-3 days | Medium |
+| ~~Trajectory branching~~ | ✅ | — | — |
 | **KG triple storage** | 3k | 2-3 days | Low-Medium |
 | **Operator libraries** | 2l | 0.5-1 day | Low |
 | **HTML-to-markdown conversion** | 9t | 1 day | Low-Medium |
