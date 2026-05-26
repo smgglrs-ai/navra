@@ -25,6 +25,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 smgglrs-responses = { path = "../smgglrs-responses" }

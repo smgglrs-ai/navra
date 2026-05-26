@@ -3,7 +3,7 @@
 //! No isolation. Suitable for development and trusted models.
 //! Requires `llama-server` (from llama.cpp) on PATH.
 
-use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeError, ServeConfig};
+use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
 use std::pin::Pin;
 use std::future::Future;
 use std::sync::Mutex;
@@ -161,6 +161,12 @@ impl ModelRuntime for DirectRuntime {
 
     fn backend(&self) -> RuntimeBackend {
         RuntimeBackend::Direct
+    }
+
+    fn capabilities(&self) -> RuntimeCapabilities {
+        RuntimeCapabilities {
+            supports_kv_checkpoint: true,
+        }
     }
 }
 
