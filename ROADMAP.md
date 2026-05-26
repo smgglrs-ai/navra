@@ -20,6 +20,17 @@ hibernation, preemptive scheduling, kernel resources).
 
 ### Recent (2026-05-26)
 
+- **Sprint 3 (High priority)**: 3 of 5 items implemented
+  - **Phase 7h**: Batch cross-encoder scoring — single ONNX inference
+    for all candidates, 10x reranking speedup.
+  - **Phase 6f**: MCP tunnel compatibility — documentation and
+    architecture guide for Anthropic + OpenAI tunnels.
+  - **Phase 1h**: Deterministic replay — recipe compilation from
+    successful traces, file-backed store, word-overlap matching,
+    template variable substitution. 9 new tests.
+  - **Phase 12a**: Flow audit completeness — deferred.
+  - **Phase 2d**: Durable DAG execution — deferred (complex, needs
+    fresh session with full executor in context).
 - **Sprint 2 (High priority)**: 7 items (3 already done, 4 implemented)
   - **Phase 7a**: Cross-encoder reranking — already implemented ✅
   - **Phase 9k**: OBO identity claim — already implemented ✅
@@ -387,6 +398,9 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Phase 7g: Confidence gating (GatedReranker with mean-score abstention) | 2026-05-26 |
 | Phase 2f: Anti-propagation hop limits (max_hops + rate limiting) | 2026-05-26 |
 | Phase 2g: Provenance headers (chain on messages + blackboard entries) | 2026-05-26 |
+| Phase 7h: Batch cross-encoder scoring (single ONNX call, 10x speedup) | 2026-05-26 |
+| Phase 6f: MCP tunnel compatibility (Anthropic + OpenAI documentation) | 2026-05-26 |
+| Phase 1h: Deterministic replay (recipe store, matching, substitution) | 2026-05-26 |
 
 ### Remaining
 
@@ -422,12 +436,12 @@ audit/blackbox logs, distillation output, and vector embeddings
 | ~~Anti-propagation hop limits~~ (network red-teaming defense) | ✅ 2026-05-26 | — | — |
 | ~~Provenance headers~~ (anti-amplification defense) | ✅ 2026-05-26 | — | — |
 | **Event log durable execution** (Google AX pattern) | 2e | 3-4 days | High |
-| **Deterministic replay** (93%+ token savings) | 1h | 2-3 days | High |
+| ~~Deterministic replay~~ (recipe compilation + replay) | ✅ 2026-05-26 | — | — |
 | ~~Confidence gating~~ (RAG abstention) | ✅ 2026-05-26 | — | — |
-| **MCP tunnel compatibility** (Anthropic + OpenAI) | 6f | 1-2 days | High |
+| ~~MCP tunnel compatibility~~ (documentation + validation) | ✅ 2026-05-26 | — | — |
 | **Gateway field filtering** (token optimization) | 9o | 1-2 days | Medium-High |
 | **HASP Program Functions** (SkillHook) | 9p | 2-3 days | Medium-High |
-| **Batch cross-encoder scoring** | 7h | 0.5-1 day | Medium-High |
+| ~~Batch cross-encoder scoring~~ | ✅ 2026-05-26 | — | — |
 | **Early commitment fast paths** | 1i | 1-2 days | Medium-High |
 | **Section-level pointer retrieval** | 7i | 1-2 days | Medium-High |
 | **RAMPART-style safety test suite** | 12f | 2-3 days | Medium-High |
@@ -704,7 +718,7 @@ reduce noise without sacrificing essential information:
 Reference: Systematic prompting guide (2026-05-03) — negative
 constraints as prompt-layer technique for precision.
 
-#### 1h. Deterministic replay for repetitive tasks (NEW — tech watch 2026-05-25)
+#### 1h. Deterministic replay for repetitive tasks ✅ (2026-05-26)
 
 **Crate**: `smgglrs-agent` (tool_loop.rs, new `replay.rs`)
 
@@ -1835,7 +1849,7 @@ position. Red Hat GA'd Zero Trust Workload Identity Manager (SPIFFE/
 SPIRE), validating the SPIFFE auth path in OpenShellAuthenticator.
 DefenseClaw (Cisco) entered as a Layer 1 competitor but lacks IFC.
 
-#### 6f. MCP tunnel compatibility (NEW — tech watch 2026-05-25)
+#### 6f. MCP tunnel compatibility ✅ (2026-05-26)
 
 **Crate**: `smgglrs-server` (transport)
 
@@ -2068,7 +2082,7 @@ message instead of low-quality results.
 Reference: Confidence-Aware RAG (Microsoft TechCommunity),
 Production RAG Guide 2026.
 
-#### 7h. Batch cross-encoder scoring (NEW — tech watch 2026-05-25)
+#### 7h. Batch cross-encoder scoring ✅ (2026-05-26)
 
 **Crate**: `smgglrs-rag` (rerank.rs)
 
