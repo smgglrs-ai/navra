@@ -14,10 +14,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::capability::{self, CapabilitySet, OboIdentity};
 use super::{AgentIdentity, AuthError, Authenticator};
-use super::capability::{
-    self, CapabilitySet, OboIdentity,
-};
 use crate::identity::CapSigner;
 
 /// OAuth 2.0 server metadata per RFC 8414 / MCP spec.
@@ -174,10 +172,7 @@ pub struct OAuthProvider {
 }
 
 impl OAuthProvider {
-    pub fn new(
-        config: OAuthConfig,
-        signer: Box<dyn CapSigner>,
-    ) -> Self {
+    pub fn new(config: OAuthConfig, signer: Box<dyn CapSigner>) -> Self {
         Self {
             config,
             signer,
@@ -214,10 +209,7 @@ impl OAuthProvider {
     }
 
     /// Dynamic client registration.
-    pub fn register_dynamic(
-        &self,
-        request: &ClientRegistrationRequest,
-    ) -> ClientRegistration {
+    pub fn register_dynamic(&self, request: &ClientRegistrationRequest) -> ClientRegistration {
         let client_id = format!("oauth_{}", uuid::Uuid::new_v4());
         let client_secret = generate_client_secret();
 
@@ -256,9 +248,7 @@ impl OAuthProvider {
                 "client_credentials".to_string(),
                 "urn:ietf:params:oauth:grant-type:token-exchange".to_string(),
             ]),
-            token_endpoint_auth_methods_supported: Some(vec![
-                "client_secret_post".to_string(),
-            ]),
+            token_endpoint_auth_methods_supported: Some(vec!["client_secret_post".to_string()]),
             code_challenge_methods_supported: Some(vec!["S256".to_string()]),
         }
     }
@@ -285,10 +275,8 @@ impl OAuthProvider {
             .ok_or_else(|| "invalid_client: unknown client_id".to_string())?;
 
         // Constant-time comparison for client secret
-        let secret_match = constant_time_eq(
-            client.client_secret.as_bytes(),
-            client_secret.as_bytes(),
-        );
+        let secret_match =
+            constant_time_eq(client.client_secret.as_bytes(), client_secret.as_bytes());
         if !secret_match {
             return Err("invalid_client: bad credentials".to_string());
         }
@@ -296,8 +284,7 @@ impl OAuthProvider {
         // Validate requested scopes
         let scope = request.scope.clone().unwrap_or_default();
         if !scope.is_empty() {
-            let supported: HashSet<&str> =
-                self.config.scopes.iter().map(|s| s.as_str()).collect();
+            let supported: HashSet<&str> = self.config.scopes.iter().map(|s| s.as_str()).collect();
             for s in scope.split_whitespace() {
                 if !supported.contains(s) {
                     return Err(format!("invalid_scope: unknown scope '{s}'"));
@@ -390,12 +377,16 @@ impl OAuthProvider {
         };
 
         // Build a capability token with the OBO identity
-        let cap = self.config.exchange_cap.clone().unwrap_or_else(|| CapabilitySet {
-            paths: vec![],
-            operations: vec![],
-            tools: vec![],
-            credentials: vec![],
-        });
+        let cap = self
+            .config
+            .exchange_cap
+            .clone()
+            .unwrap_or_else(|| CapabilitySet {
+                paths: vec![],
+                operations: vec![],
+                tools: vec![],
+                credentials: vec![],
+            });
 
         let mut payload = capability::build_payload(
             &self.config.issuer,
@@ -420,8 +411,8 @@ impl OAuthProvider {
 
     /// Validate a JWT access token and return the claims.
     pub fn validate_token(&self, token: &str) -> Result<(String, String, String), AuthError> {
-        let claims = decode_jwt(token, self.signer.as_ref())
-            .map_err(|_| AuthError::InvalidToken)?;
+        let claims =
+            decode_jwt(token, self.signer.as_ref()).map_err(|_| AuthError::InvalidToken)?;
 
         // Check expiry
         let now = SystemTime::now()
@@ -476,10 +467,7 @@ impl OAuthAuthenticator {
 }
 
 impl Authenticator for OAuthAuthenticator {
-    fn authenticate(
-        &self,
-        headers: &axum::http::HeaderMap,
-    ) -> Result<AgentIdentity, AuthError> {
+    fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError> {
         let header = headers
             .get("authorization")
             .ok_or(AuthError::MissingToken)?;
@@ -625,10 +613,7 @@ mod tests {
         let meta = provider.metadata();
 
         assert_eq!(meta.issuer, "http://localhost:9315");
-        assert_eq!(
-            meta.token_endpoint,
-            "http://localhost:9315/oauth/token"
-        );
+        assert_eq!(meta.token_endpoint, "http://localhost:9315/oauth/token");
         assert!(meta.registration_endpoint.is_some());
         assert_eq!(
             meta.grant_types_supported,
@@ -854,10 +839,7 @@ mod tests {
         let auth = OAuthAuthenticator::new(provider);
 
         let mut headers = axum::http::HeaderMap::new();
-        headers.insert(
-            "authorization",
-            "Bearer not-a-jwt-token".parse().unwrap(),
-        );
+        headers.insert("authorization", "Bearer not-a-jwt-token".parse().unwrap());
 
         let err = auth.authenticate(&headers).unwrap_err();
         assert!(matches!(err, AuthError::InvalidToken));
@@ -931,7 +913,9 @@ mod tests {
             let resolved = provider.resolve_permissions_from_scopes(scope);
             assert!(
                 valid_perms.contains(&resolved.as_str()) || resolved == "readonly",
-                "Scope '{}' resolved to unexpected permission '{}'", scope, resolved
+                "Scope '{}' resolved to unexpected permission '{}'",
+                scope,
+                resolved
             );
         }
     }
@@ -959,7 +943,10 @@ mod tests {
 
         let response = provider.exchange_token(&request, Some(&validator)).unwrap();
         assert_eq!(response.token_type, "Bearer");
-        assert_eq!(response.issued_token_type, "urn:ietf:params:oauth:token-type:access_token");
+        assert_eq!(
+            response.issued_token_type,
+            "urn:ietf:params:oauth:token-type:access_token"
+        );
         assert!(response.access_token.starts_with("smgglrs_cap_v1."));
 
         // Decode the capability token and verify obo

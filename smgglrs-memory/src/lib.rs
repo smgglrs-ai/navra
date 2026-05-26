@@ -24,6 +24,10 @@ pub mod session_store;
 mod types;
 mod working;
 
+pub use audit::{
+    AuditLog, AuditModelCall, AuditRun, AuditSummary, AuditToolCall, FlowSummary, FlowTaskResult,
+};
+pub use decay::{cleanup_decayed, effective_score};
 pub use error::MemoryError;
 pub use knowledge::KnowledgeStore;
 pub use pipeline::{
@@ -31,7 +35,7 @@ pub use pipeline::{
 };
 pub use retrieval::{MemoryRetriever, ScoredEntry};
 pub use session_store::SqliteSessionBackend;
-pub use types::{DistilledEntry, MemoryEntry, MemoryScope, MemoryType, MergeStrategy, Message, Role, Turn};
-pub use audit::{AuditLog, AuditModelCall, AuditRun, AuditSummary, AuditToolCall, FlowSummary, FlowTaskResult};
-pub use decay::{cleanup_decayed, effective_score};
+pub use types::{
+    DistilledEntry, MemoryEntry, MemoryScope, MemoryType, MergeStrategy, Message, Role, Turn,
+};
 pub use working::WorkingMemory;

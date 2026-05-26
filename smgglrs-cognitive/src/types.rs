@@ -84,7 +84,6 @@ pub enum Scope {
     Internal,
 }
 
-
 /// A persona defines an agent's identity, capabilities, and behavior.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Persona {
@@ -347,7 +346,10 @@ facets:
         let heuristic: HeuristicModule = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(heuristic.heuristic_name, "security");
         assert_eq!(heuristic.facets.len(), 2);
-        assert_eq!(heuristic.facets[0].display_name.as_deref(), Some("Input Validation"));
+        assert_eq!(
+            heuristic.facets[0].display_name.as_deref(),
+            Some("Input Validation")
+        );
         assert!(heuristic.facets[1].display_name.is_none());
     }
 
@@ -437,8 +439,14 @@ mcp_prompts:
         assert_eq!(persona.persona_name, "legal_analyst");
         assert_eq!(persona.mcp_prompts.len(), 2);
         assert_eq!(persona.mcp_prompts[0].upstream, "syllogis");
-        assert_eq!(persona.mcp_prompts[0].inject_position, InjectPosition::AfterMandate);
-        assert_eq!(persona.mcp_prompts[1].inject_position, InjectPosition::AfterHeuristics);
+        assert_eq!(
+            persona.mcp_prompts[0].inject_position,
+            InjectPosition::AfterMandate
+        );
+        assert_eq!(
+            persona.mcp_prompts[1].inject_position,
+            InjectPosition::AfterHeuristics
+        );
     }
 
     #[test]

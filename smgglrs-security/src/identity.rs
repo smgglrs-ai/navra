@@ -3,7 +3,7 @@
 //! Provides DID:key generation from Ed25519 public keys, algorithm-agile
 //! signing via the [`CapSigner`] trait, and keypair lifecycle management.
 
-use ed25519_dalek::{SigningKey, VerifyingKey, Signer, Verifier, Signature};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand::rngs::OsRng;
 use std::path::Path;
 
@@ -115,10 +115,7 @@ impl Ed25519Verifier {
     pub fn from_bytes(bytes: &[u8; 32]) -> anyhow::Result<Self> {
         let verifying_key = VerifyingKey::from_bytes(bytes)?;
         let did = did_from_pubkey(&verifying_key);
-        Ok(Self {
-            verifying_key,
-            did,
-        })
+        Ok(Self { verifying_key, did })
     }
 
     /// Verify a signature over a payload.
@@ -201,7 +198,8 @@ pub fn load_or_create_file_identity(path: &Path) -> anyhow::Result<Ed25519Signer
                 seed_bytes.len()
             );
         }
-        let seed: [u8; 32] = seed_bytes.try_into()
+        let seed: [u8; 32] = seed_bytes
+            .try_into()
             .map_err(|_| anyhow::anyhow!("seed must be exactly 32 bytes"))?;
         Ok(Ed25519Signer::from_seed(&seed))
     } else {
@@ -232,8 +230,9 @@ pub fn load_or_create_keyring_identity() -> anyhow::Result<Ed25519Signer> {
                     seed_bytes.len()
                 );
             }
-            let seed: [u8; 32] = seed_bytes.try_into()
-            .map_err(|_| anyhow::anyhow!("seed must be exactly 32 bytes"))?;
+            let seed: [u8; 32] = seed_bytes
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("seed must be exactly 32 bytes"))?;
             Ok(Ed25519Signer::from_seed(&seed))
         }
         Err(keyring::Error::NoEntry) => {
@@ -285,10 +284,7 @@ mod tests {
         assert!(did.starts_with("did:key:z6Mk"));
 
         let recovered = pubkey_from_did(did).unwrap();
-        assert_eq!(
-            recovered.as_bytes(),
-            signer.verifying_key.as_bytes()
-        );
+        assert_eq!(recovered.as_bytes(), signer.verifying_key.as_bytes());
     }
 
     #[test]

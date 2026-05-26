@@ -170,8 +170,13 @@ fn tainted_blackboard_reader_can_post_to_sensitive_mailbox() {
 fn blackboard_taint_rises_monotonically_through_multiple_reads() {
     let bb = Blackboard::new(10);
 
-    bb.publish("sys", "config", serde_json::json!("safe"), DataLabel::TRUSTED_PUBLIC)
-        .unwrap();
+    bb.publish(
+        "sys",
+        "config",
+        serde_json::json!("safe"),
+        DataLabel::TRUSTED_PUBLIC,
+    )
+    .unwrap();
     bb.publish(
         "net",
         "external",

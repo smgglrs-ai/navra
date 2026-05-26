@@ -131,8 +131,14 @@ fn diff_tool_has_staged_and_ref_properties() {
     let tools = module.tools();
     let diff = tools.iter().find(|(d, _)| d.name == "git_diff").unwrap();
     let props = diff.0.input_schema.properties.as_ref().unwrap();
-    assert!(props.contains_key("staged"), "diff tool missing 'staged' property");
-    assert!(props.contains_key("ref"), "diff tool missing 'ref' property");
+    assert!(
+        props.contains_key("staged"),
+        "diff tool missing 'staged' property"
+    );
+    assert!(
+        props.contains_key("ref"),
+        "diff tool missing 'ref' property"
+    );
 }
 
 #[test]
@@ -141,6 +147,12 @@ fn log_tool_has_limit_and_oneline_properties() {
     let tools = module.tools();
     let log = tools.iter().find(|(d, _)| d.name == "git_log").unwrap();
     let props = log.0.input_schema.properties.as_ref().unwrap();
-    assert!(props.contains_key("limit"), "log tool missing 'limit' property");
-    assert!(props.contains_key("oneline"), "log tool missing 'oneline' property");
+    assert!(
+        props.contains_key("limit"),
+        "log tool missing 'limit' property"
+    );
+    assert!(
+        props.contains_key("oneline"),
+        "log tool missing 'oneline' property"
+    );
 }

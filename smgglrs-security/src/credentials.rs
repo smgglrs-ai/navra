@@ -101,9 +101,9 @@ impl CredentialStore for MappedCredentialStore {
                     .ok_or_else(|| anyhow::anyhow!("keyring credential {label} missing 'path'"))?;
                 // Split path into service/user for the keyring crate.
                 // Format: "service/user" e.g. "smgglrs/github-pat"
-                let (service, user) = path
-                    .split_once('/')
-                    .ok_or_else(|| anyhow::anyhow!("keyring path must be 'service/user': {path}"))?;
+                let (service, user) = path.split_once('/').ok_or_else(|| {
+                    anyhow::anyhow!("keyring path must be 'service/user': {path}")
+                })?;
                 let entry = keyring::Entry::new(service, user)?;
                 let secret = entry.get_secret()?;
                 Ok(Secret::new(secret))
@@ -133,9 +133,9 @@ impl CredentialStore for MappedCredentialStore {
                     .path
                     .as_deref()
                     .ok_or_else(|| anyhow::anyhow!("keyring credential {label} missing 'path'"))?;
-                let (service, user) = path
-                    .split_once('/')
-                    .ok_or_else(|| anyhow::anyhow!("keyring path must be 'service/user': {path}"))?;
+                let (service, user) = path.split_once('/').ok_or_else(|| {
+                    anyhow::anyhow!("keyring path must be 'service/user': {path}")
+                })?;
                 let entry = keyring::Entry::new(service, user)?;
                 entry.set_secret(secret)?;
                 Ok(())
@@ -157,9 +157,9 @@ impl CredentialStore for MappedCredentialStore {
                     .path
                     .as_deref()
                     .ok_or_else(|| anyhow::anyhow!("keyring credential {label} missing 'path'"))?;
-                let (service, user) = path
-                    .split_once('/')
-                    .ok_or_else(|| anyhow::anyhow!("keyring path must be 'service/user': {path}"))?;
+                let (service, user) = path.split_once('/').ok_or_else(|| {
+                    anyhow::anyhow!("keyring path must be 'service/user': {path}")
+                })?;
                 let entry = keyring::Entry::new(service, user)?;
                 entry.delete_credential()?;
                 Ok(())

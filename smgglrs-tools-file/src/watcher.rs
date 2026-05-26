@@ -5,8 +5,8 @@
 //! are created, modified, or deleted.
 
 use crate::store::IndexStore;
-use smgglrs_core::models::ModelBackend;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use smgglrs_core::models::ModelBackend;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -76,7 +76,7 @@ fn process_events(
                 EventKind::Create(_) | EventKind::Modify(_) => {
                     // For create/modify, file must exist and be indexable
                     if !is_indexable(path) {
-                            continue;
+                        continue;
                     }
                     index_file(path, &index, embedding_model.as_ref());
                 }
@@ -129,7 +129,15 @@ fn index_file(path: &Path, index: &IndexStore, embedding_model: Option<&Arc<dyn 
     let title = extract_title(path, &content);
     let checksum = blake3::hash(content.as_bytes()).to_hex().to_string();
 
-    match index.upsert(&path_str, mime_type, size, &modified_at, &checksum, &title, &content) {
+    match index.upsert(
+        &path_str,
+        mime_type,
+        size,
+        &modified_at,
+        &checksum,
+        &title,
+        &content,
+    ) {
         Ok(doc_id) => {
             tracing::debug!(path = %path_str, "Indexed file (watcher)");
 
@@ -143,7 +151,8 @@ fn index_file(path: &Path, index: &IndexStore, embedding_model: Option<&Arc<dyn 
                     if let Ok(handle) = tokio::runtime::Handle::try_current() {
                         match handle.block_on(model.embed(&request)) {
                             Ok(response) => {
-                                if let Err(e) = index.upsert_embedding(doc_id, &response.embedding) {
+                                if let Err(e) = index.upsert_embedding(doc_id, &response.embedding)
+                                {
                                     tracing::warn!(path = %path_str, error = %e, "Failed to store embedding");
                                 }
                             }
@@ -179,12 +188,42 @@ fn has_indexable_name(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
         Some(
-            "md" | "markdown" | "txt" | "html" | "htm" | "json" | "csv"
-            | "rs" | "py" | "go" | "c" | "h" | "toml" | "yaml" | "yml"
-            | "xml" | "sh" | "bash" | "zsh" | "js" | "ts" | "css"
-            | "sql" | "rb" | "java" | "kt" | "swift" | "lua" | "r"
-            | "tex" | "bib" | "ini" | "cfg" | "conf" | "env"
-            | "dockerfile" | "makefile"
+            "md" | "markdown"
+                | "txt"
+                | "html"
+                | "htm"
+                | "json"
+                | "csv"
+                | "rs"
+                | "py"
+                | "go"
+                | "c"
+                | "h"
+                | "toml"
+                | "yaml"
+                | "yml"
+                | "xml"
+                | "sh"
+                | "bash"
+                | "zsh"
+                | "js"
+                | "ts"
+                | "css"
+                | "sql"
+                | "rb"
+                | "java"
+                | "kt"
+                | "swift"
+                | "lua"
+                | "r"
+                | "tex"
+                | "bib"
+                | "ini"
+                | "cfg"
+                | "conf"
+                | "env"
+                | "dockerfile"
+                | "makefile"
         ) | None // extensionless files (README, Makefile, etc.)
     )
 }
@@ -278,11 +317,15 @@ mod tests {
                 }
             },
             notify::Config::default(),
-        ).unwrap();
+        )
+        .unwrap();
         w.watch(tmp.path(), RecursiveMode::Recursive).unwrap();
         std::fs::write(tmp.path().join("test.txt"), "hello").unwrap();
         let event = rx.recv_timeout(std::time::Duration::from_secs(5));
-        assert!(event.is_ok(), "notify should fire an event for file creation");
+        assert!(
+            event.is_ok(),
+            "notify should fire an event for file creation"
+        );
         drop(w);
     }
 
@@ -334,7 +377,15 @@ mod tests {
         std::fs::write(&file_path, "# Will be deleted").unwrap();
         let path_str = file_path.to_string_lossy().to_string();
         index
-            .upsert(&path_str, "text/markdown", 17, "0", "hash", "Will be deleted", "# Will be deleted")
+            .upsert(
+                &path_str,
+                "text/markdown",
+                17,
+                "0",
+                "hash",
+                "Will be deleted",
+                "# Will be deleted",
+            )
             .unwrap();
 
         let handle = start_watcher(vec![watch_dir], index.clone()).unwrap();

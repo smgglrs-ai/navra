@@ -124,7 +124,10 @@ pub fn build_router_with_discovery(
     // OAuth routes
     if state.oauth.is_some() {
         router = router
-            .route("/.well-known/oauth-authorization-server", get(handle_oauth_metadata))
+            .route(
+                "/.well-known/oauth-authorization-server",
+                get(handle_oauth_metadata),
+            )
             .route("/oauth/token", post(handle_oauth_token))
             .route("/oauth/register", post(handle_oauth_register));
     }
@@ -144,6 +147,9 @@ pub fn build_router_with_discovery(
 }
 
 /// Set the OAuth provider on an existing router's state.
-pub fn set_oauth(state: &mut AppState, provider: Arc<smgglrs_security::auth::oauth::OAuthProvider>) {
+pub fn set_oauth(
+    state: &mut AppState,
+    provider: Arc<smgglrs_security::auth::oauth::OAuthProvider>,
+) {
     state.oauth = Some(provider);
 }

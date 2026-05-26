@@ -9,16 +9,14 @@ pub fn extract_repo_refs(query: &str) -> Vec<String> {
     let mut refs = Vec::new();
 
     // Pattern: repository(owner: "...", name: "...")
-    let owner_first = Regex::new(
-        r#"repository\s*\(\s*owner\s*:\s*"([^"]+)"\s*,\s*name\s*:\s*"([^"]+)""#,
-    )
-    .expect("valid regex");
+    let owner_first =
+        Regex::new(r#"repository\s*\(\s*owner\s*:\s*"([^"]+)"\s*,\s*name\s*:\s*"([^"]+)""#)
+            .expect("valid regex");
 
     // Pattern: repository(name: "...", owner: "...")
-    let name_first = Regex::new(
-        r#"repository\s*\(\s*name\s*:\s*"([^"]+)"\s*,\s*owner\s*:\s*"([^"]+)""#,
-    )
-    .expect("valid regex");
+    let name_first =
+        Regex::new(r#"repository\s*\(\s*name\s*:\s*"([^"]+)"\s*,\s*owner\s*:\s*"([^"]+)""#)
+            .expect("valid regex");
 
     for cap in owner_first.captures_iter(query) {
         let owner = &cap[1];
@@ -48,10 +46,7 @@ pub fn extract_repo_refs(query: &str) -> Vec<String> {
 /// Returns `Ok(())` if the query only references allowed repos,
 /// or if the query contains no repository references at all.
 /// Returns `Err` with the unauthorized repo name on violation.
-pub fn validate_repo_scope(
-    query: &str,
-    allowed_repos: &[String],
-) -> Result<(), String> {
+pub fn validate_repo_scope(query: &str, allowed_repos: &[String]) -> Result<(), String> {
     let refs = extract_repo_refs(query);
     for repo_ref in &refs {
         let allowed = allowed_repos.iter().any(|pattern| {
@@ -318,10 +313,7 @@ mod tests {
                 }
             }
         "#;
-        let allowed = vec![
-            "org-a/*".to_string(),
-            "org-b/special".to_string(),
-        ];
+        let allowed = vec!["org-a/*".to_string(), "org-b/special".to_string()];
         assert!(validate_repo_scope(query, &allowed).is_ok());
     }
 }

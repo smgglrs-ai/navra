@@ -17,7 +17,10 @@ pub(crate) async fn handle_ws_upgrade(
     let agent = match state.server.authenticator().authenticate(&headers) {
         Ok(agent) => agent,
         Err(_) => {
-            return (axum::http::StatusCode::UNAUTHORIZED, "Authentication failed")
+            return (
+                axum::http::StatusCode::UNAUTHORIZED,
+                "Authentication failed",
+            )
                 .into_response();
         }
     };
@@ -33,8 +36,7 @@ async fn handle_ws_connection(
     let (ws_sender, mut ws_receiver) = socket.split();
     let ws_sender = Arc::new(Mutex::new(ws_sender));
     let session_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let notify_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> =
-        Arc::new(Mutex::new(None));
+    let notify_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
 
     while let Some(msg) = ws_receiver.next().await {
         let msg = match msg {
@@ -116,11 +118,7 @@ async fn forward_notifications(
 ) {
     while let Ok(event) = rx.recv().await {
         let mut sender = ws_sender.lock().await;
-        if sender
-            .send(Message::Text(event.data.into()))
-            .await
-            .is_err()
-        {
+        if sender.send(Message::Text(event.data.into())).await.is_err() {
             break;
         }
     }

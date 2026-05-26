@@ -38,7 +38,12 @@ impl ExecutionTrace {
     }
 
     /// Record an event in the trace.
-    pub fn record(&mut self, node_id: impl Into<String>, status: impl Into<String>, timestamp_ms: u64) {
+    pub fn record(
+        &mut self,
+        node_id: impl Into<String>,
+        status: impl Into<String>,
+        timestamp_ms: u64,
+    ) {
         self.events.push(TraceEvent {
             node_id: node_id.into(),
             status: status.into(),
@@ -58,10 +63,7 @@ impl ExecutionTrace {
 
     /// Return the ordered list of all node IDs regardless of status.
     pub fn all_nodes(&self) -> Vec<&str> {
-        self.events
-            .iter()
-            .map(|e| e.node_id.as_str())
-            .collect()
+        self.events.iter().map(|e| e.node_id.as_str()).collect()
     }
 }
 
@@ -124,6 +126,9 @@ mod tests {
 
         assert_eq!(deserialized.flow_id, "flow-1");
         assert_eq!(deserialized.events.len(), 1);
-        assert_eq!(deserialized.events[0].output_hash.as_deref(), Some("abc123"));
+        assert_eq!(
+            deserialized.events[0].output_hash.as_deref(),
+            Some("abc123")
+        );
     }
 }

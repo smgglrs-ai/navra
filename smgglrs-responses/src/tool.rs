@@ -134,14 +134,15 @@ mod tests {
 
     #[test]
     fn function_tool_roundtrip() {
-        let tool = FunctionTool::new("get_weather", "Get current weather")
-            .with_parameters(serde_json::json!({
+        let tool = FunctionTool::new("get_weather", "Get current weather").with_parameters(
+            serde_json::json!({
                 "type": "object",
                 "properties": {
                     "city": { "type": "string" }
                 },
                 "required": ["city"]
-            }));
+            }),
+        );
         let json = serde_json::to_string(&tool).unwrap();
         let parsed: FunctionTool = serde_json::from_str(&json).unwrap();
         assert_eq!(tool, parsed);

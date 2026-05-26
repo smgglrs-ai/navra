@@ -72,7 +72,8 @@ pub(crate) fn attach_ui_routes(
             for entry in entries.flatten() {
                 let p = entry.path();
                 if p.extension().map(|e| e == "toml").unwrap_or(false) {
-                    let name = p.file_stem()
+                    let name = p
+                        .file_stem()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_default();
                     flow_files.push((name, p));
@@ -82,46 +83,60 @@ pub(crate) fn attach_ui_routes(
     }
 
     // Build model info from config
-    let model_info: Vec<serde_json::Value> = cfg.models.iter().map(|(name, mcfg)| {
-        let backend = if mcfg.source.is_some() {
-            "managed"
-        } else if mcfg.task == "embedding" || mcfg.task == "classification" {
-            "onnx"
-        } else {
-            "external"
-        };
-        serde_json::json!({
-            "name": name,
-            "task": mcfg.task,
-            "backend": backend,
-            "source": mcfg.source,
-            "runtime": mcfg.runtime,
-            "context_size": mcfg.context_size,
+    let model_info: Vec<serde_json::Value> = cfg
+        .models
+        .iter()
+        .map(|(name, mcfg)| {
+            let backend = if mcfg.source.is_some() {
+                "managed"
+            } else if mcfg.task == "embedding" || mcfg.task == "classification" {
+                "onnx"
+            } else {
+                "external"
+            };
+            serde_json::json!({
+                "name": name,
+                "task": mcfg.task,
+                "backend": backend,
+                "source": mcfg.source,
+                "runtime": mcfg.runtime,
+                "context_size": mcfg.context_size,
+            })
         })
-    }).collect();
+        .collect();
 
     // Build agent info from config
-    let agent_info: Vec<serde_json::Value> = cfg.agents.iter().map(|a| {
-        let pset = cfg.permissions.get(&a.permissions);
-        serde_json::json!({
-            "name": a.name,
-            "permissions": a.permissions,
-            "ring": pset.and_then(|p| p.ring),
-            "capability_token": a.capability_token,
-            "did": a.did,
-            "safety": pset.map(|p| &p.safety),
-            "operations": pset.map(|p| &p.operations),
-            "taint": "Trusted",
+    let agent_info: Vec<serde_json::Value> = cfg
+        .agents
+        .iter()
+        .map(|a| {
+            let pset = cfg.permissions.get(&a.permissions);
+            serde_json::json!({
+                "name": a.name,
+                "permissions": a.permissions,
+                "ring": pset.and_then(|p| p.ring),
+                "capability_token": a.capability_token,
+                "did": a.did,
+                "safety": pset.map(|p| &p.safety),
+                "operations": pset.map(|p| &p.operations),
+                "taint": "Trusted",
+            })
         })
-    }).collect();
+        .collect();
 
     // Persona list for the chat selector
-    let persona_names: Vec<String> = forge.persona_names().iter().map(|s| s.to_string()).collect();
+    let persona_names: Vec<String> = forge
+        .persona_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
     // Chat model: pick first chat/generate model, or empty
     let chat_backend: Option<Arc<dyn smgglrs_model::ModelBackend>> = {
         // Try config-defined chat model first
-        let from_config = cfg.models.iter()
+        let from_config = cfg
+            .models
+            .iter()
             .find(|(_, m)| m.task == "chat" || m.task == "generate")
             .map(|(name, _)| name.clone())
             .and_then(|name| models.get(&name))
@@ -373,7 +388,8 @@ pub(crate) fn attach_ui_routes(
             &dirs::data_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
                 .join("smgglrs/ui_chat.db"),
-        ).unwrap_or_else(|e| {
+        )
+        .unwrap_or_else(|e| {
             tracing::warn!("Failed to open UI chat memory: {e}, using in-memory");
             smgglrs_memory::WorkingMemory::open_memory().expect("in-memory WorkingMemory")
         });
@@ -386,11 +402,11 @@ pub(crate) fn attach_ui_routes(
             memory,
             listen_addr: cfg.server.listen_addr(),
         });
-        Some(crate::ui_agent::build_agent_routes(agent_state)
-            .route_layer(axum::middleware::from_fn_with_state(
-                Arc::clone(server),
-                auth_middleware,
-            )))
+        Some(
+            crate::ui_agent::build_agent_routes(agent_state).route_layer(
+                axum::middleware::from_fn_with_state(Arc::clone(server), auth_middleware),
+            ),
+        )
     } else {
         None
     };
@@ -402,90 +418,95 @@ pub(crate) fn attach_ui_routes(
     let proxy_backend = ui_chat_backend.clone();
     let proxy_forge = ui_forge.clone();
     let v1_router = axum::Router::new()
-        .route("/chat/completions", axum::routing::post(move |
-            headers: axum::http::HeaderMap,
-            body: axum::Json<serde_json::Value>,
-        | {
-            let backend = proxy_backend.clone();
-            let forge = proxy_forge.clone();
-            async move {
-                let Some(backend) = backend else {
-                    return axum::Json(serde_json::json!({
-                        "error": {"message": "no model configured", "type": "server_error"}
-                    })).into_response();
-                };
+        .route(
+            "/chat/completions",
+            axum::routing::post(
+                move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
+                    let backend = proxy_backend.clone();
+                    let forge = proxy_forge.clone();
+                    async move {
+                        let Some(backend) = backend else {
+                            return axum::Json(serde_json::json!({
+                                "error": {"message": "no model configured", "type": "server_error"}
+                            }))
+                            .into_response();
+                        };
 
-                // Extract OpenAI-format messages
-                let messages = body["messages"].as_array().cloned().unwrap_or_default();
-                let model_name = body["model"].as_str().unwrap_or("default");
+                        // Extract OpenAI-format messages
+                        let messages = body["messages"].as_array().cloned().unwrap_or_default();
+                        let model_name = body["model"].as_str().unwrap_or("default");
 
-                // Find persona from system message or X-Persona header
-                let persona_name = headers.get("x-persona")
-                    .and_then(|v| v.to_str().ok())
-                    .map(String::from)
-                    .or_else(|| {
-                        // Check first system message for persona directive
-                        messages.first()
-                            .filter(|m| m["role"].as_str() == Some("system"))
-                            .and_then(|m| m["content"].as_str())
-                            .and_then(|c| c.strip_prefix("persona:"))
-                            .map(|p| p.trim().to_string())
-                    });
+                        // Find persona from system message or X-Persona header
+                        let persona_name = headers
+                            .get("x-persona")
+                            .and_then(|v| v.to_str().ok())
+                            .map(String::from)
+                            .or_else(|| {
+                                // Check first system message for persona directive
+                                messages
+                                    .first()
+                                    .filter(|m| m["role"].as_str() == Some("system"))
+                                    .and_then(|m| m["content"].as_str())
+                                    .and_then(|c| c.strip_prefix("persona:"))
+                                    .map(|p| p.trim().to_string())
+                            });
 
-                // Build input items from messages
-                let mut input: Vec<smgglrs_model::InputItem> = Vec::new();
+                        // Build input items from messages
+                        let mut input: Vec<smgglrs_model::InputItem> = Vec::new();
 
-                // Inject persona system prompt if specified
-                if let Some(ref pname) = persona_name {
-                    if let Ok(output) = smgglrs_cognitive::assemble(&forge, pname, "", None, None) {
-                        input.push(smgglrs_model::InputItem::system(&output.system_prompt()));
-                    }
-                }
-
-                // Convert OpenAI messages to our format
-                for msg in &messages {
-                    match msg["role"].as_str() {
-                        Some("system") => {
-                            // Skip if we already injected persona
-                            if persona_name.is_none() {
-                                if let Some(content) = msg["content"].as_str() {
-                                    input.push(smgglrs_model::InputItem::system(content));
-                                }
-                            }
-                        }
-                        Some("user") => {
-                            if let Some(content) = msg["content"].as_str() {
-                                input.push(smgglrs_model::InputItem::user(content));
-                            }
-                        }
-                        Some("assistant") => {
-                            if let Some(content) = msg["content"].as_str() {
-                                input.push(smgglrs_model::InputItem::Message(
-                                    smgglrs_model::MessageItem::assistant(content)
+                        // Inject persona system prompt if specified
+                        if let Some(ref pname) = persona_name {
+                            if let Ok(output) =
+                                smgglrs_cognitive::assemble(&forge, pname, "", None, None)
+                            {
+                                input.push(smgglrs_model::InputItem::system(
+                                    &output.system_prompt(),
                                 ));
                             }
                         }
-                        _ => {}
-                    }
-                }
 
-                let temperature = body["temperature"].as_f64().map(|t| t as f32);
-                let max_tokens = body["max_tokens"].as_u64().map(|t| t as u32);
+                        // Convert OpenAI messages to our format
+                        for msg in &messages {
+                            match msg["role"].as_str() {
+                                Some("system") => {
+                                    // Skip if we already injected persona
+                                    if persona_name.is_none() {
+                                        if let Some(content) = msg["content"].as_str() {
+                                            input.push(smgglrs_model::InputItem::system(content));
+                                        }
+                                    }
+                                }
+                                Some("user") => {
+                                    if let Some(content) = msg["content"].as_str() {
+                                        input.push(smgglrs_model::InputItem::user(content));
+                                    }
+                                }
+                                Some("assistant") => {
+                                    if let Some(content) = msg["content"].as_str() {
+                                        input.push(smgglrs_model::InputItem::Message(
+                                            smgglrs_model::MessageItem::assistant(content),
+                                        ));
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
 
-                let mut request = smgglrs_model::CreateResponseRequest::new(
-                    String::new(),
-                    input,
-                );
-                request.temperature = temperature;
-                request.max_output_tokens = max_tokens;
+                        let temperature = body["temperature"].as_f64().map(|t| t as f32);
+                        let max_tokens = body["max_tokens"].as_u64().map(|t| t as u32);
 
-                match backend.respond(&request).await {
-                    Ok(response) => {
-                        let text = response.text().unwrap_or_default();
-                        let usage = response.usage.as_ref();
+                        let mut request =
+                            smgglrs_model::CreateResponseRequest::new(String::new(), input);
+                        request.temperature = temperature;
+                        request.max_output_tokens = max_tokens;
 
-                        // Return OpenAI-compatible response
-                        axum::Json(serde_json::json!({
+                        match backend.respond(&request).await {
+                            Ok(response) => {
+                                let text = response.text().unwrap_or_default();
+                                let usage = response.usage.as_ref();
+
+                                // Return OpenAI-compatible response
+                                axum::Json(serde_json::json!({
                             "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
                             "object": "chat.completion",
                             "model": model_name,
@@ -503,23 +524,22 @@ pub(crate) fn attach_ui_routes(
                                 "total_tokens": usage.map(|u| u.total_tokens).unwrap_or(0),
                             }
                         })).into_response()
+                            }
+                            Err(e) => axum::Json(serde_json::json!({
+                                "error": {"message": format!("{e}"), "type": "model_error"}
+                            }))
+                            .into_response(),
+                        }
                     }
-                    Err(e) => {
-                        axum::Json(serde_json::json!({
-                            "error": {"message": format!("{e}"), "type": "model_error"}
-                        })).into_response()
-                    }
-                }
-            }
-        }))
+                },
+            ),
+        )
         .route_layer(axum::middleware::from_fn_with_state(
             Arc::clone(server),
             auth_middleware,
         ));
 
-    let mut r = router
-        .nest("/v1", v1_router)
-        .nest("/api", api_router);
+    let mut r = router.nest("/v1", v1_router).nest("/api", api_router);
 
     if let Some(agent_router) = agent_api_router {
         r = r.nest("/api", agent_router);
@@ -532,14 +552,20 @@ pub(crate) fn attach_ui_routes(
             let server = metrics_server.clone();
             async move {
                 let body = server.metrics().render();
-                ([(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")], body)
+                (
+                    [(
+                        axum::http::header::CONTENT_TYPE,
+                        "text/plain; version=0.0.4; charset=utf-8",
+                    )],
+                    body,
+                )
             }
         })
     });
 
     r = r.route("/ws/ui", {
-            let broadcaster = ui_broadcaster;
-            axum::routing::get(move |
+        let broadcaster = ui_broadcaster;
+        axum::routing::get(move |
                 ws: axum::extract::WebSocketUpgrade,
                 query: axum::extract::Query<std::collections::HashMap<String, String>>,
             | {
@@ -549,30 +575,54 @@ pub(crate) fn attach_ui_routes(
                     ws.on_upgrade(move |socket| handle_ui_ws(socket, broadcaster))
                 }
             })
-        });
+    });
 
     if UI_DIST_AVAILABLE {
         r = r
-            .route("/", axum::routing::get(|| async {
-                let body = ui_assets_gen::index_html();
-                ([("content-type", "text/html; charset=utf-8")], body)
-            }))
-            .route("/assets/{*path}", axum::routing::get(|
-                axum::extract::Path(path): axum::extract::Path<String>,
-            | async move {
-                serve_ui_asset(&format!("assets/{path}"))
-            }));
+            .route(
+                "/",
+                axum::routing::get(|| async {
+                    let body = ui_assets_gen::index_html();
+                    ([("content-type", "text/html; charset=utf-8")], body)
+                }),
+            )
+            .route(
+                "/assets/{*path}",
+                axum::routing::get(
+                    |axum::extract::Path(path): axum::extract::Path<String>| async move {
+                        serve_ui_asset(&format!("assets/{path}"))
+                    },
+                ),
+            );
     } else {
         r = r
-            .route("/", axum::routing::get(|| async {
-                ([("content-type", "text/html")], include_str!("../ui/index.html"))
-            }))
-            .route("/ui/style.css", axum::routing::get(|| async {
-                ([("content-type", "text/css")], include_str!("../ui/style.css"))
-            }))
-            .route("/ui/app.js", axum::routing::get(|| async {
-                ([("content-type", "application/javascript")], include_str!("../ui/app.js"))
-            }));
+            .route(
+                "/",
+                axum::routing::get(|| async {
+                    (
+                        [("content-type", "text/html")],
+                        include_str!("../ui/index.html"),
+                    )
+                }),
+            )
+            .route(
+                "/ui/style.css",
+                axum::routing::get(|| async {
+                    (
+                        [("content-type", "text/css")],
+                        include_str!("../ui/style.css"),
+                    )
+                }),
+            )
+            .route(
+                "/ui/app.js",
+                axum::routing::get(|| async {
+                    (
+                        [("content-type", "application/javascript")],
+                        include_str!("../ui/app.js"),
+                    )
+                }),
+            );
     }
 
     r
@@ -580,14 +630,8 @@ pub(crate) fn attach_ui_routes(
 
 fn serve_ui_asset(path: &str) -> axum::response::Response {
     match ui_assets_gen::get_asset(&format!("/{path}")) {
-        Some((bytes, mime)) => (
-            [(axum::http::header::CONTENT_TYPE, mime)],
-            bytes,
-        ).into_response(),
-        None => (
-            axum::http::StatusCode::NOT_FOUND,
-            "not found",
-        ).into_response(),
+        Some((bytes, mime)) => ([(axum::http::header::CONTENT_TYPE, mime)], bytes).into_response(),
+        None => (axum::http::StatusCode::NOT_FOUND, "not found").into_response(),
     }
 }
 
@@ -626,7 +670,14 @@ mod tests {
         fn respond(
             &self,
             _request: &smgglrs_model::CreateResponseRequest,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<smgglrs_model::ModelResponse, smgglrs_model::ModelError>> + Send + '_>> {
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<smgglrs_model::ModelResponse, smgglrs_model::ModelError>,
+                    > + Send
+                    + '_,
+            >,
+        > {
             Box::pin(async {
                 Ok(smgglrs_model::ModelResponse {
                     id: "resp_stub".into(),
@@ -660,23 +711,26 @@ mod tests {
     fn test_config() -> config::Config {
         let mut cfg = config::Config::default();
         cfg.cognitive_core = None;
-        cfg.models.insert("stub".into(), config::ModelConfig {
-            model_path: None,
-            source: None,
-            tokenizer_path: None,
-            task: "chat".into(),
-            device: None,
-            dimensions: None,
-            labels: Vec::new(),
-            threshold: None,
-            runtime: None,
-            context_size: None,
-            parallel: None,
-            model_name: None,
-            cache_type: None,
-            speculative: None,
-            agentic: None,
-        });
+        cfg.models.insert(
+            "stub".into(),
+            config::ModelConfig {
+                model_path: None,
+                source: None,
+                tokenizer_path: None,
+                task: "chat".into(),
+                device: None,
+                dimensions: None,
+                labels: Vec::new(),
+                threshold: None,
+                runtime: None,
+                context_size: None,
+                parallel: None,
+                model_name: None,
+                cache_type: None,
+                speculative: None,
+                agentic: None,
+            },
+        );
         cfg
     }
 
@@ -686,7 +740,10 @@ mod tests {
 
     fn test_models() -> std::collections::HashMap<String, Arc<dyn smgglrs_model::ModelBackend>> {
         let mut m = std::collections::HashMap::new();
-        m.insert("stub".into(), Arc::new(StubBackend) as Arc<dyn smgglrs_model::ModelBackend>);
+        m.insert(
+            "stub".into(),
+            Arc::new(StubBackend) as Arc<dyn smgglrs_model::ModelBackend>,
+        );
         m
     }
 
@@ -713,14 +770,12 @@ mod tests {
         let resp = router.clone().oneshot(req).await.unwrap();
         let status = resp.status();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
+        let json: serde_json::Value = serde_json::from_slice(&bytes)
+            .unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
         (status, json)
     }
 
-    async fn get_json(
-        router: &axum::Router,
-        path: &str,
-    ) -> (StatusCode, serde_json::Value) {
+    async fn get_json(router: &axum::Router, path: &str) -> (StatusCode, serde_json::Value) {
         let req = Request::builder()
             .method("GET")
             .uri(path)
@@ -730,18 +785,24 @@ mod tests {
         let resp = router.clone().oneshot(req).await.unwrap();
         let status = resp.status();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
+        let json: serde_json::Value = serde_json::from_slice(&bytes)
+            .unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
         (status, json)
     }
 
     #[tokio::test]
     async fn v1_chat_completions_returns_openai_format() {
         let router = build_test_router();
-        let (status, json) = post_json(&router, "/v1/chat/completions", serde_json::json!({
-            "model": "test",
-            "messages": [{"role": "user", "content": "hi"}],
-            "max_tokens": 5
-        })).await;
+        let (status, json) = post_json(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "test",
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 5
+            }),
+        )
+        .await;
 
         // Should return 200 with OpenAI format (even if model returns empty)
         assert_eq!(status, StatusCode::OK);
@@ -765,10 +826,7 @@ mod tests {
     async fn static_assets_no_auth() {
         let router = build_test_router();
 
-        let req = Request::builder()
-            .uri("/")
-            .body(Body::empty())
-            .unwrap();
+        let req = Request::builder().uri("/").body(Body::empty()).unwrap();
         let resp = router.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }

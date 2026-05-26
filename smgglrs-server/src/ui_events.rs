@@ -21,10 +21,7 @@ impl UiBroadcaster {
     }
 }
 
-pub fn start_polling_bridge(
-    broadcaster: Arc<UiBroadcaster>,
-    server: Arc<smgglrs_core::McpServer>,
-) {
+pub fn start_polling_bridge(broadcaster: Arc<UiBroadcaster>, server: Arc<smgglrs_core::McpServer>) {
     tokio::spawn(async move {
         let mut prev_process_count = 0usize;
         let mut prev_bb_count = 0u64;

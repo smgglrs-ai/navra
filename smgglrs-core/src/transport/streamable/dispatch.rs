@@ -71,54 +71,43 @@ pub(crate) async fn dispatch(
 
     match request.method.as_str() {
         "initialize" => {
-            let params: InitializeParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params("Invalid initialize params"),
-                        ),
-                        None,
-                    );
-                }
-            };
+            let params: InitializeParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return (
+                            JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params("Invalid initialize params"),
+                            ),
+                            None,
+                        );
+                    }
+                };
             match server.handle_initialize(params, agent) {
                 Ok((result, new_session_id)) => {
                     let value = serde_json::to_value(&result).unwrap_or_else(|e| {
                         tracing::error!(error = %e, "Failed to serialize response");
                         serde_json::json!({"error": "serialization failed"})
                     });
-                    (
-                        JsonRpcResponse::success(id, value),
-                        Some(new_session_id),
-                    )
+                    (JsonRpcResponse::success(id, value), Some(new_session_id))
                 }
-                Err(msg) => {
-                    (
-                        JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
-                        None,
-                    )
-                }
+                Err(msg) => (
+                    JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+                    None,
+                ),
             }
         }
 
-        "notifications/initialized" => {
-            (
-                JsonRpcResponse::success(id, serde_json::json!({})),
-                session_id,
-            )
-        }
+        "notifications/initialized" => (
+            JsonRpcResponse::success(id, serde_json::json!({})),
+            session_id,
+        ),
 
-        "ping" => {
-            (
-                JsonRpcResponse::success(id, serde_json::json!({})),
-                session_id,
-            )
-        }
+        "ping" => (
+            JsonRpcResponse::success(id, serde_json::json!({})),
+            session_id,
+        ),
 
         "tools/list" => {
             let pagination: PaginatedRequest = request
@@ -127,37 +116,41 @@ pub(crate) async fn dispatch(
                 .unwrap_or_default();
             let result = server.handle_list_tools(&agent, &pagination);
             (
-                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                })),
+                JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 session_id,
             )
         }
 
         "tools/call" => {
-            let params: CallToolParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params("Invalid tool call params"),
-                        ),
-                        session_id,
-                    );
-                }
-            };
+            let params: CallToolParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return (
+                            JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params("Invalid tool call params"),
+                            ),
+                            session_id,
+                        );
+                    }
+                };
             let sid = match session_id.clone() {
                 Some(s) if !s.is_empty() => s,
                 _ => {
                     return (
-                        JsonRpcResponse::error(id, JsonRpcError::invalid_params(
-                            "Session ID required for tools/call. Send initialize first."
-                        )),
+                        JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params(
+                                "Session ID required for tools/call. Send initialize first.",
+                            ),
+                        ),
                         session_id,
                     );
                 }
@@ -170,10 +163,13 @@ pub(crate) async fn dispatch(
             // Persist the result's label back to the session
             server.sessions().update_context_label(&sid, result.label);
             (
-                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                })),
+                JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 session_id,
             )
         }
@@ -185,10 +181,13 @@ pub(crate) async fn dispatch(
                 .unwrap_or_default();
             let result = server.handle_list_resources(&agent, &pagination);
             (
-                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                })),
+                JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 session_id,
             )
         }
@@ -200,37 +199,39 @@ pub(crate) async fn dispatch(
                 .unwrap_or_default();
             let result = server.handle_list_resource_templates(&agent, &pagination);
             (
-                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                })),
+                JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 session_id,
             )
         }
 
         "resources/read" => {
-            let params: ReadResourceParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params("Invalid resource read params"),
-                        ),
-                        session_id,
-                    );
-                }
-            };
+            let params: ReadResourceParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return (
+                            JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params("Invalid resource read params"),
+                            ),
+                            session_id,
+                        );
+                    }
+                };
             let resp = match server.handle_read_resource(params, &agent).await {
-                Ok(result) => {
-                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                }))
-                }
+                Ok(result) => JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             };
             (resp, session_id)
@@ -243,65 +244,67 @@ pub(crate) async fn dispatch(
                 .unwrap_or_default();
             let result = server.handle_list_prompts(&agent, &pagination);
             (
-                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                })),
+                JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 session_id,
             )
         }
 
         "prompts/get" => {
-            let params: GetPromptParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params("Invalid prompt get params"),
-                        ),
-                        session_id,
-                    );
-                }
-            };
+            let params: GetPromptParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return (
+                            JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params("Invalid prompt get params"),
+                            ),
+                            session_id,
+                        );
+                    }
+                };
             let resp = match server.handle_get_prompt(params, &agent).await {
-                Ok(result) => {
-                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                }))
-                }
+                Ok(result) => JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             };
             (resp, session_id)
         }
 
         "permissions/request" => {
-            let params: PermissionRequestParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params("Invalid permissions/request params"),
-                        ),
-                        session_id,
-                    );
-                }
-            };
+            let params: PermissionRequestParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return (
+                            JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params("Invalid permissions/request params"),
+                            ),
+                            session_id,
+                        );
+                    }
+                };
             let sid = match session_id.as_deref() {
                 Some(s) if !s.is_empty() => s,
                 _ => {
                     return (
                         JsonRpcResponse::error(
                             id,
-                            JsonRpcError::invalid_params("Session ID required for permissions/request"),
+                            JsonRpcError::invalid_params(
+                                "Session ID required for permissions/request",
+                            ),
                         ),
                         session_id,
                     );
@@ -309,65 +312,66 @@ pub(crate) async fn dispatch(
             };
             let result = server.handle_permission_request(params, sid);
             (
-                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                })),
+                JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 session_id,
             )
         }
 
         "permissions/grant" => {
-            let params: PermissionGrantParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params("Invalid permissions/grant params"),
-                        ),
-                        session_id,
-                    );
-                }
-            };
+            let params: PermissionGrantParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return (
+                            JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params("Invalid permissions/grant params"),
+                            ),
+                            session_id,
+                        );
+                    }
+                };
             let resp = match server.handle_permission_grant(params, &agent.name) {
-                Ok(result) => {
-                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                Ok(result) => JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
                         tracing::error!(error = %e, "Failed to serialize response");
                         serde_json::json!({"error": "serialization failed"})
-                    }))
-                }
+                    }),
+                ),
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             };
             (resp, session_id)
         }
 
         "permissions/deny" => {
-            let params: PermissionDenyParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params("Invalid permissions/deny params"),
-                        ),
-                        session_id,
-                    );
-                }
-            };
+            let params: PermissionDenyParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return (
+                            JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params("Invalid permissions/deny params"),
+                            ),
+                            session_id,
+                        );
+                    }
+                };
             let resp = match server.handle_permission_deny(params) {
-                Ok(result) => {
-                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                Ok(result) => JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
                         tracing::error!(error = %e, "Failed to serialize response");
                         serde_json::json!({"error": "serialization failed"})
-                    }))
-                }
+                    }),
+                ),
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             };
             (resp, session_id)
@@ -380,7 +384,9 @@ pub(crate) async fn dispatch(
                     return (
                         JsonRpcResponse::error(
                             id,
-                            JsonRpcError::invalid_params("Session ID required for permissions/list"),
+                            JsonRpcError::invalid_params(
+                                "Session ID required for permissions/list",
+                            ),
                         ),
                         session_id,
                     );
@@ -388,27 +394,30 @@ pub(crate) async fn dispatch(
             };
             let result = server.handle_permission_list(sid);
             (
-                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
-                    tracing::error!(error = %e, "Failed to serialize response");
-                    serde_json::json!({"error": "serialization failed"})
-                })),
+                JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(&result).unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "Failed to serialize response");
+                        serde_json::json!({"error": "serialization failed"})
+                    }),
+                ),
                 session_id,
             )
         }
 
         "completion/complete" => {
-            let params: crate::protocol::CompleteParams = match request
-                .params
-                .and_then(|p| {
-                    let ref_obj = p.get("ref")?;
-                    let argument = p.get("argument")?;
-                    Some(crate::protocol::CompleteParams {
-                        ref_type: ref_obj.get("type")?.as_str()?.to_string(),
-                        ref_name: ref_obj.get("name")?.as_str()?.to_string(),
-                        argument: serde_json::from_value::<crate::protocol::CompletionArgument>(argument.clone()).ok()?,
-                    })
+            let params: crate::protocol::CompleteParams = match request.params.and_then(|p| {
+                let ref_obj = p.get("ref")?;
+                let argument = p.get("argument")?;
+                Some(crate::protocol::CompleteParams {
+                    ref_type: ref_obj.get("type")?.as_str()?.to_string(),
+                    ref_name: ref_obj.get("name")?.as_str()?.to_string(),
+                    argument: serde_json::from_value::<crate::protocol::CompletionArgument>(
+                        argument.clone(),
+                    )
+                    .ok()?,
                 })
-            {
+            }) {
                 Some(p) => p,
                 None => {
                     return (
@@ -437,21 +446,19 @@ pub(crate) async fn dispatch(
         }
 
         "logging/setLevel" => {
-            let params: crate::protocol::SetLevelParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params("Invalid logging/setLevel params"),
-                        ),
-                        session_id,
-                    );
-                }
-            };
+            let params: crate::protocol::SetLevelParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return (
+                            JsonRpcResponse::error(
+                                id,
+                                JsonRpcError::invalid_params("Invalid logging/setLevel params"),
+                            ),
+                            session_id,
+                        );
+                    }
+                };
             if let Some(ref sid) = session_id {
                 server.handle_set_log_level(params, sid);
             }
@@ -480,10 +487,7 @@ pub(crate) async fn dispatch(
             if let Some(ref sid) = session_id {
                 if let Err(e) = server.handle_resource_subscribe(&uri, sid) {
                     return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params(&e),
-                        ),
+                        JsonRpcResponse::error(id, JsonRpcError::invalid_params(&e)),
                         session_id,
                     );
                 }
@@ -513,10 +517,7 @@ pub(crate) async fn dispatch(
             if let Some(ref sid) = session_id {
                 if let Err(e) = server.handle_resource_unsubscribe(&uri, sid) {
                     return (
-                        JsonRpcResponse::error(
-                            id,
-                            JsonRpcError::invalid_params(&e),
-                        ),
+                        JsonRpcResponse::error(id, JsonRpcError::invalid_params(&e)),
                         session_id,
                     );
                 }

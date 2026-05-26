@@ -59,11 +59,10 @@ impl ConfigWatcher {
                     continue;
                 }
 
-                let is_our_file = event.paths.iter().any(|p| {
-                    p.file_name()
-                        .map(|f| f == filename_clone)
-                        .unwrap_or(false)
-                });
+                let is_our_file = event
+                    .paths
+                    .iter()
+                    .any(|p| p.file_name().map(|f| f == filename_clone).unwrap_or(false));
                 if !is_our_file {
                     continue;
                 }
@@ -160,7 +159,10 @@ mod tests {
 
         // Should NOT trigger a change (invalid config discarded)
         let result = tokio::time::timeout(Duration::from_millis(500), rx.changed()).await;
-        assert!(result.is_err(), "should not have received a config update for invalid TOML");
+        assert!(
+            result.is_err(),
+            "should not have received a config update for invalid TOML"
+        );
     }
 
     #[tokio::test]

@@ -175,11 +175,12 @@ mod tests {
         let jsonl = trace.to_jsonl();
 
         // Should be valid JSON
-        let parsed: serde_json::Value = serde_json::from_str(&jsonl)
-            .expect("JSONL output should be valid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&jsonl).expect("JSONL output should be valid JSON");
 
         // Should have conversations array
-        let conversations = parsed["conversations"].as_array()
+        let conversations = parsed["conversations"]
+            .as_array()
             .expect("Should have conversations array");
 
         // system + user + assistant(tool_call) + tool + assistant(final) = 5
@@ -270,22 +271,16 @@ mod tests {
 
     #[test]
     fn empty_trace_produces_valid_output() {
-        let trace = TraceExporter::build(
-            None,
-            "",
-            None,
-            &[],
-            &[],
-            "",
-        );
+        let trace = TraceExporter::build(None, "", None, &[], &[], "");
 
         let jsonl = trace.to_jsonl();
 
         // Should be valid JSON
-        let parsed: serde_json::Value = serde_json::from_str(&jsonl)
-            .expect("Empty trace JSONL should be valid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&jsonl).expect("Empty trace JSONL should be valid JSON");
 
-        let conversations = parsed["conversations"].as_array()
+        let conversations = parsed["conversations"]
+            .as_array()
             .expect("Should have conversations array");
 
         // Only the user message (empty but present)
@@ -336,8 +331,12 @@ mod tests {
                 },
             ],
             &[
-                ToolResponseEntry { result: "content a".to_string() },
-                ToolResponseEntry { result: "content b".to_string() },
+                ToolResponseEntry {
+                    result: "content a".to_string(),
+                },
+                ToolResponseEntry {
+                    result: "content b".to_string(),
+                },
             ],
             "Both read.",
         );
@@ -364,8 +363,8 @@ mod tests {
         );
 
         let jsonl = trace.to_jsonl();
-        let parsed: HermesTrace = serde_json::from_str(&jsonl)
-            .expect("Should roundtrip through JSON");
+        let parsed: HermesTrace =
+            serde_json::from_str(&jsonl).expect("Should roundtrip through JSON");
         assert_eq!(parsed.conversations.len(), trace.conversations.len());
         assert_eq!(parsed.conversations[0].role, "system");
         assert_eq!(parsed.conversations[0].content, "System prompt.");

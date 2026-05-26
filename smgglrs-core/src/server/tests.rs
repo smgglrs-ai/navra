@@ -78,9 +78,7 @@ fn builder_with_name_and_version() {
 fn register_tool_and_list() {
     let server = McpServer::builder()
         .tool(echo_tool_def(), |args, _ctx| {
-            Box::pin(async move {
-                CallToolResult::text(format!("echo: {args}"))
-            })
+            Box::pin(async move { CallToolResult::text(format!("echo: {args}")) })
         })
         .build();
 
@@ -91,9 +89,7 @@ fn register_tool_and_list() {
 
 #[test]
 fn register_module() {
-    let server = McpServer::builder()
-        .module(TestModule)
-        .build();
+    let server = McpServer::builder().module(TestModule).build();
 
     let result = server.handle_list_tools(&test_agent(), &Default::default());
     assert_eq!(result.tools.len(), 1 + GATEWAY_TOOLS);
@@ -104,7 +100,9 @@ fn register_module() {
 fn register_multiple_modules() {
     struct AnotherModule;
     impl Module for AnotherModule {
-        fn name(&self) -> &str { "another" }
+        fn name(&self) -> &str {
+            "another"
+        }
         fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
             vec![(
                 ToolDefinition {
@@ -136,7 +134,9 @@ fn duplicate_tool_name_panics() {
     // Two modules both registering "test_ping" should fail
     struct DuplicateModule;
     impl Module for DuplicateModule {
-        fn name(&self) -> &str { "duplicate" }
+        fn name(&self) -> &str {
+            "duplicate"
+        }
         fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
             vec![(
                 ToolDefinition {
@@ -162,9 +162,7 @@ fn duplicate_tool_name_panics() {
 
 #[tokio::test]
 async fn call_module_tool() {
-    let server = McpServer::builder()
-        .module(TestModule)
-        .build();
+    let server = McpServer::builder().module(TestModule).build();
 
     let result = server
         .handle_call_tool(
@@ -203,7 +201,10 @@ async fn call_registered_tool() {
     let server = McpServer::builder()
         .tool(echo_tool_def(), |args, _ctx| {
             Box::pin(async move {
-                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("nil");
+                let msg = args
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("nil");
                 CallToolResult::text(format!("echo: {msg}"))
             })
         })
@@ -401,7 +402,10 @@ fn greeting_prompt_def() -> crate::protocol::PromptDefinition {
 fn greeting_prompt_handler() -> PromptHandler {
     Arc::new(|args: HashMap<String, String>| {
         Box::pin(async move {
-            let name = args.get("name").cloned().unwrap_or_else(|| "world".to_string());
+            let name = args
+                .get("name")
+                .cloned()
+                .unwrap_or_else(|| "world".to_string());
             crate::protocol::GetPromptResult {
                 description: Some("A greeting".to_string()),
                 messages: vec![crate::protocol::PromptMessage {
@@ -432,9 +436,7 @@ impl Module for PromptModule {
 
 #[test]
 fn register_module_with_prompts() {
-    let server = McpServer::builder()
-        .module(PromptModule)
-        .build();
+    let server = McpServer::builder().module(PromptModule).build();
 
     assert_eq!(server.prompt_count(), 1);
     let result = server.handle_list_prompts(&test_agent(), &Default::default());
@@ -444,15 +446,16 @@ fn register_module_with_prompts() {
 
 #[tokio::test]
 async fn call_registered_prompt() {
-    let server = McpServer::builder()
-        .module(PromptModule)
-        .build();
+    let server = McpServer::builder().module(PromptModule).build();
 
     let result = server
-        .handle_get_prompt(crate::protocol::GetPromptParams {
-            name: "greeting".to_string(),
-            arguments: HashMap::from([("name".to_string(), "Alice".to_string())]),
-        }, &test_agent())
+        .handle_get_prompt(
+            crate::protocol::GetPromptParams {
+                name: "greeting".to_string(),
+                arguments: HashMap::from([("name".to_string(), "Alice".to_string())]),
+            },
+            &test_agent(),
+        )
         .await;
 
     let result = result.unwrap();
@@ -467,10 +470,13 @@ async fn call_registered_prompt() {
 async fn call_unknown_prompt() {
     let server = McpServer::builder().build();
     let result = server
-        .handle_get_prompt(crate::protocol::GetPromptParams {
-            name: "nonexistent".to_string(),
-            arguments: HashMap::new(),
-        }, &test_agent())
+        .handle_get_prompt(
+            crate::protocol::GetPromptParams {
+                name: "nonexistent".to_string(),
+                arguments: HashMap::new(),
+            },
+            &test_agent(),
+        )
         .await;
 
     assert!(result.is_err());
@@ -482,9 +488,7 @@ fn capabilities_reflect_prompts() {
     let empty = McpServer::builder().build();
     assert!(empty.capabilities().prompts.is_none());
 
-    let with_prompt = McpServer::builder()
-        .module(PromptModule)
-        .build();
+    let with_prompt = McpServer::builder().module(PromptModule).build();
     assert!(with_prompt.capabilities().prompts.is_some());
 }
 
@@ -493,8 +497,12 @@ fn capabilities_reflect_prompts() {
 fn duplicate_prompt_name_panics() {
     struct DuplicatePromptModule;
     impl Module for DuplicatePromptModule {
-        fn name(&self) -> &str { "duplicate" }
-        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+        fn name(&self) -> &str {
+            "duplicate"
+        }
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+            vec![]
+        }
         fn prompts(&self) -> Vec<(crate::protocol::PromptDefinition, PromptHandler)> {
             vec![(greeting_prompt_def(), greeting_prompt_handler())]
         }
@@ -536,8 +544,12 @@ fn info_resource_handler() -> ResourceHandler {
 struct ResourceModule;
 
 impl Module for ResourceModule {
-    fn name(&self) -> &str { "resource_test" }
-    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+    fn name(&self) -> &str {
+        "resource_test"
+    }
+    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+        vec![]
+    }
     fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, ResourceHandler)> {
         vec![(info_resource_def(), info_resource_handler())]
     }
@@ -545,26 +557,28 @@ impl Module for ResourceModule {
 
 #[test]
 fn register_module_with_resources() {
-    let server = McpServer::builder()
-        .module(ResourceModule)
-        .build();
+    let server = McpServer::builder().module(ResourceModule).build();
 
     let base_count = McpServer::builder().build().resource_count();
     assert_eq!(server.resource_count(), base_count + 1);
     let result = server.handle_list_resources(&test_agent(), &Default::default());
-    assert!(result.resources.iter().any(|r| r.uri == "info://server/status"));
+    assert!(result
+        .resources
+        .iter()
+        .any(|r| r.uri == "info://server/status"));
 }
 
 #[tokio::test]
 async fn read_registered_resource() {
-    let server = McpServer::builder()
-        .module(ResourceModule)
-        .build();
+    let server = McpServer::builder().module(ResourceModule).build();
 
     let result = server
-        .handle_read_resource(crate::protocol::ReadResourceParams {
-            uri: "info://server/status".to_string(),
-        }, &test_agent())
+        .handle_read_resource(
+            crate::protocol::ReadResourceParams {
+                uri: "info://server/status".to_string(),
+            },
+            &test_agent(),
+        )
         .await;
 
     let result = result.unwrap();
@@ -575,9 +589,12 @@ async fn read_registered_resource() {
 async fn read_unknown_resource() {
     let server = McpServer::builder().build();
     let result = server
-        .handle_read_resource(crate::protocol::ReadResourceParams {
-            uri: "info://nonexistent".to_string(),
-        }, &test_agent())
+        .handle_read_resource(
+            crate::protocol::ReadResourceParams {
+                uri: "info://nonexistent".to_string(),
+            },
+            &test_agent(),
+        )
         .await;
 
     assert!(result.is_err());
@@ -590,9 +607,7 @@ fn capabilities_reflect_resources() {
     let empty = McpServer::builder().build();
     assert!(empty.capabilities().resources.is_some());
 
-    let with_resource = McpServer::builder()
-        .module(ResourceModule)
-        .build();
+    let with_resource = McpServer::builder().module(ResourceModule).build();
     assert!(with_resource.capabilities().resources.is_some());
 }
 
@@ -601,8 +616,12 @@ fn capabilities_reflect_resources() {
 fn duplicate_resource_uri_panics() {
     struct DuplicateResourceModule;
     impl Module for DuplicateResourceModule {
-        fn name(&self) -> &str { "duplicate" }
-        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> { vec![] }
+        fn name(&self) -> &str {
+            "duplicate"
+        }
+        fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
+            vec![]
+        }
         fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, ResourceHandler)> {
             vec![(info_resource_def(), info_resource_handler())]
         }
@@ -632,12 +651,17 @@ async fn kernel_resource_proc_returns_json() {
     let server = McpServer::builder().build();
     let result = server
         .handle_read_resource(
-            crate::protocol::ReadResourceParams { uri: "smgglrs://proc".to_string() },
+            crate::protocol::ReadResourceParams {
+                uri: "smgglrs://proc".to_string(),
+            },
             &test_agent(),
         )
         .await
         .unwrap();
-    assert_eq!(result.contents[0].mime_type, Some("application/json".to_string()));
+    assert_eq!(
+        result.contents[0].mime_type,
+        Some("application/json".to_string())
+    );
     let text = result.contents[0].text.as_ref().unwrap();
     let parsed: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
     assert!(parsed.is_empty());
@@ -646,11 +670,15 @@ async fn kernel_resource_proc_returns_json() {
 #[tokio::test]
 async fn kernel_resource_proc_shows_active_agents() {
     let server = McpServer::builder().build();
-    server.process_table().record_call("test-agent", "dev", None, Some(1), "file_read");
+    server
+        .process_table()
+        .record_call("test-agent", "dev", None, Some(1), "file_read");
 
     let result = server
         .handle_read_resource(
-            crate::protocol::ReadResourceParams { uri: "smgglrs://proc".to_string() },
+            crate::protocol::ReadResourceParams {
+                uri: "smgglrs://proc".to_string(),
+            },
             &test_agent(),
         )
         .await
@@ -667,7 +695,9 @@ async fn kernel_resource_ifc_labels_returns_json() {
     let server = McpServer::builder().build();
     let result = server
         .handle_read_resource(
-            crate::protocol::ReadResourceParams { uri: "smgglrs://ifc/labels".to_string() },
+            crate::protocol::ReadResourceParams {
+                uri: "smgglrs://ifc/labels".to_string(),
+            },
             &test_agent(),
         )
         .await
@@ -681,7 +711,9 @@ async fn kernel_resource_audit_recent_returns_json() {
     let server = McpServer::builder().build();
     let result = server
         .handle_read_resource(
-            crate::protocol::ReadResourceParams { uri: "smgglrs://audit/recent".to_string() },
+            crate::protocol::ReadResourceParams {
+                uri: "smgglrs://audit/recent".to_string(),
+            },
             &test_agent(),
         )
         .await
@@ -694,7 +726,11 @@ async fn kernel_resource_audit_recent_returns_json() {
 fn kernel_resource_templates_registered() {
     let server = McpServer::builder().build();
     let result = server.handle_list_resource_templates(&test_agent(), &Default::default());
-    let templates: Vec<&str> = result.resource_templates.iter().map(|t| t.uri_template.as_str()).collect();
+    let templates: Vec<&str> = result
+        .resource_templates
+        .iter()
+        .map(|t| t.uri_template.as_str())
+        .collect();
     assert!(templates.contains(&"smgglrs://proc/{agent}/taint"));
     assert!(templates.contains(&"smgglrs://proc/{agent}/capabilities"));
 }
@@ -704,12 +740,18 @@ async fn kernel_resource_template_taint_matches() {
     let server = McpServer::builder().build();
     let result = server
         .handle_read_resource(
-            crate::protocol::ReadResourceParams { uri: "smgglrs://proc/test-agent/taint".to_string() },
+            crate::protocol::ReadResourceParams {
+                uri: "smgglrs://proc/test-agent/taint".to_string(),
+            },
             &test_agent(),
         )
         .await;
     assert!(result.is_ok());
-    let text = result.unwrap().contents[0].text.as_ref().unwrap().to_string();
+    let text = result.unwrap().contents[0]
+        .text
+        .as_ref()
+        .unwrap()
+        .to_string();
     let _: Vec<serde_json::Value> = serde_json::from_str(&text).unwrap();
 }
 
@@ -718,7 +760,9 @@ async fn kernel_resource_template_capabilities_matches() {
     let server = McpServer::builder().build();
     let result = server
         .handle_read_resource(
-            crate::protocol::ReadResourceParams { uri: "smgglrs://proc/my-agent/capabilities".to_string() },
+            crate::protocol::ReadResourceParams {
+                uri: "smgglrs://proc/my-agent/capabilities".to_string(),
+            },
             &test_agent(),
         )
         .await;
@@ -931,7 +975,7 @@ async fn cap_token_allows_glob_matching_tool() {
                 arguments: serde_json::json!({}),
                 meta: None,
             },
-            cap_ctx(vec!["*"]),  // wildcard grants all
+            cap_ctx(vec!["*"]), // wildcard grants all
         )
         .await;
 
@@ -953,7 +997,7 @@ async fn cap_token_denies_unmatched_tool() {
                 arguments: serde_json::json!({}),
                 meta: None,
             },
-            cap_ctx(vec!["file_*", "git_*"]),  // no match for "echo"
+            cap_ctx(vec!["file_*", "git_*"]), // no match for "echo"
         )
         .await;
 
@@ -1014,18 +1058,10 @@ async fn dispatch_request(
     params: Option<serde_json::Value>,
     session_id: Option<String>,
 ) -> crate::protocol::JsonRpcResponse {
-    let request = crate::protocol::JsonRpcRequest::new(
-        method,
-        params,
-        crate::protocol::RequestId::Number(1),
-    );
-    let (response, _) = crate::dispatch_for_test(
-        server.clone(),
-        request,
-        test_agent(),
-        session_id,
-    )
-    .await;
+    let request =
+        crate::protocol::JsonRpcRequest::new(method, params, crate::protocol::RequestId::Number(1));
+    let (response, _) =
+        crate::dispatch_for_test(server.clone(), request, test_agent(), session_id).await;
     response
 }
 
@@ -1067,7 +1103,10 @@ async fn dispatch_completion_complete_returns_empty_values() {
     .await;
     assert!(resp.error.is_none());
     let result = resp.result.unwrap();
-    assert!(result["completion"]["values"].as_array().unwrap().is_empty());
+    assert!(result["completion"]["values"]
+        .as_array()
+        .unwrap()
+        .is_empty());
     assert!(!result["completion"]["hasMore"].as_bool().unwrap());
 }
 
@@ -1114,13 +1153,7 @@ async fn dispatch_resources_unsubscribe_without_subscribe_fails() {
 #[tokio::test]
 async fn dispatch_unknown_method_returns_method_not_found() {
     let (server, session_id) = init_test_session();
-    let resp = dispatch_request(
-        &server,
-        "nonexistent/method",
-        None,
-        Some(session_id),
-    )
-    .await;
+    let resp = dispatch_request(&server, "nonexistent/method", None, Some(session_id)).await;
     let error = resp.error.unwrap();
     assert_eq!(error.code, -32601);
     assert!(error.message.contains("nonexistent/method"));
@@ -1367,7 +1400,10 @@ async fn ifc_read_tool_auto_labels_untrusted() {
 
     // The result should be labeled Untrusted (confidentiality stays Public)
     assert_eq!(result.label.integrity, crate::ifc::Integrity::Untrusted);
-    assert_eq!(result.label.confidentiality, crate::ifc::Confidentiality::Public);
+    assert_eq!(
+        result.label.confidentiality,
+        crate::ifc::Confidentiality::Public
+    );
 }
 
 #[tokio::test]
@@ -1501,7 +1537,10 @@ async fn hook_safety_filter_via_pipeline() {
                 CallToolResult::text(msg.to_string())
             })
         })
-        .hook(SafetyHook::single("dev", crate::safety::build_pipeline("standard")))
+        .hook(SafetyHook::single(
+            "dev",
+            crate::safety::build_pipeline("standard"),
+        ))
         .build();
 
     let result = server
@@ -1531,7 +1570,9 @@ async fn hook_blocks_tool_call() {
 
     #[async_trait::async_trait]
     impl crate::hooks::Hook for BlockAll {
-        fn name(&self) -> &str { "block-all" }
+        fn name(&self) -> &str {
+            "block-all"
+        }
         async fn pre_tool_use(
             &self,
             _tool_name: &str,
@@ -1716,7 +1757,9 @@ fn permission_grant_creates_dynamic_grant() {
     assert!(grant.expires_at.is_none());
 
     // Verify the grant is active in the session permission store
-    assert!(server.session_permission_store().check_tool("s1", "git_push"));
+    assert!(server
+        .session_permission_store()
+        .check_tool("s1", "git_push"));
 }
 
 #[test]
@@ -1736,7 +1779,9 @@ fn permission_grant_with_duration() {
     let grant_params = smgglrs_protocol::permissions::PermissionGrantParams {
         request_id: "req-timed".to_string(),
     };
-    let result = server.handle_permission_grant(grant_params, "user").unwrap();
+    let result = server
+        .handle_permission_grant(grant_params, "user")
+        .unwrap();
     assert!(result.expires_at.is_some());
     // expires_at should be in the future
     let now = std::time::SystemTime::now()
@@ -1767,7 +1812,9 @@ fn permission_deny_removes_pending() {
     assert!(result.is_ok());
 
     // Tool should not be granted
-    assert!(!server.session_permission_store().check_tool("s3", "shell_exec"));
+    assert!(!server
+        .session_permission_store()
+        .check_tool("s3", "shell_exec"));
 }
 
 #[test]
@@ -1813,7 +1860,9 @@ fn permission_list_returns_grants() {
     let grant_params = smgglrs_protocol::permissions::PermissionGrantParams {
         request_id: "req-list".to_string(),
     };
-    server.handle_permission_grant(grant_params, "user").unwrap();
+    server
+        .handle_permission_grant(grant_params, "user")
+        .unwrap();
 
     let list = server.handle_permission_list("s4");
     assert_eq!(list.grants.len(), 1);
@@ -1903,13 +1952,34 @@ async fn dynamic_grant_overrides_tool_deny() {
 fn uri_template_matching() {
     use super::handlers::matches_uri_template;
 
-    assert!(matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://proc/alice/taint"));
-    assert!(matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://proc/my-agent/taint"));
-    assert!(!matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://proc//taint"));
-    assert!(!matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://proc/a/b/taint"));
-    assert!(!matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://other/alice/taint"));
-    assert!(matches_uri_template("smgglrs://proc/{agent}/capabilities", "smgglrs://proc/bob/capabilities"));
-    assert!(!matches_uri_template("smgglrs://proc/{agent}/capabilities", "smgglrs://proc/bob/taint"));
+    assert!(matches_uri_template(
+        "smgglrs://proc/{agent}/taint",
+        "smgglrs://proc/alice/taint"
+    ));
+    assert!(matches_uri_template(
+        "smgglrs://proc/{agent}/taint",
+        "smgglrs://proc/my-agent/taint"
+    ));
+    assert!(!matches_uri_template(
+        "smgglrs://proc/{agent}/taint",
+        "smgglrs://proc//taint"
+    ));
+    assert!(!matches_uri_template(
+        "smgglrs://proc/{agent}/taint",
+        "smgglrs://proc/a/b/taint"
+    ));
+    assert!(!matches_uri_template(
+        "smgglrs://proc/{agent}/taint",
+        "smgglrs://other/alice/taint"
+    ));
+    assert!(matches_uri_template(
+        "smgglrs://proc/{agent}/capabilities",
+        "smgglrs://proc/bob/capabilities"
+    ));
+    assert!(!matches_uri_template(
+        "smgglrs://proc/{agent}/capabilities",
+        "smgglrs://proc/bob/taint"
+    ));
     assert!(matches_uri_template("no-template", "no-template"));
     assert!(!matches_uri_template("no-template", "other"));
 }
@@ -1938,9 +2008,18 @@ fn resource_list_filtered_by_capability_token_globs() {
 
     // Only smgglrs://proc should be visible (matches glob)
     assert!(result.resources.iter().any(|r| r.uri == "smgglrs://proc"));
-    assert!(!result.resources.iter().any(|r| r.uri == "smgglrs://ifc/labels"));
-    assert!(!result.resources.iter().any(|r| r.uri == "smgglrs://audit/recent"));
-    assert!(!result.resources.iter().any(|r| r.uri == "smgglrs://budget/gpu"));
+    assert!(!result
+        .resources
+        .iter()
+        .any(|r| r.uri == "smgglrs://ifc/labels"));
+    assert!(!result
+        .resources
+        .iter()
+        .any(|r| r.uri == "smgglrs://audit/recent"));
+    assert!(!result
+        .resources
+        .iter()
+        .any(|r| r.uri == "smgglrs://budget/gpu"));
 }
 
 #[test]
@@ -1948,7 +2027,10 @@ fn resource_list_filtered_by_read_clearance() {
     use crate::ifc::{Confidentiality, ReadClearance, TaintedWritePolicy};
 
     let server = McpServer::builder()
-        .ifc_read_clearance("readonly", ReadClearance::new(Confidentiality::Public, TaintedWritePolicy::Deny))
+        .ifc_read_clearance(
+            "readonly",
+            ReadClearance::new(Confidentiality::Public, TaintedWritePolicy::Deny),
+        )
         .build();
 
     let agent = AgentIdentity::new("restricted", "readonly");
@@ -1956,9 +2038,15 @@ fn resource_list_filtered_by_read_clearance() {
 
     // Public resources visible
     assert!(result.resources.iter().any(|r| r.uri == "smgglrs://proc"));
-    assert!(result.resources.iter().any(|r| r.uri == "smgglrs://budget/gpu"));
+    assert!(result
+        .resources
+        .iter()
+        .any(|r| r.uri == "smgglrs://budget/gpu"));
     // Sensitive resources hidden
-    assert!(!result.resources.iter().any(|r| r.uri == "smgglrs://audit/recent"));
+    assert!(!result
+        .resources
+        .iter()
+        .any(|r| r.uri == "smgglrs://audit/recent"));
 }
 
 #[test]
@@ -1966,7 +2054,10 @@ fn resource_templates_filtered_by_read_clearance() {
     use crate::ifc::{Confidentiality, ReadClearance, TaintedWritePolicy};
 
     let server = McpServer::builder()
-        .ifc_read_clearance("readonly", ReadClearance::new(Confidentiality::Public, TaintedWritePolicy::Deny))
+        .ifc_read_clearance(
+            "readonly",
+            ReadClearance::new(Confidentiality::Public, TaintedWritePolicy::Deny),
+        )
         .build();
 
     let agent = AgentIdentity::new("restricted", "readonly");

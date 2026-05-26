@@ -274,11 +274,7 @@ impl WorkingMemory {
     /// Copies all main-timeline turns for the session into a new fork.
     /// New turns added with this fork_id will be independent of the main
     /// timeline.
-    pub fn fork(
-        &self,
-        session_id: &str,
-        fork_name: &str,
-    ) -> Result<(), MemoryError> {
+    pub fn fork(&self, session_id: &str, fork_name: &str) -> Result<(), MemoryError> {
         self.fork_from_internal(session_id, None, fork_name, None)
     }
 
@@ -308,11 +304,19 @@ impl WorkingMemory {
     ) -> Result<(), MemoryError> {
         // Determine the cutoff timestamp if forking from a specific turn
         let cutoff = if let Some(tid) = up_to_turn {
-            let ts: i64 = self.db.query_row(
-                "SELECT created_at FROM memory_turns WHERE turn_id = ?1 AND session_id = ?2",
-                params![tid, session_id],
-                |row| row.get(0),
-            ).map_err(|_| MemoryError::Other(format!("Turn '{}' not found in session '{}'", tid, session_id)))?;
+            let ts: i64 = self
+                .db
+                .query_row(
+                    "SELECT created_at FROM memory_turns WHERE turn_id = ?1 AND session_id = ?2",
+                    params![tid, session_id],
+                    |row| row.get(0),
+                )
+                .map_err(|_| {
+                    MemoryError::Other(format!(
+                        "Turn '{}' not found in session '{}'",
+                        tid, session_id
+                    ))
+                })?;
             Some(ts)
         } else {
             None
@@ -332,7 +336,8 @@ impl WorkingMemory {
                     None => "SELECT turn_id, session_id, agent, created_at, fork_id, parent_fork
                              FROM memory_turns
                              WHERE session_id = ?1 AND fork_id IS NULL
-                             ORDER BY created_at ASC".to_string(),
+                             ORDER BY created_at ASC"
+                        .to_string(),
                 };
                 self.get_turns_query(&sql, params![session_id])?
             }
@@ -348,7 +353,8 @@ impl WorkingMemory {
                     None => "SELECT turn_id, session_id, agent, created_at, fork_id, parent_fork
                              FROM memory_turns
                              WHERE session_id = ?1 AND fork_id = ?2
-                             ORDER BY created_at ASC".to_string(),
+                             ORDER BY created_at ASC"
+                        .to_string(),
                 };
                 self.get_turns_query(&sql, params![session_id, src])?
             }
@@ -574,8 +580,17 @@ impl WorkingMemory {
              ORDER BY created_at ASC",
         )?;
 
-        let rows: Vec<(String, String, String, i64, Option<String>, Option<String>, f64, i64)> =
-            stmt.query_map(params![session_id, agent], |row| {
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            i64,
+            Option<String>,
+            Option<String>,
+            f64,
+            i64,
+        )> = stmt
+            .query_map(params![session_id, agent], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
@@ -593,11 +608,14 @@ impl WorkingMemory {
         let mut scored: Vec<(usize, f64)> = rows
             .iter()
             .enumerate()
-            .map(|(i, (_, _, _, created_at, _, _, importance, access_count))| {
-                let age_hours = (now_secs - created_at).max(0) as f64 / 3600.0;
-                let score = effective_score(*importance, age_hours, *access_count as u32, decay_rate);
-                (i, score)
-            })
+            .map(
+                |(i, (_, _, _, created_at, _, _, importance, access_count))| {
+                    let age_hours = (now_secs - created_at).max(0) as f64 / 3600.0;
+                    let score =
+                        effective_score(*importance, age_hours, *access_count as u32, decay_rate);
+                    (i, score)
+                },
+            )
             .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -631,10 +649,7 @@ impl WorkingMemory {
             params![importance, turn_id],
         )?;
         if updated == 0 {
-            return Err(MemoryError::Other(format!(
-                "Turn '{}' not found",
-                turn_id
-            )));
+            return Err(MemoryError::Other(format!("Turn '{}' not found", turn_id)));
         }
         Ok(())
     }
@@ -646,10 +661,7 @@ impl WorkingMemory {
             params![turn_id],
         )?;
         if updated == 0 {
-            return Err(MemoryError::Other(format!(
-                "Turn '{}' not found",
-                turn_id
-            )));
+            return Err(MemoryError::Other(format!("Turn '{}' not found", turn_id)));
         }
         Ok(())
     }
@@ -874,9 +886,12 @@ mod tests {
     #[test]
     fn fork_from_copies_up_to_turn() {
         let mem = WorkingMemory::open_memory().unwrap();
-        mem.add_turn(&make_turn_with_id("s1", "dev", 1000, "t1")).unwrap();
-        mem.add_turn(&make_turn_with_id("s1", "dev", 2000, "t2")).unwrap();
-        mem.add_turn(&make_turn_with_id("s1", "dev", 3000, "t3")).unwrap();
+        mem.add_turn(&make_turn_with_id("s1", "dev", 1000, "t1"))
+            .unwrap();
+        mem.add_turn(&make_turn_with_id("s1", "dev", 2000, "t2"))
+            .unwrap();
+        mem.add_turn(&make_turn_with_id("s1", "dev", 3000, "t3"))
+            .unwrap();
 
         // Fork from t2 — should include t1 and t2 but not t3
         mem.fork_from("s1", "t2", "branch-a").unwrap();
@@ -953,9 +968,12 @@ mod tests {
     #[test]
     fn merge_replace_replaces_from_fork_point() {
         let mem = WorkingMemory::open_memory().unwrap();
-        mem.add_turn(&make_turn_with_id("s1", "dev", 1000, "t1")).unwrap();
-        mem.add_turn(&make_turn_with_id("s1", "dev", 2000, "t2")).unwrap();
-        mem.add_turn(&make_turn_with_id("s1", "dev", 3000, "t3")).unwrap();
+        mem.add_turn(&make_turn_with_id("s1", "dev", 1000, "t1"))
+            .unwrap();
+        mem.add_turn(&make_turn_with_id("s1", "dev", 2000, "t2"))
+            .unwrap();
+        mem.add_turn(&make_turn_with_id("s1", "dev", 3000, "t3"))
+            .unwrap();
 
         // Fork from t1 — copies t1 only
         mem.fork_from("s1", "t1", "alt").unwrap();
@@ -995,14 +1013,17 @@ mod tests {
         mem.add_turn(&ft).unwrap();
 
         // Main has 1, fork has 2 (1 copied + 1 new)
-        mem.merge_fork("s1", "experiment", MergeStrategy::Summarize).unwrap();
+        mem.merge_fork("s1", "experiment", MergeStrategy::Summarize)
+            .unwrap();
 
         let main = mem.get_session_turns("s1").unwrap();
         // 1 original + 1 summary = 2
         assert_eq!(main.len(), 2);
         let summary = &main[1];
         assert_eq!(summary.messages.len(), 1);
-        assert!(summary.messages[0].content.contains("Summary of fork 'experiment'"));
+        assert!(summary.messages[0]
+            .content
+            .contains("Summary of fork 'experiment'"));
     }
 
     #[test]

@@ -242,4 +242,3 @@ fn default_checkpoint_db() -> String {
         .display()
         .to_string()
 }
-

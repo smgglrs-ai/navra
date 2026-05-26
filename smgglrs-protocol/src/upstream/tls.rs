@@ -51,29 +51,29 @@ impl TlsConfig {
         }
 
         if let Some(ref cert_path) = self.client_cert {
-            let key_path = self.client_key.as_deref().ok_or_else(|| {
-                UpstreamError::Protocol {
+            let key_path = self
+                .client_key
+                .as_deref()
+                .ok_or_else(|| UpstreamError::Protocol {
                     name: upstream_name.to_string(),
                     message: "client_cert is set but client_key is missing".to_string(),
-                }
+                })?;
+
+            let cert_pem = std::fs::read(cert_path).map_err(|e| UpstreamError::Protocol {
+                name: upstream_name.to_string(),
+                message: format!("failed to read client cert '{}': {}", cert_path, e),
+            })?;
+            let key_pem = std::fs::read(key_path).map_err(|e| UpstreamError::Protocol {
+                name: upstream_name.to_string(),
+                message: format!("failed to read client key '{}': {}", key_path, e),
             })?;
 
-            let cert_pem =
-                std::fs::read(cert_path).map_err(|e| UpstreamError::Protocol {
-                    name: upstream_name.to_string(),
-                    message: format!("failed to read client cert '{}': {}", cert_path, e),
-                })?;
-            let key_pem =
-                std::fs::read(key_path).map_err(|e| UpstreamError::Protocol {
-                    name: upstream_name.to_string(),
-                    message: format!("failed to read client key '{}': {}", key_path, e),
-                })?;
-
-            let identity = reqwest::Identity::from_pkcs8_pem(&cert_pem, &key_pem)
-                .map_err(|e| UpstreamError::Protocol {
+            let identity = reqwest::Identity::from_pkcs8_pem(&cert_pem, &key_pem).map_err(|e| {
+                UpstreamError::Protocol {
                     name: upstream_name.to_string(),
                     message: format!("invalid client identity: {}", e),
-                })?;
+                }
+            })?;
             builder = builder.identity(identity);
         }
 
@@ -107,9 +107,18 @@ mod tests {
         };
         let json = serde_json::to_string(&cfg).unwrap();
         let parsed: TlsConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.ca_cert.as_deref(), Some("/etc/smgglrs/ca-bundle.pem"));
-        assert_eq!(parsed.client_cert.as_deref(), Some("/etc/smgglrs/client.pem"));
-        assert_eq!(parsed.client_key.as_deref(), Some("/etc/smgglrs/client-key.pem"));
+        assert_eq!(
+            parsed.ca_cert.as_deref(),
+            Some("/etc/smgglrs/ca-bundle.pem")
+        );
+        assert_eq!(
+            parsed.client_cert.as_deref(),
+            Some("/etc/smgglrs/client.pem")
+        );
+        assert_eq!(
+            parsed.client_key.as_deref(),
+            Some("/etc/smgglrs/client-key.pem")
+        );
         assert!(!parsed.danger_skip_verify);
     }
 

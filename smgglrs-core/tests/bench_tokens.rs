@@ -28,7 +28,11 @@ fn test_cap_set() -> CapabilitySet {
             "git.status".to_string(),
             "git.commit".to_string(),
         ],
-        tools: vec!["docs_*".to_string(), "git_*".to_string(), "rag_*".to_string()],
+        tools: vec![
+            "docs_*".to_string(),
+            "git_*".to_string(),
+            "rag_*".to_string(),
+        ],
         credentials: vec!["github.pat".to_string(), "jira.token".to_string()],
     }
 }

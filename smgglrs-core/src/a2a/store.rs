@@ -56,9 +56,12 @@ impl TaskStore {
     }
 
     pub fn count(&self) -> usize {
-        self.tasks.read().unwrap_or_else(|e| {
-            tracing::warn!("TaskStore RwLock poisoned (read), recovering");
-            e.into_inner()
-        }).len()
+        self.tasks
+            .read()
+            .unwrap_or_else(|e| {
+                tracing::warn!("TaskStore RwLock poisoned (read), recovering");
+                e.into_inner()
+            })
+            .len()
     }
 }

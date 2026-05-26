@@ -70,10 +70,7 @@ impl TokenQuotaTracker {
         });
 
         let quotas = self.quotas.read().unwrap();
-        let window_secs = quotas
-            .get(agent_id)
-            .map(|q| q.window_secs)
-            .unwrap_or(300);
+        let window_secs = quotas.get(agent_id).map(|q| q.window_secs).unwrap_or(300);
 
         // Reset window if expired
         if entry.window_start.elapsed().as_secs() > window_secs {

@@ -269,7 +269,9 @@ impl ContentFilter for PiiFilter {
                 let dominated = findings.iter().any(|f: &Finding| {
                     f.start == m.start() && f.end == m.end() && f.category != pattern.category
                 });
-                if dominated { continue; }
+                if dominated {
+                    continue;
+                }
 
                 findings.push(Finding {
                     start: m.start(),
@@ -314,26 +316,82 @@ impl PathPiiFilter {
             //   ~<user>/
             //   C:\Users\<user>\ or C:\Users\<user> (end/space)
             path_re: regex_lite::Regex::new(
-                r"(?:/home/|/Users/|~|[A-Z]:\\Users\\)([A-Za-z0-9._-]+)"
-            ).unwrap(),
+                r"(?:/home/|/Users/|~|[A-Z]:\\Users\\)([A-Za-z0-9._-]+)",
+            )
+            .unwrap(),
             system_users: &[
                 // Unix system accounts
-                "root", "nobody", "daemon", "bin", "sys", "sync",
-                "games", "man", "lp", "mail", "news", "uucp",
-                "proxy", "backup", "list", "irc", "gnats",
-                "www-data", "sshd", "ntp", "messagebus", "polkitd",
-                "avahi", "colord", "geoclue", "gdm", "lightdm", "sddm",
-                "systemd-network", "systemd-resolve", "systemd-timesync",
-                "flatpak", "fwupd", "pipewire", "rtkit", "dnsmasq",
+                "root",
+                "nobody",
+                "daemon",
+                "bin",
+                "sys",
+                "sync",
+                "games",
+                "man",
+                "lp",
+                "mail",
+                "news",
+                "uucp",
+                "proxy",
+                "backup",
+                "list",
+                "irc",
+                "gnats",
+                "www-data",
+                "sshd",
+                "ntp",
+                "messagebus",
+                "polkitd",
+                "avahi",
+                "colord",
+                "geoclue",
+                "gdm",
+                "lightdm",
+                "sddm",
+                "systemd-network",
+                "systemd-resolve",
+                "systemd-timesync",
+                "flatpak",
+                "fwupd",
+                "pipewire",
+                "rtkit",
+                "dnsmasq",
                 // macOS system accounts
-                "_www", "_windowserver", "_spotlight",
+                "_www",
+                "_windowserver",
+                "_spotlight",
                 // Generic / service accounts
-                "admin", "administrator", "deploy", "app", "service",
-                "user", "guest", "test", "ci", "build", "runner",
-                "git", "jenkins", "gitlab-runner", "github-actions",
-                "node", "postgres", "mysql", "redis", "mongo",
-                "nginx", "apache", "httpd", "docker", "vagrant",
-                "ubuntu", "centos", "fedora", "ec2-user", "azureuser",
+                "admin",
+                "administrator",
+                "deploy",
+                "app",
+                "service",
+                "user",
+                "guest",
+                "test",
+                "ci",
+                "build",
+                "runner",
+                "git",
+                "jenkins",
+                "gitlab-runner",
+                "github-actions",
+                "node",
+                "postgres",
+                "mysql",
+                "redis",
+                "mongo",
+                "nginx",
+                "apache",
+                "httpd",
+                "docker",
+                "vagrant",
+                "ubuntu",
+                "centos",
+                "fedora",
+                "ec2-user",
+                "azureuser",
             ],
         }
     }
@@ -402,8 +460,8 @@ impl CustomFilter {
     pub fn new(patterns: Vec<(String, String)>) -> Self {
         let compiled: Vec<CustomPattern> = patterns
             .into_iter()
-            .filter_map(|(category, pattern)| {
-                match regex_lite::Regex::new(&pattern) {
+            .filter_map(
+                |(category, pattern)| match regex_lite::Regex::new(&pattern) {
                     Ok(regex) => Some(CustomPattern { category, regex }),
                     Err(e) => {
                         tracing::warn!(
@@ -414,8 +472,8 @@ impl CustomFilter {
                         );
                         None
                     }
-                }
-            })
+                },
+            )
             .collect();
         Self { patterns: compiled }
     }
@@ -480,10 +538,7 @@ impl CustomPiiFilter {
                     regex,
                 }),
                 Err(e) => {
-                    return Err(format!(
-                        "Invalid PII pattern '{}': {}",
-                        name, e
-                    ));
+                    return Err(format!("Invalid PII pattern '{}': {}", name, e));
                 }
             }
         }
@@ -497,10 +552,7 @@ impl CustomPiiFilter {
 
     /// Returns the custom PII categories defined in this filter.
     pub fn categories(&self) -> Vec<String> {
-        self.patterns
-            .iter()
-            .map(|p| p.category.clone())
-            .collect()
+        self.patterns.iter().map(|p| p.category.clone()).collect()
     }
 }
 
@@ -627,12 +679,20 @@ fn validate_iban(s: &str) -> bool {
 /// Validate a French SIRET using Luhn checksum on the full 14 digits.
 /// French convention: double even-indexed digits (0, 2, 4, ...) from left.
 fn validate_siret(s: &str) -> bool {
-    let digits: Vec<u32> = s.chars().filter(|c| c.is_ascii_digit()).map(|c| c as u32 - '0' as u32).collect();
-    if digits.len() != 14 { return false; }
+    let digits: Vec<u32> = s
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .map(|c| c as u32 - '0' as u32)
+        .collect();
+    if digits.len() != 14 {
+        return false;
+    }
     let mut sum = 0u32;
     for (i, &d) in digits.iter().enumerate() {
         let mut v = if i % 2 == 0 { d * 2 } else { d };
-        if v > 9 { v -= 9; }
+        if v > 9 {
+            v -= 9;
+        }
         sum += v;
     }
     sum % 10 == 0
@@ -670,20 +730,20 @@ fn validate_public_ip(s: &str) -> bool {
 
 /// Regex matching ISO 8601 timestamps and date strings.
 /// Used to exclude false positives from phone/credit-card patterns.
-static ISO_DATETIME_RE: std::sync::LazyLock<regex_lite::Regex> =
-    std::sync::LazyLock::new(|| {
-        regex_lite::Regex::new(
-            r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
-        ).unwrap()
-    });
+static ISO_DATETIME_RE: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+    regex_lite::Regex::new(
+        r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?",
+    )
+    .unwrap()
+});
 
 /// Regex matching UUID v1-v5 (8-4-4-4-12 hex pattern).
-static UUID_RE: std::sync::LazyLock<regex_lite::Regex> =
-    std::sync::LazyLock::new(|| {
-        regex_lite::Regex::new(
-            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-        ).unwrap()
-    });
+static UUID_RE: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+    regex_lite::Regex::new(
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+    )
+    .unwrap()
+});
 
 /// Check whether a match range overlaps with any match of `re` in `content`.
 fn overlaps_pattern(content: &str, start: usize, end: usize, re: &regex_lite::Regex) -> bool {
@@ -749,7 +809,10 @@ mod tests {
         let findings = filter.scan(content, &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "aws-key");
-        assert_eq!(&content[findings[0].start..findings[0].end], "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(
+            &content[findings[0].start..findings[0].end],
+            "AKIAIOSFODNN7EXAMPLE"
+        );
     }
 
     #[test]
@@ -810,17 +873,20 @@ mod tests {
         let filter = SecretFilter::new();
         // Short sk- strings should not match (e.g. variable names, abbreviations)
         let findings = filter.scan("The sk-value is not a real key", &ctx());
-        let api_findings: Vec<_> = findings.iter().filter(|f| f.category == "api-key").collect();
-        assert!(api_findings.is_empty(), "Short sk- falsely detected as API key");
+        let api_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.category == "api-key")
+            .collect();
+        assert!(
+            api_findings.is_empty(),
+            "Short sk- falsely detected as API key"
+        );
     }
 
     #[test]
     fn detect_private_key() {
         let filter = SecretFilter::new();
-        let findings = filter.scan(
-            "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAK...",
-            &ctx(),
-        );
+        let findings = filter.scan("-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAK...", &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "private-key");
     }
@@ -828,10 +894,7 @@ mod tests {
     #[test]
     fn detect_private_key_ec() {
         let filter = SecretFilter::new();
-        let findings = filter.scan(
-            "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEE...",
-            &ctx(),
-        );
+        let findings = filter.scan("-----BEGIN EC PRIVATE KEY-----\nMHQCAQEE...", &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "private-key");
     }
@@ -839,10 +902,7 @@ mod tests {
     #[test]
     fn detect_private_key_generic() {
         let filter = SecretFilter::new();
-        let findings = filter.scan(
-            "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg...",
-            &ctx(),
-        );
+        let findings = filter.scan("-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg...", &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "private-key");
     }
@@ -850,10 +910,7 @@ mod tests {
     #[test]
     fn detect_private_key_openssh() {
         let filter = SecretFilter::new();
-        let findings = filter.scan(
-            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz...",
-            &ctx(),
-        );
+        let findings = filter.scan("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNz...", &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "private-key");
     }
@@ -861,10 +918,7 @@ mod tests {
     #[test]
     fn detect_private_key_dsa() {
         let filter = SecretFilter::new();
-        let findings = filter.scan(
-            "-----BEGIN DSA PRIVATE KEY-----\nMIIBuwIBAAK...",
-            &ctx(),
-        );
+        let findings = filter.scan("-----BEGIN DSA PRIVATE KEY-----\nMIIBuwIBAAK...", &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "private-key");
     }
@@ -872,12 +926,15 @@ mod tests {
     #[test]
     fn no_false_positive_public_key() {
         let filter = SecretFilter::new();
-        let findings = filter.scan(
-            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...",
-            &ctx(),
+        let findings = filter.scan("-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...", &ctx());
+        let pk_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.category == "private-key")
+            .collect();
+        assert!(
+            pk_findings.is_empty(),
+            "Public key falsely detected as private key"
         );
-        let pk_findings: Vec<_> = findings.iter().filter(|f| f.category == "private-key").collect();
-        assert!(pk_findings.is_empty(), "Public key falsely detected as private key");
     }
 
     #[test]
@@ -912,7 +969,8 @@ mod tests {
     #[test]
     fn detect_multiple_secrets() {
         let filter = SecretFilter::new();
-        let content = "AWS_KEY=AKIAIOSFODNN7EXAMPLE\nGH_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij";
+        let content =
+            "AWS_KEY=AKIAIOSFODNN7EXAMPLE\nGH_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij";
         let findings = filter.scan(content, &ctx());
         assert_eq!(findings.len(), 2);
     }
@@ -1004,7 +1062,7 @@ mod tests {
     fn luhn_valid_cards() {
         assert!(validate_luhn("4111111111111111")); // Visa test
         assert!(validate_luhn("5500000000000004")); // Mastercard test
-        assert!(validate_luhn("378282246310005"));  // Amex test
+        assert!(validate_luhn("378282246310005")); // Amex test
     }
 
     #[test]
@@ -1043,9 +1101,10 @@ mod tests {
 
     #[test]
     fn custom_filter_matches_pattern() {
-        let filter = CustomFilter::new(vec![
-            ("internal-url".to_string(), r"https://internal\.example\.com/\S+".to_string()),
-        ]);
+        let filter = CustomFilter::new(vec![(
+            "internal-url".to_string(),
+            r"https://internal\.example\.com/\S+".to_string(),
+        )]);
         let content = "Visit https://internal.example.com/secret-page for details";
         let findings = filter.scan(content, &ctx());
         assert_eq!(findings.len(), 1);
@@ -1068,9 +1127,7 @@ mod tests {
 
     #[test]
     fn custom_filter_no_match() {
-        let filter = CustomFilter::new(vec![
-            ("secret".to_string(), r"TOP_SECRET_\w+".to_string()),
-        ]);
+        let filter = CustomFilter::new(vec![("secret".to_string(), r"TOP_SECRET_\w+".to_string())]);
         let content = "This is perfectly normal text";
         let findings = filter.scan(content, &ctx());
         assert!(findings.is_empty());
@@ -1105,9 +1162,20 @@ mod tests {
         let content = "created_at: 2026-04-25T16:51:00.918Z";
         let findings = filter.scan(content, &ctx());
         let phone_findings: Vec<_> = findings.iter().filter(|f| f.category == "phone").collect();
-        assert!(phone_findings.is_empty(), "ISO timestamp falsely detected as phone: {:?}", phone_findings);
-        let cc_findings: Vec<_> = findings.iter().filter(|f| f.category == "credit-card").collect();
-        assert!(cc_findings.is_empty(), "ISO timestamp falsely detected as credit-card: {:?}", cc_findings);
+        assert!(
+            phone_findings.is_empty(),
+            "ISO timestamp falsely detected as phone: {:?}",
+            phone_findings
+        );
+        let cc_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.category == "credit-card")
+            .collect();
+        assert!(
+            cc_findings.is_empty(),
+            "ISO timestamp falsely detected as credit-card: {:?}",
+            cc_findings
+        );
     }
 
     #[test]
@@ -1116,9 +1184,20 @@ mod tests {
         let content = "id: 7016dc2c-f30e-458b-95ad-83f0c6c20617";
         let findings = filter.scan(content, &ctx());
         let phone_findings: Vec<_> = findings.iter().filter(|f| f.category == "phone").collect();
-        assert!(phone_findings.is_empty(), "UUID falsely detected as phone: {:?}", phone_findings);
-        let cc_findings: Vec<_> = findings.iter().filter(|f| f.category == "credit-card").collect();
-        assert!(cc_findings.is_empty(), "UUID falsely detected as credit-card: {:?}", cc_findings);
+        assert!(
+            phone_findings.is_empty(),
+            "UUID falsely detected as phone: {:?}",
+            phone_findings
+        );
+        let cc_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.category == "credit-card")
+            .collect();
+        assert!(
+            cc_findings.is_empty(),
+            "UUID falsely detected as credit-card: {:?}",
+            cc_findings
+        );
     }
 
     #[test]
@@ -1127,7 +1206,11 @@ mod tests {
         let content = "date: 2026-04-25";
         let findings = filter.scan(content, &ctx());
         let phone_findings: Vec<_> = findings.iter().filter(|f| f.category == "phone").collect();
-        assert!(phone_findings.is_empty(), "Date falsely detected as phone: {:?}", phone_findings);
+        assert!(
+            phone_findings.is_empty(),
+            "Date falsely detected as phone: {:?}",
+            phone_findings
+        );
     }
 
     #[test]
@@ -1151,7 +1234,11 @@ mod tests {
         let content = r#"{"id":"7016dc2c-f30e-458b-95ad-83f0c6c20617","created_at":"2026-04-25T16:51:00.918Z","content":"user asked about Rust"}"#;
         let findings = filter.scan(content, &ctx());
         let phone_findings: Vec<_> = findings.iter().filter(|f| f.category == "phone").collect();
-        assert!(phone_findings.is_empty(), "Memory response falsely detected as phone: {:?}", phone_findings);
+        assert!(
+            phone_findings.is_empty(),
+            "Memory response falsely detected as phone: {:?}",
+            phone_findings
+        );
     }
 
     // --- French NIR ---
@@ -1239,7 +1326,10 @@ mod tests {
     fn no_false_positive_localhost() {
         let filter = PiiFilter::new();
         let findings = filter.scan("Listening on 127.0.0.1:8080", &ctx());
-        let ip_findings: Vec<_> = findings.iter().filter(|f| f.category == "ip-address").collect();
+        let ip_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.category == "ip-address")
+            .collect();
         assert!(ip_findings.is_empty());
     }
 
@@ -1247,7 +1337,10 @@ mod tests {
     fn no_false_positive_private_ip() {
         let filter = PiiFilter::new();
         let findings = filter.scan("LAN address 192.168.1.1", &ctx());
-        let ip_findings: Vec<_> = findings.iter().filter(|f| f.category == "ip-address").collect();
+        let ip_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.category == "ip-address")
+            .collect();
         assert!(ip_findings.is_empty());
     }
 
@@ -1306,7 +1399,10 @@ mod tests {
         let findings = filter.scan(content, &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "path-username");
-        assert_eq!(&content[findings[0].start..findings[0].end], "marie-claire.dubois");
+        assert_eq!(
+            &content[findings[0].start..findings[0].end],
+            "marie-claire.dubois"
+        );
     }
 
     #[test]
@@ -1379,9 +1475,18 @@ mod tests {
     #[test]
     fn custom_pii_filter_valid_patterns() {
         let filter = CustomPiiFilter::new(vec![
-            ("employee-id".to_string(), r"\bEMP-\d{6}\b".to_string(), "employee-id".to_string()),
-            ("badge-number".to_string(), r"\bBDG[A-Z]\d{4}\b".to_string(), "badge".to_string()),
-        ]).unwrap();
+            (
+                "employee-id".to_string(),
+                r"\bEMP-\d{6}\b".to_string(),
+                "employee-id".to_string(),
+            ),
+            (
+                "badge-number".to_string(),
+                r"\bBDG[A-Z]\d{4}\b".to_string(),
+                "badge".to_string(),
+            ),
+        ])
+        .unwrap();
         assert!(filter.has_patterns());
         assert_eq!(filter.categories().len(), 2);
         assert!(filter.categories().contains(&"employee-id".to_string()));
@@ -1390,9 +1495,11 @@ mod tests {
 
     #[test]
     fn custom_pii_filter_rejects_invalid_regex() {
-        let result = CustomPiiFilter::new(vec![
-            ("bad-pattern".to_string(), r"[invalid".to_string(), "bad".to_string()),
-        ]);
+        let result = CustomPiiFilter::new(vec![(
+            "bad-pattern".to_string(),
+            r"[invalid".to_string(),
+            "bad".to_string(),
+        )]);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("bad-pattern"));
     }
@@ -1400,9 +1507,18 @@ mod tests {
     #[test]
     fn custom_pii_filter_detects_patterns() {
         let filter = CustomPiiFilter::new(vec![
-            ("employee-id".to_string(), r"\bEMP-\d{6}\b".to_string(), "employee-id".to_string()),
-            ("project-code".to_string(), r"\bPRJ-[A-Z]{3}-\d{4}\b".to_string(), "project-code".to_string()),
-        ]).unwrap();
+            (
+                "employee-id".to_string(),
+                r"\bEMP-\d{6}\b".to_string(),
+                "employee-id".to_string(),
+            ),
+            (
+                "project-code".to_string(),
+                r"\bPRJ-[A-Z]{3}-\d{4}\b".to_string(),
+                "project-code".to_string(),
+            ),
+        ])
+        .unwrap();
         let content = "Employee EMP-123456 works on PRJ-SEC-2026";
         let findings = filter.scan(content, &ctx());
         assert_eq!(findings.len(), 2);
@@ -1413,9 +1529,12 @@ mod tests {
 
     #[test]
     fn custom_pii_filter_no_match() {
-        let filter = CustomPiiFilter::new(vec![
-            ("employee-id".to_string(), r"\bEMP-\d{6}\b".to_string(), "employee-id".to_string()),
-        ]).unwrap();
+        let filter = CustomPiiFilter::new(vec![(
+            "employee-id".to_string(),
+            r"\bEMP-\d{6}\b".to_string(),
+            "employee-id".to_string(),
+        )])
+        .unwrap();
         let findings = filter.scan("No employee IDs here", &ctx());
         assert!(findings.is_empty());
     }
@@ -1430,9 +1549,12 @@ mod tests {
 
     #[test]
     fn custom_pii_filter_name_is_custom_pii() {
-        let filter = CustomPiiFilter::new(vec![
-            ("test".to_string(), r"test".to_string(), "test".to_string()),
-        ]).unwrap();
+        let filter = CustomPiiFilter::new(vec![(
+            "test".to_string(),
+            r"test".to_string(),
+            "test".to_string(),
+        )])
+        .unwrap();
         assert_eq!(filter.name(), "custom-pii");
     }
 }

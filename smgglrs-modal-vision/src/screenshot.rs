@@ -67,8 +67,7 @@ async fn wait_for_response(proxy: &zbus::Proxy<'_>) -> Result<String, String> {
         .map_err(|e| format!("Failed to listen for response: {e}"))?;
 
     if let Some(signal) = stream.next().await {
-        let body = signal
-            .body();
+        let body = signal.body();
         let (response_code, results): (u32, HashMap<String, Value<'_>>) = body
             .deserialize()
             .map_err(|e| format!("Failed to parse response: {e}"))?;
@@ -80,9 +79,7 @@ async fn wait_for_response(proxy: &zbus::Proxy<'_>) -> Result<String, String> {
         }
 
         if let Some(Value::Str(uri)) = results.get("uri") {
-            let path = uri
-                .strip_prefix("file://")
-                .unwrap_or(uri.as_str());
+            let path = uri.strip_prefix("file://").unwrap_or(uri.as_str());
             Ok(path.to_string())
         } else {
             Err("No URI in screenshot response".to_string())

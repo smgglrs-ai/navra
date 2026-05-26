@@ -124,7 +124,12 @@ fn normalize_segments(text: &str, paragraphs: &[Segment], config: &ChunkConfig) 
                 current_len = 0;
             }
             // This paragraph is too long — split at sentence/statement boundaries
-            result.extend(split_at_sentences(text, para.start, para.end, config.target_size));
+            result.extend(split_at_sentences(
+                text,
+                para.start,
+                para.end,
+                config.target_size,
+            ));
             continue;
         }
 
@@ -176,32 +181,52 @@ fn split_at_sentences(text: &str, start: usize, end: usize, target: usize) -> Ve
     // or braces/semicolons.
     let is_code = {
         let lines: Vec<&str> = slice.lines().take(20).collect();
-        let code_indicators = lines.iter().filter(|l| {
-            let t = l.trim();
-            t.ends_with(';') || t.ends_with('{') || t.ends_with('}')
-                || t.starts_with("fn ") || t.starts_with("pub ")
-                || t.starts_with("def ") || t.starts_with("class ")
-                || t.starts_with("import ") || t.starts_with("use ")
-        }).count();
+        let code_indicators = lines
+            .iter()
+            .filter(|l| {
+                let t = l.trim();
+                t.ends_with(';')
+                    || t.ends_with('{')
+                    || t.ends_with('}')
+                    || t.starts_with("fn ")
+                    || t.starts_with("pub ")
+                    || t.starts_with("def ")
+                    || t.starts_with("class ")
+                    || t.starts_with("import ")
+                    || t.starts_with("use ")
+            })
+            .count();
         code_indicators > lines.len() / 3
     };
 
     if is_code {
         // Code splitting: find function/struct/impl boundaries
         let code_boundaries = [
-            "\nfn ", "\npub ", "\nimpl ", "\nstruct ", "\nenum ", "\nmod ",
-            "\nclass ", "\ndef ", "\nfunction ", "\n\n",
+            "\nfn ",
+            "\npub ",
+            "\nimpl ",
+            "\nstruct ",
+            "\nenum ",
+            "\nmod ",
+            "\nclass ",
+            "\ndef ",
+            "\nfunction ",
+            "\n\n",
         ];
         while seg_start < end {
             let remaining = &text[seg_start..end];
             if remaining.len() <= target {
-                result.push(Segment { start: seg_start, end });
+                result.push(Segment {
+                    start: seg_start,
+                    end,
+                });
                 break;
             }
             // Search for a boundary near the target
             let search_end = target.min(remaining.len());
             let search_zone = &remaining[..search_end];
-            let best = code_boundaries.iter()
+            let best = code_boundaries
+                .iter()
                 .filter_map(|b| search_zone.rfind(b).map(|p| p + 1)) // +1 to keep \n with previous
                 .max();
             let split_at = match best {
@@ -215,7 +240,10 @@ fn split_at_sentences(text: &str, start: usize, end: usize, target: usize) -> Ve
                     }
                 }
             };
-            result.push(Segment { start: seg_start, end: split_at });
+            result.push(Segment {
+                start: seg_start,
+                end: split_at,
+            });
             seg_start = split_at;
         }
     } else {
@@ -224,12 +252,16 @@ fn split_at_sentences(text: &str, start: usize, end: usize, target: usize) -> Ve
         while seg_start < end {
             let remaining = &text[seg_start..end];
             if remaining.len() <= target {
-                result.push(Segment { start: seg_start, end });
+                result.push(Segment {
+                    start: seg_start,
+                    end,
+                });
                 break;
             }
             let search_end = target.min(remaining.len());
             let search_zone = &remaining[..search_end];
-            let best = sentence_ends.iter()
+            let best = sentence_ends
+                .iter()
                 .filter_map(|s| search_zone.rfind(s).map(|p| p + s.len()))
                 .max();
             let split_at = match best {
@@ -242,7 +274,10 @@ fn split_at_sentences(text: &str, start: usize, end: usize, target: usize) -> Ve
                     }
                 }
             };
-            result.push(Segment { start: seg_start, end: split_at });
+            result.push(Segment {
+                start: seg_start,
+                end: split_at,
+            });
             seg_start = split_at;
         }
     }
@@ -254,11 +289,7 @@ fn split_at_sentences(text: &str, start: usize, end: usize, target: usize) -> Ve
 }
 
 /// Build final chunks with overlap from normalized segments.
-fn build_chunks_with_overlap(
-    segments: &[Segment],
-    text: &str,
-    config: &ChunkConfig,
-) -> Vec<Chunk> {
+fn build_chunks_with_overlap(segments: &[Segment], text: &str, config: &ChunkConfig) -> Vec<Chunk> {
     let mut chunks = Vec::new();
 
     for (i, seg) in segments.iter().enumerate() {
@@ -347,7 +378,11 @@ mod tests {
             min_size: 10,
         };
         let chunks = chunk_text(&text, &config);
-        assert!(chunks.len() >= 2, "Should split into multiple chunks, got {}", chunks.len());
+        assert!(
+            chunks.len() >= 2,
+            "Should split into multiple chunks, got {}",
+            chunks.len()
+        );
     }
 
     #[test]
@@ -428,13 +463,19 @@ pub fn third_function() {\n\
             min_size: 10,
         };
         let chunks = chunk_text(code, &config);
-        assert!(chunks.len() >= 2,
-            "Code should split into 2+ chunks at function boundaries, got {}", chunks.len());
+        assert!(
+            chunks.len() >= 2,
+            "Code should split into 2+ chunks at function boundaries, got {}",
+            chunks.len()
+        );
         // No chunk should start mid-line
         for chunk in &chunks {
             let first_char = chunk.content.chars().next().unwrap_or(' ');
-            assert!(first_char != ' ' && first_char != '\t',
-                "Chunk should not start with indentation: {:?}", &chunk.content[..20.min(chunk.content.len())]);
+            assert!(
+                first_char != ' ' && first_char != '\t',
+                "Chunk should not start with indentation: {:?}",
+                &chunk.content[..20.min(chunk.content.len())]
+            );
         }
     }
 
@@ -449,14 +490,19 @@ pub fn third_function() {\n\
             min_size: 10,
         };
         let chunks = chunk_text(prose, &config);
-        assert!(chunks.len() >= 2,
-            "Prose should split into 2+ chunks, got {}", chunks.len());
+        assert!(
+            chunks.len() >= 2,
+            "Prose should split into 2+ chunks, got {}",
+            chunks.len()
+        );
         // Each chunk (except last) should end at a sentence boundary
-        for chunk in &chunks[..chunks.len()-1] {
+        for chunk in &chunks[..chunks.len() - 1] {
             let trimmed = chunk.content.trim_end();
-            assert!(trimmed.ends_with('.') || trimmed.ends_with('!') || trimmed.ends_with('?'),
+            assert!(
+                trimmed.ends_with('.') || trimmed.ends_with('!') || trimmed.ends_with('?'),
                 "Chunk should end at sentence boundary: {:?}",
-                &trimmed[trimmed.len().saturating_sub(30)..]);
+                &trimmed[trimmed.len().saturating_sub(30)..]
+            );
         }
     }
 }

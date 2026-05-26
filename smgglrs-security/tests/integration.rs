@@ -2,25 +2,25 @@
 //!
 //! Tests cross-module behavior: auth → permissions → IFC → hooks → safety.
 
+use axum::http::HeaderMap;
+use smgglrs_protocol::Content;
 use smgglrs_security::auth::capability::{
     build_delegated_payload, build_payload, decode_token, encode_token, resolve_capabilities,
     validate_delegation, CapabilitySet,
 };
+use smgglrs_security::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
 use smgglrs_security::auth::{
     AgentIdentity, AuthError, Authenticator, CallContext, TokenAuthenticator,
 };
-use smgglrs_security::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
 use smgglrs_security::hooks::{Hook, HookDecision, HookPipeline};
 use smgglrs_security::identity::{CapSigner, Ed25519Signer};
+use smgglrs_security::ifc::value_store::{resolve_variable_refs, StoredValue, ValueStore};
 use smgglrs_security::ifc::{DataLabel, TaintTracker};
-use smgglrs_security::ifc::value_store::{ValueStore, StoredValue, resolve_variable_refs};
-use smgglrs_security::permissions::{PathAcl, PermissionEngine, PermissionResult};
 use smgglrs_security::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
-use smgglrs_security::quota::{QuotaEngine, RateLimit};
+use smgglrs_security::permissions::{PathAcl, PermissionEngine, PermissionResult};
 use smgglrs_security::process::ProcessTable;
+use smgglrs_security::quota::{QuotaEngine, RateLimit};
 use smgglrs_security::safety::{build_pipeline, FilterContext};
-use axum::http::HeaderMap;
-use smgglrs_protocol::Content;
 use std::path::Path;
 use std::time::Duration;
 
@@ -35,7 +35,10 @@ fn blake3_token_register_authenticate_roundtrip() {
     auth.register("my-secret-token-42", identity);
 
     let mut headers = HeaderMap::new();
-    headers.insert("authorization", "Bearer my-secret-token-42".parse().unwrap());
+    headers.insert(
+        "authorization",
+        "Bearer my-secret-token-42".parse().unwrap(),
+    );
 
     let result = auth.authenticate(&headers).unwrap();
     assert_eq!(result.name, "agent-alpha");
@@ -64,7 +67,10 @@ fn blake3_wrong_token_rejected() {
     let mut headers = HeaderMap::new();
     headers.insert("authorization", "Bearer wrong-token".parse().unwrap());
 
-    assert!(matches!(auth.authenticate(&headers), Err(AuthError::InvalidToken)));
+    assert!(matches!(
+        auth.authenticate(&headers),
+        Err(AuthError::InvalidToken)
+    ));
 }
 
 // =====================================================================
@@ -86,10 +92,7 @@ fn build_permission_engine() -> PermissionEngine {
                 .into_iter()
                 .map(String::from)
                 .collect(),
-            requires_approval: ["write"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            requires_approval: ["write"].into_iter().map(String::from).collect(),
         },
     );
     engine
@@ -106,7 +109,11 @@ fn permission_engine_allow_read() {
 fn permission_engine_deny_wins_over_allow() {
     let engine = build_permission_engine();
     // Path is inside allowed /home/user/projects/** but also matches deny
-    let result = engine.check("dev", "read", Path::new("/home/user/projects/.secrets/key.pem"));
+    let result = engine.check(
+        "dev",
+        "read",
+        Path::new("/home/user/projects/.secrets/key.pem"),
+    );
     assert_eq!(result, PermissionResult::DeniedPath);
 }
 
@@ -213,7 +220,9 @@ struct TestBlockHook {
 
 #[async_trait::async_trait]
 impl Hook for TestBlockHook {
-    fn name(&self) -> &str { "test-block" }
+    fn name(&self) -> &str {
+        "test-block"
+    }
 
     async fn pre_tool_use(
         &self,
@@ -236,7 +245,9 @@ struct TestResultHook {
 
 #[async_trait::async_trait]
 impl Hook for TestResultHook {
-    fn name(&self) -> &str { "test-result" }
+    fn name(&self) -> &str {
+        "test-result"
+    }
 
     async fn post_tool_use(
         &self,
@@ -249,9 +260,10 @@ impl Hook for TestResultHook {
             Content::Text(t) => &t.text,
             _ => panic!("expected text content"),
         };
-        HookDecision::ModifyResult(smgglrs_protocol::CallToolResult::text(
-            format!("{}{}", text, self.suffix),
-        ))
+        HookDecision::ModifyResult(smgglrs_protocol::CallToolResult::text(format!(
+            "{}{}",
+            text, self.suffix
+        )))
     }
 }
 
@@ -262,7 +274,9 @@ fn test_ctx() -> CallContext {
 #[tokio::test]
 async fn hook_pipeline_pre_blocks_dangerous_tool() {
     let mut pipeline = HookPipeline::new(Duration::from_secs(5));
-    pipeline.add(TestBlockHook { blocked: "shell_exec".to_string() });
+    pipeline.add(TestBlockHook {
+        blocked: "shell_exec".to_string(),
+    });
 
     let result = pipeline
         .run_pre("shell_exec", serde_json::json!({}), &test_ctx())
@@ -274,7 +288,9 @@ async fn hook_pipeline_pre_blocks_dangerous_tool() {
 #[tokio::test]
 async fn hook_pipeline_pre_allows_safe_tool() {
     let mut pipeline = HookPipeline::new(Duration::from_secs(5));
-    pipeline.add(TestBlockHook { blocked: "shell_exec".to_string() });
+    pipeline.add(TestBlockHook {
+        blocked: "shell_exec".to_string(),
+    });
 
     let result = pipeline
         .run_pre("file_read", serde_json::json!({}), &test_ctx())
@@ -285,7 +301,9 @@ async fn hook_pipeline_pre_allows_safe_tool() {
 #[tokio::test]
 async fn hook_pipeline_post_modifies_result() {
     let mut pipeline = HookPipeline::new(Duration::from_secs(5));
-    pipeline.add(TestResultHook { suffix: " [audited]".to_string() });
+    pipeline.add(TestResultHook {
+        suffix: " [audited]".to_string(),
+    });
 
     let original = smgglrs_protocol::CallToolResult::text("output");
     let result = pipeline
@@ -337,9 +355,13 @@ fn capability_token_wrong_key_rejected() {
         signer1.did(),
         "did:key:z6MkAgent",
         CapabilitySet {
-            paths: vec![], operations: vec![], tools: vec![], credentials: vec![],
+            paths: vec![],
+            operations: vec![],
+            tools: vec![],
+            credentials: vec![],
         },
-        1, 3600,
+        1,
+        3600,
     );
     let token = encode_token(&payload, &signer1).unwrap();
     assert!(decode_token(&token, &signer2).is_err());
@@ -357,7 +379,8 @@ fn delegation_ring_escalation_blocked() {
             tools: vec!["*".to_string()],
             credentials: vec![],
         },
-        1, 3600,
+        1,
+        3600,
     );
 
     let mut child = build_payload(
@@ -381,10 +404,13 @@ fn delegation_operation_escalation_blocked() {
         signer.did(),
         "did:key:z6MkParent",
         CapabilitySet {
-            paths: vec![], operations: vec!["read".to_string()],
-            tools: vec![], credentials: vec![],
+            paths: vec![],
+            operations: vec!["read".to_string()],
+            tools: vec![],
+            credentials: vec![],
         },
-        1, 3600,
+        1,
+        3600,
     );
 
     let mut child = build_payload(
@@ -393,9 +419,11 @@ fn delegation_operation_escalation_blocked() {
         CapabilitySet {
             paths: vec![],
             operations: vec!["read".to_string(), "shell.exec".to_string()],
-            tools: vec![], credentials: vec![],
+            tools: vec![],
+            credentials: vec![],
         },
-        1, 3600,
+        1,
+        3600,
     );
     child.parent = Some(parent.nonce);
 
@@ -430,8 +458,14 @@ fn auth_chain_cap_then_blake3_fallthrough() {
 fn tool_rules_deny_wins() {
     let perms = ToolPermissions::new(
         vec![
-            ToolRule { tool: "git_*".to_string(), policy: ToolPolicy::Allow },
-            ToolRule { tool: "git_push".to_string(), policy: ToolPolicy::Deny },
+            ToolRule {
+                tool: "git_*".to_string(),
+                policy: ToolPolicy::Allow,
+            },
+            ToolRule {
+                tool: "git_push".to_string(),
+                policy: ToolPolicy::Deny,
+            },
         ],
         ToolPolicy::Allow,
     );
@@ -442,7 +476,13 @@ fn tool_rules_deny_wins() {
 #[test]
 fn quota_engine_rate_limits_per_agent() {
     let mut engine = QuotaEngine::new();
-    engine.add_limit("dev".to_string(), RateLimit { max_calls: 3, window_secs: 60 });
+    engine.add_limit(
+        "dev".to_string(),
+        RateLimit {
+            max_calls: 3,
+            window_secs: 60,
+        },
+    );
 
     assert!(engine.check("alice", "dev"));
     assert!(engine.check("alice", "dev"));
@@ -455,8 +495,20 @@ fn quota_engine_rate_limits_per_agent() {
 #[test]
 fn process_table_tracks_agents() {
     let table = ProcessTable::new();
-    table.record_call("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "file_read");
-    table.record_call("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "git_status");
+    table.record_call(
+        "agent-1",
+        "dev",
+        Some("did:key:z6Mk1"),
+        Some(1),
+        "file_read",
+    );
+    table.record_call(
+        "agent-1",
+        "dev",
+        Some("did:key:z6Mk1"),
+        Some(1),
+        "git_status",
+    );
     table.record_denied("agent-1", "dev", Some("did:key:z6Mk1"), Some(1));
 
     let snap = table.snapshot();
@@ -513,8 +565,11 @@ fn root_payload(signer: &Ed25519Signer) -> smgglrs_security::auth::capability::C
         CapabilitySet {
             paths: vec!["**".to_string()],
             operations: vec![
-                "read".to_string(), "write".to_string(), "search".to_string(),
-                "list".to_string(), "git.status".to_string(),
+                "read".to_string(),
+                "write".to_string(),
+                "search".to_string(),
+                "list".to_string(),
+                "git.status".to_string(),
             ],
             tools: vec!["*".to_string()],
             credentials: vec![],
@@ -645,19 +700,28 @@ fn delegated_token_permission_engine_integration() {
 
     // "read" is in the token — allowed
     let result = engine.check_with_capabilities(
-        "cap:ring2", "read", Path::new("/home/user/project/file.rs"), Some(&caps),
+        "cap:ring2",
+        "read",
+        Path::new("/home/user/project/file.rs"),
+        Some(&caps),
     );
     assert_eq!(result, PermissionResult::Allowed);
 
     // "write" is NOT in the token — denied
     let result = engine.check_with_capabilities(
-        "cap:ring2", "write", Path::new("/home/user/project/file.rs"), Some(&caps),
+        "cap:ring2",
+        "write",
+        Path::new("/home/user/project/file.rs"),
+        Some(&caps),
     );
     assert_eq!(result, PermissionResult::DeniedOperation);
 
     // "search" is in the token — allowed
     let result = engine.check_with_capabilities(
-        "cap:ring2", "search", Path::new("/home/user/project/file.rs"), Some(&caps),
+        "cap:ring2",
+        "search",
+        Path::new("/home/user/project/file.rs"),
+        Some(&caps),
     );
     assert_eq!(result, PermissionResult::Allowed);
 }

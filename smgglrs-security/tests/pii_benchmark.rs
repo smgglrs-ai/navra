@@ -3,8 +3,8 @@
 //! Runs the regex PII filter against labeled test data and reports
 //! metrics. This is the S7 evaluation for paper submission.
 
-use smgglrs_security::safety::{FilterContext, PiiFilter, ContentFilter};
 use smgglrs_security::safety::ner::load_ner_filter;
+use smgglrs_security::safety::{ContentFilter, FilterContext, PiiFilter};
 use std::path::Path;
 
 /// A labeled test case: text with expected PII findings.
@@ -84,9 +84,7 @@ fn test_cases() -> Vec<TestCase> {
                 ("ssn", "078-05-1120"),
             ],
         },
-
         // --- True negatives: text without PII ---
-
         TestCase {
             text: "The function returns an error code 404.",
             expected: vec![],
@@ -115,7 +113,6 @@ fn test_cases() -> Vec<TestCase> {
             text: "Error at line 123, column 45 in parser.rs",
             expected: vec![],
         },
-
         // --- Edge cases ---
 
         // Credit card with wrong Luhn (should NOT match)
@@ -161,7 +158,11 @@ impl CategoryMetrics {
     fn f1(&self) -> f64 {
         let p = self.precision();
         let r = self.recall();
-        if p + r == 0.0 { 0.0 } else { 2.0 * p * r / (p + r) }
+        if p + r == 0.0 {
+            0.0
+        } else {
+            2.0 * p * r / (p + r)
+        }
     }
 }
 
@@ -178,7 +179,8 @@ fn pii_benchmark_precision_recall_f1() {
 
     for (i, case) in cases.iter().enumerate() {
         let findings = filter.scan(case.text, &ctx);
-        let found_categories: Vec<(&str, String)> = findings.iter()
+        let found_categories: Vec<(&str, String)> = findings
+            .iter()
             .map(|f| (f.category.as_str(), case.text[f.start..f.end].to_string()))
             .collect();
 
@@ -188,7 +190,9 @@ fn pii_benchmark_precision_recall_f1() {
 
         for (ei, (exp_cat, exp_text)) in case.expected.iter().enumerate() {
             for (fi, (found_cat, found_text)) in found_categories.iter().enumerate() {
-                if finding_matched[fi] { continue; }
+                if finding_matched[fi] {
+                    continue;
+                }
                 if *found_cat == *exp_cat && found_text.contains(exp_text) {
                     matched[ei] = true;
                     finding_matched[fi] = true;
@@ -207,7 +211,11 @@ fn pii_benchmark_precision_recall_f1() {
                 let m = metrics.entry(cat.to_string()).or_default();
                 m.false_negatives += 1;
                 total.false_negatives += 1;
-                case_results.push((i, false, format!("FN: expected {}={}", cat, case.expected[ei].1)));
+                case_results.push((
+                    i,
+                    false,
+                    format!("FN: expected {}={}", cat, case.expected[ei].1),
+                ));
             }
         }
 
@@ -222,29 +230,49 @@ fn pii_benchmark_precision_recall_f1() {
             }
         }
 
-        if matched.iter().all(|m| *m) && finding_matched.iter().all(|m| *m || case.expected.is_empty()) {
+        if matched.iter().all(|m| *m)
+            && finding_matched
+                .iter()
+                .all(|m| *m || case.expected.is_empty())
+        {
             case_results.push((i, true, "OK".to_string()));
         }
     }
 
     // Report
     println!("\n=== PII Detection Benchmark (S7) ===\n");
-    println!("{:<15} {:>4} {:>4} {:>4} {:>8} {:>8} {:>8}",
-        "Category", "TP", "FP", "FN", "Prec", "Recall", "F1");
+    println!(
+        "{:<15} {:>4} {:>4} {:>4} {:>8} {:>8} {:>8}",
+        "Category", "TP", "FP", "FN", "Prec", "Recall", "F1"
+    );
     println!("{}", "-".repeat(60));
 
     let mut cats: Vec<_> = metrics.keys().cloned().collect();
     cats.sort();
     for cat in &cats {
         let m = &metrics[cat];
-        println!("{:<15} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
-            cat, m.true_positives, m.false_positives, m.false_negatives,
-            m.precision(), m.recall(), m.f1());
+        println!(
+            "{:<15} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
+            cat,
+            m.true_positives,
+            m.false_positives,
+            m.false_negatives,
+            m.precision(),
+            m.recall(),
+            m.f1()
+        );
     }
     println!("{}", "-".repeat(60));
-    println!("{:<15} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
-        "TOTAL", total.true_positives, total.false_positives, total.false_negatives,
-        total.precision(), total.recall(), total.f1());
+    println!(
+        "{:<15} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
+        "TOTAL",
+        total.true_positives,
+        total.false_positives,
+        total.false_negatives,
+        total.precision(),
+        total.recall(),
+        total.f1()
+    );
 
     println!("\n--- Failures ---");
     for (i, ok, msg) in &case_results {
@@ -256,8 +284,11 @@ fn pii_benchmark_precision_recall_f1() {
     println!("\n{}/{} cases fully correct", passed, cases.len());
 
     // Assertion: overall F1 should be above 0.80 (regex-only, no NER)
-    assert!(total.f1() > 0.80,
-        "Overall F1 should be > 0.80, got {:.3}", total.f1());
+    assert!(
+        total.f1() > 0.80,
+        "Overall F1 should be > 0.80, got {:.3}",
+        total.f1()
+    );
 }
 
 fn ner_test_cases() -> Vec<TestCase> {
@@ -316,7 +347,8 @@ fn run_benchmark(
         for filter in filters {
             all_findings.extend(filter.scan(case.text, &ctx));
         }
-        let found_categories: Vec<(&str, String)> = all_findings.iter()
+        let found_categories: Vec<(&str, String)> = all_findings
+            .iter()
             .map(|f| (f.category.as_str(), case.text[f.start..f.end].to_string()))
             .collect();
 
@@ -325,7 +357,9 @@ fn run_benchmark(
 
         for (ei, (exp_cat, exp_text)) in case.expected.iter().enumerate() {
             for (fi, (found_cat, found_text)) in found_categories.iter().enumerate() {
-                if finding_matched[fi] { continue; }
+                if finding_matched[fi] {
+                    continue;
+                }
                 if *found_cat == *exp_cat && found_text.contains(exp_text) {
                     matched[ei] = true;
                     finding_matched[fi] = true;
@@ -343,7 +377,11 @@ fn run_benchmark(
                 let m = metrics.entry(cat.to_string()).or_default();
                 m.false_negatives += 1;
                 total.false_negatives += 1;
-                case_results.push((i, false, format!("FN: expected {}={}", cat, case.expected[ei].1)));
+                case_results.push((
+                    i,
+                    false,
+                    format!("FN: expected {}={}", cat, case.expected[ei].1),
+                ));
             }
         }
 
@@ -357,28 +395,48 @@ fn run_benchmark(
             }
         }
 
-        if matched.iter().all(|m| *m) && finding_matched.iter().all(|m| *m || case.expected.is_empty()) {
+        if matched.iter().all(|m| *m)
+            && finding_matched
+                .iter()
+                .all(|m| *m || case.expected.is_empty())
+        {
             case_results.push((i, true, "OK".to_string()));
         }
     }
 
     println!("\n=== {} ===\n", name);
-    println!("{:<15} {:>4} {:>4} {:>4} {:>8} {:>8} {:>8}",
-        "Category", "TP", "FP", "FN", "Prec", "Recall", "F1");
+    println!(
+        "{:<15} {:>4} {:>4} {:>4} {:>8} {:>8} {:>8}",
+        "Category", "TP", "FP", "FN", "Prec", "Recall", "F1"
+    );
     println!("{}", "-".repeat(60));
 
     let mut cats: Vec<_> = metrics.keys().cloned().collect();
     cats.sort();
     for cat in &cats {
         let m = &metrics[cat];
-        println!("{:<15} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
-            cat, m.true_positives, m.false_positives, m.false_negatives,
-            m.precision(), m.recall(), m.f1());
+        println!(
+            "{:<15} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
+            cat,
+            m.true_positives,
+            m.false_positives,
+            m.false_negatives,
+            m.precision(),
+            m.recall(),
+            m.f1()
+        );
     }
     println!("{}", "-".repeat(60));
-    println!("{:<15} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
-        "TOTAL", total.true_positives, total.false_positives, total.false_negatives,
-        total.precision(), total.recall(), total.f1());
+    println!(
+        "{:<15} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
+        "TOTAL",
+        total.true_positives,
+        total.false_positives,
+        total.false_negatives,
+        total.precision(),
+        total.recall(),
+        total.f1()
+    );
 
     println!("\n--- Failures ---");
     for (i, ok, msg) in &case_results {
@@ -397,13 +455,15 @@ fn pii_benchmark_regex_plus_ner() {
     let ner_dir = Path::new(&std::env::var("HOME").unwrap_or_default())
         .join(".local/share/smgglrs/models/pii-ner");
     if !ner_dir.join("model.onnx").exists() {
-        eprintln!("Skipping NER benchmark: model not found at {}", ner_dir.display());
+        eprintln!(
+            "Skipping NER benchmark: model not found at {}",
+            ner_dir.display()
+        );
         return;
     }
 
     let regex_filter = PiiFilter::new();
-    let ner_filter = load_ner_filter(&ner_dir)
-        .expect("NER filter should load");
+    let ner_filter = load_ner_filter(&ner_dir).expect("NER filter should load");
 
     // Regex-only on NER test cases
     let regex_only = run_benchmark(
@@ -420,11 +480,23 @@ fn pii_benchmark_regex_plus_ner() {
     );
 
     println!("=== Comparison ===");
-    println!("  Regex-only:  F1={:.3}, precision={:.3}, recall={:.3}",
-        regex_only.f1(), regex_only.precision(), regex_only.recall());
-    println!("  Regex + NER: F1={:.3}, precision={:.3}, recall={:.3}",
-        combined.f1(), combined.precision(), combined.recall());
+    println!(
+        "  Regex-only:  F1={:.3}, precision={:.3}, recall={:.3}",
+        regex_only.f1(),
+        regex_only.precision(),
+        regex_only.recall()
+    );
+    println!(
+        "  Regex + NER: F1={:.3}, precision={:.3}, recall={:.3}",
+        combined.f1(),
+        combined.precision(),
+        combined.recall()
+    );
 
-    assert!(combined.f1() >= regex_only.f1(),
-        "NER should not decrease F1: {:.3} < {:.3}", combined.f1(), regex_only.f1());
+    assert!(
+        combined.f1() >= regex_only.f1(),
+        "NER should not decrease F1: {:.3} < {:.3}",
+        combined.f1(),
+        regex_only.f1()
+    );
 }

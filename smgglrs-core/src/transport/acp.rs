@@ -525,10 +525,7 @@ mod tests {
         )
     }
 
-    async fn post_acp(
-        router: &Router,
-        body: serde_json::Value,
-    ) -> (StatusCode, serde_json::Value) {
+    async fn post_acp(router: &Router, body: serde_json::Value) -> (StatusCode, serde_json::Value) {
         let req = Request::builder()
             .method("POST")
             .uri("/acp")
@@ -704,16 +701,33 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
         // SSE body should contain the expected event types
-        assert!(body.contains("event:acp.prompt.started") || body.contains("event: acp.prompt.started"),
-            "Expected prompt.started event in SSE body: {}", body);
-        assert!(body.contains("event:acp.tool.calling") || body.contains("event: acp.tool.calling"),
-            "Expected tool.calling event in SSE body: {}", body);
-        assert!(body.contains("event:acp.tool.result") || body.contains("event: acp.tool.result"),
-            "Expected tool.result event in SSE body: {}", body);
-        assert!(body.contains("event:acp.prompt.completed") || body.contains("event: acp.prompt.completed"),
-            "Expected prompt.completed event in SSE body: {}", body);
+        assert!(
+            body.contains("event:acp.prompt.started") || body.contains("event: acp.prompt.started"),
+            "Expected prompt.started event in SSE body: {}",
+            body
+        );
+        assert!(
+            body.contains("event:acp.tool.calling") || body.contains("event: acp.tool.calling"),
+            "Expected tool.calling event in SSE body: {}",
+            body
+        );
+        assert!(
+            body.contains("event:acp.tool.result") || body.contains("event: acp.tool.result"),
+            "Expected tool.result event in SSE body: {}",
+            body
+        );
+        assert!(
+            body.contains("event:acp.prompt.completed")
+                || body.contains("event: acp.prompt.completed"),
+            "Expected prompt.completed event in SSE body: {}",
+            body
+        );
         // The tool result should contain "pong"
-        assert!(body.contains("pong"), "Expected 'pong' in tool result: {}", body);
+        assert!(
+            body.contains("pong"),
+            "Expected 'pong' in tool result: {}",
+            body
+        );
     }
 
     #[tokio::test]
@@ -751,10 +765,16 @@ mod tests {
         .await;
 
         assert_eq!(status, StatusCode::OK);
-        assert!(body.contains("acp.message.received"),
-            "Expected message.received event: {}", body);
-        assert!(body.contains("acp.prompt.completed"),
-            "Expected prompt.completed event: {}", body);
+        assert!(
+            body.contains("acp.message.received"),
+            "Expected message.received event: {}",
+            body
+        );
+        assert!(
+            body.contains("acp.prompt.completed"),
+            "Expected prompt.completed event: {}",
+            body
+        );
     }
 
     #[tokio::test]
@@ -792,7 +812,11 @@ mod tests {
         .await;
 
         assert_eq!(status, StatusCode::OK);
-        assert!(body.contains("pong"), "Expected 'pong' in tool result: {}", body);
+        assert!(
+            body.contains("pong"),
+            "Expected 'pong' in tool result: {}",
+            body
+        );
     }
 
     #[tokio::test]

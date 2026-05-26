@@ -114,10 +114,7 @@ impl WebMcpTransport {
         &mut self,
         body: &serde_json::Value,
     ) -> Result<serde_json::Value, UpstreamError> {
-        let method = body
-            .get("method")
-            .and_then(|m| m.as_str())
-            .unwrap_or("");
+        let method = body.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
         let id = body.get("id").cloned().unwrap_or(serde_json::Value::Null);
 
@@ -160,13 +157,12 @@ impl WebMcpTransport {
 
             "tools/call" => {
                 let params = body.get("params").cloned().unwrap_or_default();
-                let tool_name = params
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .ok_or_else(|| UpstreamError::Protocol {
+                let tool_name = params.get("name").and_then(|n| n.as_str()).ok_or_else(|| {
+                    UpstreamError::Protocol {
                         name: self.name.clone(),
                         message: "tools/call missing 'name' parameter".to_string(),
-                    })?;
+                    }
+                })?;
                 let arguments = params
                     .get("arguments")
                     .cloned()

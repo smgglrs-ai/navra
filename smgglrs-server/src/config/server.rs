@@ -204,8 +204,11 @@ fn default_remote_type() -> String {
 }
 
 pub(super) fn default_socket() -> Option<String> {
-    dirs::runtime_dir()
-        .map(|d| d.join("smgglrs/smgglrs.sock").to_string_lossy().into_owned())
+    dirs::runtime_dir().map(|d| {
+        d.join("smgglrs/smgglrs.sock")
+            .to_string_lossy()
+            .into_owned()
+    })
 }
 
 impl ServerConfig {

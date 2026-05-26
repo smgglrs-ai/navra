@@ -22,7 +22,10 @@ pub(super) async fn handle_post(
     let agent = match server.authenticator().authenticate(&headers) {
         Ok(agent) => agent,
         Err(_) => {
-            state.metrics.auth_failures.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            state
+                .metrics
+                .auth_failures
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(JsonRpcResponse::error(
@@ -55,7 +58,8 @@ pub(super) async fn handle_post(
         .and_then(|v| v.to_str().ok())
         .map(String::from);
 
-    let (response, new_session_id) = dispatch(state.server.clone(), request, agent, session_id).await;
+    let (response, new_session_id) =
+        dispatch(state.server.clone(), request, agent, session_id).await;
 
     let mut resp = Json(&response).into_response();
     // Include session ID in response header (set on initialize, echoed otherwise)
@@ -173,11 +177,7 @@ pub(super) async fn handle_registry(
 
     let limit = query.limit.min(100);
 
-    let page: Vec<&serde_json::Value> = filtered
-        .into_iter()
-        .skip(start)
-        .take(limit)
-        .collect();
+    let page: Vec<&serde_json::Value> = filtered.into_iter().skip(start).take(limit).collect();
 
     let next_cursor = start
         .checked_add(limit)
@@ -227,20 +227,23 @@ pub(super) async fn handle_sys_status(
         return (
             axum::http::StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": "Authentication required for /sys/status"})),
-        ).into_response();
+        )
+            .into_response();
     }
     let snapshot = state.server.process_table().snapshot();
     Json(serde_json::json!({
         "agents": snapshot,
         "session_count": state.server.sessions.count(),
-    })).into_response()
+    }))
+    .into_response()
 }
 
-pub(super) async fn handle_metrics(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub(super) async fn handle_metrics(State(state): State<AppState>) -> impl IntoResponse {
     (
-        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
         state.metrics.render(),
     )
 }
@@ -306,4 +309,3 @@ pub(super) async fn handle_oauth_register(
     let reg = provider.register_dynamic(&request);
     (axum::http::StatusCode::CREATED, axum::Json(reg)).into_response()
 }
-

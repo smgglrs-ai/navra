@@ -192,9 +192,7 @@ impl ValueStoreMap {
         let mut stores = self.stores.write().unwrap();
         stores
             .entry(session_id.to_string())
-            .or_insert_with(|| {
-                ValueStore::with_limits(self.default_max_entries, self.default_ttl)
-            })
+            .or_insert_with(|| ValueStore::with_limits(self.default_max_entries, self.default_ttl))
             .clone()
     }
 
@@ -254,9 +252,7 @@ fn resolve_value(
     referenced_vars: &mut Vec<String>,
 ) -> Result<serde_json::Value, String> {
     match value {
-        serde_json::Value::String(s) => {
-            resolve_string(s, store, effective_label, referenced_vars)
-        }
+        serde_json::Value::String(s) => resolve_string(s, store, effective_label, referenced_vars),
         serde_json::Value::Object(map) => {
             let mut resolved = serde_json::Map::new();
             for (k, v) in map {
@@ -312,7 +308,15 @@ fn resolve_string(
         let abs_start = search_from + start;
         let id_start = abs_start + VAR_PREFIX.len();
         let id_end = result[id_start..]
-            .find(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ')' || c == ']' || c == '}' || c == ',')
+            .find(|c: char| {
+                c.is_whitespace()
+                    || c == '"'
+                    || c == '\''
+                    || c == ')'
+                    || c == ']'
+                    || c == '}'
+                    || c == ','
+            })
             .map(|i| id_start + i)
             .unwrap_or(result.len());
         let var_id = &result[id_start..id_end];
@@ -473,7 +477,11 @@ mod tests {
     #[test]
     fn resolve_single_ref() {
         let store = ValueStore::new();
-        store.store(make_value("v-abc", "file contents", DataLabel::UNTRUSTED_SENSITIVE));
+        store.store(make_value(
+            "v-abc",
+            "file contents",
+            DataLabel::UNTRUSTED_SENSITIVE,
+        ));
         let args = serde_json::json!({"content": "var://v-abc"});
         let resolved = resolve_variable_refs(&args, &store).unwrap();
         assert_eq!(resolved.arguments["content"], "file contents");
@@ -484,8 +492,16 @@ mod tests {
     #[test]
     fn resolve_multiple_refs_joins_labels() {
         let store = ValueStore::new();
-        store.store(make_value("v-trusted", "safe data", DataLabel::TRUSTED_PUBLIC));
-        store.store(make_value("v-untrusted", "tainted data", DataLabel::UNTRUSTED_SENSITIVE));
+        store.store(make_value(
+            "v-trusted",
+            "safe data",
+            DataLabel::TRUSTED_PUBLIC,
+        ));
+        store.store(make_value(
+            "v-untrusted",
+            "tainted data",
+            DataLabel::UNTRUSTED_SENSITIVE,
+        ));
         let args = serde_json::json!({
             "a": "var://v-trusted",
             "b": "var://v-untrusted"
@@ -501,7 +517,11 @@ mod tests {
     #[test]
     fn resolve_nested_json() {
         let store = ValueStore::new();
-        store.store(make_value("v-deep", "nested value", DataLabel::UNTRUSTED_PUBLIC));
+        store.store(make_value(
+            "v-deep",
+            "nested value",
+            DataLabel::UNTRUSTED_PUBLIC,
+        ));
         let args = serde_json::json!({
             "outer": {
                 "inner": ["var://v-deep", "literal"]
@@ -510,7 +530,10 @@ mod tests {
         let resolved = resolve_variable_refs(&args, &store).unwrap();
         assert_eq!(resolved.arguments["outer"]["inner"][0], "nested value");
         assert_eq!(resolved.arguments["outer"]["inner"][1], "literal");
-        assert_eq!(resolved.effective_label.integrity, super::super::Integrity::Untrusted);
+        assert_eq!(
+            resolved.effective_label.integrity,
+            super::super::Integrity::Untrusted
+        );
     }
 
     #[test]

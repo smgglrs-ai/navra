@@ -3,12 +3,12 @@
 //! Implements `SessionBackend` from smgglrs-core, persisting sessions
 //! to a SQLite database so they survive server restarts.
 
+use rusqlite::Connection;
 use smgglrs_core::auth::AgentIdentity;
 use smgglrs_core::ifc::DataLabel;
 use smgglrs_core::protocol::label::{Confidentiality, Integrity};
 use smgglrs_core::protocol::ClientInfo;
 use smgglrs_core::session::{Session, SessionBackend};
-use rusqlite::Connection;
 use std::sync::Mutex;
 
 use crate::error::MemoryError;
@@ -150,8 +150,10 @@ impl SessionBackend for SqliteSessionBackend {
 
     fn count(&self) -> usize {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        db.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get::<_, i64>(0))
-            .unwrap_or(0) as usize
+        db.query_row("SELECT COUNT(*) FROM sessions", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap_or(0) as usize
     }
 
     fn update_context_label(&self, id: &str, label: DataLabel) {
@@ -347,8 +349,7 @@ mod tests {
         store.create(test_session("y"));
         let all = store.list_all();
         assert_eq!(all.len(), 2);
-        let ids: std::collections::HashSet<&str> =
-            all.iter().map(|s| s.id.as_str()).collect();
+        let ids: std::collections::HashSet<&str> = all.iter().map(|s| s.id.as_str()).collect();
         assert!(ids.contains("x"));
         assert!(ids.contains("y"));
     }

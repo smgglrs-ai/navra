@@ -60,12 +60,27 @@ impl ProcessTable {
     }
 
     /// Record a tool call for an agent. Creates the entry if absent.
-    pub fn record_call(&self, agent_name: &str, permissions: &str, did: Option<&str>, ring: Option<u8>, tool_name: &str) {
+    pub fn record_call(
+        &self,
+        agent_name: &str,
+        permissions: &str,
+        did: Option<&str>,
+        ring: Option<u8>,
+        tool_name: &str,
+    ) {
         self.record_call_with_obo(agent_name, permissions, did, ring, tool_name, None);
     }
 
     /// Record a tool call with optional on-behalf-of human identity.
-    pub fn record_call_with_obo(&self, agent_name: &str, permissions: &str, did: Option<&str>, ring: Option<u8>, tool_name: &str, obo_sub: Option<&str>) {
+    pub fn record_call_with_obo(
+        &self,
+        agent_name: &str,
+        permissions: &str,
+        did: Option<&str>,
+        ring: Option<u8>,
+        tool_name: &str,
+        obo_sub: Option<&str>,
+    ) {
         let mut entries = self.entries.write().unwrap();
         let now = Instant::now();
         let entry = entries
@@ -88,12 +103,25 @@ impl ProcessTable {
     }
 
     /// Record a denied tool call.
-    pub fn record_denied(&self, agent_name: &str, permissions: &str, did: Option<&str>, ring: Option<u8>) {
+    pub fn record_denied(
+        &self,
+        agent_name: &str,
+        permissions: &str,
+        did: Option<&str>,
+        ring: Option<u8>,
+    ) {
         self.record_denied_with_obo(agent_name, permissions, did, ring, None);
     }
 
     /// Record a denied tool call with optional on-behalf-of human identity.
-    pub fn record_denied_with_obo(&self, agent_name: &str, permissions: &str, did: Option<&str>, ring: Option<u8>, obo_sub: Option<&str>) {
+    pub fn record_denied_with_obo(
+        &self,
+        agent_name: &str,
+        permissions: &str,
+        did: Option<&str>,
+        ring: Option<u8>,
+        obo_sub: Option<&str>,
+    ) {
         let mut entries = self.entries.write().unwrap();
         let now = Instant::now();
         let entry = entries
@@ -158,7 +186,13 @@ mod tests {
     #[test]
     fn record_and_snapshot() {
         let table = ProcessTable::new();
-        table.record_call("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "file_read");
+        table.record_call(
+            "agent-1",
+            "dev",
+            Some("did:key:z6Mk1"),
+            Some(1),
+            "file_read",
+        );
 
         let snap = table.snapshot();
         assert_eq!(snap.len(), 1);
@@ -222,7 +256,14 @@ mod tests {
     #[test]
     fn record_call_with_obo() {
         let table = ProcessTable::new();
-        table.record_call_with_obo("agent-1", "dev", Some("did:key:z6Mk1"), Some(1), "file_read", Some("alice@example.com"));
+        table.record_call_with_obo(
+            "agent-1",
+            "dev",
+            Some("did:key:z6Mk1"),
+            Some(1),
+            "file_read",
+            Some("alice@example.com"),
+        );
 
         let snap = table.snapshot();
         assert_eq!(snap.len(), 1);

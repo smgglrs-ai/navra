@@ -10,7 +10,11 @@ pub(super) fn resolve_path(raw: &str, must_exist: bool) -> Result<PathBuf, Strin
     resolve_path_with_root(raw, must_exist, None)
 }
 
-pub(super) fn resolve_path_with_root(raw: &str, must_exist: bool, default_root: Option<&str>) -> Result<PathBuf, String> {
+pub(super) fn resolve_path_with_root(
+    raw: &str,
+    must_exist: bool,
+    default_root: Option<&str>,
+) -> Result<PathBuf, String> {
     let expanded = if raw.starts_with("~/") {
         match dirs::home_dir() {
             Some(home) => home.join(&raw[2..]),
@@ -60,10 +64,13 @@ pub(super) fn resolve_path_with_root(raw: &str, must_exist: bool, default_root: 
                         // If the file already exists, verify it isn't a symlink
                         // that escapes the ACL boundary
                         if final_path.exists() {
-                            let resolved = final_path.canonicalize()
+                            let resolved = final_path
+                                .canonicalize()
                                 .map_err(|_| "Cannot verify existing path safety".to_string())?;
                             if !resolved.starts_with(&canon_parent) {
-                                return Err("Path resolves outside its parent directory".to_string());
+                                return Err(
+                                    "Path resolves outside its parent directory".to_string()
+                                );
                             }
                             return Ok(resolved);
                         }
@@ -89,7 +96,10 @@ pub(super) async fn check_perm(
     path: &Path,
 ) -> Result<(), CallToolResult> {
     match state.perm_engine.check_with_capabilities(
-        &ctx.agent.permissions, op, path, ctx.agent.capabilities.as_ref(),
+        &ctx.agent.permissions,
+        op,
+        path,
+        ctx.agent.capabilities.as_ref(),
     ) {
         PermissionResult::Allowed => Ok(()),
         PermissionResult::NeedsApproval => {
@@ -105,11 +115,7 @@ pub(super) async fn check_perm(
             }
 
             // No cached grant — create approval request and return to client
-            let (req, _rx) = state.approvals.request(
-                &ctx.agent.name,
-                op,
-                &path_str,
-            );
+            let (req, _rx) = state.approvals.request(&ctx.agent.name, op, &path_str);
 
             // Send D-Bus notification in parallel (if available)
             if let Err(e) = state.notifier.notify(&req, state.approvals.clone()).await {

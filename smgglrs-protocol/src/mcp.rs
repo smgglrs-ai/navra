@@ -48,7 +48,11 @@ pub fn encode_cursor(offset: usize) -> String {
 }
 
 /// Apply pagination to a collected list, returning (page, next_cursor).
-pub fn paginate<T: Clone>(items: &[T], offset: usize, page_size: usize) -> (Vec<T>, Option<String>) {
+pub fn paginate<T: Clone>(
+    items: &[T],
+    offset: usize,
+    page_size: usize,
+) -> (Vec<T>, Option<String>) {
     if offset >= items.len() {
         return (Vec::new(), None);
     }
@@ -640,8 +644,12 @@ mod tests {
             instructions: None,
         };
         let json = serde_json::to_value(&result).unwrap();
-        assert!(json["capabilities"]["tools"]["listChanged"].as_bool().unwrap());
-        assert!(json["capabilities"]["resources"]["subscribe"].as_bool().unwrap());
+        assert!(json["capabilities"]["tools"]["listChanged"]
+            .as_bool()
+            .unwrap());
+        assert!(json["capabilities"]["resources"]["subscribe"]
+            .as_bool()
+            .unwrap());
     }
 
     #[test]
@@ -662,7 +670,10 @@ mod tests {
         let json = serde_json::to_value(&tool).unwrap();
         assert_eq!(json["name"], "file_search");
         assert_eq!(json["inputSchema"]["type"], "object");
-        assert!(json["inputSchema"]["required"].as_array().unwrap().contains(&serde_json::json!("query")));
+        assert!(json["inputSchema"]["required"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("query")));
     }
 
     #[test]
@@ -1017,13 +1028,17 @@ mod tests {
     fn cursor_roundtrip() {
         let offset = 42usize;
         let cursor = encode_cursor(offset);
-        let req = PaginatedRequest { cursor: Some(cursor) };
+        let req = PaginatedRequest {
+            cursor: Some(cursor),
+        };
         assert_eq!(req.decode_offset(), Some(42));
     }
 
     #[test]
     fn invalid_cursor_returns_none() {
-        let req = PaginatedRequest { cursor: Some("!!!invalid!!!".to_string()) };
+        let req = PaginatedRequest {
+            cursor: Some("!!!invalid!!!".to_string()),
+        };
         assert_eq!(req.decode_offset(), None);
     }
 
@@ -1133,7 +1148,9 @@ mod tests {
         assert!(json.get("protocolVersion").is_some());
         assert!(json.get("clientInfo").is_some());
         assert!(json["clientInfo"].get("name").is_some());
-        assert!(json["capabilities"]["roots"]["listChanged"].as_bool().unwrap());
+        assert!(json["capabilities"]["roots"]["listChanged"]
+            .as_bool()
+            .unwrap());
         // Roundtrip
         let parsed: InitializeParams = serde_json::from_value(json).unwrap();
         assert_eq!(parsed.protocol_version, PROTOCOL_VERSION);
@@ -1167,7 +1184,9 @@ mod tests {
         assert!(json.get("serverInfo").is_some());
         assert!(json["capabilities"]["tools"].get("listChanged").is_some());
         assert!(json["capabilities"]["resources"].get("subscribe").is_some());
-        assert!(json["capabilities"]["resources"].get("listChanged").is_some());
+        assert!(json["capabilities"]["resources"]
+            .get("listChanged")
+            .is_some());
         assert!(json["capabilities"]["prompts"].get("listChanged").is_some());
         // Roundtrip
         let parsed: InitializeResult = serde_json::from_value(json).unwrap();
@@ -1235,14 +1254,20 @@ mod tests {
         let json = serde_json::to_value(&params).unwrap();
         assert_eq!(json["_meta"]["progressToken"], "tok-42");
         let parsed: CallToolParams = serde_json::from_value(json).unwrap();
-        assert_eq!(parsed.meta.unwrap().progress_token, Some(serde_json::json!("tok-42")));
+        assert_eq!(
+            parsed.meta.unwrap().progress_token,
+            Some(serde_json::json!("tok-42"))
+        );
     }
 
     #[test]
     fn call_tool_params_meta_with_numeric_progress_token() {
         let json_str = r#"{"name": "test", "arguments": {}, "_meta": {"progressToken": 99}}"#;
         let params: CallToolParams = serde_json::from_str(json_str).unwrap();
-        assert_eq!(params.meta.unwrap().progress_token, Some(serde_json::json!(99)));
+        assert_eq!(
+            params.meta.unwrap().progress_token,
+            Some(serde_json::json!(99))
+        );
     }
 
     #[test]
@@ -1322,7 +1347,9 @@ mod tests {
         // Test that PaginatedRequest properly roundtrips through JSON
         let offset = 150usize;
         let cursor = encode_cursor(offset);
-        let req = PaginatedRequest { cursor: Some(cursor.clone()) };
+        let req = PaginatedRequest {
+            cursor: Some(cursor.clone()),
+        };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["cursor"], cursor);
         let parsed: PaginatedRequest = serde_json::from_value(json).unwrap();
@@ -1356,9 +1383,9 @@ mod tests {
                 },
             ],
             model_preferences: Some(ModelPreferences {
-                hints: Some(vec![
-                    ModelHint { name: Some("granite-3.3".to_string()) },
-                ]),
+                hints: Some(vec![ModelHint {
+                    name: Some("granite-3.3".to_string()),
+                }]),
                 cost_priority: Some(0.2),
                 speed_priority: Some(0.5),
                 intelligence_priority: Some(0.9),
@@ -1373,7 +1400,9 @@ mod tests {
         assert!(json.get("systemPrompt").is_some());
         assert!(json["modelPreferences"].get("costPriority").is_some());
         assert!(json["modelPreferences"].get("speedPriority").is_some());
-        assert!(json["modelPreferences"].get("intelligencePriority").is_some());
+        assert!(json["modelPreferences"]
+            .get("intelligencePriority")
+            .is_some());
         // Roundtrip
         let parsed: CreateMessageParams = serde_json::from_value(json).unwrap();
         assert_eq!(parsed.max_tokens, 2048);
@@ -1399,7 +1428,10 @@ mod tests {
         ];
         for (level, expected_str) in levels {
             let json = serde_json::to_value(&level).unwrap();
-            assert_eq!(json, expected_str, "LoggingLevel::{expected_str} should serialize to \"{expected_str}\"");
+            assert_eq!(
+                json, expected_str,
+                "LoggingLevel::{expected_str} should serialize to \"{expected_str}\""
+            );
             let parsed: LoggingLevel = serde_json::from_value(json).unwrap();
             // Verify roundtrip by re-serializing
             let re_json = serde_json::to_value(&parsed).unwrap();
@@ -1437,7 +1469,10 @@ mod tests {
         let parsed: ResourceDefinition = serde_json::from_value(json).unwrap();
         assert_eq!(parsed.uri, "file:///data.bin");
         assert_eq!(parsed.size, Some(65536));
-        assert_eq!(parsed.mime_type.as_deref(), Some("application/octet-stream"));
+        assert_eq!(
+            parsed.mime_type.as_deref(),
+            Some("application/octet-stream")
+        );
     }
 
     #[test]

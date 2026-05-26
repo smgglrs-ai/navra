@@ -100,12 +100,12 @@ impl PseudonymMap {
     /// without explicit authorization (GDPR Article 32).
     pub fn extract_reverser(&self) -> PseudonymReverser {
         let map = self.mapping.read().unwrap();
-        let reverse = map.iter()
+        let reverse = map
+            .iter()
             .map(|(real, pseudo)| (pseudo.clone(), real.clone()))
             .collect();
         PseudonymReverser { reverse }
     }
-
 }
 
 /// Separate holder for the de-pseudonymization mapping.

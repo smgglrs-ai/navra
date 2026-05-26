@@ -1,8 +1,8 @@
 use crate::auth::CallContext;
 use crate::protocol::{
     CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
-    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequest, ReadResourceParams, ReadResourceResult,
+    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequest,
+    ReadResourceParams, ReadResourceResult,
 };
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::Session;
@@ -37,7 +37,9 @@ impl McpServer {
             prompts: if self.prompts.is_empty() {
                 None
             } else {
-                Some(crate::protocol::PromptsCapability { list_changed: false })
+                Some(crate::protocol::PromptsCapability {
+                    list_changed: false,
+                })
             },
             permissions: Some(smgglrs_protocol::permissions::PermissionsCapability {}),
         }
@@ -47,7 +49,11 @@ impl McpServer {
     ///
     /// Validates parameters before creating a session to prevent resource
     /// exhaustion from malformed requests.
-    pub fn handle_initialize(&self, params: InitializeParams, agent_identity: crate::auth::AgentIdentity) -> Result<(InitializeResult, String), String> {
+    pub fn handle_initialize(
+        &self,
+        params: InitializeParams,
+        agent_identity: crate::auth::AgentIdentity,
+    ) -> Result<(InitializeResult, String), String> {
         // Validate protocol version before allocating any resources
         if params.protocol_version.is_empty() {
             return Err("Missing protocol_version".to_string());
@@ -73,7 +79,9 @@ impl McpServer {
             last_accessed: now,
         };
         self.sessions.create(session);
-        self.metrics.sessions_created.fetch_add(1, Ordering::Relaxed);
+        self.metrics
+            .sessions_created
+            .fetch_add(1, Ordering::Relaxed);
 
         let result = InitializeResult {
             protocol_version: crate::protocol::PROTOCOL_VERSION.to_string(),
@@ -84,7 +92,11 @@ impl McpServer {
         Ok((result, session_id))
     }
 
-    pub fn handle_list_tools(&self, agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListToolsResult {
+    pub fn handle_list_tools(
+        &self,
+        agent: &crate::auth::AgentIdentity,
+        pagination: &PaginatedRequest,
+    ) -> ListToolsResult {
         let all_tools: Vec<_> = self.tools.values().map(|t| t.definition.clone()).collect();
         let visible = if let Some(disclosure) = self.tool_disclosure.get(&agent.permissions) {
             disclosure.filter(&all_tools)
@@ -92,7 +104,8 @@ impl McpServer {
             all_tools
         };
         let offset = pagination.decode_offset().unwrap_or(0);
-        let (tools, next_cursor) = crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        let (tools, next_cursor) =
+            crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
         ListToolsResult { tools, next_cursor }
     }
 
@@ -101,7 +114,9 @@ impl McpServer {
         params: CallToolParams,
         mut ctx: CallContext,
     ) -> CallToolResult {
-        self.metrics.tool_calls_total.fetch_add(1, Ordering::Relaxed);
+        self.metrics
+            .tool_calls_total
+            .fetch_add(1, Ordering::Relaxed);
 
         // Reject all tool calls when paused
         if self.paused.load(Ordering::Relaxed) {
@@ -112,12 +127,15 @@ impl McpServer {
 
         // Rate limit check (kernel-enforced)
         if self.quota_engine.has_limits()
-            && !self.quota_engine.check(&ctx.agent.name, &ctx.agent.permissions) {
-                return CallToolResult::error(format!(
-                    "Rate limit exceeded for agent '{}'",
-                    ctx.agent.name
-                ));
-            }
+            && !self
+                .quota_engine
+                .check(&ctx.agent.name, &ctx.agent.permissions)
+        {
+            return CallToolResult::error(format!(
+                "Rate limit exceeded for agent '{}'",
+                ctx.agent.name
+            ));
+        }
 
         // Extract process table fields from context
         let agent_ring = ctx.agent.capabilities.as_ref().map(|c| c.ring);
@@ -134,9 +152,14 @@ impl McpServer {
             });
             if !tool_allowed {
                 self.process_table.record_denied(
-                    &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                    &ctx.agent.name,
+                    &ctx.agent.permissions,
+                    agent_did,
+                    agent_ring,
                 );
-                self.metrics.tool_calls_denied.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .tool_calls_denied
+                    .fetch_add(1, Ordering::Relaxed);
                 return CallToolResult::error(format!(
                     "Permission denied: tool '{}' not in capability token grants",
                     params.name
@@ -146,9 +169,15 @@ impl McpServer {
             match tp.check(&params.name) {
                 crate::permissions::tool_rules::ToolPolicy::Deny => {
                     // Check if a dynamic session grant overrides the denial
-                    if !self.session_permissions.check_tool(&ctx.session_id, &params.name) {
+                    if !self
+                        .session_permissions
+                        .check_tool(&ctx.session_id, &params.name)
+                    {
                         self.process_table.record_denied(
-                            &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
                         );
                         return CallToolResult::error(format!(
                             "Permission denied: tool '{}' is blocked for permission set '{}'",
@@ -163,9 +192,15 @@ impl McpServer {
                 }
                 crate::permissions::tool_rules::ToolPolicy::Approve => {
                     // Check if a dynamic session grant overrides the approval requirement
-                    if !self.session_permissions.check_tool(&ctx.session_id, &params.name) {
+                    if !self
+                        .session_permissions
+                        .check_tool(&ctx.session_id, &params.name)
+                    {
                         self.process_table.record_denied(
-                            &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
                         );
                         return CallToolResult::error(format!(
                             "Approval required: tool '{}' requires approval for permission set '{}'",
@@ -189,7 +224,9 @@ impl McpServer {
                 ("permission_set".to_string(), ctx.agent.permissions.clone()),
                 ("session_id".to_string(), ctx.session_id.clone()),
             ]);
-            let resource = params.arguments.get("path")
+            let resource = params
+                .arguments
+                .get("path")
                 .or_else(|| params.arguments.get("repo"))
                 .or_else(|| params.arguments.get("uri"))
                 .and_then(|v| v.as_str())
@@ -198,10 +235,14 @@ impl McpServer {
                 crate::permissions::CedarDecision::Allow => {}
                 crate::permissions::CedarDecision::Deny(reason) => {
                     self.process_table.record_denied(
-                        &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
                     );
                     return CallToolResult::error(format!(
-                        "Policy denied: tool '{}' — {}", params.name, reason
+                        "Policy denied: tool '{}' — {}",
+                        params.name, reason
                     ));
                 }
             }
@@ -209,22 +250,28 @@ impl McpServer {
 
         // IFC: resolve variable references in arguments
         let session_store = self.value_stores.get_or_create(&ctx.session_id);
-        let resolved = match crate::ifc::value_store::resolve_variable_refs(
-            &params.arguments,
-            &session_store,
-        ) {
-            Ok(r) => r,
-            Err(msg) => {
-                self.process_table.record_denied(
-                    &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
-                );
-                self.metrics.tool_calls_denied.fetch_add(1, Ordering::Relaxed);
-                return CallToolResult::error(msg);
-            }
-        };
+        let resolved =
+            match crate::ifc::value_store::resolve_variable_refs(&params.arguments, &session_store)
+            {
+                Ok(r) => r,
+                Err(msg) => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
+                    );
+                    self.metrics
+                        .tool_calls_denied
+                        .fetch_add(1, Ordering::Relaxed);
+                    return CallToolResult::error(msg);
+                }
+            };
 
         // IFC pre-check: per-value write blocking (Bell-LaPadula no-write-down).
-        let tool_annotations = self.tools.get(&params.name)
+        let tool_annotations = self
+            .tools
+            .get(&params.name)
             .and_then(|t| t.definition.annotations.as_ref());
         if crate::ifc::is_write_tool(&params.name, tool_annotations) {
             let check_label = if resolved.referenced_vars.is_empty() {
@@ -240,7 +287,10 @@ impl McpServer {
                 match policy {
                     Some(crate::ifc::TaintedWritePolicy::Deny) => {
                         self.process_table.record_denied(
-                            &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
                         );
                         tracing::info!(
                             agent = %ctx.agent.name,
@@ -256,7 +306,10 @@ impl McpServer {
                     }
                     Some(crate::ifc::TaintedWritePolicy::Approve) => {
                         self.process_table.record_denied(
-                            &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring,
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
                         );
                         return CallToolResult::error(format!(
                             "IFC: write tool '{}' requires approval — data tainted with untrusted content",
@@ -270,7 +323,11 @@ impl McpServer {
 
         // Record tool call in process table
         self.process_table.record_call(
-            &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring, &params.name,
+            &ctx.agent.name,
+            &ctx.agent.permissions,
+            agent_did,
+            agent_ring,
+            &params.name,
         );
 
         tracing::info!(
@@ -282,10 +339,15 @@ impl McpServer {
 
         // Run pre-hooks (may modify arguments or block execution)
         let arguments = if self.hooks.has_hooks() {
-            match self.hooks.run_pre(&params.name, resolved.arguments, &ctx).await {
+            match self
+                .hooks
+                .run_pre(&params.name, resolved.arguments, &ctx)
+                .await
+            {
                 Ok(args) => args,
                 Err(reason) => {
-                    self.process_table.complete_call(&ctx.agent.name, &params.name);
+                    self.process_table
+                        .complete_call(&ctx.agent.name, &params.name);
                     return CallToolResult::error(reason);
                 }
             }
@@ -297,21 +359,32 @@ impl McpServer {
         let mut result = match self.tools.get(&params.name) {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => {
-                self.process_table.complete_call(&ctx.agent.name, &params.name);
+                self.process_table
+                    .complete_call(&ctx.agent.name, &params.name);
                 if let Some(ref bb) = self.blackbox {
                     bb.record(
-                        &ctx.agent.name, &ctx.agent.permissions, &ctx.session_id,
-                        &params.name, &arguments.to_string(), "Unknown tool",
-                        "error", 0, "N/A",
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        &ctx.session_id,
+                        &params.name,
+                        &arguments.to_string(),
+                        "Unknown tool",
+                        "error",
+                        0,
+                        "N/A",
                     );
                 }
                 return CallToolResult::error(format!("Unknown tool: {}", params.name));
             }
         };
         let tool_duration_us = tool_start.elapsed().as_micros() as u64;
-        self.metrics.tool_duration_us_sum.fetch_add(tool_duration_us, Ordering::Relaxed);
+        self.metrics
+            .tool_duration_us_sum
+            .fetch_add(tool_duration_us, Ordering::Relaxed);
         if result.is_error {
-            self.metrics.tool_calls_errors.fetch_add(1, Ordering::Relaxed);
+            self.metrics
+                .tool_calls_errors
+                .fetch_add(1, Ordering::Relaxed);
         }
         tracing::info!(
             tool.name = %params.name,
@@ -337,7 +410,9 @@ impl McpServer {
             });
             if !is_trusted {
                 result.label.integrity = crate::ifc::Integrity::Untrusted;
-                self.metrics.ifc_taint_elevations.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .ifc_taint_elevations
+                    .fetch_add(1, Ordering::Relaxed);
             }
         }
 
@@ -384,7 +459,8 @@ impl McpServer {
         // IFC: absorb tool result label into session taint
         ctx.taint.absorb(result.label);
         // Persist taint to session for cross-request persistence
-        self.sessions.update_context_label(&ctx.session_id, result.label);
+        self.sessions
+            .update_context_label(&ctx.session_id, result.label);
 
         // IFC: auto-store result as a labeled variable
         let var_id = crate::ifc::value_store::generate_var_id();
@@ -397,19 +473,26 @@ impl McpServer {
             is_error: result.is_error,
         });
         // Append variable metadata to result content
-        result.content.push(crate::protocol::Content::text(
-            format!("\n---\n_var: {} (label: {})_", var_id, result.label),
-        ));
+        result.content.push(crate::protocol::Content::text(format!(
+            "\n---\n_var: {} (label: {})_",
+            var_id, result.label
+        )));
 
         // Mark call complete in process table
-        self.process_table.complete_call(&ctx.agent.name, &params.name);
+        self.process_table
+            .complete_call(&ctx.agent.name, &params.name);
 
         // Record in blackbox
         if let Some(ref bb) = self.blackbox {
-            let result_text = result.content.iter().filter_map(|c| match c {
-                crate::protocol::Content::Text(t) => Some(t.text.as_str()),
-                _ => None,
-            }).collect::<Vec<_>>().join("");
+            let result_text = result
+                .content
+                .iter()
+                .filter_map(|c| match c {
+                    crate::protocol::Content::Text(t) => Some(t.text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("");
             let result_trunc = if result_text.len() > 4096 {
                 let mut end = 4096;
                 while end > 0 && !result_text.is_char_boundary(end) {
@@ -420,8 +503,11 @@ impl McpServer {
                 &result_text
             };
             bb.record(
-                &ctx.agent.name, &ctx.agent.permissions, &ctx.session_id,
-                &params.name, &arguments.to_string(),
+                &ctx.agent.name,
+                &ctx.agent.permissions,
+                &ctx.session_id,
+                &params.name,
+                &arguments.to_string(),
                 result_trunc,
                 if result.is_error { "error" } else { "allowed" },
                 tool_duration_us,
@@ -431,7 +517,10 @@ impl McpServer {
 
         // Run post-hooks (includes safety filtering if wired as a hook)
         if self.hooks.has_hooks() {
-            return self.hooks.run_post(&params.name, &arguments, result, &ctx).await;
+            return self
+                .hooks
+                .run_post(&params.name, &arguments, result, &ctx)
+                .await;
         }
 
         // Legacy path: apply safety filters directly when no hooks are configured
@@ -464,7 +553,10 @@ impl McpServer {
                 Content::Text(text) => {
                     // Use the sync path: scan for findings first to detect PII
                     let findings = pipeline.scan_sync(&text.text, &filter_ctx);
-                    if findings.iter().any(|f| crate::safety::is_pii_category(&f.category)) {
+                    if findings
+                        .iter()
+                        .any(|f| crate::safety::is_pii_category(&f.category))
+                    {
                         has_pii = true;
                     }
                     match pipeline.process(&text.text, &filter_ctx) {
@@ -487,11 +579,23 @@ impl McpServer {
         result
     }
 
-    pub fn handle_list_prompts(&self, _agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListPromptsResult {
-        let all_prompts: Vec<_> = self.prompts.values().map(|p| p.definition.clone()).collect();
+    pub fn handle_list_prompts(
+        &self,
+        _agent: &crate::auth::AgentIdentity,
+        pagination: &PaginatedRequest,
+    ) -> ListPromptsResult {
+        let all_prompts: Vec<_> = self
+            .prompts
+            .values()
+            .map(|p| p.definition.clone())
+            .collect();
         let offset = pagination.decode_offset().unwrap_or(0);
-        let (prompts, next_cursor) = crate::protocol::paginate(&all_prompts, offset, crate::protocol::DEFAULT_PAGE_SIZE);
-        ListPromptsResult { prompts, next_cursor }
+        let (prompts, next_cursor) =
+            crate::protocol::paginate(&all_prompts, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        ListPromptsResult {
+            prompts,
+            next_cursor,
+        }
     }
 
     pub async fn handle_get_prompt(
@@ -509,7 +613,11 @@ impl McpServer {
         self.prompts.len()
     }
 
-    pub fn handle_list_resources(&self, agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListResourcesResult {
+    pub fn handle_list_resources(
+        &self,
+        agent: &crate::auth::AgentIdentity,
+        pagination: &PaginatedRequest,
+    ) -> ListResourcesResult {
         let all_resources: Vec<_> = self
             .resources
             .values()
@@ -517,8 +625,12 @@ impl McpServer {
             .collect();
         let visible = self.filter_resources_for_agent(agent, all_resources);
         let offset = pagination.decode_offset().unwrap_or(0);
-        let (resources, next_cursor) = crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
-        ListResourcesResult { resources, next_cursor }
+        let (resources, next_cursor) =
+            crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        ListResourcesResult {
+            resources,
+            next_cursor,
+        }
     }
 
     pub async fn handle_read_resource(
@@ -569,13 +681,10 @@ impl McpServer {
         params: smgglrs_protocol::permissions::PermissionRequestParams,
         session_id: &str,
     ) -> smgglrs_protocol::permissions::PermissionRequestResult {
-        let mut pending = self
-            .pending_permission_requests
-            .lock()
-            .unwrap_or_else(|e| {
-                tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
-                e.into_inner()
-            });
+        let mut pending = self.pending_permission_requests.lock().unwrap_or_else(|e| {
+            tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
+            e.into_inner()
+        });
         pending.insert(
             params.id.clone(),
             super::PendingPermissionRequest {
@@ -603,13 +712,10 @@ impl McpServer {
         agent_name: &str,
     ) -> Result<smgglrs_protocol::permissions::PermissionGrantResult, String> {
         let pending_req = {
-            let mut pending = self
-                .pending_permission_requests
-                .lock()
-                .unwrap_or_else(|e| {
-                    tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
-                    e.into_inner()
-                });
+            let mut pending = self.pending_permission_requests.lock().unwrap_or_else(|e| {
+                tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
+                e.into_inner()
+            });
             pending
                 .remove(&params.request_id)
                 .ok_or_else(|| format!("No pending request with id '{}'", params.request_id))?
@@ -651,13 +757,10 @@ impl McpServer {
         &self,
         params: smgglrs_protocol::permissions::PermissionDenyParams,
     ) -> Result<smgglrs_protocol::permissions::PermissionDenyResult, String> {
-        let mut pending = self
-            .pending_permission_requests
-            .lock()
-            .unwrap_or_else(|e| {
-                tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
-                e.into_inner()
-            });
+        let mut pending = self.pending_permission_requests.lock().unwrap_or_else(|e| {
+            tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
+            e.into_inner()
+        });
         if pending.remove(&params.request_id).is_none() {
             return Err(format!(
                 "No pending request with id '{}'",
@@ -703,8 +806,7 @@ impl McpServer {
                             .map(|_| p.definition.name.clone())
                     })
                     .filter(|name| {
-                        params.argument.value.is_empty()
-                            || name.starts_with(&params.argument.value)
+                        params.argument.value.is_empty() || name.starts_with(&params.argument.value)
                     })
                     .collect();
                 if matching.is_empty() {
@@ -722,8 +824,7 @@ impl McpServer {
                 .resources
                 .keys()
                 .filter(|uri| {
-                    params.argument.value.is_empty()
-                        || uri.starts_with(&params.argument.value)
+                    params.argument.value.is_empty() || uri.starts_with(&params.argument.value)
                 })
                 .cloned()
                 .take(100)
@@ -741,11 +842,7 @@ impl McpServer {
     }
 
     /// Handle logging/setLevel: set the minimum log level for a session.
-    pub fn handle_set_log_level(
-        &self,
-        params: crate::protocol::SetLevelParams,
-        session_id: &str,
-    ) {
+    pub fn handle_set_log_level(&self, params: crate::protocol::SetLevelParams, session_id: &str) {
         let mut levels = self.session_log_levels.write().unwrap_or_else(|e| {
             tracing::warn!("session_log_levels RwLock poisoned, recovering");
             e.into_inner()
@@ -759,11 +856,7 @@ impl McpServer {
     }
 
     /// Handle resources/subscribe: register a session's interest in a resource URI.
-    pub fn handle_resource_subscribe(
-        &self,
-        uri: &str,
-        session_id: &str,
-    ) -> Result<(), String> {
+    pub fn handle_resource_subscribe(&self, uri: &str, session_id: &str) -> Result<(), String> {
         if !self.resources.contains_key(uri) {
             return Err(format!("Unknown resource: {}", uri));
         }
@@ -779,11 +872,7 @@ impl McpServer {
     }
 
     /// Handle resources/unsubscribe: remove a session's subscription to a resource URI.
-    pub fn handle_resource_unsubscribe(
-        &self,
-        uri: &str,
-        session_id: &str,
-    ) -> Result<(), String> {
+    pub fn handle_resource_unsubscribe(&self, uri: &str, session_id: &str) -> Result<(), String> {
         let mut subs = self.resource_subscriptions.write().unwrap_or_else(|e| {
             tracing::warn!("resource_subscriptions RwLock poisoned, recovering");
             e.into_inner()
@@ -913,7 +1002,10 @@ impl McpServer {
         agent: &crate::auth::AgentIdentity,
         resources: Vec<crate::protocol::ResourceDefinition>,
     ) -> Vec<crate::protocol::ResourceDefinition> {
-        resources.into_iter().filter(|r| self.agent_can_see_resource(agent, &r.uri)).collect()
+        resources
+            .into_iter()
+            .filter(|r| self.agent_can_see_resource(agent, &r.uri))
+            .collect()
     }
 
     fn filter_resource_templates_for_agent(
@@ -921,7 +1013,10 @@ impl McpServer {
         agent: &crate::auth::AgentIdentity,
         templates: Vec<crate::protocol::ResourceTemplate>,
     ) -> Vec<crate::protocol::ResourceTemplate> {
-        templates.into_iter().filter(|t| self.agent_can_see_resource(agent, &t.uri_template)).collect()
+        templates
+            .into_iter()
+            .filter(|t| self.agent_can_see_resource(agent, &t.uri_template))
+            .collect()
     }
 
     fn agent_can_see_resource(&self, agent: &crate::auth::AgentIdentity, uri: &str) -> bool {
@@ -961,7 +1056,9 @@ fn resource_confidentiality(uri: &str) -> crate::ifc::Confidentiality {
     use crate::ifc::Confidentiality;
     if uri.starts_with("smgglrs://audit") {
         Confidentiality::Sensitive
-    } else if uri.starts_with("smgglrs://proc") && (uri.contains("/taint") || uri.contains("/capabilities")) {
+    } else if uri.starts_with("smgglrs://proc")
+        && (uri.contains("/taint") || uri.contains("/capabilities"))
+    {
         Confidentiality::Sensitive
     } else {
         Confidentiality::Public

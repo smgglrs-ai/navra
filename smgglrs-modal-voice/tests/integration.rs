@@ -118,7 +118,11 @@ fn all_tools_have_descriptions_and_object_schema() {
     let module = build_voice_module();
     let tools = module.tools();
     for (def, _) in &tools {
-        assert!(def.description.is_some(), "Tool '{}' missing description", def.name);
+        assert!(
+            def.description.is_some(),
+            "Tool '{}' missing description",
+            def.name
+        );
         assert_eq!(def.input_schema.schema_type, "object");
     }
 }
@@ -148,7 +152,10 @@ fn transcribe_tool_requires_path() {
 fn listen_tool_has_no_required_params() {
     let module = build_voice_module();
     let tools = module.tools();
-    let listen = tools.iter().find(|(d, _)| d.name == "voice_listen").unwrap();
+    let listen = tools
+        .iter()
+        .find(|(d, _)| d.name == "voice_listen")
+        .unwrap();
     assert!(listen.0.input_schema.required.is_none());
 }
 

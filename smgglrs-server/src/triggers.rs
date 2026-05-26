@@ -6,11 +6,11 @@
 //! - **FileWatch**: Filesystem monitoring with glob filtering and debounce
 
 use axum::{
-    Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::post,
+    Router,
 };
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
@@ -81,7 +81,11 @@ impl TriggerRegistry {
 
         for config in configs {
             match config {
-                TriggerConfig::Webhook { path, secret, flow_name } => {
+                TriggerConfig::Webhook {
+                    path,
+                    secret,
+                    flow_name,
+                } => {
                     // Normalize path: ensure it starts with /
                     let path = if path.starts_with('/') {
                         path.clone()
@@ -93,10 +97,7 @@ impl TriggerRegistry {
                         .strip_prefix("/hook/")
                         .unwrap_or(path.trim_start_matches('/'))
                         .to_string();
-                    webhook_routes.insert(
-                        route_key,
-                        (flow_name.clone(), secret.clone()),
-                    );
+                    webhook_routes.insert(route_key, (flow_name.clone(), secret.clone()));
                     tracing::info!(
                         path = %path,
                         flow = %flow_name,
@@ -108,9 +109,15 @@ impl TriggerRegistry {
                     // in the registry for listing purposes.
                     let cfg = config.clone();
                     let handle = tokio::spawn(async {});
-                    triggers.push(ActiveTrigger { config: cfg, handle });
+                    triggers.push(ActiveTrigger {
+                        config: cfg,
+                        handle,
+                    });
                 }
-                TriggerConfig::Cron { schedule, flow_name } => {
+                TriggerConfig::Cron {
+                    schedule,
+                    flow_name,
+                } => {
                     let parsed = match CronSchedule::parse(schedule) {
                         Ok(s) => s,
                         Err(e) => {
@@ -133,15 +140,21 @@ impl TriggerRegistry {
                     let handle = tokio::spawn(async move {
                         run_cron_trigger(parsed, &flow_name_owned, &schedule_str, ctx).await;
                     });
-                    triggers.push(ActiveTrigger { config: config.clone(), handle });
+                    triggers.push(ActiveTrigger {
+                        config: config.clone(),
+                        handle,
+                    });
                 }
-                TriggerConfig::FileWatch { path, pattern, flow_name, debounce_ms } => {
+                TriggerConfig::FileWatch {
+                    path,
+                    pattern,
+                    flow_name,
+                    debounce_ms,
+                } => {
                     let watch_path = crate::expand_tilde(path);
                     let flow_name_owned = flow_name.clone();
                     let pattern_owned = pattern.clone();
-                    let debounce = std::time::Duration::from_millis(
-                        debounce_ms.unwrap_or(500),
-                    );
+                    let debounce = std::time::Duration::from_millis(debounce_ms.unwrap_or(500));
                     let ctx = Arc::clone(&flow_ctx);
                     tracing::info!(
                         path = %path,
@@ -152,8 +165,14 @@ impl TriggerRegistry {
                     );
                     let handle = tokio::spawn(async move {
                         if let Err(e) = run_file_watch_trigger(
-                            &watch_path, pattern_owned.as_deref(), &flow_name_owned, debounce, ctx,
-                        ).await {
+                            &watch_path,
+                            pattern_owned.as_deref(),
+                            &flow_name_owned,
+                            debounce,
+                            ctx,
+                        )
+                        .await
+                        {
                             tracing::error!(
                                 path = %watch_path,
                                 error = %e,
@@ -161,7 +180,10 @@ impl TriggerRegistry {
                             );
                         }
                     });
-                    triggers.push(ActiveTrigger { config: config.clone(), handle });
+                    triggers.push(ActiveTrigger {
+                        config: config.clone(),
+                        handle,
+                    });
                 }
             }
         }
@@ -247,7 +269,9 @@ async fn handle_webhook(
     let ctx = Arc::clone(&state.flow_ctx);
     let result = crate::flow_tools::handle_flow_start(args, ctx, "webhook-trigger").await;
 
-    let response_text = result.content.iter()
+    let response_text = result
+        .content
+        .iter()
         .filter_map(|c| {
             if let smgglrs_core::protocol::Content::Text(tc) = c {
                 Some(tc.text.as_str())
@@ -272,9 +296,7 @@ pub(crate) fn verify_hmac_sha256(secret: &[u8], body: &[u8], signature: &str) ->
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
 
-    let sig_hex = signature
-        .strip_prefix("sha256=")
-        .unwrap_or(signature);
+    let sig_hex = signature.strip_prefix("sha256=").unwrap_or(signature);
 
     let expected = match hex::decode(sig_hex) {
         Ok(bytes) => bytes,
@@ -333,8 +355,12 @@ impl CronField {
         let mut values = Vec::new();
         for part in s.split(',') {
             if let Some((start_str, end_str)) = part.split_once('-') {
-                let start: u32 = start_str.parse().map_err(|_| format!("Invalid range start: {part}"))?;
-                let end: u32 = end_str.parse().map_err(|_| format!("Invalid range end: {part}"))?;
+                let start: u32 = start_str
+                    .parse()
+                    .map_err(|_| format!("Invalid range start: {part}"))?;
+                let end: u32 = end_str
+                    .parse()
+                    .map_err(|_| format!("Invalid range end: {part}"))?;
                 if start > end || start < min || end > max {
                     return Err(format!("Range out of bounds: {part} (valid: {min}-{max})"));
                 }
@@ -497,7 +523,8 @@ async fn run_file_watch_trigger(
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<std::path::PathBuf>>(64);
 
     // Compile glob pattern
-    let glob_pattern = pattern.map(|p| glob::Pattern::new(p))
+    let glob_pattern = pattern
+        .map(|p| glob::Pattern::new(p))
         .transpose()
         .map_err(|e| anyhow::anyhow!("Invalid glob pattern: {e}"))?;
 
@@ -519,12 +546,15 @@ async fn run_file_watch_trigger(
                 }
             },
             notify::Config::default(),
-        ).expect("Failed to create file watcher");
+        )
+        .expect("Failed to create file watcher");
 
-        watcher.watch(
-            std::path::Path::new(&watch_path_owned),
-            RecursiveMode::Recursive,
-        ).expect("Failed to start watching directory");
+        watcher
+            .watch(
+                std::path::Path::new(&watch_path_owned),
+                RecursiveMode::Recursive,
+            )
+            .expect("Failed to start watching directory");
 
         let mut last_fire = std::time::Instant::now() - std::time::Duration::from_secs(10);
         let mut pending_paths: Vec<std::path::PathBuf> = Vec::new();
@@ -537,9 +567,8 @@ async fn run_file_watch_trigger(
                             for path in &event.paths {
                                 // Apply glob filter
                                 if let Some(ref pat) = glob_for_watcher {
-                                    let file_name = path.file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("");
+                                    let file_name =
+                                        path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                                     if !pat.matches(file_name) {
                                         continue;
                                     }
@@ -596,7 +625,8 @@ async fn run_file_watch_trigger(
         let ctx = Arc::clone(&ctx);
         let flow = flow_name.clone();
         tokio::spawn(async move {
-            let result = crate::flow_tools::handle_flow_start(args, ctx, "file-watch-trigger").await;
+            let result =
+                crate::flow_tools::handle_flow_start(args, ctx, "file-watch-trigger").await;
             if result.is_error {
                 tracing::warn!(flow = %flow, "File-watch-triggered flow failed");
             }
@@ -629,7 +659,11 @@ mod tests {
         let result = mac.finalize();
         let hex_sig = hex::encode(result.into_bytes());
 
-        assert!(verify_hmac_sha256(secret, body, &format!("sha256={hex_sig}")));
+        assert!(verify_hmac_sha256(
+            secret,
+            body,
+            &format!("sha256={hex_sig}")
+        ));
     }
 
     #[test]
@@ -664,7 +698,11 @@ mod tests {
         mac.update(body);
         let hex_sig = hex::encode(mac.finalize().into_bytes());
 
-        assert!(!verify_hmac_sha256(b"wrong-secret", body, &format!("sha256={hex_sig}")));
+        assert!(!verify_hmac_sha256(
+            b"wrong-secret",
+            body,
+            &format!("sha256={hex_sig}")
+        ));
     }
 
     // --- Cron parsing ---
@@ -782,11 +820,17 @@ secret = "my-secret"
 flow_name = "review"
 "#;
         #[derive(Deserialize)]
-        struct Wrapper { triggers: Vec<TriggerConfig> }
+        struct Wrapper {
+            triggers: Vec<TriggerConfig>,
+        }
         let w: Wrapper = toml::from_str(toml).unwrap();
         assert_eq!(w.triggers.len(), 1);
         match &w.triggers[0] {
-            TriggerConfig::Webhook { path, secret, flow_name } => {
+            TriggerConfig::Webhook {
+                path,
+                secret,
+                flow_name,
+            } => {
                 assert_eq!(path, "/hook/deploy");
                 assert_eq!(secret.as_deref(), Some("my-secret"));
                 assert_eq!(flow_name, "review");
@@ -804,10 +848,15 @@ schedule = "0 9 * * 1-5"
 flow_name = "daily-review"
 "#;
         #[derive(Deserialize)]
-        struct Wrapper { triggers: Vec<TriggerConfig> }
+        struct Wrapper {
+            triggers: Vec<TriggerConfig>,
+        }
         let w: Wrapper = toml::from_str(toml).unwrap();
         match &w.triggers[0] {
-            TriggerConfig::Cron { schedule, flow_name } => {
+            TriggerConfig::Cron {
+                schedule,
+                flow_name,
+            } => {
                 assert_eq!(schedule, "0 9 * * 1-5");
                 assert_eq!(flow_name, "daily-review");
             }
@@ -826,10 +875,17 @@ flow_name = "process-document"
 debounce_ms = 1000
 "#;
         #[derive(Deserialize)]
-        struct Wrapper { triggers: Vec<TriggerConfig> }
+        struct Wrapper {
+            triggers: Vec<TriggerConfig>,
+        }
         let w: Wrapper = toml::from_str(toml).unwrap();
         match &w.triggers[0] {
-            TriggerConfig::FileWatch { path, pattern, flow_name, debounce_ms } => {
+            TriggerConfig::FileWatch {
+                path,
+                pattern,
+                flow_name,
+                debounce_ms,
+            } => {
                 assert_eq!(path, "~/Documents/inbox");
                 assert_eq!(pattern.as_deref(), Some("*.pdf"));
                 assert_eq!(flow_name, "process-document");
@@ -858,7 +914,9 @@ path = "/tmp/inbox"
 flow_name = "ingest"
 "#;
         #[derive(Deserialize)]
-        struct Wrapper { triggers: Vec<TriggerConfig> }
+        struct Wrapper {
+            triggers: Vec<TriggerConfig>,
+        }
         let w: Wrapper = toml::from_str(toml).unwrap();
         assert_eq!(w.triggers.len(), 3);
     }

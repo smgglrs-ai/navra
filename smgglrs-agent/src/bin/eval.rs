@@ -11,7 +11,7 @@
 //!     --runs 3 \
 //!     --output results/s9-eval
 
-use smgglrs_agent::{McpClient, CallToolResult};
+use smgglrs_agent::{CallToolResult, McpClient};
 use smgglrs_protocol::Upstream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -33,11 +33,9 @@ impl EvalConfig {
     fn from_env() -> Self {
         let endpoint = std::env::var("SMGGLRS_ENDPOINT")
             .unwrap_or_else(|_| "http://localhost:9315/mcp".to_string());
-        let flow_name = std::env::var("SMGGLRS_FLOW")
-            .unwrap_or_else(|_| "review-lite".to_string());
+        let flow_name = std::env::var("SMGGLRS_FLOW").unwrap_or_else(|_| "review-lite".to_string());
         let output_dir = PathBuf::from(
-            std::env::var("SMGGLRS_EVAL_OUTPUT")
-                .unwrap_or_else(|_| "results/s9-eval".to_string()),
+            std::env::var("SMGGLRS_EVAL_OUTPUT").unwrap_or_else(|_| "results/s9-eval".to_string()),
         );
         let runs: usize = std::env::var("SMGGLRS_EVAL_RUNS")
             .ok()
@@ -167,9 +165,7 @@ async fn main() {
                 .output_dir
                 .join(format!("{project_name}-run{run}.json"));
 
-            eprintln!(
-                "--- [{run_num}/{total_runs}] {project_name} run {run} ---"
-            );
+            eprintln!("--- [{run_num}/{total_runs}] {project_name} run {run} ---");
             eprintln!("  Start: {}", chrono_now());
 
             // Connect (reconnect on each run for clean state)
@@ -189,11 +185,7 @@ async fn main() {
             match start_flow(&mut client, &config.flow_name, project_name, project_path).await {
                 Ok(result) => {
                     let duration = start.elapsed();
-                    eprintln!(
-                        "  Done: {} ({:.0}s)",
-                        chrono_now(),
-                        duration.as_secs_f64()
-                    );
+                    eprintln!("  Done: {} ({:.0}s)", chrono_now(), duration.as_secs_f64());
 
                     let output = serde_json::json!({
                         "project": project_name,
@@ -207,18 +199,14 @@ async fn main() {
                 }
                 Err(e) => {
                     let duration = start.elapsed();
-                    eprintln!(
-                        "  FAILED after {:.0}s: {e}",
-                        duration.as_secs_f64()
-                    );
+                    eprintln!("  FAILED after {:.0}s: {e}", duration.as_secs_f64());
                     let output = serde_json::json!({
                         "project": project_name,
                         "run": run,
                         "duration_secs": duration.as_secs(),
                         "error": e,
                     });
-                    std::fs::write(&outfile, serde_json::to_string_pretty(&output).unwrap())
-                        .ok();
+                    std::fs::write(&outfile, serde_json::to_string_pretty(&output).unwrap()).ok();
                 }
             }
         }

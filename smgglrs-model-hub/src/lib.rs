@@ -14,8 +14,8 @@
 //! metadata (auto-populated on pull), operator-defined agentic
 //! capabilities, and runtime statistics.
 
-pub mod card;
 mod cache;
+pub mod card;
 mod error;
 mod transport;
 mod uri;
@@ -105,12 +105,15 @@ impl ModelHub {
             Err(e) => {
                 tracing::warn!(uri = %uri, error = %e, "Failed to fetch vendor metadata");
                 VendorMeta {
-                    source: Some(match uri.registry {
-                        Registry::Ollama => "ollama",
-                        Registry::HuggingFace => "huggingface",
-                        Registry::Oci => "oci",
-                        Registry::File => "file",
-                    }.into()),
+                    source: Some(
+                        match uri.registry {
+                            Registry::Ollama => "ollama",
+                            Registry::HuggingFace => "huggingface",
+                            Registry::Oci => "oci",
+                            Registry::File => "file",
+                        }
+                        .into(),
+                    ),
                     ..Default::default()
                 }
             }

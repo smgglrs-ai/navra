@@ -68,11 +68,7 @@ impl RoutingHook {
 
         // 2. Tool name pattern matching
         for tier in &self.tiers {
-            if tier
-                .patterns
-                .iter()
-                .any(|p| glob_matches(p, tool_name))
-            {
+            if tier.patterns.iter().any(|p| glob_matches(p, tool_name)) {
                 return &tier.name;
             }
         }
@@ -182,10 +178,7 @@ mod tests {
                 name: "large".to_string(),
                 model: "llama3.3:70b".to_string(),
                 max_tokens: 8000,
-                patterns: vec![
-                    "*_create".to_string(),
-                    "*_review".to_string(),
-                ],
+                patterns: vec!["*_create".to_string(), "*_review".to_string()],
             },
         ]
     }

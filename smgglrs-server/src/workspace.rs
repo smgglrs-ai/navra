@@ -70,11 +70,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), WorkspaceError> {
     Ok(())
 }
 
-fn collect_files(
-    base: &Path,
-    dir: &Path,
-    out: &mut Vec<PathBuf>,
-) -> Result<(), WorkspaceError> {
+fn collect_files(base: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), WorkspaceError> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let file_type = entry.file_type()?;
@@ -107,7 +103,10 @@ mod tests {
         };
         ws.populate(dst.path()).unwrap();
 
-        assert_eq!(fs::read_to_string(dst.path().join("hello.txt")).unwrap(), "world");
+        assert_eq!(
+            fs::read_to_string(dst.path().join("hello.txt")).unwrap(),
+            "world"
+        );
         assert_eq!(
             fs::read_to_string(dst.path().join("sub/nested.rs")).unwrap(),
             "fn main() {}"

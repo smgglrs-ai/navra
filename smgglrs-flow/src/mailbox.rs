@@ -177,9 +177,7 @@ mod tests {
             .unwrap_err();
 
         match err {
-            FlowError::IfcViolation {
-                sender, target, ..
-            } => {
+            FlowError::IfcViolation { sender, target, .. } => {
                 assert_eq!(sender, "alice");
                 assert_eq!(target, "bob");
             }

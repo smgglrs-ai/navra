@@ -96,9 +96,7 @@ impl TraitVector {
                 "technical_depth" if value < 0.3 => {
                     Some("Keep explanations high-level and accessible.")
                 }
-                "caution" if value > 0.7 => {
-                    Some("Emphasize risks, caveats, and edge cases.")
-                }
+                "caution" if value > 0.7 => Some("Emphasize risks, caveats, and edge cases."),
                 "caution" if value < 0.3 => {
                     Some("Focus on the happy path and practical solutions.")
                 }
@@ -128,7 +126,10 @@ impl TraitStore {
     /// Open a trait store at the given path, creating tables if needed.
     pub fn open(path: &Path) -> Result<Self, CognitiveError> {
         let db = Connection::open(path).map_err(|e| {
-            CognitiveError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CognitiveError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ))
         })?;
         let store = Self { db };
         store.init_schema()?;
@@ -138,7 +139,10 @@ impl TraitStore {
     /// Open an in-memory trait store (for testing).
     pub fn open_memory() -> Result<Self, CognitiveError> {
         let db = Connection::open_in_memory().map_err(|e| {
-            CognitiveError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CognitiveError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ))
         })?;
         let store = Self { db };
         store.init_schema()?;
@@ -158,7 +162,10 @@ impl TraitStore {
                 );",
             )
             .map_err(|e| {
-                CognitiveError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                CognitiveError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
             })?;
         Ok(())
     }
@@ -266,8 +273,7 @@ mod tests {
     #[test]
     fn update_slow_convergence() {
         let mut tv = TraitVector::new("dev", "user1");
-        let observed: HashMap<String, f64> =
-            [("verbosity".to_string(), 1.0)].into_iter().collect();
+        let observed: HashMap<String, f64> = [("verbosity".to_string(), 1.0)].into_iter().collect();
 
         // With alpha=0.1, first update: 0.1 * 1.0 + 0.9 * 0.5 = 0.55
         tv.update(&observed, 0.1);
@@ -285,8 +291,7 @@ mod tests {
     #[test]
     fn update_immediate_jump() {
         let mut tv = TraitVector::new("dev", "user1");
-        let observed: HashMap<String, f64> =
-            [("formality".to_string(), 0.8)].into_iter().collect();
+        let observed: HashMap<String, f64> = [("formality".to_string(), 0.8)].into_iter().collect();
 
         // With alpha=1.0, jumps immediately: 1.0 * 0.8 + 0.0 * 0.5 = 0.8
         tv.update(&observed, 1.0);
@@ -299,8 +304,7 @@ mod tests {
     #[test]
     fn freeze_prevents_updates() {
         let mut tv = TraitVector::new("dev", "user1");
-        let observed: HashMap<String, f64> =
-            [("verbosity".to_string(), 1.0)].into_iter().collect();
+        let observed: HashMap<String, f64> = [("verbosity".to_string(), 1.0)].into_iter().collect();
 
         tv.update(&observed, 0.5);
         assert_eq!(tv.update_count, 1);
@@ -317,8 +321,7 @@ mod tests {
     #[test]
     fn reset_clears_traits() {
         let mut tv = TraitVector::new("dev", "user1");
-        let observed: HashMap<String, f64> =
-            [("verbosity".to_string(), 0.9)].into_iter().collect();
+        let observed: HashMap<String, f64> = [("verbosity".to_string(), 0.9)].into_iter().collect();
 
         tv.update(&observed, 0.5);
         tv.freeze();
@@ -410,15 +413,9 @@ mod tests {
     fn trait_store_list() {
         let store = TraitStore::open_memory().unwrap();
 
-        store
-            .save(&TraitVector::new("analyst", "alice"))
-            .unwrap();
-        store
-            .save(&TraitVector::new("analyst", "bob"))
-            .unwrap();
-        store
-            .save(&TraitVector::new("developer", "alice"))
-            .unwrap();
+        store.save(&TraitVector::new("analyst", "alice")).unwrap();
+        store.save(&TraitVector::new("analyst", "bob")).unwrap();
+        store.save(&TraitVector::new("developer", "alice")).unwrap();
 
         let analysts = store.list("analyst");
         assert_eq!(analysts.len(), 2);

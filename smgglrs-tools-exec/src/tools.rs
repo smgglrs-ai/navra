@@ -52,20 +52,30 @@ impl Module for ExecModule {
         "exec"
     }
 
-    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
+    fn tools(
+        &self,
+    ) -> Vec<(
+        smgglrs_core::protocol::ToolDefinition,
+        smgglrs_core::ToolHandler,
+    )> {
         vec![handle_exec_run_handler(self.state.clone())]
     }
 }
 
 #[tool(
     name = "exec_run",
-    description = "Execute a command inside the agent's sandbox workspace. Returns stdout, stderr, and exit code.",
+    description = "Execute a command inside the agent's sandbox workspace. Returns stdout, stderr, and exit code."
 )]
 async fn handle_exec_run(
-    #[arg(description = "Command and arguments, e.g. [\"cargo\", \"build\", \"--release\"]")] command: Vec<String>,
+    #[arg(description = "Command and arguments, e.g. [\"cargo\", \"build\", \"--release\"]")]
+    command: Vec<String>,
     #[arg(description = "Working directory inside the sandbox (default: /workspace)")] working_dir: Option<String>,
-    #[arg(description = "Command timeout in seconds (default: 60, max: 300)")] timeout_secs: Option<u64>,
-    #[arg(description = "Additional environment variables for the command")] env: Option<HashMap<String, String>>,
+    #[arg(description = "Command timeout in seconds (default: 60, max: 300)")] timeout_secs: Option<
+        u64,
+    >,
+    #[arg(description = "Additional environment variables for the command")] env: Option<
+        HashMap<String, String>,
+    >,
     ctx: CallContext,
     #[state] state: Arc<ExecState>,
 ) -> CallToolResult {
@@ -85,22 +95,14 @@ async fn handle_exec_run(
 
     let did = match &ctx.agent.did {
         Some(d) => d.clone(),
-        None => {
-            return CallToolResult::error(
-                "exec_run requires agent DID to identify sandbox",
-            )
-        }
+        None => return CallToolResult::error("exec_run requires agent DID to identify sandbox"),
     };
 
     let sandbox_id = {
         let sandboxes = state.sandboxes.lock().unwrap_or_else(|e| e.into_inner());
         match sandboxes.get(&did) {
             Some(id) => id.clone(),
-            None => {
-                return CallToolResult::error(format!(
-                    "no sandbox registered for agent {did}"
-                ))
-            }
+            None => return CallToolResult::error(format!("no sandbox registered for agent {did}")),
         }
     };
 
@@ -171,8 +173,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_path_outside_workspace() {
-        let channel = Channel::from_static("http://[::1]:50051")
-            .connect_lazy();
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
         let (_, handler) = handle_exec_run_handler(module.state.clone());
 
@@ -193,8 +194,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_missing_did() {
-        let channel = Channel::from_static("http://[::1]:50051")
-            .connect_lazy();
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
         let (_, handler) = handle_exec_run_handler(module.state.clone());
 
@@ -211,8 +211,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_unregistered_sandbox() {
-        let channel = Channel::from_static("http://[::1]:50051")
-            .connect_lazy();
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
         let (_, handler) = handle_exec_run_handler(module.state.clone());
 
@@ -229,8 +228,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_empty_command() {
-        let channel = Channel::from_static("http://[::1]:50051")
-            .connect_lazy();
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
         let (_, handler) = handle_exec_run_handler(module.state.clone());
 
@@ -247,8 +245,7 @@ mod tests {
 
     #[tokio::test]
     async fn register_and_remove_sandbox() {
-        let channel = Channel::from_static("http://[::1]:50051")
-            .connect_lazy();
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
 
         module
@@ -268,8 +265,7 @@ mod tests {
 
     #[tokio::test]
     async fn exec_run_tool_registered() {
-        let channel = Channel::from_static("http://[::1]:50051")
-            .connect_lazy();
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
         let tools = module.tools();
         assert_eq!(tools.len(), 1);

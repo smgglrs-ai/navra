@@ -5,8 +5,8 @@
 //! it cannot grant permissions beyond what TOML allows.
 
 use cedar_policy::{
-    Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid,
-    PolicySet, Request, RestrictedExpression,
+    Authorizer, Context, Decision, Entities, EntityId, EntityTypeName, EntityUid, PolicySet,
+    Request, RestrictedExpression,
 };
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -58,9 +58,7 @@ impl CedarEngine {
 
         let pairs: Vec<(String, RestrictedExpression)> = context_map
             .iter()
-            .map(|(k, v)| {
-                (k.clone(), RestrictedExpression::new_string(v.clone()))
-            })
+            .map(|(k, v)| (k.clone(), RestrictedExpression::new_string(v.clone())))
             .collect();
 
         let context = match Context::from_pairs(pairs) {
@@ -74,7 +72,9 @@ impl CedarEngine {
         };
 
         let entities = Entities::empty();
-        let response = self.authorizer.is_authorized(&request, &self.policy_set, &entities);
+        let response = self
+            .authorizer
+            .is_authorized(&request, &self.policy_set, &entities);
 
         match response.decision() {
             Decision::Allow => CedarDecision::Allow,
@@ -101,9 +101,7 @@ mod tests {
 
     #[test]
     fn allow_policy() {
-        let engine = CedarEngine::from_policies(
-            r#"permit(principal, action, resource);"#,
-        ).unwrap();
+        let engine = CedarEngine::from_policies(r#"permit(principal, action, resource);"#).unwrap();
         let result = engine.is_authorized("claude", "file_read", "/tmp/test", &HashMap::new());
         assert_eq!(result, CedarDecision::Allow);
     }
@@ -122,7 +120,8 @@ mod tests {
             permit(principal, action, resource);
             forbid(principal, action == Action::"github_pr_create", resource);
             "#,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(
             engine.is_authorized("claude", "file_read", "any", &HashMap::new()),
             CedarDecision::Allow,
@@ -137,7 +136,8 @@ mod tests {
     fn agent_specific_policy() {
         let engine = CedarEngine::from_policies(
             r#"permit(principal == Agent::"trusted", action, resource);"#,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(
             engine.is_authorized("trusted", "file_read", "any", &HashMap::new()),
             CedarDecision::Allow,
@@ -152,7 +152,8 @@ mod tests {
     fn resource_specific_policy() {
         let engine = CedarEngine::from_policies(
             r#"permit(principal, action, resource == Resource::"public/repo");"#,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(
             engine.is_authorized("claude", "github_pr_list", "public/repo", &HashMap::new()),
             CedarDecision::Allow,
@@ -170,11 +171,15 @@ mod tests {
             permit(principal, action, resource)
             when { context.environment == "production" };
             "#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut ctx = HashMap::new();
         ctx.insert("environment".to_string(), "production".to_string());
-        assert_eq!(engine.is_authorized("claude", "file_read", "any", &ctx), CedarDecision::Allow);
+        assert_eq!(
+            engine.is_authorized("claude", "file_read", "any", &ctx),
+            CedarDecision::Allow
+        );
 
         let mut ctx_dev = HashMap::new();
         ctx_dev.insert("environment".to_string(), "development".to_string());
@@ -192,7 +197,8 @@ mod tests {
             permit(principal, action == Action::"github_pr_view", resource);
             forbid(principal == Agent::"readonly", action == Action::"github_pr_create", resource);
             "#,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(
             engine.is_authorized("readonly", "github_pr_list", "repo", &HashMap::new()),
             CedarDecision::Allow,

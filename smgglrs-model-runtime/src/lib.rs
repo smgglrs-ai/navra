@@ -18,14 +18,14 @@ mod npu;
 
 #[cfg(feature = "direct")]
 pub mod direct;
-#[cfg(feature = "podman")]
-pub mod podman;
 #[cfg(feature = "openshell")]
 pub mod openshell;
+#[cfg(feature = "podman")]
+pub mod podman;
 
 pub use error::RuntimeError;
-pub use gpu::{GpuDevice, GpuKind, detect_gpus};
-pub use npu::{NpuDevice, detect_npus};
+pub use gpu::{detect_gpus, GpuDevice, GpuKind};
+pub use npu::{detect_npus, NpuDevice};
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -95,7 +95,9 @@ impl std::str::FromStr for KvCacheType {
             "f16" => Ok(Self::F16),
             "q8_0" => Ok(Self::Q8_0),
             "q4_0" => Ok(Self::Q4_0),
-            other => Err(format!("unknown KV cache type: {other} (expected f16, q8_0, or q4_0)")),
+            other => Err(format!(
+                "unknown KV cache type: {other} (expected f16, q8_0, or q4_0)"
+            )),
         }
     }
 }
@@ -281,7 +283,9 @@ impl IsolationContext {
                 .ok()
                 .and_then(|cg| {
                     cg.lines()
-                        .find(|l| l.contains("libpod") || l.contains("docker") || l.contains("containerd"))
+                        .find(|l| {
+                            l.contains("libpod") || l.contains("docker") || l.contains("containerd")
+                        })
                         .and_then(|l| l.rsplit('/').next())
                         .map(String::from)
                 });
@@ -396,6 +400,9 @@ mod tests {
     fn isolation_level_debug() {
         assert_eq!(format!("{:?}", IsolationLevel::BareMetal), "BareMetal");
         assert_eq!(format!("{:?}", IsolationLevel::Container), "Container");
-        assert_eq!(format!("{:?}", IsolationLevel::OpenShellSandbox), "OpenShellSandbox");
+        assert_eq!(
+            format!("{:?}", IsolationLevel::OpenShellSandbox),
+            "OpenShellSandbox"
+        );
     }
 }

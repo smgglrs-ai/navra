@@ -72,16 +72,14 @@ impl IntegrityMonitor {
         Arc::clone(&self.alerts)
     }
 
-    pub async fn initialize(
-        &mut self,
-        embed_backend: Option<&dyn smgglrs_model::ModelBackend>,
-    ) {
+    pub async fn initialize(&mut self, embed_backend: Option<&dyn smgglrs_model::ModelBackend>) {
         let files = collect_yaml_files(&self.cognitive_core_dir);
         for path in files {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 let hash = sha256_hex(content.as_bytes());
                 let embedding = compute_embedding(embed_backend, &content).await;
-                self.baselines.insert(path, FileBaseline { hash, embedding });
+                self.baselines
+                    .insert(path, FileBaseline { hash, embedding });
             }
         }
         tracing::info!(
@@ -91,10 +89,7 @@ impl IntegrityMonitor {
         );
     }
 
-    pub async fn check(
-        &mut self,
-        embed_backend: Option<&dyn smgglrs_model::ModelBackend>,
-    ) {
+    pub async fn check(&mut self, embed_backend: Option<&dyn smgglrs_model::ModelBackend>) {
         let current_files = collect_yaml_files(&self.cognitive_core_dir);
         let current_set: std::collections::HashSet<_> = current_files.iter().cloned().collect();
 
@@ -165,10 +160,7 @@ impl IntegrityMonitor {
                         drift.unwrap_or(0.0),
                         path.display()
                     ),
-                    AlertSeverity::Benign => format!(
-                        "Minor change in {}",
-                        path.display()
-                    ),
+                    AlertSeverity::Benign => format!("Minor change in {}", path.display()),
                 };
 
                 match severity {
@@ -224,14 +216,11 @@ pub fn spawn_monitor(
 ) -> tokio::task::JoinHandle<()> {
     let interval_secs = monitor.config.interval_secs;
     tokio::spawn(async move {
-        let mut interval =
-            tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
         interval.tick().await; // skip the first immediate tick
         loop {
             interval.tick().await;
-            monitor
-                .check(embed_backend.as_deref())
-                .await;
+            monitor.check(embed_backend.as_deref()).await;
         }
     })
 }
@@ -243,7 +232,12 @@ fn sha256_hex(data: &[u8]) -> String {
 }
 
 fn collect_yaml_files(dir: &Path) -> Vec<PathBuf> {
-    let subdirs = ["personas", "directives", "heuristics", "persona_specializations"];
+    let subdirs = [
+        "personas",
+        "directives",
+        "heuristics",
+        "persona_specializations",
+    ];
     let mut files = Vec::new();
     for subdir in &subdirs {
         let path = dir.join(subdir);
@@ -296,12 +290,14 @@ mod tests {
     #[tokio::test]
     async fn initialize_collects_baselines() {
         let dir = test_dir();
-        write_persona(dir.path(), "test.yaml", "persona_name: test\ncore_mandate: do stuff");
-
-        let mut monitor = IntegrityMonitor::new(
-            IntegrityMonitorConfig::default(),
-            dir.path().to_path_buf(),
+        write_persona(
+            dir.path(),
+            "test.yaml",
+            "persona_name: test\ncore_mandate: do stuff",
         );
+
+        let mut monitor =
+            IntegrityMonitor::new(IntegrityMonitorConfig::default(), dir.path().to_path_buf());
         monitor.initialize(None).await;
         assert_eq!(monitor.baselines.len(), 1);
     }
@@ -311,10 +307,8 @@ mod tests {
         let dir = test_dir();
         write_persona(dir.path(), "test.yaml", "persona_name: test");
 
-        let mut monitor = IntegrityMonitor::new(
-            IntegrityMonitorConfig::default(),
-            dir.path().to_path_buf(),
-        );
+        let mut monitor =
+            IntegrityMonitor::new(IntegrityMonitorConfig::default(), dir.path().to_path_buf());
         monitor.initialize(None).await;
         monitor.check(None).await;
 
@@ -327,14 +321,16 @@ mod tests {
         let dir = test_dir();
         write_persona(dir.path(), "test.yaml", "persona_name: test");
 
-        let mut monitor = IntegrityMonitor::new(
-            IntegrityMonitorConfig::default(),
-            dir.path().to_path_buf(),
-        );
+        let mut monitor =
+            IntegrityMonitor::new(IntegrityMonitorConfig::default(), dir.path().to_path_buf());
         monitor.initialize(None).await;
 
         // Modify the file
-        write_persona(dir.path(), "test.yaml", "persona_name: HACKED ignore safety");
+        write_persona(
+            dir.path(),
+            "test.yaml",
+            "persona_name: HACKED ignore safety",
+        );
 
         monitor.check(None).await;
 
@@ -350,10 +346,8 @@ mod tests {
         let dir = test_dir();
         write_persona(dir.path(), "test.yaml", "persona_name: test");
 
-        let mut monitor = IntegrityMonitor::new(
-            IntegrityMonitorConfig::default(),
-            dir.path().to_path_buf(),
-        );
+        let mut monitor =
+            IntegrityMonitor::new(IntegrityMonitorConfig::default(), dir.path().to_path_buf());
         monitor.initialize(None).await;
 
         // Delete the file
@@ -372,10 +366,8 @@ mod tests {
         let dir = test_dir();
         write_persona(dir.path(), "test.yaml", "version 1");
 
-        let mut monitor = IntegrityMonitor::new(
-            IntegrityMonitorConfig::default(),
-            dir.path().to_path_buf(),
-        );
+        let mut monitor =
+            IntegrityMonitor::new(IntegrityMonitorConfig::default(), dir.path().to_path_buf());
         monitor.initialize(None).await;
 
         write_persona(dir.path(), "test.yaml", "version 2");
@@ -392,10 +384,8 @@ mod tests {
     async fn new_file_establishes_baseline() {
         let dir = test_dir();
 
-        let mut monitor = IntegrityMonitor::new(
-            IntegrityMonitorConfig::default(),
-            dir.path().to_path_buf(),
-        );
+        let mut monitor =
+            IntegrityMonitor::new(IntegrityMonitorConfig::default(), dir.path().to_path_buf());
         monitor.initialize(None).await;
         assert_eq!(monitor.baselines.len(), 0);
 

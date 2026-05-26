@@ -3,20 +3,18 @@
 //! Tests the public types, constructors, and classification response
 //! helpers without requiring running model backends.
 
-use smgglrs_model::{
-    ClassifyLabel, ClassifyResponse, EmbedRequest,
-    GenerateRequest, Locality, ModelBackend, ModelError,
-    OpenAiBackend, AnthropicBackend, CliBackend, Device,
-    CreateResponseRequest, InputItem, OutputItem, MessageItem,
-    ResponseStatus, ModelResponse,
-    ClassifyRequest, ModelTask, OnnxBackend,
-    safe_backend::{ModelSafetyFilter, SafeModelBackend},
-};
 use smgglrs_model::responses::response::Usage;
+use smgglrs_model::{
+    safe_backend::{ModelSafetyFilter, SafeModelBackend},
+    AnthropicBackend, ClassifyLabel, ClassifyRequest, ClassifyResponse, CliBackend,
+    CreateResponseRequest, Device, EmbedRequest, GenerateRequest, InputItem, Locality, MessageItem,
+    ModelBackend, ModelError, ModelResponse, ModelTask, OnnxBackend, OpenAiBackend, OutputItem,
+    ResponseStatus,
+};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 // =====================================================================
 // 1. ClassifyResponse helpers
@@ -26,8 +24,14 @@ use std::sync::atomic::{AtomicU32, Ordering};
 fn classify_response_top_label() {
     let resp = ClassifyResponse {
         labels: vec![
-            ClassifyLabel { label: "safe".into(), score: 0.9 },
-            ClassifyLabel { label: "hap".into(), score: 0.1 },
+            ClassifyLabel {
+                label: "safe".into(),
+                score: 0.9,
+            },
+            ClassifyLabel {
+                label: "hap".into(),
+                score: 0.1,
+            },
         ],
     };
     assert_eq!(resp.top_label().unwrap().label, "safe");
@@ -38,8 +42,14 @@ fn classify_response_top_label() {
 fn classify_response_is_unsafe_above_threshold() {
     let resp = ClassifyResponse {
         labels: vec![
-            ClassifyLabel { label: "hap".into(), score: 0.8 },
-            ClassifyLabel { label: "safe".into(), score: 0.2 },
+            ClassifyLabel {
+                label: "hap".into(),
+                score: 0.8,
+            },
+            ClassifyLabel {
+                label: "safe".into(),
+                score: 0.2,
+            },
         ],
     };
     assert!(resp.is_unsafe(0.5));
@@ -50,9 +60,10 @@ fn classify_response_is_unsafe_above_threshold() {
 #[test]
 fn classify_response_safe_not_unsafe() {
     let resp = ClassifyResponse {
-        labels: vec![
-            ClassifyLabel { label: "safe".into(), score: 0.99 },
-        ],
+        labels: vec![ClassifyLabel {
+            label: "safe".into(),
+            score: 0.99,
+        }],
     };
     assert!(!resp.is_unsafe(0.5));
 }
@@ -203,7 +214,9 @@ impl ModelSafetyFilter for BlockingFilter {
 
 #[tokio::test]
 async fn safe_backend_passthrough() {
-    let filter = Arc::new(CountingFilter { calls: AtomicU32::new(0) });
+    let filter = Arc::new(CountingFilter {
+        calls: AtomicU32::new(0),
+    });
     let backend = SafeModelBackend::new(FakeBackend, filter.clone(), "test-model");
 
     let req = CreateResponseRequest::new(String::from("test"), vec![InputItem::user("hi")]);
@@ -217,7 +230,8 @@ async fn safe_backend_blocks_sensitive_prompt() {
     let filter = Arc::new(BlockingFilter);
     let backend = SafeModelBackend::new(FakeBackend, filter, "test-model");
 
-    let req = CreateResponseRequest::new(String::from("test"), vec![InputItem::user("secret data")]);
+    let req =
+        CreateResponseRequest::new(String::from("test"), vec![InputItem::user("secret data")]);
     let err = backend.respond(&req).await.unwrap_err();
     assert!(format!("{err}").contains("sensitive content"));
 }
@@ -234,24 +248,34 @@ impl ModelBackend for EmptyBackend {}
 async fn default_backend_methods_return_not_loaded() {
     let backend = EmptyBackend;
 
-    let embed_err = backend.embed(&EmbedRequest { text: "hello".into() }).await;
+    let embed_err = backend
+        .embed(&EmbedRequest {
+            text: "hello".into(),
+        })
+        .await;
     assert!(matches!(embed_err, Err(ModelError::NotLoaded(_))));
 
-    let classify_err = backend.classify(&ClassifyRequest { text: "hello".into() }).await;
+    let classify_err = backend
+        .classify(&ClassifyRequest {
+            text: "hello".into(),
+        })
+        .await;
     assert!(matches!(classify_err, Err(ModelError::NotLoaded(_))));
 
-    let gen_err = backend.generate(&GenerateRequest {
-        prompt: "hello".into(),
-        max_tokens: None,
-        temperature: None,
-        system: None,
-        images: vec![],
-    }).await;
+    let gen_err = backend
+        .generate(&GenerateRequest {
+            prompt: "hello".into(),
+            max_tokens: None,
+            temperature: None,
+            system: None,
+            images: vec![],
+        })
+        .await;
     assert!(matches!(gen_err, Err(ModelError::NotLoaded(_))));
 
-    let resp_err = backend.respond(
-        &CreateResponseRequest::new(String::from("m"), vec![])
-    ).await;
+    let resp_err = backend
+        .respond(&CreateResponseRequest::new(String::from("m"), vec![]))
+        .await;
     assert!(matches!(resp_err, Err(ModelError::NotLoaded(_))));
 }
 
@@ -305,10 +329,7 @@ async fn cli_backend_generate_via_stdin() {
 #[tokio::test]
 async fn cli_backend_respond() {
     let backend = CliBackend::new("echo", vec!["response text".into()]);
-    let req = CreateResponseRequest::new(
-        String::from("cli-model"),
-        vec![InputItem::user("hello")],
-    );
+    let req = CreateResponseRequest::new(String::from("cli-model"), vec![InputItem::user("hello")]);
     let resp = backend.respond(&req).await.unwrap();
     assert_eq!(resp.status, ResponseStatus::Completed);
     assert_eq!(resp.text().unwrap(), "response text");
@@ -317,14 +338,18 @@ async fn cli_backend_respond() {
 #[tokio::test]
 async fn cli_backend_embed_unsupported() {
     let backend = CliBackend::new("echo", vec![]);
-    let err = backend.embed(&smgglrs_model::EmbedRequest { text: "hi".into() }).await;
+    let err = backend
+        .embed(&smgglrs_model::EmbedRequest { text: "hi".into() })
+        .await;
     assert!(matches!(err, Err(ModelError::NotLoaded(_))));
 }
 
 #[tokio::test]
 async fn cli_backend_classify_unsupported() {
     let backend = CliBackend::new("echo", vec![]);
-    let err = backend.classify(&ClassifyRequest { text: "hi".into() }).await;
+    let err = backend
+        .classify(&ClassifyRequest { text: "hi".into() })
+        .await;
     assert!(matches!(err, Err(ModelError::NotLoaded(_))));
 }
 
@@ -379,13 +404,16 @@ fn load_guardian_hap(device: Device) -> Option<OnnxBackend> {
     let task = ModelTask::Classification {
         labels: vec!["non-toxic".to_string(), "toxic".to_string()],
     };
-    Some(OnnxBackend::load(
-        "guardian-hap-test",
-        &model_path,
-        Some(tokenizer_path.as_path()),
-        task,
-        device,
-    ).expect("Failed to load Guardian HAP model"))
+    Some(
+        OnnxBackend::load(
+            "guardian-hap-test",
+            &model_path,
+            Some(tokenizer_path.as_path()),
+            task,
+            device,
+        )
+        .expect("Failed to load Guardian HAP model"),
+    )
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -394,7 +422,9 @@ async fn guardian_hap_cpu_classifies_safe_text() {
         eprintln!("Skipping: Guardian HAP model not found");
         return;
     };
-    let req = ClassifyRequest { text: "The weather is nice today.".to_string() };
+    let req = ClassifyRequest {
+        text: "The weather is nice today.".to_string(),
+    };
     let result = backend.classify(&req).await.unwrap();
     assert_eq!(result.top_label().unwrap().label, "non-toxic");
 }
@@ -405,7 +435,9 @@ async fn guardian_hap_cpu_classifies_toxic_text() {
         eprintln!("Skipping: Guardian HAP model not found");
         return;
     };
-    let req = ClassifyRequest { text: "I hate you, you stupid idiot!".to_string() };
+    let req = ClassifyRequest {
+        text: "I hate you, you stupid idiot!".to_string(),
+    };
     let result = backend.classify(&req).await.unwrap();
     assert_eq!(result.top_label().unwrap().label, "toxic");
 }
@@ -417,11 +449,15 @@ async fn guardian_hap_openvino_auto_classifies() {
         return;
     };
 
-    let safe_req = ClassifyRequest { text: "Hello, how are you?".to_string() };
+    let safe_req = ClassifyRequest {
+        text: "Hello, how are you?".to_string(),
+    };
     let safe_result = backend.classify(&safe_req).await.unwrap();
     assert_eq!(safe_result.top_label().unwrap().label, "non-toxic");
 
-    let toxic_req = ClassifyRequest { text: "I hate you, you stupid idiot!".to_string() };
+    let toxic_req = ClassifyRequest {
+        text: "I hate you, you stupid idiot!".to_string(),
+    };
     let toxic_result = backend.classify(&toxic_req).await.unwrap();
     assert_eq!(toxic_result.top_label().unwrap().label, "toxic");
 }
@@ -455,7 +491,9 @@ async fn guardian_hap_device_benchmark() {
             }
         };
 
-        let req = ClassifyRequest { text: text.to_string() };
+        let req = ClassifyRequest {
+            text: text.to_string(),
+        };
 
         // Warmup
         for _ in 0..5 {
@@ -494,13 +532,16 @@ fn embedding_r2_paths() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
 fn load_embedding_r2(device: Device) -> Option<OnnxBackend> {
     let (model_path, tokenizer_path) = embedding_r2_paths()?;
     let task = ModelTask::Embedding { dimensions: 768 };
-    Some(OnnxBackend::load(
-        "embedding-r2-test",
-        &model_path,
-        Some(tokenizer_path.as_path()),
-        task,
-        device,
-    ).expect("Failed to load Granite Embedding R2 model"))
+    Some(
+        OnnxBackend::load(
+            "embedding-r2-test",
+            &model_path,
+            Some(tokenizer_path.as_path()),
+            task,
+            device,
+        )
+        .expect("Failed to load Granite Embedding R2 model"),
+    )
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -510,7 +551,9 @@ async fn embedding_r2_cpu_produces_vectors() {
         return;
     };
 
-    let req = EmbedRequest { text: "Secure MCP gateway for Linux desktops.".to_string() };
+    let req = EmbedRequest {
+        text: "Secure MCP gateway for Linux desktops.".to_string(),
+    };
     let result = backend.embed(&req).await.unwrap();
     assert_eq!(result.dimensions, 768);
     assert_eq!(result.embedding.len(), 768);
@@ -527,9 +570,15 @@ async fn embedding_r2_similar_texts_closer() {
         return;
     };
 
-    let req_a = EmbedRequest { text: "The cat sat on the mat.".to_string() };
-    let req_b = EmbedRequest { text: "A kitten was sitting on a rug.".to_string() };
-    let req_c = EmbedRequest { text: "Quantum chromodynamics describes strong force interactions.".to_string() };
+    let req_a = EmbedRequest {
+        text: "The cat sat on the mat.".to_string(),
+    };
+    let req_b = EmbedRequest {
+        text: "A kitten was sitting on a rug.".to_string(),
+    };
+    let req_c = EmbedRequest {
+        text: "Quantum chromodynamics describes strong force interactions.".to_string(),
+    };
 
     let emb_a = backend.embed(&req_a).await.unwrap().embedding;
     let emb_b = backend.embed(&req_b).await.unwrap().embedding;
@@ -538,7 +587,10 @@ async fn embedding_r2_similar_texts_closer() {
     let sim_ab: f32 = emb_a.iter().zip(&emb_b).map(|(a, b)| a * b).sum();
     let sim_ac: f32 = emb_a.iter().zip(&emb_c).map(|(a, b)| a * b).sum();
 
-    assert!(sim_ab > sim_ac, "similar texts should be closer: sim(a,b)={sim_ab:.4} vs sim(a,c)={sim_ac:.4}");
+    assert!(
+        sim_ab > sim_ac,
+        "similar texts should be closer: sim(a,b)={sim_ab:.4} vs sim(a,c)={sim_ac:.4}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -570,7 +622,9 @@ async fn embedding_r2_device_benchmark() {
             }
         };
 
-        let req = EmbedRequest { text: text.to_string() };
+        let req = EmbedRequest {
+            text: text.to_string(),
+        };
 
         // Warmup
         for _ in 0..3 {

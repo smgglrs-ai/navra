@@ -44,8 +44,7 @@ pub struct Blackbox {
 impl Blackbox {
     /// Open or create a blackbox at the given path.
     pub fn open(path: &std::path::Path) -> Result<Self, String> {
-        let db = Connection::open(path)
-            .map_err(|e| format!("blackbox open failed: {e}"))?;
+        let db = Connection::open(path).map_err(|e| format!("blackbox open failed: {e}"))?;
 
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS blackbox (
@@ -133,8 +132,16 @@ impl Blackbox {
         ifc_label: &str,
     ) {
         self.record_with_obo(
-            agent_name, agent_permissions, session_id, tool_name,
-            tool_args, tool_result, outcome, duration_us, ifc_label, None,
+            agent_name,
+            agent_permissions,
+            session_id,
+            tool_name,
+            tool_args,
+            tool_result,
+            outcome,
+            duration_us,
+            ifc_label,
+            None,
         );
     }
 
@@ -388,14 +395,18 @@ impl Blackbox {
 }
 
 fn truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max { return s; }
+    if s.len() <= max {
+        return s;
+    }
     let mut end = max;
-    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
     &s[..end]
 }
 
 fn sha256_hex(data: &str) -> String {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(data.as_bytes());
     hex::encode(hasher.finalize())
@@ -433,7 +444,15 @@ pub fn verify_chain_link(
     if prev_hash != expected_prev {
         return false;
     }
-    let preimage = chain_preimage(seq, prev_hash, agent_name, tool_name, tool_args, tool_result, outcome);
+    let preimage = chain_preimage(
+        seq,
+        prev_hash,
+        agent_name,
+        tool_name,
+        tool_args,
+        tool_result,
+        outcome,
+    );
     sha256_hex(&preimage) == stored_hash
 }
 
@@ -446,8 +465,28 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
 
-        bb.record("agent1", "dev", "sess1", "file_read", r#"{"path":"/tmp"}"#, "file content", "allowed", 5, "Trusted:Public");
-        bb.record("agent1", "dev", "sess1", "file_write", r#"{"path":"/tmp/x"}"#, "ok", "denied_ifc", 2, "Untrusted:Public");
+        bb.record(
+            "agent1",
+            "dev",
+            "sess1",
+            "file_read",
+            r#"{"path":"/tmp"}"#,
+            "file content",
+            "allowed",
+            5,
+            "Trusted:Public",
+        );
+        bb.record(
+            "agent1",
+            "dev",
+            "sess1",
+            "file_write",
+            r#"{"path":"/tmp/x"}"#,
+            "ok",
+            "denied_ifc",
+            2,
+            "Untrusted:Public",
+        );
 
         assert_eq!(bb.count(), 2);
         let entries = bb.recent(10);
@@ -484,7 +523,11 @@ mod tests {
         // Tamper with entry 2
         {
             let db = Connection::open(&path).unwrap();
-            db.execute("UPDATE blackbox SET tool_result = 'tampered' WHERE seq = 2", []).unwrap();
+            db.execute(
+                "UPDATE blackbox SET tool_result = 'tampered' WHERE seq = 2",
+                [],
+            )
+            .unwrap();
         }
 
         let bb2 = Blackbox::open(&path).unwrap();
@@ -502,18 +545,29 @@ mod tests {
             .with_pii_filter(filter);
 
         bb.record(
-            "agent1", "dev", "sess1", "file_read",
+            "agent1",
+            "dev",
+            "sess1",
+            "file_read",
             r#"{"email": "user@example.com"}"#,
             "SSN: 123-45-6789",
-            "allowed", 5, "Trusted:Public",
+            "allowed",
+            5,
+            "Trusted:Public",
         );
 
         let entries = bb.recent(1);
         assert_eq!(entries.len(), 1);
-        assert!(!entries[0].tool_args.contains("user@example.com"),
-            "Expected email redacted in tool_args: {}", entries[0].tool_args);
-        assert!(!entries[0].tool_result.contains("123-45-6789"),
-            "Expected SSN redacted in tool_result: {}", entries[0].tool_result);
+        assert!(
+            !entries[0].tool_args.contains("user@example.com"),
+            "Expected email redacted in tool_args: {}",
+            entries[0].tool_args
+        );
+        assert!(
+            !entries[0].tool_result.contains("123-45-6789"),
+            "Expected SSN redacted in tool_result: {}",
+            entries[0].tool_result
+        );
         assert!(entries[0].tool_args.contains("[REDACTED:"));
         assert!(entries[0].tool_result.contains("[REDACTED:"));
     }
@@ -524,7 +578,17 @@ mod tests {
         let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
 
         let args = r#"{"email": "user@example.com"}"#;
-        bb.record("agent1", "dev", "sess1", "file_read", args, "ok", "allowed", 5, "T:P");
+        bb.record(
+            "agent1",
+            "dev",
+            "sess1",
+            "file_read",
+            args,
+            "ok",
+            "allowed",
+            5,
+            "T:P",
+        );
 
         let entries = bb.recent(1);
         assert!(entries[0].tool_args.contains("user@example.com"));
@@ -580,10 +644,22 @@ mod tests {
     #[test]
     fn chain_preimage_changes_on_any_field() {
         let base = chain_preimage(1, "abc", "agent", "tool", "{}", "ok", "allowed");
-        assert_ne!(base, chain_preimage(2, "abc", "agent", "tool", "{}", "ok", "allowed"));
-        assert_ne!(base, chain_preimage(1, "def", "agent", "tool", "{}", "ok", "allowed"));
-        assert_ne!(base, chain_preimage(1, "abc", "other", "tool", "{}", "ok", "allowed"));
-        assert_ne!(base, chain_preimage(1, "abc", "agent", "tool", "{}", "tampered", "allowed"));
+        assert_ne!(
+            base,
+            chain_preimage(2, "abc", "agent", "tool", "{}", "ok", "allowed")
+        );
+        assert_ne!(
+            base,
+            chain_preimage(1, "def", "agent", "tool", "{}", "ok", "allowed")
+        );
+        assert_ne!(
+            base,
+            chain_preimage(1, "abc", "other", "tool", "{}", "ok", "allowed")
+        );
+        assert_ne!(
+            base,
+            chain_preimage(1, "abc", "agent", "tool", "{}", "tampered", "allowed")
+        );
     }
 
     #[test]
@@ -591,8 +667,12 @@ mod tests {
         let prev = "0".repeat(64);
         let preimage = chain_preimage(1, &prev, "a", "t", "{}", "ok", "allowed");
         let hash = sha256_hex(&preimage);
-        assert!(verify_chain_link(1, &prev, &prev, "a", "t", "{}", "ok", "allowed", &hash));
-        assert!(!verify_chain_link(1, &prev, &prev, "a", "t", "{}", "TAMPERED", "allowed", &hash));
+        assert!(verify_chain_link(
+            1, &prev, &prev, "a", "t", "{}", "ok", "allowed", &hash
+        ));
+        assert!(!verify_chain_link(
+            1, &prev, &prev, "a", "t", "{}", "TAMPERED", "allowed", &hash
+        ));
     }
 
     #[test]
@@ -622,9 +702,16 @@ mod tests {
         let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
 
         bb.record_with_obo(
-            "agent1", "dev", "sess1", "file_read",
-            r#"{"path":"/tmp"}"#, "content", "allowed", 5,
-            "Trusted:Public", Some("alice@example.com"),
+            "agent1",
+            "dev",
+            "sess1",
+            "file_read",
+            r#"{"path":"/tmp"}"#,
+            "content",
+            "allowed",
+            5,
+            "Trusted:Public",
+            Some("alice@example.com"),
         );
 
         let entries = bb.recent(1);
@@ -637,7 +724,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
 
-        bb.record("agent1", "dev", "sess1", "file_read", "{}", "ok", "allowed", 5, "T:P");
+        bb.record(
+            "agent1",
+            "dev",
+            "sess1",
+            "file_read",
+            "{}",
+            "ok",
+            "allowed",
+            5,
+            "T:P",
+        );
 
         let entries = bb.recent(1);
         assert_eq!(entries.len(), 1);
@@ -650,7 +747,18 @@ mod tests {
         let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
 
         bb.record("agent1", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P");
-        bb.record_with_obo("agent2", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P", Some("bob@corp.com"));
+        bb.record_with_obo(
+            "agent2",
+            "dev",
+            "s",
+            "t2",
+            "{}",
+            "ok",
+            "allowed",
+            1,
+            "T:P",
+            Some("bob@corp.com"),
+        );
 
         let entries = bb.recent(10);
         assert_eq!(entries.len(), 2);

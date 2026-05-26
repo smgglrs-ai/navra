@@ -1,8 +1,8 @@
 //! Response types returned by the API.
 
 use crate::item::OutputItem;
-use crate::tool::{FunctionTool, ToolChoice};
 use crate::request::{ReasoningConfig, TextConfig, Truncation};
+use crate::tool::{FunctionTool, ToolChoice};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

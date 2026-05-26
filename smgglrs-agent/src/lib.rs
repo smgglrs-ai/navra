@@ -34,31 +34,31 @@
 
 /// Typed agent action model for classification, risk assessment, and audit.
 pub mod action;
+mod agent;
 /// Audit sink trait for recording tool and model calls from the tool loop.
 pub mod audit;
-mod agent;
 pub mod block;
 mod client;
 mod convert;
 mod error;
-/// Upstream MCP prompt resolution utilities.
-pub mod resolve;
 /// Agent process hibernation — save and restore agent state.
 pub mod hibernate;
 /// Per-agent token quotas for fair scheduling.
 pub mod quota;
+/// Upstream MCP prompt resolution utilities.
+pub mod resolve;
 /// Cooperative signal delivery for running agents.
 pub mod signal;
 mod tool_loop;
 /// Hermes-format trace export for agent conversations.
 pub mod trace;
 
+pub use action::{ActionRecord, AgentAction, RiskLevel};
 pub use agent::{Agent, AgentBuilder};
 pub use block::{BlockStatus, ToolBlock};
 pub use client::McpClient;
 pub use error::AgentError;
 pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};
-pub use action::{AgentAction, ActionRecord, RiskLevel};
 pub use signal::{AgentSignal, SignalHandle, SignalReceiver};
 pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
 pub use trace::{HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, TraceExporter};
@@ -67,20 +67,19 @@ pub use trace::{HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, Tr
 // smgglrs-agent and reach protocol/model/security types through these
 // re-exports.  Internal workspace crates (flow, engine) have direct
 // deps and import from the source crates instead.
-pub use smgglrs_protocol::{
-    CallToolParams, CallToolResult, Content, ToolDefinition, PromptDefinition,
-    ResourceDefinition, Upstream,
+pub use audit::{AuditSink, SharedAuditSink};
+pub use convert::tool_def_to_response;
+pub use smgglrs_model::{
+    AnthropicBackend, CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent,
+    FunctionCallOutputItem, InputContent, InputItem, ItemStatus, Locality, MessageItem,
+    MessageRole, ModelBackend, ModelResponse, OpenAiBackend, OutputContent, OutputItem,
+    ReasoningItem, ResponseFormat, ResponseStatus, ResponseTool, ResponseToolChoice, StreamEvent,
 };
 pub use smgglrs_protocol::label::DataLabel;
-pub use smgglrs_model::{
-    AnthropicBackend, ModelBackend, OpenAiBackend, Locality,
-    CreateResponseRequest, ModelResponse, ResponseTool, ResponseToolChoice,
-    InputItem, OutputItem, MessageItem, FunctionCallItem, FunctionCallOutputItem,
-    FunctionCallOutputContent, ReasoningItem, MessageRole, ItemStatus,
-    InputContent, OutputContent, StreamEvent, ResponseStatus, ResponseFormat,
+pub use smgglrs_protocol::{
+    CallToolParams, CallToolResult, Content, PromptDefinition, ResourceDefinition, ToolDefinition,
+    Upstream,
 };
-pub use convert::tool_def_to_response;
-pub use smgglrs_security::identity::{CapSigner, Ed25519Signer, load_or_create_file_identity};
+pub use smgglrs_security::identity::{load_or_create_file_identity, CapSigner, Ed25519Signer};
 pub use smgglrs_security::ifc::TaintTracker;
 pub use smgglrs_security::safety::FilterPipeline;
-pub use audit::{AuditSink, SharedAuditSink};

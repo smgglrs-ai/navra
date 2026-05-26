@@ -35,9 +35,9 @@ pub struct BackEdgeTracker {
 /// Parse a condition string into an `EdgeCondition`.
 pub fn parse_condition(s: &str) -> Result<EdgeCondition, FlowError> {
     if let Some(threshold) = s.strip_prefix("score_below:") {
-        let value: f32 = threshold.parse().map_err(|_| {
-            FlowError::InvalidFlow(format!("invalid score threshold: {threshold}"))
-        })?;
+        let value: f32 = threshold
+            .parse()
+            .map_err(|_| FlowError::InvalidFlow(format!("invalid score threshold: {threshold}")))?;
         Ok(EdgeCondition::ScoreBelow(value))
     } else if s == "criteria_missing" {
         Ok(EdgeCondition::CriteriaMissing)
@@ -67,10 +67,7 @@ pub fn evaluate_condition(condition: &EdgeCondition, result: &TaskResult) -> boo
 
 impl ConditionalEdge {
     /// Parse a `BackEdgeDefinition` into a `ConditionalEdge`.
-    pub fn from_definition(
-        from_task: &str,
-        def: &BackEdgeDefinition,
-    ) -> Result<Self, FlowError> {
+    pub fn from_definition(from_task: &str, def: &BackEdgeDefinition) -> Result<Self, FlowError> {
         let condition = parse_condition(&def.condition)?;
         Ok(Self {
             from: from_task.to_string(),
@@ -142,19 +139,28 @@ mod tests {
     #[test]
     fn score_below_activates() {
         let result = make_result("ok", Some(50.0), vec![]);
-        assert!(evaluate_condition(&EdgeCondition::ScoreBelow(70.0), &result));
+        assert!(evaluate_condition(
+            &EdgeCondition::ScoreBelow(70.0),
+            &result
+        ));
     }
 
     #[test]
     fn score_below_does_not_activate() {
         let result = make_result("ok", Some(80.0), vec![]);
-        assert!(!evaluate_condition(&EdgeCondition::ScoreBelow(70.0), &result));
+        assert!(!evaluate_condition(
+            &EdgeCondition::ScoreBelow(70.0),
+            &result
+        ));
     }
 
     #[test]
     fn score_below_none_activates() {
         let result = make_result("ok", None, vec![]);
-        assert!(evaluate_condition(&EdgeCondition::ScoreBelow(70.0), &result));
+        assert!(evaluate_condition(
+            &EdgeCondition::ScoreBelow(70.0),
+            &result
+        ));
     }
 
     #[test]
@@ -166,7 +172,10 @@ mod tests {
     #[test]
     fn criteria_missing_does_not_activate() {
         let result = make_result("ok", Some(90.0), vec![]);
-        assert!(!evaluate_condition(&EdgeCondition::CriteriaMissing, &result));
+        assert!(!evaluate_condition(
+            &EdgeCondition::CriteriaMissing,
+            &result
+        ));
     }
 
     #[test]

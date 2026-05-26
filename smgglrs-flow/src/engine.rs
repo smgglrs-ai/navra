@@ -12,9 +12,9 @@ use crate::mesh_tools::{
 use smgglrs_agent::signal::{AgentSignal, SignalHandle};
 use smgglrs_agent::{extract_text, Agent};
 use smgglrs_model::{
-    CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
-    InputItem, ItemStatus, Locality, ModelResponse, OpenAiBackend,
-    OutputItem, ResponseTool, ResponseToolChoice,
+    CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent, FunctionCallOutputItem,
+    InputItem, ItemStatus, Locality, ModelResponse, OpenAiBackend, OutputItem, ResponseTool,
+    ResponseToolChoice,
 };
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_security::ifc::TaintTracker;
@@ -115,8 +115,7 @@ impl Flow {
         }
 
         // Index edges by source
-        let mut edges_map: HashMap<String, Vec<crate::definition::EdgeDefinition>> =
-            HashMap::new();
+        let mut edges_map: HashMap<String, Vec<crate::definition::EdgeDefinition>> = HashMap::new();
         for edge in &config.edges {
             edges_map
                 .entry(edge.from.clone())
@@ -179,9 +178,9 @@ impl Flow {
 
         let node_ids: Vec<String> = nodes.keys().cloned().collect();
 
-        let mailbox_registry = config.mailbox_capacity.map(|cap| {
-            MailboxRegistry::new(&node_ids, cap)
-        });
+        let mailbox_registry = config
+            .mailbox_capacity
+            .map(|cap| MailboxRegistry::new(&node_ids, cap));
 
         let blackboard = config.blackboard_capacity.map(Blackboard::new);
 
@@ -443,7 +442,9 @@ async fn run_node_loop(
                     if let Some(bb) = blackboard {
                         let label = node.agent.taint().join(local_taint.level());
                         match bb.publish(node_id, &key, value, label) {
-                            Ok(version) => format!("Published key '{}' (version {}).", key, version),
+                            Ok(version) => {
+                                format!("Published key '{}' (version {}).", key, version)
+                            }
                             Err(e) => format!("Error: {e}"),
                         }
                     } else {
@@ -469,11 +470,10 @@ async fn run_node_loop(
                 }
                 mesh_tools::BB_KEYS => {
                     if let Some(bb) = blackboard {
-                        serde_json::to_string(&bb.keys())
-                            .unwrap_or_else(|e| {
-                                tracing::warn!(error = %e, "Failed to serialize blackboard keys");
-                                "[]".to_string()
-                            })
+                        serde_json::to_string(&bb.keys()).unwrap_or_else(|e| {
+                            tracing::warn!(error = %e, "Failed to serialize blackboard keys");
+                            "[]".to_string()
+                        })
                     } else {
                         "Error: blackboard not enabled for this flow.".to_string()
                     }
@@ -521,8 +521,8 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use smgglrs_model::{
-        CreateResponseRequest, ModelBackend, ModelError, ModelResponse,
-        FunctionCallItem, ItemStatus, MessageItem, OutputItem, ResponseStatus,
+        CreateResponseRequest, FunctionCallItem, ItemStatus, MessageItem, ModelBackend, ModelError,
+        ModelResponse, OutputItem, ResponseStatus,
     };
     use smgglrs_protocol::upstream::{Transport, UpstreamError};
     use smgglrs_protocol::Upstream;
@@ -634,18 +634,31 @@ mod tests {
         ModelResponse {
             id: "resp_test".into(),
             object: "response".into(),
-            created_at: None, completed_at: None,
+            created_at: None,
+            completed_at: None,
             status: ResponseStatus::Completed,
             model: Some("test".into()),
             output,
             usage: Some(Usage {
-                input_tokens: 10, output_tokens: 5, total_tokens: 15,
-                input_tokens_details: None, output_tokens_details: None,
+                input_tokens: 10,
+                output_tokens: 5,
+                total_tokens: 15,
+                input_tokens_details: None,
+                output_tokens_details: None,
             }),
-            error: None, previous_response_id: None, instructions: None,
-            tools: vec![], tool_choice: None, text: None, reasoning: None,
-            truncation: None, temperature: None, max_output_tokens: None,
-            metadata: Default::default(), incomplete_details: None, extra: Default::default(),
+            error: None,
+            previous_response_id: None,
+            instructions: None,
+            tools: vec![],
+            tool_choice: None,
+            text: None,
+            reasoning: None,
+            truncation: None,
+            temperature: None,
+            max_output_tokens: None,
+            metadata: Default::default(),
+            incomplete_details: None,
+            extra: Default::default(),
         }
     }
 
@@ -661,7 +674,8 @@ mod tests {
             arguments: serde_json::json!({
                 "target": target,
                 "task": task
-            }).to_string(),
+            })
+            .to_string(),
             status: Some(ItemStatus::Completed),
         })])
     }
@@ -686,11 +700,7 @@ mod tests {
 
     #[tokio::test]
     async fn two_node_handoff() {
-        let router = mock_agent(
-            vec![handoff_response("coder", "Write fizzbuzz")],
-            vec![],
-        )
-        .await;
+        let router = mock_agent(vec![handoff_response("coder", "Write fizzbuzz")], vec![]).await;
         let coder = mock_agent(vec![stop_response("def fizzbuzz()...")], vec![]).await;
 
         let mut flow = Flow::builder("test")
@@ -709,10 +719,7 @@ mod tests {
         assert_eq!(result.completion_tokens, 10);
     }
 
-    async fn mock_agent_multi(
-        model_responses: Vec<ModelResponse>,
-        visits: usize,
-    ) -> Agent {
+    async fn mock_agent_multi(model_responses: Vec<ModelResponse>, visits: usize) -> Agent {
         let mut transport_responses = init_responses();
         // Add list_tools responses for each visit
         for _ in 0..visits {
@@ -741,18 +748,11 @@ mod tests {
         // With max_hops=3, we need: a(visit1)→b(visit1)→a(visit2)→exceeds.
         // Node a is visited twice, node b once.
         let a = mock_agent_multi(
-            vec![
-                handoff_response("b", "task"),
-                handoff_response("b", "task"),
-            ],
+            vec![handoff_response("b", "task"), handoff_response("b", "task")],
             2,
         )
         .await;
-        let b = mock_agent_multi(
-            vec![handoff_response("a", "task")],
-            1,
-        )
-        .await;
+        let b = mock_agent_multi(vec![handoff_response("a", "task")], 1).await;
 
         let mut flow = Flow::builder("loop")
             .entry("a")
@@ -770,11 +770,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_handoff_target() {
-        let agent = mock_agent(
-            vec![handoff_response("nonexistent", "task")],
-            vec![],
-        )
-        .await;
+        let agent = mock_agent(vec![handoff_response("nonexistent", "task")], vec![]).await;
 
         let mut flow = Flow::builder("test")
             .entry("main")
@@ -905,10 +901,7 @@ mod tests {
                     "bb_publish",
                     serde_json::json!({"key": "alpha", "value": 1}),
                 ),
-                tool_call_response(
-                    "bb_publish",
-                    serde_json::json!({"key": "beta", "value": 2}),
-                ),
+                tool_call_response("bb_publish", serde_json::json!({"key": "beta", "value": 2})),
                 tool_call_response("bb_keys", serde_json::json!({})),
                 stop_response("Done listing."),
             ],
@@ -931,5 +924,4 @@ mod tests {
         keys.sort();
         assert_eq!(keys, vec!["alpha", "beta"]);
     }
-
 }

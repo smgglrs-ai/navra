@@ -170,7 +170,10 @@ impl ReadClearance {
 ///
 /// When annotations are available, uses `read_only_hint` (authoritative).
 /// Falls back to name-based heuristic only for tools without annotations.
-pub fn is_write_tool(tool_name: &str, annotations: Option<&smgglrs_protocol::ToolAnnotations>) -> bool {
+pub fn is_write_tool(
+    tool_name: &str,
+    annotations: Option<&smgglrs_protocol::ToolAnnotations>,
+) -> bool {
     if let Some(ann) = annotations {
         if let Some(read_only) = ann.read_only_hint {
             return !read_only;
@@ -377,7 +380,10 @@ mod tests {
     #[test]
     fn trusted_path_glob_match() {
         let patterns = vec!["/home/user/Code/**".to_string()];
-        assert!(is_trusted_path("/home/user/Code/project/src/main.rs", &patterns));
+        assert!(is_trusted_path(
+            "/home/user/Code/project/src/main.rs",
+            &patterns
+        ));
         assert!(is_trusted_path("/home/user/Code", &patterns));
         assert!(!is_trusted_path("/home/user/Downloads/file.txt", &patterns));
     }
@@ -408,7 +414,10 @@ mod tests {
     #[test]
     fn trusted_path_normalizes_traversal() {
         let patterns = vec!["/home/user/Code/**".to_string()];
-        assert!(is_trusted_path("/home/user/Code/project/../other/file.rs", &patterns));
+        assert!(is_trusted_path(
+            "/home/user/Code/project/../other/file.rs",
+            &patterns
+        ));
         // After normalization: /home/user/Code/other/file.rs — still matches
     }
 
@@ -430,10 +439,14 @@ mod tests {
                 let after_first = tracker.level();
                 tracker.absorb(second);
                 let after_second = tracker.level();
-                assert!(after_second.integrity >= after_first.integrity,
-                    "INV-1: integrity must not decrease after absorb");
-                assert!(after_second.confidentiality >= after_first.confidentiality,
-                    "INV-1: confidentiality must not decrease after absorb");
+                assert!(
+                    after_second.integrity >= after_first.integrity,
+                    "INV-1: integrity must not decrease after absorb"
+                );
+                assert!(
+                    after_second.confidentiality >= after_first.confidentiality,
+                    "INV-1: confidentiality must not decrease after absorb"
+                );
             }
         }
     }
@@ -454,11 +467,17 @@ mod tests {
                 };
                 let can_write = label.can_write_to(target_level);
                 if taint_level > target_level {
-                    assert!(!can_write,
-                        "INV-2: taint {:?} must NOT write to {:?}", taint_level, target_level);
+                    assert!(
+                        !can_write,
+                        "INV-2: taint {:?} must NOT write to {:?}",
+                        taint_level, target_level
+                    );
                 } else {
-                    assert!(can_write,
-                        "INV-2: taint {:?} should write to {:?}", taint_level, target_level);
+                    assert!(
+                        can_write,
+                        "INV-2: taint {:?} should write to {:?}",
+                        taint_level, target_level
+                    );
                 }
             }
         }
@@ -476,11 +495,17 @@ mod tests {
             for &classification in &levels {
                 let can_read = DataLabel::can_read_from(clearance, classification);
                 if classification > clearance {
-                    assert!(!can_read,
-                        "INV-3: clearance {:?} must NOT read {:?}", clearance, classification);
+                    assert!(
+                        !can_read,
+                        "INV-3: clearance {:?} must NOT read {:?}",
+                        clearance, classification
+                    );
                 } else {
-                    assert!(can_read,
-                        "INV-3: clearance {:?} should read {:?}", clearance, classification);
+                    assert!(
+                        can_read,
+                        "INV-3: clearance {:?} should read {:?}",
+                        clearance, classification
+                    );
                 }
             }
         }
@@ -491,8 +516,11 @@ mod tests {
         let mut tracker = TaintTracker::new();
         assert_eq!(tracker.level().integrity, Integrity::Trusted);
         tracker.absorb(DataLabel::UNTRUSTED_PUBLIC);
-        assert_eq!(tracker.level().integrity, Integrity::Untrusted,
-            "INV-4: reading untrusted data must raise integrity to Untrusted");
+        assert_eq!(
+            tracker.level().integrity,
+            Integrity::Untrusted,
+            "INV-4: reading untrusted data must raise integrity to Untrusted"
+        );
     }
 
     #[test]
@@ -502,13 +530,17 @@ mod tests {
         assert_eq!(tracker.level().confidentiality, Confidentiality::Pii);
 
         // Cannot step UP via declassify
-        assert!(!tracker.declassify(Confidentiality::Secret),
-            "INV-5: declassify must reject stepping UP");
+        assert!(
+            !tracker.declassify(Confidentiality::Secret),
+            "INV-5: declassify must reject stepping UP"
+        );
         assert_eq!(tracker.level().confidentiality, Confidentiality::Pii);
 
         // Can step DOWN
-        assert!(tracker.declassify(Confidentiality::Sensitive),
-            "INV-5: declassify should allow stepping DOWN");
+        assert!(
+            tracker.declassify(Confidentiality::Sensitive),
+            "INV-5: declassify should allow stepping DOWN"
+        );
         assert_eq!(tracker.level().confidentiality, Confidentiality::Sensitive);
     }
 }

@@ -4,19 +4,14 @@ use smgglrs_security::auth::CallContext;
 
 // --- Basic tool: single required arg ---
 
-#[tool(
-    name = "test_echo",
-    description = "Echo a message back",
-)]
+#[tool(name = "test_echo", description = "Echo a message back")]
 async fn test_echo(
     #[arg(description = "Message to echo")] message: String,
     ctx: CallContext,
 ) -> CallToolResult {
     let _ = ctx;
     CallToolResult {
-        content: vec![Content::Text(TextContent {
-            text: message,
-        })],
+        content: vec![Content::Text(TextContent { text: message })],
         is_error: false,
         label: Default::default(),
     }
@@ -52,10 +47,7 @@ fn tool_def_has_message_property() {
 
 // --- Tool with optional args and defaults ---
 
-#[tool(
-    name = "test_search",
-    description = "Search with limit",
-)]
+#[tool(name = "test_search", description = "Search with limit")]
 async fn test_search(
     #[arg(description = "Search query")] query: String,
     #[arg(description = "Max results", default = "10")] limit: Option<u32>,
@@ -88,10 +80,7 @@ fn optional_arg_has_default_in_schema() {
 
 // --- Tool with multiple types ---
 
-#[tool(
-    name = "test_types",
-    description = "Test type mapping",
-)]
+#[tool(name = "test_types", description = "Test type mapping")]
 async fn test_types(
     #[arg(description = "A string")] name: String,
     #[arg(description = "An integer")] count: u64,
@@ -217,10 +206,7 @@ struct TestState {
     prefix: String,
 }
 
-#[tool(
-    name = "test_stateful",
-    description = "Tool with shared state",
-)]
+#[tool(name = "test_stateful", description = "Tool with shared state")]
 async fn test_stateful(
     #[arg(description = "Input text")] text: String,
     ctx: CallContext,
@@ -249,14 +235,18 @@ fn state_param_excluded_from_schema() {
 
 #[test]
 fn state_handler_accepts_state_arg() {
-    let state = Arc::new(TestState { prefix: "hello: ".to_string() });
+    let state = Arc::new(TestState {
+        prefix: "hello: ".to_string(),
+    });
     let (def, _handler) = test_stateful_handler(state);
     assert_eq!(def.name, "test_stateful");
 }
 
 #[tokio::test]
 async fn state_handler_passes_state_to_function() {
-    let state = Arc::new(TestState { prefix: ">>".to_string() });
+    let state = Arc::new(TestState {
+        prefix: ">>".to_string(),
+    });
     let (_, handler) = test_stateful_handler(state);
     let args = serde_json::json!({"text": "world"});
     let ctx = CallContext::new(
@@ -279,10 +269,7 @@ async fn state_handler_passes_state_to_function() {
 
 // --- Tool with no args (besides context) ---
 
-#[tool(
-    name = "test_noop",
-    description = "A tool with no arguments",
-)]
+#[tool(name = "test_noop", description = "A tool with no arguments")]
 async fn test_noop(ctx: CallContext) -> CallToolResult {
     let _ = ctx;
     CallToolResult {

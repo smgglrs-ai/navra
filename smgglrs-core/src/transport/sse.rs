@@ -86,7 +86,10 @@ impl SseBroadcaster {
 
     /// Number of active session channels.
     pub fn session_count(&self) -> usize {
-        self.channels.read().unwrap_or_else(|e| e.into_inner()).len()
+        self.channels
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .len()
     }
 }
 

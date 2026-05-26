@@ -13,7 +13,7 @@ mod safety_hook;
 pub mod statistical;
 mod tool_guard;
 
-pub use budget::{BudgetHook, TruncationStrategy, estimate_tokens};
+pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
 pub use memory_extraction::{ExtractionStore, MemoryExtractionConfig, MemoryExtractionHook};
 pub use pipeline::HookPipeline;
 pub use routing::{ModelTier, ModelTierConfig, RoutingConfig, RoutingHook};
@@ -22,8 +22,8 @@ pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
 pub use tool_guard::ToolGuardHook;
 
 use crate::auth::CallContext;
-use smgglrs_protocol::CallToolResult;
 use async_trait::async_trait;
+use smgglrs_protocol::CallToolResult;
 
 /// Decision returned by a hook after processing an event.
 #[derive(Debug)]

@@ -3,18 +3,16 @@
 //! Tests the builder pattern, McpClient IFC taint tracking, tool loop,
 //! and type conversions using mock transports.
 
+use async_trait::async_trait;
 use smgglrs_agent::{
-    Agent, AgentError, McpClient, ToolLoopConfig,
-    extract_text, run_tool_loop,
-    CallToolResult, Content, DataLabel,
-    CreateResponseRequest, OutputItem, MessageItem, FunctionCallItem,
-    ModelBackend, ModelResponse, ResponseStatus, ItemStatus,
+    extract_text, run_tool_loop, Agent, AgentError, CallToolResult, Content, CreateResponseRequest,
+    DataLabel, FunctionCallItem, ItemStatus, McpClient, MessageItem, ModelBackend, ModelResponse,
+    OutputItem, ResponseStatus, ToolLoopConfig,
 };
 use smgglrs_model::ModelError;
 use smgglrs_protocol::upstream::{Transport, UpstreamError};
 use smgglrs_protocol::Upstream;
 use smgglrs_responses::response::Usage;
-use async_trait::async_trait;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
@@ -29,7 +27,9 @@ struct MockTransport {
 
 impl MockTransport {
     fn new(responses: Vec<serde_json::Value>) -> Self {
-        Self { responses: Mutex::new(responses) }
+        Self {
+            responses: Mutex::new(responses),
+        }
     }
 }
 
@@ -95,7 +95,9 @@ struct MockModel {
 
 impl MockModel {
     fn new(responses: Vec<ModelResponse>) -> Self {
-        Self { responses: Mutex::new(responses) }
+        Self {
+            responses: Mutex::new(responses),
+        }
     }
 }
 
@@ -107,9 +109,7 @@ impl ModelBackend for MockModel {
         let response = {
             let mut responses = self.responses.lock().unwrap();
             if responses.is_empty() {
-                return Box::pin(async {
-                    Err(ModelError::Inference("no more responses".into()))
-                });
+                return Box::pin(async { Err(ModelError::Inference("no more responses".into())) });
             }
             responses.remove(0)
         };
@@ -238,7 +238,10 @@ async fn client_call_external_read_taints() {
     })])
     .await;
 
-    let _result = client.call_tool("file_read", serde_json::json!({})).await.unwrap();
+    let _result = client
+        .call_tool("file_read", serde_json::json!({}))
+        .await
+        .unwrap();
     assert_eq!(
         client.taint().integrity,
         smgglrs_protocol::label::Integrity::Untrusted,
@@ -257,7 +260,10 @@ async fn client_call_non_read_stays_trusted() {
     })])
     .await;
 
-    let _result = client.call_tool("git_status", serde_json::json!({})).await.unwrap();
+    let _result = client
+        .call_tool("git_status", serde_json::json!({}))
+        .await
+        .unwrap();
     assert_eq!(client.taint(), DataLabel::TRUSTED_PUBLIC);
 }
 
@@ -311,10 +317,7 @@ async fn tool_loop_one_tool_call() {
 
 #[test]
 fn extract_text_success() {
-    let result = CallToolResult::success(vec![
-        Content::text("line 1"),
-        Content::text("line 2"),
-    ]);
+    let result = CallToolResult::success(vec![Content::text("line 1"), Content::text("line 2")]);
     assert_eq!(extract_text(&result), "line 1line 2");
 }
 

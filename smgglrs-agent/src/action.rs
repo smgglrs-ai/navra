@@ -132,26 +132,50 @@ impl AgentAction {
     /// Classify a tool call by name and arguments.
     pub fn classify(tool_name: &str, args: &Value) -> Self {
         match tool_name {
-            "file_read" => Self::FileRead { path: str_field(args, "path") },
-            "file_write" => Self::FileWrite { path: str_field(args, "path") },
-            "file_edit" => Self::FileEdit { path: str_field(args, "path") },
-            "file_delete" => Self::FileDelete { path: str_field(args, "path") },
-            "file_search" | "file_find" => Self::FileSearch { query: str_field(args, "query") },
-            "git_status" => Self::GitStatus { repo: str_field(args, "repo") },
-            "git_diff" => Self::GitDiff { repo: str_field(args, "repo") },
+            "file_read" => Self::FileRead {
+                path: str_field(args, "path"),
+            },
+            "file_write" => Self::FileWrite {
+                path: str_field(args, "path"),
+            },
+            "file_edit" => Self::FileEdit {
+                path: str_field(args, "path"),
+            },
+            "file_delete" => Self::FileDelete {
+                path: str_field(args, "path"),
+            },
+            "file_search" | "file_find" => Self::FileSearch {
+                query: str_field(args, "query"),
+            },
+            "git_status" => Self::GitStatus {
+                repo: str_field(args, "repo"),
+            },
+            "git_diff" => Self::GitDiff {
+                repo: str_field(args, "repo"),
+            },
             "git_commit" => Self::GitCommit {
                 repo: str_field(args, "repo"),
                 message: str_field(args, "message"),
             },
-            "rag_search" | "rag_query" => Self::RagSearch { query: str_field(args, "query") },
-            "memory_store" => Self::MemoryStore { kind: str_field(args, "kind") },
-            "memory_query" | "memory_search" => Self::MemoryQuery { query: str_field(args, "query") },
-            "team_create" => Self::TeamCreate { name: str_field(args, "name") },
+            "rag_search" | "rag_query" => Self::RagSearch {
+                query: str_field(args, "query"),
+            },
+            "memory_store" => Self::MemoryStore {
+                kind: str_field(args, "kind"),
+            },
+            "memory_query" | "memory_search" => Self::MemoryQuery {
+                query: str_field(args, "query"),
+            },
+            "team_create" => Self::TeamCreate {
+                name: str_field(args, "name"),
+            },
             "team_message" | "team_send" => Self::TeamMessage {
                 team: str_field(args, "team"),
                 target: str_field(args, "target"),
             },
-            "flow_start" | "flow_run" => Self::FlowStart { flow: str_field(args, "flow") },
+            "flow_start" | "flow_run" => Self::FlowStart {
+                flow: str_field(args, "flow"),
+            },
             _ if tool_name.starts_with("file_")
                 || tool_name.starts_with("git_")
                 || tool_name.starts_with("rag_")
@@ -159,9 +183,13 @@ impl AgentAction {
                 || tool_name.starts_with("team_")
                 || tool_name.starts_with("flow_") =>
             {
-                Self::McpToolCall { tool: tool_name.to_string() }
+                Self::McpToolCall {
+                    tool: tool_name.to_string(),
+                }
             }
-            _ => Self::Unknown { tool: tool_name.to_string() },
+            _ => Self::Unknown {
+                tool: tool_name.to_string(),
+            },
         }
     }
 
@@ -181,7 +209,9 @@ impl AgentAction {
     /// Risk level of this action.
     pub fn risk_level(&self) -> RiskLevel {
         match self {
-            Self::FileRead { .. } | Self::GitStatus { .. } | Self::GitDiff { .. } => RiskLevel::None,
+            Self::FileRead { .. } | Self::GitStatus { .. } | Self::GitDiff { .. } => {
+                RiskLevel::None
+            }
             Self::FileSearch { .. } | Self::RagSearch { .. } | Self::MemoryQuery { .. } => {
                 RiskLevel::Low
             }
@@ -189,9 +219,9 @@ impl AgentAction {
                 RiskLevel::Medium
             }
             Self::FileDelete { .. } | Self::GitCommit { .. } => RiskLevel::High,
-            Self::TeamCreate { .. }
-            | Self::TeamMessage { .. }
-            | Self::FlowStart { .. } => RiskLevel::Critical,
+            Self::TeamCreate { .. } | Self::TeamMessage { .. } | Self::FlowStart { .. } => {
+                RiskLevel::Critical
+            }
             Self::McpToolCall { .. } | Self::Unknown { .. } => RiskLevel::Medium,
         }
     }
@@ -249,12 +279,12 @@ mod tests {
 
     #[test]
     fn classify_git_commit() {
-        let action = AgentAction::classify(
-            "git_commit",
-            &json!({"repo": "/repo", "message": "fix"}),
+        let action =
+            AgentAction::classify("git_commit", &json!({"repo": "/repo", "message": "fix"}));
+        assert!(
+            matches!(action, AgentAction::GitCommit { ref repo, ref message }
+            if repo == "/repo" && message == "fix")
         );
-        assert!(matches!(action, AgentAction::GitCommit { ref repo, ref message }
-            if repo == "/repo" && message == "fix"));
         assert!(!action.is_read_only());
         assert_eq!(action.risk_level(), RiskLevel::High);
     }

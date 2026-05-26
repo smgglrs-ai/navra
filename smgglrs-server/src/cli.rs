@@ -539,7 +539,9 @@ pub(crate) async fn pii_download_multilingual() -> anyhow::Result<()> {
     let model_dir = smgglrs_core::safety::default_pii_ner_multilingual_model_dir();
     std::fs::create_dir_all(&model_dir)?;
 
-    println!("Pulling tjruesch/xlm-roberta-base-ner-hrl-onnx — multilingual NER (PER, LOC, ORG, DATE)");
+    println!(
+        "Pulling tjruesch/xlm-roberta-base-ner-hrl-onnx — multilingual NER (PER, LOC, ORG, DATE)"
+    );
     println!("Languages: English, French, German, Spanish, Italian, Portuguese, Dutch, and more");
 
     // Download model.onnx (from onnx/ subdirectory in the repo)
@@ -694,7 +696,9 @@ mod tests {
         .unwrap();
 
         match cli.command {
-            Commands::Run { upstream_prompts, .. } => {
+            Commands::Run {
+                upstream_prompts, ..
+            } => {
                 assert_eq!(upstream_prompts.len(), 2);
                 assert_eq!(upstream_prompts[0], "syllogis:legal_analysis");
                 assert_eq!(upstream_prompts[1], "syllogis:legal_syllogism");
@@ -705,15 +709,12 @@ mod tests {
 
     #[test]
     fn cli_run_no_upstream_prompt() {
-        let cli = Cli::try_parse_from([
-            "smgglrs",
-            "run",
-            "Do something",
-        ])
-        .unwrap();
+        let cli = Cli::try_parse_from(["smgglrs", "run", "Do something"]).unwrap();
 
         match cli.command {
-            Commands::Run { upstream_prompts, .. } => {
+            Commands::Run {
+                upstream_prompts, ..
+            } => {
                 assert!(upstream_prompts.is_empty());
             }
             _ => panic!("Expected Run command"),
@@ -724,7 +725,9 @@ mod tests {
     fn cli_pii_download_default() {
         let cli = Cli::try_parse_from(["smgglrs", "pii", "download"]).unwrap();
         match cli.command {
-            Commands::Pii { action: PiiAction::Download { multilingual } } => {
+            Commands::Pii {
+                action: PiiAction::Download { multilingual },
+            } => {
                 assert!(!multilingual);
             }
             _ => panic!("Expected Pii Download command"),
@@ -733,10 +736,11 @@ mod tests {
 
     #[test]
     fn cli_pii_download_multilingual() {
-        let cli =
-            Cli::try_parse_from(["smgglrs", "pii", "download", "--multilingual"]).unwrap();
+        let cli = Cli::try_parse_from(["smgglrs", "pii", "download", "--multilingual"]).unwrap();
         match cli.command {
-            Commands::Pii { action: PiiAction::Download { multilingual } } => {
+            Commands::Pii {
+                action: PiiAction::Download { multilingual },
+            } => {
                 assert!(multilingual);
             }
             _ => panic!("Expected Pii Download command"),

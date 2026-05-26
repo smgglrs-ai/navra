@@ -1,6 +1,4 @@
-use smgglrs_protocol::permissions::{
-    PermissionGrantEntry, PermissionScope,
-};
+use smgglrs_protocol::permissions::{PermissionGrantEntry, PermissionScope};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};

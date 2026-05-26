@@ -79,10 +79,7 @@ impl Tray for McpdTray {
         } else if self.pending.is_empty() {
             format!("smgglrs — {} agent(s)", self.agents.len())
         } else {
-            format!(
-                "smgglrs — {} pending approval(s)",
-                self.pending.len()
-            )
+            format!("smgglrs — {} pending approval(s)", self.pending.len())
         };
         ToolTip {
             title: "smgglrs".to_string(),
@@ -227,7 +224,10 @@ pub async fn spawn_tray(
         cmd_tx,
     };
 
-    let handle = tray.spawn().await.map_err(|e| anyhow::anyhow!("Tray spawn failed: {e}"))?;
+    let handle = tray
+        .spawn()
+        .await
+        .map_err(|e| anyhow::anyhow!("Tray spawn failed: {e}"))?;
 
     Ok((cmd_rx, handle))
 }
@@ -365,9 +365,9 @@ mod tests {
             cmd_tx: tx,
         };
         let menu = tray.menu();
-        let has_quit = menu.iter().any(|item| {
-            matches!(item, MenuItem::Standard(s) if s.label == "Quit")
-        });
+        let has_quit = menu
+            .iter()
+            .any(|item| matches!(item, MenuItem::Standard(s) if s.label == "Quit"));
         assert!(has_quit);
     }
 
@@ -386,9 +386,9 @@ mod tests {
             cmd_tx: tx,
         };
         let menu = tray.menu();
-        let has_pending_header = menu.iter().any(|item| {
-            matches!(item, MenuItem::Standard(s) if s.label.contains("Pending Approvals"))
-        });
+        let has_pending_header = menu.iter().any(
+            |item| matches!(item, MenuItem::Standard(s) if s.label.contains("Pending Approvals")),
+        );
         assert!(has_pending_header);
     }
 
@@ -405,9 +405,9 @@ mod tests {
             cmd_tx: tx,
         };
         let menu = tray.menu();
-        let has_agent = menu.iter().any(|item| {
-            matches!(item, MenuItem::Standard(s) if s.label.contains("claude-code"))
-        });
+        let has_agent = menu
+            .iter()
+            .any(|item| matches!(item, MenuItem::Standard(s) if s.label.contains("claude-code")));
         assert!(has_agent);
     }
 }

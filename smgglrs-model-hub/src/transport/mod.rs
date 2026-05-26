@@ -23,9 +23,7 @@ pub trait ModelTransport: Send + Sync {
     fn pull<'a>(
         &'a self,
         uri: &'a ModelUri,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Vec<u8>, HubError>> + Send + 'a>,
-    >;
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, HubError>> + Send + 'a>>;
 
     /// Fetch vendor metadata from the registry without pulling the model.
     ///

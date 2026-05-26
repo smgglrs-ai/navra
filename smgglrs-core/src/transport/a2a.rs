@@ -64,58 +64,47 @@ pub(crate) async fn handle_a2a_post(
 
     match request.method.as_str() {
         "message/send" => {
-            let params: MessageSendParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return Json(JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::invalid_params("Invalid message/send params"),
-                    ))
-                    .into_response();
-                }
-            };
+            let params: MessageSendParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return Json(JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid message/send params"),
+                        ))
+                        .into_response();
+                    }
+                };
 
             match crate::a2a::handle_message_send(server, &state.task_store, params, agent).await {
-                Ok(task) => {
-                    Json(JsonRpcResponse::success(
-                        id,
-                        serde_json::to_value(task).unwrap_or_else(|e| {
+                Ok(task) => Json(JsonRpcResponse::success(
+                    id,
+                    serde_json::to_value(task).unwrap_or_else(|e| {
                         tracing::error!(error = %e, "A2A serialization failed");
                         serde_json::json!({"error": "serialization failed"})
                     }),
-                    ))
-                    .into_response()
-                }
+                ))
+                .into_response(),
                 Err(err) => Json(JsonRpcResponse::error(id, err)).into_response(),
             }
         }
 
         "message/stream" => {
-            let params: MessageSendParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return Json(JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::invalid_params("Invalid message/stream params"),
-                    ))
-                    .into_response();
-                }
-            };
+            let params: MessageSendParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return Json(JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid message/stream params"),
+                        ))
+                        .into_response();
+                    }
+                };
 
-            let events = crate::a2a::handle_message_stream(
-                server,
-                &state.task_store,
-                params,
-                agent,
-                id,
-            )
-            .await;
+            let events =
+                crate::a2a::handle_message_stream(server, &state.task_store, params, agent, id)
+                    .await;
 
             let stream = futures_util::stream::iter(events.into_iter().map(|resp| {
                 let data = serde_json::to_string(&resp).unwrap_or_default();
@@ -128,19 +117,17 @@ pub(crate) async fn handle_a2a_post(
         }
 
         "tasks/get" => {
-            let params: TaskQueryParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return Json(JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::invalid_params("Invalid tasks/get params"),
-                    ))
-                    .into_response();
-                }
-            };
+            let params: TaskQueryParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return Json(JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid tasks/get params"),
+                        ))
+                        .into_response();
+                    }
+                };
 
             match crate::a2a::handle_tasks_get(&state.task_store, params, &agent) {
                 Ok(task) => Json(JsonRpcResponse::success(
@@ -156,19 +143,17 @@ pub(crate) async fn handle_a2a_post(
         }
 
         "tasks/cancel" => {
-            let params: TaskIdParams = match request
-                .params
-                .and_then(|p| serde_json::from_value(p).ok())
-            {
-                Some(p) => p,
-                None => {
-                    return Json(JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::invalid_params("Invalid tasks/cancel params"),
-                    ))
-                    .into_response();
-                }
-            };
+            let params: TaskIdParams =
+                match request.params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return Json(JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid tasks/cancel params"),
+                        ))
+                        .into_response();
+                    }
+                };
 
             match crate::a2a::handle_tasks_cancel(&state.task_store, params, &agent) {
                 Ok(task) => Json(JsonRpcResponse::success(

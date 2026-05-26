@@ -79,12 +79,10 @@ impl A2aClient {
             });
         }
 
-        let result = response
-            .result
-            .ok_or_else(|| A2aError::Protocol {
-                code: -32600,
-                message: "empty result in response".to_string(),
-            })?;
+        let result = response.result.ok_or_else(|| A2aError::Protocol {
+            code: -32600,
+            message: "empty result in response".to_string(),
+        })?;
 
         serde_json::from_value(result).map_err(A2aError::Serialization)
     }
@@ -113,12 +111,10 @@ impl A2aClient {
             });
         }
 
-        let result = response
-            .result
-            .ok_or_else(|| A2aError::Protocol {
-                code: -32600,
-                message: "empty result in response".to_string(),
-            })?;
+        let result = response.result.ok_or_else(|| A2aError::Protocol {
+            code: -32600,
+            message: "empty result in response".to_string(),
+        })?;
 
         serde_json::from_value(result).map_err(A2aError::Serialization)
     }
@@ -146,12 +142,10 @@ impl A2aClient {
             });
         }
 
-        let result = response
-            .result
-            .ok_or_else(|| A2aError::Protocol {
-                code: -32600,
-                message: "empty result in response".to_string(),
-            })?;
+        let result = response.result.ok_or_else(|| A2aError::Protocol {
+            code: -32600,
+            message: "empty result in response".to_string(),
+        })?;
 
         serde_json::from_value(result).map_err(A2aError::Serialization)
     }
@@ -281,10 +275,7 @@ pub enum A2aError {
 
     /// A2A protocol-level error (JSON-RPC error response).
     #[error("A2A protocol error: code={code}, message={message}")]
-    Protocol {
-        code: i32,
-        message: String,
-    },
+    Protocol { code: i32, message: String },
 
     /// Serialization/deserialization error.
     #[error("serialization error: {0}")]

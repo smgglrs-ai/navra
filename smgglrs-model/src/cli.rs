@@ -155,10 +155,7 @@ impl CliBackend {
         cmd.stderr(std::process::Stdio::piped());
 
         let mut child = cmd.spawn().map_err(|e| {
-            ModelError::Inference(format!(
-                "failed to spawn '{}': {e}",
-                self.cli_command
-            ))
+            ModelError::Inference(format!("failed to spawn '{}': {e}", self.cli_command))
         })?;
 
         // Write prompt to stdin if needed.
@@ -182,12 +179,7 @@ impl CliBackend {
                     self.timeout.as_secs()
                 ))
             })?
-            .map_err(|e| {
-                ModelError::Inference(format!(
-                    "'{}' failed: {e}",
-                    self.cli_command
-                ))
-            })?;
+            .map_err(|e| ModelError::Inference(format!("'{}' failed: {e}", self.cli_command)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -202,9 +194,8 @@ impl CliBackend {
             )));
         }
 
-        let stdout = String::from_utf8(output.stdout).map_err(|e| {
-            ModelError::Inference(format!("invalid UTF-8 in stdout: {e}"))
-        })?;
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|e| ModelError::Inference(format!("invalid UTF-8 in stdout: {e}")))?;
 
         Ok(stdout.trim().to_string())
     }
@@ -347,7 +338,10 @@ mod tests {
 
     #[test]
     fn build_args_placeholder_in_middle() {
-        let backend = CliBackend::new("test", vec!["ask".into(), "{prompt}".into(), "--json".into()]);
+        let backend = CliBackend::new(
+            "test",
+            vec!["ask".into(), "{prompt}".into(), "--json".into()],
+        );
         let (args, use_stdin) = backend.build_args("what is rust?");
         assert_eq!(args, vec!["ask", "what is rust?", "--json"]);
         assert!(!use_stdin);
@@ -365,10 +359,8 @@ mod tests {
 
     #[test]
     fn format_prompt_with_instructions() {
-        let mut req = CreateResponseRequest::new(
-            String::from("test"),
-            vec![crate::InputItem::user("Hello")],
-        );
+        let mut req =
+            CreateResponseRequest::new(String::from("test"), vec![crate::InputItem::user("Hello")]);
         req.instructions = Some("Be concise.".into());
         let prompt = CliBackend::format_prompt(&req);
         assert!(prompt.starts_with("Be concise."));
@@ -455,10 +447,8 @@ mod tests {
     #[tokio::test]
     async fn respond_returns_model_response() {
         let backend = CliBackend::new("echo", vec!["cli response".into()]);
-        let req = CreateResponseRequest::new(
-            String::from("test"),
-            vec![crate::InputItem::user("hello")],
-        );
+        let req =
+            CreateResponseRequest::new(String::from("test"), vec![crate::InputItem::user("hello")]);
         let resp = backend.respond(&req).await.unwrap();
         assert_eq!(resp.status, crate::ResponseStatus::Completed);
         assert_eq!(resp.text().unwrap(), "cli response");

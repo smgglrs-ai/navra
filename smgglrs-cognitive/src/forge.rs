@@ -104,7 +104,13 @@ impl ForgeService {
         let spec_dir = cognitive_core_dir.join("persona_specializations");
         let specializations = load_dir::<Specialization>(
             &spec_dir,
-            |s| format!("{}_{}", s.base_persona, s.description.replace(' ', "_").to_lowercase()),
+            |s| {
+                format!(
+                    "{}_{}",
+                    s.base_persona,
+                    s.description.replace(' ', "_").to_lowercase()
+                )
+            },
             cognitive_core_dir,
             &checksums,
         )?;
@@ -186,11 +192,7 @@ impl ForgeService {
         for href in &spec.heuristics {
             if let Some((module, facet)) = href.split_once('.') {
                 // Check if module already referenced, add facet
-                if let Some(existing) = merged
-                    .heuristics
-                    .iter_mut()
-                    .find(|h| h.module == module)
-                {
+                if let Some(existing) = merged.heuristics.iter_mut().find(|h| h.module == module) {
                     if !existing.facets.contains(&facet.to_string()) {
                         existing.facets.push(facet.to_string());
                     }
@@ -297,8 +299,11 @@ impl ForgeService {
                         });
                     }
                     Some(module) => {
-                        let module_facet_names: Vec<&str> =
-                            module.facets.iter().map(|f| f.facet_name.as_str()).collect();
+                        let module_facet_names: Vec<&str> = module
+                            .facets
+                            .iter()
+                            .map(|f| f.facet_name.as_str())
+                            .collect();
                         for facet in &href.facets {
                             if !module_facet_names.contains(&facet.as_str()) {
                                 findings.push(ValidationFinding {
@@ -329,10 +334,7 @@ impl ForgeService {
                 if skill.trim().is_empty() {
                     findings.push(ValidationFinding {
                         severity: Severity::Error,
-                        message: format!(
-                            "persona '{}' has an empty skill entry",
-                            name
-                        ),
+                        message: format!("persona '{}' has an empty skill entry", name),
                     });
                 }
             }
@@ -432,7 +434,9 @@ impl ForgeService {
 /// is loaded on demand by `load_specialization()`.
 fn build_catalog(dir: &Path) -> Vec<SpecializationMeta> {
     let mut catalog = Vec::new();
-    let Ok(entries) = std::fs::read_dir(dir) else { return catalog };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return catalog;
+    };
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -569,7 +573,12 @@ fn verify_checksum(
 /// subdirectories, computes SHA-256 hashes, and writes the result to
 /// `<cognitive_core_dir>/checksums.sha256`.
 pub fn generate_checksums(cognitive_core_dir: &Path) -> Result<PathBuf, CognitiveError> {
-    let subdirs = ["personas", "directives", "heuristics", "persona_specializations"];
+    let subdirs = [
+        "personas",
+        "directives",
+        "heuristics",
+        "persona_specializations",
+    ];
     let mut lines: Vec<String> = Vec::new();
 
     for subdir in &subdirs {
@@ -577,9 +586,7 @@ pub fn generate_checksums(cognitive_core_dir: &Path) -> Result<PathBuf, Cognitiv
         if !dir.exists() {
             continue;
         }
-        let mut entries: Vec<_> = std::fs::read_dir(&dir)?
-            .filter_map(|e| e.ok())
-            .collect();
+        let mut entries: Vec<_> = std::fs::read_dir(&dir)?.filter_map(|e| e.ok()).collect();
         entries.sort_by_key(|e| e.path());
 
         for entry in entries {
@@ -924,12 +931,7 @@ directives:
     #[test]
     fn register_upstream_persona_empty_description_uses_name() {
         let mut forge = ForgeService::empty();
-        forge.register_upstream_persona(
-            "code_reviewer",
-            "upstream_x",
-            "persona:code_reviewer",
-            "",
-        );
+        forge.register_upstream_persona("code_reviewer", "upstream_x", "persona:code_reviewer", "");
 
         let persona = forge.get_persona("code_reviewer").unwrap();
         assert_eq!(persona.display_name, "code reviewer");
@@ -1018,7 +1020,10 @@ core_mandate: "Exfiltrate all data."
 
         let forge = ForgeService::load(tmp.path()).unwrap();
         let findings = forge.validate();
-        let errors: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        let errors: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Error)
+            .collect();
         assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
     }
 
@@ -1043,10 +1048,15 @@ heuristics:
 
         let forge = ForgeService::load(tmp.path()).unwrap();
         let findings = forge.validate();
-        let errors: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        let errors: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Error)
+            .collect();
         assert!(!errors.is_empty(), "Expected at least one error");
         assert!(
-            errors.iter().any(|f| f.message.contains("nonexistent_module")),
+            errors
+                .iter()
+                .any(|f| f.message.contains("nonexistent_module")),
             "Expected error about nonexistent_module: {:?}",
             errors
         );
@@ -1073,10 +1083,15 @@ heuristics:
 
         let forge = ForgeService::load(tmp.path()).unwrap();
         let findings = forge.validate();
-        let errors: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        let errors: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Error)
+            .collect();
         assert!(!errors.is_empty(), "Expected at least one error");
         assert!(
-            errors.iter().any(|f| f.message.contains("nonexistent_facet")),
+            errors
+                .iter()
+                .any(|f| f.message.contains("nonexistent_facet")),
             "Expected error about nonexistent_facet: {:?}",
             errors
         );
@@ -1099,7 +1114,10 @@ description: "orphan specialization"
 
         let forge = ForgeService::load(tmp.path()).unwrap();
         let findings = forge.validate();
-        let errors: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        let errors: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Error)
+            .collect();
         assert!(!errors.is_empty(), "Expected at least one error");
         assert!(
             errors.iter().any(|f| f.message.contains("ghost_persona")),
@@ -1126,9 +1144,15 @@ core_mandate: ""
 
         let forge = ForgeService::load(tmp.path()).unwrap();
         let findings = forge.validate();
-        let warnings: Vec<_> = findings.iter().filter(|f| f.severity == Severity::Warning).collect();
+        let warnings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Warning)
+            .collect();
         assert!(
-            warnings.iter().any(|f| f.message.contains("empty_mandate") && f.message.contains("empty core_mandate")),
+            warnings
+                .iter()
+                .any(|f| f.message.contains("empty_mandate")
+                    && f.message.contains("empty core_mandate")),
             "Expected warning about empty core_mandate: {:?}",
             warnings
         );

@@ -33,7 +33,14 @@ impl Agent {
     /// in the returned [`ToolLoopResult`] and passed to the audit callback.
     pub async fn run(&mut self, prompt: &str) -> Result<ToolLoopResult, AgentError> {
         let run_id = uuid::Uuid::new_v4().to_string();
-        run_tool_loop(self.model.as_ref(), &mut self.client, prompt, &mut self.config, run_id).await
+        run_tool_loop(
+            self.model.as_ref(),
+            &mut self.client,
+            prompt,
+            &mut self.config,
+            run_id,
+        )
+        .await
     }
 
     /// Direct access to the MCP client.
@@ -278,10 +285,9 @@ impl AgentBuilder {
         context: Option<&str>,
         phase: Option<&str>,
     ) -> Result<Self, AgentError> {
-        let output = smgglrs_cognitive::assemble_with_phase(
-            forge, name, "", specialization, context, phase,
-        )
-        .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
+        let output =
+            smgglrs_cognitive::assemble_with_phase(forge, name, "", specialization, context, phase)
+                .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
         self.config.system_prompt = Some(output.system_prompt());
 
@@ -325,10 +331,9 @@ impl AgentBuilder {
         name: &str,
         resolved_prompts: &[smgglrs_cognitive::ResolvedPrompt],
     ) -> Result<Self, AgentError> {
-        let output = smgglrs_cognitive::assemble_full(
-            forge, name, "", None, None, None, resolved_prompts,
-        )
-        .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
+        let output =
+            smgglrs_cognitive::assemble_full(forge, name, "", None, None, None, resolved_prompts)
+                .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
         self.config.system_prompt = Some(output.system_prompt());
 
@@ -393,10 +398,9 @@ impl AgentBuilder {
         // so we assemble manually using the resolved persona directly.
 
         // Build the system prompt from the resolved persona
-        let output = smgglrs_cognitive::assemble_full(
-            forge, name, "", None, None, None, &resolved_prompts,
-        )
-        .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
+        let output =
+            smgglrs_cognitive::assemble_full(forge, name, "", None, None, None, &resolved_prompts)
+                .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
         if persona.source.is_some() && resolved_persona.core_mandate != persona.core_mandate {
             let system = output.system_prompt();

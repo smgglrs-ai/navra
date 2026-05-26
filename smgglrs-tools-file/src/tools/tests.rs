@@ -1,5 +1,5 @@
-use super::*;
 use super::path_security::resolve_path;
+use super::*;
 use crate::store::IndexStore;
 use smgglrs_core::auth::{AgentIdentity, CallContext};
 use smgglrs_core::notify::NoopNotifier;
@@ -67,7 +67,9 @@ fn text_of(result: &CallToolResult) -> &str {
 
 #[test]
 fn resolve_path_rejects_relative() {
-    assert!(resolve_path("relative/path.txt", true).unwrap_err().contains("absolute"));
+    assert!(resolve_path("relative/path.txt", true)
+        .unwrap_err()
+        .contains("absolute"));
 }
 
 #[test]
@@ -97,7 +99,8 @@ async fn read_full_file() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("Hello, world!"));
     assert!(text_of(&result).contains("1 lines"));
@@ -114,7 +117,8 @@ async fn read_partial_with_offset_and_limit() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap(), "offset": 2, "limit": 2}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     let text = text_of(&result);
     assert!(text.contains("lines 2-3 of"));
@@ -137,7 +141,8 @@ async fn read_denied_path() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(result.is_error);
     assert!(text_of(&result).contains("denied"));
 }
@@ -154,7 +159,8 @@ async fn write_new_file() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "# Hello\n\nWorld"}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "# Hello\n\nWorld");
 }
@@ -169,7 +175,8 @@ async fn write_denied_for_readonly() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "fail"}),
         readonly_ctx(),
-    ).await;
+    )
+    .await;
     assert!(result.is_error);
     assert!(!file.exists());
 }
@@ -191,7 +198,8 @@ async fn edit_replaces_unique_string() {
             "new_string": "Goodbye world"
         }),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     assert_eq!(
         std::fs::read_to_string(&file).unwrap(),
@@ -214,7 +222,8 @@ async fn edit_fails_if_not_found() {
             "new_string": "replacement"
         }),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(result.is_error);
     assert!(text_of(&result).contains("not found"));
 }
@@ -234,7 +243,8 @@ async fn edit_fails_if_not_unique() {
             "new_string": "qux"
         }),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(result.is_error);
     assert!(text_of(&result).contains("2 times"));
     // File should be unchanged
@@ -256,7 +266,8 @@ async fn edit_denied_for_readonly() {
             "new_string": "modified"
         }),
         readonly_ctx(),
-    ).await;
+    )
+    .await;
     assert!(result.is_error);
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "content");
 }
@@ -274,7 +285,8 @@ async fn info_returns_metadata() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     let text = text_of(&result);
     assert!(text.contains("type: file"));
@@ -296,7 +308,8 @@ async fn delete_removes_file() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     assert!(!file.exists());
 }
@@ -312,7 +325,8 @@ async fn delete_denied_for_readonly() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         readonly_ctx(),
-    ).await;
+    )
+    .await;
     assert!(result.is_error);
     assert!(file.exists());
 }
@@ -330,7 +344,8 @@ async fn list_directory() {
     let result = handler(
         serde_json::json!({"path": tmp.path().to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     let text = text_of(&result);
     assert!(text.contains("a.txt"));
@@ -345,16 +360,21 @@ async fn search_returns_results() {
     let state = test_state(&tmp);
     let path = tmp.path().join("notes.md");
     std::fs::write(&path, "").unwrap();
-    state.index.upsert(
-        path.to_str().unwrap(), "text/markdown", 100, "t", "h",
-        "Notes", "rust programming guide",
-    ).unwrap();
+    state
+        .index
+        .upsert(
+            path.to_str().unwrap(),
+            "text/markdown",
+            100,
+            "t",
+            "h",
+            "Notes",
+            "rust programming guide",
+        )
+        .unwrap();
 
     let (_, handler) = handle_search_handler(state);
-    let result = handler(
-        serde_json::json!({"query": "rust programming"}),
-        dev_ctx(),
-    ).await;
+    let result = handler(serde_json::json!({"query": "rust programming"}), dev_ctx()).await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("1 result"));
 }
@@ -398,13 +418,15 @@ async fn write_then_read_roundtrip() {
     write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "# RT\n\nContent."}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
 
     let (_, read_h) = handle_read_handler(state);
     let result = read_h(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(text_of(&result).contains("# RT\n\nContent."));
 }
 
@@ -418,7 +440,8 @@ async fn write_edit_read_roundtrip() {
     write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "Hello world"}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
 
     let (_, edit_h) = handle_edit_handler(state.clone());
     edit_h(
@@ -428,13 +451,15 @@ async fn write_edit_read_roundtrip() {
             "new_string": "Goodbye world"
         }),
         dev_ctx(),
-    ).await;
+    )
+    .await;
 
     let (_, read_h) = handle_read_handler(state);
     let result = read_h(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(text_of(&result).contains("Goodbye world"));
 }
 
@@ -451,13 +476,11 @@ async fn write_then_search_roundtrip() {
             "content": "# K8s Guide\n\nDeploy pods with kubectl."
         }),
         dev_ctx(),
-    ).await;
+    )
+    .await;
 
     let (_, search_h) = handle_search_handler(state);
-    let result = search_h(
-        serde_json::json!({"query": "kubectl deploy"}),
-        dev_ctx(),
-    ).await;
+    let result = search_h(serde_json::json!({"query": "kubectl deploy"}), dev_ctx()).await;
     assert!(text_of(&result).contains("1 result"));
 }
 
@@ -471,19 +494,22 @@ async fn write_delete_read_fails() {
     write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "temporary"}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
 
     let (_, delete_h) = handle_delete_handler(state.clone());
     delete_h(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
 
     let (_, read_h) = handle_read_handler(state);
     let result = read_h(
         serde_json::json!({"path": file.to_str().unwrap()}),
         dev_ctx(),
-    ).await;
+    )
+    .await;
     assert!(result.is_error);
 }
 
@@ -516,7 +542,10 @@ fn test_state_with_approval(tmpdir: &TempDir) -> Arc<DocsState> {
 }
 
 fn approval_ctx() -> CallContext {
-    CallContext::new(AgentIdentity::new("approval-agent", "needs_approval"), "test")
+    CallContext::new(
+        AgentIdentity::new("approval-agent", "needs_approval"),
+        "test",
+    )
 }
 
 fn admin_ctx() -> CallContext {
@@ -533,7 +562,8 @@ async fn write_needs_approval_returns_request_id() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
 
     assert!(!result.is_error);
     let text = text_of(&result);
@@ -554,14 +584,16 @@ async fn approve_then_retry_succeeds() {
     write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "approved content"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
 
     let pending = state.approvals.pending_requests();
     let (_, approve_h) = handle_approve_handler(state.clone());
     let result = approve_h(
         serde_json::json!({"request_id": pending[0].id}),
         admin_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("Approved"));
 
@@ -569,7 +601,8 @@ async fn approve_then_retry_succeeds() {
     let result = write_h2(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "approved content"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("Written"));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "approved content");
@@ -585,14 +618,16 @@ async fn deny_then_retry_still_needs_approval() {
     write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
 
     let pending = state.approvals.pending_requests();
     let (_, deny_h) = handle_deny_handler(state.clone());
     let result = deny_h(
         serde_json::json!({"request_id": pending[0].id}),
         admin_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("Denied"));
 
@@ -600,7 +635,8 @@ async fn deny_then_retry_still_needs_approval() {
     let result = write_h2(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
     assert!(text_of(&result).contains("Approval required"));
     assert!(!file.exists());
 }
@@ -614,7 +650,8 @@ async fn approve_unknown_request_fails() {
     let result = handler(
         serde_json::json!({"request_id": "nonexistent"}),
         admin_ctx(),
-    ).await;
+    )
+    .await;
     assert!(result.is_error);
     assert!(text_of(&result).contains("No pending"));
 }
@@ -629,26 +666,30 @@ async fn grant_is_single_use() {
     write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "first"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
     let pending = state.approvals.pending_requests();
     let (_, approve_h) = handle_approve_handler(state.clone());
     approve_h(
         serde_json::json!({"request_id": pending[0].id}),
         admin_ctx(),
-    ).await;
+    )
+    .await;
 
     let (_, write_h2) = handle_write_handler(state.clone());
     let result = write_h2(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "first"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
     assert!(text_of(&result).contains("Written"));
 
     let (_, write_h3) = handle_write_handler(state);
     let result = write_h3(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "second"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
     assert!(text_of(&result).contains("Approval required"));
 }
 
@@ -663,7 +704,8 @@ async fn read_without_approval_still_works() {
     let result = handler(
         serde_json::json!({"path": file.to_str().unwrap()}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
     assert!(!result.is_error);
     assert!(text_of(&result).contains("no approval needed"));
 }
@@ -678,7 +720,8 @@ async fn dbus_approval_also_creates_grant() {
     write_h(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
 
     let pending = state.approvals.pending_requests();
     state.approvals.approve(&pending[0].id);
@@ -687,6 +730,7 @@ async fn dbus_approval_also_creates_grant() {
     let result = write_h2(
         serde_json::json!({"path": file.to_str().unwrap(), "content": "content"}),
         approval_ctx(),
-    ).await;
+    )
+    .await;
     assert!(text_of(&result).contains("Written"));
 }

@@ -14,34 +14,33 @@
 //! - `embed()` — text embeddings, `classify()` — content safety
 //! - `generate()` — simple single-turn, `transcribe()` / `synthesize()` — audio
 
+mod anthropic;
 /// Chat Completions types used for backend translation and streaming.
 pub mod chat;
-pub mod safe_backend;
-pub(crate) mod http_common;
-mod anthropic;
 pub mod cli;
+pub(crate) mod http_common;
 mod onnx;
 mod openai;
+pub mod safe_backend;
 
 pub use anthropic::AnthropicBackend;
 pub use cli::CliBackend;
-pub use onnx::{Device, ModelTask, OpenVinoDevice, OnnxBackend};
+pub use onnx::{Device, ModelTask, OnnxBackend, OpenVinoDevice};
 pub use openai::OpenAiBackend;
 pub use safe_backend::{ModelSafetyFilter, SafeModelBackend};
 
 // Re-export Open Responses types as the public model I/O interface.
 pub use smgglrs_responses::{
-    self as responses,
-    CreateResponseRequest, Response as ModelResponse, ResponseFormat, ResponseStatus,
-    FunctionTool as ResponseTool, ToolChoice as ResponseToolChoice,
-    InputItem, OutputItem, MessageItem, FunctionCallItem, FunctionCallOutputItem,
-    FunctionCallOutputContent, ReasoningItem, MessageRole, ItemStatus, MessageContent,
-    InputContent, OutputContent, StreamEvent,
+    self as responses, CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent,
+    FunctionCallOutputItem, FunctionTool as ResponseTool, InputContent, InputItem, ItemStatus,
+    MessageContent, MessageItem, MessageRole, OutputContent, OutputItem, ReasoningItem,
+    Response as ModelResponse, ResponseFormat, ResponseStatus, StreamEvent,
+    ToolChoice as ResponseToolChoice,
 };
 
+use futures_util::stream::Stream;
 use std::future::Future;
 use std::pin::Pin;
-use futures_util::stream::Stream;
 
 /// Error type for model operations.
 #[derive(Debug, thiserror::Error)]
@@ -110,7 +109,9 @@ impl ClassifyResponse {
     /// Returns true if the top label indicates unsafe content,
     /// with confidence above the given threshold.
     pub fn is_unsafe(&self, threshold: f32) -> bool {
-        self.labels.iter().any(|l| l.label != "safe" && l.score >= threshold)
+        self.labels
+            .iter()
+            .any(|l| l.label != "safe" && l.score >= threshold)
     }
 
     /// Check labels against per-category thresholds.
@@ -133,7 +134,11 @@ impl ClassifyResponse {
                 }
             })
             .collect();
-        triggered.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        triggered.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         triggered
     }
 }
@@ -380,13 +385,17 @@ pub(crate) fn responses_to_chat(req: &CreateResponseRequest) -> chat::ChatReques
         _ => ToolChoice::Auto,
     });
 
-    let response_format = req.text.as_ref().and_then(|t| {
-        t.format.as_ref().map(|f| match f {
-            smgglrs_responses::ResponseFormat::JsonObject => serde_json::json!("json"),
-            smgglrs_responses::ResponseFormat::JsonSchema { schema, .. } => schema.clone(),
-            smgglrs_responses::ResponseFormat::Text => serde_json::Value::Null,
+    let response_format = req
+        .text
+        .as_ref()
+        .and_then(|t| {
+            t.format.as_ref().map(|f| match f {
+                smgglrs_responses::ResponseFormat::JsonObject => serde_json::json!("json"),
+                smgglrs_responses::ResponseFormat::JsonSchema { schema, .. } => schema.clone(),
+                smgglrs_responses::ResponseFormat::Text => serde_json::Value::Null,
+            })
         })
-    }).filter(|v| !v.is_null());
+        .filter(|v| !v.is_null());
 
     ChatRequest {
         messages,

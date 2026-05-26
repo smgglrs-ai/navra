@@ -125,7 +125,11 @@ impl Declassification {
     /// | Pseudonymize| Pii (no change)  | Still personal data under GDPR Art. 4(5)       |
     /// | Block       | N/A              | No result returned                            |
     /// | Pass        | Pii (no change)  | Raw PII still present                         |
-    pub fn from_filter_result(action: &FilterAction, findings_count: usize, all_handled: bool) -> Self {
+    pub fn from_filter_result(
+        action: &FilterAction,
+        findings_count: usize,
+        all_handled: bool,
+    ) -> Self {
         use smgglrs_protocol::label::Confidentiality;
 
         let (new_conf, reason) = match action {
@@ -417,9 +421,8 @@ impl FilterPipeline {
     ) -> (Result<String, String>, Declassification) {
         let (result, findings) = self.run_pipeline_with_findings(content, ctx, true).await;
         let all_handled = result.is_ok();
-        let declass = Declassification::from_filter_result(
-            &self.action, findings.len(), all_handled,
-        );
+        let declass =
+            Declassification::from_filter_result(&self.action, findings.len(), all_handled);
         (result, declass)
     }
 
@@ -507,7 +510,8 @@ impl FilterPipeline {
                 if let Some(ref m) = self.metrics {
                     m.record(&findings, &self.action);
                 }
-                let result = apply_action(&self.action, content, &mut findings, &self.pseudonym_map);
+                let result =
+                    apply_action(&self.action, content, &mut findings, &self.pseudonym_map);
                 return (result, findings);
             }
         }
@@ -768,14 +772,12 @@ mod tests {
 
     #[test]
     fn redact_replaces_findings() {
-        let mut findings = vec![
-            Finding {
-                start: 6,
-                end: 26,
-                category: "aws-key".to_string(),
-                confidence: 1.0,
-            },
-        ];
+        let mut findings = vec![Finding {
+            start: 6,
+            end: 26,
+            category: "aws-key".to_string(),
+            confidence: 1.0,
+        }];
         let result = redact("key = AKIAIOSFODNN7EXAMPLE rest", &mut findings);
         assert_eq!(result, "key = [REDACTED:aws-key] rest");
     }
@@ -783,8 +785,18 @@ mod tests {
     #[test]
     fn redact_handles_adjacent_findings() {
         let mut findings = vec![
-            Finding { start: 0, end: 3, category: "a".to_string(), confidence: 1.0 },
-            Finding { start: 4, end: 7, category: "b".to_string(), confidence: 1.0 },
+            Finding {
+                start: 0,
+                end: 3,
+                category: "a".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 4,
+                end: 7,
+                category: "b".to_string(),
+                confidence: 1.0,
+            },
         ];
         let result = redact("AAA BBB CCC", &mut findings);
         assert_eq!(result, "[REDACTED:a] [REDACTED:b] CCC");
@@ -793,8 +805,18 @@ mod tests {
     #[test]
     fn redact_handles_overlapping_findings() {
         let mut findings = vec![
-            Finding { start: 0, end: 5, category: "wide".to_string(), confidence: 1.0 },
-            Finding { start: 2, end: 4, category: "narrow".to_string(), confidence: 1.0 },
+            Finding {
+                start: 0,
+                end: 5,
+                category: "wide".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 2,
+                end: 4,
+                category: "narrow".to_string(),
+                confidence: 1.0,
+            },
         ];
         let result = redact("ABCDEFGH", &mut findings);
         // Wide finding covers the narrow one
@@ -926,14 +948,12 @@ mod tests {
     #[test]
     fn pseudonymize_replaces_findings() {
         let map = PseudonymMap::new();
-        let mut findings = vec![
-            Finding {
-                start: 4,
-                end: 15,
-                category: "email".to_string(),
-                confidence: 1.0,
-            },
-        ];
+        let mut findings = vec![Finding {
+            start: 4,
+            end: 15,
+            category: "email".to_string(),
+            confidence: 1.0,
+        }];
         let result = pseudonymize("Hi, a@b.example here", &mut findings, &map);
         assert_eq!(result, "Hi, Email_A here");
         assert!(!result.contains("a@b.example"));
@@ -943,15 +963,21 @@ mod tests {
     fn pseudonymize_consistent_across_calls() {
         let map = PseudonymMap::new();
         // First call
-        let mut findings1 = vec![
-            Finding { start: 0, end: 11, category: "person".to_string(), confidence: 1.0 },
-        ];
+        let mut findings1 = vec![Finding {
+            start: 0,
+            end: 11,
+            category: "person".to_string(),
+            confidence: 1.0,
+        }];
         let result1 = pseudonymize("Jean Dupont said hello", &mut findings1, &map);
 
         // Second call with same value at different position
-        let mut findings2 = vec![
-            Finding { start: 9, end: 20, category: "person".to_string(), confidence: 1.0 },
-        ];
+        let mut findings2 = vec![Finding {
+            start: 9,
+            end: 20,
+            category: "person".to_string(),
+            confidence: 1.0,
+        }];
         let result2 = pseudonymize("Reply to Jean Dupont please", &mut findings2, &map);
 
         assert_eq!(result1, "Person_A said hello");
@@ -962,8 +988,18 @@ mod tests {
     fn pseudonymize_different_values_different_pseudonyms() {
         let map = PseudonymMap::new();
         let mut findings = vec![
-            Finding { start: 0, end: 11, category: "person".to_string(), confidence: 1.0 },
-            Finding { start: 16, end: 28, category: "person".to_string(), confidence: 1.0 },
+            Finding {
+                start: 0,
+                end: 11,
+                category: "person".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 16,
+                end: 28,
+                category: "person".to_string(),
+                confidence: 1.0,
+            },
         ];
         let result = pseudonymize("Jean Dupont and Marie Dupont", &mut findings, &map);
         assert_eq!(result, "Person_A and Person_B");
@@ -973,8 +1009,18 @@ mod tests {
     fn pseudonymize_different_categories() {
         let map = PseudonymMap::new();
         let mut findings = vec![
-            Finding { start: 0, end: 4, category: "person".to_string(), confidence: 1.0 },
-            Finding { start: 11, end: 16, category: "location".to_string(), confidence: 1.0 },
+            Finding {
+                start: 0,
+                end: 4,
+                category: "person".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 11,
+                end: 16,
+                category: "location".to_string(),
+                confidence: 1.0,
+            },
         ];
         let result = pseudonymize("Jean lives Paris way", &mut findings, &map);
         assert_eq!(result, "Person_A lives Location_A way");
@@ -983,9 +1029,12 @@ mod tests {
     #[test]
     fn pseudonymize_no_original_in_output() {
         let map = PseudonymMap::new();
-        let mut findings = vec![
-            Finding { start: 5, end: 19, category: "email".to_string(), confidence: 1.0 },
-        ];
+        let mut findings = vec![Finding {
+            start: 5,
+            end: 19,
+            category: "email".to_string(),
+            confidence: 1.0,
+        }];
         let content = "mail jean@test.com ok";
         let result = pseudonymize(content, &mut findings, &map);
         assert!(!result.contains("jean@test.com"));
@@ -995,9 +1044,12 @@ mod tests {
     #[test]
     fn pseudonymize_extract_reverser() {
         let map = PseudonymMap::new();
-        let mut findings = vec![
-            Finding { start: 0, end: 4, category: "person".to_string(), confidence: 1.0 },
-        ];
+        let mut findings = vec![Finding {
+            start: 0,
+            end: 4,
+            category: "person".to_string(),
+            confidence: 1.0,
+        }];
         pseudonymize("Jean lives here", &mut findings, &map);
         let reverser = map.extract_reverser();
         assert_eq!(reverser.resolve("Person_A"), Some("Jean"));
@@ -1039,10 +1091,7 @@ mod tests {
 
     #[test]
     fn custom_pii_categories_recognized() {
-        register_pii_categories(&[
-            "employee-id".to_string(),
-            "badge".to_string(),
-        ]);
+        register_pii_categories(&["employee-id".to_string(), "badge".to_string()]);
         assert!(is_pii_category("employee-id"));
         assert!(is_pii_category("badge"));
         // Built-in categories still work
@@ -1073,9 +1122,12 @@ mod tests {
     #[tokio::test]
     async fn custom_pii_filter_in_pipeline_produces_findings() {
         let mut pipeline = FilterPipeline::new(FilterAction::Redact);
-        let filter = CustomPiiFilter::new(vec![
-            ("employee-id".to_string(), r"\bEMP-\d{6}\b".to_string(), "employee-id".to_string()),
-        ]).unwrap();
+        let filter = CustomPiiFilter::new(vec![(
+            "employee-id".to_string(),
+            r"\bEMP-\d{6}\b".to_string(),
+            "employee-id".to_string(),
+        )])
+        .unwrap();
         pipeline.add_filter(filter);
         let (result, findings) = pipeline
             .process_outbound_with_findings("Employee EMP-123456 is here", &ctx())
@@ -1091,9 +1143,24 @@ mod tests {
     fn pii_metrics_counting() {
         let metrics = PiiMetrics::new();
         let findings = vec![
-            Finding { start: 0, end: 5, category: "email".to_string(), confidence: 1.0 },
-            Finding { start: 10, end: 15, category: "phone".to_string(), confidence: 1.0 },
-            Finding { start: 20, end: 30, category: "aws-key".to_string(), confidence: 1.0 },
+            Finding {
+                start: 0,
+                end: 5,
+                category: "email".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 10,
+                end: 15,
+                category: "phone".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 20,
+                end: 30,
+                category: "aws-key".to_string(),
+                confidence: 1.0,
+            },
         ];
         metrics.record(&findings, &FilterAction::Redact);
         let snap = metrics.snapshot();
@@ -1109,9 +1176,12 @@ mod tests {
     #[test]
     fn pii_metrics_block_counting() {
         let metrics = PiiMetrics::new();
-        let findings = vec![
-            Finding { start: 0, end: 5, category: "ssn".to_string(), confidence: 1.0 },
-        ];
+        let findings = vec![Finding {
+            start: 0,
+            end: 5,
+            category: "ssn".to_string(),
+            confidence: 1.0,
+        }];
         metrics.record(&findings, &FilterAction::Block);
         let snap = metrics.snapshot();
         assert_eq!(snap.pii_blocked, 1);
@@ -1121,9 +1191,12 @@ mod tests {
     #[test]
     fn pii_metrics_reset() {
         let metrics = PiiMetrics::new();
-        let findings = vec![
-            Finding { start: 0, end: 5, category: "email".to_string(), confidence: 1.0 },
-        ];
+        let findings = vec![Finding {
+            start: 0,
+            end: 5,
+            category: "email".to_string(),
+            confidence: 1.0,
+        }];
         metrics.record(&findings, &FilterAction::Redact);
         assert_eq!(metrics.snapshot().total_scans, 1);
         metrics.reset();
@@ -1136,9 +1209,12 @@ mod tests {
     #[test]
     fn pii_metrics_no_pii_findings() {
         let metrics = PiiMetrics::new();
-        let findings = vec![
-            Finding { start: 0, end: 5, category: "aws-key".to_string(), confidence: 1.0 },
-        ];
+        let findings = vec![Finding {
+            start: 0,
+            end: 5,
+            category: "aws-key".to_string(),
+            confidence: 1.0,
+        }];
         metrics.record(&findings, &FilterAction::Redact);
         let snap = metrics.snapshot();
         assert_eq!(snap.total_scans, 1);

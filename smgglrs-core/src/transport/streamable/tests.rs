@@ -1,23 +1,27 @@
-use super::*;
 use super::handlers::SESSION_HEADER;
+use super::*;
 use crate::auth::{AgentIdentity, NoAuthenticator};
-use crate::protocol::{RequestId, ToolDefinition, ToolInputSchema, CallToolResult};
+use crate::protocol::{CallToolResult, RequestId, ToolDefinition, ToolInputSchema};
 use crate::server::McpServer;
 use crate::transport::sse::SseBroadcaster;
 use axum::body::Body;
 use axum::http::{HeaderMap, Request, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
-use tower::util::ServiceExt;
 use std::sync::Arc;
+use tower::util::ServiceExt;
 
 use crate::module::{Module, PromptHandler, ResourceHandler};
 
 struct TestPromptModule;
 
 impl Module for TestPromptModule {
-    fn name(&self) -> &str { "test_prompt" }
-    fn tools(&self) -> Vec<(ToolDefinition, crate::server::ToolHandler)> { vec![] }
+    fn name(&self) -> &str {
+        "test_prompt"
+    }
+    fn tools(&self) -> Vec<(ToolDefinition, crate::server::ToolHandler)> {
+        vec![]
+    }
     fn prompts(&self) -> Vec<(crate::protocol::PromptDefinition, PromptHandler)> {
         vec![(
             crate::protocol::PromptDefinition {
@@ -43,8 +47,12 @@ impl Module for TestPromptModule {
 struct TestResourceModule;
 
 impl Module for TestResourceModule {
-    fn name(&self) -> &str { "test_resource" }
-    fn tools(&self) -> Vec<(ToolDefinition, crate::server::ToolHandler)> { vec![] }
+    fn name(&self) -> &str {
+        "test_resource"
+    }
+    fn tools(&self) -> Vec<(ToolDefinition, crate::server::ToolHandler)> {
+        vec![]
+    }
     fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, ResourceHandler)> {
         vec![(
             crate::protocol::ResourceDefinition {
@@ -97,10 +105,7 @@ fn test_server() -> Arc<McpServer> {
     )
 }
 
-async fn post_json(
-    router: &Router,
-    body: serde_json::Value,
-) -> (StatusCode, serde_json::Value) {
+async fn post_json(router: &Router, body: serde_json::Value) -> (StatusCode, serde_json::Value) {
     let req = Request::builder()
         .method("POST")
         .uri("/mcp")
@@ -368,8 +373,10 @@ async fn init_session(router: &Router) -> String {
             }
         }),
         None,
-    ).await;
-    headers.get(SESSION_HEADER)
+    )
+    .await;
+    headers
+        .get(SESSION_HEADER)
         .expect("missing session header")
         .to_str()
         .unwrap()
@@ -458,11 +465,17 @@ async fn server_card_returns_metadata() {
     // Tools — internal tools (sys_*, smgglrs_var_*) are redacted from public card
     let tools = json["tools"].as_array().unwrap();
     // Only user-facing tools remain (ping); internal tools are filtered
-    assert!(tools.iter().any(|t| t["name"] == "ping"), "user tool 'ping' should be in card");
-    assert!(!tools.iter().any(|t| {
-        let n = t["name"].as_str().unwrap_or("");
-        n.starts_with("sys_") || n.starts_with("smgglrs_var_")
-    }), "internal tools should be redacted from public card");
+    assert!(
+        tools.iter().any(|t| t["name"] == "ping"),
+        "user tool 'ping' should be in card"
+    );
+    assert!(
+        !tools.iter().any(|t| {
+            let n = t["name"].as_str().unwrap_or("");
+            n.starts_with("sys_") || n.starts_with("smgglrs_var_")
+        }),
+        "internal tools should be redacted from public card"
+    );
 
     // Prompts
     let prompts = json["prompts"].as_array().unwrap();
@@ -643,7 +656,10 @@ async fn agent_card_returns_a2a_skills() {
     let ping = skills.iter().find(|s| s["id"] == "ping").unwrap();
     assert_eq!(ping["name"], "ping");
     assert_eq!(ping["description"], "Returns pong");
-    assert!(ping["tags"].as_array().unwrap().contains(&serde_json::json!("ping")));
+    assert!(ping["tags"]
+        .as_array()
+        .unwrap()
+        .contains(&serde_json::json!("ping")));
 }
 
 #[tokio::test]

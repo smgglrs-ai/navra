@@ -47,8 +47,7 @@ fn default_http_timeout_secs() -> u64 {
 }
 
 /// Verification backend mode.
-#[derive(Debug, Clone, Deserialize)]
-#[derive(schemars::JsonSchema)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OpenShellAuthMode {
     /// Verify JWT-SVID against SPIRE trust bundle.
@@ -124,8 +123,7 @@ impl OpenShellClaims {
                 || (key == "role" && self.role.as_deref() == Some(value))
         } else {
             // Bare label — check if any label key matches
-            self.labels.contains_key(label_expr)
-                || self.role.as_deref() == Some(label_expr)
+            self.labels.contains_key(label_expr) || self.role.as_deref() == Some(label_expr)
         }
     }
 }
@@ -167,23 +165,23 @@ impl OpenShellAuthenticator {
         let header = decode_header(token).map_err(|_| AuthError::InvalidToken)?;
         let alg = header.alg;
 
-        let key = decoding_key_from_pem(&pem_data, alg)
-            .map_err(|_| AuthError::InvalidToken)?;
+        let key = decoding_key_from_pem(&pem_data, alg).map_err(|_| AuthError::InvalidToken)?;
 
         let mut validation = Validation::new(alg);
         validation.validate_exp = true;
         if let Some(aud) = audience {
             validation.set_audience(&[aud]);
         } else {
-            tracing::warn!("SPIFFE provider has no audience configured — JWT audience validation disabled");
+            tracing::warn!(
+                "SPIFFE provider has no audience configured — JWT audience validation disabled"
+            );
             validation.validate_aud = false;
         }
 
-        let token_data = decode::<OpenShellClaims>(token, &key, &validation)
-            .map_err(|e| {
-                tracing::debug!(error = %e, "SPIFFE JWT verification failed");
-                AuthError::InvalidToken
-            })?;
+        let token_data = decode::<OpenShellClaims>(token, &key, &validation).map_err(|e| {
+            tracing::debug!(error = %e, "SPIFFE JWT verification failed");
+            AuthError::InvalidToken
+        })?;
 
         Ok(token_data.claims)
     }
@@ -220,15 +218,16 @@ impl OpenShellAuthenticator {
         if let Some(aud) = audience {
             validation.set_audience(&[aud]);
         } else {
-            tracing::warn!("OIDC provider has no audience configured — JWT audience validation disabled");
+            tracing::warn!(
+                "OIDC provider has no audience configured — JWT audience validation disabled"
+            );
             validation.validate_aud = false;
         }
 
-        let token_data = decode::<OpenShellClaims>(token, &key, &validation)
-            .map_err(|e| {
-                tracing::debug!(error = %e, "OIDC JWT verification failed");
-                AuthError::InvalidToken
-            })?;
+        let token_data = decode::<OpenShellClaims>(token, &key, &validation).map_err(|e| {
+            tracing::debug!(error = %e, "OIDC JWT verification failed");
+            AuthError::InvalidToken
+        })?;
 
         Ok(token_data.claims)
     }
@@ -255,15 +254,16 @@ impl OpenShellAuthenticator {
         if let Some(aud) = audience {
             validation.set_audience(&[aud]);
         } else {
-            tracing::warn!("Static provider has no audience configured — JWT audience validation disabled");
+            tracing::warn!(
+                "Static provider has no audience configured — JWT audience validation disabled"
+            );
             validation.validate_aud = false;
         }
 
-        let token_data = decode::<OpenShellClaims>(token, &key, &validation)
-            .map_err(|e| {
-                tracing::debug!(error = %e, "Static JWT verification failed");
-                AuthError::InvalidToken
-            })?;
+        let token_data = decode::<OpenShellClaims>(token, &key, &validation).map_err(|e| {
+            tracing::debug!(error = %e, "Static JWT verification failed");
+            AuthError::InvalidToken
+        })?;
 
         Ok(token_data.claims)
     }
@@ -309,28 +309,27 @@ impl OpenShellAuthenticator {
         );
 
         // Use a blocking HTTP client since Authenticator::authenticate is sync
-        let oidc_config: serde_json::Value =
-            agent.get(&jwks_url)
-                .call()
-                .map_err(|e| {
-                    tracing::error!(url = %jwks_url, error = %e, "Failed to fetch OIDC config");
-                    AuthError::InvalidToken
-                })?
-                .into_body()
-                .read_json()
-                .map_err(|e| {
-                    tracing::error!(error = %e, "Failed to parse OIDC config");
-                    AuthError::InvalidToken
-                })?;
-
-        let jwks_uri = oidc_config["jwks_uri"]
-            .as_str()
-            .ok_or_else(|| {
-                tracing::error!("OIDC config missing jwks_uri");
+        let oidc_config: serde_json::Value = agent
+            .get(&jwks_url)
+            .call()
+            .map_err(|e| {
+                tracing::error!(url = %jwks_url, error = %e, "Failed to fetch OIDC config");
+                AuthError::InvalidToken
+            })?
+            .into_body()
+            .read_json()
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to parse OIDC config");
                 AuthError::InvalidToken
             })?;
 
-        let jwks: jwk::JwkSet = agent.get(jwks_uri)
+        let jwks_uri = oidc_config["jwks_uri"].as_str().ok_or_else(|| {
+            tracing::error!("OIDC config missing jwks_uri");
+            AuthError::InvalidToken
+        })?;
+
+        let jwks: jwk::JwkSet = agent
+            .get(jwks_uri)
             .call()
             .map_err(|e| {
                 tracing::error!(url = %jwks_uri, error = %e, "Failed to fetch JWKS");
@@ -360,10 +359,7 @@ impl OpenShellAuthenticator {
 }
 
 impl Authenticator for OpenShellAuthenticator {
-    fn authenticate(
-        &self,
-        headers: &axum::http::HeaderMap,
-    ) -> Result<AgentIdentity, AuthError> {
+    fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError> {
         let header = headers
             .get("authorization")
             .ok_or(AuthError::MissingToken)?;
@@ -379,15 +375,17 @@ impl Authenticator for OpenShellAuthenticator {
         }
 
         let claims = match &self.config.mode {
-            OpenShellAuthMode::Spiffe { trust_bundle_path, audience } => {
-                self.verify_spiffe_jwt(token, trust_bundle_path, audience.as_deref())?
-            }
+            OpenShellAuthMode::Spiffe {
+                trust_bundle_path,
+                audience,
+            } => self.verify_spiffe_jwt(token, trust_bundle_path, audience.as_deref())?,
             OpenShellAuthMode::Oidc { issuer, audience } => {
                 self.verify_oidc_jwt(token, issuer, audience.as_deref())?
             }
-            OpenShellAuthMode::Static { public_key_path, audience } => {
-                self.verify_static_jwt(token, public_key_path, audience.as_deref())?
-            }
+            OpenShellAuthMode::Static {
+                public_key_path,
+                audience,
+            } => self.verify_static_jwt(token, public_key_path, audience.as_deref())?,
             OpenShellAuthMode::Local => {
                 // Local mode extracts identity from SO_PEERCRED,
                 // not from Authorization header. Return InvalidToken
@@ -417,9 +415,7 @@ fn decoding_key_from_pem(pem_data: &[u8], alg: Algorithm) -> Result<DecodingKey,
         Algorithm::ES256 | Algorithm::ES384 => {
             DecodingKey::from_ec_pem(pem_data).map_err(|_| AuthError::InvalidToken)
         }
-        Algorithm::EdDSA => {
-            DecodingKey::from_ed_pem(pem_data).map_err(|_| AuthError::InvalidToken)
-        }
+        Algorithm::EdDSA => DecodingKey::from_ed_pem(pem_data).map_err(|_| AuthError::InvalidToken),
         _ => {
             tracing::debug!(alg = ?alg, "Unsupported algorithm in SPIFFE trust bundle");
             Err(AuthError::InvalidToken)
@@ -611,8 +607,8 @@ mod tests {
 
     #[test]
     fn chain_ordering_cap_tokens_take_priority() {
-        use crate::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
         use crate::auth::capability::{build_payload, encode_token, CapabilitySet};
+        use crate::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
         use crate::identity::{CapSigner, Ed25519Signer};
 
         let signer = Ed25519Signer::generate();

@@ -118,27 +118,25 @@ impl OnnxBackend {
 
         // Load tokenizer if provided
         let tokenizer = match tokenizer_path {
-            Some(path) if path.exists() => {
-                match tokenizers::Tokenizer::from_file(path) {
-                    Ok(tok) => {
-                        tracing::info!(
-                            model = name,
-                            tokenizer = %path.display(),
-                            "Loaded HuggingFace tokenizer"
-                        );
-                        Some(tok)
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            model = name,
-                            tokenizer = %path.display(),
-                            error = %e,
-                            "Failed to load tokenizer, using fallback"
-                        );
-                        None
-                    }
+            Some(path) if path.exists() => match tokenizers::Tokenizer::from_file(path) {
+                Ok(tok) => {
+                    tracing::info!(
+                        model = name,
+                        tokenizer = %path.display(),
+                        "Loaded HuggingFace tokenizer"
+                    );
+                    Some(tok)
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(
+                        model = name,
+                        tokenizer = %path.display(),
+                        error = %e,
+                        "Failed to load tokenizer, using fallback"
+                    );
+                    None
+                }
+            },
             Some(path) => {
                 tracing::warn!(
                     model = name,
@@ -176,9 +174,9 @@ impl OnnxBackend {
     fn tokenize(&self, text: &str) -> Result<(Vec<i64>, Vec<i64>), ModelError> {
         match &self.tokenizer {
             Some(tok) => {
-                let encoding = tok.encode(text, true).map_err(|e| {
-                    ModelError::Tokenization(format!("tokenization failed: {e}"))
-                })?;
+                let encoding = tok
+                    .encode(text, true)
+                    .map_err(|e| ModelError::Tokenization(format!("tokenization failed: {e}")))?;
                 let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
                 let attention_mask: Vec<i64> = encoding
                     .get_attention_mask()
@@ -222,9 +220,9 @@ impl OnnxBackend {
 
         let mut result = Vec::new();
         for (_name, value) in outputs.iter() {
-            let (_shape, data) = value.try_extract_tensor::<f32>().map_err(|e| {
-                ModelError::Inference(format!("output extraction error: {e}"))
-            })?;
+            let (_shape, data) = value
+                .try_extract_tensor::<f32>()
+                .map_err(|e| ModelError::Inference(format!("output extraction error: {e}")))?;
             result.push(data.to_vec());
         }
 
@@ -341,11 +339,10 @@ fn build_execution_providers(device: &Device) -> Vec<ort::ep::ExecutionProviderD
     match device {
         Device::Cpu => vec![ort::ep::CPU::default().build()],
         Device::OpenVino(ov_device) => {
-            let cache_dir =
-                std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| {
-                    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-                    format!("{home}/.cache")
-                });
+            let cache_dir = std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                format!("{home}/.cache")
+            });
             let ov_cache = format!("{cache_dir}/smgglrs/openvino");
 
             let device_type = match ov_device {

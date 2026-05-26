@@ -89,8 +89,7 @@ impl DagCheckpoint {
     /// Load a checkpoint by flow ID. Returns None if not found.
     pub fn load(&self, flow_id: &str) -> anyhow::Result<Option<CheckpointState>> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        let mut stmt = db
-            .prepare("SELECT state FROM dag_checkpoints WHERE flow_id = ?1")?;
+        let mut stmt = db.prepare("SELECT state FROM dag_checkpoints WHERE flow_id = ?1")?;
 
         let result = stmt.query_row(params![flow_id], |row| {
             let blob: Vec<u8> = row.get(0)?;
@@ -120,8 +119,8 @@ impl DagCheckpoint {
     /// List flow IDs that have incomplete checkpoints.
     pub fn list_incomplete(&self) -> anyhow::Result<Vec<String>> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        let mut stmt = db
-            .prepare("SELECT flow_id FROM dag_checkpoints ORDER BY updated_at DESC")?;
+        let mut stmt =
+            db.prepare("SELECT flow_id FROM dag_checkpoints ORDER BY updated_at DESC")?;
 
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
 
@@ -158,9 +157,7 @@ mod tests {
     fn make_state(flow_id: &str) -> CheckpointState {
         CheckpointState {
             flow_id: flow_id.to_string(),
-            completed: HashMap::from([
-                ("task1".to_string(), "output1".to_string()),
-            ]),
+            completed: HashMap::from([("task1".to_string(), "output1".to_string())]),
             failed: HashSet::from(["task2".to_string()]),
             task_defs: vec![
                 make_task("task3", "analyst", "Analyze code"),
@@ -232,7 +229,9 @@ mod tests {
         let mut state = make_state("flow-upd");
         cp.save(&state).unwrap();
 
-        state.completed.insert("task5".to_string(), "new output".to_string());
+        state
+            .completed
+            .insert("task5".to_string(), "new output".to_string());
         cp.save(&state).unwrap();
 
         let loaded = cp.load("flow-upd").unwrap().expect("should exist");

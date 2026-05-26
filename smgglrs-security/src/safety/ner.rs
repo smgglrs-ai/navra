@@ -104,9 +104,7 @@ pub(crate) struct EntitySpan {
 ///
 /// Each token is represented by its BIO label, confidence, and character
 /// offsets in the original text.
-pub(crate) fn group_bio_tags(
-    tokens: &[(String, f32, Option<(usize, usize)>)],
-) -> Vec<EntitySpan> {
+pub(crate) fn group_bio_tags(tokens: &[(String, f32, Option<(usize, usize)>)]) -> Vec<EntitySpan> {
     let mut spans = Vec::new();
     let mut current: Option<EntitySpan> = None;
 
@@ -191,10 +189,12 @@ fn softmax(logits: &[f32]) -> Vec<f32> {
 /// Order matches the model's output logits: O, then B/I pairs for
 /// MISC, PER, ORG, LOC.
 fn protectai_label_map() -> Vec<String> {
-    ["O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    [
+        "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 /// Built-in label map for multilingual NER models like
@@ -205,10 +205,12 @@ fn protectai_label_map() -> Vec<String> {
 /// Italian, Portuguese, and Dutch.
 #[cfg(test)]
 fn multilingual_label_map() -> Vec<String> {
-    ["O", "B-DATE", "I-DATE", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    [
+        "O", "B-DATE", "I-DATE", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 fn detect_label_map(num_labels: usize) -> Vec<String> {
@@ -222,7 +224,10 @@ fn detect_label_map(num_labels: usize) -> Vec<String> {
         }
         55 => sfermion_label_map(),
         _ => {
-            tracing::warn!(num_labels, "Unknown model label count, using sfermion default");
+            tracing::warn!(
+                num_labels,
+                "Unknown model label count, using sfermion default"
+            );
             sfermion_label_map()
         }
     }
@@ -306,7 +311,7 @@ impl NerFilter {
         let session = ort::session::Session::builder()
             .map_err(|e| NerError::Load(format!("session builder: {e}")))?
             .with_execution_providers([
-                ort::execution_providers::CPUExecutionProvider::default().build(),
+                ort::execution_providers::CPUExecutionProvider::default().build()
             ])
             .map_err(|e| NerError::Load(format!("execution provider: {e}")))?
             .commit_from_file(model_path)
@@ -373,7 +378,7 @@ impl NerFilter {
         let mut session = ort::session::Session::builder()
             .map_err(|e| NerError::Load(format!("session builder: {e}")))?
             .with_execution_providers([
-                ort::execution_providers::CPUExecutionProvider::default().build(),
+                ort::execution_providers::CPUExecutionProvider::default().build()
             ])
             .map_err(|e| NerError::Load(format!("execution provider: {e}")))?
             .commit_from_file(&model_path)
@@ -494,13 +499,17 @@ impl NerFilter {
         while pos < full_ids.len() {
             let end = (pos + MAX_TOKENS).min(full_ids.len());
             let char_start = full_offsets.get(pos).map(|o| o.0).unwrap_or(0);
-            let char_end = full_offsets.get(end.saturating_sub(1)).map(|o| o.1).unwrap_or(text.len());
+            let char_end = full_offsets
+                .get(end.saturating_sub(1))
+                .map(|o| o.1)
+                .unwrap_or(text.len());
 
             // Extract the text window using char offsets
             let window_start = char_start.min(text.len());
             let window_end = char_end.min(text.len());
             if window_start < window_end {
-                if let Ok(mut spans) = self.detect_entities_window(&text[window_start..window_end]) {
+                if let Ok(mut spans) = self.detect_entities_window(&text[window_start..window_end])
+                {
                     // Adjust offsets back to full text coordinates
                     for span in &mut spans {
                         span.start += window_start;
@@ -518,7 +527,9 @@ impl NerFilter {
 
         // Deduplicate overlapping spans (from window overlap)
         all_spans.sort_by_key(|s| (s.start, s.end));
-        all_spans.dedup_by(|b, a| a.start == b.start && a.end == b.end && a.entity_type == b.entity_type);
+        all_spans.dedup_by(|b, a| {
+            a.start == b.start && a.end == b.end && a.entity_type == b.entity_type
+        });
 
         Ok(all_spans)
     }
@@ -572,13 +583,14 @@ impl NerFilter {
                 .map_err(|e| NerError::Inference(format!("inference: {e}")))?
         };
 
-        let (_name, output) = outputs.iter().next().ok_or_else(|| {
-            NerError::Inference("no output from NER model".to_string())
-        })?;
+        let (_name, output) = outputs
+            .iter()
+            .next()
+            .ok_or_else(|| NerError::Inference("no output from NER model".to_string()))?;
 
-        let (_shape, data) = output.try_extract_tensor::<f32>().map_err(|e| {
-            NerError::Inference(format!("output extraction: {e}"))
-        })?;
+        let (_shape, data) = output
+            .try_extract_tensor::<f32>()
+            .map_err(|e| NerError::Inference(format!("output extraction: {e}")))?;
 
         // Output shape: [1, seq_len, num_labels]
         let num_labels = self.label_map.len();
@@ -654,30 +666,91 @@ fn suppress_technical_names(text: &str, span: &EntitySpan) -> bool {
     // Suppress any entity type if the matched text is a known
     // programming/technical term (data structures, formats, protocols)
     const TECHNICAL_TERMS: &[&str] = &[
-        "HashMap", "HashSet", "BTreeMap", "BTreeSet", "LinkedList",
-        "Vec", "String", "Option", "Result", "Arc", "Mutex", "RwLock",
-        "JSON", "YAML", "TOML", "XML", "HTML", "CSS", "HTTP", "HTTPS",
-        "TCP", "UDP", "DNS", "SSH", "TLS", "SSL", "REST", "GraphQL",
-        "API", "SDK", "CLI", "GUI", "URL", "URI", "UUID", "GUID",
-        "ONNX", "CUDA", "OpenCL", "Wasm", "LLVM",
-        "OAuth", "JWT", "SAML", "OIDC", "RBAC", "ABAC",
-        "PostgreSQL", "MySQL", "SQLite", "Redis", "MongoDB",
-        "Kubernetes", "Docker", "Podman", "Linux", "Windows",
-        "Tokio", "Axum", "Hyper", "Serde", "Cargo", "Rustc",
+        "HashMap",
+        "HashSet",
+        "BTreeMap",
+        "BTreeSet",
+        "LinkedList",
+        "Vec",
+        "String",
+        "Option",
+        "Result",
+        "Arc",
+        "Mutex",
+        "RwLock",
+        "JSON",
+        "YAML",
+        "TOML",
+        "XML",
+        "HTML",
+        "CSS",
+        "HTTP",
+        "HTTPS",
+        "TCP",
+        "UDP",
+        "DNS",
+        "SSH",
+        "TLS",
+        "SSL",
+        "REST",
+        "GraphQL",
+        "API",
+        "SDK",
+        "CLI",
+        "GUI",
+        "URL",
+        "URI",
+        "UUID",
+        "GUID",
+        "ONNX",
+        "CUDA",
+        "OpenCL",
+        "Wasm",
+        "LLVM",
+        "OAuth",
+        "JWT",
+        "SAML",
+        "OIDC",
+        "RBAC",
+        "ABAC",
+        "PostgreSQL",
+        "MySQL",
+        "SQLite",
+        "Redis",
+        "MongoDB",
+        "Kubernetes",
+        "Docker",
+        "Podman",
+        "Linux",
+        "Windows",
+        "Tokio",
+        "Axum",
+        "Hyper",
+        "Serde",
+        "Cargo",
+        "Rustc",
     ];
     if TECHNICAL_TERMS.iter().any(|t| *t == matched) {
         return true;
     }
 
     // Suppress if the matched text is all-uppercase (likely an acronym)
-    if matched.len() >= 2 && matched.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+    if matched.len() >= 2
+        && matched
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    {
         return true;
     }
 
     // Suppress if the matched text looks like a type name (CamelCase
     // with no spaces, containing lowercase after uppercase)
     if matched.len() >= 2
-        && matched.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+        && matched
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_uppercase())
+            .unwrap_or(false)
         && !matched.contains(' ')
         && matched.chars().any(|c| c.is_ascii_lowercase())
         && matched.chars().filter(|c| c.is_ascii_uppercase()).count() >= 2
@@ -690,8 +763,7 @@ fn suppress_technical_names(text: &str, span: &EntitySpan) -> bool {
     // Person-specific suppression below
     let is_person = matches!(
         span.entity_type.as_str(),
-        "PER" | "PERSON" | "GIVENNAME1" | "GIVENNAME2"
-            | "LASTNAME1" | "LASTNAME2" | "LASTNAME3"
+        "PER" | "PERSON" | "GIVENNAME1" | "GIVENNAME2" | "LASTNAME1" | "LASTNAME2" | "LASTNAME3"
     );
     if !is_person {
         return false;
@@ -868,8 +940,8 @@ fn load_label_map(path: &Path) -> Result<Vec<String>, NerError> {
 /// built-in sfermion/bert-pii-detector label map. Returns `None` if
 /// required files are missing (graceful degradation).
 pub fn load_ner_filter(model_dir: &Path) -> Option<NerFilter> {
-    let has_model = model_dir.join("model.onnx").exists()
-        || model_dir.join("onnx/model.onnx").exists();
+    let has_model =
+        model_dir.join("model.onnx").exists() || model_dir.join("onnx/model.onnx").exists();
 
     if !has_model {
         tracing::debug!(
@@ -1109,7 +1181,10 @@ mod tests {
         assert_eq!(entity_type_to_category("LOC"), Some("location"));
         assert_eq!(entity_type_to_category("LOCATION"), Some("location"));
         assert_eq!(entity_type_to_category("ORG"), Some("organization"));
-        assert_eq!(entity_type_to_category("ORGANIZATION"), Some("organization"));
+        assert_eq!(
+            entity_type_to_category("ORGANIZATION"),
+            Some("organization")
+        );
         assert_eq!(entity_type_to_category("MISC"), Some("misc-entity"));
         assert_eq!(entity_type_to_category("O"), None);
         assert_eq!(entity_type_to_category("UNKNOWN"), None);
@@ -1137,10 +1212,19 @@ mod tests {
         assert_eq!(entity_type_to_category("SECADDRESS"), Some("location"));
         assert_eq!(entity_type_to_category("GEOCOORD"), Some("location"));
         // Identity docs
-        assert_eq!(entity_type_to_category("PASSPORT"), Some("identity-document"));
+        assert_eq!(
+            entity_type_to_category("PASSPORT"),
+            Some("identity-document")
+        );
         assert_eq!(entity_type_to_category("IDCARD"), Some("identity-document"));
-        assert_eq!(entity_type_to_category("DRIVERLICENSE"), Some("identity-document"));
-        assert_eq!(entity_type_to_category("SOCIALNUMBER"), Some("identity-document"));
+        assert_eq!(
+            entity_type_to_category("DRIVERLICENSE"),
+            Some("identity-document")
+        );
+        assert_eq!(
+            entity_type_to_category("SOCIALNUMBER"),
+            Some("identity-document")
+        );
         // Other
         assert_eq!(entity_type_to_category("IP"), Some("ip-address"));
         assert_eq!(entity_type_to_category("DATE"), Some("temporal-pii"));
@@ -1378,8 +1462,8 @@ mod tests {
     fn ner_multilingual_french_text() {
         // Requires: smgglrs pii download --multilingual
         let model_dir = default_pii_ner_multilingual_model_dir();
-        let filter = NerFilter::load_from_dir(&model_dir)
-            .expect("multilingual NER model not installed");
+        let filter =
+            NerFilter::load_from_dir(&model_dir).expect("multilingual NER model not installed");
         let text = "M. Dupont habite au 15 rue de Rivoli à Paris";
         let spans = filter.detect_entities(text).unwrap();
         // Should detect at least one PER (Dupont) and one LOC (Paris)

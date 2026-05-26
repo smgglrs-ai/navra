@@ -4,15 +4,37 @@ use std::pin::Pin;
 /// A single computer-use action.
 #[derive(Debug, Clone)]
 pub enum Action {
-    Wait { ms: u64 },
-    MouseMove { x: i32, y: i32 },
-    MouseDown { button: MouseButton },
-    MouseUp { button: MouseButton },
-    Click { x: i32, y: i32, button: MouseButton },
-    TypeText { text: String },
-    KeyDown { key: String },
-    KeyUp { key: String },
-    Screenshot { max_width: Option<u32>, max_height: Option<u32> },
+    Wait {
+        ms: u64,
+    },
+    MouseMove {
+        x: i32,
+        y: i32,
+    },
+    MouseDown {
+        button: MouseButton,
+    },
+    MouseUp {
+        button: MouseButton,
+    },
+    Click {
+        x: i32,
+        y: i32,
+        button: MouseButton,
+    },
+    TypeText {
+        text: String,
+    },
+    KeyDown {
+        key: String,
+    },
+    KeyUp {
+        key: String,
+    },
+    Screenshot {
+        max_width: Option<u32>,
+        max_height: Option<u32>,
+    },
 }
 
 /// Mouse button for click/press actions.

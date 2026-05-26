@@ -216,7 +216,10 @@ tasks: []
         assert!(dag.parameters.contains_key("severity"));
         assert_eq!(dag.parameters["severity"].default, Some("medium".into()));
         assert_eq!(dag.tasks.len(), 2);
-        assert_eq!(dag.tasks[0].mandate, "Scan /src for medium+ vulnerabilities");
+        assert_eq!(
+            dag.tasks[0].mandate,
+            "Scan /src for medium+ vulnerabilities"
+        );
         assert_eq!(
             dag.tasks[0].expected_output,
             Some("List of findings with CWE IDs".into())

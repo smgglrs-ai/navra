@@ -61,10 +61,7 @@ pub enum AuthError {
 ///
 /// Implementations extract agent identity from HTTP request headers.
 pub trait Authenticator: Send + Sync + 'static {
-    fn authenticate(
-        &self,
-        headers: &axum::http::HeaderMap,
-    ) -> Result<AgentIdentity, AuthError>;
+    fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError>;
 }
 
 /// Token-based authenticator using BLAKE3-hashed bearer tokens.
@@ -104,10 +101,7 @@ impl TokenAuthenticator {
 }
 
 impl Authenticator for TokenAuthenticator {
-    fn authenticate(
-        &self,
-        headers: &axum::http::HeaderMap,
-    ) -> Result<AgentIdentity, AuthError> {
+    fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError> {
         let header = headers
             .get("authorization")
             .ok_or(AuthError::MissingToken)?;
@@ -139,8 +133,7 @@ impl Authenticator for TokenAuthenticator {
                 found = Some(identity);
             }
         }
-        found.cloned()
-            .ok_or(AuthError::InvalidToken)
+        found.cloned().ok_or(AuthError::InvalidToken)
     }
 }
 
@@ -178,10 +171,7 @@ impl std::hash::Hash for AgentIdentity {
 }
 
 impl Authenticator for NoAuthenticator {
-    fn authenticate(
-        &self,
-        _headers: &axum::http::HeaderMap,
-    ) -> Result<AgentIdentity, AuthError> {
+    fn authenticate(&self, _headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError> {
         Ok(self.default_identity.clone())
     }
 }

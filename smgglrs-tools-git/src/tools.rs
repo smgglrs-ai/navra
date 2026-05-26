@@ -46,7 +46,12 @@ impl Module for GitModule {
         "git"
     }
 
-    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
+    fn tools(
+        &self,
+    ) -> Vec<(
+        smgglrs_core::protocol::ToolDefinition,
+        smgglrs_core::ToolHandler,
+    )> {
         let s = self.state.clone();
         vec![
             handle_status_handler(s.clone()),
@@ -65,7 +70,7 @@ impl Module for GitModule {
 
 #[tool(
     name = "git_status",
-    description = "Show the working tree status of a git repository.",
+    description = "Show the working tree status of a git repository."
 )]
 async fn handle_status(
     #[arg(description = "Path to the git repository (directory)")] path: String,
@@ -95,12 +100,16 @@ async fn handle_status(
 
 #[tool(
     name = "git_diff",
-    description = "Show changes in a git repository. By default shows unstaged changes. Use 'staged: true' for staged changes, or provide 'ref' for a specific comparison.",
+    description = "Show changes in a git repository. By default shows unstaged changes. Use 'staged: true' for staged changes, or provide 'ref' for a specific comparison."
 )]
 async fn handle_diff(
     #[arg(description = "Path to the git repository")] path: String,
     #[arg(description = "Show staged changes (default: false)")] staged: Option<bool>,
-    #[arg(name = "ref", description = "Compare against a ref (e.g., HEAD~3, main)")] git_ref: Option<String>,
+    #[arg(
+        name = "ref",
+        description = "Compare against a ref (e.g., HEAD~3, main)"
+    )]
+    git_ref: Option<String>,
     ctx: CallContext,
     #[state] state: Arc<GitState>,
 ) -> CallToolResult {
@@ -138,11 +147,15 @@ async fn handle_diff(
 
 #[tool(
     name = "git_log",
-    description = "Show commit history of a git repository.",
+    description = "Show commit history of a git repository."
 )]
 async fn handle_log(
     #[arg(description = "Path to the git repository")] path: String,
-    #[arg(description = "Number of commits to show (default: 10)", default = "10")] limit: Option<u64>,
+    #[arg(
+        description = "Number of commits to show (default: 10)",
+        default = "10"
+    )]
+    limit: Option<u64>,
     #[arg(description = "Use one-line format (default: false)")] oneline: Option<bool>,
     ctx: CallContext,
     #[state] state: Arc<GitState>,
@@ -171,7 +184,7 @@ async fn handle_log(
 
 #[tool(
     name = "git_branch",
-    description = "List branches, show current branch, or create a new branch.",
+    description = "List branches, show current branch, or create a new branch."
 )]
 async fn handle_branch(
     #[arg(description = "Path to the git repository")] path: String,
@@ -193,11 +206,16 @@ async fn handle_branch(
         if name.starts_with('-') {
             return CallToolResult::error("Branch name must not start with '-'");
         }
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.')
+        {
             return CallToolResult::error("Branch name contains invalid characters");
         }
         return match run_git(&repo_path, &["checkout", "-b", name]).await {
-            Ok(output) => CallToolResult::text(format!("Created and switched to branch '{name}'\n{output}")),
+            Ok(output) => {
+                CallToolResult::text(format!("Created and switched to branch '{name}'\n{output}"))
+            }
             Err(e) => CallToolResult::error(e),
         };
     }
@@ -215,7 +233,7 @@ async fn handle_branch(
 
 #[tool(
     name = "git_commit",
-    description = "Create a git commit with the staged changes. Requires approval.",
+    description = "Create a git commit with the staged changes. Requires approval."
 )]
 async fn handle_commit(
     #[arg(description = "Path to the git repository")] path: String,
@@ -255,9 +273,14 @@ async fn handle_commit(
         match run_git(
             &repo_path,
             &[
-                "-c", "gpg.format=ssh",
-                "-c", &signing_key_arg,
-                "commit", "-S", "-m", &full_message,
+                "-c",
+                "gpg.format=ssh",
+                "-c",
+                &signing_key_arg,
+                "commit",
+                "-S",
+                "-m",
+                &full_message,
             ],
         )
         .await
@@ -275,11 +298,13 @@ async fn handle_commit(
 
 #[tool(
     name = "git_fetch",
-    description = "Fetch updates from a remote repository without merging.",
+    description = "Fetch updates from a remote repository without merging."
 )]
 async fn handle_fetch(
     #[arg(description = "Path to the git repository")] path: String,
-    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<String>,
+    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<
+        String,
+    >,
     #[arg(description = "Prune deleted remote branches")] prune: Option<bool>,
     ctx: CallContext,
     #[state] state: Arc<GitState>,
@@ -317,11 +342,13 @@ async fn handle_fetch(
 
 #[tool(
     name = "git_pull",
-    description = "Pull commits from a remote repository (fetch + merge).",
+    description = "Pull commits from a remote repository (fetch + merge)."
 )]
 async fn handle_pull(
     #[arg(description = "Path to the git repository")] path: String,
-    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<String>,
+    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<
+        String,
+    >,
     #[arg(description = "Branch to pull (default: tracked branch)")] branch: Option<String>,
     #[arg(description = "Rebase instead of merge")] rebase: Option<bool>,
     ctx: CallContext,
@@ -361,11 +388,13 @@ async fn handle_pull(
 
 #[tool(
     name = "git_push",
-    description = "Push commits to a remote repository. Requires approval.",
+    description = "Push commits to a remote repository. Requires approval."
 )]
 async fn handle_push(
     #[arg(description = "Path to the git repository")] path: String,
-    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<String>,
+    #[arg(description = "Remote name (default: origin)", default = "origin")] remote: Option<
+        String,
+    >,
     #[arg(description = "Branch to push (default: current branch)")] branch: Option<String>,
     #[arg(description = "Force push (overwrites remote history)")] force: Option<bool>,
     ctx: CallContext,
@@ -415,7 +444,10 @@ fn validate_ref_name(name: &str, label: &str) -> Result<(), String> {
     if name.starts_with('-') {
         return Err(format!("{label} name must not start with '-'"));
     }
-    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.') {
+    if !name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '/' || c == '.')
+    {
         return Err(format!("{label} name contains invalid characters"));
     }
     Ok(())
@@ -442,8 +474,8 @@ fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
     }
 
     if expanded.is_symlink() {
-        let target = std::fs::read_link(&expanded)
-            .map_err(|e| format!("Cannot read symlink {raw}: {e}"))?;
+        let target =
+            std::fs::read_link(&expanded).map_err(|e| format!("Cannot read symlink {raw}: {e}"))?;
         let resolved = if target.is_absolute() {
             target
         } else {
@@ -485,16 +517,16 @@ async fn check_perm(
     path: &Path,
 ) -> Result<(), CallToolResult> {
     match state.perm_engine.check_with_capabilities(
-        &ctx.agent.permissions, op, path, ctx.agent.capabilities.as_ref(),
+        &ctx.agent.permissions,
+        op,
+        path,
+        ctx.agent.capabilities.as_ref(),
     ) {
         PermissionResult::Allowed => Ok(()),
         PermissionResult::NeedsApproval => {
             let path_str = path.display().to_string();
 
-            if state
-                .approvals
-                .check_grant(&ctx.agent.name, op, &path_str)
-            {
+            if state.approvals.check_grant(&ctx.agent.name, op, &path_str) {
                 tracing::info!(
                     agent = %ctx.agent.name, op, path = %path_str,
                     "Using cached approval grant"
@@ -504,11 +536,7 @@ async fn check_perm(
 
             let (req, _rx) = state.approvals.request(&ctx.agent.name, op, &path_str);
 
-            if let Err(e) = state
-                .notifier
-                .notify(&req, state.approvals.clone())
-                .await
-            {
+            if let Err(e) = state.notifier.notify(&req, state.approvals.clone()).await {
                 tracing::warn!("Failed to send D-Bus notification: {e}");
             }
 
@@ -537,10 +565,7 @@ async fn check_perm(
 
 // --- Git command runner ---
 
-async fn run_git(
-    repo_path: &Path,
-    args: &[&str],
-) -> Result<String, String> {
+async fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
     let output = tokio::process::Command::new("git")
         .args(args)
         .current_dir(repo_path)
@@ -773,7 +798,11 @@ mod tests {
 
         let state = test_state(repo_str);
         let (_, handler) = handle_log_handler(state);
-        let result = handler(serde_json::json!({"path": repo_str, "limit": 5}), test_ctx()).await;
+        let result = handler(
+            serde_json::json!({"path": repo_str, "limit": 5}),
+            test_ctx(),
+        )
+        .await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -792,7 +821,11 @@ mod tests {
 
         let state = test_state(repo_str);
         let (_, handler) = handle_log_handler(state);
-        let result = handler(serde_json::json!({"path": repo_str, "oneline": true}), test_ctx()).await;
+        let result = handler(
+            serde_json::json!({"path": repo_str, "oneline": true}),
+            test_ctx(),
+        )
+        .await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -842,7 +875,8 @@ mod tests {
         let result = handler(
             serde_json::json!({"path": repo_str, "message": "Add new file"}),
             test_ctx(),
-        ).await;
+        )
+        .await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -865,7 +899,8 @@ mod tests {
         let result = handler(
             serde_json::json!({"path": repo_str, "message": "test"}),
             readonly_ctx(),
-        ).await;
+        )
+        .await;
 
         assert!(result.is_error);
         match &result.content[0] {
@@ -914,7 +949,12 @@ mod tests {
     #[test]
     fn missing_path_marked_required_in_schema() {
         let def = handle_status_tool_def();
-        assert!(def.input_schema.required.as_ref().unwrap().contains(&"path".to_string()));
+        assert!(def
+            .input_schema
+            .required
+            .as_ref()
+            .unwrap()
+            .contains(&"path".to_string()));
     }
 
     #[tokio::test]
@@ -1006,7 +1046,12 @@ mod tests {
         init_test_repo(dir);
         let bare = dir.parent().unwrap().join("remote.git");
         std::process::Command::new("git")
-            .args(["clone", "--bare", dir.to_str().unwrap(), bare.to_str().unwrap()])
+            .args([
+                "clone",
+                "--bare",
+                dir.to_str().unwrap(),
+                bare.to_str().unwrap(),
+            ])
             .output()
             .expect("git clone --bare failed");
         std::process::Command::new("git")

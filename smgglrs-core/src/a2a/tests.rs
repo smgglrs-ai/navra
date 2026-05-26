@@ -1,9 +1,9 @@
-use super::*;
 use super::dispatch::{extract_arguments, resolve_tool};
+use super::*;
 use crate::auth::{AgentIdentity, NoAuthenticator};
 use crate::protocol::a2a::{
-    Artifact, Message, MessageKind, MessageRole, MessageSendParams, Part, Task,
-    TaskIdParams, TaskQueryParams, TaskState, TaskStatus, TASK_NOT_CANCELABLE, TASK_NOT_FOUND,
+    Artifact, Message, MessageKind, MessageRole, MessageSendParams, Part, Task, TaskIdParams,
+    TaskQueryParams, TaskState, TaskStatus, TASK_NOT_CANCELABLE, TASK_NOT_FOUND,
     UNSUPPORTED_OPERATION,
 };
 use crate::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
@@ -43,10 +43,7 @@ fn test_server() -> McpServer {
             },
             |args, _ctx| {
                 Box::pin(async move {
-                    let text = args
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("nil");
+                    let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("nil");
                     CallToolResult::text(format!("echo: {text}"))
                 })
             },

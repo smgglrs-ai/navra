@@ -2,8 +2,8 @@
 
 use crate::definition::{BackEdgeDefinition, TaskDefinition};
 use crate::verification::VerificationConfig;
-use smgglrs_protocol::label::DataLabel;
 use serde::Deserialize;
+use smgglrs_protocol::label::DataLabel;
 use std::collections::HashMap;
 
 /// A task in a DAG execution plan.

@@ -67,35 +67,155 @@ impl Metrics {
     pub fn render(&self) -> String {
         let mut out = String::with_capacity(2048);
 
-        prom_counter(&mut out, "smgglrs_tool_calls_total", "Total tool calls processed", self.tool_calls_total.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_tool_calls_errors_total", "Tool calls that returned errors", self.tool_calls_errors.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_tool_calls_denied_total", "Tool calls denied by ACL/Cedar/capability", self.tool_calls_denied.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_tool_calls_approved_total", "Tool calls requiring human approval", self.tool_calls_approved.load(Ordering::Relaxed));
+        prom_counter(
+            &mut out,
+            "smgglrs_tool_calls_total",
+            "Total tool calls processed",
+            self.tool_calls_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_tool_calls_errors_total",
+            "Tool calls that returned errors",
+            self.tool_calls_errors.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_tool_calls_denied_total",
+            "Tool calls denied by ACL/Cedar/capability",
+            self.tool_calls_denied.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_tool_calls_approved_total",
+            "Tool calls requiring human approval",
+            self.tool_calls_approved.load(Ordering::Relaxed),
+        );
 
-        prom_counter(&mut out, "smgglrs_safety_triggers_total", "Safety filter triggers", self.safety_triggers_total.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_safety_triggers_blocked_total", "Safety filter blocks", self.safety_triggers_blocked.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_safety_triggers_redacted_total", "Safety filter redactions", self.safety_triggers_redacted.load(Ordering::Relaxed));
+        prom_counter(
+            &mut out,
+            "smgglrs_safety_triggers_total",
+            "Safety filter triggers",
+            self.safety_triggers_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_safety_triggers_blocked_total",
+            "Safety filter blocks",
+            self.safety_triggers_blocked.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_safety_triggers_redacted_total",
+            "Safety filter redactions",
+            self.safety_triggers_redacted.load(Ordering::Relaxed),
+        );
 
-        prom_counter(&mut out, "smgglrs_ifc_taint_elevations_total", "IFC taint label elevations (Trusted→Untrusted)", self.ifc_taint_elevations.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_ifc_write_denials_total", "IFC no-write-down denials", self.ifc_write_denials.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_ifc_read_denials_total", "IFC no-read-up denials", self.ifc_read_denials.load(Ordering::Relaxed));
+        prom_counter(
+            &mut out,
+            "smgglrs_ifc_taint_elevations_total",
+            "IFC taint label elevations (Trusted→Untrusted)",
+            self.ifc_taint_elevations.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_ifc_write_denials_total",
+            "IFC no-write-down denials",
+            self.ifc_write_denials.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_ifc_read_denials_total",
+            "IFC no-read-up denials",
+            self.ifc_read_denials.load(Ordering::Relaxed),
+        );
 
-        prom_counter(&mut out, "smgglrs_sessions_created_total", "Sessions created", self.sessions_created.load(Ordering::Relaxed));
-        prom_gauge(&mut out, "smgglrs_sessions_active", "Currently active sessions", self.sessions_active.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_auth_failures_total", "Authentication failures", self.auth_failures.load(Ordering::Relaxed));
+        prom_counter(
+            &mut out,
+            "smgglrs_sessions_created_total",
+            "Sessions created",
+            self.sessions_created.load(Ordering::Relaxed),
+        );
+        prom_gauge(
+            &mut out,
+            "smgglrs_sessions_active",
+            "Currently active sessions",
+            self.sessions_active.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_auth_failures_total",
+            "Authentication failures",
+            self.auth_failures.load(Ordering::Relaxed),
+        );
 
-        prom_counter(&mut out, "smgglrs_tool_duration_microseconds_total", "Cumulative tool execution time in microseconds", self.tool_duration_us_sum.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_budget_truncations_total", "Tool outputs truncated by budget hook", self.budget_truncations.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_routing_decisions_total", "Model routing decisions made", self.routing_decisions.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_cedar_denials_total", "Cedar policy denials", self.cedar_denials.load(Ordering::Relaxed));
-        prom_gauge(&mut out, "smgglrs_resource_subscriptions", "Active resource subscriptions", self.resource_subscriptions.load(Ordering::Relaxed));
-        prom_gauge(&mut out, "smgglrs_websocket_connections", "Active WebSocket connections", self.websocket_connections.load(Ordering::Relaxed));
+        prom_counter(
+            &mut out,
+            "smgglrs_tool_duration_microseconds_total",
+            "Cumulative tool execution time in microseconds",
+            self.tool_duration_us_sum.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_budget_truncations_total",
+            "Tool outputs truncated by budget hook",
+            self.budget_truncations.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_routing_decisions_total",
+            "Model routing decisions made",
+            self.routing_decisions.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_cedar_denials_total",
+            "Cedar policy denials",
+            self.cedar_denials.load(Ordering::Relaxed),
+        );
+        prom_gauge(
+            &mut out,
+            "smgglrs_resource_subscriptions",
+            "Active resource subscriptions",
+            self.resource_subscriptions.load(Ordering::Relaxed),
+        );
+        prom_gauge(
+            &mut out,
+            "smgglrs_websocket_connections",
+            "Active WebSocket connections",
+            self.websocket_connections.load(Ordering::Relaxed),
+        );
 
-        prom_counter(&mut out, "smgglrs_tool_scan_total", "Upstream tool definitions scanned", self.tool_scan_total.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_tool_scan_blocked_total", "Upstream tools blocked as malicious", self.tool_scan_blocked.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_tool_scan_suspicious_total", "Upstream tools flagged as suspicious", self.tool_scan_suspicious.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_integrity_alerts_total", "Cognitive file integrity alerts", self.integrity_alerts_total.load(Ordering::Relaxed));
-        prom_counter(&mut out, "smgglrs_integrity_alerts_malicious_total", "Cognitive file integrity alerts classified as malicious", self.integrity_alerts_malicious.load(Ordering::Relaxed));
+        prom_counter(
+            &mut out,
+            "smgglrs_tool_scan_total",
+            "Upstream tool definitions scanned",
+            self.tool_scan_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_tool_scan_blocked_total",
+            "Upstream tools blocked as malicious",
+            self.tool_scan_blocked.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_tool_scan_suspicious_total",
+            "Upstream tools flagged as suspicious",
+            self.tool_scan_suspicious.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_integrity_alerts_total",
+            "Cognitive file integrity alerts",
+            self.integrity_alerts_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "smgglrs_integrity_alerts_malicious_total",
+            "Cognitive file integrity alerts classified as malicious",
+            self.integrity_alerts_malicious.load(Ordering::Relaxed),
+        );
 
         out
     }
@@ -108,11 +228,15 @@ impl Default for Metrics {
 }
 
 fn prom_counter(out: &mut String, name: &str, help: &str, value: u64) {
-    out.push_str(&format!("# HELP {name} {help}\n# TYPE {name} counter\n{name} {value}\n"));
+    out.push_str(&format!(
+        "# HELP {name} {help}\n# TYPE {name} counter\n{name} {value}\n"
+    ));
 }
 
 fn prom_gauge(out: &mut String, name: &str, help: &str, value: u64) {
-    out.push_str(&format!("# HELP {name} {help}\n# TYPE {name} gauge\n{name} {value}\n"));
+    out.push_str(&format!(
+        "# HELP {name} {help}\n# TYPE {name} gauge\n{name} {value}\n"
+    ));
 }
 
 #[cfg(test)]
@@ -164,15 +288,19 @@ mod tests {
     fn concurrent_increments() {
         use std::sync::Arc;
         let m = Arc::new(Metrics::new());
-        let handles: Vec<_> = (0..10).map(|_| {
-            let m = m.clone();
-            std::thread::spawn(move || {
-                for _ in 0..100 {
-                    m.tool_calls_total.fetch_add(1, Ordering::Relaxed);
-                }
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let m = m.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..100 {
+                        m.tool_calls_total.fetch_add(1, Ordering::Relaxed);
+                    }
+                })
             })
-        }).collect();
-        for h in handles { h.join().unwrap(); }
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
         assert_eq!(m.tool_calls_total.load(Ordering::Relaxed), 1000);
     }
 }

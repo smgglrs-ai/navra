@@ -5,12 +5,12 @@
 //! - **pta**: Prefix Tree Acceptor for generalizing valid execution sequences
 //! - **dominator**: Dominator-based extraction of mandatory milestones
 
-mod mandate;
-pub mod trace;
-pub mod pta;
 pub mod dominator;
+mod mandate;
+pub mod pta;
+pub mod trace;
 
+pub use dominator::{extract_dominators, validate_against_dominators, DominatorTree};
 pub use mandate::{validate_mandate, ValidationResult};
-pub use trace::{ExecutionTrace, TraceEvent};
 pub use pta::PrefixTreeAcceptor;
-pub use dominator::{DominatorTree, extract_dominators, validate_against_dominators};
+pub use trace::{ExecutionTrace, TraceEvent};

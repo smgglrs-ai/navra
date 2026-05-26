@@ -207,7 +207,15 @@ fn index_store_upsert_search_roundtrip() {
 fn index_store_delete_removes_from_search() {
     let store = IndexStore::open_memory().unwrap();
     store
-        .upsert("/a.md", "text/markdown", 10, "t", "h", "A", "unique content here")
+        .upsert(
+            "/a.md",
+            "text/markdown",
+            10,
+            "t",
+            "h",
+            "A",
+            "unique content here",
+        )
         .unwrap();
 
     assert!(store.delete("/a.md").unwrap());

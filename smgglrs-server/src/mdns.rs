@@ -36,11 +36,7 @@ impl LanServer {
 /// Advertise smgglrs on the local network via mDNS.
 ///
 /// Returns the ServiceDaemon handle — drop it to stop advertising.
-pub fn advertise(
-    instance_name: &str,
-    port: u16,
-    path: &str,
-) -> Result<ServiceDaemon, String> {
+pub fn advertise(instance_name: &str, port: u16, path: &str) -> Result<ServiceDaemon, String> {
     let mdns = ServiceDaemon::new().map_err(|e| format!("mDNS daemon failed: {e}"))?;
 
     let properties = [("path", path), ("version", env!("CARGO_PKG_VERSION"))];
@@ -137,10 +133,7 @@ pub async fn browse(browse_duration: Duration) -> Vec<LanServer> {
 /// Get the system hostname (fallback to "smgglrs").
 fn hostname() -> String {
     std::env::var("HOSTNAME")
-        .or_else(|_| {
-            std::fs::read_to_string("/etc/hostname")
-                .map(|s| s.trim().to_string())
-        })
+        .or_else(|_| std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()))
         .unwrap_or_else(|_| "smgglrs".to_string())
 }
 

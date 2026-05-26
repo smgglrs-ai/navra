@@ -128,11 +128,8 @@ mod tests {
         });
 
         // wait_for_resume should return when sender is dropped
-        tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            rx.wait_for_resume(),
-        )
-        .await
-        .expect("wait_for_resume should return when sender is dropped");
+        tokio::time::timeout(std::time::Duration::from_secs(2), rx.wait_for_resume())
+            .await
+            .expect("wait_for_resume should return when sender is dropped");
     }
 }

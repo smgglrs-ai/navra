@@ -191,7 +191,10 @@ pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
             &stripped[2..]
         } else if stripped.starts_with("*   ") || stripped.starts_with("-   ") {
             &stripped[4..]
-        } else if stripped.len() > 2 && stripped.as_bytes()[0].is_ascii_digit() && stripped.contains(". ") {
+        } else if stripped.len() > 2
+            && stripped.as_bytes()[0].is_ascii_digit()
+            && stripped.contains(". ")
+        {
             if let Some(idx) = stripped.find(". ") {
                 &stripped[idx + 2..]
             } else {
@@ -203,7 +206,11 @@ pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
         cleaned.push_str(stripped);
         cleaned.push('\n');
     }
-    let json_str = if cleaned.trim().is_empty() { trimmed.to_string() } else { cleaned };
+    let json_str = if cleaned.trim().is_empty() {
+        trimmed.to_string()
+    } else {
+        cleaned
+    };
 
     // Find outermost [ ... ]
     let array_str = if let Some(start) = json_str.find('[') {
@@ -214,7 +221,10 @@ pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
             return Vec::new();
         }
     } else {
-        tracing::warn!("No JSON array found in planner output ({} chars)", trimmed.len());
+        tracing::warn!(
+            "No JSON array found in planner output ({} chars)",
+            trimmed.len()
+        );
         return Vec::new();
     };
 
@@ -282,7 +292,10 @@ pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
     }
 
     if !tasks.is_empty() {
-        tracing::info!(count = tasks.len(), "Parsed planner tasks (individual objects)");
+        tracing::info!(
+            count = tasks.len(),
+            "Parsed planner tasks (individual objects)"
+        );
     } else {
         tracing::warn!("No parseable task objects in planner output");
     }
@@ -371,7 +384,9 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 model: Some("granite3.3:8b".to_string()),
                 mandate: scout_mandate,
                 depends_on: Vec::new(),
-                expected_output: Some("Complete file list with exact paths from file_tree".to_string()),
+                expected_output: Some(
+                    "Complete file list with exact paths from file_tree".to_string(),
+                ),
                 success_criteria: Vec::new(),
                 back_edges: Vec::new(),
                 generates_tasks: false,

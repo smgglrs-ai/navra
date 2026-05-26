@@ -3,11 +3,13 @@
 //! No isolation. Suitable for development and trusted models.
 //! Requires `llama-server` (from llama.cpp) on PATH.
 
-use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
-use std::pin::Pin;
-use std::future::Future;
-use std::sync::Mutex;
+use crate::{
+    Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig,
+};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Mutex;
 use tokio::process::{Child, Command};
 
 /// Runtime that spawns llama-server directly.
@@ -92,9 +94,9 @@ impl ModelRuntime for DirectRuntime {
             cmd.stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::piped());
 
-            let child = cmd.spawn().map_err(|e| {
-                RuntimeError::Start(format!("failed to spawn llama-server: {e}"))
-            })?;
+            let child = cmd
+                .spawn()
+                .map_err(|e| RuntimeError::Start(format!("failed to spawn llama-server: {e}")))?;
 
             let id = format!("direct-{port}");
             let url = format!("http://{}:{port}", config.host);
@@ -135,9 +137,10 @@ impl ModelRuntime for DirectRuntime {
         Box::pin(async move {
             let child = self.children.lock().unwrap().remove(&id);
             if let Some(mut child) = child {
-                child.kill().await.map_err(|e| {
-                    RuntimeError::Stop(format!("failed to kill llama-server: {e}"))
-                })?;
+                child
+                    .kill()
+                    .await
+                    .map_err(|e| RuntimeError::Stop(format!("failed to kill llama-server: {e}")))?;
                 let _ = child.wait().await;
                 tracing::info!(id = %id, "Stopped llama-server");
             }
@@ -169,4 +172,3 @@ impl ModelRuntime for DirectRuntime {
         }
     }
 }
-

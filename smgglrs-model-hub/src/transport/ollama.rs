@@ -7,10 +7,10 @@
 //! Metadata extraction: parses the manifest layers for model config,
 //! parameters, and quantization info.
 
+use super::ModelTransport;
 use crate::card::VendorMeta;
 use crate::error::HubError;
 use crate::uri::ModelUri;
-use super::ModelTransport;
 
 const OLLAMA_REGISTRY: &str = "https://registry.ollama.ai";
 
@@ -33,9 +33,8 @@ impl ModelTransport for OllamaTransport {
     fn pull<'a>(
         &'a self,
         uri: &'a ModelUri,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Vec<u8>, HubError>> + Send + 'a>,
-    > {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, HubError>> + Send + 'a>>
+    {
         Box::pin(async move {
             // Parse "model:tag" — default tag is "latest"
             let (model, tag) = match uri.path.split_once(':') {
@@ -44,10 +43,7 @@ impl ModelTransport for OllamaTransport {
             };
 
             // Fetch manifest
-            let manifest_url = format!(
-                "{}/v2/library/{model}/manifests/{tag}",
-                self.registry_url
-            );
+            let manifest_url = format!("{}/v2/library/{model}/manifests/{tag}", self.registry_url);
             tracing::debug!(url = %manifest_url, "Fetching Ollama manifest");
 
             let resp = self
@@ -75,10 +71,7 @@ impl ModelTransport for OllamaTransport {
                 .ok_or_else(|| HubError::Registry("layer missing digest".to_string()))?;
 
             // Fetch blob
-            let blob_url = format!(
-                "{}/v2/library/{model}/blobs/{digest}",
-                self.registry_url
-            );
+            let blob_url = format!("{}/v2/library/{model}/blobs/{digest}", self.registry_url);
             tracing::info!(
                 model = model,
                 tag = tag,
@@ -112,10 +105,7 @@ impl ModelTransport for OllamaTransport {
                 None => (uri.path.as_str(), "latest"),
             };
 
-            let manifest_url = format!(
-                "{}/v2/library/{model}/manifests/{tag}",
-                self.registry_url
-            );
+            let manifest_url = format!("{}/v2/library/{model}/manifests/{tag}", self.registry_url);
 
             let resp = self
                 .client
@@ -158,10 +148,8 @@ impl ModelTransport for OllamaTransport {
                     if media_type.contains("model") {
                         // The digest or size can hint at quantization
                         if let Some(size) = layer["size"].as_u64() {
-                            meta.quantization = Some(estimate_quantization(
-                                size,
-                                meta.parameters.as_deref(),
-                            ));
+                            meta.quantization =
+                                Some(estimate_quantization(size, meta.parameters.as_deref()));
                         }
                     }
                 }
