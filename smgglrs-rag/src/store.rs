@@ -7,10 +7,15 @@
 use crate::cache::{QueryCache, QueryCacheConfig};
 use crate::chunk::Chunk;
 use rusqlite::{params, Connection};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
 use zerocopy::IntoBytes;
 
-/// A search result from vector similarity search.
+/// A search result from chunk search.
+///
+/// For vector-only search (`search`), `distance` is the vector distance
+/// (lower = more similar). For hybrid search (`search_hybrid`), `distance`
+/// is repurposed as the RRF fusion score (higher = more relevant).
 #[derive(Debug, Clone)]
 pub struct ChunkResult {
     /// Path of the source document.
@@ -19,7 +24,9 @@ pub struct ChunkResult {
     pub content: String,
     /// Chunk index within the document.
     pub chunk_index: i64,
-    /// Vector distance (lower = more similar).
+    /// Similarity score. Semantics depend on search method:
+    /// - `search()`: vector distance (lower = more similar)
+    /// - `search_hybrid()`: RRF fusion score (higher = more relevant)
     pub distance: f64,
 }
 
@@ -165,6 +172,31 @@ impl ChunkStore {
             ))?;
         }
 
+        conn.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS rag_chunks_fts \
+             USING fts5(content, content=rag_chunks, content_rowid=id);
+
+             CREATE TRIGGER IF NOT EXISTS rag_chunks_fts_ai \
+             AFTER INSERT ON rag_chunks BEGIN \
+                 INSERT INTO rag_chunks_fts(rowid, content) \
+                 VALUES (new.id, new.content); \
+             END;
+
+             CREATE TRIGGER IF NOT EXISTS rag_chunks_fts_ad \
+             AFTER DELETE ON rag_chunks BEGIN \
+                 INSERT INTO rag_chunks_fts(rag_chunks_fts, rowid, content) \
+                 VALUES ('delete', old.id, old.content); \
+             END;
+
+             CREATE TRIGGER IF NOT EXISTS rag_chunks_fts_au \
+             AFTER UPDATE ON rag_chunks BEGIN \
+                 INSERT INTO rag_chunks_fts(rag_chunks_fts, rowid, content) \
+                 VALUES ('delete', old.id, old.content); \
+                 INSERT INTO rag_chunks_fts(rowid, content) \
+                 VALUES (new.id, new.content); \
+             END;",
+        )?;
+
         Ok(())
     }
 
@@ -241,6 +273,111 @@ impl ChunkStore {
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        Ok(results)
+    }
+
+    /// Full-text search using FTS5 BM25 ranking.
+    fn search_fts(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<ChunkResult>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT c.path, c.content, c.chunk_index, rank \
+             FROM rag_chunks_fts f \
+             JOIN rag_chunks c ON c.id = f.rowid \
+             WHERE rag_chunks_fts MATCH ?1 \
+             ORDER BY rank \
+             LIMIT ?2",
+        )?;
+
+        // FTS5 rank is negative (more negative = better match).
+        let results = stmt
+            .query_map(params![query, limit as i64], |row| {
+                let rank: f64 = row.get(3)?;
+                Ok(ChunkResult {
+                    path: row.get(0)?,
+                    content: row.get(1)?,
+                    chunk_index: row.get(2)?,
+                    distance: -rank,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        Ok(results)
+    }
+
+    /// Hybrid search: FTS5 BM25 + vector similarity, fused with RRF.
+    ///
+    /// Runs both full-text and vector searches, then combines results
+    /// using Reciprocal Rank Fusion (k=60). Returns results sorted by
+    /// fused RRF score (highest first).
+    pub fn search_hybrid(
+        &self,
+        query: &str,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> rusqlite::Result<Vec<ChunkResult>> {
+        let k = 60.0_f64;
+        let fetch_limit = limit * 3;
+
+        let fts_results = self.search_fts(query, fetch_limit)?;
+        let vec_results = self.search(query_embedding, fetch_limit)?;
+
+        let mut scores: HashMap<String, f64> = HashMap::new();
+        let mut entries: HashMap<String, ChunkResult> = HashMap::new();
+
+        for (rank, result) in fts_results.into_iter().enumerate() {
+            let key = format!("{}:{}", result.path, result.chunk_index);
+            *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
+            entries.entry(key).or_insert(result);
+        }
+
+        for (rank, result) in vec_results.into_iter().enumerate() {
+            let key = format!("{}:{}", result.path, result.chunk_index);
+            *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
+            entries.entry(key).or_insert(result);
+        }
+
+        let mut fused: Vec<ChunkResult> = scores
+            .into_iter()
+            .filter_map(|(key, score)| {
+                entries.remove(&key).map(|mut r| {
+                    r.distance = score;
+                    r
+                })
+            })
+            .collect();
+        fused.sort_by(|a, b| {
+            b.distance
+                .partial_cmp(&a.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        fused.truncate(limit);
+
+        Ok(fused)
+    }
+
+    /// Hybrid search with optional semantic query caching.
+    pub fn cached_search_hybrid(
+        &self,
+        query_text: &str,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> rusqlite::Result<Vec<ChunkResult>> {
+        if let Some(ref cache) = self.query_cache {
+            if let Some(results) = cache.lookup(query_text, query_embedding) {
+                return Ok(results);
+            }
+        }
+
+        let results = self.search_hybrid(query_text, query_embedding, limit)?;
+
+        if let Some(ref cache) = self.query_cache {
+            cache.insert(
+                query_text.to_string(),
+                query_embedding.to_vec(),
+                results.clone(),
+            );
+        }
 
         Ok(results)
     }
@@ -590,6 +727,170 @@ mod tests {
         let deleted = store.delete_by_content_match("nonexistent text").unwrap();
         assert_eq!(deleted, 0);
         assert_eq!(store.stats().unwrap().chunk_count, 2);
+    }
+
+    #[test]
+    fn search_fts_finds_matching_text() {
+        let store = test_store();
+        store
+            .index_document("/doc.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
+
+        let results = store.search_fts("First", 5).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "First chunk");
+    }
+
+    #[test]
+    fn search_fts_empty_index() {
+        let store = test_store();
+        let results = store.search_fts("anything", 5).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn search_hybrid_combines_channels() {
+        let store = test_store();
+
+        let chunks = vec![
+            Chunk {
+                content: "Rust ownership and borrowing".to_string(),
+                start_byte: 0,
+                end_byte: 28,
+                index: 0,
+            },
+            Chunk {
+                content: "Python garbage collection".to_string(),
+                start_byte: 29,
+                end_byte: 54,
+                index: 1,
+            },
+        ];
+        let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 0.0, 0.0]];
+        store
+            .index_document("/lang.md", &chunks, &embeddings)
+            .unwrap();
+
+        // Query text matches "Rust" but embedding is close to second chunk
+        let query_embedding = vec![0.1, 0.9, 0.0, 0.0];
+        let results = store
+            .search_hybrid("Rust", &query_embedding, 5)
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        // Both chunks should appear (one from FTS, one from vector)
+    }
+
+    #[test]
+    fn search_hybrid_deduplication_boosts_score() {
+        let store = test_store();
+
+        let chunks = vec![
+            Chunk {
+                content: "Rust ownership rules".to_string(),
+                start_byte: 0,
+                end_byte: 20,
+                index: 0,
+            },
+            Chunk {
+                content: "Python memory model".to_string(),
+                start_byte: 21,
+                end_byte: 40,
+                index: 1,
+            },
+        ];
+        let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 0.0, 0.0]];
+        store
+            .index_document("/doc.md", &chunks, &embeddings)
+            .unwrap();
+
+        // Query matches "Rust" by text AND embedding is close to first chunk.
+        // First chunk should rank higher (matched by both channels).
+        let query_embedding = vec![0.95, 0.05, 0.0, 0.0];
+        let results = store
+            .search_hybrid("Rust", &query_embedding, 5)
+            .unwrap();
+
+        assert!(!results.is_empty());
+        assert_eq!(results[0].content, "Rust ownership rules");
+        // First result has higher RRF score because it appeared in both channels
+        if results.len() > 1 {
+            assert!(results[0].distance > results[1].distance);
+        }
+    }
+
+    #[test]
+    fn search_hybrid_respects_limit() {
+        let store = test_store();
+
+        let mut chunks = Vec::new();
+        let mut embeddings = Vec::new();
+        for i in 0..10 {
+            chunks.push(Chunk {
+                content: format!("Chunk number {i} about Rust"),
+                start_byte: i * 30,
+                end_byte: (i + 1) * 30,
+                index: i,
+            });
+            let mut emb = vec![0.0; 4];
+            emb[i % 4] = 1.0;
+            embeddings.push(emb);
+        }
+        store
+            .index_document("/big.md", &chunks, &embeddings)
+            .unwrap();
+
+        let results = store
+            .search_hybrid("Rust", &[1.0, 0.0, 0.0, 0.0], 3)
+            .unwrap();
+        assert!(results.len() <= 3);
+    }
+
+    #[test]
+    fn fts_sync_on_delete() {
+        let store = test_store();
+        store
+            .index_document("/doc.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
+
+        let results = store.search_fts("First", 5).unwrap();
+        assert_eq!(results.len(), 1);
+
+        store.delete_document("/doc.md").unwrap();
+
+        let results = store.search_fts("First", 5).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn fts_sync_on_reindex() {
+        let store = test_store();
+        store
+            .index_document("/doc.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
+
+        let results = store.search_fts("First", 5).unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Reindex with different content
+        let new_chunks = vec![Chunk {
+            content: "Completely new text".to_string(),
+            start_byte: 0,
+            end_byte: 19,
+            index: 0,
+        }];
+        store
+            .index_document("/doc.md", &new_chunks, &[vec![0.5, 0.5, 0.0, 0.0]])
+            .unwrap();
+
+        // Old content gone
+        let results = store.search_fts("First", 5).unwrap();
+        assert!(results.is_empty());
+
+        // New content searchable
+        let results = store.search_fts("Completely", 5).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].content, "Completely new text");
     }
 
     #[test]
