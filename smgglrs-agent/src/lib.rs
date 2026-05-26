@@ -45,6 +45,8 @@ mod error;
 pub mod resolve;
 /// Agent process hibernation — save and restore agent state.
 pub mod hibernate;
+/// Per-agent token quotas for fair scheduling.
+pub mod quota;
 /// Cooperative signal delivery for running agents.
 pub mod signal;
 mod tool_loop;

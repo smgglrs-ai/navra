@@ -8,6 +8,8 @@ use crate::{
     GenerateRequest, GenerateResponse, Locality, ModelBackend, ModelError, SynthesizeRequest,
     SynthesizeResponse, TranscribeRequest, TranscribeResponse,
 };
+use std::future::Future;
+use std::pin::Pin;
 use crate::chat::{
     ChatMessage, ChatRequest, ChatResponse, ChatRole,
     FinishReason, FunctionCall, ToolCall, ToolChoice,
@@ -20,6 +22,7 @@ pub struct OpenAiBackend {
     model: String,
     api_key: Option<String>,
     locality: Locality,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl OpenAiBackend {
@@ -36,6 +39,7 @@ impl OpenAiBackend {
             model: model.into(),
             api_key,
             locality,
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -428,6 +432,11 @@ impl ModelBackend for OpenAiBackend {
             let chat_resp = Self::parse_chat_response(&json)?;
             Ok(crate::chat_to_responses(&model_name, &chat_resp))
         })
+    }
+
+    fn cancel(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        self.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        Box::pin(async {})
     }
 }
 
