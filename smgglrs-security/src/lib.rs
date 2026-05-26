@@ -23,4 +23,5 @@ pub mod permissions;
 pub mod process;
 pub mod quota;
 pub mod safety;
+pub mod integrity_monitor;
 pub mod tool_scanner;

@@ -172,7 +172,7 @@ impl CosineDriftDetector {
 }
 
 /// Cosine similarity between two vectors. Returns 0.0 if either has zero norm.
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+pub(crate) fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     let len = a.len().min(b.len());
     let mut dot = 0.0f64;
     let mut norm_a = 0.0f64;
