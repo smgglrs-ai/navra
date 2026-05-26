@@ -842,7 +842,7 @@ CodeWhale cross-compatible discovery (2026-05-25).
 **Why first**: The cognitive core is smgglrs's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
 
-#### 1e. Context budget → tool output compression
+#### 1e. Context budget → tool output compression ✅ (2026-05-26)
 
 **Crate**: `smgglrs-cognitive` (budget.rs) + `smgglrs-core` (CallContext)
 
@@ -859,7 +859,7 @@ into `CallContext` so modules self-compress based on remaining tokens:
 **Effort**: 2-3 days. **Priority**: High.
 **Acceptance**: Self-review flow completes with 40% fewer tokens.
 
-#### 1f. Bidirectional persona bridge
+#### 1f. Bidirectional persona bridge ✅ (2026-05-26)
 
 **Crate**: `smgglrs-cognitive` (new `bridge.rs`)
 
