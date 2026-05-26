@@ -31,11 +31,11 @@ mod server;
 pub mod session;
 mod upstream_module;
 
+pub use grpc_module::GrpcModule;
 pub use module::{Module, PromptHandler, ResourceHandler};
 pub use server::{McpServer, McpServerBuilder, ToolHandler};
 pub use session::Session;
 pub use smgglrs_protocol::{RetryConfig, Upstream};
-pub use grpc_module::GrpcModule;
 pub use upstream_module::UpstreamModule;
 
 /// Re-export dispatch for unit tests (not part of public API).

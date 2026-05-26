@@ -461,10 +461,7 @@ impl ChunkStore {
                 params![path],
             )?;
         }
-        let deleted = conn.execute(
-            "DELETE FROM rag_chunks WHERE path = ?1",
-            params![path],
-        )?;
+        let deleted = conn.execute("DELETE FROM rag_chunks WHERE path = ?1", params![path])?;
         Ok(deleted > 0)
     }
 
@@ -473,11 +470,10 @@ impl ChunkStore {
         let conn = self.conn.lock().unwrap();
         let chunk_count: i64 =
             conn.query_row("SELECT COUNT(*) FROM rag_chunks", [], |row| row.get(0))?;
-        let document_count: i64 = conn.query_row(
-            "SELECT COUNT(DISTINCT path) FROM rag_chunks",
-            [],
-            |row| row.get(0),
-        )?;
+        let document_count: i64 =
+            conn.query_row("SELECT COUNT(DISTINCT path) FROM rag_chunks", [], |row| {
+                row.get(0)
+            })?;
 
         Ok(IndexStats {
             document_count,
@@ -513,10 +509,7 @@ impl ChunkStore {
                 params![source_id],
             )?;
         }
-        let deleted = conn.execute(
-            "DELETE FROM rag_chunks WHERE path = ?1",
-            params![source_id],
-        )?;
+        let deleted = conn.execute("DELETE FROM rag_chunks WHERE path = ?1", params![source_id])?;
         Ok(deleted)
     }
 
@@ -773,9 +766,7 @@ mod tests {
 
         // Query text matches "Rust" but embedding is close to second chunk
         let query_embedding = vec![0.1, 0.9, 0.0, 0.0];
-        let results = store
-            .search_hybrid("Rust", &query_embedding, 5)
-            .unwrap();
+        let results = store.search_hybrid("Rust", &query_embedding, 5).unwrap();
 
         assert_eq!(results.len(), 2);
         // Both chunks should appear (one from FTS, one from vector)
@@ -807,9 +798,7 @@ mod tests {
         // Query matches "Rust" by text AND embedding is close to first chunk.
         // First chunk should rank higher (matched by both channels).
         let query_embedding = vec![0.95, 0.05, 0.0, 0.0];
-        let results = store
-            .search_hybrid("Rust", &query_embedding, 5)
-            .unwrap();
+        let results = store.search_hybrid("Rust", &query_embedding, 5).unwrap();
 
         assert!(!results.is_empty());
         assert_eq!(results[0].content, "Rust ownership rules");

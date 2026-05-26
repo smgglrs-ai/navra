@@ -210,10 +210,19 @@ mod tests {
     fn memory_type_new_variants_parse() {
         assert_eq!(MemoryType::from_str("fact").unwrap(), MemoryType::Fact);
         assert_eq!(MemoryType::from_str("event").unwrap(), MemoryType::Event);
-        assert_eq!(MemoryType::from_str("instruction").unwrap(), MemoryType::Instruction);
-        assert_eq!(MemoryType::from_str("insight").unwrap(), MemoryType::Insight);
+        assert_eq!(
+            MemoryType::from_str("instruction").unwrap(),
+            MemoryType::Instruction
+        );
+        assert_eq!(
+            MemoryType::from_str("insight").unwrap(),
+            MemoryType::Insight
+        );
         assert_eq!(MemoryType::from_str("user").unwrap(), MemoryType::User);
-        assert_eq!(MemoryType::from_str("project").unwrap(), MemoryType::Project);
+        assert_eq!(
+            MemoryType::from_str("project").unwrap(),
+            MemoryType::Project
+        );
     }
 
     #[test]

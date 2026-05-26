@@ -5,7 +5,9 @@
 //! - **Python** (sandbox): CodeAct via OpenShell or Podman
 
 use smgglrs_core::auth::CallContext;
-use smgglrs_core::protocol::{CallToolParams, CallToolResult, Content, ToolDefinition, ToolInputSchema};
+use smgglrs_core::protocol::{
+    CallToolParams, CallToolResult, Content, ToolDefinition, ToolInputSchema,
+};
 use smgglrs_core::McpServer;
 use std::collections::HashMap;
 
@@ -132,9 +134,7 @@ pub fn substitute_vars(
     vars: &HashMap<String, StepResult>,
 ) -> serde_json::Value {
     match value {
-        serde_json::Value::String(s) => {
-            serde_json::Value::String(substitute_string(s, vars))
-        }
+        serde_json::Value::String(s) => serde_json::Value::String(substitute_string(s, vars)),
         serde_json::Value::Object(map) => {
             let resolved: serde_json::Map<String, serde_json::Value> = map
                 .iter()
@@ -243,7 +243,11 @@ fn evaluate_when(condition: &str, vars: &HashMap<String, StepResult>) -> bool {
         && resolved != "0"
         && !resolved.starts_with("<unresolved:");
 
-    if negated { !is_truthy } else { is_truthy }
+    if negated {
+        !is_truthy
+    } else {
+        is_truthy
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +357,13 @@ async fn execute_tool_step(
     // Validate tool name
     if !known_tools.iter().any(|t| t.name == step.tool) {
         let error_msg = format!("Unknown tool: {}", step.tool);
-        let sr = apply_on_error(&step_name, &step.tool, &error_msg, &on_error, &step.default_value);
+        let sr = apply_on_error(
+            &step_name,
+            &step.tool,
+            &error_msg,
+            &on_error,
+            &step.default_value,
+        );
         results.push(sr.clone());
         vars.insert(step_name, sr.clone());
         let should_halt = if step.on_error.is_some() {
@@ -411,7 +421,13 @@ async fn execute_tool_step(
         .join("");
 
     let sr = if result.is_error {
-        apply_on_error(&step_name, &step.tool, &result_text, &on_error, &step.default_value)
+        apply_on_error(
+            &step_name,
+            &step.tool,
+            &result_text,
+            &on_error,
+            &step.default_value,
+        )
     } else {
         StepResult {
             step: Some(step_name.clone()),
@@ -780,8 +796,8 @@ pub async fn execute_python(
     // Environment variables for the bridge
     // For containerized execution, the host is reachable via 10.0.2.2
     // (slirp4netns default gateway) not 127.0.0.1. Detect which to use.
-    let host_addr = std::env::var("SMGGLRS_LISTEN_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:9315".to_string());
+    let host_addr =
+        std::env::var("SMGGLRS_LISTEN_ADDR").unwrap_or_else(|_| "127.0.0.1:9315".to_string());
     let port = host_addr.rsplit(':').next().unwrap_or("9315");
     let gateway_url = match backend {
         SandboxBackend::Direct => format!("http://127.0.0.1:{port}"),
@@ -795,15 +811,34 @@ pub async fn execute_python(
 
     let result = match backend {
         SandboxBackend::OpenShell => {
-            execute_in_openshell(work_dir.path(), &gateway_url, &session_id, &auth_token, timeout)
-                .await
+            execute_in_openshell(
+                work_dir.path(),
+                &gateway_url,
+                &session_id,
+                &auth_token,
+                timeout,
+            )
+            .await
         }
         SandboxBackend::Podman => {
-            execute_in_podman(work_dir.path(), &gateway_url, &session_id, &auth_token, timeout)
-                .await
+            execute_in_podman(
+                work_dir.path(),
+                &gateway_url,
+                &session_id,
+                &auth_token,
+                timeout,
+            )
+            .await
         }
         SandboxBackend::Direct => {
-            execute_direct(work_dir.path(), &gateway_url, &session_id, &auth_token, timeout).await
+            execute_direct(
+                work_dir.path(),
+                &gateway_url,
+                &session_id,
+                &auth_token,
+                timeout,
+            )
+            .await
         }
     };
 
@@ -1023,18 +1058,14 @@ pub async fn handle_plan_execute(
             CallToolResult::text(json)
         }
         "python" => {
-            let timeout_secs = args
-                .get("timeout")
-                .and_then(|v| v.as_u64());
+            let timeout_secs = args.get("timeout").and_then(|v| v.as_u64());
 
             execute_python(plan_str, server, &ctx, timeout_secs, allow_direct).await
         }
-        other => {
-            CallToolResult::error(format!(
-                "Unknown format: '{}'. Supported: yaml, python",
-                other
-            ))
-        }
+        other => CallToolResult::error(format!(
+            "Unknown format: '{}'. Supported: yaml, python",
+            other
+        )),
     }
 }
 
@@ -1414,9 +1445,15 @@ steps:
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(result.is_error);
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         assert!(text.contains("Unknown format"));
     }
 
@@ -1434,9 +1471,15 @@ steps:
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
         // Should have results — the first step fails, second is skipped
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         assert_eq!(steps.len(), 1); // stopped after first error
         assert!(!steps[0].success);
@@ -1456,9 +1499,15 @@ steps:
             .build();
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         assert_eq!(steps.len(), 2); // continued past first error
         assert!(!steps[0].success);
@@ -1510,9 +1559,15 @@ steps:
         let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         assert_eq!(steps.len(), 3);
         assert!(steps[0].success);
@@ -1565,9 +1620,15 @@ steps:
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         assert_eq!(steps.len(), 3);
         assert!(steps[0].success);
@@ -1587,16 +1648,19 @@ steps:
             .build();
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, true).await;
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         if result.is_error {
             // Acceptable errors: no sandbox, container failed, etc.
             // The important thing is we get a coherent error, not a panic.
-            assert!(
-                !text.is_empty(),
-                "Error result should have a message"
-            );
+            assert!(!text.is_empty(), "Error result should have a message");
         } else {
             assert!(text.contains("hello from python"));
         }
@@ -1619,9 +1683,15 @@ steps:
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, true).await;
         assert!(result.is_error);
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         assert!(text.contains("exited with code 1"), "Got: {text}");
     }
 
@@ -1642,9 +1712,15 @@ steps:
         // Use a short timeout directly
         let result = execute_python(code, &server, &ctx, Some(1), true).await;
         assert!(result.is_error);
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         // May time out or hit a Podman/container error — both are acceptable
         assert!(
             text.contains("timed out") || text.contains("exited with code"),
@@ -1657,7 +1733,10 @@ steps:
         // Verify the embedded bridge.py is syntactically valid
         let output = std::process::Command::new("python3")
             .arg("-c")
-            .arg(format!("import ast; ast.parse('''{}''')", BRIDGE_PY.replace('\\', "\\\\")))
+            .arg(format!(
+                "import ast; ast.parse('''{}''')",
+                BRIDGE_PY.replace('\\', "\\\\")
+            ))
             .output();
         match output {
             Ok(o) if o.status.success() => {} // valid
@@ -1733,7 +1812,8 @@ steps:
             .content
             .iter()
             .map(|c| match c {
-                Content::Text(t) => t.text.as_str(), _ => "",
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
             })
             .collect::<Vec<_>>()
             .join("");
@@ -1842,9 +1922,15 @@ steps:
         let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         // 1 (echo) + 3 (iterations) + 1 (for_each aggregate) = 5
         assert_eq!(steps.len(), 5);
@@ -1878,9 +1964,15 @@ steps:
         let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         // 1 (echo) + 2 (only .rs files) + 1 (aggregate) = 4
         assert_eq!(steps.len(), 4);
@@ -1912,9 +2004,15 @@ steps:
         let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         // 1 (echo) + 2 (capped at max_items) + 1 (aggregate) = 4
         assert_eq!(steps.len(), 4);
@@ -1946,9 +2044,15 @@ steps:
         let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         // 2 (echos) + 2 (iterations) + 1 (aggregate) = 5
         assert_eq!(steps.len(), 5);
@@ -1983,9 +2087,15 @@ steps:
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         // Both steps should be present (not stopped)
         assert_eq!(steps.len(), 2);
@@ -2014,9 +2124,15 @@ steps:
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         assert_eq!(steps.len(), 1);
         assert!(steps[0].success); // marked as success
@@ -2063,9 +2179,15 @@ steps:
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         // Even though stop_on_error is false globally, on_error: stop on the step wins
         assert_eq!(steps.len(), 1);
@@ -2135,9 +2257,15 @@ steps:
         let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(!result.is_error);
 
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
         // 1 (echo) + 3 (iterations) + 1 (aggregate) = 5
         assert_eq!(steps.len(), 5);
@@ -2171,11 +2299,18 @@ steps:
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
         assert!(result.is_error);
-        let text = result.content.iter().map(|c| match c {
-            Content::Text(t) => t.text.as_str(), _ => "",
-        }).collect::<Vec<_>>().join("");
+        let text = result
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Text(t) => t.text.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>()
+            .join("");
         assert!(
-            text.contains("allow_direct_execution") || text.contains("SMGGLRS_ALLOW_DIRECT_EXECUTION"),
+            text.contains("allow_direct_execution")
+                || text.contains("SMGGLRS_ALLOW_DIRECT_EXECUTION"),
             "Error should explain how to enable direct mode. Got: {text}"
         );
     }

@@ -49,19 +49,17 @@ impl HookPipeline {
         ctx: &CallContext,
     ) -> Result<serde_json::Value, String> {
         for hook in &self.hooks {
-            let decision = tokio::time::timeout(
-                self.timeout,
-                hook.pre_tool_use(tool_name, &arguments, ctx),
-            )
-            .await
-            .unwrap_or_else(|_| {
-                tracing::error!(
-                    hook = hook.name(),
-                    tool = tool_name,
-                    "Pre-hook timed out — blocking (fail-closed)"
-                );
-                HookDecision::Block("hook timed out: security check failed".into())
-            });
+            let decision =
+                tokio::time::timeout(self.timeout, hook.pre_tool_use(tool_name, &arguments, ctx))
+                    .await
+                    .unwrap_or_else(|_| {
+                        tracing::error!(
+                            hook = hook.name(),
+                            tool = tool_name,
+                            "Pre-hook timed out — blocking (fail-closed)"
+                        );
+                        HookDecision::Block("hook timed out: security check failed".into())
+                    });
 
             match decision {
                 HookDecision::Continue => {}
@@ -228,10 +226,7 @@ mod tests {
                 smgglrs_protocol::Content::Text(t) => &t.text,
                 _ => return HookDecision::Continue,
             };
-            HookDecision::ModifyResult(CallToolResult::text(format!(
-                "{}{}",
-                text, self.suffix
-            )))
+            HookDecision::ModifyResult(CallToolResult::text(format!("{}{}", text, self.suffix)))
         }
     }
 

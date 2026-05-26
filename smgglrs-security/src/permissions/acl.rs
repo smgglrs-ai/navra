@@ -95,11 +95,8 @@ impl PermissionEngine {
                 Some(prev_ops) => {
                     // This ring's effective operations = intersection of
                     // its declared operations with accumulated operations.
-                    let intersected: HashSet<String> = acl
-                        .operations
-                        .intersection(prev_ops)
-                        .cloned()
-                        .collect();
+                    let intersected: HashSet<String> =
+                        acl.operations.intersection(prev_ops).cloned().collect();
                     accumulated_ops = Some(intersected.clone());
 
                     // Merge inherited deny rules and approval requirements.
@@ -188,12 +185,7 @@ impl PermissionEngine {
 
     /// Check if an agent with the given permission set can perform
     /// the operation on the given path.
-    pub fn check(
-        &self,
-        permission_set: &str,
-        operation: &str,
-        path: &Path,
-    ) -> PermissionResult {
+    pub fn check(&self, permission_set: &str, operation: &str, path: &Path) -> PermissionResult {
         let acl = match self.permission_sets.get(permission_set) {
             Some(acl) => acl,
             None => {
@@ -222,7 +214,10 @@ impl PermissionEngine {
                 "ACL check received non-absolute path — callers should canonicalize"
             );
         }
-        if path.components().any(|c| c == std::path::Component::ParentDir) {
+        if path
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
+        {
             tracing::warn!(
                 path = %path.display(),
                 "ACL check received path with '..' — callers should canonicalize to resolve symlinks"
@@ -293,7 +288,11 @@ impl PermissionEngine {
     /// Given booleans for whether any deny matched and any allow matched,
     /// returns the correct permission decision. Extracted for formal
     /// verification — proves deny always wins regardless of allow.
-    pub fn deny_wins_eval(deny_matched: bool, allow_matched: bool, needs_approval: bool) -> PermissionResult {
+    pub fn deny_wins_eval(
+        deny_matched: bool,
+        allow_matched: bool,
+        needs_approval: bool,
+    ) -> PermissionResult {
         if deny_matched {
             return PermissionResult::DeniedPath;
         }
@@ -516,11 +515,7 @@ mod tests {
     fn directory_matches_glob_parent() {
         let engine = test_engine();
         // /home/user/Documents itself should match Documents/**
-        let result = engine.check(
-            "developer",
-            "list",
-            Path::new("/home/user/Documents"),
-        );
+        let result = engine.check("developer", "list", Path::new("/home/user/Documents"));
         assert_eq!(result, PermissionResult::Allowed);
     }
 
@@ -540,10 +535,19 @@ mod tests {
                 ring: Some(0),
                 allow: vec!["/home/user/**".to_string()],
                 deny: vec!["**/.env".to_string()],
-                operations: ["read", "write", "search", "list", "git.status", "git.commit", "git.push", "shell.exec"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
+                operations: [
+                    "read",
+                    "write",
+                    "search",
+                    "list",
+                    "git.status",
+                    "git.commit",
+                    "git.push",
+                    "shell.exec",
+                ]
+                .into_iter()
+                .map(String::from)
+                .collect(),
                 requires_approval: HashSet::new(),
             },
         );
@@ -553,14 +557,18 @@ mod tests {
                 ring: Some(1),
                 allow: vec!["/home/user/projects/**".to_string()],
                 deny: vec!["/home/user/projects/secrets/**".to_string()],
-                operations: ["read", "write", "search", "list", "git.status", "git.commit"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
-                requires_approval: ["git.commit"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
+                operations: [
+                    "read",
+                    "write",
+                    "search",
+                    "list",
+                    "git.status",
+                    "git.commit",
+                ]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+                requires_approval: ["git.commit"].into_iter().map(String::from).collect(),
             },
         );
         engine.add_permission_set(
@@ -713,7 +721,10 @@ mod tests {
 
     #[test]
     fn glob_star_star_matches_absolute_path() {
-        assert!(PermissionEngine::glob_matches("**", &PathBuf::from("/home/user/file.txt")));
+        assert!(PermissionEngine::glob_matches(
+            "**",
+            &PathBuf::from("/home/user/file.txt")
+        ));
     }
 
     #[test]
@@ -724,14 +735,20 @@ mod tests {
             subject_did: "did:teammate:t1".to_string(),
             ring: 2,
             paths: vec!["**".to_string()],
-            operations: ["read", "list", "search"].into_iter().map(String::from).collect(),
+            operations: ["read", "list", "search"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
             tools: vec![],
             credentials: vec![],
             expires_at: u64::MAX,
             obo_sub: None,
         };
         let result = engine.check_with_capabilities(
-            "cap:ring2", "read", Path::new("/home/user/project/file.rs"), Some(&caps),
+            "cap:ring2",
+            "read",
+            Path::new("/home/user/project/file.rs"),
+            Some(&caps),
         );
         assert_eq!(result, PermissionResult::Allowed);
     }
@@ -751,7 +768,10 @@ mod tests {
             obo_sub: None,
         };
         let result = engine.check_with_capabilities(
-            "cap:ring2", "write", Path::new("/home/user/file.rs"), Some(&caps),
+            "cap:ring2",
+            "write",
+            Path::new("/home/user/file.rs"),
+            Some(&caps),
         );
         assert_eq!(result, PermissionResult::DeniedOperation);
     }

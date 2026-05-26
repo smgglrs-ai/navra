@@ -28,7 +28,10 @@ pub struct VisionModule {
 
 impl VisionModule {
     pub fn new(vision_model: Arc<dyn ModelBackend>, perm_engine: Arc<PermissionEngine>) -> Self {
-        Self { vision_model, perm_engine }
+        Self {
+            vision_model,
+            perm_engine,
+        }
     }
 }
 
@@ -66,8 +69,8 @@ fn load_image(path: &Path) -> Result<ImageInput, String> {
         return Err(format!("Not a file: {}", path.display()));
     }
 
-    let meta = std::fs::metadata(path)
-        .map_err(|e| format!("Cannot stat {}: {e}", path.display()))?;
+    let meta =
+        std::fs::metadata(path).map_err(|e| format!("Cannot stat {}: {e}", path.display()))?;
     if meta.len() > MAX_IMAGE_SIZE {
         return Err(format!(
             "Image too large ({} MB, max {} MB)",
@@ -76,8 +79,8 @@ fn load_image(path: &Path) -> Result<ImageInput, String> {
         ));
     }
 
-    let data = std::fs::read(path)
-        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let data =
+        std::fs::read(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
 
     let mime_type = match path.extension().and_then(|e| e.to_str()) {
         Some("png") => "image/png",
@@ -127,7 +130,10 @@ fn check_perm(
     path: &Path,
 ) -> Result<(), CallToolResult> {
     match state.perm_engine.check_with_capabilities(
-        &ctx.agent.permissions, op, path, ctx.agent.capabilities.as_ref(),
+        &ctx.agent.permissions,
+        op,
+        path,
+        ctx.agent.capabilities.as_ref(),
     ) {
         PermissionResult::Allowed => Ok(()),
         PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
@@ -154,7 +160,7 @@ fn check_perm(
 
 #[tool(
     name = "vision_describe",
-    description = "Describe the contents of an image file.",
+    description = "Describe the contents of an image file."
 )]
 async fn handle_describe(
     #[arg(description = "Absolute path to image file")] path: String,
@@ -191,7 +197,7 @@ async fn handle_describe(
 
 #[tool(
     name = "vision_ocr",
-    description = "Extract text from an image file using OCR. Returns the recognized text.",
+    description = "Extract text from an image file using OCR. Returns the recognized text."
 )]
 async fn handle_ocr(
     #[arg(description = "Absolute path to image file")] path: String,
@@ -228,7 +234,7 @@ async fn handle_ocr(
 
 #[tool(
     name = "vision_ask",
-    description = "Answer a question about an image file.",
+    description = "Answer a question about an image file."
 )]
 async fn handle_ask(
     #[arg(description = "Absolute path to image file")] path: String,
@@ -270,10 +276,14 @@ async fn handle_ask(
 
 #[tool(
     name = "vision_screen",
-    description = "Capture a screenshot and describe or OCR it. Uses the XDG Desktop Portal (works on Wayland and X11). May show a consent dialog.",
+    description = "Capture a screenshot and describe or OCR it. Uses the XDG Desktop Portal (works on Wayland and X11). May show a consent dialog."
 )]
 async fn handle_screen(
-    #[arg(description = "What to do with the screenshot: 'describe' (default) or 'ocr'", default = "describe")] mode: Option<String>,
+    #[arg(
+        description = "What to do with the screenshot: 'describe' (default) or 'ocr'",
+        default = "describe"
+    )]
+    mode: Option<String>,
     ctx: CallContext,
     #[state] state: Arc<VisionState>,
 ) -> CallToolResult {
@@ -335,9 +345,9 @@ async fn handle_screen(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use smgglrs_security::auth::AgentIdentity;
     use smgglrs_core::models::{GenerateResponse, ModelBackend, ModelError};
     use smgglrs_core::permissions::{PathAcl, PermissionEngine};
+    use smgglrs_security::auth::AgentIdentity;
     use std::collections::HashSet;
     use std::io::Write;
 
@@ -376,10 +386,7 @@ mod tests {
                 ring: None,
                 allow: vec!["/**".to_string()],
                 deny: vec![],
-                operations: ["read", "write"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
+                operations: ["read", "write"].into_iter().map(String::from).collect(),
                 requires_approval: HashSet::new(),
             },
         );
@@ -731,11 +738,7 @@ mod tests {
     async fn ask_rejects_missing_question() {
         let state = make_state();
         let (_, handler) = handle_ask_handler(state);
-        let result = handler(
-            serde_json::json!({"path": "/tmp/test.png"}),
-            test_ctx(),
-        )
-        .await;
+        let result = handler(serde_json::json!({"path": "/tmp/test.png"}), test_ctx()).await;
         assert!(result.is_error);
     }
 
@@ -759,11 +762,7 @@ mod tests {
     async fn ask_rejects_missing_path() {
         let state = make_state();
         let (_, handler) = handle_ask_handler(state);
-        let result = handler(
-            serde_json::json!({"question": "What is this?"}),
-            test_ctx(),
-        )
-        .await;
+        let result = handler(serde_json::json!({"question": "What is this?"}), test_ctx()).await;
         assert!(result.is_error);
     }
 
@@ -807,11 +806,7 @@ mod tests {
         std::fs::write(&path, &tiny_png()).unwrap();
 
         let (_, handler) = handle_describe_handler(state);
-        let result = handler(
-            serde_json::json!({"path": path.to_str().unwrap()}),
-            ctx,
-        )
-        .await;
+        let result = handler(serde_json::json!({"path": path.to_str().unwrap()}), ctx).await;
         // With an unknown permission set, the engine should deny
         assert!(result.is_error);
     }

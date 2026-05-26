@@ -9,7 +9,9 @@
 use std::fmt;
 
 /// Integrity level: can this data influence actions?
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum Integrity {
     /// Data from system config, user input, or approved sources.
     Trusted = 0,
@@ -18,7 +20,9 @@ pub enum Integrity {
 }
 
 /// Confidentiality level: can this data leave the system?
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum Confidentiality {
     /// Can appear in any tool output or external message.
     Public = 0,
@@ -212,10 +216,7 @@ mod tests {
             format!("{}", DataLabel::UNTRUSTED_SENSITIVE),
             "Untrusted+Sensitive"
         );
-        assert_eq!(
-            format!("{}", DataLabel::UNTRUSTED_PII),
-            "Untrusted+Pii"
-        );
+        assert_eq!(format!("{}", DataLabel::UNTRUSTED_PII), "Untrusted+Pii");
     }
 }
 

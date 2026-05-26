@@ -190,8 +190,8 @@ impl Module for GrpcModule {
         self.cached_tools
             .iter()
             .map(|def| {
-                let input_schema: ToolInputSchema =
-                    serde_json::from_slice(&def.input_schema_json).unwrap_or(ToolInputSchema {
+                let input_schema: ToolInputSchema = serde_json::from_slice(&def.input_schema_json)
+                    .unwrap_or(ToolInputSchema {
                         schema_type: "object".to_string(),
                         properties: None,
                         required: None,
@@ -465,29 +465,44 @@ mod tests {
     #[test]
     fn parse_data_label_case_insensitive() {
         let label = parse_data_label("untrusted+sensitive");
-        assert_eq!(label, smgglrs_protocol::label::DataLabel::UNTRUSTED_SENSITIVE);
+        assert_eq!(
+            label,
+            smgglrs_protocol::label::DataLabel::UNTRUSTED_SENSITIVE
+        );
 
         let label = parse_data_label("UNTRUSTED+SENSITIVE");
-        assert_eq!(label, smgglrs_protocol::label::DataLabel::UNTRUSTED_SENSITIVE);
+        assert_eq!(
+            label,
+            smgglrs_protocol::label::DataLabel::UNTRUSTED_SENSITIVE
+        );
 
         let label = parse_data_label("trusted+public");
         assert_eq!(label, smgglrs_protocol::label::DataLabel::TRUSTED_PUBLIC);
 
         let label = parse_data_label("Trusted+pii");
         assert_eq!(label.integrity, smgglrs_protocol::label::Integrity::Trusted);
-        assert_eq!(label.confidentiality, smgglrs_protocol::label::Confidentiality::Pii);
+        assert_eq!(
+            label.confidentiality,
+            smgglrs_protocol::label::Confidentiality::Pii
+        );
     }
 
     #[test]
     fn parse_data_label_unknown_integrity_defaults_untrusted() {
         let label = parse_data_label("whatever+Public");
-        assert_eq!(label.integrity, smgglrs_protocol::label::Integrity::Untrusted);
+        assert_eq!(
+            label.integrity,
+            smgglrs_protocol::label::Integrity::Untrusted
+        );
     }
 
     #[test]
     fn parse_data_label_unknown_confidentiality_defaults_sensitive() {
         let label = parse_data_label("Trusted+whatever");
-        assert_eq!(label.confidentiality, smgglrs_protocol::label::Confidentiality::Sensitive);
+        assert_eq!(
+            label.confidentiality,
+            smgglrs_protocol::label::Confidentiality::Sensitive
+        );
     }
 
     #[test]
@@ -510,10 +525,7 @@ mod tests {
 
         assert_eq!(input_schema.schema_type, "object");
         assert!(input_schema.properties.is_some());
-        assert_eq!(
-            input_schema.required,
-            Some(vec!["path".to_string()])
-        );
+        assert_eq!(input_schema.required, Some(vec!["path".to_string()]));
     }
 
     #[test]

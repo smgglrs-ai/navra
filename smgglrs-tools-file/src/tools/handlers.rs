@@ -10,7 +10,7 @@ use super::state::DocsState;
 
 #[tool(
     name = "file_search",
-    description = "Full-text search across indexed documents",
+    description = "Full-text search across indexed documents"
 )]
 pub(crate) async fn handle_search(
     #[arg(description = "Search query")] query: String,
@@ -23,8 +23,14 @@ pub(crate) async fn handle_search(
     }
     let limit = limit.unwrap_or(10) as usize;
 
-    if !state.perm_engine.has_operation(&ctx.agent.permissions, "search")
-        && !ctx.agent.capabilities.as_ref().map_or(false, |c| c.operations.contains("search"))
+    if !state
+        .perm_engine
+        .has_operation(&ctx.agent.permissions, "search")
+        && !ctx
+            .agent
+            .capabilities
+            .as_ref()
+            .map_or(false, |c| c.operations.contains("search"))
     {
         return CallToolResult::error(format!(
             "Operation 'search' not permitted for agent '{}'",
@@ -40,13 +46,12 @@ pub(crate) async fn handle_search(
     let filtered: Vec<_> = results
         .into_iter()
         .filter(|r| {
-            state
-                .perm_engine
-                .check_with_capabilities(
-                    &ctx.agent.permissions, "read", Path::new(&r.path),
-                    ctx.agent.capabilities.as_ref(),
-                )
-                == PermissionResult::Allowed
+            state.perm_engine.check_with_capabilities(
+                &ctx.agent.permissions,
+                "read",
+                Path::new(&r.path),
+                ctx.agent.capabilities.as_ref(),
+            ) == PermissionResult::Allowed
         })
         .collect();
 
@@ -69,7 +74,7 @@ pub(crate) async fn handle_search(
 
 #[tool(
     name = "file_read",
-    description = "Read a document by path. Supports partial reads with offset and limit (line-based).",
+    description = "Read a document by path. Supports partial reads with offset and limit (line-based)."
 )]
 pub(crate) async fn handle_read(
     #[arg(description = "Absolute path to document")] path: String,
@@ -93,13 +98,16 @@ pub(crate) async fn handle_read(
 
     let content = match std::fs::read_to_string(&resolved) {
         Ok(c) => c,
-        Err(e) => return { tracing::warn!(path = %resolved.display(), error = %e, "File read failed"); CallToolResult::error("Read operation failed") },
+        Err(e) => {
+            return {
+                tracing::warn!(path = %resolved.display(), error = %e, "File read failed");
+                CallToolResult::error("Read operation failed")
+            }
+        }
     };
 
     let total_lines = content.lines().count();
-    let offset = offset
-        .map(|v| v.max(1) as usize)
-        .unwrap_or(1);
+    let offset = offset.map(|v| v.max(1) as usize).unwrap_or(1);
     let limit = limit.map(|v| v as usize);
 
     // Full read if no offset/limit specified
@@ -139,7 +147,7 @@ pub(crate) async fn handle_read(
 
 #[tool(
     name = "file_list",
-    description = "List files and directories at a path",
+    description = "List files and directories at a path"
 )]
 pub(crate) async fn handle_list(
     #[arg(description = "Directory path")] path: String,
@@ -162,7 +170,10 @@ pub(crate) async fn handle_list(
     let entries = match std::fs::read_dir(&resolved) {
         Ok(rd) => rd,
         Err(e) => {
-            return { tracing::warn!(path = %resolved.display(), error = %e, "Directory list failed"); CallToolResult::error("List operation failed") }
+            return {
+                tracing::warn!(path = %resolved.display(), error = %e, "Directory list failed");
+                CallToolResult::error("List operation failed")
+            }
         }
     };
 
@@ -220,10 +231,7 @@ pub(crate) async fn handle_list(
     CallToolResult::text(output)
 }
 
-#[tool(
-    name = "file_write",
-    description = "Create or overwrite a document",
-)]
+#[tool(name = "file_write", description = "Create or overwrite a document")]
 pub(crate) async fn handle_write(
     #[arg(description = "Absolute path")] path: String,
     #[arg(description = "Document content")] content: String,
@@ -256,7 +264,10 @@ pub(crate) async fn handle_write(
     }
 
     if let Err(e) = std::fs::write(&resolved, &content) {
-        return { tracing::warn!(path = %resolved.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
+        return {
+            tracing::warn!(path = %resolved.display(), error = %e, "File write failed");
+            CallToolResult::error("Write operation failed")
+        };
     }
 
     let size = content.len() as i64;
@@ -266,10 +277,9 @@ pub(crate) async fn handle_write(
     let modified = chrono_now();
     let checksum = simple_checksum(content.as_bytes());
 
-    match state
-        .index
-        .upsert(&path_str, mime, size, &modified, &checksum, &title, &content)
-    {
+    match state.index.upsert(
+        &path_str, mime, size, &modified, &checksum, &title, &content,
+    ) {
         Ok(doc_id) => {
             maybe_embed(&state, doc_id, &content).await;
         }
@@ -283,7 +293,7 @@ pub(crate) async fn handle_write(
 
 #[tool(
     name = "file_edit",
-    description = "Edit a document by replacing a string. The old_string must be unique in the file. Use enough surrounding context to ensure uniqueness.",
+    description = "Edit a document by replacing a string. The old_string must be unique in the file. Use enough surrounding context to ensure uniqueness."
 )]
 pub(crate) async fn handle_edit(
     #[arg(description = "Absolute path to file")] path: String,
@@ -307,15 +317,17 @@ pub(crate) async fn handle_edit(
 
     let file_content = match std::fs::read_to_string(&resolved) {
         Ok(c) => c,
-        Err(e) => return { tracing::warn!(path = %resolved.display(), error = %e, "File read failed"); CallToolResult::error("Read operation failed") },
+        Err(e) => {
+            return {
+                tracing::warn!(path = %resolved.display(), error = %e, "File read failed");
+                CallToolResult::error("Read operation failed")
+            }
+        }
     };
 
     let count = file_content.matches(&*old_string).count();
     if count == 0 {
-        return CallToolResult::error(format!(
-            "old_string not found in {}",
-            resolved.display()
-        ));
+        return CallToolResult::error(format!("old_string not found in {}", resolved.display()));
     }
     if count > 1 {
         return CallToolResult::error(format!(
@@ -340,7 +352,10 @@ pub(crate) async fn handle_edit(
     }
 
     if let Err(e) = std::fs::write(&resolved, &new_content) {
-        return { tracing::warn!(path = %resolved.display(), error = %e, "File write failed"); CallToolResult::error("Write operation failed") };
+        return {
+            tracing::warn!(path = %resolved.display(), error = %e, "File write failed");
+            CallToolResult::error("Write operation failed")
+        };
     }
 
     // Re-index
@@ -352,7 +367,13 @@ pub(crate) async fn handle_edit(
     let checksum = simple_checksum(new_content.as_bytes());
 
     match state.index.upsert(
-        &path_str, mime, size, &modified, &checksum, &title, &new_content,
+        &path_str,
+        mime,
+        size,
+        &modified,
+        &checksum,
+        &title,
+        &new_content,
     ) {
         Ok(doc_id) => {
             maybe_embed(&state, doc_id, &new_content).await;
@@ -367,7 +388,7 @@ pub(crate) async fn handle_edit(
 
 #[tool(
     name = "file_info",
-    description = "Get file metadata without reading content (size, type, line count, modified time)",
+    description = "Get file metadata without reading content (size, type, line count, modified time)"
 )]
 pub(crate) async fn handle_info(
     #[arg(description = "Absolute path to file")] path: String,
@@ -428,7 +449,11 @@ pub(crate) async fn handle_info(
         modified,
         mime,
         indexed,
-        if is_dir { "\n(use file_list to see contents)" } else { "" }
+        if is_dir {
+            "\n(use file_list to see contents)"
+        } else {
+            ""
+        }
     );
 
     CallToolResult::text(output)
@@ -436,7 +461,7 @@ pub(crate) async fn handle_info(
 
 #[tool(
     name = "file_delete",
-    description = "Delete a document. Requires write permission.",
+    description = "Delete a document. Requires write permission."
 )]
 pub(crate) async fn handle_delete(
     #[arg(description = "Absolute path to file")] path: String,
@@ -457,7 +482,10 @@ pub(crate) async fn handle_delete(
     }
 
     if let Err(e) = std::fs::remove_file(&resolved) {
-        return { tracing::warn!(path = %resolved.display(), error = %e, "File delete failed"); CallToolResult::error("Delete operation failed") };
+        return {
+            tracing::warn!(path = %resolved.display(), error = %e, "File delete failed");
+            CallToolResult::error("Delete operation failed")
+        };
     }
 
     // Remove from index
@@ -472,13 +500,20 @@ pub(crate) async fn handle_delete(
 /// Recursively list all files under a directory with line counts.
 #[tool(
     name = "file_tree",
-    description = "List files under a directory. Returns relative paths and line counts. For large projects, use max_depth to get a high-level overview first, then drill into specific directories. Default max_files is 500 — if the project has more, increase it or use max_depth=2 to get the directory structure without listing every file.",
+    description = "List files under a directory. Returns relative paths and line counts. For large projects, use max_depth to get a high-level overview first, then drill into specific directories. Default max_files is 500 — if the project has more, increase it or use max_depth=2 to get the directory structure without listing every file."
 )]
 pub(crate) async fn handle_tree(
-    #[arg(description = "Directory path (optional — defaults to project root)")] path: Option<String>,
-    #[arg(description = "Optional file extension filter (e.g. 'rs', 'py')")] pattern: Option<String>,
-    #[arg(description = "Max directory depth to recurse (default: unlimited)")] max_depth: Option<u64>,
-    #[arg(description = "Max files to return (default: 500). Truncated results show total count.")] max_files: Option<u64>,
+    #[arg(description = "Directory path (optional — defaults to project root)")] path: Option<
+        String,
+    >,
+    #[arg(description = "Optional file extension filter (e.g. 'rs', 'py')")] pattern: Option<
+        String,
+    >,
+    #[arg(description = "Max directory depth to recurse (default: unlimited)")] max_depth: Option<
+        u64,
+    >,
+    #[arg(description = "Max files to return (default: 500). Truncated results show total count.")]
+    max_files: Option<u64>,
     ctx: CallContext,
     #[state] state: Arc<DocsState>,
 ) -> CallToolResult {
@@ -488,9 +523,11 @@ pub(crate) async fn handle_tree(
         .or(state.default_root.as_deref())
     {
         Some(p) => p,
-        None => return CallToolResult::error(
-            "Missing required parameter: path (no default_root configured)"
-        ),
+        None => {
+            return CallToolResult::error(
+                "Missing required parameter: path (no default_root configured)",
+            )
+        }
     };
 
     let root = match resolve_path_with_root(raw_path, true, state.default_root.as_deref()) {
@@ -508,9 +545,7 @@ pub(crate) async fn handle_tree(
 
     let max_depth = max_depth.map(|v| v as usize);
 
-    let max_files = max_files
-        .map(|v| v as usize)
-        .unwrap_or(500);
+    let max_files = max_files.map(|v| v as usize).unwrap_or(500);
 
     let mut entries: Vec<(String, usize)> = Vec::new();
     collect_tree(&root, &root, &extension_filter, max_depth, 0, &mut entries);
@@ -527,7 +562,9 @@ pub(crate) async fn handle_tree(
         output.push_str(&format!(" (*.{})", ext));
     }
     if truncated {
-        output.push_str(&format!(" — showing first {max_files}, use max_depth or path to narrow"));
+        output.push_str(&format!(
+            " — showing first {max_files}, use max_depth or path to narrow"
+        ));
     }
     output.push('\n');
     for (rel_path, lines) in &entries {
@@ -550,7 +587,9 @@ fn collect_tree(
             return;
         }
     }
-    let Ok(read_dir) = std::fs::read_dir(dir) else { return };
+    let Ok(read_dir) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in read_dir.flatten() {
         let ft = match entry.file_type() {
             Ok(ft) => ft,
@@ -566,7 +605,14 @@ fn collect_tree(
             if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
                 continue;
             }
-            collect_tree(&path, root, ext_filter, max_depth, current_depth + 1, entries);
+            collect_tree(
+                &path,
+                root,
+                ext_filter,
+                max_depth,
+                current_depth + 1,
+                entries,
+            );
         } else if ft.is_file() {
             // Apply extension filter
             if let Some(ref ext) = ext_filter {
@@ -589,7 +635,7 @@ fn collect_tree(
 /// Search for a text pattern across all files in a directory.
 #[tool(
     name = "file_grep",
-    description = "Search for a text pattern across all files in a directory. Returns matching lines with file paths and line numbers. Use this for broad codebase searches like finding all .unwrap() calls, unsafe blocks, or specific function names across the entire project.",
+    description = "Search for a text pattern across all files in a directory. Returns matching lines with file paths and line numbers. Use this for broad codebase searches like finding all .unwrap() calls, unsafe blocks, or specific function names across the entire project."
 )]
 pub(crate) async fn handle_grep(
     #[arg(description = "Root directory to search")] path: String,
@@ -617,7 +663,16 @@ pub(crate) async fn handle_grep(
     let mut matches: Vec<String> = Vec::new();
     let mut files_searched = 0u32;
     let mut files_matched = 0u32;
-    grep_recursive(&root, &root, &pattern, &ext_filter, max_results, &mut matches, &mut files_searched, &mut files_matched);
+    grep_recursive(
+        &root,
+        &root,
+        &pattern,
+        &ext_filter,
+        max_results,
+        &mut matches,
+        &mut files_searched,
+        &mut files_matched,
+    );
 
     let mut output = format!(
         "{} matches in {} files (searched {} files)\n\n",
@@ -643,7 +698,9 @@ fn grep_recursive(
     files_searched: &mut u32,
     files_matched: &mut u32,
 ) {
-    let Ok(read_dir) = std::fs::read_dir(dir) else { return };
+    let Ok(read_dir) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in read_dir.flatten() {
         if matches.len() >= max_results {
             return;
@@ -663,14 +720,25 @@ fn grep_recursive(
             if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
                 continue;
             }
-            grep_recursive(&path, root, pattern, ext_filter, max_results, matches, files_searched, files_matched);
+            grep_recursive(
+                &path,
+                root,
+                pattern,
+                ext_filter,
+                max_results,
+                matches,
+                files_searched,
+                files_matched,
+            );
         } else if ft.is_file() {
             if let Some(ref ext) = ext_filter {
                 if path.extension().map(|e| e.to_string_lossy().to_string()) != Some(ext.clone()) {
                     continue;
                 }
             }
-            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
             *files_searched += 1;
             let rel = match path.strip_prefix(root) {
                 Ok(r) => r,
@@ -687,12 +755,7 @@ fn grep_recursive(
                         *files_matched += 1;
                         file_matched = true;
                     }
-                    matches.push(format!(
-                        "{}:{}: {}",
-                        rel_str,
-                        line_num + 1,
-                        line.trim()
-                    ));
+                    matches.push(format!("{}:{}: {}", rel_str, line_num + 1, line.trim()));
                 }
             }
         }
@@ -701,7 +764,7 @@ fn grep_recursive(
 
 #[tool(
     name = "file_approve",
-    description = "Approve a pending operation. Call this with the request_id returned by a tool that requires approval.",
+    description = "Approve a pending operation. Call this with the request_id returned by a tool that requires approval."
 )]
 pub(crate) async fn handle_approve(
     #[arg(description = "Approval request ID")] request_id: String,
@@ -711,18 +774,14 @@ pub(crate) async fn handle_approve(
     // Validate the request exists
     let meta = match state.approvals.get_pending(&request_id) {
         Some(m) => m,
-        None => {
-            return CallToolResult::error(format!(
-                "No pending approval request: {request_id}"
-            ))
-        }
+        None => return CallToolResult::error(format!("No pending approval request: {request_id}")),
     };
 
     // Security: prevent self-approval — the requesting agent cannot approve
     // its own request. Approval must come from a different agent or human.
     if ctx.agent.name == meta.agent_name {
         return CallToolResult::error(
-            "Self-approval denied: a different agent or human must approve this request"
+            "Self-approval denied: a different agent or human must approve this request",
         );
     }
 
@@ -747,7 +806,7 @@ pub(crate) async fn handle_approve(
 
 #[tool(
     name = "file_deny",
-    description = "Deny a pending operation. Call this with the request_id returned by a tool that requires approval.",
+    description = "Deny a pending operation. Call this with the request_id returned by a tool that requires approval."
 )]
 pub(crate) async fn handle_deny(
     #[arg(description = "Approval request ID")] request_id: String,
@@ -756,17 +815,13 @@ pub(crate) async fn handle_deny(
 ) -> CallToolResult {
     let meta = match state.approvals.get_pending(&request_id) {
         Some(m) => m,
-        None => {
-            return CallToolResult::error(format!(
-                "No pending approval request: {request_id}"
-            ))
-        }
+        None => return CallToolResult::error(format!("No pending approval request: {request_id}")),
     };
 
     // Security: prevent self-denial for audit trail integrity
     if ctx.agent.name == meta.agent_name {
         return CallToolResult::error(
-            "Self-denial not allowed: a different agent or human must deny this request"
+            "Self-denial not allowed: a different agent or human must deny this request",
         );
     }
 
@@ -782,15 +837,12 @@ pub(crate) async fn handle_deny(
         "Approval denied"
     );
 
-    CallToolResult::text(format!(
-        "Denied: {} on {}",
-        meta.operation, meta.path,
-    ))
+    CallToolResult::text(format!("Denied: {} on {}", meta.operation, meta.path,))
 }
 
 #[tool(
     name = "file_semantic_search",
-    description = "Semantic search across indexed documents using vector similarity. Finds documents with similar meaning, even if they don't share exact words.",
+    description = "Semantic search across indexed documents using vector similarity. Finds documents with similar meaning, even if they don't share exact words."
 )]
 pub(crate) async fn handle_semantic_search(
     #[arg(description = "Natural language search query")] query: String,
@@ -820,23 +872,25 @@ pub(crate) async fn handle_semantic_search(
     };
 
     // Search for similar documents
-    match state
-        .index
-        .search_similar(&embed_response.embedding, limit)
-    {
+    match state.index.search_similar(&embed_response.embedding, limit) {
         Ok(results) => {
             // Filter results through per-path ACL check
             use smgglrs_core::permissions::PermissionResult;
-            let filtered: Vec<_> = results.iter().filter(|r| {
-                let path = std::path::Path::new(&r.path);
-                matches!(
-                    state.perm_engine.check_with_capabilities(
-                        &ctx.agent.permissions, "search", path,
-                        ctx.agent.capabilities.as_ref(),
-                    ),
-                    PermissionResult::Allowed | PermissionResult::NeedsApproval
-                )
-            }).collect();
+            let filtered: Vec<_> = results
+                .iter()
+                .filter(|r| {
+                    let path = std::path::Path::new(&r.path);
+                    matches!(
+                        state.perm_engine.check_with_capabilities(
+                            &ctx.agent.permissions,
+                            "search",
+                            path,
+                            ctx.agent.capabilities.as_ref(),
+                        ),
+                        PermissionResult::Allowed | PermissionResult::NeedsApproval
+                    )
+                })
+                .collect();
 
             if filtered.is_empty() {
                 return CallToolResult::text("No similar documents found.".to_string());

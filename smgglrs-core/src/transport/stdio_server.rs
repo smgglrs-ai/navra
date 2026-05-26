@@ -1,5 +1,5 @@
 use crate::auth::AgentIdentity;
-use crate::protocol::{JsonRpcRequest, JsonRpcResponse, JsonRpcError, RequestId};
+use crate::protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, RequestId};
 use crate::server::McpServer;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -40,10 +40,8 @@ pub async fn run_stdio_server(
             Ok(v) => v,
             Err(e) => {
                 tracing::warn!(error = %e, "Invalid JSON on stdin, skipping");
-                let err_resp = JsonRpcResponse::error(
-                    RequestId::Number(0),
-                    JsonRpcError::parse_error(),
-                );
+                let err_resp =
+                    JsonRpcResponse::error(RequestId::Number(0), JsonRpcError::parse_error());
                 write_response(&mut stdout, &err_resp).await?;
                 continue;
             }
@@ -84,8 +82,10 @@ async fn write_response(
     stdout: &mut tokio::io::Stdout,
     response: &JsonRpcResponse,
 ) -> Result<(), std::io::Error> {
-    let resp_line = serde_json::to_string(response)
-        .unwrap_or_else(|_| r#"{"jsonrpc":"2.0","error":{"code":-32603,"message":"serialization failed"},"id":0}"#.to_string());
+    let resp_line = serde_json::to_string(response).unwrap_or_else(|_| {
+        r#"{"jsonrpc":"2.0","error":{"code":-32603,"message":"serialization failed"},"id":0}"#
+            .to_string()
+    });
     stdout.write_all(resp_line.as_bytes()).await?;
     stdout.write_all(b"\n").await?;
     stdout.flush().await

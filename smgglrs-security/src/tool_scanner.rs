@@ -132,11 +132,7 @@ impl ToolScanner {
             .collect()
     }
 
-    fn check_rug_pull(
-        &mut self,
-        upstream_name: &str,
-        tool: &ToolDefinition,
-    ) -> Vec<ToolFinding> {
+    fn check_rug_pull(&mut self, upstream_name: &str, tool: &ToolDefinition) -> Vec<ToolFinding> {
         let key = format!("{upstream_name}:{}", tool.name);
         let serialized = serde_json::to_string(tool).unwrap_or_default();
         let hash = sha256_hex(serialized.as_bytes());
@@ -192,11 +188,7 @@ fn check_tool_poisoning(desc: &str) -> Vec<ToolFinding> {
     findings
 }
 
-fn check_typosquatting(
-    name: &str,
-    known_names: &[String],
-    threshold: usize,
-) -> Vec<ToolFinding> {
+fn check_typosquatting(name: &str, known_names: &[String], threshold: usize) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
     for known in known_names {
         if name == known {
@@ -211,9 +203,7 @@ fn check_typosquatting(
                 } else {
                     FindingSeverity::Medium
                 },
-                description: format!(
-                    "Name '{name}' is {dist} edit(s) from known tool '{known}'"
-                ),
+                description: format!("Name '{name}' is {dist} edit(s) from known tool '{known}'"),
             });
         }
     }
@@ -276,10 +266,7 @@ fn check_hidden_unicode(text: &str) -> Vec<ToolFinding> {
             findings.push(ToolFinding {
                 category: ToolThreatCategory::HiddenUnicode,
                 severity: FindingSeverity::Critical,
-                description: format!(
-                    "Hidden Unicode character U+{:04X}",
-                    ch as u32
-                ),
+                description: format!("Hidden Unicode character U+{:04X}", ch as u32),
             });
         }
     }
@@ -361,7 +348,9 @@ fn check_intent_behavior_mismatch(tool: &ToolDefinition) -> Vec<ToolFinding> {
 }
 
 fn aggregate_verdict(findings: &[ToolFinding]) -> ScanVerdict {
-    let has_critical = findings.iter().any(|f| f.severity == FindingSeverity::Critical);
+    let has_critical = findings
+        .iter()
+        .any(|f| f.severity == FindingSeverity::Critical);
     let has_high = findings.iter().any(|f| f.severity == FindingSeverity::High);
 
     if has_critical {
@@ -395,9 +384,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
         curr[0] = i;
         for j in 1..=n {
             let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + cost);
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -424,11 +411,7 @@ mod tests {
 
     fn scanner() -> ToolScanner {
         ToolScanner::new(ToolScanConfig {
-            known_tool_names: vec![
-                "file_read".into(),
-                "file_write".into(),
-                "git_status".into(),
-            ],
+            known_tool_names: vec!["file_read".into(), "file_write".into(), "git_status".into()],
             ..Default::default()
         })
     }
@@ -454,11 +437,8 @@ mod tests {
 
     #[test]
     fn typosquatting_detected() {
-        let findings = check_typosquatting(
-            "file_raed",
-            &["file_read".into(), "file_write".into()],
-            2,
-        );
+        let findings =
+            check_typosquatting("file_raed", &["file_read".into(), "file_write".into()], 2);
         assert!(!findings.is_empty());
         assert!(findings
             .iter()
@@ -467,8 +447,7 @@ mod tests {
 
     #[test]
     fn typosquatting_exact_match_ignored() {
-        let findings =
-            check_typosquatting("file_read", &["file_read".into()], 2);
+        let findings = check_typosquatting("file_read", &["file_read".into()], 2);
         assert!(findings.is_empty());
     }
 
@@ -483,7 +462,8 @@ mod tests {
             ),
             required: None,
         };
-        let findings = check_schema_abuse(&schema, &ToolScanConfig::default().sensitive_schema_fields);
+        let findings =
+            check_schema_abuse(&schema, &ToolScanConfig::default().sensitive_schema_fields);
         assert!(!findings.is_empty());
     }
 
@@ -492,10 +472,7 @@ mod tests {
         let text = "normal\u{200B}text";
         let findings = check_hidden_unicode(text);
         assert!(!findings.is_empty());
-        assert_eq!(
-            findings[0].category,
-            ToolThreatCategory::HiddenUnicode
-        );
+        assert_eq!(findings[0].category, ToolThreatCategory::HiddenUnicode);
     }
 
     #[test]
@@ -608,9 +585,6 @@ mod tests {
             annotations: None,
         }];
         let results = s.scan_tools("evil-server", &tools);
-        assert!(matches!(
-            results[0].verdict,
-            ScanVerdict::Malicious { .. }
-        ));
+        assert!(matches!(results[0].verdict, ScanVerdict::Malicious { .. }));
     }
 }

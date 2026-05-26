@@ -8,10 +8,12 @@ use crate::session::SessionStore;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
-use super::types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};
+use super::types::{
+    RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool,
+};
 use super::McpServer;
 
 /// Builder for constructing an McpServer.
@@ -82,7 +84,10 @@ impl McpServerBuilder {
     pub fn tool(
         mut self,
         definition: crate::protocol::ToolDefinition,
-        handler: impl Fn(serde_json::Value, crate::auth::CallContext) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
+        handler: impl Fn(
+                serde_json::Value,
+                crate::auth::CallContext,
+            ) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
             + Send
             + Sync
             + 'static,
@@ -107,7 +112,10 @@ impl McpServerBuilder {
         let uri = definition.uri.clone();
         self.resources.insert(
             uri,
-            RegisteredResource { definition, handler },
+            RegisteredResource {
+                definition,
+                handler,
+            },
         );
         self
     }
@@ -118,7 +126,8 @@ impl McpServerBuilder {
         template: crate::protocol::ResourceTemplate,
         handler: crate::module::ResourceHandler,
     ) -> Self {
-        self.resource_templates.push(RegisteredResourceTemplate { template, handler });
+        self.resource_templates
+            .push(RegisteredResourceTemplate { template, handler });
         self
     }
 
@@ -206,7 +215,8 @@ impl McpServerBuilder {
         permission_set: impl Into<String>,
         pipeline: FilterPipeline,
     ) -> Self {
-        self.safety_pipelines.insert(permission_set.into(), pipeline);
+        self.safety_pipelines
+            .insert(permission_set.into(), pipeline);
         self
     }
 
@@ -270,11 +280,7 @@ impl McpServerBuilder {
     ///
     /// Files matching these glob patterns keep their Trusted integrity
     /// label even when accessed via external read tools.
-    pub fn trusted_paths(
-        mut self,
-        permission_set: impl Into<String>,
-        paths: Vec<String>,
-    ) -> Self {
+    pub fn trusted_paths(mut self, permission_set: impl Into<String>, paths: Vec<String>) -> Self {
         self.trusted_paths
             .get_or_insert_with(HashMap::new)
             .insert(permission_set.into(), paths);
@@ -293,7 +299,8 @@ impl McpServerBuilder {
         permission_set: impl Into<String>,
         disclosure: smgglrs_security::permissions::ToolDisclosure,
     ) -> Self {
-        self.tool_disclosure.insert(permission_set.into(), disclosure);
+        self.tool_disclosure
+            .insert(permission_set.into(), disclosure);
         self
     }
 
@@ -361,7 +368,6 @@ impl McpServerBuilder {
         {
             use crate::protocol::{ToolDefinition, ToolInputSchema};
 
-
             // smgglrs_var_list — list all variables in the session
             let vs = value_stores.clone();
             tools.insert(
@@ -369,7 +375,9 @@ impl McpServerBuilder {
                 RegisteredTool {
                     definition: ToolDefinition {
                         name: "smgglrs_var_list".to_string(),
-                        description: Some("List all IFC-tracked variables in the current session".to_string()),
+                        description: Some(
+                            "List all IFC-tracked variables in the current session".to_string(),
+                        ),
                         input_schema: ToolInputSchema {
                             schema_type: "object".to_string(),
                             properties: None,
@@ -393,7 +401,9 @@ impl McpServerBuilder {
                                     })
                                 })
                                 .collect();
-                            CallToolResult::text(serde_json::to_string_pretty(&json).unwrap_or_default())
+                            CallToolResult::text(
+                                serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            )
                         })
                     }),
                 },
@@ -407,7 +417,10 @@ impl McpServerBuilder {
                 RegisteredTool {
                     definition: ToolDefinition {
                         name: "smgglrs_var_inspect".to_string(),
-                        description: Some("Read a variable's content into the LLM context (taints session)".to_string()),
+                        description: Some(
+                            "Read a variable's content into the LLM context (taints session)"
+                                .to_string(),
+                        ),
                         input_schema: ToolInputSchema {
                             schema_type: "object".to_string(),
                             properties: Some(std::collections::HashMap::from([(
@@ -435,7 +448,9 @@ impl McpServerBuilder {
                                     result.label = stored.label;
                                     result
                                 }
-                                None => CallToolResult::error(format!("Variable not found: {var_id}")),
+                                None => {
+                                    CallToolResult::error(format!("Variable not found: {var_id}"))
+                                }
                             }
                         })
                     }),
@@ -469,8 +484,12 @@ impl McpServerBuilder {
                             };
                             let store = vs.get_or_create(&ctx.session_id);
                             match store.remove(var_id) {
-                                Some(_) => CallToolResult::text(format!("Variable {var_id} removed")),
-                                None => CallToolResult::error(format!("Variable not found: {var_id}")),
+                                Some(_) => {
+                                    CallToolResult::text(format!("Variable {var_id} removed"))
+                                }
+                                None => {
+                                    CallToolResult::error(format!("Variable not found: {var_id}"))
+                                }
                             }
                         })
                     }),
@@ -494,7 +513,9 @@ impl McpServerBuilder {
                     definition: crate::protocol::ResourceDefinition {
                         uri: "smgglrs://proc".to_string(),
                         name: "Process table".to_string(),
-                        description: Some("Connected agents, privilege rings, call counts".to_string()),
+                        description: Some(
+                            "Connected agents, privilege rings, call counts".to_string(),
+                        ),
                         mime_type: Some("application/json".to_string()),
                         size: None,
                     },
@@ -634,7 +655,9 @@ impl McpServerBuilder {
                 template: crate::protocol::ResourceTemplate {
                     uri_template: "smgglrs://proc/{agent}/taint".to_string(),
                     name: "Agent taint label".to_string(),
-                    description: Some("Current IFC taint label for a specific agent session".to_string()),
+                    description: Some(
+                        "Current IFC taint label for a specific agent session".to_string(),
+                    ),
                     mime_type: Some("application/json".to_string()),
                     annotations: None,
                 },
@@ -658,7 +681,8 @@ impl McpServerBuilder {
                                         })
                                     })
                                     .collect();
-                                let json = serde_json::to_string_pretty(&matching).unwrap_or_default();
+                                let json =
+                                    serde_json::to_string_pretty(&matching).unwrap_or_default();
                                 crate::protocol::ReadResourceResult {
                                     contents: vec![crate::protocol::ResourceContent {
                                         uri,
@@ -727,7 +751,8 @@ impl McpServerBuilder {
                                         })
                                     })
                                     .collect();
-                                let json = serde_json::to_string_pretty(&matching).unwrap_or_default();
+                                let json =
+                                    serde_json::to_string_pretty(&matching).unwrap_or_default();
                                 crate::protocol::ReadResourceResult {
                                     contents: vec![crate::protocol::ResourceContent {
                                         uri,

@@ -28,13 +28,7 @@ pub trait ModelSafetyFilter: Send + Sync {
     fn filter_response(&self, response: &ModelResponse) -> Result<(), String>;
 
     /// Record the model call for audit purposes.
-    fn record_call(
-        &self,
-        model_name: &str,
-        input_tokens: u32,
-        output_tokens: u32,
-        blocked: bool,
-    );
+    fn record_call(&self, model_name: &str, input_tokens: u32, output_tokens: u32, blocked: bool);
 }
 
 /// A model backend that filters all calls through a safety layer.

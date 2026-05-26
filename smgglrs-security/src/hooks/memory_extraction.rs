@@ -22,13 +22,7 @@ pub trait ExtractionStore: Send + Sync + 'static {
     /// - `content`: the extracted text
     /// - `session_id`: session scope for the entry
     /// - `tags`: metadata tags (tool name, etc.)
-    fn store_extraction(
-        &self,
-        title: &str,
-        content: &str,
-        session_id: &str,
-        tags: &[String],
-    );
+    fn store_extraction(&self, title: &str, content: &str, session_id: &str, tags: &[String]);
 }
 
 /// Configuration for the memory extraction hook.
@@ -46,10 +40,7 @@ impl Default for MemoryExtractionConfig {
             enabled: true,
             min_content_length: 100,
             max_content_length: 10_000,
-            exclude_tools: vec![
-                "smgglrs_var_*".to_string(),
-                "memory_*".to_string(),
-            ],
+            exclude_tools: vec!["smgglrs_var_*".to_string(), "memory_*".to_string()],
         }
     }
 }
@@ -68,10 +59,7 @@ pub struct MemoryExtractionHook {
 
 impl MemoryExtractionHook {
     /// Create a new memory extraction hook.
-    pub fn new(
-        store: Arc<dyn ExtractionStore>,
-        config: MemoryExtractionConfig,
-    ) -> Self {
+    pub fn new(store: Arc<dyn ExtractionStore>, config: MemoryExtractionConfig) -> Self {
         Self {
             store,
             min_content_length: config.min_content_length,
@@ -129,12 +117,8 @@ impl MemoryExtractionHook {
             "auto-extracted".to_string(),
         ];
 
-        self.store.store_extraction(
-            &title,
-            &content,
-            &ctx.session_id,
-            &tags,
-        );
+        self.store
+            .store_extraction(&title, &content, &ctx.session_id, &tags);
     }
 }
 
@@ -258,13 +242,7 @@ mod tests {
     }
 
     impl ExtractionStore for TestStore {
-        fn store_extraction(
-            &self,
-            title: &str,
-            content: &str,
-            session_id: &str,
-            tags: &[String],
-        ) {
+        fn store_extraction(&self, title: &str, content: &str, session_id: &str, tags: &[String]) {
             self.entries.lock().unwrap().push((
                 title.to_string(),
                 content.to_string(),
@@ -279,10 +257,7 @@ mod tests {
     }
 
     fn make_hook(store: Arc<TestStore>) -> MemoryExtractionHook {
-        MemoryExtractionHook::new(
-            store,
-            MemoryExtractionConfig::default(),
-        )
+        MemoryExtractionHook::new(store, MemoryExtractionConfig::default())
     }
 
     #[tokio::test]
@@ -363,7 +338,12 @@ mod tests {
         let result = CallToolResult::text(content);
 
         let decision = hook
-            .post_tool_use("smgglrs_var_get", &serde_json::json!({}), &result, &test_ctx())
+            .post_tool_use(
+                "smgglrs_var_get",
+                &serde_json::json!({}),
+                &result,
+                &test_ctx(),
+            )
             .await;
 
         assert!(matches!(decision, HookDecision::Continue));
@@ -389,7 +369,8 @@ mod tests {
                 .await;
             assert!(
                 matches!(decision, HookDecision::Continue),
-                "Expected Continue for tool={tool}, is_error={}", result.is_error,
+                "Expected Continue for tool={tool}, is_error={}",
+                result.is_error,
             );
         }
     }
@@ -430,7 +411,10 @@ mod tests {
     #[test]
     fn extract_context_hint_path() {
         let args = serde_json::json!({"path": "/home/user/file.rs"});
-        assert_eq!(extract_context_hint("file_read", &args), "/home/user/file.rs");
+        assert_eq!(
+            extract_context_hint("file_read", &args),
+            "/home/user/file.rs"
+        );
     }
 
     #[test]
@@ -450,7 +434,8 @@ mod tests {
         let store = Arc::new(TestStore::new());
         let hook = make_hook(Arc::clone(&store));
 
-        let content = "commit abc123\nAuthor: Test\nDate: 2026-01-01\n\n    Initial commit\n".repeat(5);
+        let content =
+            "commit abc123\nAuthor: Test\nDate: 2026-01-01\n\n    Initial commit\n".repeat(5);
         let result = CallToolResult::text(content);
         let args = serde_json::json!({"ref": "main"});
 

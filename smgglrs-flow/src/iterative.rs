@@ -7,11 +7,11 @@
 //! go deeper. Each round produces diminishing returns until the cost
 //! of another round exceeds the expected value.
 
+use serde::{Deserialize, Serialize};
 use smgglrs_agent::Agent;
 use smgglrs_model::{CreateResponseRequest, InputItem, ModelBackend, ModelResponse};
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_security::ifc::TaintTracker;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// How the scout phase selects files to analyze.
@@ -25,7 +25,6 @@ pub enum ScoutMode {
     #[default]
     Exhaustive,
 }
-
 
 /// Configuration for an iterative analysis.
 #[derive(Debug, Clone, Deserialize)]
@@ -52,9 +51,15 @@ pub struct IterativeConfig {
     pub reduce_specialist: String,
 }
 
-fn default_max_rounds() -> u32 { 5 }
-fn default_min_delta() -> u32 { 2 }
-fn default_max_items_per_round() -> usize { 10 }
+fn default_max_rounds() -> u32 {
+    5
+}
+fn default_min_delta() -> u32 {
+    2
+}
+fn default_max_items_per_round() -> usize {
+    10
+}
 
 /// A single finding from the analysis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,16 +216,19 @@ impl IterativeExecutor {
                 )
             };
 
-            let scout_agent = self.agents.get_mut(&config.scout_specialist)
-                .ok_or_else(|| crate::error::FlowError::UnknownSpecialist(
-                    config.scout_specialist.clone(),
-                ))?;
+            let scout_agent = self
+                .agents
+                .get_mut(&config.scout_specialist)
+                .ok_or_else(|| {
+                    crate::error::FlowError::UnknownSpecialist(config.scout_specialist.clone())
+                })?;
 
-            let scout_result = scout_agent.run(&scout_prompt).await
-                .map_err(|e| crate::error::FlowError::Agent {
+            let scout_result = scout_agent.run(&scout_prompt).await.map_err(|e| {
+                crate::error::FlowError::Agent {
                     node: "scout".into(),
                     source: e,
-                })?;
+                }
+            })?;
 
             taint.absorb(scout_result.taint);
             total_input += scout_result.input_tokens;
@@ -253,10 +261,9 @@ impl IterativeExecutor {
                     item
                 );
 
-                let map_agent = self.agents.get_mut(&config.map_specialist)
-                    .ok_or_else(|| crate::error::FlowError::UnknownSpecialist(
-                        config.map_specialist.clone(),
-                    ))?;
+                let map_agent = self.agents.get_mut(&config.map_specialist).ok_or_else(|| {
+                    crate::error::FlowError::UnknownSpecialist(config.map_specialist.clone())
+                })?;
 
                 match map_agent.run(&map_prompt).await {
                     Ok(result) => {
@@ -368,24 +375,28 @@ async fn call_model(
 ) -> Result<(String, u32, u32), crate::error::FlowError> {
     let request = CreateResponseRequest {
         model: String::new(),
-        input: vec![
-            InputItem::system(system),
-            InputItem::user(user),
-        ],
+        input: vec![InputItem::system(system), InputItem::user(user)],
         max_output_tokens: Some(2048),
         temperature: Some(0.3),
         ..CreateResponseRequest::new(String::new(), vec![])
     };
 
-    let response: ModelResponse = backend.respond(&request).await
-        .map_err(|e| crate::error::FlowError::Agent {
-            node: "model".into(),
-            source: e.into(),
-        })?;
+    let response: ModelResponse =
+        backend
+            .respond(&request)
+            .await
+            .map_err(|e| crate::error::FlowError::Agent {
+                node: "model".into(),
+                source: e.into(),
+            })?;
 
     let text = response.text().unwrap_or_default();
     let input_tokens = response.usage.as_ref().map(|u| u.input_tokens).unwrap_or(0);
-    let output_tokens = response.usage.as_ref().map(|u| u.output_tokens).unwrap_or(0);
+    let output_tokens = response
+        .usage
+        .as_ref()
+        .map(|u| u.output_tokens)
+        .unwrap_or(0);
     Ok((text, input_tokens, output_tokens))
 }
 
@@ -411,23 +422,32 @@ pub async fn run_iterative(
 
     // Build system prompts from Weaver for each phase
     let scout_system = smgglrs_cognitive::assemble(
-        forge, &config.scout_specialist, "identify files", None, None,
-    ).map(|w| w.system_prompt()).unwrap_or_default();
+        forge,
+        &config.scout_specialist,
+        "identify files",
+        None,
+        None,
+    )
+    .map(|w| w.system_prompt())
+    .unwrap_or_default();
 
-    let map_system = smgglrs_cognitive::assemble(
-        forge, &config.map_specialist, "audit file", None, None,
-    ).map(|w| w.system_prompt()).unwrap_or_default();
+    let map_system =
+        smgglrs_cognitive::assemble(forge, &config.map_specialist, "audit file", None, None)
+            .map(|w| w.system_prompt())
+            .unwrap_or_default();
 
-    let reduce_system = smgglrs_cognitive::assemble(
-        forge, &config.reduce_specialist, "synthesize", None, None,
-    ).map(|w| w.system_prompt()).unwrap_or_default();
+    let reduce_system =
+        smgglrs_cognitive::assemble(forge, &config.reduce_specialist, "synthesize", None, None)
+            .map(|w| w.system_prompt())
+            .unwrap_or_default();
 
     // For exhaustive mode: build a queue of all files
-    let mut file_queue: std::collections::VecDeque<String> = if config.scout_mode == ScoutMode::Exhaustive {
-        all_files.iter().cloned().collect()
-    } else {
-        std::collections::VecDeque::new()
-    };
+    let mut file_queue: std::collections::VecDeque<String> =
+        if config.scout_mode == ScoutMode::Exhaustive {
+            all_files.iter().cloned().collect()
+        } else {
+            std::collections::VecDeque::new()
+        };
 
     for round in 1..=config.max_rounds {
         println!("\n  ━━━ Round {}/{} ━━━", round, config.max_rounds);
@@ -440,12 +460,19 @@ pub async fn run_iterative(
                 .filter(|f| !analyzed_items.contains(f))
                 .collect();
             if batch.is_empty() {
-                println!("  Scout: all {} files analyzed → complete", analyzed_items.len());
+                println!(
+                    "  Scout: all {} files analyzed → complete",
+                    analyzed_items.len()
+                );
                 converged = true;
                 break;
             }
-            println!("  Scout: {} files (batch {}, {} remaining)",
-                batch.len(), round, file_queue.len());
+            println!(
+                "  Scout: {} files (batch {}, {} remaining)",
+                batch.len(),
+                round,
+                file_queue.len()
+            );
             batch
         } else {
             // Model-driven: ask the LLM to pick files
@@ -463,7 +490,9 @@ pub async fn run_iterative(
                      Identify NEW files NOT in the list above.\n\
                      Return ONLY a JSON array of file paths.\n\
                      Limit to {} files.",
-                    initial_prompt, analyzed_items, all_findings.len(),
+                    initial_prompt,
+                    analyzed_items,
+                    all_findings.len(),
                     config.max_items_per_round
                 )
             };
@@ -473,7 +502,8 @@ pub async fn run_iterative(
             total_output += so;
 
             let items = parse_items(&scout_output);
-            let batch: Vec<String> = items.into_iter()
+            let batch: Vec<String> = items
+                .into_iter()
                 .filter(|i| !analyzed_items.contains(i))
                 .take(config.max_items_per_round)
                 .collect();
@@ -519,7 +549,11 @@ pub async fn run_iterative(
             if count == 0 && !map_output.trim().is_empty() && map_output.trim() != "[]" {
                 // Model returned text but we couldn't parse findings — show first lines
                 let preview: String = map_output.lines().take(3).collect::<Vec<_>>().join(" | ");
-                println!("{} findings (raw: {}...)", count, &preview[..preview.len().min(80)]);
+                println!(
+                    "{} findings (raw: {}...)",
+                    count,
+                    &preview[..preview.len().min(80)]
+                );
             } else {
                 println!("{} findings", count);
             }
@@ -553,11 +587,17 @@ pub async fn run_iterative(
 
         println!(
             "  Round {}: +{} findings (total: {}, delta: {:.0}%)",
-            round, deduped_new, all_findings.len(), delta * 100.0
+            round,
+            deduped_new,
+            all_findings.len(),
+            delta * 100.0
         );
 
         if (deduped_new as u32) < config.min_delta {
-            println!("  Converged: new findings ({}) < threshold ({})", deduped_new, config.min_delta);
+            println!(
+                "  Converged: new findings ({}) < threshold ({})",
+                deduped_new, config.min_delta
+            );
             converged = true;
             break;
         }
@@ -609,7 +649,10 @@ fn parse_items(output: &str) -> Vec<String> {
     // Fall back to non-empty lines that look like file paths
     output
         .lines()
-        .map(|l| l.trim().trim_matches(|c: char| c == '-' || c == '*' || c == '"'))
+        .map(|l| {
+            l.trim()
+                .trim_matches(|c: char| c == '-' || c == '*' || c == '"')
+        })
         .map(|l| l.trim())
         .filter(|l| !l.is_empty() && (l.contains('/') || l.ends_with(".rs")))
         .map(|l| l.to_string())
@@ -645,9 +688,12 @@ fn parse_findings(output: &str, round: u32) -> Vec<Finding> {
         .enumerate()
         .filter(|(_, l)| {
             let lower = l.to_lowercase();
-            lower.contains("cwe") || lower.contains("finding")
-                || lower.contains("vulnerability") || lower.contains("issue")
-                || lower.contains("unwrap") || lower.contains("unsafe")
+            lower.contains("cwe")
+                || lower.contains("finding")
+                || lower.contains("vulnerability")
+                || lower.contains("issue")
+                || lower.contains("unwrap")
+                || lower.contains("unsafe")
         })
         .map(|(i, l)| Finding {
             id: format!("r{round}-{i}"),
@@ -698,7 +744,8 @@ mod tests {
 
     #[test]
     fn parse_findings_text_fallback() {
-        let text = "1. CWE-248: unwrap in handler\n2. Some description\n3. CWE-22: path traversal\n";
+        let text =
+            "1. CWE-248: unwrap in handler\n2. Some description\n3. CWE-22: path traversal\n";
         let findings = parse_findings(text, 2);
         assert_eq!(findings.len(), 2); // lines 1 and 3 match
         assert_eq!(findings[0].round, 2);
@@ -718,12 +765,15 @@ mod tests {
 
     #[test]
     fn convergence_config_defaults() {
-        let config: IterativeConfig = toml::from_str(r#"
+        let config: IterativeConfig = toml::from_str(
+            r#"
             name = "test"
             scout_specialist = "scout"
             map_specialist = "auditor"
             reduce_specialist = "analyst"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(config.max_rounds, 5);
         assert_eq!(config.min_delta, 2);
         assert_eq!(config.max_items_per_round, 10);

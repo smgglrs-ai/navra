@@ -202,8 +202,7 @@ impl Hook for BudgetHook {
                         self.max_tool_output_tokens
                     } else {
                         // Proportional share of the budget
-                        let share =
-                            item_tokens as f64 / total_tokens as f64;
+                        let share = item_tokens as f64 / total_tokens as f64;
                         (share * self.max_tool_output_tokens as f64) as usize
                     };
 
@@ -399,7 +398,12 @@ mod tests {
         // Result with no text items — total text tokens is 0, within budget
         let result = CallToolResult::success(vec![]);
         let decision = hook
-            .post_tool_use("vision_capture", &serde_json::json!({}), &result, &test_ctx())
+            .post_tool_use(
+                "vision_capture",
+                &serde_json::json!({}),
+                &result,
+                &test_ctx(),
+            )
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -430,7 +434,10 @@ mod tests {
                 assert!(text_items.len() >= 3, "Expected at least 3 text items");
                 assert!(text_items[0].contains("[truncated"));
                 assert!(text_items[1].contains("[truncated"));
-                assert!(text_items.last().unwrap().contains("[Output truncated from"));
+                assert!(text_items
+                    .last()
+                    .unwrap()
+                    .contains("[Output truncated from"));
             }
             other => panic!("Expected ModifyResult, got {other:?}"),
         }

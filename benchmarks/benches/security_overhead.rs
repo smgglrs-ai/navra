@@ -68,10 +68,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
     });
 
     group.bench_function("is_trusted_path_match", |b| {
-        let patterns = vec![
-            "~/Code/**".to_string(),
-            "~/Documents/**".to_string(),
-        ];
+        let patterns = vec!["~/Code/**".to_string(), "~/Documents/**".to_string()];
         b.iter(|| {
             smgglrs_security::ifc::is_trusted_path(
                 black_box("/home/user/Code/project/src/main.rs"),
@@ -83,10 +80,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
     group.bench_function("is_trusted_path_no_match", |b| {
         let patterns = vec!["~/Code/**".to_string()];
         b.iter(|| {
-            smgglrs_security::ifc::is_trusted_path(
-                black_box("/tmp/random/file.txt"),
-                &patterns,
-            )
+            smgglrs_security::ifc::is_trusted_path(black_box("/tmp/random/file.txt"), &patterns)
         });
     });
 
@@ -102,8 +96,7 @@ fn bench_capability_tokens(c: &mut Criterion) {
     use smgglrs_security::identity::{load_or_create_file_identity, CapSigner};
 
     let tmp = tempfile::tempdir().unwrap();
-    let signer =
-        load_or_create_file_identity(&tmp.path().join("bench.key")).unwrap();
+    let signer = load_or_create_file_identity(&tmp.path().join("bench.key")).unwrap();
 
     let cap_set = CapabilitySet {
         paths: vec!["~/Code/**".to_string()],
@@ -141,9 +134,7 @@ fn bench_blake3_auth(c: &mut Criterion) {
 
     group.bench_function("hash_token", |b| {
         b.iter(|| {
-            TokenAuthenticator::hash_token(black_box(
-                "mcd_a1b2c3d4e5f6789012345678901234567890",
-            ))
+            TokenAuthenticator::hash_token(black_box("mcd_a1b2c3d4e5f6789012345678901234567890"))
         });
     });
 
@@ -161,8 +152,7 @@ fn bench_safety_pipeline(c: &mut Criterion) {
     let guardian = build_pipeline("guardian");
 
     let clean_text = "This is a normal response about code quality and testing.";
-    let text_with_secret =
-        "The API key is sk_live_4eC39HqLyjWDarjtT1zdp7dc and should be rotated.";
+    let text_with_secret = "The API key is sk_live_4eC39HqLyjWDarjtT1zdp7dc and should be rotated.";
     let long_text = "Lorem ipsum dolor sit amet. ".repeat(100);
 
     let ctx = FilterContext {
@@ -252,11 +242,26 @@ fn bench_tool_rules(c: &mut Criterion) {
     use smgglrs_security::permissions::{ToolPermissions, ToolPolicy, ToolRule};
 
     let rules = vec![
-        ToolRule { tool: "file_read".to_string(), policy: ToolPolicy::Allow },
-        ToolRule { tool: "file_write".to_string(), policy: ToolPolicy::Approve },
-        ToolRule { tool: "file_delete".to_string(), policy: ToolPolicy::Deny },
-        ToolRule { tool: "git_*".to_string(), policy: ToolPolicy::Allow },
-        ToolRule { tool: "sys_*".to_string(), policy: ToolPolicy::Deny },
+        ToolRule {
+            tool: "file_read".to_string(),
+            policy: ToolPolicy::Allow,
+        },
+        ToolRule {
+            tool: "file_write".to_string(),
+            policy: ToolPolicy::Approve,
+        },
+        ToolRule {
+            tool: "file_delete".to_string(),
+            policy: ToolPolicy::Deny,
+        },
+        ToolRule {
+            tool: "git_*".to_string(),
+            policy: ToolPolicy::Allow,
+        },
+        ToolRule {
+            tool: "sys_*".to_string(),
+            policy: ToolPolicy::Deny,
+        },
     ];
     let perms = ToolPermissions::new(rules, ToolPolicy::Allow);
 
@@ -346,19 +351,15 @@ fn bench_weaver(c: &mut Criterion) {
     });
 
     // Report token overhead
-    let output = smgglrs_cognitive::assemble(
-        &forge,
-        "security_auditor",
-        short_prompt,
-        None,
-        None,
-    )
-    .unwrap();
+    let output =
+        smgglrs_cognitive::assemble(&forge, "security_auditor", short_prompt, None, None).unwrap();
     let system_len = output.system_prompt().len();
     let prompt_len = short_prompt.len();
     eprintln!(
         "\n  Weaver token overhead: {} chars system prompt + {} chars user = {} total ({:.1}x)",
-        system_len, prompt_len, system_len + prompt_len,
+        system_len,
+        prompt_len,
+        system_len + prompt_len,
         (system_len + prompt_len) as f64 / prompt_len as f64
     );
 

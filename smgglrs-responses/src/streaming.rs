@@ -20,21 +20,15 @@ pub enum StreamEvent {
     // --- State machine events ---
     /// Response has started processing.
     #[serde(rename = "response.in_progress")]
-    ResponseInProgress {
-        response: Response,
-    },
+    ResponseInProgress { response: Response },
 
     /// Response completed successfully.
     #[serde(rename = "response.completed")]
-    ResponseCompleted {
-        response: Response,
-    },
+    ResponseCompleted { response: Response },
 
     /// Response failed with an error.
     #[serde(rename = "response.failed")]
-    ResponseFailed {
-        response: Response,
-    },
+    ResponseFailed { response: Response },
 
     // --- Item events ---
     /// A new output item was added.
@@ -87,10 +81,7 @@ pub enum StreamEvent {
 
     /// Incremental function call arguments.
     #[serde(rename = "response.function_call_arguments.delta")]
-    FunctionCallArgumentsDelta {
-        output_index: usize,
-        delta: String,
-    },
+    FunctionCallArgumentsDelta { output_index: usize, delta: String },
 
     /// Function call arguments completed.
     #[serde(rename = "response.function_call_arguments.done")]

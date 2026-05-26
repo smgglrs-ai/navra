@@ -39,9 +39,7 @@ impl Hook for ToolGuardHook {
             if tool_name == "file_write" || tool_name == "file_edit" {
                 if let Some(path) = obj.get("path") {
                     if path.as_str().is_some_and(|p| p.is_empty()) {
-                        return HookDecision::Block(
-                            "file path cannot be empty".to_string(),
-                        );
+                        return HookDecision::Block("file path cannot be empty".to_string());
                     }
                 }
             }
@@ -58,14 +56,12 @@ impl Hook for ToolGuardHook {
                     // Warn but don't block: inject a note into the arguments
                     // so the handler and audit log capture the suggestion.
                     let mut modified = arguments.clone();
-                    modified["_guard_warning"] = serde_json::json!(
-                        format!(
-                            "Warning: '{}' already exists. Consider using file_edit \
+                    modified["_guard_warning"] = serde_json::json!(format!(
+                        "Warning: '{}' already exists. Consider using file_edit \
                              to modify it instead of file_write which overwrites the \
                              entire file.",
-                            path
-                        )
-                    );
+                        path
+                    ));
                     return HookDecision::ModifyArgs(modified);
                 }
             }
@@ -75,9 +71,7 @@ impl Hook for ToolGuardHook {
         if tool_name == "file_delete" {
             if let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
                 if path.is_empty() {
-                    return HookDecision::Block(
-                        "file_delete: path cannot be empty".to_string(),
-                    );
+                    return HookDecision::Block("file_delete: path cannot be empty".to_string());
                 }
                 if path == "/" || path == "." {
                     return HookDecision::Block(format!(
@@ -109,7 +103,10 @@ mod tests {
         let decision = hook.pre_tool_use("file_write", &args, &test_ctx()).await;
         match decision {
             HookDecision::ModifyArgs(modified) => {
-                assert!(modified["_guard_warning"].as_str().unwrap().contains("file_edit"));
+                assert!(modified["_guard_warning"]
+                    .as_str()
+                    .unwrap()
+                    .contains("file_edit"));
             }
             other => panic!("Expected ModifyArgs with warning, got {other:?}"),
         }

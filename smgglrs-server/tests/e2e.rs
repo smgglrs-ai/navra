@@ -26,15 +26,20 @@ async fn spawn_smgglrs(config_toml: &str) -> (Child, u16, String) {
     // Find the smgglrs binary
     let smgglrs_bin = std::env::current_exe()
         .unwrap()
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .join("smgglrs");
 
     let child = Command::new(&smgglrs_bin)
         .args(["serve", "--config", &config_path, "--no-tray"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .env("ORT_LIB_PATH", std::env::var("ORT_LIB_PATH").unwrap_or_default())
+        .env(
+            "ORT_LIB_PATH",
+            std::env::var("ORT_LIB_PATH").unwrap_or_default(),
+        )
         .env("ORT_PREFER_DYNAMIC_LINK", "1")
         .spawn()
         .expect("failed to spawn smgglrs");
@@ -78,7 +83,8 @@ enabled = true
 
 /// Initialize an MCP session, return the session ID.
 async fn init_session(client: &reqwest::Client, url: &str) -> String {
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -96,7 +102,8 @@ async fn init_session(client: &reqwest::Client, url: &str) -> String {
     resp.headers()
         .get("mcp-session-id")
         .expect("missing session header")
-        .to_str().unwrap()
+        .to_str()
+        .unwrap()
         .to_string()
 }
 
@@ -109,7 +116,8 @@ async fn call_tool(
     args: serde_json::Value,
     request_id: u64,
 ) -> serde_json::Value {
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .header("mcp-session-id", session_id)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
@@ -134,7 +142,8 @@ async fn mcp_initialize_returns_capabilities() {
     let (mut child, _port, url) = spawn_smgglrs(BASIC_CONFIG).await;
 
     let client = reqwest::Client::new();
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -162,7 +171,8 @@ async fn mcp_tools_list_requires_session() {
     let (mut child, _port, url) = spawn_smgglrs(BASIC_CONFIG).await;
 
     let client = reqwest::Client::new();
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "tools/list",
@@ -185,7 +195,8 @@ async fn mcp_full_session_list_tools() {
     let client = reqwest::Client::new();
 
     // Initialize — get session ID from response header
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -200,14 +211,17 @@ async fn mcp_full_session_list_tools() {
         .await
         .unwrap();
 
-    let session_id = resp.headers()
+    let session_id = resp
+        .headers()
         .get("mcp-session-id")
         .expect("missing session header")
-        .to_str().unwrap()
+        .to_str()
+        .unwrap()
         .to_string();
 
     // List tools with session
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .header("mcp-session-id", &session_id)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
@@ -220,7 +234,11 @@ async fn mcp_full_session_list_tools() {
 
     let json: serde_json::Value = resp.json().await.unwrap();
     let tools = json["result"]["tools"].as_array().unwrap();
-    assert!(tools.len() >= 3, "expected gateway tools, got {}", tools.len());
+    assert!(
+        tools.len() >= 3,
+        "expected gateway tools, got {}",
+        tools.len()
+    );
 
     child.kill().await.ok();
 }
@@ -232,7 +250,8 @@ async fn v1_chat_completions_returns_openai_format() {
     let (mut child, _port, url) = spawn_smgglrs(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
 
-    let resp = client.post(format!("{url}/v1/chat/completions"))
+    let resp = client
+        .post(format!("{url}/v1/chat/completions"))
         .json(&serde_json::json!({
             "model": "test",
             "messages": [{"role": "user", "content": "hi"}],
@@ -259,7 +278,8 @@ async fn api_status_returns_server_info() {
     let (mut child, _port, url) = spawn_smgglrs(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
 
-    let resp = client.get(format!("{url}/api/status"))
+    let resp = client
+        .get(format!("{url}/api/status"))
         .send()
         .await
         .unwrap();
@@ -277,10 +297,7 @@ async fn static_index_html_served() {
     let (mut child, _port, url) = spawn_smgglrs(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
 
-    let resp = client.get(&url)
-        .send()
-        .await
-        .unwrap();
+    let resp = client.get(&url).send().await.unwrap();
 
     assert_eq!(resp.status(), 200);
     let text = resp.text().await.unwrap();
@@ -297,7 +314,8 @@ async fn tool_call_recorded_in_blackbox() {
     let client = reqwest::Client::new();
 
     // Initialize
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -312,14 +330,17 @@ async fn tool_call_recorded_in_blackbox() {
         .await
         .unwrap();
 
-    let session_id = resp.headers()
+    let session_id = resp
+        .headers()
         .get("mcp-session-id")
         .unwrap()
-        .to_str().unwrap()
+        .to_str()
+        .unwrap()
         .to_string();
 
     // Call a tool
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .header("mcp-session-id", &session_id)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
@@ -341,7 +362,8 @@ async fn tool_call_recorded_in_blackbox() {
     // Verify blackbox recorded it
     // The blackbox is at ~/.local/share/smgglrs/blackbox.db
     // We can verify via the audit_query tool
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .header("mcp-session-id", &session_id)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
@@ -375,34 +397,60 @@ async fn memory_store_and_query_roundtrip() {
     // with entries from other test/demo runs sharing the same knowledge.db.
     // Use hex (no hyphens) since FTS5 tokenizes at hyphens.
     let marker = uuid::Uuid::new_v4().simple().to_string();
-    let json = call_tool(&client, &url, &session_id, "memory_store", serde_json::json!({
-        "kind": "fact",
-        "title": format!("roundtrip{marker}"),
-        "content": format!("Unique test content for roundtrip verification {marker}"),
-        "tags": ["e2e-roundtrip"]
-    }), 10).await;
+    let json = call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_store",
+        serde_json::json!({
+            "kind": "fact",
+            "title": format!("roundtrip{marker}"),
+            "content": format!("Unique test content for roundtrip verification {marker}"),
+            "tags": ["e2e-roundtrip"]
+        }),
+        10,
+    )
+    .await;
 
-    let result_text = json["result"]["content"][0]["text"].as_str()
+    let result_text = json["result"]["content"][0]["text"]
+        .as_str()
         .expect("expected text result from memory_store");
     let stored: serde_json::Value = serde_json::from_str(result_text).unwrap();
     assert_eq!(stored["status"], "stored");
     let entry_id = stored["id"].as_str().unwrap().to_string();
 
     // Query it back using the unique marker
-    let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
-        "query": marker
-    }), 11).await;
+    let json = call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_query",
+        serde_json::json!({
+            "query": marker
+        }),
+        11,
+    )
+    .await;
 
-    let result_text = json["result"]["content"][0]["text"].as_str()
+    let result_text = json["result"]["content"][0]["text"]
+        .as_str()
         .expect("expected text result from memory_query");
     let results: Vec<serde_json::Value> = serde_json::from_str(result_text).unwrap();
     assert!(!results.is_empty(), "query should return the stored entry");
     assert!(results.iter().any(|r| r["id"] == entry_id));
 
     // Clean up
-    call_tool(&client, &url, &session_id, "memory_forget", serde_json::json!({
-        "id": entry_id
-    }), 12).await;
+    call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_forget",
+        serde_json::json!({
+            "id": entry_id
+        }),
+        12,
+    )
+    .await;
 
     child.kill().await.ok();
 }
@@ -425,30 +473,55 @@ async fn memory_store_query_forget_lifecycle() {
     let entry_id = stored["id"].as_str().unwrap().to_string();
 
     // Verify it exists via query
-    let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
-        "query": "local models latency"
-    }), 21).await;
-    let results: Vec<serde_json::Value> = serde_json::from_str(
-        json["result"]["content"][0]["text"].as_str().unwrap()
-    ).unwrap();
+    let json = call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_query",
+        serde_json::json!({
+            "query": "local models latency"
+        }),
+        21,
+    )
+    .await;
+    let results: Vec<serde_json::Value> =
+        serde_json::from_str(json["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert!(results.iter().any(|r| r["id"] == entry_id));
 
     // Forget it
-    let json = call_tool(&client, &url, &session_id, "memory_forget", serde_json::json!({
-        "id": entry_id
-    }), 22).await;
+    let json = call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_forget",
+        serde_json::json!({
+            "id": entry_id
+        }),
+        22,
+    )
+    .await;
     let result_text = json["result"]["content"][0]["text"].as_str().unwrap();
     let deleted: serde_json::Value = serde_json::from_str(result_text).unwrap();
     assert_eq!(deleted["status"], "deleted");
 
     // Verify it's gone — query should not find it
-    let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
-        "query": "local models latency"
-    }), 23).await;
-    let results: Vec<serde_json::Value> = serde_json::from_str(
-        json["result"]["content"][0]["text"].as_str().unwrap()
-    ).unwrap();
-    assert!(!results.iter().any(|r| r["id"] == entry_id), "entry should be gone after forget");
+    let json = call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_query",
+        serde_json::json!({
+            "query": "local models latency"
+        }),
+        23,
+    )
+    .await;
+    let results: Vec<serde_json::Value> =
+        serde_json::from_str(json["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(
+        !results.iter().any(|r| r["id"] == entry_id),
+        "entry should be gone after forget"
+    );
 
     child.kill().await.ok();
 }
@@ -460,28 +533,54 @@ async fn memory_query_with_kind_filter() {
     let session_id = init_session(&client, &url).await;
 
     // Store a fact and an event with similar content
-    call_tool(&client, &url, &session_id, "memory_store", serde_json::json!({
-        "kind": "fact",
-        "title": "Database uses PostgreSQL",
-        "content": "The production database runs PostgreSQL 16 with connection pooling."
-    }), 30).await;
+    call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_store",
+        serde_json::json!({
+            "kind": "fact",
+            "title": "Database uses PostgreSQL",
+            "content": "The production database runs PostgreSQL 16 with connection pooling."
+        }),
+        30,
+    )
+    .await;
 
-    call_tool(&client, &url, &session_id, "memory_store", serde_json::json!({
-        "kind": "event",
-        "title": "Database migration completed",
-        "content": "PostgreSQL migration to version 16 completed successfully at 2026-04-21."
-    }), 31).await;
+    call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_store",
+        serde_json::json!({
+            "kind": "event",
+            "title": "Database migration completed",
+            "content": "PostgreSQL migration to version 16 completed successfully at 2026-04-21."
+        }),
+        31,
+    )
+    .await;
 
     // Query filtering by kind=fact only
-    let json = call_tool(&client, &url, &session_id, "memory_query", serde_json::json!({
-        "query": "PostgreSQL database",
-        "kind": "fact"
-    }), 32).await;
+    let json = call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_query",
+        serde_json::json!({
+            "query": "PostgreSQL database",
+            "kind": "fact"
+        }),
+        32,
+    )
+    .await;
 
-    let results: Vec<serde_json::Value> = serde_json::from_str(
-        json["result"]["content"][0]["text"].as_str().unwrap()
-    ).unwrap();
-    assert!(results.iter().all(|r| r["kind"] == "fact"), "kind filter should exclude events");
+    let results: Vec<serde_json::Value> =
+        serde_json::from_str(json["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert!(
+        results.iter().all(|r| r["kind"] == "fact"),
+        "kind filter should exclude events"
+    );
 
     child.kill().await.ok();
 }
@@ -492,15 +591,25 @@ async fn memory_forget_nonexistent_returns_error() {
     let client = reqwest::Client::new();
     let session_id = init_session(&client, &url).await;
 
-    let json = call_tool(&client, &url, &session_id, "memory_forget", serde_json::json!({
-        "id": "nonexistent-uuid-12345"
-    }), 40).await;
+    let json = call_tool(
+        &client,
+        &url,
+        &session_id,
+        "memory_forget",
+        serde_json::json!({
+            "id": "nonexistent-uuid-12345"
+        }),
+        40,
+    )
+    .await;
 
     // Should return an error (isError: true)
     let is_error = json["result"]["isError"].as_bool().unwrap_or(false);
     let text = json["result"]["content"][0]["text"].as_str().unwrap_or("");
-    assert!(is_error || text.contains("No entry found"),
-        "forgetting nonexistent entry should indicate failure: {json}");
+    assert!(
+        is_error || text.contains("No entry found"),
+        "forgetting nonexistent entry should indicate failure: {json}"
+    );
 
     child.kill().await.ok();
 }
@@ -511,7 +620,8 @@ async fn memory_tools_visible_in_tools_list() {
     let client = reqwest::Client::new();
     let session_id = init_session(&client, &url).await;
 
-    let resp = client.post(format!("{url}/mcp"))
+    let resp = client
+        .post(format!("{url}/mcp"))
         .header("mcp-session-id", &session_id)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
@@ -524,13 +634,20 @@ async fn memory_tools_visible_in_tools_list() {
 
     let json: serde_json::Value = resp.json().await.unwrap();
     let tools = json["result"]["tools"].as_array().unwrap();
-    let tool_names: Vec<&str> = tools.iter()
-        .filter_map(|t| t["name"].as_str())
-        .collect();
+    let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
 
-    assert!(tool_names.contains(&"memory_store"), "memory_store not in tools list");
-    assert!(tool_names.contains(&"memory_query"), "memory_query not in tools list");
-    assert!(tool_names.contains(&"memory_forget"), "memory_forget not in tools list");
+    assert!(
+        tool_names.contains(&"memory_store"),
+        "memory_store not in tools list"
+    );
+    assert!(
+        tool_names.contains(&"memory_query"),
+        "memory_query not in tools list"
+    );
+    assert!(
+        tool_names.contains(&"memory_forget"),
+        "memory_forget not in tools list"
+    );
 
     child.kill().await.ok();
 }

@@ -165,8 +165,12 @@ impl CosineDriftDetector {
             return (0.0, 0.0);
         }
         let mean: f64 = self.similarities.iter().sum::<f64>() / n as f64;
-        let variance: f64 =
-            self.similarities.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / n as f64;
+        let variance: f64 = self
+            .similarities
+            .iter()
+            .map(|s| (s - mean).powi(2))
+            .sum::<f64>()
+            / n as f64;
         (mean, variance.sqrt())
     }
 }
@@ -528,7 +532,10 @@ mod tests {
     fn cosine_similarity_identical_vectors() {
         let a = vec![1.0, 2.0, 3.0];
         let sim = cosine_similarity(&a, &a);
-        assert!((sim - 1.0).abs() < 1e-6, "identical vectors should have similarity 1.0");
+        assert!(
+            (sim - 1.0).abs() < 1e-6,
+            "identical vectors should have similarity 1.0"
+        );
     }
 
     #[test]
@@ -536,7 +543,10 @@ mod tests {
         let a = vec![1.0, 0.0, 0.0];
         let b = vec![0.0, 1.0, 0.0];
         let sim = cosine_similarity(&a, &b);
-        assert!(sim.abs() < 1e-6, "orthogonal vectors should have similarity 0.0");
+        assert!(
+            sim.abs() < 1e-6,
+            "orthogonal vectors should have similarity 0.0"
+        );
     }
 
     #[test]
@@ -544,7 +554,10 @@ mod tests {
         let a = vec![1.0, 2.0, 3.0];
         let b: Vec<f32> = a.iter().map(|x| -x).collect();
         let sim = cosine_similarity(&a, &b);
-        assert!((sim + 1.0).abs() < 1e-6, "opposite vectors should have similarity -1.0");
+        assert!(
+            (sim + 1.0).abs() < 1e-6,
+            "opposite vectors should have similarity -1.0"
+        );
     }
 
     #[test]
@@ -563,9 +576,15 @@ mod tests {
         let v = vec![1.0, 0.0, 0.0];
 
         // First observation
-        assert!(matches!(detector.observe(&v), DriftResult::InsufficientData));
+        assert!(matches!(
+            detector.observe(&v),
+            DriftResult::InsufficientData
+        ));
         // Second observation
-        assert!(matches!(detector.observe(&v), DriftResult::InsufficientData));
+        assert!(matches!(
+            detector.observe(&v),
+            DriftResult::InsufficientData
+        ));
     }
 
     #[test]
@@ -582,7 +601,10 @@ mod tests {
         let similar = vec![1.0, 0.15, 0.0];
         match detector.observe(&similar) {
             DriftResult::Normal { z_score } => {
-                assert!(z_score < 3.0, "similar vector should have low z-score, got {z_score}");
+                assert!(
+                    z_score < 3.0,
+                    "similar vector should have low z-score, got {z_score}"
+                );
             }
             other => panic!("Expected Normal, got {other:?}"),
         }
@@ -602,7 +624,10 @@ mod tests {
         let anomalous = vec![0.0, 0.0, 0.0, 1.0];
         match detector.observe(&anomalous) {
             DriftResult::Anomalous { z_score, threshold } => {
-                assert!(z_score > threshold, "anomalous vector should exceed threshold");
+                assert!(
+                    z_score > threshold,
+                    "anomalous vector should exceed threshold"
+                );
             }
             DriftResult::Normal { z_score } => {
                 panic!("Expected Anomalous for orthogonal vector, got Normal(z={z_score})");
@@ -665,7 +690,10 @@ mod tests {
         for _ in 0..5 {
             match monitor.record_tool_call("file_read") {
                 EntropyResult::TooLow { entropy, .. } => {
-                    assert!(entropy.abs() < 1e-6, "single tool should have entropy ~0, got {entropy}");
+                    assert!(
+                        entropy.abs() < 1e-6,
+                        "single tool should have entropy ~0, got {entropy}"
+                    );
                 }
                 other => panic!("Expected TooLow for single tool, got {other:?}"),
             }
@@ -795,7 +823,10 @@ mod tests {
         let emb = StatisticalGuardrailHook::text_to_embedding("hello world test", 64);
         assert_eq!(emb.len(), 64);
         let norm: f32 = emb.iter().map(|v| v * v).sum::<f32>().sqrt();
-        assert!((norm - 1.0).abs() < 1e-4, "embedding should be L2-normalized, got norm {norm}");
+        assert!(
+            (norm - 1.0).abs() < 1e-4,
+            "embedding should be L2-normalized, got norm {norm}"
+        );
     }
 
     #[test]
@@ -816,9 +847,13 @@ mod tests {
     #[test]
     fn text_to_embedding_different_texts_differ() {
         let a = StatisticalGuardrailHook::text_to_embedding("hello world", 128);
-        let b = StatisticalGuardrailHook::text_to_embedding("completely different content here", 128);
+        let b =
+            StatisticalGuardrailHook::text_to_embedding("completely different content here", 128);
         let sim = cosine_similarity(&a, &b);
-        assert!(sim < 0.99, "different texts should produce different embeddings, sim={sim}");
+        assert!(
+            sim < 0.99,
+            "different texts should produce different embeddings, sim={sim}"
+        );
     }
 
     // -- Hook integration tests --
@@ -901,7 +936,10 @@ mod tests {
             .await;
         match decision {
             HookDecision::Block(reason) => {
-                assert!(reason.contains("entropy"), "block reason should mention entropy: {reason}");
+                assert!(
+                    reason.contains("entropy"),
+                    "block reason should mention entropy: {reason}"
+                );
             }
             other => panic!("Expected Block, got {other:?}"),
         }

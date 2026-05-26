@@ -214,7 +214,7 @@ mod tests {
     fn budget_available() {
         let mut budget = ContextBudget::new(4096);
         budget.set_system_prompt(&"x".repeat(1400)); // ~400 tokens
-        // 4096 - 400 - 819(20%) ≈ 2877
+                                                     // 4096 - 400 - 819(20%) ≈ 2877
         let avail = budget.available();
         assert!(avail > 2500 && avail < 3200, "available={avail}");
     }
@@ -272,9 +272,7 @@ mod tests {
 
     #[test]
     fn keep_last_n_drops_old_turns() {
-        let turns: Vec<String> = (0..10)
-            .map(|i| format!("Turn {i}: content"))
-            .collect();
+        let turns: Vec<String> = (0..10).map(|i| format!("Turn {i}: content")).collect();
         let result = apply_compaction(&turns, &CompactionStrategy::KeepLastN(3), 3);
         assert_eq!(result.len(), 3);
         assert!(result[0].contains("Turn 7"));
@@ -302,9 +300,7 @@ mod tests {
 
     #[test]
     fn discard_all_keeps_only_last() {
-        let turns: Vec<String> = (0..10)
-            .map(|i| format!("Turn {i}: content"))
-            .collect();
+        let turns: Vec<String> = (0..10).map(|i| format!("Turn {i}: content")).collect();
         let result = apply_compaction(&turns, &CompactionStrategy::DiscardAll, 3);
         assert_eq!(result.len(), 1);
         assert!(result[0].contains("Turn 9"));

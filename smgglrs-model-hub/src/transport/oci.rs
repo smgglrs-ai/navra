@@ -10,10 +10,10 @@
 //! Model card support via OCI Referrers API (distribution-spec 1.1):
 //! - `GET /v2/<name>/referrers/<digest>?artifactType=application/vnd.smgglrs.model-card.v1+json`
 
+use super::ModelTransport;
 use crate::card::VendorMeta;
 use crate::error::HubError;
 use crate::uri::ModelUri;
-use super::ModelTransport;
 
 /// Media type for smgglrs model card side artifacts.
 pub const MODEL_CARD_ARTIFACT_TYPE: &str = "application/vnd.smgglrs.model-card.v1+json";
@@ -35,9 +35,8 @@ impl ModelTransport for OciTransport {
     fn pull<'a>(
         &'a self,
         uri: &'a ModelUri,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Vec<u8>, HubError>> + Send + 'a>,
-    > {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, HubError>> + Send + 'a>>
+    {
         Box::pin(async move {
             // Parse "registry/org/repo:tag"
             let (name, reference) = parse_oci_ref(&uri.path)?;
@@ -48,16 +47,11 @@ impl ModelTransport for OciTransport {
             let resp = self
                 .client
                 .get(&manifest_url)
-                .header(
-                    "Accept",
-                    "application/vnd.oci.image.manifest.v1+json",
-                )
+                .header("Accept", "application/vnd.oci.image.manifest.v1+json")
                 .send()
                 .await?
                 .error_for_status()
-                .map_err(|e| {
-                    HubError::Registry(format!("OCI manifest fetch failed: {e}"))
-                })?;
+                .map_err(|e| HubError::Registry(format!("OCI manifest fetch failed: {e}")))?;
 
             let manifest: serde_json::Value = resp.json().await?;
 
@@ -154,8 +148,12 @@ impl ModelTransport for OciTransport {
                                         let card_url = format!(
                                             "https://{registry}/v2/{repo}/blobs/{card_digest}"
                                         );
-                                        if let Ok(card_resp) = self.client.get(&card_url).send().await {
-                                            if let Ok(card_meta) = card_resp.json::<VendorMeta>().await {
+                                        if let Ok(card_resp) =
+                                            self.client.get(&card_url).send().await
+                                        {
+                                            if let Ok(card_meta) =
+                                                card_resp.json::<VendorMeta>().await
+                                            {
                                                 return Ok(card_meta);
                                             }
                                         }
@@ -178,9 +176,7 @@ impl ModelTransport for OciTransport {
 fn parse_oci_ref(path: &str) -> Result<(String, String), HubError> {
     // Split off tag (default: latest)
     let (name, reference) = match path.rsplit_once(':') {
-        Some((n, r)) if !n.is_empty() && !r.is_empty() => {
-            (n.to_string(), r.to_string())
-        }
+        Some((n, r)) if !n.is_empty() && !r.is_empty() => (n.to_string(), r.to_string()),
         _ => (path.to_string(), "latest".to_string()),
     };
 
@@ -200,16 +196,14 @@ mod tests {
 
     #[test]
     fn parse_oci_ref_with_tag() {
-        let (name, reference) =
-            parse_oci_ref("quay.io/myorg/mymodel:v1").unwrap();
+        let (name, reference) = parse_oci_ref("quay.io/myorg/mymodel:v1").unwrap();
         assert_eq!(name, "quay.io/myorg/mymodel");
         assert_eq!(reference, "v1");
     }
 
     #[test]
     fn parse_oci_ref_default_tag() {
-        let (name, reference) =
-            parse_oci_ref("quay.io/myorg/mymodel").unwrap();
+        let (name, reference) = parse_oci_ref("quay.io/myorg/mymodel").unwrap();
         assert_eq!(name, "quay.io/myorg/mymodel");
         assert_eq!(reference, "latest");
     }

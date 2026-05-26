@@ -13,7 +13,12 @@ use rusqlite::params;
 /// High-importance entries decay slower than low-importance ones.
 /// A memory with importance=0.9 decays ~5x slower than importance=0.1.
 /// This follows the FadeMem pattern (arXiv:2601.18642).
-pub fn effective_score(importance: f64, age_hours: f64, access_count: u32, base_decay_rate: f64) -> f64 {
+pub fn effective_score(
+    importance: f64,
+    age_hours: f64,
+    access_count: u32,
+    base_decay_rate: f64,
+) -> f64 {
     let relevance_boost = (access_count as f64 * 0.1).min(0.3);
     let modulated_rate = base_decay_rate / (1.0 + importance);
     importance * (-modulated_rate * age_hours).exp() + relevance_boost
@@ -53,9 +58,8 @@ pub fn cleanup_decayed(store: &KnowledgeStore, threshold: f64) -> Result<u32, Me
         .as_secs() as i64;
 
     // Fetch candidates with decay-relevant columns.
-    let mut stmt = db.prepare(
-        "SELECT id, importance, created_at, access_count FROM memory_knowledge",
-    )?;
+    let mut stmt =
+        db.prepare("SELECT id, importance, created_at, access_count FROM memory_knowledge")?;
 
     let candidates: Vec<(String, f64)> = stmt
         .query_map([], |row| {
@@ -152,8 +156,10 @@ mod tests {
         // High retains more of its original value proportionally
         let low_retention = low / 0.2;
         let high_retention = high / 0.8;
-        assert!(high_retention > low_retention,
-            "High-importance entry should retain more: {high_retention:.3} vs {low_retention:.3}");
+        assert!(
+            high_retention > low_retention,
+            "High-importance entry should retain more: {high_retention:.3} vs {low_retention:.3}"
+        );
     }
 
     #[test]

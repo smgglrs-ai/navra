@@ -19,11 +19,7 @@ pub struct StdioTransport {
 
 impl StdioTransport {
     /// Spawn a subprocess with piped stdin/stdout.
-    pub fn spawn(
-        name: &str,
-        command: &[String],
-        cwd: Option<&str>,
-    ) -> Result<Self, UpstreamError> {
+    pub fn spawn(name: &str, command: &[String], cwd: Option<&str>) -> Result<Self, UpstreamError> {
         if command.is_empty() {
             return Err(UpstreamError::Protocol {
                 name: name.to_string(),
@@ -50,13 +46,9 @@ impl StdioTransport {
         let child_stdin = child.stdin.take().ok_or_else(|| UpstreamError::NoStdio {
             name: name.to_string(),
         })?;
-        let child_stdout =
-            child
-                .stdout
-                .take()
-                .ok_or_else(|| UpstreamError::NoStdio {
-                    name: name.to_string(),
-                })?;
+        let child_stdout = child.stdout.take().ok_or_else(|| UpstreamError::NoStdio {
+            name: name.to_string(),
+        })?;
 
         // Spawn a background task to log stderr output from the subprocess.
         let stderr_task = if let Some(stderr) = child.stderr.take() {
@@ -125,13 +117,10 @@ impl Transport for StdioTransport {
                 name: self.name.clone(),
                 source: e,
             })?;
-        self.stdin
-            .flush()
-            .await
-            .map_err(|e| UpstreamError::Io {
-                name: self.name.clone(),
-                source: e,
-            })?;
+        self.stdin.flush().await.map_err(|e| UpstreamError::Io {
+            name: self.name.clone(),
+            source: e,
+        })?;
 
         // Read response lines until we get valid JSON
         let mut buf = String::new();

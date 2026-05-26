@@ -88,7 +88,12 @@ impl Module for VoiceModule {
         "voice"
     }
 
-    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
+    fn tools(
+        &self,
+    ) -> Vec<(
+        smgglrs_core::protocol::ToolDefinition,
+        smgglrs_core::ToolHandler,
+    )> {
         let s = self.state.clone();
         vec![
             handle_listen_handler(s.clone()),
@@ -103,11 +108,14 @@ impl Module for VoiceModule {
 
 #[tool(
     name = "voice_listen",
-    description = "Record audio from the microphone and transcribe it to text. Automatically stops when silence is detected after speech.",
+    description = "Record audio from the microphone and transcribe it to text. Automatically stops when silence is detected after speech."
 )]
 async fn handle_listen(
-    #[arg(description = "Language hint (ISO 639-1, e.g. 'en', 'fr'). Auto-detect if omitted.")] language: Option<String>,
-    #[arg(description = "Maximum recording duration in seconds (default: 30)")] max_seconds: Option<u64>,
+    #[arg(description = "Language hint (ISO 639-1, e.g. 'en', 'fr'). Auto-detect if omitted.")]
+    language: Option<String>,
+    #[arg(description = "Maximum recording duration in seconds (default: 30)")] max_seconds: Option<
+        u64,
+    >,
     ctx: CallContext,
     #[state] state: Arc<VoiceState>,
 ) -> CallToolResult {
@@ -139,10 +147,7 @@ async fn handle_listen(
     tracing::info!("Recorded {:.1}s, transcribing...", duration_secs);
 
     // Transcribe
-    let request = smgglrs_core::models::TranscribeRequest {
-        audio,
-        language,
-    };
+    let request = smgglrs_core::models::TranscribeRequest { audio, language };
     match state.asr_model.transcribe(&request).await {
         Ok(response) => {
             let mut output = response.text.clone();
@@ -157,11 +162,12 @@ async fn handle_listen(
 
 #[tool(
     name = "voice_speak",
-    description = "Synthesize text to speech and play it on the speaker.",
+    description = "Synthesize text to speech and play it on the speaker."
 )]
 async fn handle_speak(
     #[arg(description = "Text to speak")] text: String,
-    #[arg(description = "Voice identifier (backend-specific). Uses default if omitted.")] voice: Option<String>,
+    #[arg(description = "Voice identifier (backend-specific). Uses default if omitted.")]
+    voice: Option<String>,
     ctx: CallContext,
     #[state] state: Arc<VoiceState>,
 ) -> CallToolResult {
@@ -200,11 +206,13 @@ async fn handle_speak(
 
 #[tool(
     name = "voice_transcribe",
-    description = "Transcribe an audio file to text. Supports WAV files (16-bit PCM).",
+    description = "Transcribe an audio file to text. Supports WAV files (16-bit PCM)."
 )]
 async fn handle_transcribe(
     #[arg(description = "Absolute path to audio file")] path: String,
-    #[arg(description = "Language hint (ISO 639-1). Auto-detect if omitted.")] language: Option<String>,
+    #[arg(description = "Language hint (ISO 639-1). Auto-detect if omitted.")] language: Option<
+        String,
+    >,
     ctx: CallContext,
     #[state] state: Arc<VoiceState>,
 ) -> CallToolResult {
@@ -245,12 +253,9 @@ async fn handle_transcribe(
 
 #[tool(
     name = "voice_status",
-    description = "Show audio device information and model availability.",
+    description = "Show audio device information and model availability."
 )]
-async fn handle_status(
-    ctx: CallContext,
-    #[state] state: Arc<VoiceState>,
-) -> CallToolResult {
+async fn handle_status(ctx: CallContext, #[state] state: Arc<VoiceState>) -> CallToolResult {
     if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
         return e;
     }
@@ -307,7 +312,10 @@ fn check_perm(
     path: &Path,
 ) -> Result<(), CallToolResult> {
     match state.perm_engine.check_with_capabilities(
-        &ctx.agent.permissions, op, path, ctx.agent.capabilities.as_ref(),
+        &ctx.agent.permissions,
+        op,
+        path,
+        ctx.agent.capabilities.as_ref(),
     ) {
         PermissionResult::Allowed => Ok(()),
         PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
@@ -347,30 +355,26 @@ fn read_wav_file(path: &std::path::Path) -> Result<Vec<f32>, String> {
 
     while pos + 8 <= data.len() {
         let chunk_id = &data[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes([
-            data[pos + 4],
-            data[pos + 5],
-            data[pos + 6],
-            data[pos + 7],
-        ]) as usize;
+        let chunk_size =
+            u32::from_le_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]])
+                as usize;
 
         if chunk_id == b"fmt " && chunk_size >= 16 {
             let fmt_start = pos + 8;
-            let audio_format =
-                u16::from_le_bytes([data[fmt_start], data[fmt_start + 1]]);
+            let audio_format = u16::from_le_bytes([data[fmt_start], data[fmt_start + 1]]);
             if audio_format != 1 {
-                return Err(format!("Unsupported WAV format: {audio_format} (only PCM supported)"));
+                return Err(format!(
+                    "Unsupported WAV format: {audio_format} (only PCM supported)"
+                ));
             }
-            channels =
-                u16::from_le_bytes([data[fmt_start + 2], data[fmt_start + 3]]);
+            channels = u16::from_le_bytes([data[fmt_start + 2], data[fmt_start + 3]]);
             sample_rate = u32::from_le_bytes([
                 data[fmt_start + 4],
                 data[fmt_start + 5],
                 data[fmt_start + 6],
                 data[fmt_start + 7],
             ]);
-            bits_per_sample =
-                u16::from_le_bytes([data[fmt_start + 14], data[fmt_start + 15]]);
+            bits_per_sample = u16::from_le_bytes([data[fmt_start + 14], data[fmt_start + 15]]);
         }
 
         if chunk_id == b"data" {
@@ -444,10 +448,7 @@ mod tests {
                 ring: None,
                 allow: vec!["/**".to_string()],
                 deny: vec![],
-                operations: ["read", "write"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
+                operations: ["read", "write"].into_iter().map(String::from).collect(),
                 requires_approval: HashSet::new(),
             },
         );
@@ -460,7 +461,11 @@ mod tests {
             &self,
             _req: &TranscribeRequest,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<TranscribeResponse, ModelError>> + Send + '_>,
+            Box<
+                dyn std::future::Future<Output = Result<TranscribeResponse, ModelError>>
+                    + Send
+                    + '_,
+            >,
         > {
             Box::pin(async {
                 Ok(TranscribeResponse {
@@ -477,7 +482,11 @@ mod tests {
             &self,
             _req: &SynthesizeRequest,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<SynthesizeResponse, ModelError>> + Send + '_>,
+            Box<
+                dyn std::future::Future<Output = Result<SynthesizeResponse, ModelError>>
+                    + Send
+                    + '_,
+            >,
         > {
             Box::pin(async {
                 Ok(SynthesizeResponse {
@@ -510,7 +519,11 @@ mod tests {
     fn module_provides_all_tools() {
         let asr: Arc<dyn ModelBackend> = Arc::new(FakeAsrModel);
         let tts: Arc<dyn ModelBackend> = Arc::new(FakeTtsModel);
-        let module = VoiceModule::new(asr, tts, Arc::new(smgglrs_core::permissions::PermissionEngine::new()));
+        let module = VoiceModule::new(
+            asr,
+            tts,
+            Arc::new(smgglrs_core::permissions::PermissionEngine::new()),
+        );
 
         assert_eq!(module.name(), "voice");
         let tools = module.tools();

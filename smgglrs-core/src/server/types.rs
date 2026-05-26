@@ -1,6 +1,6 @@
-use crate::protocol::{CallToolResult, PromptDefinition, ToolDefinition, ResourceDefinition};
 use crate::auth::CallContext;
 use crate::module::{PromptHandler, ResourceHandler};
+use crate::protocol::{CallToolResult, PromptDefinition, ResourceDefinition, ToolDefinition};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;

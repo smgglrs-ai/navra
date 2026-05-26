@@ -29,7 +29,9 @@ pub use budget::{
 };
 pub use error::CognitiveError;
 pub use evolution::{TraitStore, TraitVector};
-pub use forge::{generate_checksums, ForgeService, Severity, SpecializationMeta, ValidationFinding};
+pub use forge::{
+    generate_checksums, ForgeService, Severity, SpecializationMeta, ValidationFinding,
+};
 pub use types::{
     Directive, Example, Facet, HeuristicModule, HeuristicRef, InjectPosition, McpPersonaSource,
     McpPromptRef, Persona, Reference, ResolvedPrompt, Scope, SkillCard, Specialization,

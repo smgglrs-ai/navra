@@ -119,9 +119,7 @@ pub async fn handle_build_test(
             return CallToolResult::error(format!("Failed to execute cargo: {e}"));
         }
         Err(_) => {
-            return CallToolResult::error(format!(
-                "Build timed out after {BUILD_TIMEOUT_SECS}s"
-            ));
+            return CallToolResult::error(format!("Build timed out after {BUILD_TIMEOUT_SECS}s"));
         }
     };
 
@@ -139,12 +137,20 @@ pub async fn handle_build_test(
     // Truncate output to avoid overwhelming the model
     let max_output = 4096;
     let stdout_trunc = if stdout.len() > max_output {
-        format!("{}...\n[truncated, {} total chars]", &stdout[..max_output], stdout.len())
+        format!(
+            "{}...\n[truncated, {} total chars]",
+            &stdout[..max_output],
+            stdout.len()
+        )
     } else {
         stdout.to_string()
     };
     let stderr_trunc = if stderr.len() > max_output {
-        format!("{}...\n[truncated, {} total chars]", &stderr[..max_output], stderr.len())
+        format!(
+            "{}...\n[truncated, {} total chars]",
+            &stderr[..max_output],
+            stderr.len()
+        )
     } else {
         stderr.to_string()
     };
@@ -232,6 +238,11 @@ test result: ok. 20 passed; 1 failed; 3 ignored; 0 measured; 0 filtered out";
     fn tool_def_has_required_path() {
         let def = build_test_tool_def();
         assert_eq!(def.name, "build_test");
-        assert!(def.input_schema.required.as_ref().unwrap().contains(&"path".to_string()));
+        assert!(def
+            .input_schema
+            .required
+            .as_ref()
+            .unwrap()
+            .contains(&"path".to_string()));
     }
 }

@@ -135,10 +135,7 @@ pub fn extract_dominators(traces: &[ExecutionTrace]) -> Vec<String> {
     let end_dom = dom.get(&end).cloned().unwrap_or_default();
 
     // Return in topological order (preserve ordering from nodes list)
-    nodes
-        .into_iter()
-        .filter(|n| end_dom.contains(n))
-        .collect()
+    nodes.into_iter().filter(|n| end_dom.contains(n)).collect()
 }
 
 /// Find the end node: a node with no successors, or the last node
@@ -383,8 +380,20 @@ mod tests {
         // scout -> planner -> [specialist1, specialist2] -> synthesizer
         // Two execution orderings for the parallel specialists
         let traces = vec![
-            trace_from_seq(&["scout", "planner", "specialist1", "specialist2", "synthesizer"]),
-            trace_from_seq(&["scout", "planner", "specialist2", "specialist1", "synthesizer"]),
+            trace_from_seq(&[
+                "scout",
+                "planner",
+                "specialist1",
+                "specialist2",
+                "synthesizer",
+            ]),
+            trace_from_seq(&[
+                "scout",
+                "planner",
+                "specialist2",
+                "specialist1",
+                "synthesizer",
+            ]),
         ];
         let doms = extract_dominators(&traces);
 
@@ -401,14 +410,30 @@ mod tests {
     #[test]
     fn validate_realistic_flow() {
         let traces = vec![
-            trace_from_seq(&["scout", "planner", "specialist1", "specialist2", "synthesizer"]),
-            trace_from_seq(&["scout", "planner", "specialist2", "specialist1", "synthesizer"]),
+            trace_from_seq(&[
+                "scout",
+                "planner",
+                "specialist1",
+                "specialist2",
+                "synthesizer",
+            ]),
+            trace_from_seq(&[
+                "scout",
+                "planner",
+                "specialist2",
+                "specialist1",
+                "synthesizer",
+            ]),
         ];
         let doms = extract_dominators(&traces);
 
         // Valid trace (different specialist order)
         let valid = trace_from_seq(&[
-            "scout", "planner", "specialist2", "specialist1", "synthesizer",
+            "scout",
+            "planner",
+            "specialist2",
+            "specialist1",
+            "synthesizer",
         ]);
         assert!(validate_against_dominators(&valid, &doms).is_ok());
 

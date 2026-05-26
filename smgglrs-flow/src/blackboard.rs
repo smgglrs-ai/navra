@@ -6,9 +6,9 @@
 //! drops).
 
 use crate::error::FlowError;
+use serde_json::Value;
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_security::ifc::TaintTracker;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
@@ -159,7 +159,12 @@ mod tests {
         let mut taint = TaintTracker::new();
 
         let version = bb
-            .publish("agent-a", "result", serde_json::json!("hello"), DataLabel::TRUSTED_PUBLIC)
+            .publish(
+                "agent-a",
+                "result",
+                serde_json::json!("hello"),
+                DataLabel::TRUSTED_PUBLIC,
+            )
             .unwrap();
         assert_eq!(version, 1);
 
@@ -193,8 +198,13 @@ mod tests {
         let mut taint = TaintTracker::new();
         taint.absorb(DataLabel::UNTRUSTED_SENSITIVE);
 
-        bb.publish("agent-a", "public", serde_json::json!("ok"), DataLabel::TRUSTED_PUBLIC)
-            .unwrap();
+        bb.publish(
+            "agent-a",
+            "public",
+            serde_json::json!("ok"),
+            DataLabel::TRUSTED_PUBLIC,
+        )
+        .unwrap();
 
         bb.read("public", &mut taint).unwrap();
         assert_eq!(taint.level(), DataLabel::UNTRUSTED_SENSITIVE);
@@ -205,12 +215,22 @@ mod tests {
         let bb = Blackboard::new(10);
 
         let v1 = bb
-            .publish("agent-a", "key", serde_json::json!(1), DataLabel::TRUSTED_PUBLIC)
+            .publish(
+                "agent-a",
+                "key",
+                serde_json::json!(1),
+                DataLabel::TRUSTED_PUBLIC,
+            )
             .unwrap();
         assert_eq!(v1, 1);
 
         let v2 = bb
-            .publish("agent-a", "key", serde_json::json!(2), DataLabel::TRUSTED_PUBLIC)
+            .publish(
+                "agent-a",
+                "key",
+                serde_json::json!(2),
+                DataLabel::TRUSTED_PUBLIC,
+            )
             .unwrap();
         assert_eq!(v2, 2);
     }
@@ -236,10 +256,20 @@ mod tests {
     fn keys_no_taint_propagation() {
         let bb = Blackboard::new(10);
 
-        bb.publish("agent-a", "alpha", serde_json::json!(1), DataLabel::TRUSTED_PUBLIC)
-            .unwrap();
-        bb.publish("agent-b", "beta", serde_json::json!(2), DataLabel::UNTRUSTED_SENSITIVE)
-            .unwrap();
+        bb.publish(
+            "agent-a",
+            "alpha",
+            serde_json::json!(1),
+            DataLabel::TRUSTED_PUBLIC,
+        )
+        .unwrap();
+        bb.publish(
+            "agent-b",
+            "beta",
+            serde_json::json!(2),
+            DataLabel::UNTRUSTED_SENSITIVE,
+        )
+        .unwrap();
 
         let mut keys = bb.keys();
         keys.sort();

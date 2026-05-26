@@ -6,8 +6,8 @@
 //! Run with:
 //!   ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p smgglrs-security -- --ignored
 
-use smgglrs_security::safety::{default_pii_ner_model_dir, FilterContext, NerFilter};
 use smgglrs_security::safety::ContentFilter;
+use smgglrs_security::safety::{default_pii_ner_model_dir, FilterContext, NerFilter};
 
 fn model_dir() -> std::path::PathBuf {
     default_pii_ner_model_dir()
@@ -41,7 +41,10 @@ fn ner_debug_thresholds() {
         let findings = filter.scan(text, &ctx());
         eprintln!("Text: {text}");
         for f in &findings {
-            eprintln!("  → {} (confidence: {:.4}, {}..{})", f.category, f.confidence, f.start, f.end);
+            eprintln!(
+                "  → {} (confidence: {:.4}, {}..{})",
+                f.category, f.confidence, f.start, f.end
+            );
         }
         if findings.is_empty() {
             eprintln!("  → (no findings even at 0.01 threshold)");
@@ -58,7 +61,9 @@ fn ner_detects_person_names() {
     let findings = filter.scan("My name is Jean Dupont", &ctx());
     let categories: Vec<&str> = findings.iter().map(|f| f.category.as_str()).collect();
     assert!(
-        categories.iter().any(|c| c == &"person" || c == &"username"),
+        categories
+            .iter()
+            .any(|c| c == &"person" || c == &"username"),
         "Expected person/username category in findings: {categories:?}"
     );
 }

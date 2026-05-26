@@ -1,9 +1,9 @@
-use crate::permissions::{ApprovalRequest, ApprovalStore};
 use super::NotifyError;
+use crate::permissions::{ApprovalRequest, ApprovalStore};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use zbus::Connection;
 use zbus::zvariant::Value;
+use zbus::Connection;
 
 /// D-Bus notification IDs mapped to approval request IDs.
 type NotificationMap = Arc<Mutex<HashMap<u32, NotificationEntry>>>;
@@ -91,20 +91,25 @@ impl super::Notifier for DbusNotifier {
             let proxy = self.proxy().await?;
 
             let summary = format!("smgglrs: {op} approval");
-            let body = format!(
-                "Agent <b>{agent}</b> wants to <b>{op}</b>\n{path}",
-            );
+            let body = format!("Agent <b>{agent}</b> wants to <b>{op}</b>\n{path}",);
 
             let approve_key = format!("approve:{request_id}");
             let deny_key = format!("deny:{request_id}");
             let actions: Vec<&str> = vec![&approve_key, "Approve", &deny_key, "Deny"];
 
-            let hints = HashMap::from([
-                ("urgency", Value::U8(2)),
-            ]);
+            let hints = HashMap::from([("urgency", Value::U8(2))]);
 
             let notif_id = proxy
-                .notify("smgglrs", 0, "dialog-password", &summary, &body, &actions, hints, 0)
+                .notify(
+                    "smgglrs",
+                    0,
+                    "dialog-password",
+                    &summary,
+                    &body,
+                    &actions,
+                    hints,
+                    0,
+                )
                 .await?;
 
             tracing::info!(
@@ -117,13 +122,7 @@ impl super::Notifier for DbusNotifier {
             );
 
             let mut map = self.notifications.lock().unwrap_or_else(|e| e.into_inner());
-            map.insert(
-                notif_id,
-                NotificationEntry {
-                    request_id,
-                    store,
-                },
-            );
+            map.insert(notif_id, NotificationEntry { request_id, store });
 
             Ok(())
         })
@@ -203,7 +202,8 @@ fn handle_action(notifications: &NotificationMap, notif_id: u32, action_key: &st
 fn handle_dismissed(notifications: &NotificationMap, notif_id: u32) {
     let entry = {
         let map = notifications.lock().unwrap_or_else(|e| e.into_inner());
-        map.get(&notif_id).map(|e| (e.request_id.clone(), e.store.clone()))
+        map.get(&notif_id)
+            .map(|e| (e.request_id.clone(), e.store.clone()))
     };
 
     if let Some((request_id, store)) = entry {

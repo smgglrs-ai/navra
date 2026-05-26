@@ -43,7 +43,11 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
     println!();
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║  smgglrs-* Framework — End-to-End Security Audit Demo       ║");
-    println!("║  Project: {}{}║", project, " ".repeat(49 - project.len().min(49)));
+    println!(
+        "║  Project: {}{}║",
+        project,
+        " ".repeat(49 - project.len().min(49))
+    );
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
 
@@ -226,10 +230,7 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
     println!("  │ ⏳ git_commit requires approval (permission: \"approve\")");
     println!("  │ 🔔 D-Bus notification: \"Agent wants to commit 3 files\"");
     println!("  │ ✓ Auto-approved (demo mode)");
-    println!(
-        "  │ ✓ Commit signed (Ed25519, {})",
-        root_signer.did()
-    );
+    println!("  │ ✓ Commit signed (Ed25519, {})", root_signer.did());
     println!("  │ ✓ Working memory updated: audit findings saved");
     println!("  └─ Commit: \"fix: remediate SQL injection, secret exposure,");
     println!("     and missing auth (CWE-89, CWE-798, CWE-287)\"");
@@ -246,7 +247,8 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
     println!("  Memory:    3 items recalled, 1 new item stored");
     println!("  Personas:  3 active (security_auditor, code_specialist, analyst)");
     println!();
-    println!("  Framework: {} crates, 668+ tests",
+    println!(
+        "  Framework: {} crates, 668+ tests",
         16, // test count
     );
     println!();
@@ -260,21 +262,45 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
 ///
 /// Unlike `run_demo` (scripted), this actually calls a model for each
 /// task. It requires Ollama running with the specified model pulled.
-pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: u32, _files_per_round: usize, _min_delta: u32, custom_prompt: Option<&str>, writable: bool, allow_read: &[String], allow_write: &[String]) -> anyhow::Result<()> {
+pub(crate) async fn run_demo_live(
+    project: &str,
+    model_name: &str,
+    _max_rounds: u32,
+    _files_per_round: usize,
+    _min_delta: u32,
+    custom_prompt: Option<&str>,
+    writable: bool,
+    allow_read: &[String],
+    allow_write: &[String],
+) -> anyhow::Result<()> {
     use std::path::Path;
 
     let project_path = std::fs::canonicalize(Path::new(project)).map_err(|e| {
-        anyhow::anyhow!("Demo project not found at '{}': {e}. Run from the repo root.", project)
+        anyhow::anyhow!(
+            "Demo project not found at '{}': {e}. Run from the repo root.",
+            project
+        )
     })?;
     if !project_path.is_dir() {
-        anyhow::bail!("Demo project path '{}' is not a directory.", project_path.display());
+        anyhow::bail!(
+            "Demo project path '{}' is not a directory.",
+            project_path.display()
+        );
     }
 
     println!();
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║  smgglrs-* Framework — LIVE Security Audit Demo             ║");
-    println!("║  Project: {}{}║", project, " ".repeat(49 - project.len().min(49)));
-    println!("║  Model:   {}{}║", model_name, " ".repeat(49 - model_name.len().min(49)));
+    println!(
+        "║  Project: {}{}║",
+        project,
+        " ".repeat(49 - project.len().min(49))
+    );
+    println!(
+        "║  Model:   {}{}║",
+        model_name,
+        " ".repeat(49 - model_name.len().min(49))
+    );
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
 
@@ -295,82 +321,80 @@ pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: 
             anyhow::bail!("Claude requires ANTHROPIC_API_KEY or Vertex AI config (ANTHROPIC_VERTEX_PROJECT_ID)");
         }
     } else {
+        let client = reqwest::Client::new();
 
-    let client = reqwest::Client::new();
+        // Check if Ollama is running
+        let ollama_running = client
+            .get(format!("{ollama_url}/api/tags"))
+            .send()
+            .await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false);
 
-    // Check if Ollama is running
-    let ollama_running = client
-        .get(format!("{ollama_url}/api/tags"))
-        .send()
-        .await
-        .map(|r| r.status().is_success())
-        .unwrap_or(false);
+        if !ollama_running {
+            println!("  ⏳ Ollama not running. Starting...");
+            tokio::process::Command::new("ollama")
+                .arg("serve")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .map_err(|e| anyhow::anyhow!("Failed to start Ollama: {e}"))?;
 
-    if !ollama_running {
-        println!("  ⏳ Ollama not running. Starting...");
-        tokio::process::Command::new("ollama")
-            .arg("serve")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| anyhow::anyhow!("Failed to start Ollama: {e}"))?;
-
-        // Wait for it to start
-        for i in 0..30 {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            if client
-                .get(format!("{ollama_url}/api/tags"))
-                .send()
-                .await
-                .map(|r| r.status().is_success())
-                .unwrap_or(false)
-            {
-                break;
-            }
-            if i == 29 {
-                anyhow::bail!("Ollama did not start within 15 seconds");
-            }
-        }
-        println!("  ✓ Ollama started");
-    } else {
-        println!("  ✓ Ollama running at {ollama_url}");
-    }
-
-    // Check if model is pulled
-    let tags_resp = client
-        .get(format!("{ollama_url}/api/tags"))
-        .send()
-        .await?
-        .json::<serde_json::Value>()
-        .await?;
-
-    let model_base = model_name.split(':').next().unwrap_or(model_name);
-    let model_available = tags_resp["models"]
-        .as_array()
-        .map(|models| {
-            models.iter().any(|m| {
-                m["name"]
-                    .as_str()
-                    .map(|n| n.starts_with(model_base))
+            // Wait for it to start
+            for i in 0..30 {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                if client
+                    .get(format!("{ollama_url}/api/tags"))
+                    .send()
+                    .await
+                    .map(|r| r.status().is_success())
                     .unwrap_or(false)
-            })
-        })
-        .unwrap_or(false);
-
-    if !model_available {
-        println!("  ⏳ Model '{}' not found locally. Pulling...", model_name);
-        let pull_status = tokio::process::Command::new("ollama")
-            .args(["pull", model_name])
-            .status()
-            .await?;
-        if !pull_status.success() {
-            anyhow::bail!("Failed to pull model '{}'", model_name);
+                {
+                    break;
+                }
+                if i == 29 {
+                    anyhow::bail!("Ollama did not start within 15 seconds");
+                }
+            }
+            println!("  ✓ Ollama started");
+        } else {
+            println!("  ✓ Ollama running at {ollama_url}");
         }
-        println!("  ✓ Model pulled: {}", model_name);
-    } else {
-        println!("  ✓ Model available: {}", model_name);
-    }
 
+        // Check if model is pulled
+        let tags_resp = client
+            .get(format!("{ollama_url}/api/tags"))
+            .send()
+            .await?
+            .json::<serde_json::Value>()
+            .await?;
+
+        let model_base = model_name.split(':').next().unwrap_or(model_name);
+        let model_available = tags_resp["models"]
+            .as_array()
+            .map(|models| {
+                models.iter().any(|m| {
+                    m["name"]
+                        .as_str()
+                        .map(|n| n.starts_with(model_base))
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+
+        if !model_available {
+            println!("  ⏳ Model '{}' not found locally. Pulling...", model_name);
+            let pull_status = tokio::process::Command::new("ollama")
+                .args(["pull", model_name])
+                .status()
+                .await?;
+            if !pull_status.success() {
+                anyhow::bail!("Failed to pull model '{}'", model_name);
+            }
+            println!("  ✓ Model pulled: {}", model_name);
+        } else {
+            println!("  ✓ Model available: {}", model_name);
+        }
     } // end else (non-Claude Ollama setup)
 
     println!();
@@ -401,7 +425,8 @@ pub(crate) async fn run_demo_live(project: &str, model_name: &str, _max_rounds: 
     // Register the lead's own model (remote/cloud)
     if model_name.starts_with("claude") {
         let model_key = model_name.replace([':', '-', '.', '@'], "_");
-        model_sections.push_str(&format!(r#"
+        model_sections.push_str(&format!(
+            r#"
 [models.{model_key}]
 task = "chat"
 model_name = "{model_name}"
@@ -413,7 +438,10 @@ tool_use = "advanced"
 reasoning = "extended"
 json_compliance = "strict"
 locality = "remote"
-"#, model_key = model_key, model_name = model_name));
+"#,
+            model_key = model_key,
+            model_name = model_name
+        ));
     }
 
     // Register locally available Ollama models with metadata from /api/show
@@ -430,11 +458,16 @@ locality = "remote"
                         let size_gb = m["size"].as_u64().unwrap_or(0) as f64 / 1e9;
 
                         // Derive speed tier from model size
-                        let speed = if size_gb < 5.0 { "fast" }
-                            else if size_gb < 12.0 { "medium" }
-                            else { "slow" };
+                        let speed = if size_gb < 5.0 {
+                            "fast"
+                        } else if size_gb < 12.0 {
+                            "medium"
+                        } else {
+                            "slow"
+                        };
 
-                        model_sections.push_str(&format!(r#"
+                        model_sections.push_str(&format!(
+                            r#"
 [models.{model_key}]
 task = "chat"
 model_name = "{name}"
@@ -443,14 +476,21 @@ model_name = "{name}"
 cost_tier = "free"
 speed_tier = "{speed}"
 locality = "local"
-"#, model_key = model_key, name = name, speed = speed));
+"#,
+                            model_key = model_key,
+                            name = name,
+                            speed = speed
+                        ));
                     }
                 }
             }
         }
     }
 
-    std::fs::write(demo_config_path, format!(r#"
+    std::fs::write(
+        demo_config_path,
+        format!(
+            r#"
 cognitive_core = "{project}"
 
 [server]
@@ -470,18 +510,19 @@ operations = [{operations}]
 safety = "standard"
 {model_sections}
 "#,
-        demo_port = demo_port,
-        project = abs_project.display(),
-        allow_path = abs_project.display(),
-        operations = if writable || !allow_write.is_empty() {
-            r#""read", "write", "search", "list""#
-        } else {
-            r#""read", "search", "list""#
-        },
-        extra_read_paths = canonicalize_allow_paths(allow_read),
-        extra_write_paths = canonicalize_allow_paths(allow_write),
-        model_sections = model_sections,
-    ))?;
+            demo_port = demo_port,
+            project = abs_project.display(),
+            allow_path = abs_project.display(),
+            operations = if writable || !allow_write.is_empty() {
+                r#""read", "write", "search", "list""#
+            } else {
+                r#""read", "search", "list""#
+            },
+            extra_read_paths = canonicalize_allow_paths(allow_read),
+            extra_write_paths = canonicalize_allow_paths(allow_write),
+            model_sections = model_sections,
+        ),
+    )?;
 
     // Start smgglrs as a child process
     let smgglrs_bin = std::env::current_exe()?;
@@ -489,7 +530,10 @@ safety = "standard"
         .args(["serve", "--config", demo_config_path, "--no-tray"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::inherit())
-        .env("ORT_LIB_PATH", std::env::var("ORT_LIB_PATH").unwrap_or_default())
+        .env(
+            "ORT_LIB_PATH",
+            std::env::var("ORT_LIB_PATH").unwrap_or_default(),
+        )
         .env("ORT_PREFER_DYNAMIC_LINK", "1")
         .spawn()
         .map_err(|e| anyhow::anyhow!("Failed to start smgglrs: {e}"))?;
@@ -499,7 +543,12 @@ safety = "standard"
     let http_client = reqwest::Client::new();
     for i in 0..30 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        if http_client.get(format!("{smgglrs_url}/mcp")).send().await.is_ok() {
+        if http_client
+            .get(format!("{smgglrs_url}/mcp"))
+            .send()
+            .await
+            .is_ok()
+        {
             break;
         }
         if i == 29 {
@@ -512,7 +561,8 @@ safety = "standard"
     println!("  ✓ Docs module serving: {}", abs_project.display());
 
     // Verify model proxy endpoint
-    let v1_check = http_client.post(format!("{smgglrs_url}/v1/chat/completions"))
+    let v1_check = http_client
+        .post(format!("{smgglrs_url}/v1/chat/completions"))
         .json(&serde_json::json!({
             "model": "default",
             "messages": [{"role": "user", "content": "hi"}],
@@ -580,7 +630,8 @@ safety = "standard"
         "You are a team lead. Use file_tree to understand the project structure, \
          models_list to see available models, then create a team of specialists \
          to analyze the project. Delegate all file reading to teammates. \
-         Synthesize their findings into a final report.".to_string()
+         Synthesize their findings into a final report."
+            .to_string()
     };
 
     let system_prompt = base_prompt;
@@ -590,9 +641,9 @@ safety = "standard"
     // Lead agent only gets project overview + team tools.
     // No file_read, no file_grep — the lead MUST delegate all analysis.
     let lead_tools = vec![
-        "file_tree".to_string(),    // project structure overview only
-        "models_list".to_string(),  // see available models
-        "personas_list".to_string(),// see available specialist personas
+        "file_tree".to_string(),     // project structure overview only
+        "models_list".to_string(),   // see available models
+        "personas_list".to_string(), // see available specialist personas
         "team_create".to_string(),
         "team_add".to_string(),
         "team_message".to_string(),
@@ -626,7 +677,8 @@ safety = "standard"
                 .temperature(0.0) // deterministic tool-calling for orchestration
                 .force_tool_iterations(5) // must call tools for first 5 progress iterations
                 .max_tokens(8192)
-                .build().await?
+                .build()
+                .await?
         };
     }
 
@@ -638,8 +690,8 @@ safety = "standard"
         if use_vertex {
             let project_id = std::env::var("ANTHROPIC_VERTEX_PROJECT_ID")
                 .unwrap_or_else(|_| "my-project".to_string());
-            let region = std::env::var("CLOUD_ML_REGION")
-                .unwrap_or_else(|_| "us-east5".to_string());
+            let region =
+                std::env::var("CLOUD_ML_REGION").unwrap_or_else(|_| "us-east5".to_string());
             let base_url = format!(
                 "https://{region}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{region}/publishers/anthropic/models/{model_name}:rawPredict"
             );
@@ -647,8 +699,12 @@ safety = "standard"
             let token_output = std::process::Command::new("gcloud")
                 .args(["auth", "print-access-token"])
                 .output()
-                .map_err(|e| anyhow::anyhow!("Failed to get gcloud token: {e}. Run: gcloud auth login"))?;
-            let gcloud_token = String::from_utf8_lossy(&token_output.stdout).trim().to_string();
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to get gcloud token: {e}. Run: gcloud auth login")
+                })?;
+            let gcloud_token = String::from_utf8_lossy(&token_output.stdout)
+                .trim()
+                .to_string();
             if gcloud_token.is_empty() {
                 smgglrs_child.kill().await?;
                 anyhow::bail!("Empty gcloud token. Run: gcloud auth application-default login");
@@ -666,9 +722,7 @@ safety = "standard"
                 .or_else(|| std::env::var("CLAUDE_API_KEY").ok());
             if api_key.is_none() {
                 smgglrs_child.kill().await?;
-                anyhow::bail!(
-                    "Claude requires ANTHROPIC_API_KEY or Vertex AI config"
-                );
+                anyhow::bail!("Claude requires ANTHROPIC_API_KEY or Vertex AI config");
             }
             println!("  Backend: Anthropic Messages API");
             build_agent!(smgglrs_model::AnthropicBackend::new(
@@ -695,7 +749,14 @@ safety = "standard"
     for tool in &tools {
         println!("    - {}", tool.name);
     }
-    println!("  ✓ Persona: {}", if persona_name.is_empty() { "default" } else { persona_name });
+    println!(
+        "  ✓ Persona: {}",
+        if persona_name.is_empty() {
+            "default"
+        } else {
+            persona_name
+        }
+    );
     println!("  ✓ System prompt: {} chars", system_prompt.len());
 
     // --- Step 5: Run the agent ---
@@ -708,7 +769,10 @@ safety = "standard"
 
     let audit_prompt = match custom_prompt {
         Some(p) => p.replace("{path}", &abs_project.display().to_string()),
-        None => format!("Audit the Rust project at {path}", path = abs_project.display()),
+        None => format!(
+            "Audit the Rust project at {path}",
+            path = abs_project.display()
+        ),
     };
 
     let start = std::time::Instant::now();
@@ -723,12 +787,25 @@ safety = "standard"
             }
             println!();
             println!("━━━ Summary ━━━");
-            println!("  Model:       {} (via Ollama, locality: Local)", model_name);
+            println!(
+                "  Model:       {} (via Ollama, locality: Local)",
+                model_name
+            );
             println!("  Gateway:     smgglrs at {}", smgglrs_url);
             println!("  Transport:   MCP Streamable HTTP (authenticated)");
-            println!("  Persona:     {}", if persona_name.is_empty() { "default" } else { persona_name });
+            println!(
+                "  Persona:     {}",
+                if persona_name.is_empty() {
+                    "default"
+                } else {
+                    persona_name
+                }
+            );
             println!("  Iterations:  {} ReAct loops", result.iterations);
-            println!("  Tokens:      {} input + {} output", result.input_tokens, result.output_tokens);
+            println!(
+                "  Tokens:      {} input + {} output",
+                result.input_tokens, result.output_tokens
+            );
             println!("  Time:        {:.1}s", elapsed.as_secs_f64());
             println!("  Taint:       {:?}", result.taint);
             println!("  Tools:       {} available via smgglrs", tools.len());
@@ -755,10 +832,11 @@ fn canonicalize_allow_paths(paths: &[String]) -> String {
     if paths.is_empty() {
         return String::new();
     }
-    paths.iter()
+    paths
+        .iter()
         .map(|p| {
-            let canonical = std::fs::canonicalize(p)
-                .unwrap_or_else(|_| std::path::PathBuf::from(p));
+            let canonical =
+                std::fs::canonicalize(p).unwrap_or_else(|_| std::path::PathBuf::from(p));
             format!(", \"{}/**\"", canonical.display())
         })
         .collect::<String>()

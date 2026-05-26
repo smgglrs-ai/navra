@@ -11,11 +11,14 @@
 //! Model selection is IFC-aware: teammates working on sensitive data
 //! are automatically assigned local models to prevent data exfiltration.
 
+use smgglrs_agent::AuditSink;
 use smgglrs_core::identity::CapSigner;
 use smgglrs_core::protocol::{ToolDefinition, ToolInputSchema};
-use smgglrs_agent::AuditSink;
 use std::collections::HashMap;
-use std::sync::{atomic::{AtomicU32, Ordering}, Mutex};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Mutex,
+};
 use std::time::Instant;
 use tokio::task::JoinHandle;
 
@@ -24,8 +27,14 @@ pub(crate) struct AuditLogSink(pub std::sync::Arc<smgglrs_memory::AuditLog>);
 
 impl AuditSink for AuditLogSink {
     fn log_tool_call(
-        &self, run_id: &str, agent_id: &str, iteration: u32,
-        tool_name: &str, tool_args: &str, tool_result: &str, duration_ms: u64,
+        &self,
+        run_id: &str,
+        agent_id: &str,
+        iteration: u32,
+        tool_name: &str,
+        tool_args: &str,
+        tool_result: &str,
+        duration_ms: u64,
     ) {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -49,8 +58,14 @@ impl AuditSink for AuditLogSink {
     }
 
     fn log_model_call(
-        &self, run_id: &str, agent_id: &str, iteration: u32,
-        model_name: &str, input_tokens: u32, output_tokens: u32, response_type: &str,
+        &self,
+        run_id: &str,
+        agent_id: &str,
+        iteration: u32,
+        model_name: &str,
+        input_tokens: u32,
+        output_tokens: u32,
+        response_type: &str,
     ) {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -61,7 +76,11 @@ impl AuditSink for AuditLogSink {
             agent_id: agent_id.to_string(),
             iteration,
             timestamp_ms: now_ms,
-            model_name: if model_name.is_empty() { None } else { Some(model_name.to_string()) },
+            model_name: if model_name.is_empty() {
+                None
+            } else {
+                Some(model_name.to_string())
+            },
             input_tokens,
             output_tokens,
             response_type: response_type.to_string(),
@@ -78,10 +97,17 @@ pub const DEFAULT_OPERATIONS: &[&str] = &["read", "search", "list"];
 
 /// Default tools granted to teammates.
 pub const DEFAULT_TOOLS: &[&str] = &[
-    "file_tree", "file_grep", "file_read",
-    "team_bb_publish", "team_bb_read", "team_bb_notifications",
-    "models_list", "personas_list", "flow_escalate",
-    "flow_status", "flow_result",
+    "file_tree",
+    "file_grep",
+    "file_read",
+    "team_bb_publish",
+    "team_bb_read",
+    "team_bb_notifications",
+    "models_list",
+    "personas_list",
+    "flow_escalate",
+    "flow_status",
+    "flow_result",
 ];
 
 /// A teammate in the team.
@@ -90,10 +116,10 @@ pub struct Teammate {
     pub name: String,
     pub persona: Option<String>,
     pub model: String,
-    pub locality: String,   // "local", "remote", "auto"
+    pub locality: String,        // "local", "remote", "auto"
     pub operations: Vec<String>, // allowed operations for capability token
     pub tools: Vec<String>,      // allowed tools for capability token
-    pub status: String,     // "idle", "working", "done", "failed"
+    pub status: String,          // "idle", "working", "done", "failed"
     pub task: Option<String>,
     pub output: Option<String>,
     pub created_at: Instant,
@@ -355,7 +381,10 @@ impl TeamRegistry {
 
         // Check timeout
         if team.created_at.elapsed().as_secs() > team.budget.timeout_secs {
-            return Err(format!("Team timeout exceeded ({}s)", team.budget.timeout_secs));
+            return Err(format!(
+                "Team timeout exceeded ({}s)",
+                team.budget.timeout_secs
+            ));
         }
 
         let teammate = team
@@ -369,7 +398,11 @@ impl TeamRegistry {
     }
 
     pub fn bb_publish(
-        &self, team_id: &str, key: &str, value: &str, author: &str,
+        &self,
+        team_id: &str,
+        key: &str,
+        value: &str,
+        author: &str,
         label: smgglrs_core::protocol::label::DataLabel,
     ) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
@@ -553,14 +586,16 @@ impl TeamRegistry {
 
     pub fn get_teammate_status(&self, team_id: &str, teammate: &str) -> Option<String> {
         let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        teams.get(team_id)
+        teams
+            .get(team_id)
             .and_then(|t| t.teammates.get(teammate))
             .map(|tm| tm.status.clone())
     }
 
     pub fn get_teammate_output(&self, team_id: &str, teammate: &str) -> Option<String> {
         let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        teams.get(team_id)
+        teams
+            .get(team_id)
             .and_then(|t| t.teammates.get(teammate))
             .and_then(|tm| tm.output.clone())
     }
@@ -601,7 +636,9 @@ impl TeamRegistry {
             .collect();
 
         // Stop any running containers
-        let containers: Vec<String> = team.teammates.values()
+        let containers: Vec<String> = team
+            .teammates
+            .values()
             .filter_map(|tm| tm.container_id.clone())
             .collect();
         if !containers.is_empty() {
@@ -648,13 +685,34 @@ pub fn team_create_def() -> ToolDefinition {
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
-                ("name".to_string(), serde_json::json!({"type": "string", "description": "Team name"})),
-                ("description".to_string(), serde_json::json!({"type": "string", "description": "What this team will accomplish"})),
-                ("max_depth".to_string(), serde_json::json!({"type": "integer", "description": "Max subteam nesting depth (default: 2)"})),
-                ("max_agents".to_string(), serde_json::json!({"type": "integer", "description": "Max total agents across team tree (default: 10)"})),
-                ("max_tokens".to_string(), serde_json::json!({"type": "integer", "description": "Max total tokens across team tree (default: 500000)"})),
-                ("timeout_secs".to_string(), serde_json::json!({"type": "integer", "description": "Team timeout in seconds (default: 600)"})),
-                ("max_iterations".to_string(), serde_json::json!({"type": "integer", "description": "Max ReAct iterations per teammate (default: 50)"})),
+                (
+                    "name".to_string(),
+                    serde_json::json!({"type": "string", "description": "Team name"}),
+                ),
+                (
+                    "description".to_string(),
+                    serde_json::json!({"type": "string", "description": "What this team will accomplish"}),
+                ),
+                (
+                    "max_depth".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Max subteam nesting depth (default: 2)"}),
+                ),
+                (
+                    "max_agents".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Max total agents across team tree (default: 10)"}),
+                ),
+                (
+                    "max_tokens".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Max total tokens across team tree (default: 500000)"}),
+                ),
+                (
+                    "timeout_secs".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Team timeout in seconds (default: 600)"}),
+                ),
+                (
+                    "max_iterations".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Max ReAct iterations per teammate (default: 50)"}),
+                ),
             ])),
             required: Some(vec!["name".to_string()]),
         },
@@ -682,12 +740,30 @@ pub fn team_add_def() -> ToolDefinition {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
-                ("name".to_string(), serde_json::json!({"type": "string", "description": "Teammate name (unique within team)"})),
-                ("persona".to_string(), serde_json::json!({"type": "string", "description": "Persona name from cognitive core"})),
-                ("model".to_string(), serde_json::json!({"type": "string", "description": "Model name from models_list (e.g. 'granite3.3:8b'). Use fast/small models for file reading tasks, large models only for synthesis. Defaults to 'auto' (smallest available)."})),
-                ("locality".to_string(), serde_json::json!({"type": "string", "enum": ["local", "remote", "auto"], "description": "'local' = data stays on device, 'remote' = cloud API, 'auto' = IFC decides"})),
-                ("operations".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed operations (default: ['read', 'search', 'list'])"})),
-                ("tools".to_string(), serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: ['file_tree', 'file_grep', 'file_read', 'team_bb_publish'])"})),
+                (
+                    "name".to_string(),
+                    serde_json::json!({"type": "string", "description": "Teammate name (unique within team)"}),
+                ),
+                (
+                    "persona".to_string(),
+                    serde_json::json!({"type": "string", "description": "Persona name from cognitive core"}),
+                ),
+                (
+                    "model".to_string(),
+                    serde_json::json!({"type": "string", "description": "Model name from models_list (e.g. 'granite3.3:8b'). Use fast/small models for file reading tasks, large models only for synthesis. Defaults to 'auto' (smallest available)."}),
+                ),
+                (
+                    "locality".to_string(),
+                    serde_json::json!({"type": "string", "enum": ["local", "remote", "auto"], "description": "'local' = data stays on device, 'remote' = cloud API, 'auto' = IFC decides"}),
+                ),
+                (
+                    "operations".to_string(),
+                    serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed operations (default: ['read', 'search', 'list'])"}),
+                ),
+                (
+                    "tools".to_string(),
+                    serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: ['file_tree', 'file_grep', 'file_read', 'team_bb_publish'])"}),
+                ),
             ])),
             required: Some(vec!["team_id".to_string(), "name".to_string()]),
         },
@@ -709,10 +785,20 @@ pub fn team_message_def() -> ToolDefinition {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
-                ("to".to_string(), serde_json::json!({"type": "string", "description": "Teammate name, or '*' for broadcast"})),
-                ("message".to_string(), serde_json::json!({"type": "string", "description": "Task description"})),
+                (
+                    "to".to_string(),
+                    serde_json::json!({"type": "string", "description": "Teammate name, or '*' for broadcast"}),
+                ),
+                (
+                    "message".to_string(),
+                    serde_json::json!({"type": "string", "description": "Task description"}),
+                ),
             ])),
-            required: Some(vec!["team_id".to_string(), "to".to_string(), "message".to_string()]),
+            required: Some(vec![
+                "team_id".to_string(),
+                "to".to_string(),
+                "message".to_string(),
+            ]),
         },
         annotations: None,
     }
@@ -728,9 +814,10 @@ pub fn team_status_def() -> ToolDefinition {
         ),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                ("team_id".to_string(), serde_json::json!({"type": "string"})),
-            ])),
+            properties: Some(HashMap::from([(
+                "team_id".to_string(),
+                serde_json::json!({"type": "string"}),
+            )])),
             required: Some(vec!["team_id".to_string()]),
         },
         annotations: None,
@@ -745,7 +832,10 @@ pub fn team_result_def() -> ToolDefinition {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
-                ("teammate".to_string(), serde_json::json!({"type": "string"})),
+                (
+                    "teammate".to_string(),
+                    serde_json::json!({"type": "string"}),
+                ),
             ])),
             required: Some(vec!["team_id".to_string(), "teammate".to_string()]),
         },
@@ -766,10 +856,20 @@ pub fn team_bb_publish_def() -> ToolDefinition {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
-                ("key".to_string(), serde_json::json!({"type": "string", "description": "Entry key (e.g., 'auth-findings', 'unwrap-count')"})),
-                ("value".to_string(), serde_json::json!({"type": "string", "description": "Entry value (findings, data, etc.)"})),
+                (
+                    "key".to_string(),
+                    serde_json::json!({"type": "string", "description": "Entry key (e.g., 'auth-findings', 'unwrap-count')"}),
+                ),
+                (
+                    "value".to_string(),
+                    serde_json::json!({"type": "string", "description": "Entry value (findings, data, etc.)"}),
+                ),
             ])),
-            required: Some(vec!["team_id".to_string(), "key".to_string(), "value".to_string()]),
+            required: Some(vec![
+                "team_id".to_string(),
+                "key".to_string(),
+                "value".to_string(),
+            ]),
         },
         annotations: None,
     }
@@ -778,15 +878,15 @@ pub fn team_bb_publish_def() -> ToolDefinition {
 pub fn team_bb_read_def() -> ToolDefinition {
     ToolDefinition {
         name: "team_bb_read".to_string(),
-        description: Some(
-            "Read an entry from the team's shared blackboard."
-                .to_string(),
-        ),
+        description: Some("Read an entry from the team's shared blackboard.".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
-                ("key".to_string(), serde_json::json!({"type": "string", "description": "Entry key to read"})),
+                (
+                    "key".to_string(),
+                    serde_json::json!({"type": "string", "description": "Entry key to read"}),
+                ),
             ])),
             required: Some(vec!["team_id".to_string(), "key".to_string()]),
         },
@@ -806,9 +906,10 @@ pub fn team_bb_notifications_def() -> ToolDefinition {
         ),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                ("team_id".to_string(), serde_json::json!({"type": "string"})),
-            ])),
+            properties: Some(HashMap::from([(
+                "team_id".to_string(),
+                serde_json::json!({"type": "string"}),
+            )])),
             required: Some(vec!["team_id".to_string()]),
         },
         annotations: None,
@@ -825,9 +926,10 @@ pub fn team_shutdown_def() -> ToolDefinition {
         ),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                ("team_id".to_string(), serde_json::json!({"type": "string"})),
-            ])),
+            properties: Some(HashMap::from([(
+                "team_id".to_string(),
+                serde_json::json!({"type": "string"}),
+            )])),
             required: Some(vec!["team_id".to_string()]),
         },
         annotations: None,
@@ -849,12 +951,18 @@ pub fn agent_signal_def() -> ToolDefinition {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
-                ("agent_id".to_string(), serde_json::json!({"type": "string", "description": "Name of the teammate to signal"})),
-                ("signal".to_string(), serde_json::json!({
-                    "type": "string",
-                    "enum": ["interrupt", "terminate", "pause", "resume"],
-                    "description": "Signal to send"
-                })),
+                (
+                    "agent_id".to_string(),
+                    serde_json::json!({"type": "string", "description": "Name of the teammate to signal"}),
+                ),
+                (
+                    "signal".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": ["interrupt", "terminate", "pause", "resume"],
+                        "description": "Signal to send"
+                    }),
+                ),
             ])),
             required: Some(vec![
                 "team_id".to_string(),
@@ -897,7 +1005,9 @@ pub async fn handle_agent_signal(
     match registry.send_signal(team_id, agent_id, signal) {
         Ok(()) => {
             tracing::info!(
-                team = team_id, agent = agent_id, signal = signal_str,
+                team = team_id,
+                agent = agent_id,
+                signal = signal_str,
                 "Signal delivered to agent"
             );
             CallToolResult::success(vec![smgglrs_core::protocol::Content::text(format!(
@@ -978,14 +1088,32 @@ pub async fn handle_team_create(
 ) -> smgglrs_core::protocol::CallToolResult {
     use smgglrs_core::protocol::CallToolResult;
 
-    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+    let name = args
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed");
     let desc = args.get("description").and_then(|v| v.as_str());
     let budget = TeamBudget {
-        max_depth: args.get("max_depth").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_depth as u64) as u32,
-        max_agents: args.get("max_agents").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_agents as u64) as u32,
-        max_tokens: args.get("max_tokens").and_then(|v| v.as_u64()).unwrap_or(500_000),
-        timeout_secs: args.get("timeout_secs").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.timeout_secs),
-        max_iterations: args.get("max_iterations").and_then(|v| v.as_u64()).unwrap_or(budget_cfg.max_iterations as u64) as usize,
+        max_depth: args
+            .get("max_depth")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(budget_cfg.max_depth as u64) as u32,
+        max_agents: args
+            .get("max_agents")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(budget_cfg.max_agents as u64) as u32,
+        max_tokens: args
+            .get("max_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(500_000),
+        timeout_secs: args
+            .get("timeout_secs")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(budget_cfg.timeout_secs),
+        max_iterations: args
+            .get("max_iterations")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(budget_cfg.max_iterations as u64) as usize,
     };
     match reg.create_team(name, desc, agent_name, 0, budget) {
         Ok(team_id) => {
@@ -1004,26 +1132,49 @@ pub async fn handle_team_add(
     use smgglrs_core::protocol::CallToolResult;
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
-        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+        Some(id) => id,
+        None => return CallToolResult::error("Missing team_id"),
     };
     let name = match args.get("name").and_then(|v| v.as_str()) {
-        Some(n) => n, None => return CallToolResult::error("Missing name"),
+        Some(n) => n,
+        None => return CallToolResult::error("Missing name"),
     };
     let persona = args.get("persona").and_then(|v| v.as_str());
     let model = args.get("model").and_then(|v| v.as_str()).unwrap_or("auto");
-    let locality = args.get("locality").and_then(|v| v.as_str()).unwrap_or("auto");
+    let locality = args
+        .get("locality")
+        .and_then(|v| v.as_str())
+        .unwrap_or("auto");
 
-    let operations: Vec<String> = args.get("operations")
+    let operations: Vec<String> = args
+        .get("operations")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_else(|| DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect());
 
-    let tools: Vec<String> = args.get("tools")
+    let tools: Vec<String> = args
+        .get("tools")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_else(|| DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect());
 
-    match reg.add_teammate(team_id, name, persona, model, locality, operations.clone(), tools.clone()) {
+    match reg.add_teammate(
+        team_id,
+        name,
+        persona,
+        model,
+        locality,
+        operations.clone(),
+        tools.clone(),
+    ) {
         Ok(()) => {
             tracing::info!(team = team_id, name = name, persona = ?persona, model = model, locality = locality, operations = ?operations, tools = ?tools, "Teammate added");
             CallToolResult::text(format!(
@@ -1043,10 +1194,13 @@ pub async fn handle_team_status(
     use smgglrs_core::protocol::CallToolResult;
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
-        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+        Some(id) => id,
+        None => return CallToolResult::error("Missing team_id"),
     };
     match reg.get_status(team_id) {
-        Some(status) => CallToolResult::text(serde_json::to_string_pretty(&status).unwrap_or_default()),
+        Some(status) => {
+            CallToolResult::text(serde_json::to_string_pretty(&status).unwrap_or_default())
+        }
         None => CallToolResult::error(format!("Unknown team: {team_id}")),
     }
 }
@@ -1059,13 +1213,17 @@ pub async fn handle_team_result(
     use smgglrs_core::protocol::CallToolResult;
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
-        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+        Some(id) => id,
+        None => return CallToolResult::error("Missing team_id"),
     };
     let teammate = match args.get("teammate").and_then(|v| v.as_str()) {
-        Some(t) => t, None => return CallToolResult::error("Missing teammate"),
+        Some(t) => t,
+        None => return CallToolResult::error("Missing teammate"),
     };
     match reg.get_result(team_id, teammate) {
-        Some(result) => CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default()),
+        Some(result) => {
+            CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default())
+        }
         None => CallToolResult::error(format!("No result from '{teammate}'")),
     }
 }
@@ -1078,7 +1236,8 @@ pub async fn handle_team_shutdown(
     use smgglrs_core::protocol::CallToolResult;
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
-        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+        Some(id) => id,
+        None => return CallToolResult::error("Missing team_id"),
     };
     match reg.shutdown(team_id) {
         Ok(info) => {
@@ -1099,13 +1258,16 @@ pub async fn handle_team_bb_publish(
     use smgglrs_core::protocol::CallToolResult;
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
-        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+        Some(id) => id,
+        None => return CallToolResult::error("Missing team_id"),
     };
     let key = match args.get("key").and_then(|v| v.as_str()) {
-        Some(k) => k, None => return CallToolResult::error("Missing key"),
+        Some(k) => k,
+        None => return CallToolResult::error("Missing key"),
     };
     let value = match args.get("value").and_then(|v| v.as_str()) {
-        Some(v) => v, None => return CallToolResult::error("Missing value"),
+        Some(v) => v,
+        None => return CallToolResult::error("Missing value"),
     };
     reg.bb_publish(team_id, key, value, agent_name, label);
     CallToolResult::text(format!("Published '{key}' to team blackboard"))
@@ -1119,15 +1281,17 @@ pub async fn handle_team_bb_read(
     use smgglrs_core::protocol::CallToolResult;
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
-        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+        Some(id) => id,
+        None => return CallToolResult::error("Missing team_id"),
     };
     let key = match args.get("key").and_then(|v| v.as_str()) {
-        Some(k) => k, None => return CallToolResult::error("Missing key"),
+        Some(k) => k,
+        None => return CallToolResult::error("Missing key"),
     };
     match reg.bb_read(team_id, key) {
-        Some(entry) => CallToolResult::text(
-            serde_json::to_string_pretty(&entry).unwrap_or_default()
-        ),
+        Some(entry) => {
+            CallToolResult::text(serde_json::to_string_pretty(&entry).unwrap_or_default())
+        }
         None => CallToolResult::error(format!("No blackboard entry: {key}")),
     }
 }
@@ -1141,7 +1305,8 @@ pub async fn handle_team_bb_notifications(
     use smgglrs_core::protocol::CallToolResult;
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
-        Some(id) => id, None => return CallToolResult::error("Missing team_id"),
+        Some(id) => id,
+        None => return CallToolResult::error("Missing team_id"),
     };
     match reg.bb_notifications(team_id, agent_name) {
         Ok(notifications) => {
@@ -1149,7 +1314,7 @@ pub async fn handle_team_bb_notifications(
                 CallToolResult::text("No new blackboard entries since last check.")
             } else {
                 CallToolResult::text(
-                    serde_json::to_string_pretty(&notifications).unwrap_or_default()
+                    serde_json::to_string_pretty(&notifications).unwrap_or_default(),
                 )
             }
         }
@@ -1158,9 +1323,7 @@ pub async fn handle_team_bb_notifications(
 }
 
 /// Handle models_list tool call.
-pub async fn handle_models_list(
-    cards: Vec<ModelCard>,
-) -> smgglrs_core::protocol::CallToolResult {
+pub async fn handle_models_list(cards: Vec<ModelCard>) -> smgglrs_core::protocol::CallToolResult {
     use smgglrs_core::protocol::CallToolResult;
     CallToolResult::text(serde_json::to_string_pretty(&cards).unwrap_or_default())
 }
@@ -1285,28 +1448,41 @@ fn spawn_containerized_agent(
             // Build scoped capability token
             let (tm_ops, tm_tools, tm_persona, teammate_model) = {
                 let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
-                teams.get(&team_id)
+                teams
+                    .get(&team_id)
                     .and_then(|t| t.teammates.get(&teammate_id))
-                    .map(|tm| (
-                        tm.operations.clone(),
-                        tm.tools.clone(),
-                        tm.persona.clone(),
-                        tm.model.clone(),
-                    ))
-                    .unwrap_or_else(|| (
-                        DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
-                        DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-                        None,
-                        "auto".to_string(),
-                    ))
+                    .map(|tm| {
+                        (
+                            tm.operations.clone(),
+                            tm.tools.clone(),
+                            tm.persona.clone(),
+                            tm.model.clone(),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        (
+                            DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                            DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                            None,
+                            "auto".to_string(),
+                        )
+                    })
             };
 
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
             let token = if let Some(ref root) = root_payload {
                 match smgglrs_core::auth::capability::build_delegated_payload(
-                    root, &did, tm_ops, tm_tools, 2, timeout_secs,
+                    root,
+                    &did,
+                    tm_ops,
+                    tm_tools,
+                    2,
+                    timeout_secs,
                 ) {
-                    Ok(payload) => match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                    Ok(payload) => match smgglrs_core::auth::capability::encode_token(
+                        &payload,
+                        signer.as_ref(),
+                    ) {
                         Ok(t) => t,
                         Err(e) => {
                             reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
@@ -1314,7 +1490,11 @@ fn spawn_containerized_agent(
                         }
                     },
                     Err(e) => {
-                        reg.set_failed(&team_id, &teammate_id, format!("Token delegation error: {e}"));
+                        reg.set_failed(
+                            &team_id,
+                            &teammate_id,
+                            format!("Token delegation error: {e}"),
+                        );
                         return;
                     }
                 }
@@ -1326,7 +1506,11 @@ fn spawn_containerized_agent(
                     credentials: vec![],
                 };
                 let payload = smgglrs_core::auth::capability::build_payload(
-                    signer.did(), &did, cap, 2, timeout_secs,
+                    signer.did(),
+                    &did,
+                    cap,
+                    2,
+                    timeout_secs,
                 );
                 match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
                     Ok(t) => t,
@@ -1340,9 +1524,9 @@ fn spawn_containerized_agent(
             // Resolve model
             let mut model = teammate_model;
             if model == "auto" {
-                if let Some(selected) = select_model_for_task(
-                    &reg.model_cards, tm_persona.as_deref(), &message,
-                ) {
+                if let Some(selected) =
+                    select_model_for_task(&reg.model_cards, tm_persona.as_deref(), &message)
+                {
                     model = selected;
                 } else {
                     model = "granite3.3:8b".to_string();
@@ -1350,14 +1534,12 @@ fn spawn_containerized_agent(
             }
 
             // Determine model endpoint: shared model server or host Ollama
-            let model_endpoint = model_server_url.clone()
+            let model_endpoint = model_server_url
+                .clone()
                 .unwrap_or_else(|| "http://10.0.2.2:11434/v1".to_string());
 
             // Parse the gateway port from smgglrs_addr (e.g. "127.0.0.1:9315")
-            let gateway_port = smgglrs_addr
-                .rsplit(':')
-                .next()
-                .unwrap_or("9315");
+            let gateway_port = smgglrs_addr.rsplit(':').next().unwrap_or("9315");
             let gateway_url = format!("http://10.0.2.2:{gateway_port}/mcp");
 
             // Replace host addresses with container-visible 10.0.2.2
@@ -1368,13 +1550,14 @@ fn spawn_containerized_agent(
             let container_name = format!("smgglrs-agent-{}-{}", team_id, teammate_id);
 
             reg.set_resolved_model(&team_id, &teammate_id, &model);
-            eprintln!("  [container] {} → model: {}, image: {}", teammate_id, model, agent_image);
+            eprintln!(
+                "  [container] {} → model: {}, image: {}",
+                teammate_id, model, agent_image
+            );
 
             // Build persona env vars
             let persona_env: Vec<String> = if let Some(ref name) = tm_persona {
-                vec![
-                    "-e".to_string(), format!("SMGGLRS_PERSONA={name}"),
-                ]
+                vec!["-e".to_string(), format!("SMGGLRS_PERSONA={name}")]
             } else {
                 vec![]
             };
@@ -1398,19 +1581,26 @@ fn spawn_containerized_agent(
             let mut cmd = tokio::process::Command::new("podman");
             cmd.arg("run")
                 .arg("--rm")
-                .arg("--name").arg(&container_name)
+                .arg("--name")
+                .arg(&container_name)
                 .arg("--network=slirp4netns:allow_host_loopback=true")
                 .arg(format!("--memory={container_memory}"))
                 .arg(format!("--cpus={container_cpus}"))
                 .arg(format!("--pids-limit={container_pids}"))
                 .arg("--read-only")
                 .arg("--security-opt=no-new-privileges")
-                .arg("-e").arg(format!("SMGGLRS_ENDPOINT={gateway_url}"))
-                .arg("-e").arg(format!("SMGGLRS_TOKEN={token}"))
-                .arg("-e").arg(format!("SMGGLRS_MODEL_ENDPOINT={container_model_ep}"))
-                .arg("-e").arg(format!("SMGGLRS_MODEL_NAME={model}"))
-                .arg("-e").arg(format!("SMGGLRS_TASK={message}"))
-                .arg("-e").arg(format!("SMGGLRS_MAX_ITERATIONS={max_iterations}"));
+                .arg("-e")
+                .arg(format!("SMGGLRS_ENDPOINT={gateway_url}"))
+                .arg("-e")
+                .arg(format!("SMGGLRS_TOKEN={token}"))
+                .arg("-e")
+                .arg(format!("SMGGLRS_MODEL_ENDPOINT={container_model_ep}"))
+                .arg("-e")
+                .arg(format!("SMGGLRS_MODEL_NAME={model}"))
+                .arg("-e")
+                .arg(format!("SMGGLRS_TASK={message}"))
+                .arg("-e")
+                .arg(format!("SMGGLRS_MAX_ITERATIONS={max_iterations}"));
 
             for arg in &persona_env {
                 cmd.arg(arg);
@@ -1441,7 +1631,11 @@ fn spawn_containerized_agent(
                             stderr = %stderr,
                             "Container agent failed"
                         );
-                        reg.set_failed(&team_id, &teammate_id, format!("Container exited with error: {stderr}"));
+                        reg.set_failed(
+                            &team_id,
+                            &teammate_id,
+                            format!("Container exited with error: {stderr}"),
+                        );
                         return;
                     }
 
@@ -1449,28 +1643,35 @@ fn spawn_containerized_agent(
                     // The stdout may contain log lines before the JSON
                     // (tracing warnings from the tool loop). Find the
                     // first '{' to locate the JSON object.
-                    let json_str = stdout.find('{')
-                        .map(|i| &stdout[i..])
-                        .unwrap_or(&stdout);
+                    let json_str = stdout.find('{').map(|i| &stdout[i..]).unwrap_or(&stdout);
                     match serde_json::from_str::<serde_json::Value>(json_str) {
                         Ok(result) => {
-                            let response = result.get("output")
+                            let response = result
+                                .get("output")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            let iterations = result.get("iterations")
+                            let iterations = result
+                                .get("iterations")
                                 .and_then(|v| v.as_u64())
                                 .unwrap_or(0);
-                            let tokens_in = result.get("tokens_in")
+                            let tokens_in = result
+                                .get("tokens_in")
                                 .and_then(|v| v.as_u64())
                                 .unwrap_or(0) as u32;
-                            let tokens_out = result.get("tokens_out")
+                            let tokens_out = result
+                                .get("tokens_out")
                                 .and_then(|v| v.as_u64())
                                 .unwrap_or(0) as u32;
 
                             let total_tokens = tokens_in + tokens_out;
                             reg.add_tokens(&team_id, total_tokens);
-                            reg.set_agent_metrics(&team_id, &teammate_id, iterations as u32, total_tokens);
+                            reg.set_agent_metrics(
+                                &team_id,
+                                &teammate_id,
+                                iterations as u32,
+                                total_tokens,
+                            );
 
                             tracing::info!(
                                 team = %team_id, teammate = %teammate_id,
@@ -1484,7 +1685,8 @@ fn spawn_containerized_agent(
                                 let now_ms = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .unwrap_or_default()
-                                    .as_millis() as i64;
+                                    .as_millis()
+                                    as i64;
                                 let run_id = format!("tm-{team_id}-{teammate_id}");
                                 let run = smgglrs_memory::AuditRun {
                                     run_id,
@@ -1515,7 +1717,8 @@ fn spawn_containerized_agent(
                                 reg.set_output(&team_id, &teammate_id, raw);
                             } else {
                                 reg.set_failed(
-                                    &team_id, &teammate_id,
+                                    &team_id,
+                                    &teammate_id,
                                     format!("Container produced no output. stderr: {stderr}"),
                                 );
                             }
@@ -1531,7 +1734,8 @@ fn spawn_containerized_agent(
                     reg.set_failed(&team_id, &teammate_id, format!("Podman exec error: {e}"));
                 }
             }
-        }).await;
+        })
+        .await;
 
         if result.is_err() {
             tracing::warn!(
@@ -1544,7 +1748,11 @@ fn spawn_containerized_agent(
                 .args(["stop", "-t", "5", &container_name])
                 .output()
                 .await;
-            timeout_reg.set_failed(&timeout_team, &timeout_task, format!("Timed out after {timeout_secs}s"));
+            timeout_reg.set_failed(
+                &timeout_team,
+                &timeout_task,
+                format!("Timed out after {timeout_secs}s"),
+            );
         }
     })
 }
@@ -1591,28 +1799,41 @@ fn spawn_openshell_agent(
             // Build scoped capability token (same as Podman path)
             let (tm_ops, tm_tools, tm_persona, teammate_model) = {
                 let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
-                teams.get(&team_id)
+                teams
+                    .get(&team_id)
                     .and_then(|t| t.teammates.get(&teammate_id))
-                    .map(|tm| (
-                        tm.operations.clone(),
-                        tm.tools.clone(),
-                        tm.persona.clone(),
-                        tm.model.clone(),
-                    ))
-                    .unwrap_or_else(|| (
-                        DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
-                        DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-                        None,
-                        "auto".to_string(),
-                    ))
+                    .map(|tm| {
+                        (
+                            tm.operations.clone(),
+                            tm.tools.clone(),
+                            tm.persona.clone(),
+                            tm.model.clone(),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        (
+                            DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
+                            DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+                            None,
+                            "auto".to_string(),
+                        )
+                    })
             };
 
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
             let token = if let Some(ref root) = root_payload {
                 match smgglrs_core::auth::capability::build_delegated_payload(
-                    root, &did, tm_ops, tm_tools, 2, timeout_secs,
+                    root,
+                    &did,
+                    tm_ops,
+                    tm_tools,
+                    2,
+                    timeout_secs,
                 ) {
-                    Ok(payload) => match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                    Ok(payload) => match smgglrs_core::auth::capability::encode_token(
+                        &payload,
+                        signer.as_ref(),
+                    ) {
                         Ok(t) => t,
                         Err(e) => {
                             reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
@@ -1620,7 +1841,11 @@ fn spawn_openshell_agent(
                         }
                     },
                     Err(e) => {
-                        reg.set_failed(&team_id, &teammate_id, format!("Token delegation error: {e}"));
+                        reg.set_failed(
+                            &team_id,
+                            &teammate_id,
+                            format!("Token delegation error: {e}"),
+                        );
                         return;
                     }
                 }
@@ -1632,7 +1857,11 @@ fn spawn_openshell_agent(
                     credentials: vec![],
                 };
                 let payload = smgglrs_core::auth::capability::build_payload(
-                    signer.did(), &did, cap, 2, timeout_secs,
+                    signer.did(),
+                    &did,
+                    cap,
+                    2,
+                    timeout_secs,
                 );
                 match smgglrs_core::auth::capability::encode_token(&payload, signer.as_ref()) {
                     Ok(t) => t,
@@ -1646,32 +1875,37 @@ fn spawn_openshell_agent(
             // Resolve model
             let mut model = teammate_model;
             if model == "auto" {
-                if let Some(selected) = select_model_for_task(
-                    &reg.model_cards, tm_persona.as_deref(), &message,
-                ) {
+                if let Some(selected) =
+                    select_model_for_task(&reg.model_cards, tm_persona.as_deref(), &message)
+                {
                     model = selected;
                 } else {
                     model = "granite3.3:8b".to_string();
                 }
             }
 
-            let model_endpoint = model_server_url.clone()
+            let model_endpoint = model_server_url
+                .clone()
                 .unwrap_or_else(|| "http://10.0.2.2:11434/v1".to_string());
 
-            let gateway_port = smgglrs_addr
-                .rsplit(':')
-                .next()
-                .unwrap_or("9315");
+            let gateway_port = smgglrs_addr.rsplit(':').next().unwrap_or("9315");
             let mcp_url = format!("http://10.0.2.2:{gateway_port}/mcp");
 
             reg.set_resolved_model(&team_id, &teammate_id, &model);
-            eprintln!("  [openshell] {} → model: {}, image: {}", teammate_id, model, agent_image);
+            eprintln!(
+                "  [openshell] {} → model: {}, image: {}",
+                teammate_id, model, agent_image
+            );
 
             // Prepare workspace
             let workspace_dir = tempfile::tempdir().ok();
             if let (Some(ref provider), Some(ref ws_dir)) = (&workspace_provider, &workspace_dir) {
                 if let Err(e) = provider.populate(ws_dir.path()) {
-                    reg.set_failed(&team_id, &teammate_id, format!("Workspace populate error: {e}"));
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        format!("Workspace populate error: {e}"),
+                    );
                     return;
                 }
             }
@@ -1702,11 +1936,17 @@ fn spawn_openshell_agent(
             env.insert("SMGGLRS_MODEL_ENDPOINT".to_string(), model_endpoint);
             env.insert("SMGGLRS_MODEL_NAME".to_string(), model);
             env.insert("SMGGLRS_TASK".to_string(), message.clone());
-            env.insert("SMGGLRS_MAX_ITERATIONS".to_string(), max_iterations.to_string());
+            env.insert(
+                "SMGGLRS_MAX_ITERATIONS".to_string(),
+                max_iterations.to_string(),
+            );
             if tm_persona.is_some() {
                 if let Some(ref name) = tm_persona {
                     env.insert("SMGGLRS_PERSONA".to_string(), name.clone());
-                    env.insert("SMGGLRS_COGNITIVE_CORE".to_string(), "/cognitive_core".to_string());
+                    env.insert(
+                        "SMGGLRS_COGNITIVE_CORE".to_string(),
+                        "/cognitive_core".to_string(),
+                    );
                 }
             }
 
@@ -1732,12 +1972,20 @@ fn spawn_openshell_agent(
                 Ok(c) => match c.connect().await {
                     Ok(ch) => ch,
                     Err(e) => {
-                        reg.set_failed(&team_id, &teammate_id, format!("OpenShell connect error: {e}"));
+                        reg.set_failed(
+                            &team_id,
+                            &teammate_id,
+                            format!("OpenShell connect error: {e}"),
+                        );
                         return;
                     }
                 },
                 Err(e) => {
-                    reg.set_failed(&team_id, &teammate_id, format!("OpenShell channel error: {e}"));
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        format!("OpenShell channel error: {e}"),
+                    );
                     return;
                 }
             };
@@ -1770,7 +2018,8 @@ fn spawn_openshell_agent(
 
             // Register sandbox for exec_run routing
             if let Some(ref exec) = exec_state {
-                exec.state().register_sandbox(did.clone(), sandbox_id.clone());
+                exec.state()
+                    .register_sandbox(did.clone(), sandbox_id.clone());
             }
 
             // Wait for sandbox to be running
@@ -1778,32 +2027,43 @@ fn spawn_openshell_agent(
             loop {
                 attempts += 1;
                 if attempts > 120 {
-                    reg.set_failed(&team_id, &teammate_id, "Sandbox failed to start (timeout)".to_string());
-                    let _ = client.destroy_sandbox(
-                        smgglrs_model_runtime::openshell::DestroySandboxRequest {
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        "Sandbox failed to start (timeout)".to_string(),
+                    );
+                    let _ = client
+                        .destroy_sandbox(smgglrs_model_runtime::openshell::DestroySandboxRequest {
                             sandbox_id: sandbox_id.clone(),
-                        },
-                    ).await;
+                        })
+                        .await;
                     return;
                 }
 
-                match client.sandbox_status(
-                    smgglrs_model_runtime::openshell::SandboxStatusRequest {
+                match client
+                    .sandbox_status(smgglrs_model_runtime::openshell::SandboxStatusRequest {
                         sandbox_id: sandbox_id.clone(),
-                    },
-                ).await {
+                    })
+                    .await
+                {
                     Ok(status) => {
                         let state = status.into_inner().state;
                         if state == smgglrs_model_runtime::openshell::SandboxState::Running as i32 {
                             break;
                         }
                         if state == smgglrs_model_runtime::openshell::SandboxState::Failed as i32 {
-                            reg.set_failed(&team_id, &teammate_id, "Sandbox entered failed state".to_string());
-                            let _ = client.destroy_sandbox(
-                                smgglrs_model_runtime::openshell::DestroySandboxRequest {
-                                    sandbox_id: sandbox_id.clone(),
-                                },
-                            ).await;
+                            reg.set_failed(
+                                &team_id,
+                                &teammate_id,
+                                "Sandbox entered failed state".to_string(),
+                            );
+                            let _ = client
+                                .destroy_sandbox(
+                                    smgglrs_model_runtime::openshell::DestroySandboxRequest {
+                                        sandbox_id: sandbox_id.clone(),
+                                    },
+                                )
+                                .await;
                             return;
                         }
                     }
@@ -1827,15 +2087,17 @@ fn spawn_openshell_agent(
             // Wait for sandbox to complete (agent finishes its ReAct loop)
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                match client.sandbox_status(
-                    smgglrs_model_runtime::openshell::SandboxStatusRequest {
+                match client
+                    .sandbox_status(smgglrs_model_runtime::openshell::SandboxStatusRequest {
                         sandbox_id: sandbox_id.clone(),
-                    },
-                ).await {
+                    })
+                    .await
+                {
                     Ok(status) => {
                         let state = status.into_inner().state;
                         if state == smgglrs_model_runtime::openshell::SandboxState::Stopped as i32
-                            || state == smgglrs_model_runtime::openshell::SandboxState::Failed as i32
+                            || state
+                                == smgglrs_model_runtime::openshell::SandboxState::Failed as i32
                         {
                             break;
                         }
@@ -1848,14 +2110,15 @@ fn spawn_openshell_agent(
             if let (Some(ref provider), Some(ref ws_dir)) = (&workspace_provider, &workspace_dir) {
                 match provider.collect(ws_dir.path()) {
                     Ok(result) => {
-                        let summary = format!(
-                            "Workspace: {} files",
-                            result.files.len(),
-                        );
+                        let summary = format!("Workspace: {} files", result.files.len(),);
                         reg.set_output(&team_id, &teammate_id, summary);
                     }
                     Err(e) => {
-                        reg.set_output(&team_id, &teammate_id, format!("Done (workspace collect error: {e})"));
+                        reg.set_output(
+                            &team_id,
+                            &teammate_id,
+                            format!("Done (workspace collect error: {e})"),
+                        );
                     }
                 }
             } else {
@@ -1863,11 +2126,11 @@ fn spawn_openshell_agent(
             }
 
             // Cleanup: destroy sandbox and deregister exec state
-            let _ = client.destroy_sandbox(
-                smgglrs_model_runtime::openshell::DestroySandboxRequest {
+            let _ = client
+                .destroy_sandbox(smgglrs_model_runtime::openshell::DestroySandboxRequest {
                     sandbox_id: sandbox_id.clone(),
-                },
-            ).await;
+                })
+                .await;
             if let Some(ref exec) = exec_state {
                 exec.state().remove_sandbox(&did);
             }
@@ -1879,7 +2142,11 @@ fn spawn_openshell_agent(
                 team = %timeout_team, teammate = %timeout_task,
                 "OpenShell teammate timed out after {timeout_secs}s"
             );
-            timeout_reg.set_failed(&timeout_team, &timeout_task, format!("Timed out after {timeout_secs}s"));
+            timeout_reg.set_failed(
+                &timeout_team,
+                &timeout_task,
+                format!("Timed out after {timeout_secs}s"),
+            );
         }
     })
 }
@@ -1900,16 +2167,26 @@ pub fn spawn_teammate_agent(
     // OpenShell path: preferred when gateway is configured
     if ctx.openshell_gateway.is_some() {
         return spawn_openshell_agent(
-            ctx, team_id, teammate_id, message,
-            max_iterations, timeout_secs, generates_tasks,
+            ctx,
+            team_id,
+            teammate_id,
+            message,
+            max_iterations,
+            timeout_secs,
+            generates_tasks,
         );
     }
 
     // Containerized path: spawn agent in a Podman container
     if ctx.containerized && is_podman_available() {
         return spawn_containerized_agent(
-            ctx, team_id, teammate_id, message,
-            max_iterations, timeout_secs, generates_tasks,
+            ctx,
+            team_id,
+            teammate_id,
+            message,
+            max_iterations,
+            timeout_secs,
+            generates_tasks,
         );
     }
 
@@ -2224,7 +2501,11 @@ pub fn spawn_teammate_agent(
 
         if result.is_err() {
             tracing::warn!(team = %timeout_team, to = %timeout_task, "Teammate timed out after {timeout_secs}s");
-            timeout_reg.set_failed(&timeout_team, &timeout_task, format!("Timed out after {timeout_secs}s"));
+            timeout_reg.set_failed(
+                &timeout_team,
+                &timeout_task,
+                format!("Timed out after {timeout_secs}s"),
+            );
         }
     })
 }
@@ -2239,23 +2520,34 @@ pub async fn handle_team_message(
     use smgglrs_core::protocol::CallToolResult;
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
-        Some(id) => id.to_string(), None => return CallToolResult::error("Missing team_id"),
+        Some(id) => id.to_string(),
+        None => return CallToolResult::error("Missing team_id"),
     };
     let to = match args.get("to").and_then(|v| v.as_str()) {
-        Some(t) => t.to_string(), None => return CallToolResult::error("Missing to"),
+        Some(t) => t.to_string(),
+        None => return CallToolResult::error("Missing to"),
     };
     let message = match args.get("message").and_then(|v| v.as_str()) {
-        Some(m) => m.to_string(), None => return CallToolResult::error("Missing message"),
+        Some(m) => m.to_string(),
+        None => return CallToolResult::error("Missing message"),
     };
 
-    if let Err(e) = spawn_ctx.team_registry.send_message(&team_id, &to, &message) {
+    if let Err(e) = spawn_ctx
+        .team_registry
+        .send_message(&team_id, &to, &message)
+    {
         return CallToolResult::error(e);
     }
 
     // Get the team's timeout and iteration budget
     let (timeout_secs, teammate_max_iterations) = {
-        let teams = spawn_ctx.team_registry.teams.lock().unwrap_or_else(|e| e.into_inner());
-        teams.get(&team_id)
+        let teams = spawn_ctx
+            .team_registry
+            .teams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        teams
+            .get(&team_id)
             .map(|t| {
                 let elapsed = t.created_at.elapsed().as_secs();
                 let remaining = t.budget.timeout_secs.saturating_sub(elapsed);
@@ -2265,8 +2557,13 @@ pub async fn handle_team_message(
     };
 
     let handle = spawn_teammate_agent(
-        spawn_ctx, &team_id, &to, &message,
-        teammate_max_iterations, timeout_secs, false,
+        spawn_ctx,
+        &team_id,
+        &to,
+        &message,
+        teammate_max_iterations,
+        timeout_secs,
+        false,
     );
 
     // Store the handle so it can be aborted on team shutdown
@@ -2296,8 +2593,16 @@ fn task_requirements(persona: Option<&str>, mandate: &str) -> (bool, bool, bool)
         || mandate_lower.contains("assess")
         || mandate_lower.contains("cross-file")
         || mandate_lower.contains("cross-cutting")
-        || matches!(persona, Some("analyst" | "synthesizer" | "principal_engineer"
-            | "strategic_advisor" | "devils_advocate"));
+        || matches!(
+            persona,
+            Some(
+                "analyst"
+                    | "synthesizer"
+                    | "principal_engineer"
+                    | "strategic_advisor"
+                    | "devils_advocate"
+            )
+        );
 
     let needs_tools = mandate_lower.contains("read")
         || mandate_lower.contains("file_read")
@@ -2332,77 +2637,90 @@ pub fn select_model_for_task(
 
     let (needs_tools, needs_reasoning, needs_json) = task_requirements(persona, mandate);
 
-    let mut scored: Vec<(&ModelCard, i32)> = cards.iter().map(|card| {
-        let a = &card.agentic;
-        let mut score: i32 = 0;
+    let mut scored: Vec<(&ModelCard, i32)> = cards
+        .iter()
+        .map(|card| {
+            let a = &card.agentic;
+            let mut score: i32 = 0;
 
-        // JSON compliance is critical for planner tasks
-        if needs_json {
-            match a.json_compliance.as_deref() {
-                Some("strict") => score += 15,
-                Some("best-effort") => score += 5,
+            // JSON compliance is critical for planner tasks
+            if needs_json {
+                match a.json_compliance.as_deref() {
+                    Some("strict") => score += 15,
+                    Some("best-effort") => score += 5,
+                    _ => {}
+                }
+            }
+
+            // Use explicit agentic metadata if available
+            let has_agentic = a.tool_use.is_some() || a.reasoning.is_some();
+
+            if has_agentic {
+                if needs_tools {
+                    match a.tool_use.as_deref() {
+                        Some("advanced") => score += 10,
+                        Some("basic") => score += 5,
+                        _ => {}
+                    }
+                }
+
+                if needs_reasoning {
+                    match a.reasoning.as_deref() {
+                        Some("extended") => score += 20,
+                        Some("basic") => score += 5,
+                        _ => {}
+                    }
+                } else {
+                    match a.speed_tier.as_deref() {
+                        Some("fast") => score += 8,
+                        Some("medium") => score += 4,
+                        _ => {}
+                    }
+                }
+            } else {
+                let param_b = card
+                    .vendor
+                    .parameters
+                    .as_deref()
+                    .and_then(|p| {
+                        let p = p.to_uppercase();
+                        p.trim_end_matches('B').parse::<f64>().ok()
+                    })
+                    .unwrap_or(0.0);
+
+                if needs_reasoning || needs_tools || needs_json {
+                    // Prefer 12-20B for specialist tasks (fits in GPU with
+                    // concurrent KV caches). ≥20B is penalized because model
+                    // swapping under concurrent load can hang the GPU.
+                    if param_b >= 12.0 && param_b <= 20.0 {
+                        score += 20;
+                    } else if param_b >= 20.0 {
+                        score += 5;
+                    } else {
+                        score -= 50;
+                    } // ≤10B models can't reliably call tools via Ollama
+                } else {
+                    if param_b <= 10.0 {
+                        score += 8;
+                    } else if param_b <= 20.0 {
+                        score += 4;
+                    }
+                }
+            }
+
+            if a.locality.as_deref() == Some("local") {
+                score += 5;
+            }
+
+            match a.cost_tier.as_deref() {
+                Some("free") => score += 3,
+                Some("low") => score += 1,
                 _ => {}
             }
-        }
 
-        // Use explicit agentic metadata if available
-        let has_agentic = a.tool_use.is_some() || a.reasoning.is_some();
-
-        if has_agentic {
-            if needs_tools {
-                match a.tool_use.as_deref() {
-                    Some("advanced") => score += 10,
-                    Some("basic") => score += 5,
-                    _ => {}
-                }
-            }
-
-            if needs_reasoning {
-                match a.reasoning.as_deref() {
-                    Some("extended") => score += 20,
-                    Some("basic") => score += 5,
-                    _ => {}
-                }
-            } else {
-                match a.speed_tier.as_deref() {
-                    Some("fast") => score += 8,
-                    Some("medium") => score += 4,
-                    _ => {}
-                }
-            }
-        } else {
-            let param_b = card.vendor.parameters.as_deref()
-                .and_then(|p| {
-                    let p = p.to_uppercase();
-                    p.trim_end_matches('B').parse::<f64>().ok()
-                })
-                .unwrap_or(0.0);
-
-            if needs_reasoning || needs_tools || needs_json {
-                // Prefer 12-20B for specialist tasks (fits in GPU with
-                // concurrent KV caches). ≥20B is penalized because model
-                // swapping under concurrent load can hang the GPU.
-                if param_b >= 12.0 && param_b <= 20.0 { score += 20; }
-                else if param_b >= 20.0 { score += 5; }
-                else { score -= 50; } // ≤10B models can't reliably call tools via Ollama
-            } else {
-                if param_b <= 10.0 { score += 8; }
-                else if param_b <= 20.0 { score += 4; }
-            }
-        }
-
-        if a.locality.as_deref() == Some("local") {
-            score += 5;
-        }
-
-        match a.cost_tier.as_deref() {
-            Some("free") => score += 3,
-            Some("low") => score += 1,
-            _ => {}
-        }
-
-        (card, score)
-    }).collect();
+            (card, score)
+        })
+        .collect();
 
     scored.sort_by(|a, b| b.1.cmp(&a.1));
 
@@ -2433,12 +2751,22 @@ mod tests {
     #[test]
     fn bb_notifications_returns_entries_from_others() {
         let reg = test_registry();
-        let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
+        let tid = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![])
+            .unwrap();
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![])
+            .unwrap();
 
         // Alice publishes
-        reg.bb_publish(&tid, "finding-1", "data", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
+        reg.bb_publish(
+            &tid,
+            "finding-1",
+            "data",
+            "alice",
+            smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
 
         // Bob sees it
         let notifs = reg.bb_notifications(&tid, "bob").unwrap();
@@ -2454,11 +2782,21 @@ mod tests {
     #[test]
     fn bb_notifications_advances_timestamp() {
         let reg = test_registry();
-        let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
+        let tid = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![])
+            .unwrap();
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![])
+            .unwrap();
 
-        reg.bb_publish(&tid, "k1", "v1", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
+        reg.bb_publish(
+            &tid,
+            "k1",
+            "v1",
+            "alice",
+            smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
 
         // First call returns the entry
         let n1 = reg.bb_notifications(&tid, "bob").unwrap();
@@ -2472,14 +2810,37 @@ mod tests {
     #[test]
     fn bb_notifications_multiple_entries_in_order() {
         let reg = test_registry();
-        let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![]).unwrap();
-        reg.add_teammate(&tid, "carol", None, "m", "local", vec![], vec![]).unwrap();
+        let tid = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![])
+            .unwrap();
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![])
+            .unwrap();
+        reg.add_teammate(&tid, "carol", None, "m", "local", vec![], vec![])
+            .unwrap();
 
-        reg.bb_publish(&tid, "k1", "v1", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
-        reg.bb_publish(&tid, "k2", "v2", "carol", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
-        reg.bb_publish(&tid, "k3", "v3", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
+        reg.bb_publish(
+            &tid,
+            "k1",
+            "v1",
+            "alice",
+            smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
+        reg.bb_publish(
+            &tid,
+            "k2",
+            "v2",
+            "carol",
+            smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
+        reg.bb_publish(
+            &tid,
+            "k3",
+            "v3",
+            "alice",
+            smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
 
         let notifs = reg.bb_notifications(&tid, "bob").unwrap();
         assert_eq!(notifs.len(), 3);
@@ -2499,10 +2860,19 @@ mod tests {
         // An agent not in the teammates map should still get entries
         // (with since=0) and not panic.
         let reg = test_registry();
-        let tid = reg.create_team("t", None, "lead", 0, TeamBudget::default()).unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![]).unwrap();
+        let tid = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![])
+            .unwrap();
 
-        reg.bb_publish(&tid, "k1", "v1", "alice", smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC);
+        reg.bb_publish(
+            &tid,
+            "k1",
+            "v1",
+            "alice",
+            smgglrs_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
 
         let notifs = reg.bb_notifications(&tid, "outsider").unwrap();
         // outsider sees alice's entry (since=0)

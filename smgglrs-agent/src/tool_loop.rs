@@ -8,8 +8,8 @@ use crate::client::McpClient;
 use crate::error::AgentError;
 use crate::signal::{AgentSignal, SignalReceiver};
 use smgglrs_model::{
-    CreateResponseRequest, EmbedRequest, FunctionCallItem, FunctionCallOutputItem,
-    FunctionCallOutputContent, InputItem, ItemStatus, ModelBackend, ModelResponse, OutputItem,
+    CreateResponseRequest, EmbedRequest, FunctionCallItem, FunctionCallOutputContent,
+    FunctionCallOutputItem, InputItem, ItemStatus, ModelBackend, ModelResponse, OutputItem,
     ResponseTool,
 };
 use smgglrs_protocol::label::DataLabel;
@@ -247,13 +247,18 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         nb += y * y;
     }
     let denom = na.sqrt() * nb.sqrt();
-    if denom == 0.0 { 0.0 } else { dot / denom }
+    if denom == 0.0 {
+        0.0
+    } else {
+        dot / denom
+    }
 }
 
 /// Split text into paragraphs. Uses double newline for prose,
 /// falls back to groups of lines for code-like content.
 fn split_paragraphs(text: &str) -> Vec<&str> {
-    let paragraphs: Vec<&str> = text.split("\n\n")
+    let paragraphs: Vec<&str> = text
+        .split("\n\n")
         .map(|p| p.trim())
         .filter(|p| !p.is_empty())
         .collect();
@@ -291,16 +296,31 @@ async fn compress_extractive(
     }
 
     // Embed the query (use first 512 chars of mandate)
-    let query_text = if query.len() > 512 { &query[..512] } else { query };
+    let query_text = if query.len() > 512 {
+        &query[..512]
+    } else {
+        query
+    };
     let query_embedding = model
-        .embed(&EmbedRequest { text: query_text.to_string() })
+        .embed(&EmbedRequest {
+            text: query_text.to_string(),
+        })
         .await?;
 
     // Embed each paragraph and score
     let mut scored: Vec<(usize, f32, &str)> = Vec::with_capacity(paragraphs.len());
     for (i, para) in paragraphs.iter().enumerate() {
-        let para_text = if para.len() > 1024 { &para[..1024] } else { para };
-        match model.embed(&EmbedRequest { text: para_text.to_string() }).await {
+        let para_text = if para.len() > 1024 {
+            &para[..1024]
+        } else {
+            para
+        };
+        match model
+            .embed(&EmbedRequest {
+                text: para_text.to_string(),
+            })
+            .await
+        {
             Ok(resp) => {
                 let score = cosine_similarity(&query_embedding.embedding, &resp.embedding);
                 scored.push((i, score, para));
@@ -336,13 +356,15 @@ async fn compress_extractive(
     // Re-sort by document position to preserve reading order
     selected.sort_by_key(|(idx, _)| *idx);
 
-    let mut result: String = selected.iter()
+    let mut result: String = selected
+        .iter()
         .map(|(_, para)| *para)
         .collect::<Vec<_>>()
         .join("\n\n");
     result.push_str(&format!(
         "\n\n[extracted {}/{} paragraphs by relevance]",
-        selected.len(), paragraphs.len()
+        selected.len(),
+        paragraphs.len()
     ));
     Ok(result)
 }
@@ -353,15 +375,12 @@ fn estimate_input_tokens(input: &[InputItem]) -> u32 {
     for item in input {
         total += match item {
             InputItem::FunctionCallOutput(fco) => match &fco.output {
-                FunctionCallOutputContent::Text(t) =>
-                    smgglrs_cognitive::estimate_tokens(t),
+                FunctionCallOutputContent::Text(t) => smgglrs_cognitive::estimate_tokens(t),
                 _ => 50,
             },
-            InputItem::FunctionCall(fc) =>
-                smgglrs_cognitive::estimate_tokens(&fc.arguments) + 20,
+            InputItem::FunctionCall(fc) => smgglrs_cognitive::estimate_tokens(&fc.arguments) + 20,
             InputItem::Message(m) => match &m.content {
-                smgglrs_model::MessageContent::Text(t) =>
-                    smgglrs_cognitive::estimate_tokens(t),
+                smgglrs_model::MessageContent::Text(t) => smgglrs_cognitive::estimate_tokens(t),
                 _ => 50,
             },
             _ => 50,
@@ -383,14 +402,18 @@ async fn compact_conversation(
     embedding_model: Option<&dyn ModelBackend>,
     query: Option<&str>,
 ) {
-    if input.len() <= keep_recent + 2 { return; }
+    if input.len() <= keep_recent + 2 {
+        return;
+    }
 
     let compact_end = input.len() - keep_recent;
     let mut compacted = 0usize;
 
     for i in 1..compact_end {
         let is_tool_output = matches!(&input[i], InputItem::FunctionCallOutput(_));
-        if !is_tool_output { continue; }
+        if !is_tool_output {
+            continue;
+        }
 
         let has_reasoning = i + 1 < compact_end && matches!(&input[i + 1], InputItem::Message(_));
 
@@ -500,7 +523,10 @@ pub fn repair_json(input: &str) -> Result<serde_json::Value, String> {
         return Ok(v);
     }
 
-    Err(format!("Could not parse or repair JSON: {}", &input[..input.len().min(200)]))
+    Err(format!(
+        "Could not parse or repair JSON: {}",
+        &input[..input.len().min(200)]
+    ))
 }
 
 /// Execute the agentic tool-use loop using Open Responses.
@@ -524,11 +550,9 @@ pub async fn run_tool_loop(
     let mcp_tools = client.list_tools().await?;
     let tools: Vec<ResponseTool> = mcp_tools
         .iter()
-        .filter(|t| {
-            match &config.allowed_tools {
-                Some(allowed) => allowed.contains(&t.name),
-                None => true,
-            }
+        .filter(|t| match &config.allowed_tools {
+            Some(allowed) => allowed.contains(&t.name),
+            None => true,
         })
         .map(|t| crate::convert::tool_def_to_response(t))
         .collect();
@@ -537,7 +561,9 @@ pub async fn run_tool_loop(
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         eprintln!(
             "  [tool-filter] {} server tools → {} allowed: {:?}",
-            mcp_tools.len(), tools.len(), tool_names
+            mcp_tools.len(),
+            tools.len(),
+            tool_names
         );
     }
 
@@ -575,10 +601,7 @@ pub async fn run_tool_loop(
                 AgentSignal::Interrupt => {
                     tracing::info!(run_id = %run_id, "Agent interrupted, returning partial result");
                     let text = if progress_iterations > 0 {
-                        format!(
-                            "[interrupted after {} iterations]",
-                            progress_iterations
-                        )
+                        format!("[interrupted after {} iterations]", progress_iterations)
                     } else {
                         "[interrupted before first iteration]".to_string()
                     };
@@ -597,10 +620,7 @@ pub async fn run_tool_loop(
                 AgentSignal::Terminate => {
                     tracing::info!(run_id = %run_id, "Agent terminated");
                     let text = if progress_iterations > 0 {
-                        format!(
-                            "[terminated after {} iterations]",
-                            progress_iterations
-                        )
+                        format!("[terminated after {} iterations]", progress_iterations)
                     } else {
                         "[terminated before first iteration]".to_string()
                     };
@@ -637,7 +657,7 @@ pub async fn run_tool_loop(
             input.push(InputItem::user(
                 "You have used all available iterations. Summarize your findings \
                  so far based on the work you have already done. Do not call any \
-                 more tools — produce your best answer with the information you have."
+                 more tools — produce your best answer with the information you have.",
             ));
         }
         let iteration = progress_iterations;
@@ -660,10 +680,17 @@ pub async fn run_tool_loop(
             model: String::new(),
             input: std::mem::take(&mut input),
             instructions: None,
-            tools: if budget_exhausted { vec![] } else { tools.clone() },
+            tools: if budget_exhausted {
+                vec![]
+            } else {
+                tools.clone()
+            },
             tool_choice: Some(if budget_exhausted {
                 smgglrs_model::ResponseToolChoice::none()
-            } else if config.force_tool_iterations.is_some_and(|n| progress_iterations < n) {
+            } else if config
+                .force_tool_iterations
+                .is_some_and(|n| progress_iterations < n)
+            {
                 smgglrs_model::ResponseToolChoice::required()
             } else {
                 smgglrs_model::ResponseToolChoice::auto()
@@ -689,13 +716,25 @@ pub async fn run_tool_loop(
             total_output += usage.output_tokens;
 
             if let Some(ref sink) = config.audit_sink {
-                let has_tool_calls = response.output.iter().any(|o| matches!(o, OutputItem::FunctionCall(_)));
-                let resp_type = if has_tool_calls { "tool_calls" }
-                    else if response.text().is_some() { "text" }
-                    else { "empty" };
+                let has_tool_calls = response
+                    .output
+                    .iter()
+                    .any(|o| matches!(o, OutputItem::FunctionCall(_)));
+                let resp_type = if has_tool_calls {
+                    "tool_calls"
+                } else if response.text().is_some() {
+                    "text"
+                } else {
+                    "empty"
+                };
                 sink.log_model_call(
-                    &run_id, &run_id, iteration as u32,
-                    "", usage.input_tokens, usage.output_tokens, resp_type,
+                    &run_id,
+                    &run_id,
+                    iteration as u32,
+                    "",
+                    usage.input_tokens,
+                    usage.output_tokens,
+                    resp_type,
                 );
             }
 
@@ -708,10 +747,12 @@ pub async fn run_tool_loop(
                     iterations = progress_iterations,
                     "Token burn circuit breaker: agent exceeded max_tokens_per_run"
                 );
-                let text = response.text().unwrap_or_else(|| format!(
-                    "Agent stopped: token budget exceeded ({} tokens consumed, limit {})",
-                    total_tokens_consumed, config.max_tokens_per_run
-                ));
+                let text = response.text().unwrap_or_else(|| {
+                    format!(
+                        "Agent stopped: token budget exceeded ({} tokens consumed, limit {})",
+                        total_tokens_consumed, config.max_tokens_per_run
+                    )
+                });
                 return Ok(ToolLoopResult {
                     run_id,
                     response: text,
@@ -801,7 +842,7 @@ pub async fn run_tool_loop(
                 tracing::info!("Empty response after tool use — prompting for synthesis");
                 input.push(InputItem::user(
                     "Synthesize your findings into a final report. \
-                     Do not call any more tools."
+                     Do not call any more tools.",
                 ));
                 continue;
             }
@@ -825,9 +866,10 @@ pub async fn run_tool_loop(
         }
 
         // Check if this round is purely status-polling (non-progress)
-        let all_non_progress = config.non_progress_tools.as_ref().is_some_and(|npt| {
-            function_calls.iter().all(|fc| npt.contains(&fc.name))
-        });
+        let all_non_progress = config
+            .non_progress_tools
+            .as_ref()
+            .is_some_and(|npt| function_calls.iter().all(|fc| npt.contains(&fc.name)));
 
         if all_non_progress {
             tracing::debug!(
@@ -858,10 +900,8 @@ pub async fn run_tool_loop(
             // available tools instead of failing opaquely.
             if !tool_names.contains(&fc.name) {
                 let available = tool_names.join(", ");
-                let error_msg = format!(
-                    "Unknown tool '{}'. Available tools: {}",
-                    fc.name, available
-                );
+                let error_msg =
+                    format!("Unknown tool '{}'. Available tools: {}", fc.name, available);
                 tracing::warn!(tool = %fc.name, "Model hallucinated tool name");
                 input.push(InputItem::FunctionCall(FunctionCallItem {
                     id: fc.id.clone(),
@@ -934,8 +974,13 @@ pub async fn run_tool_loop(
                     raw_text.clone()
                 };
                 sink.log_tool_call(
-                    &run_id, &run_id, iteration as u32,
-                    &fc.name, &fc.arguments, &truncated_result, duration_ms,
+                    &run_id,
+                    &run_id,
+                    iteration as u32,
+                    &fc.name,
+                    &fc.arguments,
+                    &truncated_result,
+                    duration_ms,
                 );
             }
 
@@ -953,7 +998,8 @@ pub async fn run_tool_loop(
                 context_fill_ratio,
                 embed_model,
                 query,
-            ).await;
+            )
+            .await;
             if text.len() < raw_text.len() {
                 tracing::info!(
                     tool = %fc.name,
@@ -1001,7 +1047,10 @@ fn warn_if_sensitive(text: &str) {
     let patterns = ["sk_live_", "sk_test_", "AKIA", "ghp_", "-----BEGIN"];
     for pattern in &patterns {
         if text.contains(pattern) {
-            tracing::warn!(pattern = pattern, "Model response may contain sensitive data");
+            tracing::warn!(
+                pattern = pattern,
+                "Model response may contain sensitive data"
+            );
         }
     }
 }
@@ -1009,12 +1058,14 @@ fn warn_if_sensitive(text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use smgglrs_model::{ModelBackend, ModelError, ModelResponse, OutputItem, MessageItem, ResponseStatus};
+    use async_trait::async_trait;
+    use smgglrs_model::{
+        MessageItem, ModelBackend, ModelError, ModelResponse, OutputItem, ResponseStatus,
+    };
     use smgglrs_protocol::upstream::{Transport, UpstreamError};
     use std::future::Future;
     use std::pin::Pin;
     use std::sync::Mutex;
-    use async_trait::async_trait;
 
     /// Mock model that returns a sequence of scripted Open Responses.
     struct MockModel {
@@ -1207,9 +1258,15 @@ mod tests {
         .await;
         let mut config = ToolLoopConfig::default();
 
-        let result = run_tool_loop(&model, &mut client, "What's the git status?", &mut config, "test-run".into())
-            .await
-            .unwrap();
+        let result = run_tool_loop(
+            &model,
+            &mut client,
+            "What's the git status?",
+            &mut config,
+            "test-run".into(),
+        )
+        .await
+        .unwrap();
         assert_eq!(result.response, "Status is clean.");
         assert_eq!(result.iterations, 1);
         assert_eq!(result.input_tokens, 20);
@@ -1240,9 +1297,15 @@ mod tests {
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "loop forever", &mut config, "test-run".into())
-            .await
-            .unwrap();
+        let result = run_tool_loop(
+            &model,
+            &mut client,
+            "loop forever",
+            &mut config,
+            "test-run".into(),
+        )
+        .await
+        .unwrap();
         assert_eq!(result.response, "Partial findings from 3 iterations.");
         assert_eq!(result.iterations, 3);
     }
@@ -1280,9 +1343,15 @@ mod tests {
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "poll then act", &mut config, "test-run".into())
-            .await
-            .unwrap();
+        let result = run_tool_loop(
+            &model,
+            &mut client,
+            "poll then act",
+            &mut config,
+            "test-run".into(),
+        )
+        .await
+        .unwrap();
         assert_eq!(result.response, "Done.");
         // Only 1 progress iteration (git_status), the 3 team_status don't count
         assert_eq!(result.iterations, 1);
@@ -1293,9 +1362,9 @@ mod tests {
         // 2 progress rounds hit max_iterations=2, then synthesis
         let model = MockModel::new(vec![
             tool_call_response("team_status", r#"{"poll": 1}"#), // non-progress
-            tool_call_response("git_status", r#"{"verbose": false}"#),  // progress #1
-            tool_call_response("git_status", r#"{"verbose": true}"#),  // progress #2 → budget exhausted
-            stop_response("Synthesized from partial work."), // forced synthesis
+            tool_call_response("git_status", r#"{"verbose": false}"#), // progress #1
+            tool_call_response("git_status", r#"{"verbose": true}"#), // progress #2 → budget exhausted
+            stop_response("Synthesized from partial work."),          // forced synthesis
         ]);
 
         let tool_result = serde_json::json!({
@@ -1319,9 +1388,15 @@ mod tests {
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "overflow", &mut config, "test-run".into())
-            .await
-            .unwrap();
+        let result = run_tool_loop(
+            &model,
+            &mut client,
+            "overflow",
+            &mut config,
+            "test-run".into(),
+        )
+        .await
+        .unwrap();
         assert_eq!(result.response, "Synthesized from partial work.");
     }
 
@@ -1377,9 +1452,7 @@ mod tests {
 
     #[tokio::test]
     async fn pii_filter_none_passes_through() {
-        let model = MockModel::new(vec![stop_response(
-            "The patient's SSN is 123-45-6789",
-        )]);
+        let model = MockModel::new(vec![stop_response("The patient's SSN is 123-45-6789")]);
         let mut client = mock_client(vec![]).await;
         let mut config = ToolLoopConfig {
             pii_filter: None,
@@ -1419,7 +1492,11 @@ mod tests {
         };
 
         let result = run_tool_loop(
-            &model, &mut client, "What's the git status?", &mut config, "test-run".into(),
+            &model,
+            &mut client,
+            "What's the git status?",
+            &mut config,
+            "test-run".into(),
         )
         .await
         .unwrap();
@@ -1518,17 +1595,21 @@ mod tests {
             },
             "id": 4
         });
-        let mut client =
-            mock_client(vec![
-                tool_result.clone(), tool_result.clone(), tool_result.clone(),
-                tool_result.clone(), tool_result,
-            ]).await;
+        let mut client = mock_client(vec![
+            tool_result.clone(),
+            tool_result.clone(),
+            tool_result.clone(),
+            tool_result.clone(),
+            tool_result,
+        ])
+        .await;
         let mut config = ToolLoopConfig {
             max_iterations: 10,
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "loop", &mut config, "test-run".into()).await;
+        let result =
+            run_tool_loop(&model, &mut client, "loop", &mut config, "test-run".into()).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
@@ -1563,8 +1644,18 @@ mod tests {
             ..Default::default()
         };
 
-        let result = run_tool_loop(&model, &mut client, "read file", &mut config, "test-run".into()).await;
-        assert!(result.is_ok(), "3 identical calls should not abort (threshold is 5)");
+        let result = run_tool_loop(
+            &model,
+            &mut client,
+            "read file",
+            &mut config,
+            "test-run".into(),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "3 identical calls should not abort (threshold is 5)"
+        );
         assert_eq!(result.unwrap().response, "Done after re-reading.");
     }
 
@@ -1581,7 +1672,11 @@ mod tests {
         let mut config = ToolLoopConfig::default();
 
         let result = run_tool_loop(
-            &model, &mut client, "Do something", &mut config, "test-run".into(),
+            &model,
+            &mut client,
+            "Do something",
+            &mut config,
+            "test-run".into(),
         )
         .await
         .unwrap();
@@ -1604,9 +1699,18 @@ mod tests {
         let at_60 = compress_tool_output(&text, 4096, 0.6, None, None).await;
         let at_75 = compress_tool_output(&text, 4096, 0.75, None, None).await;
         let at_85 = compress_tool_output(&text, 4096, 0.85, None, None).await;
-        assert!(at_40.len() > at_60.len(), "60% fill should compress more than 40%");
-        assert!(at_60.len() > at_75.len(), "75% fill should compress more than 60%");
-        assert!(at_75.len() > at_85.len(), "85% fill should compress more than 75%");
+        assert!(
+            at_40.len() > at_60.len(),
+            "60% fill should compress more than 40%"
+        );
+        assert!(
+            at_60.len() > at_75.len(),
+            "75% fill should compress more than 60%"
+        );
+        assert!(
+            at_75.len() > at_85.len(),
+            "85% fill should compress more than 75%"
+        );
     }
 
     #[tokio::test]
@@ -1614,7 +1718,11 @@ mod tests {
         let text = "x".repeat(50_000);
         let result = compress_tool_output(&text, 4096, 0.99, None, None).await;
         // Floor is 256 tokens ≈ 896 chars, plus truncation notice
-        assert!(result.len() >= 800, "floor should prevent near-empty output: got {}", result.len());
+        assert!(
+            result.len() >= 800,
+            "floor should prevent near-empty output: got {}",
+            result.len()
+        );
     }
 
     #[tokio::test]
@@ -1681,8 +1789,10 @@ mod tests {
         let mut context_used: u32 = 5_000; // system prompt
 
         println!("\n--- Compression Impact Simulation (128K context, 4096 cap) ---");
-        println!("{:<30} {:>8} {:>8} {:>6} {:>6}",
-            "Tool", "Raw", "Comp", "Saved", "Fill%");
+        println!(
+            "{:<30} {:>8} {:>8} {:>6} {:>6}",
+            "Tool", "Raw", "Comp", "Saved", "Fill%"
+        );
         println!("{}", "-".repeat(66));
 
         for (name, size) in &tool_outputs {
@@ -1694,8 +1804,14 @@ mod tests {
             total_raw += size;
             total_compressed += compressed.len();
 
-            println!("{:<30} {:>8} {:>8} {:>6} {:>5.1}%",
-                name, size, compressed.len(), saved, fill * 100.0);
+            println!(
+                "{:<30} {:>8} {:>8} {:>6} {:>5.1}%",
+                name,
+                size,
+                compressed.len(),
+                saved,
+                fill * 100.0
+            );
 
             // Simulate context growth (compressed output + model reasoning)
             context_used += smgglrs_cognitive::estimate_tokens(&compressed) + 500;
@@ -1704,12 +1820,17 @@ mod tests {
         let total_saved = total_raw - total_compressed;
         let saving_pct = total_saved as f64 / total_raw as f64 * 100.0;
         println!("{}", "-".repeat(66));
-        println!("{:<30} {:>8} {:>8} {:>6} ({:.1}% saved)",
-            "TOTAL", total_raw, total_compressed, total_saved, saving_pct);
+        println!(
+            "{:<30} {:>8} {:>8} {:>6} ({:.1}% saved)",
+            "TOTAL", total_raw, total_compressed, total_saved, saving_pct
+        );
 
         // The feature should save at least 30% across a typical session
-        assert!(saving_pct > 30.0,
-            "Expected >30% savings, got {:.1}%", saving_pct);
+        assert!(
+            saving_pct > 30.0,
+            "Expected >30% savings, got {:.1}%",
+            saving_pct
+        );
     }
 
     /// Test extractive compression with the Granite embedding model.
@@ -1720,7 +1841,10 @@ mod tests {
         let model_path = std::path::PathBuf::from(&home)
             .join(".local/share/smgglrs/models/granite-embedding-r2-onnx/model.onnx");
         if !model_path.exists() {
-            eprintln!("Skipping: Granite embedding model not found at {}", model_path.display());
+            eprintln!(
+                "Skipping: Granite embedding model not found at {}",
+                model_path.display()
+            );
             return;
         }
 
@@ -1731,7 +1855,8 @@ mod tests {
             Some(&tokenizer_path),
             smgglrs_model::ModelTask::Embedding { dimensions: 384 },
             smgglrs_model::Device::Cpu,
-        ).expect("Failed to load embedding model");
+        )
+        .expect("Failed to load embedding model");
 
         // Simulate a file with mixed-relevance content.
         // Query is about security; paragraphs 2 and 4 are security-related.
@@ -1757,20 +1882,29 @@ Memory usage is sampled every 30 seconds.";
 
         let query = "Review the security model and access control mechanisms.";
 
-        let result = compress_extractive(text, query, &model, 120).await
+        let result = compress_extractive(text, query, &model, 120)
+            .await
             .expect("Extractive compression should succeed");
 
         println!("\n--- Extractive Compression Test ---");
         println!("Query: {query}");
-        println!("Input: {} chars, {} paragraphs", text.len(), split_paragraphs(text).len());
+        println!(
+            "Input: {} chars, {} paragraphs",
+            text.len(),
+            split_paragraphs(text).len()
+        );
         println!("Output: {} chars", result.len());
         println!("Result:\n{result}");
 
         // Security-related paragraphs should be kept
-        assert!(result.contains("BLAKE3") || result.contains("deny-wins") || result.contains("IFC"),
-            "Extractive compression should keep security-related content");
-        assert!(result.contains("[extracted"),
-            "Should include extraction notice");
+        assert!(
+            result.contains("BLAKE3") || result.contains("deny-wins") || result.contains("IFC"),
+            "Extractive compression should keep security-related content"
+        );
+        assert!(
+            result.contains("[extracted"),
+            "Should include extraction notice"
+        );
     }
 
     /// Compare truncation vs extractive compression on realistic content.
@@ -1786,10 +1920,13 @@ Memory usage is sampled every 30 seconds.";
         }
         let tokenizer_path = model_path.parent().unwrap().join("tokenizer.json");
         let model = smgglrs_model::OnnxBackend::load(
-            "test-embed", &model_path, Some(&tokenizer_path),
+            "test-embed",
+            &model_path,
+            Some(&tokenizer_path),
             smgglrs_model::ModelTask::Embedding { dimensions: 384 },
             smgglrs_model::Device::Cpu,
-        ).expect("Failed to load embedding model");
+        )
+        .expect("Failed to load embedding model");
 
         // Realistic file content: a Rust module with security and non-security code.
         // Security-relevant keywords: auth, token, ACL, deny, taint, IFC, permission
@@ -1886,7 +2023,8 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
     vars.iter().fold(template, |acc, (k, v)| acc.replace(&format!(\"{{{{ {k} }}}}\"), v))\n\
 }";
 
-        let query = "Review the security model: authentication, authorization, and data flow controls.";
+        let query =
+            "Review the security model: authentication, authorization, and data flow controls.";
         let budget: u32 = 350;
 
         // --- Truncation ---
@@ -1896,21 +2034,35 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
 
         // --- Extractive ---
         let extract_start = std::time::Instant::now();
-        let extracted = compress_extractive(file_content, query, &model, budget).await
+        let extracted = compress_extractive(file_content, query, &model, budget)
+            .await
             .expect("Extractive compression should succeed");
         let extract_ms = extract_start.elapsed().as_millis();
 
         // --- Relevance scoring ---
         let security_keywords = [
-            "auth", "token", "BLAKE3", "capability", "deny", "ACL",
-            "taint", "IFC", "Bell-LaPadula", "permission", "traversal",
-            "no-write-down", "exfiltration", "canonicalize",
+            "auth",
+            "token",
+            "BLAKE3",
+            "capability",
+            "deny",
+            "ACL",
+            "taint",
+            "IFC",
+            "Bell-LaPadula",
+            "permission",
+            "traversal",
+            "no-write-down",
+            "exfiltration",
+            "canonicalize",
         ];
 
-        let trunc_hits: usize = security_keywords.iter()
+        let trunc_hits: usize = security_keywords
+            .iter()
             .filter(|kw| truncated.contains(*kw))
             .count();
-        let extract_hits: usize = security_keywords.iter()
+        let extract_hits: usize = security_keywords
+            .iter()
             .filter(|kw| extracted.contains(*kw))
             .count();
 
@@ -1918,35 +2070,51 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         let extract_tokens = smgglrs_cognitive::estimate_tokens(&extracted);
 
         println!("\n=== Compression A/B Comparison ===");
-        println!("Input: {} chars, {} tokens (est.), {} paragraphs",
+        println!(
+            "Input: {} chars, {} tokens (est.), {} paragraphs",
             file_content.len(),
             smgglrs_cognitive::estimate_tokens(file_content),
-            split_paragraphs(file_content).len());
+            split_paragraphs(file_content).len()
+        );
         println!("Budget: {} tokens", budget);
         println!("Query: {query}");
         println!();
         println!("{:<20} {:>12} {:>12}", "", "Truncation", "Extractive");
         println!("{}", "-".repeat(46));
-        println!("{:<20} {:>12} {:>12}", "Output chars",
-            truncated.len(), extracted.len());
-        println!("{:<20} {:>12} {:>12}", "Output tokens (est.)",
-            trunc_tokens, extract_tokens);
-        println!("{:<20} {:>10}/{:<2} {:>10}/{:<2}", "Security keywords",
-            trunc_hits, security_keywords.len(),
-            extract_hits, security_keywords.len());
-        println!("{:<20} {:>11}µs {:>11}ms", "Latency",
-            trunc_ms, extract_ms);
+        println!(
+            "{:<20} {:>12} {:>12}",
+            "Output chars",
+            truncated.len(),
+            extracted.len()
+        );
+        println!(
+            "{:<20} {:>12} {:>12}",
+            "Output tokens (est.)", trunc_tokens, extract_tokens
+        );
+        println!(
+            "{:<20} {:>10}/{:<2} {:>10}/{:<2}",
+            "Security keywords",
+            trunc_hits,
+            security_keywords.len(),
+            extract_hits,
+            security_keywords.len()
+        );
+        println!("{:<20} {:>11}µs {:>11}ms", "Latency", trunc_ms, extract_ms);
         println!();
 
         // Extractive should find MORE security keywords in same token budget
         println!("Truncation kept:");
         for kw in &security_keywords {
-            if truncated.contains(*kw) { print!("  ✓ {kw}"); }
+            if truncated.contains(*kw) {
+                print!("  ✓ {kw}");
+            }
         }
         println!();
         println!("Extractive kept:");
         for kw in &security_keywords {
-            if extracted.contains(*kw) { print!("  ✓ {kw}"); }
+            if extracted.contains(*kw) {
+                print!("  ✓ {kw}");
+            }
         }
         println!();
 
@@ -1961,22 +2129,30 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
             InputItem::system("You are a reviewer."),
             // Iteration 1: tool call + big result + model reasoning
             InputItem::FunctionCall(FunctionCallItem {
-                id: None, call_id: "c1".into(), name: "file_read".into(),
-                arguments: "{}".into(), status: None,
+                id: None,
+                call_id: "c1".into(),
+                name: "file_read".into(),
+                arguments: "{}".into(),
+                status: None,
             }),
             InputItem::FunctionCallOutput(FunctionCallOutputItem {
-                id: None, call_id: "c1".into(),
+                id: None,
+                call_id: "c1".into(),
                 output: FunctionCallOutputContent::Text("x".repeat(5000)),
                 status: Some(ItemStatus::Completed),
             }),
             InputItem::user("The file contains important security patterns."),
             // Iteration 2: recent items (should be kept)
             InputItem::FunctionCall(FunctionCallItem {
-                id: None, call_id: "c2".into(), name: "file_read".into(),
-                arguments: "{}".into(), status: None,
+                id: None,
+                call_id: "c2".into(),
+                name: "file_read".into(),
+                arguments: "{}".into(),
+                status: None,
             }),
             InputItem::FunctionCallOutput(FunctionCallOutputItem {
-                id: None, call_id: "c2".into(),
+                id: None,
+                call_id: "c2".into(),
                 output: FunctionCallOutputContent::Text("y".repeat(5000)),
                 status: Some(ItemStatus::Completed),
             }),
@@ -1995,8 +2171,15 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
                 FunctionCallOutputContent::Text(t) => t.clone(),
                 _ => panic!("expected text"),
             };
-            assert!(text.len() < 100, "old output should be compacted, got {} chars", text.len());
-            assert!(text.contains("compacted"), "should contain compaction marker");
+            assert!(
+                text.len() < 100,
+                "old output should be compacted, got {} chars",
+                text.len()
+            );
+            assert!(
+                text.contains("compacted"),
+                "should contain compaction marker"
+            );
         } else {
             panic!("item 2 should still be FunctionCallOutput");
         }
@@ -2013,10 +2196,7 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
 
     #[tokio::test]
     async fn compact_noop_when_short() {
-        let mut input = vec![
-            InputItem::system("prompt"),
-            InputItem::user("hello"),
-        ];
+        let mut input = vec![InputItem::system("prompt"), InputItem::user("hello")];
         compact_conversation(&mut input, 6, None, None).await;
         assert_eq!(input.len(), 2);
     }
@@ -2026,14 +2206,19 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         let input = vec![
             InputItem::system("You are helpful."),
             InputItem::FunctionCallOutput(FunctionCallOutputItem {
-                id: None, call_id: "c1".into(),
+                id: None,
+                call_id: "c1".into(),
                 output: FunctionCallOutputContent::Text("x".repeat(3500)),
                 status: None,
             }),
         ];
         let est = estimate_input_tokens(&input);
         // "You are helpful." ≈ 5 tokens, 3500 chars ≈ 1000 tokens
-        assert!(est > 900 && est < 1200, "estimate should be ~1005, got {}", est);
+        assert!(
+            est > 900 && est < 1200,
+            "estimate should be ~1005, got {}",
+            est
+        );
     }
 
     // --- Signal delivery tests ---
@@ -2068,7 +2253,11 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         };
 
         let result = run_tool_loop(
-            &model, &mut client, "Do work", &mut config, "test-run".into(),
+            &model,
+            &mut client,
+            "Do work",
+            &mut config,
+            "test-run".into(),
         )
         .await
         .unwrap();
@@ -2107,7 +2296,11 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         };
 
         let result = run_tool_loop(
-            &model, &mut client, "Do work", &mut config, "test-run".into(),
+            &model,
+            &mut client,
+            "Do work",
+            &mut config,
+            "test-run".into(),
         )
         .await
         .unwrap();
@@ -2137,11 +2330,9 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
             ..Default::default()
         };
 
-        let result = run_tool_loop(
-            &model, &mut client, "Hi", &mut config, "test-run".into(),
-        )
-        .await
-        .unwrap();
+        let result = run_tool_loop(&model, &mut client, "Hi", &mut config, "test-run".into())
+            .await
+            .unwrap();
         assert_eq!(result.response, "Hello after resume!");
         assert!(!result.interrupted);
     }
@@ -2159,11 +2350,9 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
             ..Default::default()
         };
 
-        let result = run_tool_loop(
-            &model, &mut client, "Hi", &mut config, "test-run".into(),
-        )
-        .await
-        .unwrap();
+        let result = run_tool_loop(&model, &mut client, "Hi", &mut config, "test-run".into())
+            .await
+            .unwrap();
         assert_eq!(result.response, "Hello!");
         assert!(!result.interrupted);
     }
@@ -2175,11 +2364,9 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         let mut client = mock_client(vec![]).await;
         let mut config = ToolLoopConfig::default();
 
-        let result = run_tool_loop(
-            &model, &mut client, "Hi", &mut config, "test-run".into(),
-        )
-        .await
-        .unwrap();
+        let result = run_tool_loop(&model, &mut client, "Hi", &mut config, "test-run".into())
+            .await
+            .unwrap();
         assert_eq!(result.response, "Hello!");
         assert!(!result.interrupted);
     }

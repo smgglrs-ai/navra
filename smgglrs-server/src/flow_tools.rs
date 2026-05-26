@@ -55,7 +55,14 @@ impl FlowRegistry {
 
     /// Register a new flow and return its ID.
     pub fn register(&self, name: &str) -> String {
-        let flow_id = format!("flow-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+        let flow_id = format!(
+            "flow-{}",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or("0")
+        );
 
         let run = FlowRun {
             flow_id: flow_id.clone(),
@@ -79,7 +86,14 @@ impl FlowRegistry {
 
     /// Register a subflow with parent linkage and depth tracking.
     pub fn register_subflow(&self, name: &str, parent_flow_id: &str, depth: u32) -> String {
-        let flow_id = format!("flow-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+        let flow_id = format!(
+            "flow-{}",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .split('-')
+                .next()
+                .unwrap_or("0")
+        );
 
         let run = FlowRun {
             flow_id: flow_id.clone(),
@@ -126,7 +140,13 @@ impl FlowRegistry {
     }
 
     /// Update a single node's status and output.
-    pub fn update_node_status(&self, flow_id: &str, node_id: &str, status: &str, output: Option<String>) {
+    pub fn update_node_status(
+        &self,
+        flow_id: &str,
+        node_id: &str,
+        status: &str,
+        output: Option<String>,
+    ) {
         if let Some(run) = self
             .flows
             .lock()
@@ -268,7 +288,9 @@ pub fn build_run_summary(
     if subflow_count > 0 {
         summary.push_str(&format!(
             "- Agents spawned: {} ({} flow + {} subflow)\n",
-            agent_count, flow_agents, agent_count.saturating_sub(flow_agents)
+            agent_count,
+            flow_agents,
+            agent_count.saturating_sub(flow_agents)
         ));
     } else {
         summary.push_str(&format!("- Agents spawned: {}\n", agent_count));
@@ -403,9 +425,9 @@ pub async fn handle_flow_status(
         None => return CallToolResult::error("Missing required parameter: flow_id"),
     };
     match registry.get_status(flow_id) {
-        Some(status) => CallToolResult::text(
-            serde_json::to_string_pretty(&status).unwrap_or_default()
-        ),
+        Some(status) => {
+            CallToolResult::text(serde_json::to_string_pretty(&status).unwrap_or_default())
+        }
         None => CallToolResult::error(format!("Unknown flow: {flow_id}")),
     }
 }
@@ -422,7 +444,10 @@ pub async fn handle_flow_result(
         None => return CallToolResult::error("Missing required parameter: flow_id"),
     };
     let node_id = args.get("node_id").and_then(|v| v.as_str());
-    let include_tasks = args.get("include_tasks").and_then(|v| v.as_bool()).unwrap_or(true);
+    let include_tasks = args
+        .get("include_tasks")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     // Try in-memory registry first
     let mut result = match registry.get_result(flow_id, node_id) {
@@ -443,28 +468,40 @@ pub async fn handle_flow_result(
                                     "status": task.status,
                                     "output": task.output,
                                     "source": "persistent",
-                                })).unwrap_or_default()
+                                }))
+                                .unwrap_or_default(),
                             );
                         }
-                        return CallToolResult::error(format!("No results for node {nid} in flow {flow_id}"));
+                        return CallToolResult::error(format!(
+                            "No results for node {nid} in flow {flow_id}"
+                        ));
                     }
-                    let all_done = tasks.iter().all(|t| t.status == "done" || t.status == "failed");
+                    let all_done = tasks
+                        .iter()
+                        .all(|t| t.status == "done" || t.status == "failed");
                     let status = if all_done {
-                        if tasks.iter().any(|t| t.status == "failed") { "failed" } else { "completed" }
+                        if tasks.iter().any(|t| t.status == "failed") {
+                            "failed"
+                        } else {
+                            "completed"
+                        }
                     } else {
                         "running"
                     };
-                    let task_results: Vec<serde_json::Value> = tasks.iter().map(|t| {
-                        serde_json::json!({
-                            "task_id": t.task_id,
-                            "specialist": t.specialist,
-                            "model": t.model,
-                            "status": t.status,
-                            "output": t.output,
-                            "iterations": t.iterations,
-                            "tokens": t.tokens,
+                    let task_results: Vec<serde_json::Value> = tasks
+                        .iter()
+                        .map(|t| {
+                            serde_json::json!({
+                                "task_id": t.task_id,
+                                "specialist": t.specialist,
+                                "model": t.model,
+                                "status": t.status,
+                                "output": t.output,
+                                "iterations": t.iterations,
+                                "tokens": t.tokens,
+                            })
                         })
-                    }).collect();
+                        .collect();
                     return CallToolResult::text(
                         serde_json::to_string_pretty(&serde_json::json!({
                             "flow_id": flow_id,
@@ -472,7 +509,8 @@ pub async fn handle_flow_result(
                             "output": tasks.last().and_then(|t| t.output.as_deref()),
                             "tasks": task_results,
                             "source": "persistent",
-                        })).unwrap_or_default()
+                        }))
+                        .unwrap_or_default(),
                     );
                 }
             }
@@ -485,17 +523,20 @@ pub async fn handle_flow_result(
         if let Some(ref audit) = audit_log {
             if let Ok(tasks) = audit.get_flow_results(flow_id) {
                 if !tasks.is_empty() {
-                    let task_results: Vec<serde_json::Value> = tasks.iter().map(|t| {
-                        serde_json::json!({
-                            "task_id": t.task_id,
-                            "specialist": t.specialist,
-                            "model": t.model,
-                            "status": t.status,
-                            "output": t.output,
-                            "iterations": t.iterations,
-                            "tokens": t.tokens,
+                    let task_results: Vec<serde_json::Value> = tasks
+                        .iter()
+                        .map(|t| {
+                            serde_json::json!({
+                                "task_id": t.task_id,
+                                "specialist": t.specialist,
+                                "model": t.model,
+                                "status": t.status,
+                                "output": t.output,
+                                "iterations": t.iterations,
+                                "tokens": t.tokens,
+                            })
                         })
-                    }).collect();
+                        .collect();
                     if let Some(obj) = result.as_object_mut() {
                         obj.insert("tasks".to_string(), serde_json::json!(task_results));
                     }
@@ -504,21 +545,17 @@ pub async fn handle_flow_result(
         }
     }
 
-    CallToolResult::text(
-        serde_json::to_string_pretty(&result).unwrap_or_default()
-    )
+    CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default())
 }
 
 /// Handle flow_list tool call.
-pub async fn handle_flow_list(
-    flow_dirs: Vec<String>,
-) -> smgglrs_core::protocol::CallToolResult {
+pub async fn handle_flow_list(flow_dirs: Vec<String>) -> smgglrs_core::protocol::CallToolResult {
     use smgglrs_core::protocol::CallToolResult;
 
     if flow_dirs.is_empty() {
         return CallToolResult::text(
             "No flow directories configured. \
-             Set flow_dirs in config.toml to list available flows."
+             Set flow_dirs in config.toml to list available flows.",
         );
     }
 
@@ -551,9 +588,9 @@ pub async fn handle_flow_list(
                 Ok(c) => c,
                 Err(_) => continue,
             };
-            if let Ok(envelope) = serde_yaml::from_str::<
-                smgglrs_flow::yaml_loader::FlowFile,
-            >(&content) {
+            if let Ok(envelope) =
+                serde_yaml::from_str::<smgglrs_flow::yaml_loader::FlowFile>(&content)
+            {
                 let params: Vec<serde_json::Value> = envelope
                     .parameters
                     .iter()
@@ -577,9 +614,7 @@ pub async fn handle_flow_list(
         }
     }
 
-    CallToolResult::text(
-        serde_json::to_string_pretty(&flows).unwrap_or_default()
-    )
+    CallToolResult::text(serde_json::to_string_pretty(&flows).unwrap_or_default())
 }
 
 /// Shared context for flow operations that need team and flow registries.
@@ -691,16 +726,15 @@ fn current_bb_seq() -> i64 {
     let bb_path = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("smgglrs/blackbox.db");
-    rusqlite::Connection::open_with_flags(
-        &bb_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    ).ok().and_then(|db| {
-        db.query_row(
-            "SELECT COALESCE(MAX(seq), 0) FROM blackbox",
-            [],
-            |row| row.get::<_, i64>(0),
-        ).ok()
-    }).unwrap_or(0)
+    rusqlite::Connection::open_with_flags(&bb_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .ok()
+        .and_then(|db| {
+            db.query_row("SELECT COALESCE(MAX(seq), 0) FROM blackbox", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .ok()
+        })
+        .unwrap_or(0)
 }
 
 /// Pre-compute project file tree for injecting into specialist mandates.
@@ -710,12 +744,17 @@ fn compute_file_tree(docs_root: &Option<String>) -> String {
         if root_path.is_dir() {
             let mut files = Vec::new();
             fn collect(dir: &std::path::Path, root: &std::path::Path, files: &mut Vec<String>) {
-                let Ok(entries) = std::fs::read_dir(dir) else { return };
+                let Ok(entries) = std::fs::read_dir(dir) else {
+                    return;
+                };
                 for entry in entries.flatten() {
                     let path = entry.path();
                     let name = entry.file_name();
                     let name_str = name.to_string_lossy();
-                    if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
+                    if name_str.starts_with('.')
+                        || name_str == "target"
+                        || name_str == "node_modules"
+                    {
                         continue;
                     }
                     if path.is_dir() {
@@ -764,28 +803,36 @@ async fn poll_tasks_until_done(
             let status = team_reg.get_teammate_status(team_id, task_id);
             match status.as_deref() {
                 Some("done") => {
-                    let output = team_reg.get_teammate_output(team_id, task_id)
+                    let output = team_reg
+                        .get_teammate_output(team_id, task_id)
                         .unwrap_or_else(|| "(no output)".to_string());
                     completed.insert(task_id.clone(), output.clone());
                     flow_reg.update_node_status(flow_id, task_id, "done", Some(output));
                     tracing::info!(flow_id = %flow_id, task = %task_id, "Flow task completed");
                 }
                 Some("failed") => {
-                    let output = team_reg.get_teammate_output(team_id, task_id)
+                    let output = team_reg
+                        .get_teammate_output(team_id, task_id)
                         .unwrap_or_else(|| "(no output)".to_string());
                     failed.insert(task_id.clone());
                     flow_reg.update_node_status(flow_id, task_id, "failed", Some(output));
                     tracing::warn!(flow_id = %flow_id, task = %task_id, "Flow task failed");
                 }
-                _ => { all_done = false; }
+                _ => {
+                    all_done = false;
+                }
             }
         }
-        if all_done { return Ok(()); }
+        if all_done {
+            return Ok(());
+        }
 
         // Check flow-level timeout
-        if flow_reg.get_status(flow_id)
+        if flow_reg
+            .get_status(flow_id)
             .and_then(|s| s["elapsed_secs"].as_u64())
-            .unwrap_or(0) > timeout_secs
+            .unwrap_or(0)
+            > timeout_secs
         {
             return Err(format!("Flow timed out after {timeout_secs} seconds"));
         }
@@ -803,35 +850,61 @@ async fn spawn_and_track_tasks(
     failed: &std::collections::HashSet<String>,
     prompt: &str,
     project_file_tree: &str,
-) -> (Vec<String>, std::collections::HashMap<String, String>, std::collections::HashSet<String>) {
+) -> (
+    Vec<String>,
+    std::collections::HashMap<String, String>,
+    std::collections::HashSet<String>,
+) {
     let new_completed = std::collections::HashMap::new();
     let mut new_failed = std::collections::HashSet::new();
     let mut spawned_ids = Vec::new();
 
     for task in ready {
         let model = task.model.clone().unwrap_or_else(|| "auto".to_string());
-        let persona = if task.specialist.is_empty() { None } else { Some(task.specialist.clone()) };
+        let persona = if task.specialist.is_empty() {
+            None
+        } else {
+            Some(task.specialist.clone())
+        };
 
-        let ops = task.operations.as_ref()
+        let ops = task
+            .operations
+            .as_ref()
             .map(|o| o.clone())
-            .unwrap_or_else(|| crate::team_tools::DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect());
-        let tools = task.tools.as_ref()
-            .map(|t| t.clone())
-            .unwrap_or_else(|| crate::team_tools::DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect());
+            .unwrap_or_else(|| {
+                crate::team_tools::DEFAULT_OPERATIONS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            });
+        let tools = task.tools.as_ref().map(|t| t.clone()).unwrap_or_else(|| {
+            crate::team_tools::DEFAULT_TOOLS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        });
 
         if let Err(e) = ctx.team_registry.add_teammate(
-            team_id, &task.id, persona.as_deref(),
-            &model, "local", ops, tools,
+            team_id,
+            &task.id,
+            persona.as_deref(),
+            &model,
+            "local",
+            ops,
+            tools,
         ) {
             tracing::error!(task = %task.id, error = %e, "Failed to add teammate for flow task");
             new_failed.insert(task.id.clone());
-            ctx.flow_registry.update_node_status(flow_id, &task.id, "failed", Some(e));
+            ctx.flow_registry
+                .update_node_status(flow_id, &task.id, "failed", Some(e));
             continue;
         }
 
         // Detect synthesizer tasks for special handling
-        let is_synthesizer = task.specialist == "synthesizer" || task.specialist == "summarizer"
-            || task.id == "synthesize" || task.id == "synthesizer";
+        let is_synthesizer = task.specialist == "synthesizer"
+            || task.specialist == "summarizer"
+            || task.id == "synthesize"
+            || task.id == "synthesizer";
 
         // Build the task message with dependency context
         let mut message = task.mandate.clone();
@@ -849,15 +922,13 @@ async fn spawn_and_track_tasks(
                 ));
                 for dep_id in &task.depends_on {
                     if completed.contains_key(dep_id) {
-                        message.push_str(&format!(
-                            "- findings/{dep_id}: completed\n"
-                        ));
+                        message.push_str(&format!("- findings/{dep_id}: completed\n"));
                     } else if failed.contains(dep_id) {
                         message.push_str(&format!("- {dep_id}: FAILED (no output)\n"));
                     }
                 }
                 message.push_str(
-                    "\nRead each finding from the blackboard, then write a comprehensive report.\n"
+                    "\nRead each finding from the blackboard, then write a comprehensive report.\n",
                 );
             } else if dep_count <= 3 {
                 // Few dependencies: inject inline (acceptable for small
@@ -921,7 +992,8 @@ async fn spawn_and_track_tasks(
         if let Err(e) = ctx.team_registry.send_message(team_id, &task.id, &message) {
             tracing::error!(task = %task.id, error = %e, "Failed to send message to flow task");
             new_failed.insert(task.id.clone());
-            ctx.flow_registry.update_node_status(flow_id, &task.id, "failed", Some(e));
+            ctx.flow_registry
+                .update_node_status(flow_id, &task.id, "failed", Some(e));
             continue;
         }
 
@@ -953,16 +1025,23 @@ async fn spawn_and_track_tasks(
             // via flow:// MCP resources (one read per specialist)
             dep_count.min(30)
         } else {
-            (ctx.budget_cfg.max_iterations / ready.len().max(1)).max(10).min(30)
+            (ctx.budget_cfg.max_iterations / ready.len().max(1))
+                .max(10)
+                .min(30)
         };
         let handle = crate::team_tools::spawn_teammate_agent(
-            &spawn_ctx, team_id, &task.id, &message,
-            per_task_iters, ctx.budget_cfg.timeout_secs,
+            &spawn_ctx,
+            team_id,
+            &task.id,
+            &message,
+            per_task_iters,
+            ctx.budget_cfg.timeout_secs,
             task.generates_tasks,
         );
         ctx.team_registry.store_handle(team_id, &task.id, handle);
 
-        ctx.flow_registry.update_node_status(flow_id, &task.id, "running", None);
+        ctx.flow_registry
+            .update_node_status(flow_id, &task.id, "running", None);
         if let Some(ref audit) = ctx.audit_log {
             let _ = audit.record_flow_task_start(flow_id, &task.id, Some(&task.specialist));
         }
@@ -1001,7 +1080,10 @@ pub async fn handle_flow_start(
     // Resolve the flow YAML: either by name (from flow_dirs) or inline
     let yaml_content = if let Some(name) = args.get("flow_name").and_then(|v| v.as_str()) {
         // Reject path traversal: only allow alphanumeric, hyphens, underscores
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return CallToolResult::error(
                 "Invalid flow_name: only alphanumeric characters, hyphens, and underscores are allowed"
             );
@@ -1014,26 +1096,33 @@ pub async fn handle_flow_start(
                 let file = path.join(format!("{name}.{ext}"));
                 if file.exists() {
                     match std::fs::read_to_string(&file) {
-                        Ok(c) => { found = Some(c); break; }
+                        Ok(c) => {
+                            found = Some(c);
+                            break;
+                        }
                         Err(e) => {
                             tracing::warn!(path = %file.display(), error = %e, "Cannot read flow file");
                         }
                     }
                 }
             }
-            if found.is_some() { break; }
+            if found.is_some() {
+                break;
+            }
         }
         match found {
             Some(c) => c,
-            None => return CallToolResult::error(
-                format!("Flow '{name}' not found in flow_dirs. Use flow_list to see available flows.")
-            ),
+            None => {
+                return CallToolResult::error(format!(
+                    "Flow '{name}' not found in flow_dirs. Use flow_list to see available flows."
+                ))
+            }
         }
     } else if let Some(def) = args.get("flow_definition").and_then(|v| v.as_str()) {
         def.to_string()
     } else {
         return CallToolResult::error(
-            "Provide either flow_name (from flow_list) or flow_definition (inline YAML)"
+            "Provide either flow_name (from flow_list) or flow_definition (inline YAML)",
         );
     };
 
@@ -1057,27 +1146,35 @@ pub async fn handle_flow_start(
     }
 
     // Initialize node statuses
-    let nodes: Vec<NodeStatus> = dag_config.tasks.iter().map(|t| {
-        NodeStatus {
+    let nodes: Vec<NodeStatus> = dag_config
+        .tasks
+        .iter()
+        .map(|t| NodeStatus {
             id: t.id.clone(),
             specialist: t.specialist.clone(),
             status: "pending".to_string(),
             output: None,
-        }
-    }).collect();
+        })
+        .collect();
     ctx.flow_registry.update_nodes(&flow_id, nodes);
 
     // Create a team for this flow
     let team_budget = crate::team_tools::TeamBudget {
-        max_agents: ctx.budget_cfg.max_agents.max(dag_config.tasks.len() as u32 + 2),
+        max_agents: ctx
+            .budget_cfg
+            .max_agents
+            .max(dag_config.tasks.len() as u32 + 2),
         max_depth: ctx.budget_cfg.max_depth,
         max_iterations: ctx.budget_cfg.max_iterations,
         timeout_secs: ctx.budget_cfg.timeout_secs.max(600),
         ..Default::default()
     };
     let team_id = match ctx.team_registry.create_team(
-        &dag_config.name, dag_config.description.as_deref(),
-        agent_name, 0, team_budget,
+        &dag_config.name,
+        dag_config.description.as_deref(),
+        agent_name,
+        0,
+        team_budget,
     ) {
         Ok(id) => id,
         Err(e) => {
@@ -1092,10 +1189,7 @@ pub async fn handle_flow_start(
     // Execute the DAG synchronously — block until all tasks (including
     // dynamically injected planner tasks and subflows) complete.
     // This ensures the caller gets the full result, not just "started."
-    let final_output = run_dag_execution(
-        &ctx, &flow_id, &team_id, &prompt,
-        dag_config.tasks,
-    ).await;
+    let final_output = run_dag_execution(&ctx, &flow_id, &team_id, &prompt, dag_config.tasks).await;
 
     // Mark flow complete in metadata
     if let Some(ref audit) = ctx.audit_log {
@@ -1139,10 +1233,14 @@ async fn run_dag_execution(
         // as satisfied so downstream tasks (especially synthesizers) can
         // still run with whatever partial results are available, instead
         // of deadlocking.
-        let mut ready: Vec<smgglrs_flow::TaskDefinition> = task_defs.iter()
+        let mut ready: Vec<smgglrs_flow::TaskDefinition> = task_defs
+            .iter()
             .filter(|t| {
-                !completed.contains_key(&t.id) && !failed.contains(&t.id)
-                && t.depends_on.iter().all(|dep| completed.contains_key(dep) || failed.contains(dep))
+                !completed.contains_key(&t.id)
+                    && !failed.contains(&t.id)
+                    && t.depends_on
+                        .iter()
+                        .all(|dep| completed.contains_key(dep) || failed.contains(dep))
             })
             .cloned()
             .collect();
@@ -1151,12 +1249,16 @@ async fn run_dag_execution(
             if completed.len() + failed.len() >= total {
                 break;
             }
-            let remaining: Vec<&str> = task_defs.iter()
+            let remaining: Vec<&str> = task_defs
+                .iter()
                 .filter(|t| !completed.contains_key(&t.id) && !failed.contains(&t.id))
                 .map(|t| t.id.as_str())
                 .collect();
             if !remaining.is_empty() {
-                let msg = format!("Flow deadlocked: tasks {:?} blocked by unresolved dependencies", remaining);
+                let msg = format!(
+                    "Flow deadlocked: tasks {:?} blocked by unresolved dependencies",
+                    remaining
+                );
                 tracing::error!(flow_id = %flow_id, "{msg}");
                 ctx.flow_registry.fail(flow_id, msg.clone());
                 let _ = ctx.team_registry.shutdown(team_id);
@@ -1173,18 +1275,31 @@ async fn run_dag_execution(
         // Spawn ready tasks as teammates
         let ready_refs: Vec<&smgglrs_flow::TaskDefinition> = ready.iter().collect();
         let (spawned_ids, _, spawn_failed) = spawn_and_track_tasks(
-            ctx, team_id, flow_id, &ready_refs,
-            &completed, &failed, prompt, &project_file_tree,
-        ).await;
+            ctx,
+            team_id,
+            flow_id,
+            &ready_refs,
+            &completed,
+            &failed,
+            prompt,
+            &project_file_tree,
+        )
+        .await;
         failed.extend(spawn_failed);
 
         // Poll until all currently running tasks complete
         match poll_tasks_until_done(
-            &ctx.team_registry, &ctx.flow_registry,
-            team_id, flow_id, &spawned_ids,
-            &mut completed, &mut failed,
+            &ctx.team_registry,
+            &ctx.flow_registry,
+            team_id,
+            flow_id,
+            &spawned_ids,
+            &mut completed,
+            &mut failed,
             3600, // 60 minute timeout for large flows
-        ).await {
+        )
+        .await
+        {
             Ok(()) => {}
             Err(msg) => {
                 tracing::warn!(flow_id = %flow_id, "{}", msg);
@@ -1196,13 +1311,20 @@ async fn run_dag_execution(
 
         // Persist completed/failed task results to audit log
         record_task_results_to_audit(
-            &ctx.audit_log, &ctx.team_registry, team_id, flow_id,
-            &spawned_ids, &completed, &failed, &task_defs,
+            &ctx.audit_log,
+            &ctx.team_registry,
+            team_id,
+            flow_id,
+            &spawned_ids,
+            &completed,
+            &failed,
+            &task_defs,
         );
 
         // Save checkpoint after each batch for crash resilience
         if let Some(ref cp) = ctx.checkpoint {
-            let remaining: Vec<smgglrs_flow::TaskDefinition> = task_defs.iter()
+            let remaining: Vec<smgglrs_flow::TaskDefinition> = task_defs
+                .iter()
                 .filter(|t| !completed.contains_key(&t.id) && !failed.contains(&t.id))
                 .cloned()
                 .collect();
@@ -1226,15 +1348,24 @@ async fn run_dag_execution(
         for task_id in &spawned_ids {
             if let Some(output) = completed.get(task_id) {
                 let label = {
-                    let teams = ctx.team_registry.teams.lock().unwrap_or_else(|e| e.into_inner());
-                    teams.get(team_id)
+                    let teams = ctx
+                        .team_registry
+                        .teams
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    teams
+                        .get(team_id)
                         .and_then(|t| t.teammates.get(task_id))
                         .map(|_| smgglrs_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC)
                         .unwrap_or(smgglrs_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC)
                 };
                 // Truncate to 4K for blackboard (full output in audit.db)
                 let truncated = if output.len() > 4096 {
-                    format!("{}...\n[truncated, {} chars total]", &output[..4096], output.len())
+                    format!(
+                        "{}...\n[truncated, {} chars total]",
+                        &output[..4096],
+                        output.len()
+                    )
                 } else {
                     output.clone()
                 };
@@ -1251,7 +1382,9 @@ async fn run_dag_execution(
         // Dynamic task injection: if any completed task has generates_tasks=true,
         // parse its output as a task array and inject into the DAG.
         for task in &ready {
-            if !task.generates_tasks { continue; }
+            if !task.generates_tasks {
+                continue;
+            }
             let output = match completed.get(&task.id) {
                 Some(o) => o.clone(),
                 None => continue,
@@ -1270,20 +1403,28 @@ async fn run_dag_execution(
                      \"id\" (string), \"specialist\" (string), and \"mandate\" (string). \
                      Optional: \"model\" (string). Output ONLY the JSON array, nothing else."
                 );
-                let correction_model = task.model.clone()
+                let correction_model = task
+                    .model
+                    .clone()
                     .unwrap_or_else(|| "gemma4:26b".to_string());
                 let mcp_url = format!("http://{}/mcp", ctx.smgglrs_addr);
                 match smgglrs_agent::Agent::builder()
-                    .endpoint(&mcp_url).await
-                    .and_then(|b| Ok(b
-                        .model(smgglrs_model::OpenAiBackend::new(
-                            "http://localhost:11434/v1", &correction_model, None, smgglrs_model::Locality::Local,
+                    .endpoint(&mcp_url)
+                    .await
+                    .and_then(|b| {
+                        Ok(b.model(smgglrs_model::OpenAiBackend::new(
+                            "http://localhost:11434/v1",
+                            &correction_model,
+                            None,
+                            smgglrs_model::Locality::Local,
                         ))
-                        .system_prompt("You output ONLY valid JSON arrays. No markdown, no explanation.")
+                        .system_prompt(
+                            "You output ONLY valid JSON arrays. No markdown, no explanation.",
+                        )
                         .max_iterations(0)
                         .max_tokens(8192)
-                        .temperature(0.0)))
-                {
+                        .temperature(0.0))
+                    }) {
                     Ok(builder) => {
                         if let Ok(mut agent) = builder.build().await {
                             if let Ok(result) = agent.run(&correction_prompt).await {
@@ -1326,14 +1467,15 @@ async fn run_dag_execution(
                         &format!("\n\n--- Project files (verified) ---\n{project_file_tree}\n\nUse ONLY paths from this list with file_read.")
                     );
                 }
-                ctx.flow_registry.update_nodes(flow_id, vec![
-                    NodeStatus {
+                ctx.flow_registry.update_nodes(
+                    flow_id,
+                    vec![NodeStatus {
                         id: new_task.id.clone(),
                         specialist: new_task.specialist.clone(),
                         status: "pending".to_string(),
                         output: None,
-                    },
-                ]);
+                    }],
+                );
                 task_defs.push(new_task);
             }
 
@@ -1354,24 +1496,33 @@ async fn run_dag_execution(
 
     // Flow complete — find the last task's output as the final result
     let last_task_id = task_defs.last().map(|t| t.id.as_str()).unwrap_or("");
-    let mut final_output = completed.get(last_task_id)
-        .cloned()
-        .unwrap_or_else(|| {
-            format!("Flow completed. {} tasks done, {} failed.",
-                completed.len(), failed.len())
-        });
+    let mut final_output = completed.get(last_task_id).cloned().unwrap_or_else(|| {
+        format!(
+            "Flow completed. {} tasks done, {} failed.",
+            completed.len(),
+            failed.len()
+        )
+    });
 
     if !failed.is_empty() {
         final_output.push_str(&format!(
             "\n\n[Warning: {} of {} tasks failed: {:?}]",
-            failed.len(), total, failed
+            failed.len(),
+            total,
+            failed
         ));
     }
 
     // Build run summary
     let summary = build_run_summary(
-        &ctx.team_registry, team_id, &ctx.flow_registry, flow_id,
-        &task_defs, &completed, &failed, bb_start_seq,
+        &ctx.team_registry,
+        team_id,
+        &ctx.flow_registry,
+        flow_id,
+        &task_defs,
+        &completed,
+        &failed,
+        bb_start_seq,
     );
     final_output.push_str(&summary);
 
@@ -1421,7 +1572,10 @@ pub async fn handle_flow_escalate(
         ));
     }
 
-    let context = args.get("context").and_then(|v| v.as_str()).map(String::from);
+    let context = args
+        .get("context")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     if let Some(ref ctx_text) = context {
         if ctx_text.len() > MAX_MANDATE_LEN {
             return CallToolResult::error(format!(
@@ -1434,7 +1588,11 @@ pub async fn handle_flow_escalate(
     // Extract depth and model from calling agent's team
     let caller_did = agent_name;
     let (current_depth, caller_model): (u32, Option<String>) = {
-        let teams = ctx.team_registry.teams.lock().unwrap_or_else(|e| e.into_inner());
+        let teams = ctx
+            .team_registry
+            .teams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut depth = 0u32;
         let mut model = None;
         for team in teams.values() {
@@ -1453,8 +1611,13 @@ pub async fn handle_flow_escalate(
 
     // Check depth limit from team budget
     let max_depth = {
-        let teams = ctx.team_registry.teams.lock().unwrap_or_else(|e| e.into_inner());
-        teams.values()
+        let teams = ctx
+            .team_registry
+            .teams
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        teams
+            .values()
             .find(|t| {
                 t.teammates.contains_key(caller_did)
                     || t.lead == *caller_did
@@ -1488,11 +1651,19 @@ pub async fn handle_flow_escalate(
                 Some(m) => m.to_string(),
                 None => return CallToolResult::error("Each task must have a 'mandate'"),
             };
-            let model = t.get("model").and_then(|v| v.as_str()).map(String::from)
+            let model = t
+                .get("model")
+                .and_then(|v| v.as_str())
+                .map(String::from)
                 .or_else(|| caller_model.clone());
-            let depends_on: Vec<String> = t.get("depends_on")
+            let depends_on: Vec<String> = t
+                .get("depends_on")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             task_defs.push(smgglrs_flow::TaskDefinition {
                 id,
@@ -1522,8 +1693,13 @@ pub async fn handle_flow_escalate(
 
     // Register subflow
     let parent_flow_id = {
-        let flows = ctx.flow_registry.flows.lock().unwrap_or_else(|e| e.into_inner());
-        flows.values()
+        let flows = ctx
+            .flow_registry
+            .flows
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        flows
+            .values()
             .find(|f| {
                 if let Some(ref tid) = f.team_id {
                     caller_did.contains(tid)
@@ -1534,30 +1710,40 @@ pub async fn handle_flow_escalate(
             .map(|f| f.flow_id.clone())
             .unwrap_or_else(|| "unknown".to_string())
     };
-    let flow_id = ctx.flow_registry.register_subflow(&dag_config.name, &parent_flow_id, new_depth);
+    let flow_id = ctx
+        .flow_registry
+        .register_subflow(&dag_config.name, &parent_flow_id, new_depth);
 
     // Initialize node statuses
-    let nodes: Vec<NodeStatus> = dag_config.tasks.iter().map(|t| {
-        NodeStatus {
+    let nodes: Vec<NodeStatus> = dag_config
+        .tasks
+        .iter()
+        .map(|t| NodeStatus {
             id: t.id.clone(),
             specialist: t.specialist.clone(),
             status: "pending".to_string(),
             output: None,
-        }
-    }).collect();
+        })
+        .collect();
     ctx.flow_registry.update_nodes(&flow_id, nodes);
 
     // Create a sub-team for this subflow
     let team_budget = crate::team_tools::TeamBudget {
         max_depth,
-        max_agents: ctx.budget_cfg.max_agents.max(dag_config.tasks.len() as u32 + 2),
+        max_agents: ctx
+            .budget_cfg
+            .max_agents
+            .max(dag_config.tasks.len() as u32 + 2),
         max_iterations: ctx.budget_cfg.max_iterations,
         timeout_secs: ctx.budget_cfg.timeout_secs.max(600),
         ..Default::default()
     };
     let team_id = match ctx.team_registry.create_team(
-        &dag_config.name, dag_config.description.as_deref(),
-        caller_did, new_depth, team_budget,
+        &dag_config.name,
+        dag_config.description.as_deref(),
+        caller_did,
+        new_depth,
+        team_budget,
     ) {
         Ok(id) => id,
         Err(e) => {
@@ -1585,10 +1771,14 @@ pub async fn handle_flow_escalate(
     let bb_start_seq = current_bb_seq();
 
     loop {
-        let ready: Vec<&smgglrs_flow::TaskDefinition> = task_defs.iter()
+        let ready: Vec<&smgglrs_flow::TaskDefinition> = task_defs
+            .iter()
             .filter(|t| {
-                !completed.contains_key(&t.id) && !failed.contains(&t.id)
-                && t.depends_on.iter().all(|dep| completed.contains_key(dep) || failed.contains(dep))
+                !completed.contains_key(&t.id)
+                    && !failed.contains(&t.id)
+                    && t.depends_on
+                        .iter()
+                        .all(|dep| completed.contains_key(dep) || failed.contains(dep))
             })
             .collect();
 
@@ -1596,12 +1786,16 @@ pub async fn handle_flow_escalate(
             if completed.len() + failed.len() >= total {
                 break;
             }
-            let remaining: Vec<&str> = task_defs.iter()
+            let remaining: Vec<&str> = task_defs
+                .iter()
                 .filter(|t| !completed.contains_key(&t.id) && !failed.contains(&t.id))
                 .map(|t| t.id.as_str())
                 .collect();
             if !remaining.is_empty() {
-                let msg = format!("Subflow deadlocked: tasks {:?} blocked by unresolved dependencies", remaining);
+                let msg = format!(
+                    "Subflow deadlocked: tasks {:?} blocked by unresolved dependencies",
+                    remaining
+                );
                 tracing::error!(flow_id = %flow_id, "{msg}");
                 ctx.flow_registry.fail(&flow_id, msg.clone());
                 let _ = ctx.team_registry.shutdown(&team_id);
@@ -1612,26 +1806,40 @@ pub async fn handle_flow_escalate(
 
         // Throttle: limit concurrent tasks in subflows too
         let max_parallel = ctx.budget_cfg.max_parallel;
-        let throttled: Vec<&smgglrs_flow::TaskDefinition> = if max_parallel > 0 && ready.len() > max_parallel {
-            ready.into_iter().take(max_parallel).collect()
-        } else {
-            ready
-        };
+        let throttled: Vec<&smgglrs_flow::TaskDefinition> =
+            if max_parallel > 0 && ready.len() > max_parallel {
+                ready.into_iter().take(max_parallel).collect()
+            } else {
+                ready
+            };
 
         // Spawn ready tasks as teammates
         let (spawned_ids, _, spawn_failed) = spawn_and_track_tasks(
-            ctx.as_ref(), &team_id, &flow_id, &throttled,
-            &completed, &failed, "", "", // no prompt or file tree injection for subflows
-        ).await;
+            ctx.as_ref(),
+            &team_id,
+            &flow_id,
+            &throttled,
+            &completed,
+            &failed,
+            "",
+            "", // no prompt or file tree injection for subflows
+        )
+        .await;
         failed.extend(spawn_failed);
 
         // Poll until all currently running tasks complete
         match poll_tasks_until_done(
-            &ctx.team_registry, &ctx.flow_registry,
-            &team_id, &flow_id, &spawned_ids,
-            &mut completed, &mut failed,
+            &ctx.team_registry,
+            &ctx.flow_registry,
+            &team_id,
+            &flow_id,
+            &spawned_ids,
+            &mut completed,
+            &mut failed,
             900, // 15 minute timeout for subflows
-        ).await {
+        )
+        .await
+        {
             Ok(()) => {}
             Err(msg) => {
                 tracing::warn!(flow_id = %flow_id, "{}", msg);
@@ -1643,31 +1851,46 @@ pub async fn handle_flow_escalate(
 
         // Persist completed/failed task results to audit log
         record_task_results_to_audit(
-            &ctx.audit_log, &ctx.team_registry, &team_id, &flow_id,
-            &spawned_ids, &completed, &failed, &task_defs,
+            &ctx.audit_log,
+            &ctx.team_registry,
+            &team_id,
+            &flow_id,
+            &spawned_ids,
+            &completed,
+            &failed,
+            &task_defs,
         );
     }
 
     // Subflow complete — return the last task's output
     let last_task_id = task_defs.last().map(|t| t.id.as_str()).unwrap_or("");
-    let mut final_output = completed.get(last_task_id)
-        .cloned()
-        .unwrap_or_else(|| {
-            format!("Subflow completed. {} tasks done, {} failed.",
-                completed.len(), failed.len())
-        });
+    let mut final_output = completed.get(last_task_id).cloned().unwrap_or_else(|| {
+        format!(
+            "Subflow completed. {} tasks done, {} failed.",
+            completed.len(),
+            failed.len()
+        )
+    });
 
     if !failed.is_empty() {
         final_output.push_str(&format!(
             "\n\n[Warning: {} of {} tasks failed: {:?}]",
-            failed.len(), total, failed
+            failed.len(),
+            total,
+            failed
         ));
     }
 
     // Build run summary
     let summary = build_run_summary(
-        &ctx.team_registry, &team_id, &ctx.flow_registry, &flow_id,
-        &task_defs, &completed, &failed, bb_start_seq,
+        &ctx.team_registry,
+        &team_id,
+        &ctx.flow_registry,
+        &flow_id,
+        &task_defs,
+        &completed,
+        &failed,
+        bb_start_seq,
     );
     final_output.push_str(&summary);
 
@@ -1920,7 +2143,8 @@ pub async fn handle_flow_resume(
             if cp_state.task_defs.is_empty() {
                 return CallToolResult::text(format!(
                     "Flow {flow_id} has no remaining tasks. {} completed, {} failed.",
-                    cp_state.completed.len(), cp_state.failed.len()
+                    cp_state.completed.len(),
+                    cp_state.failed.len()
                 ));
             }
 
@@ -1931,7 +2155,14 @@ pub async fn handle_flow_resume(
             if let Some(ref audit) = ctx.audit_log {
                 for (task_id, output) in &cp_state.completed {
                     let _ = audit.record_flow_task(
-                        &new_flow_id, task_id, None, None, "done", Some(output), None, None,
+                        &new_flow_id,
+                        task_id,
+                        None,
+                        None,
+                        "done",
+                        Some(output),
+                        None,
+                        None,
                     );
                 }
             }
@@ -1939,24 +2170,37 @@ pub async fn handle_flow_resume(
             // Publish completed outputs to blackboard so downstream tasks
             // can see their dependencies' results
             let team_budget = crate::team_tools::TeamBudget {
-                max_agents: ctx.budget_cfg.max_agents.max(cp_state.task_defs.len() as u32 + 2),
+                max_agents: ctx
+                    .budget_cfg
+                    .max_agents
+                    .max(cp_state.task_defs.len() as u32 + 2),
                 max_depth: ctx.budget_cfg.max_depth,
                 max_iterations: ctx.budget_cfg.max_iterations,
                 timeout_secs: ctx.budget_cfg.timeout_secs.max(600),
                 ..Default::default()
             };
             let team_id = match ctx.team_registry.create_team(
-                &format!("{flow_id}-resumed"), None, agent_name, 0, team_budget,
+                &format!("{flow_id}-resumed"),
+                None,
+                agent_name,
+                0,
+                team_budget,
             ) {
                 Ok(id) => id,
-                Err(e) => return CallToolResult::error(format!("Failed to create resume team: {e}")),
+                Err(e) => {
+                    return CallToolResult::error(format!("Failed to create resume team: {e}"))
+                }
             };
             ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
 
             // Publish completed outputs to blackboard for dependency resolution
             for (task_id, output) in &cp_state.completed {
                 let truncated = if output.len() > 4096 {
-                    format!("{}...\n[truncated, {} chars total]", &output[..4096], output.len())
+                    format!(
+                        "{}...\n[truncated, {} chars total]",
+                        &output[..4096],
+                        output.len()
+                    )
                 } else {
                     output.clone()
                 };
@@ -1970,8 +2214,13 @@ pub async fn handle_flow_resume(
             }
 
             let final_output = run_dag_execution(
-                &ctx, &new_flow_id, &team_id, &cp_state.prompt, cp_state.task_defs,
-            ).await;
+                &ctx,
+                &new_flow_id,
+                &team_id,
+                &cp_state.prompt,
+                cp_state.task_defs,
+            )
+            .await;
 
             // Clean up the old checkpoint
             let _ = cp.delete(&flow_id);
@@ -1992,10 +2241,16 @@ pub async fn handle_flow_resume(
     let metadata = match &ctx.audit_log {
         Some(audit) => match audit.load_flow_metadata(&flow_id) {
             Ok(Some(m)) => m,
-            Ok(None) => return CallToolResult::error(format!("Flow {flow_id} not found in audit.db or checkpoint")),
+            Ok(None) => {
+                return CallToolResult::error(format!(
+                    "Flow {flow_id} not found in audit.db or checkpoint"
+                ))
+            }
             Err(e) => return CallToolResult::error(format!("Failed to load flow metadata: {e}")),
         },
-        None => return CallToolResult::error("Audit log not configured and no checkpoint available"),
+        None => {
+            return CallToolResult::error("Audit log not configured and no checkpoint available")
+        }
     };
 
     // Load completed task results
@@ -2028,7 +2283,8 @@ pub async fn handle_flow_resume(
         None => return CallToolResult::error("Flow has no saved YAML content — cannot resume"),
     };
 
-    let params: std::collections::HashMap<String, String> = metadata.parameters
+    let params: std::collections::HashMap<String, String> = metadata
+        .parameters
         .as_ref()
         .and_then(|p| serde_json::from_str(p).ok())
         .unwrap_or_default();
@@ -2039,7 +2295,8 @@ pub async fn handle_flow_resume(
     };
 
     // Filter to only tasks not already completed
-    let remaining: Vec<smgglrs_flow::TaskDefinition> = dag_config.tasks
+    let remaining: Vec<smgglrs_flow::TaskDefinition> = dag_config
+        .tasks
         .into_iter()
         .filter(|t| !already_done.contains_key(&t.id))
         .collect();
@@ -2047,7 +2304,8 @@ pub async fn handle_flow_resume(
     if remaining.is_empty() {
         return CallToolResult::text(format!(
             "Flow {flow_id} has no remaining tasks. {} completed, {} failed.",
-            already_done.len(), already_failed.len()
+            already_done.len(),
+            already_failed.len()
         ));
     }
 
@@ -2059,13 +2317,22 @@ pub async fn handle_flow_resume(
     );
 
     // Re-register the flow and run remaining tasks
-    let new_flow_id = ctx.flow_registry.register(&format!("{}-resumed", metadata.name));
+    let new_flow_id = ctx
+        .flow_registry
+        .register(&format!("{}-resumed", metadata.name));
 
     // Copy completed results to the new flow
     if let Some(ref audit) = ctx.audit_log {
         for (task_id, output) in &already_done {
             let _ = audit.record_flow_task(
-                &new_flow_id, task_id, None, None, "done", Some(output), None, None,
+                &new_flow_id,
+                task_id,
+                None,
+                None,
+                "done",
+                Some(output),
+                None,
+                None,
             );
         }
         let _ = audit.save_flow_metadata(
@@ -2084,18 +2351,18 @@ pub async fn handle_flow_resume(
         timeout_secs: ctx.budget_cfg.timeout_secs.max(600),
         ..Default::default()
     };
-    let team_id = match ctx.team_registry.create_team(
-        &metadata.name, None, agent_name, 0, team_budget,
-    ) {
-        Ok(id) => id,
-        Err(e) => return CallToolResult::error(format!("Failed to create resume team: {e}")),
-    };
+    let team_id =
+        match ctx
+            .team_registry
+            .create_team(&metadata.name, None, agent_name, 0, team_budget)
+        {
+            Ok(id) => id,
+            Err(e) => return CallToolResult::error(format!("Failed to create resume team: {e}")),
+        };
     ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
 
     let prompt = format!("Resumed flow {flow_id}");
-    let final_output = run_dag_execution(
-        &ctx, &new_flow_id, &team_id, &prompt, remaining,
-    ).await;
+    let final_output = run_dag_execution(&ctx, &new_flow_id, &team_id, &prompt, remaining).await;
 
     if let Some(ref audit) = ctx.audit_log {
         let _ = audit.complete_flow_metadata(&new_flow_id, "completed");
@@ -2115,8 +2382,12 @@ mod tests {
     #[test]
     fn flow_name_rejects_path_traversal() {
         // Valid names
-        assert!("security-audit".chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
-        assert!("my_flow_v2".chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
+        assert!("security-audit"
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
+        assert!("my_flow_v2"
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
 
         // Path traversal attempts must be rejected
         let bad_names = vec![
@@ -2130,7 +2401,9 @@ mod tests {
         ];
         for name in bad_names {
             assert!(
-                !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'),
+                !name
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '-' || c == '_'),
                 "Expected rejection for: {name}"
             );
         }
@@ -2190,14 +2463,15 @@ mod tests {
         let reg = FlowRegistry::new();
         let id = reg.register("node-test");
 
-        reg.update_nodes(&id, vec![
-            NodeStatus {
+        reg.update_nodes(
+            &id,
+            vec![NodeStatus {
                 id: "task1".to_string(),
                 specialist: "analyst".to_string(),
                 status: "pending".to_string(),
                 output: None,
-            },
-        ]);
+            }],
+        );
 
         reg.update_node_status(&id, "task1", "done", Some("result".to_string()));
 
@@ -2232,13 +2506,29 @@ pub(crate) fn spawn_gpu_sampler(
 
 async fn sample_gpu() -> Option<(f64, f64, f64)> {
     let output = tokio::process::Command::new("nvidia-smi")
-        .args(["--query-gpu=utilization.gpu,utilization.memory,memory.used", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=utilization.gpu,utilization.memory,memory.used",
+            "--format=csv,noheader,nounits",
+        ])
         .output()
         .await
         .ok()?;
-    if !output.status.success() { return None; }
+    if !output.status.success() {
+        return None;
+    }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let parts: Vec<&str> = stdout.lines().next()?.split(',').map(|s| s.trim()).collect();
-    if parts.len() < 3 { return None; }
-    Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
+    let parts: Vec<&str> = stdout
+        .lines()
+        .next()?
+        .split(',')
+        .map(|s| s.trim())
+        .collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    Some((
+        parts[0].parse().ok()?,
+        parts[1].parse().ok()?,
+        parts[2].parse().ok()?,
+    ))
 }

@@ -16,9 +16,8 @@ pub mod proto {
 
 pub use proto::compute_driver_client::ComputeDriverClient;
 pub use proto::{
-    CreateSandboxRequest, DestroySandboxRequest, ExecCommandRequest,
-    ExecCommandResponse, Mount, SandboxState, SandboxStatusRequest,
-    SupervisorConfig,
+    CreateSandboxRequest, DestroySandboxRequest, ExecCommandRequest, ExecCommandResponse, Mount,
+    SandboxState, SandboxStatusRequest, SupervisorConfig,
 };
 use tonic::transport::Channel;
 
@@ -300,10 +299,7 @@ mod tests {
     fn build_request_with_extra_args() {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/test.gguf"),
-            extra_args: vec![
-                "--threads".to_string(),
-                "8".to_string(),
-            ],
+            extra_args: vec!["--threads".to_string(), "8".to_string()],
             ..ServeConfig::default()
         };
 

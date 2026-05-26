@@ -21,9 +21,11 @@ pub fn handoff_tool_def() -> ResponseTool {
     ResponseTool {
         kind: "function".to_string(),
         name: HANDOFF_TOOL_NAME.to_string(),
-        description: Some("Transfer control to another specialist agent. Use this when the task \
+        description: Some(
+            "Transfer control to another specialist agent. Use this when the task \
                       requires capabilities outside your expertise."
-            .to_string()),
+                .to_string(),
+        ),
         strict: None,
         parameters: Some(serde_json::json!({
             "type": "object",

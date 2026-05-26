@@ -166,21 +166,19 @@ impl Transport for DirectTransport {
             }
 
             "tools/call" => {
-                let call_params: smgglrs_core::protocol::CallToolParams = match params
-                    .and_then(|p| serde_json::from_value(p).ok())
-                {
-                    Some(p) => p,
-                    None => {
-                        return Ok(serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "error": {"code": -32602, "message": "invalid params"},
-                            "id": id
-                        }));
-                    }
-                };
+                let call_params: smgglrs_core::protocol::CallToolParams =
+                    match params.and_then(|p| serde_json::from_value(p).ok()) {
+                        Some(p) => p,
+                        None => {
+                            return Ok(serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "error": {"code": -32602, "message": "invalid params"},
+                                "id": id
+                            }));
+                        }
+                    };
 
-                let sid = self.session_id.lock().unwrap().clone()
-                    .unwrap_or_default();
+                let sid = self.session_id.lock().unwrap().clone().unwrap_or_default();
                 let ctx = smgglrs_core::auth::CallContext::new(agent, sid);
                 let result = self.server.handle_call_tool(call_params, ctx).await;
                 let value = serde_json::to_value(&result).unwrap_or_default();
@@ -281,17 +279,23 @@ pub(crate) async fn handle_agentic_chat(
         return (
             axum::http::StatusCode::BAD_REQUEST,
             [("content-type", "application/x-ndjson")],
-            format!("{}\n", serde_json::json!({"type": "error", "message": "prompt is required"})),
+            format!(
+                "{}\n",
+                serde_json::json!({"type": "error", "message": "prompt is required"})
+            ),
         )
             .into_response();
     }
 
     // Get or create session
-    let session_id = req.session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let session_id = req
+        .session_id
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     // Build the NDJSON event channel
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
-    let audit_sink: smgglrs_agent::SharedAuditSink = Arc::new(StreamingAuditSink { tx: tx.clone() });
+    let audit_sink: smgglrs_agent::SharedAuditSink =
+        Arc::new(StreamingAuditSink { tx: tx.clone() });
 
     // Build system prompt from persona if specified
     let system_prompt = if let Some(ref persona_name) = req.persona {
@@ -369,14 +373,9 @@ pub(crate) async fn handle_agentic_chat(
         };
 
         let run_id = uuid::Uuid::new_v4().to_string();
-        let result = smgglrs_agent::run_tool_loop(
-            model.as_ref(),
-            &mut client,
-            &prompt,
-            &mut config,
-            run_id,
-        )
-        .await;
+        let result =
+            smgglrs_agent::run_tool_loop(model.as_ref(), &mut client, &prompt, &mut config, run_id)
+                .await;
 
         match result {
             Ok(tool_result) => {
@@ -400,11 +399,14 @@ pub(crate) async fn handle_agentic_chat(
                         role: Role::Assistant,
                         content: tool_result.response.clone(),
                         timestamp: resp_ts,
-                        metadata: Some(serde_json::json!({
-                            "iterations": tool_result.iterations,
-                            "input_tokens": tool_result.input_tokens,
-                            "output_tokens": tool_result.output_tokens,
-                        }).to_string()),
+                        metadata: Some(
+                            serde_json::json!({
+                                "iterations": tool_result.iterations,
+                                "input_tokens": tool_result.input_tokens,
+                                "output_tokens": tool_result.output_tokens,
+                            })
+                            .to_string(),
+                        ),
                     }],
                     created_at: resp_ts,
                     fork_id: None,
@@ -485,7 +487,9 @@ pub(crate) async fn handle_get_session(
     State(state): State<Arc<AgentChatState>>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
 ) -> impl IntoResponse {
-    let turns = state.memory.with(|mem| mem.get_session_turns(&session_id).unwrap_or_default());
+    let turns = state
+        .memory
+        .with(|mem| mem.get_session_turns(&session_id).unwrap_or_default());
 
     let turn_infos: Vec<TurnInfo> = turns
         .iter()
@@ -606,7 +610,9 @@ mod tests {
                     status: smgglrs_model::ResponseStatus::Completed,
                     model: Some("stub".into()),
                     output: vec![smgglrs_model::OutputItem::Message(
-                        smgglrs_model::MessageItem::assistant("I checked the tools and here is your answer."),
+                        smgglrs_model::MessageItem::assistant(
+                            "I checked the tools and here is your answer.",
+                        ),
                     )],
                     usage: None,
                     error: None,
@@ -674,8 +680,8 @@ mod tests {
         let resp = router.clone().oneshot(req).await.unwrap();
         let status = resp.status();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-        let json: serde_json::Value =
-            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
+        let json: serde_json::Value = serde_json::from_slice(&bytes)
+            .unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
         (status, json)
     }
 
@@ -731,15 +737,13 @@ mod tests {
     async fn agent_chat_empty_prompt_returns_error() {
         let router = build_test_router();
 
-        let (status, body) = post_json(
-            &router,
-            "/chat/agent",
-            serde_json::json!({"prompt": ""}),
-        )
-        .await;
+        let (status, body) =
+            post_json(&router, "/chat/agent", serde_json::json!({"prompt": ""})).await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        let event: serde_json::Value = body.lines().next()
+        let event: serde_json::Value = body
+            .lines()
+            .next()
             .and_then(|l| serde_json::from_str(l).ok())
             .unwrap_or_default();
         assert_eq!(event["type"], "error");
@@ -749,12 +753,7 @@ mod tests {
     async fn session_create_returns_id() {
         let router = build_test_router();
 
-        let (status, body) = post_json(
-            &router,
-            "/sessions",
-            serde_json::json!({}),
-        )
-        .await;
+        let (status, body) = post_json(&router, "/sessions", serde_json::json!({})).await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -823,7 +822,10 @@ mod tests {
             parent_fork: None,
         };
         state.memory.with(|mem| mem.add_turn(&turn).unwrap());
-        assert_eq!(state.memory.with(|mem| mem.turn_count(session_id).unwrap()), 1);
+        assert_eq!(
+            state.memory.with(|mem| mem.turn_count(session_id).unwrap()),
+            1
+        );
 
         // Delete
         let (status, json) = delete_json(&router, &format!("/sessions/{session_id}")).await;
@@ -831,7 +833,10 @@ mod tests {
         assert_eq!(json["deleted"], true);
 
         // Verify deleted
-        assert_eq!(state.memory.with(|mem| mem.turn_count(session_id).unwrap()), 0);
+        assert_eq!(
+            state.memory.with(|mem| mem.turn_count(session_id).unwrap()),
+            0
+        );
     }
 
     #[tokio::test]
@@ -876,7 +881,9 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         // Both user turns should be stored
-        let turn_count = state.memory.with(|mem| mem.turn_count(&session_id).unwrap());
+        let turn_count = state
+            .memory
+            .with(|mem| mem.turn_count(&session_id).unwrap());
         assert!(
             turn_count >= 2,
             "expected at least 2 turns (2 user messages), got {turn_count}"

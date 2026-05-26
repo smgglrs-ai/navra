@@ -19,7 +19,12 @@ impl Module for GitlabModule {
         "gitlab"
     }
 
-    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
+    fn tools(
+        &self,
+    ) -> Vec<(
+        smgglrs_core::protocol::ToolDefinition,
+        smgglrs_core::ToolHandler,
+    )> {
         vec![
             gitlab_mr_list_handler(),
             gitlab_mr_create_handler(),
@@ -56,9 +61,7 @@ async fn run_glab(args: &[&str]) -> Result<String, CallToolResult> {
         .output()
         .await
         .map_err(|e| {
-            CallToolResult::error(format!(
-                "Failed to run glab CLI (is it installed?): {e}"
-            ))
+            CallToolResult::error(format!("Failed to run glab CLI (is it installed?): {e}"))
         })?;
 
     if !output.status.success() {
@@ -76,8 +79,11 @@ async fn run_glab(args: &[&str]) -> Result<String, CallToolResult> {
     description = "List merge requests for a GitLab project."
 )]
 async fn gitlab_mr_list(
-    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")] repo: String,
-    #[arg(description = "MR state: opened, closed, merged, all (default: opened)")] state: Option<String>,
+    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")]
+    repo: String,
+    #[arg(description = "MR state: opened, closed, merged, all (default: opened)")] state: Option<
+        String,
+    >,
     #[arg(description = "Maximum number of MRs to return (default: 10)")] limit: Option<i64>,
     _ctx: CallContext,
 ) -> CallToolResult {
@@ -88,12 +94,19 @@ async fn gitlab_mr_list(
     let limit = limit.unwrap_or(10).max(1).min(100).to_string();
 
     match run_glab(&[
-        "mr", "list",
-        "--repo", &repo,
-        "--state", &state,
-        "--per-page", &limit,
-        "--output", "json",
-    ]).await {
+        "mr",
+        "list",
+        "--repo",
+        &repo,
+        "--state",
+        &state,
+        "--per-page",
+        &limit,
+        "--output",
+        "json",
+    ])
+    .await
+    {
         Ok(output) => CallToolResult::text(output),
         Err(e) => e,
     }
@@ -104,10 +117,13 @@ async fn gitlab_mr_list(
     description = "Create a merge request on a GitLab project."
 )]
 async fn gitlab_mr_create(
-    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")] repo: String,
+    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")]
+    repo: String,
     #[arg(description = "MR title")] title: String,
     #[arg(description = "Source branch to merge from")] source_branch: String,
-    #[arg(description = "Target branch to merge into (default: main)")] target_branch: Option<String>,
+    #[arg(description = "Target branch to merge into (default: main)")] target_branch: Option<
+        String,
+    >,
     #[arg(description = "MR description")] description: Option<String>,
     _ctx: CallContext,
 ) -> CallToolResult {
@@ -117,11 +133,16 @@ async fn gitlab_mr_create(
     let target = target_branch.unwrap_or_else(|| "main".to_string());
 
     let mut args = vec![
-        "mr", "create",
-        "--repo", &repo,
-        "--title", &title,
-        "--source-branch", &source_branch,
-        "--target-branch", &target,
+        "mr",
+        "create",
+        "--repo",
+        &repo,
+        "--title",
+        &title,
+        "--source-branch",
+        &source_branch,
+        "--target-branch",
+        &target,
     ];
     let desc_val;
     if let Some(ref d) = description {
@@ -140,7 +161,8 @@ async fn gitlab_mr_create(
     description = "View details of a specific merge request."
 )]
 async fn gitlab_mr_view(
-    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")] repo: String,
+    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")]
+    repo: String,
     #[arg(description = "MR IID (project-scoped number)")] number: i64,
     _ctx: CallContext,
 ) -> CallToolResult {
@@ -153,10 +175,16 @@ async fn gitlab_mr_view(
     let number_str = number.to_string();
 
     match run_glab(&[
-        "mr", "view", &number_str,
-        "--repo", &repo,
-        "--output", "json",
-    ]).await {
+        "mr",
+        "view",
+        &number_str,
+        "--repo",
+        &repo,
+        "--output",
+        "json",
+    ])
+    .await
+    {
         Ok(output) => CallToolResult::text(output),
         Err(e) => e,
     }
@@ -167,8 +195,11 @@ async fn gitlab_mr_view(
     description = "List issues for a GitLab project."
 )]
 async fn gitlab_issue_list(
-    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")] repo: String,
-    #[arg(description = "Issue state: opened, closed, all (default: opened)")] state: Option<String>,
+    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")]
+    repo: String,
+    #[arg(description = "Issue state: opened, closed, all (default: opened)")] state: Option<
+        String,
+    >,
     #[arg(description = "Maximum number of issues to return (default: 10)")] limit: Option<i64>,
     _ctx: CallContext,
 ) -> CallToolResult {
@@ -179,12 +210,19 @@ async fn gitlab_issue_list(
     let limit = limit.unwrap_or(10).max(1).min(100).to_string();
 
     match run_glab(&[
-        "issue", "list",
-        "--repo", &repo,
-        "--state", &state,
-        "--per-page", &limit,
-        "--output", "json",
-    ]).await {
+        "issue",
+        "list",
+        "--repo",
+        &repo,
+        "--state",
+        &state,
+        "--per-page",
+        &limit,
+        "--output",
+        "json",
+    ])
+    .await
+    {
         Ok(output) => CallToolResult::text(output),
         Err(e) => e,
     }
@@ -195,7 +233,8 @@ async fn gitlab_issue_list(
     description = "Create an issue on a GitLab project."
 )]
 async fn gitlab_issue_create(
-    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")] repo: String,
+    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")]
+    repo: String,
     #[arg(description = "Issue title")] title: String,
     #[arg(description = "Issue description")] description: Option<String>,
     #[arg(description = "Comma-separated label names")] labels: Option<String>,
@@ -205,11 +244,7 @@ async fn gitlab_issue_create(
         return e;
     }
 
-    let mut args = vec![
-        "issue", "create",
-        "--repo", &repo,
-        "--title", &title,
-    ];
+    let mut args = vec!["issue", "create", "--repo", &repo, "--title", &title];
     let desc_val;
     if let Some(ref d) = description {
         desc_val = d.clone();
@@ -232,7 +267,8 @@ async fn gitlab_issue_create(
     description = "Add a comment to a GitLab issue or merge request."
 )]
 async fn gitlab_issue_comment(
-    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")] repo: String,
+    #[arg(description = "Project path (e.g. group/project or group/subgroup/project)")]
+    repo: String,
     #[arg(description = "Issue or MR IID")] number: i64,
     #[arg(description = "Comment body")] body: String,
     _ctx: CallContext,
@@ -246,10 +282,16 @@ async fn gitlab_issue_comment(
     let number_str = number.to_string();
 
     match run_glab(&[
-        "issue", "comment", &number_str,
-        "--repo", &repo,
-        "--message", &body,
-    ]).await {
+        "issue",
+        "comment",
+        &number_str,
+        "--repo",
+        &repo,
+        "--message",
+        &body,
+    ])
+    .await
+    {
         Ok(output) => CallToolResult::text(output),
         Err(e) => e,
     }
@@ -303,7 +345,11 @@ mod tests {
     fn all_tools_have_descriptions() {
         let m = GitlabModule;
         for (def, _) in m.tools() {
-            assert!(def.description.is_some(), "tool {} missing description", def.name);
+            assert!(
+                def.description.is_some(),
+                "tool {} missing description",
+                def.name
+            );
         }
     }
 }

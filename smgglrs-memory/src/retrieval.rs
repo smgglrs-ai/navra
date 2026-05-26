@@ -124,7 +124,9 @@ impl<'a> MemoryRetriever<'a> {
             for (rank, entry) in channel.iter().enumerate() {
                 let rrf_score = 1.0 / (k + rank as f64 + 1.0);
                 *scores.entry(entry.id.clone()).or_insert(0.0) += rrf_score;
-                entries.entry(entry.id.clone()).or_insert_with(|| entry.clone());
+                entries
+                    .entry(entry.id.clone())
+                    .or_insert_with(|| entry.clone());
             }
         }
 
@@ -132,10 +134,16 @@ impl<'a> MemoryRetriever<'a> {
         let mut results: Vec<ScoredEntry> = scores
             .into_iter()
             .filter_map(|(id, score)| {
-                entries.remove(&id).map(|entry| ScoredEntry { entry, score })
+                entries
+                    .remove(&id)
+                    .map(|entry| ScoredEntry { entry, score })
             })
             .collect();
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(top_n);
 
         Ok(results)
@@ -164,9 +172,9 @@ impl<'a> MemoryRetriever<'a> {
     ) -> Result<Vec<MemoryEntry>, MemoryError> {
         #[cfg(feature = "rag")]
         if let (Some(cs), Some(embedding)) = (&self.chunk_store, _query_embedding) {
-            let results = cs.search(embedding, 20).map_err(|e| {
-                MemoryError::Other(format!("vector search failed: {e}"))
-            })?;
+            let results = cs
+                .search(embedding, 20)
+                .map_err(|e| MemoryError::Other(format!("vector search failed: {e}")))?;
             let entries = results
                 .into_iter()
                 .map(|r| MemoryEntry {
@@ -195,9 +203,9 @@ impl<'a> MemoryRetriever<'a> {
     ) -> Result<Vec<MemoryEntry>, MemoryError> {
         #[cfg(feature = "rag")]
         if let (Some(cs), Some(embedding)) = (&self.chunk_store, _hyde_embedding) {
-            let results = cs.search(embedding, 20).map_err(|e| {
-                MemoryError::Other(format!("HyDE vector search failed: {e}"))
-            })?;
+            let results = cs
+                .search(embedding, 20)
+                .map_err(|e| MemoryError::Other(format!("HyDE vector search failed: {e}")))?;
             let entries = results
                 .into_iter()
                 .map(|r| MemoryEntry {
@@ -237,9 +245,27 @@ mod tests {
     fn rrf_fusion_merges_channels() {
         let store = KnowledgeStore::open_memory().unwrap();
         // Insert entries that will appear in FTS
-        store.store(&make_entry("e1", "Rust language", "Rust is a systems programming language")).unwrap();
-        store.store(&make_entry("e2", "Rust ownership", "Ownership model in Rust")).unwrap();
-        store.store(&make_entry("e3", "Python language", "Python is interpreted")).unwrap();
+        store
+            .store(&make_entry(
+                "e1",
+                "Rust language",
+                "Rust is a systems programming language",
+            ))
+            .unwrap();
+        store
+            .store(&make_entry(
+                "e2",
+                "Rust ownership",
+                "Ownership model in Rust",
+            ))
+            .unwrap();
+        store
+            .store(&make_entry(
+                "e3",
+                "Python language",
+                "Python is interpreted",
+            ))
+            .unwrap();
 
         let retriever = MemoryRetriever::new(&store);
         let results = retriever.retrieve("Rust", 10).unwrap();
@@ -268,7 +294,11 @@ mod tests {
         let store = KnowledgeStore::open_memory().unwrap();
         // Insert an FTS entry so we can verify vector results merge in
         store
-            .store(&make_entry("fts1", "Rust language", "Rust is a systems programming language"))
+            .store(&make_entry(
+                "fts1",
+                "Rust language",
+                "Rust is a systems programming language",
+            ))
             .unwrap();
 
         // Set up a ChunkStore with 4-dimensional embeddings
@@ -308,25 +338,37 @@ mod tests {
         use std::sync::Arc;
 
         let store = KnowledgeStore::open_memory().unwrap();
-        store.store(&make_entry("fts1", "Security overview", "Auth tokens and ACLs")).unwrap();
+        store
+            .store(&make_entry(
+                "fts1",
+                "Security overview",
+                "Auth tokens and ACLs",
+            ))
+            .unwrap();
 
         let chunk_store = Arc::new(smgglrs_rag::ChunkStore::open_memory(4).unwrap());
         // Two chunks: one about security, one about logging
         let chunks = vec![
             smgglrs_rag::chunk::Chunk {
                 content: "BLAKE3 token validation with deny-wins ACLs".to_string(),
-                start_byte: 0, end_byte: 44, index: 0,
+                start_byte: 0,
+                end_byte: 44,
+                index: 0,
             },
             smgglrs_rag::chunk::Chunk {
                 content: "Structured JSON logging to stderr".to_string(),
-                start_byte: 45, end_byte: 77, index: 1,
+                start_byte: 45,
+                end_byte: 77,
+                index: 1,
             },
         ];
         let embeddings = vec![
             vec![1.0_f32, 0.0, 0.0, 0.0], // security
             vec![0.0_f32, 1.0, 0.0, 0.0], // logging
         ];
-        chunk_store.index_document("/module.rs", &chunks, &embeddings).unwrap();
+        chunk_store
+            .index_document("/module.rs", &chunks, &embeddings)
+            .unwrap();
 
         let retriever = MemoryRetriever::new(&store).with_chunk_store(chunk_store);
 
@@ -335,39 +377,53 @@ mod tests {
         // HyDE embedding points toward security (hypothetical answer is about security)
         let hyde_embedding = vec![0.9_f32, 0.0, 0.1, 0.0];
 
-        let results = retriever.retrieve_with_hyde(
-            "Security", &query_embedding, &hyde_embedding, 10,
-        ).unwrap();
+        let results = retriever
+            .retrieve_with_hyde("Security", &query_embedding, &hyde_embedding, 10)
+            .unwrap();
 
         let ids: Vec<&str> = results.iter().map(|r| r.entry.id.as_str()).collect();
         // Both vector (logging-similar) and HyDE (security-similar) results should be present
-        assert!(ids.iter().any(|id| id.starts_with("rag:")), "Vector results should be present");
-        assert!(ids.iter().any(|id| id.starts_with("hyde:")), "HyDE results should be present");
+        assert!(
+            ids.iter().any(|id| id.starts_with("rag:")),
+            "Vector results should be present"
+        );
+        assert!(
+            ids.iter().any(|id| id.starts_with("hyde:")),
+            "HyDE results should be present"
+        );
 
         // HyDE result should contain the security chunk (matching the hyde embedding)
-        let hyde_entry = results.iter()
+        let hyde_entry = results
+            .iter()
             .find(|r| r.entry.id.starts_with("hyde:"))
             .expect("HyDE entry should exist");
-        assert!(hyde_entry.entry.content.contains("BLAKE3"),
-            "HyDE channel should find the security chunk via hyde_embedding");
+        assert!(
+            hyde_entry.entry.content.contains("BLAKE3"),
+            "HyDE channel should find the security chunk via hyde_embedding"
+        );
 
         // Vector result should contain the logging chunk (matching the query embedding)
-        let rag_entry = results.iter()
+        let rag_entry = results
+            .iter()
             .find(|r| r.entry.id.starts_with("rag:"))
             .expect("Vector entry should exist");
-        assert!(rag_entry.entry.content.contains("logging"),
-            "Vector channel should find the logging chunk via query_embedding");
+        assert!(
+            rag_entry.entry.content.contains("logging"),
+            "Vector channel should find the logging chunk via query_embedding"
+        );
     }
 
     #[test]
     fn rrf_respects_top_n() {
         let store = KnowledgeStore::open_memory().unwrap();
         for i in 0..10 {
-            store.store(&make_entry(
-                &format!("e{i}"),
-                &format!("Topic {i} about testing"),
-                &format!("Content about testing number {i}"),
-            )).unwrap();
+            store
+                .store(&make_entry(
+                    &format!("e{i}"),
+                    &format!("Topic {i} about testing"),
+                    &format!("Content about testing number {i}"),
+                ))
+                .unwrap();
         }
 
         let retriever = MemoryRetriever::new(&store);

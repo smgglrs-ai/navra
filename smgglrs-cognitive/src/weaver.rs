@@ -71,7 +71,14 @@ pub fn assemble(
     specialization: Option<&str>,
     context: Option<&str>,
 ) -> Result<WeaverOutput, CognitiveError> {
-    assemble_with_phase(forge, persona_name, user_prompt, specialization, context, None)
+    assemble_with_phase(
+        forge,
+        persona_name,
+        user_prompt,
+        specialization,
+        context,
+        None,
+    )
 }
 
 /// Assemble with an explicit phase for context limit selection.
@@ -86,7 +93,15 @@ pub fn assemble_with_phase(
     context: Option<&str>,
     phase: Option<&str>,
 ) -> Result<WeaverOutput, CognitiveError> {
-    assemble_full(forge, persona_name, user_prompt, specialization, context, phase, &[])
+    assemble_full(
+        forge,
+        persona_name,
+        user_prompt,
+        specialization,
+        context,
+        phase,
+        &[],
+    )
 }
 
 /// Assemble with resolved upstream prompts injected at their specified positions.
@@ -121,7 +136,9 @@ pub fn assemble_full(
     let context_limit = match phase {
         Some("planning") => persona.planning_context_limit,
         Some("execution") => persona.execution_context_limit,
-        _ => persona.planning_context_limit.or(persona.execution_context_limit),
+        _ => persona
+            .planning_context_limit
+            .or(persona.execution_context_limit),
     };
 
     // Budget-aware context truncation
@@ -206,7 +223,11 @@ fn build_cacheable_prefix(
     }
 
     // 2. BeforeMandate upstream prompts
-    inject_at_position(&mut sections, resolved_prompts, &InjectPosition::BeforeMandate);
+    inject_at_position(
+        &mut sections,
+        resolved_prompts,
+        &InjectPosition::BeforeMandate,
+    );
 
     // 3. Core mandate
     sections.push(format!(
@@ -215,7 +236,11 @@ fn build_cacheable_prefix(
     ));
 
     // 4. AfterMandate upstream prompts
-    inject_at_position(&mut sections, resolved_prompts, &InjectPosition::AfterMandate);
+    inject_at_position(
+        &mut sections,
+        resolved_prompts,
+        &InjectPosition::AfterMandate,
+    );
 
     // 5. Resolved heuristics
     let heuristic_text = resolve_heuristics(forge, &persona.heuristics);
@@ -224,7 +249,11 @@ fn build_cacheable_prefix(
     }
 
     // 6. AfterHeuristics upstream prompts
-    inject_at_position(&mut sections, resolved_prompts, &InjectPosition::AfterHeuristics);
+    inject_at_position(
+        &mut sections,
+        resolved_prompts,
+        &InjectPosition::AfterHeuristics,
+    );
 
     // 7. Few-shot examples (up to 3)
     if !persona.examples.is_empty() {
@@ -245,7 +274,11 @@ fn build_cacheable_prefix(
     }
 
     // 8. AfterExamples upstream prompts
-    inject_at_position(&mut sections, resolved_prompts, &InjectPosition::AfterExamples);
+    inject_at_position(
+        &mut sections,
+        resolved_prompts,
+        &InjectPosition::AfterExamples,
+    );
 
     sections.join("\n\n")
 }
@@ -270,7 +303,8 @@ fn inject_at_position(
     position: &InjectPosition,
 ) {
     // Calculate how many prompt chars have already been injected
-    let existing_prompt_chars: usize = sections.iter()
+    let existing_prompt_chars: usize = sections
+        .iter()
         .filter(|s| s.starts_with("## Upstream Prompt:"))
         .map(|s| s.len())
         .sum();
@@ -417,10 +451,7 @@ pub fn format_skill_cards(cards: &[&crate::types::SkillCard]) -> String {
 }
 
 /// Resolve heuristic references to their facet content.
-fn resolve_heuristics(
-    forge: &ForgeService,
-    refs: &[crate::types::HeuristicRef],
-) -> String {
+fn resolve_heuristics(forge: &ForgeService, refs: &[crate::types::HeuristicRef]) -> String {
     let mut parts = Vec::new();
     for href in refs {
         let module = match forge.get_heuristic(&href.module) {
@@ -433,10 +464,7 @@ fn resolve_heuristics(
         for facet_name in &href.facets {
             match module.facets.iter().find(|f| f.facet_name == *facet_name) {
                 Some(facet) => {
-                    let display = facet
-                        .display_name
-                        .as_deref()
-                        .unwrap_or(&facet.facet_name);
+                    let display = facet.display_name.as_deref().unwrap_or(&facet.facet_name);
                     parts.push(format!("### {display}\n{}", facet.content));
                 }
                 None => {
@@ -542,7 +570,10 @@ facets:
         assert!(output.cacheable_prefix.contains("validate and sanitize"));
         assert!(output.cacheable_prefix.contains("clean, readable"));
         assert!(output.dynamic_context.is_empty());
-        assert_eq!(output.user_prompt, "## My Current Request:\nFix the login bug");
+        assert_eq!(
+            output.user_prompt,
+            "## My Current Request:\nFix the login bug"
+        );
         assert_eq!(output.output_schema.as_deref(), Some("impl_result"));
     }
 
@@ -591,14 +622,7 @@ facets:
         let tmp = tempfile::tempdir().unwrap();
         let forge = setup_forge(tmp.path());
 
-        let output = assemble(
-            &forge,
-            "developer",
-            "Task",
-            None,
-            Some("Some context"),
-        )
-        .unwrap();
+        let output = assemble(&forge, "developer", "Task", None, Some("Some context")).unwrap();
 
         let full = output.system_prompt();
         assert!(full.contains("Retrieved Context"));
@@ -640,7 +664,13 @@ facets:
         }];
 
         let output = assemble_full(
-            &forge, "developer", "Analyze case", None, None, None, &prompts,
+            &forge,
+            "developer",
+            "Analyze case",
+            None,
+            None,
+            None,
+            &prompts,
         )
         .unwrap();
 
@@ -667,10 +697,8 @@ facets:
             label: "upstream:context".to_string(),
         }];
 
-        let output = assemble_full(
-            &forge, "developer", "Task", None, None, None, &prompts,
-        )
-        .unwrap();
+        let output =
+            assemble_full(&forge, "developer", "Task", None, None, None, &prompts).unwrap();
 
         let prefix = &output.cacheable_prefix;
         let upstream_pos = prefix.find("Upstream Prompt: upstream:context").unwrap();
@@ -689,14 +717,14 @@ facets:
             label: "upstream:post_heuristics".to_string(),
         }];
 
-        let output = assemble_full(
-            &forge, "developer", "Task", None, None, None, &prompts,
-        )
-        .unwrap();
+        let output =
+            assemble_full(&forge, "developer", "Task", None, None, None, &prompts).unwrap();
 
         let prefix = &output.cacheable_prefix;
         let heuristics_pos = prefix.find("Heuristics to Apply").unwrap();
-        let upstream_pos = prefix.find("Upstream Prompt: upstream:post_heuristics").unwrap();
+        let upstream_pos = prefix
+            .find("Upstream Prompt: upstream:post_heuristics")
+            .unwrap();
         assert!(heuristics_pos < upstream_pos);
     }
 
@@ -711,10 +739,8 @@ facets:
             label: "upstream:final".to_string(),
         }];
 
-        let output = assemble_full(
-            &forge, "developer", "Task", None, None, None, &prompts,
-        )
-        .unwrap();
+        let output =
+            assemble_full(&forge, "developer", "Task", None, None, None, &prompts).unwrap();
 
         let prefix = &output.cacheable_prefix;
         assert!(prefix.contains("Final instructions."));
@@ -746,10 +772,8 @@ facets:
             },
         ];
 
-        let output = assemble_full(
-            &forge, "developer", "Task", None, None, None, &prompts,
-        )
-        .unwrap();
+        let output =
+            assemble_full(&forge, "developer", "Task", None, None, None, &prompts).unwrap();
 
         let prefix = &output.cacheable_prefix;
         let before_pos = prefix.find("a:before").unwrap();
@@ -775,15 +799,14 @@ facets:
             label: "upstream:oversized".to_string(),
         }];
 
-        let output = assemble_full(
-            &forge, "developer", "Task", None, None, None, &prompts,
-        )
-        .unwrap();
+        let output =
+            assemble_full(&forge, "developer", "Task", None, None, None, &prompts).unwrap();
 
         let prefix = &output.cacheable_prefix;
         assert!(prefix.contains("Upstream Prompt: upstream:oversized"));
         // The injected content should be truncated, not the full 10000 chars
-        let upstream_section = prefix.split("## Upstream Prompt: upstream:oversized")
+        let upstream_section = prefix
+            .split("## Upstream Prompt: upstream:oversized")
             .nth(1)
             .unwrap();
         assert!(
@@ -822,10 +845,8 @@ facets:
             },
         ];
 
-        let output = assemble_full(
-            &forge, "developer", "Task", None, None, None, &prompts,
-        )
-        .unwrap();
+        let output =
+            assemble_full(&forge, "developer", "Task", None, None, None, &prompts).unwrap();
 
         let prefix = &output.cacheable_prefix;
         // At least the first two should be present; the fourth (28000+ chars)
@@ -852,10 +873,7 @@ facets:
         let forge = setup_forge(tmp.path());
 
         let without = assemble(&forge, "developer", "Task", None, None).unwrap();
-        let with_empty = assemble_full(
-            &forge, "developer", "Task", None, None, None, &[],
-        )
-        .unwrap();
+        let with_empty = assemble_full(&forge, "developer", "Task", None, None, None, &[]).unwrap();
 
         assert_eq!(without.cacheable_prefix, with_empty.cacheable_prefix);
     }
@@ -923,7 +941,10 @@ facets:
 
         let formatted = format_skill_cards(&selected.iter().copied().collect::<Vec<_>>());
         let tokens = crate::budget::estimate_tokens(&formatted);
-        assert!(tokens <= 500, "Formatted skill cards exceeded 500 tokens: {tokens}");
+        assert!(
+            tokens <= 500,
+            "Formatted skill cards exceeded 500 tokens: {tokens}"
+        );
     }
 
     #[test]

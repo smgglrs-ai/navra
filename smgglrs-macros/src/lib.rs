@@ -144,9 +144,8 @@ fn extract_args(func: &ItemFn) -> syn::Result<Vec<ArgInfo>> {
             if attr.path().is_ident("state") {
                 is_state = true;
             } else if attr.path().is_ident("arg") {
-                let nested = attr.parse_args_with(
-                    Punctuated::<MetaKeyValue, Token![,]>::parse_terminated,
-                )?;
+                let nested =
+                    attr.parse_args_with(Punctuated::<MetaKeyValue, Token![,]>::parse_terminated)?;
                 for kv in nested {
                     match kv.key.to_string().as_str() {
                         "description" => description = Some(kv.value),
@@ -211,8 +210,8 @@ fn type_to_json_schema(ty: &Type) -> TokenStream2 {
                 "String" | "str" => {
                     return quote! { "string" };
                 }
-                "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32"
-                | "i64" | "i128" | "isize" => {
+                "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64"
+                | "i128" | "isize" => {
                     return quote! { "integer" };
                 }
                 "f32" | "f64" => {
@@ -244,7 +243,11 @@ fn type_to_json_schema(ty: &Type) -> TokenStream2 {
 }
 
 /// Build a full JSON schema value for a property, including description.
-fn build_property_schema(ty: &Type, description: &Option<String>, default: &Option<String>) -> TokenStream2 {
+fn build_property_schema(
+    ty: &Type,
+    description: &Option<String>,
+    default: &Option<String>,
+) -> TokenStream2 {
     let is_vec = matches!(ty, Type::Path(tp)
         if tp.path.segments.last().map(|s| s.ident == "Vec").unwrap_or(false));
     let is_option = is_option_type(ty);
@@ -342,7 +345,10 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
     let args = extract_args(func)?;
 
     // Separate tool args from context/state (only tool args go in schema)
-    let tool_args: Vec<&ArgInfo> = args.iter().filter(|a| !a.is_context && !a.is_state).collect();
+    let tool_args: Vec<&ArgInfo> = args
+        .iter()
+        .filter(|a| !a.is_context && !a.is_state)
+        .collect();
     let state_args: Vec<&ArgInfo> = args.iter().filter(|a| a.is_state).collect();
 
     // Build properties map entries
@@ -448,7 +454,9 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
     let mut clean_func = func.clone();
     for input in &mut clean_func.sig.inputs {
         if let FnArg::Typed(pat_type) = input {
-            pat_type.attrs.retain(|attr| !attr.path().is_ident("arg") && !attr.path().is_ident("state"));
+            pat_type
+                .attrs
+                .retain(|attr| !attr.path().is_ident("arg") && !attr.path().is_ident("state"));
         }
     }
 

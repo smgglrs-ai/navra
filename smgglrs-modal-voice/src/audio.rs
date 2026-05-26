@@ -25,12 +25,8 @@ pub fn device_info() -> DeviceInfo {
     let input = host.default_input_device();
     let output = host.default_output_device();
 
-    let input_name = input
-        .as_ref()
-        .and_then(|d| d.name().ok());
-    let output_name = output
-        .as_ref()
-        .and_then(|d| d.name().ok());
+    let input_name = input.as_ref().and_then(|d| d.name().ok());
+    let output_name = output.as_ref().and_then(|d| d.name().ok());
 
     let input_rate = input
         .as_ref()
@@ -137,13 +133,11 @@ fn record_blocking(
                 }
 
                 // Simple energy-based VAD
-                let energy: f32 =
-                    scratch.iter().map(|s| s * s).sum::<f32>() / scratch.len() as f32;
+                let energy: f32 = scratch.iter().map(|s| s * s).sum::<f32>() / scratch.len() as f32;
                 let rms = energy.sqrt();
 
                 if rms > vad_threshold {
-                    speech_detected_clone
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    speech_detected_clone.store(true, std::sync::atomic::Ordering::Relaxed);
                     *last_speech_clone.lock().unwrap() = std::time::Instant::now();
                 }
 
@@ -244,18 +238,14 @@ fn play_blocking(samples: &[f32], sample_rate: u32) -> Result<(), String> {
                 let remaining = data_clone.len() - current;
                 let to_write = output.len().min(remaining);
 
-                output[..to_write]
-                    .copy_from_slice(&data_clone[current..current + to_write]);
+                output[..to_write].copy_from_slice(&data_clone[current..current + to_write]);
 
                 // Fill rest with silence
                 for sample in &mut output[to_write..] {
                     *sample = 0.0;
                 }
 
-                pos_clone.store(
-                    current + to_write,
-                    std::sync::atomic::Ordering::Relaxed,
-                );
+                pos_clone.store(current + to_write, std::sync::atomic::Ordering::Relaxed);
 
                 if current + to_write >= data_clone.len() {
                     done_clone.store(true, std::sync::atomic::Ordering::Relaxed);

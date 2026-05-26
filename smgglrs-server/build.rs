@@ -66,7 +66,11 @@ fn collect_files(dir: &Path, root: &Path, entries: &mut Vec<(String, String, Str
         if path.is_dir() {
             collect_files(&path, root, entries);
         } else {
-            let rel = path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
+            let rel = path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             let abs = format!("ui-dist/{rel}");
             let mime = guess_mime(&rel);
             entries.push((rel, abs, mime));

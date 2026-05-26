@@ -10,9 +10,7 @@
 
 use crate::error::FlowError;
 use crate::mailbox::MailboxMessage;
-use smgglrs_protocol::a2a::{
-    AgentCard, Message, MessageKind, MessageRole, Part,
-};
+use smgglrs_protocol::a2a::{AgentCard, Message, MessageKind, MessageRole, Part};
 use smgglrs_protocol::a2a_client::A2aClient;
 use smgglrs_protocol::label::{Confidentiality, DataLabel};
 use std::collections::HashMap;
@@ -66,10 +64,7 @@ impl AgentCardDirectory {
     /// List all registered teammates with their cards.
     pub fn list(&self) -> Vec<(String, AgentCard)> {
         let cards = self.cards.read().unwrap_or_else(|e| e.into_inner());
-        cards
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
+        cards.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
     }
 
     /// Remove a teammate's Agent Card.
@@ -137,13 +132,7 @@ impl MeshRouter {
     }
 
     /// Register a remote teammate.
-    pub fn add_remote(
-        &mut self,
-        name: &str,
-        url: &str,
-        token: &str,
-        clearance: Confidentiality,
-    ) {
+    pub fn add_remote(&mut self, name: &str, url: &str, token: &str, clearance: Confidentiality) {
         self.teammates.insert(
             name.to_string(),
             TeammateLocation::Remote {
@@ -215,9 +204,10 @@ impl MeshRouter {
                 Ok(())
             }
             Some(TeammateLocation::Remote { .. }) => {
-                let client = self.a2a_clients.get(to).ok_or_else(|| {
-                    FlowError::TeammateNotFound(format!("{to} (no A2A client)"))
-                })?;
+                let client = self
+                    .a2a_clients
+                    .get(to)
+                    .ok_or_else(|| FlowError::TeammateNotFound(format!("{to} (no A2A client)")))?;
 
                 let a2a_msg = Message {
                     role: MessageRole::User,
@@ -258,7 +248,10 @@ impl MeshRouter {
 
     /// Check if a teammate is remote.
     pub fn is_remote(&self, name: &str) -> bool {
-        matches!(self.teammates.get(name), Some(TeammateLocation::Remote { .. }))
+        matches!(
+            self.teammates.get(name),
+            Some(TeammateLocation::Remote { .. })
+        )
     }
 
     /// Check if a teammate is in-process.
@@ -286,9 +279,7 @@ fn uuid_v4_simple() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use smgglrs_protocol::a2a::{
-        AgentCapabilities, AgentCard, AgentSkill, A2A_PROTOCOL_VERSION,
-    };
+    use smgglrs_protocol::a2a::{AgentCapabilities, AgentCard, AgentSkill, A2A_PROTOCOL_VERSION};
 
     // --- AgentCardDirectory tests ---
 
@@ -486,9 +477,7 @@ mod tests {
             .unwrap_err();
 
         match err {
-            FlowError::IfcViolation {
-                sender, target, ..
-            } => {
+            FlowError::IfcViolation { sender, target, .. } => {
                 assert_eq!(sender, "alice");
                 assert_eq!(target, "bob");
             }
@@ -504,7 +493,12 @@ mod tests {
 
         // Sender has Public data, target has Sensitive clearance => allowed
         router
-            .send("alice", "bob", "public data".into(), DataLabel::TRUSTED_PUBLIC)
+            .send(
+                "alice",
+                "bob",
+                "public data".into(),
+                DataLabel::TRUSTED_PUBLIC,
+            )
             .await
             .unwrap();
 

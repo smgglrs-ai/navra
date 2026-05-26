@@ -117,7 +117,9 @@ impl KvCacheCheckpoint {
     /// Disarms the drop cleanup. The caller is responsible for deleting
     /// the file after successful restore.
     pub fn take(&mut self) -> Option<(PathBuf, String)> {
-        self.path.take().map(|p| (p, self.model_fingerprint.clone()))
+        self.path
+            .take()
+            .map(|p| (p, self.model_fingerprint.clone()))
     }
 
     /// Validate that this checkpoint matches the given model.
@@ -240,10 +242,7 @@ impl HibernationStore {
                 };
 
                 // Remove from store after loading
-                let _ = db.execute(
-                    "DELETE FROM hibernations WHERE agent_id = ?1",
-                    [agent_id],
-                );
+                let _ = db.execute("DELETE FROM hibernations WHERE agent_id = ?1", [agent_id]);
 
                 Ok(Some(HibernationState {
                     conversation,
@@ -294,10 +293,7 @@ impl HibernationStore {
         }
 
         let rows = db
-            .execute(
-                "DELETE FROM hibernations WHERE agent_id = ?1",
-                [agent_id],
-            )
+            .execute("DELETE FROM hibernations WHERE agent_id = ?1", [agent_id])
             .map_err(|e| format!("hibernation delete failed: {e}"))?;
 
         Ok(rows > 0)
@@ -339,9 +335,20 @@ mod tests {
         let store = HibernationStore::open_memory().unwrap();
 
         let snap = ConversationSnapshot::capture(
-            "agent-1", "run-1", Some("prompt"), vec![],
-            3, 50, 100, DataLabel::TRUSTED_PUBLIC,
-            "model", "endpoint", 10, None, None, None,
+            "agent-1",
+            "run-1",
+            Some("prompt"),
+            vec![],
+            3,
+            50,
+            100,
+            DataLabel::TRUSTED_PUBLIC,
+            "model",
+            "endpoint",
+            10,
+            None,
+            None,
+            None,
         );
 
         store
@@ -369,8 +376,20 @@ mod tests {
 
         for id in &["a", "b", "c"] {
             let snap = ConversationSnapshot::capture(
-                id, "run", None, vec![], 0, 0, 0,
-                DataLabel::TRUSTED_PUBLIC, "m", "e", 10, None, None, None,
+                id,
+                "run",
+                None,
+                vec![],
+                0,
+                0,
+                0,
+                DataLabel::TRUSTED_PUBLIC,
+                "m",
+                "e",
+                10,
+                None,
+                None,
+                None,
             );
             store
                 .save(HibernationState {
@@ -409,10 +428,7 @@ mod tests {
 
     #[test]
     fn kv_checkpoint_take_consumes() {
-        let mut kv = KvCacheCheckpoint::new(
-            PathBuf::from("/tmp/consumed.bin"),
-            "fp".to_string(),
-        );
+        let mut kv = KvCacheCheckpoint::new(PathBuf::from("/tmp/consumed.bin"), "fp".to_string());
         let (path, fp) = kv.take().unwrap();
         assert_eq!(path, PathBuf::from("/tmp/consumed.bin"));
         assert_eq!(fp, "fp");

@@ -231,9 +231,9 @@ pub async fn verify_result(
         .as_deref()
         .unwrap_or(&task.specialist);
 
-    let agent = agents.get_mut(specialist).ok_or_else(|| {
-        FlowError::UnknownSpecialist(specialist.to_string())
-    })?;
+    let agent = agents
+        .get_mut(specialist)
+        .ok_or_else(|| FlowError::UnknownSpecialist(specialist.to_string()))?;
 
     let mut verdicts = Vec::with_capacity(config.agents);
     let mut total_prompt = 0u32;

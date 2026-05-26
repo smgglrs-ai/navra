@@ -252,8 +252,8 @@ impl AuditLog {
     /// Insert a new run into the audit log.
     pub fn begin_run(&self, run: &AuditRun) -> Result<(), MemoryError> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        let teammates_json = serde_json::to_string(&run.teammates)
-            .unwrap_or_else(|_| "[]".to_string());
+        let teammates_json =
+            serde_json::to_string(&run.teammates).unwrap_or_else(|_| "[]".to_string());
         db.execute(
             "INSERT OR REPLACE INTO audit_runs (run_id, agent_id, prompt, persona, model, started_at, ended_at, teammates, final_report, exit_reason)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -470,11 +470,13 @@ impl AuditLog {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Duration from run timestamps
-        let duration_ms: Option<i64> = db.query_row(
-            "SELECT ended_at - started_at FROM audit_runs WHERE run_id = ?1",
-            params![run_id],
-            |row| row.get(0),
-        ).ok();
+        let duration_ms: Option<i64> = db
+            .query_row(
+                "SELECT ended_at - started_at FROM audit_runs WHERE run_id = ?1",
+                params![run_id],
+                |row| row.get(0),
+            )
+            .ok();
 
         Ok(AuditSummary {
             run_id: run_id.to_string(),
@@ -575,9 +577,14 @@ impl AuditLog {
         for f in &findings {
             let id = f.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let file = f.get("file").and_then(|v| v.as_str()).unwrap_or("");
-            let severity = f.get("severity").and_then(|v| v.as_str()).unwrap_or("medium");
+            let severity = f
+                .get("severity")
+                .and_then(|v| v.as_str())
+                .unwrap_or("medium");
             let description = f.get("description").and_then(|v| v.as_str()).unwrap_or("");
-            if description.is_empty() { continue; }
+            if description.is_empty() {
+                continue;
+            }
 
             let line = f.get("line").and_then(|v| v.as_u64()).map(|v| v as i64);
             let category = f.get("category").and_then(|v| v.as_str());
@@ -801,9 +808,12 @@ mod tests {
         let log = AuditLog::open_memory().unwrap();
         log.begin_run(&make_run("run-1")).unwrap();
 
-        log.log_tool_call(&make_tool_call("run-1", 1, "file_read")).unwrap();
-        log.log_tool_call(&make_tool_call("run-1", 2, "git_status")).unwrap();
-        log.log_tool_call(&make_tool_call("run-1", 3, "file_read")).unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 1, "file_read"))
+            .unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 2, "git_status"))
+            .unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 3, "file_read"))
+            .unwrap();
 
         let calls = log.get_tool_calls("run-1").unwrap();
         assert_eq!(calls.len(), 3);
@@ -832,9 +842,8 @@ mod tests {
     fn log_tool_call_with_sanitizer_redacts_args_and_result() {
         use std::sync::Arc;
 
-        let sanitizer: ContentSanitizer = Arc::new(|content: &str| {
-            content.replace("secret-value", "[REDACTED:test]")
-        });
+        let sanitizer: ContentSanitizer =
+            Arc::new(|content: &str| content.replace("secret-value", "[REDACTED:test]"));
 
         let log = AuditLog::open_memory().unwrap().with_sanitizer(sanitizer);
         log.begin_run(&make_run("run-1")).unwrap();
@@ -846,10 +855,16 @@ mod tests {
 
         let calls = log.get_tool_calls("run-1").unwrap();
         assert_eq!(calls.len(), 1);
-        assert!(!calls[0].tool_args.contains("secret-value"),
-            "Expected args redacted: {}", calls[0].tool_args);
-        assert!(!calls[0].tool_result.contains("secret-value"),
-            "Expected result redacted: {}", calls[0].tool_result);
+        assert!(
+            !calls[0].tool_args.contains("secret-value"),
+            "Expected args redacted: {}",
+            calls[0].tool_args
+        );
+        assert!(
+            !calls[0].tool_result.contains("secret-value"),
+            "Expected result redacted: {}",
+            calls[0].tool_result
+        );
         assert!(calls[0].tool_args.contains("[REDACTED:test]"));
         assert!(calls[0].tool_result.contains("[REDACTED:test]"));
     }
@@ -873,9 +888,12 @@ mod tests {
         log.begin_run(&make_run("run-1")).unwrap();
         log.end_run("run-1", 2000, None, None).unwrap();
 
-        log.log_tool_call(&make_tool_call("run-1", 1, "file_read")).unwrap();
-        log.log_tool_call(&make_tool_call("run-1", 2, "file_read")).unwrap();
-        log.log_tool_call(&make_tool_call("run-1", 3, "git_status")).unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 1, "file_read"))
+            .unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 2, "file_read"))
+            .unwrap();
+        log.log_tool_call(&make_tool_call("run-1", 3, "git_status"))
+            .unwrap();
         log.log_model_call(&make_model_call("run-1", 1)).unwrap();
 
         let summary = log.get_summary("run-1").unwrap();
@@ -902,12 +920,14 @@ mod tests {
             run_id: "old-run".to_string(),
             timestamp_ms: 100,
             ..make_tool_call("old-run", 1, "file_read")
-        }).unwrap();
+        })
+        .unwrap();
         log.log_model_call(&AuditModelCall {
             run_id: "old-run".to_string(),
             timestamp_ms: 100,
             ..make_model_call("old-run", 1)
-        }).unwrap();
+        })
+        .unwrap();
 
         // Recent run (now)
         let now = std::time::SystemTime::now()
@@ -919,7 +939,8 @@ mod tests {
             ..make_run("recent-run")
         };
         log.begin_run(&recent_run).unwrap();
-        log.log_tool_call(&make_tool_call("recent-run", 1, "git_status")).unwrap();
+        log.log_tool_call(&make_tool_call("recent-run", 1, "git_status"))
+            .unwrap();
 
         let deleted = log.expire_older_than(1).unwrap();
         // Should delete old run + tool call + model call = 3
@@ -935,13 +956,27 @@ mod tests {
         let log = AuditLog::open_memory().unwrap();
 
         log.record_flow_task(
-            "flow-1", "scout", Some("analyst"), Some("granite-3b"),
-            "done", Some("Found 3 issues"), Some(5), Some(1200),
-        ).unwrap();
+            "flow-1",
+            "scout",
+            Some("analyst"),
+            Some("granite-3b"),
+            "done",
+            Some("Found 3 issues"),
+            Some(5),
+            Some(1200),
+        )
+        .unwrap();
         log.record_flow_task(
-            "flow-1", "worker", Some("developer"), Some("granite-8b"),
-            "done", Some("Fixed all issues"), Some(10), Some(3000),
-        ).unwrap();
+            "flow-1",
+            "worker",
+            Some("developer"),
+            Some("granite-8b"),
+            "done",
+            Some("Fixed all issues"),
+            Some(10),
+            Some(3000),
+        )
+        .unwrap();
 
         let results = log.get_flow_results("flow-1").unwrap();
         assert_eq!(results.len(), 2);
@@ -959,13 +994,27 @@ mod tests {
         let log = AuditLog::open_memory().unwrap();
 
         log.record_flow_task(
-            "flow-1", "scout", Some("analyst"), None,
-            "running", None, None, None,
-        ).unwrap();
+            "flow-1",
+            "scout",
+            Some("analyst"),
+            None,
+            "running",
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         log.record_flow_task(
-            "flow-1", "scout", Some("analyst"), Some("granite-3b"),
-            "done", Some("Analysis complete"), Some(5), Some(800),
-        ).unwrap();
+            "flow-1",
+            "scout",
+            Some("analyst"),
+            Some("granite-3b"),
+            "done",
+            Some("Analysis complete"),
+            Some(5),
+            Some(800),
+        )
+        .unwrap();
 
         let results = log.get_flow_results("flow-1").unwrap();
         assert_eq!(results.len(), 1);
@@ -978,10 +1027,41 @@ mod tests {
     fn list_flows_returns_summaries() {
         let log = AuditLog::open_memory().unwrap();
 
-        log.record_flow_task("flow-1", "scout", None, None, "done", Some("ok"), None, None).unwrap();
-        log.record_flow_task("flow-1", "worker", None, None, "done", Some("ok"), None, None).unwrap();
-        log.record_flow_task("flow-2", "task-a", None, None, "done", Some("ok"), None, None).unwrap();
-        log.record_flow_task("flow-2", "task-b", None, None, "failed", None, None, None).unwrap();
+        log.record_flow_task(
+            "flow-1",
+            "scout",
+            None,
+            None,
+            "done",
+            Some("ok"),
+            None,
+            None,
+        )
+        .unwrap();
+        log.record_flow_task(
+            "flow-1",
+            "worker",
+            None,
+            None,
+            "done",
+            Some("ok"),
+            None,
+            None,
+        )
+        .unwrap();
+        log.record_flow_task(
+            "flow-2",
+            "task-a",
+            None,
+            None,
+            "done",
+            Some("ok"),
+            None,
+            None,
+        )
+        .unwrap();
+        log.record_flow_task("flow-2", "task-b", None, None, "failed", None, None, None)
+            .unwrap();
 
         let flows = log.list_flows().unwrap();
         assert_eq!(flows.len(), 2);
@@ -1004,13 +1084,27 @@ mod tests {
         {
             let log = AuditLog::open(&db_path).unwrap();
             log.record_flow_task(
-                "flow-1", "scout", Some("analyst"), Some("granite-3b"),
-                "done", Some("Found issues"), Some(5), Some(1200),
-            ).unwrap();
+                "flow-1",
+                "scout",
+                Some("analyst"),
+                Some("granite-3b"),
+                "done",
+                Some("Found issues"),
+                Some(5),
+                Some(1200),
+            )
+            .unwrap();
             log.record_flow_task(
-                "flow-1", "worker", Some("dev"), Some("granite-8b"),
-                "done", Some("Fixed issues"), Some(10), Some(3000),
-            ).unwrap();
+                "flow-1",
+                "worker",
+                Some("dev"),
+                Some("granite-8b"),
+                "done",
+                Some("Fixed issues"),
+                Some(10),
+                Some(3000),
+            )
+            .unwrap();
         }
         // Drop closes the connection
 
@@ -1047,12 +1141,12 @@ mod tests {
             .unwrap();
 
         let db = log.db.lock().unwrap();
-        let mut stmt = db.prepare(
-            "SELECT started_at, completed_at FROM flow_results WHERE flow_id = 'flow-dur'"
-        ).unwrap();
-        let (started, completed): (Option<i64>, Option<i64>) = stmt.query_row([], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        }).unwrap();
+        let mut stmt = db
+            .prepare("SELECT started_at, completed_at FROM flow_results WHERE flow_id = 'flow-dur'")
+            .unwrap();
+        let (started, completed): (Option<i64>, Option<i64>) = stmt
+            .query_row([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap();
         drop(stmt);
         drop(db);
 
@@ -1064,9 +1158,16 @@ mod tests {
 
         // Complete the task
         log.record_flow_task(
-            "flow-dur", "task-1", Some("reviewer"), Some("granite3.3:8b"),
-            "done", Some("Found 3 issues"), Some(5), Some(1200),
-        ).unwrap();
+            "flow-dur",
+            "task-1",
+            Some("reviewer"),
+            Some("granite3.3:8b"),
+            "done",
+            Some("Found 3 issues"),
+            Some(5),
+            Some(1200),
+        )
+        .unwrap();
 
         let results = log.get_flow_results("flow-dur").unwrap();
         assert_eq!(results.len(), 1);
@@ -1074,7 +1175,10 @@ mod tests {
         assert!(r.started_at.is_some(), "started_at should be set");
         assert!(r.completed_at.is_some(), "completed_at should be set");
         let duration = r.completed_at.unwrap() - r.started_at.unwrap();
-        assert!(duration >= 1, "Duration should be >= 1 second, got {duration}");
+        assert!(
+            duration >= 1,
+            "Duration should be >= 1 second, got {duration}"
+        );
         assert_eq!(r.model.as_deref(), Some("granite3.3:8b"));
         assert_eq!(r.iterations, Some(5));
         assert_eq!(r.tokens, Some(1200));
@@ -1105,17 +1209,41 @@ mod tests {
             ]
         }"#;
 
-        let count = log.record_flow_findings("flow-f", "task-f", json_output).unwrap();
+        let count = log
+            .record_flow_findings("flow-f", "task-f", json_output)
+            .unwrap();
         assert_eq!(count, 2);
 
         let db = log.db.lock().unwrap();
-        let mut stmt = db.prepare(
-            "SELECT finding_id, file, line, severity, description, evidence, remediation
-             FROM audit_findings WHERE flow_id = 'flow-f' ORDER BY finding_id"
-        ).unwrap();
-        let rows: Vec<(String, String, Option<i64>, String, String, Option<String>, Option<String>)> = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?))
-        }).unwrap().filter_map(|r| r.ok()).collect();
+        let mut stmt = db
+            .prepare(
+                "SELECT finding_id, file, line, severity, description, evidence, remediation
+             FROM audit_findings WHERE flow_id = 'flow-f' ORDER BY finding_id",
+            )
+            .unwrap();
+        let rows: Vec<(
+            String,
+            String,
+            Option<i64>,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+        )> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].0, "sec-001");
@@ -1131,24 +1259,36 @@ mod tests {
     #[test]
     fn flow_findings_plain_text_returns_zero() {
         let log = AuditLog::open_memory().unwrap();
-        let count = log.record_flow_findings("flow-x", "task-x", "Just plain text output").unwrap();
+        let count = log
+            .record_flow_findings("flow-x", "task-x", "Just plain text output")
+            .unwrap();
         assert_eq!(count, 0);
     }
 
     #[test]
     fn gpu_sample_recording() {
         let log = AuditLog::open_memory().unwrap();
-        log.record_gpu_sample("flow-gpu-1", 85.0, 45.0, 4096.0).unwrap();
-        log.record_gpu_sample("flow-gpu-1", 92.0, 50.0, 4200.0).unwrap();
+        log.record_gpu_sample("flow-gpu-1", 85.0, 45.0, 4096.0)
+            .unwrap();
+        log.record_gpu_sample("flow-gpu-1", 92.0, 50.0, 4200.0)
+            .unwrap();
 
         let db = log.db.lock().unwrap();
         let count: i64 = db
-            .query_row("SELECT COUNT(*) FROM gpu_samples WHERE flow_id = ?1", ["flow-gpu-1"], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM gpu_samples WHERE flow_id = ?1",
+                ["flow-gpu-1"],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(count, 2);
 
         let gpu_util: f64 = db
-            .query_row("SELECT gpu_util_pct FROM gpu_samples WHERE flow_id = ?1 ORDER BY id LIMIT 1", ["flow-gpu-1"], |row| row.get(0))
+            .query_row(
+                "SELECT gpu_util_pct FROM gpu_samples WHERE flow_id = ?1 ORDER BY id LIMIT 1",
+                ["flow-gpu-1"],
+                |row| row.get(0),
+            )
             .unwrap();
         assert!((gpu_util - 85.0).abs() < 0.01);
     }

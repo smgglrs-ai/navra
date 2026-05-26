@@ -1,5 +1,5 @@
-mod acp;
 pub(crate) mod a2a;
+mod acp;
 pub mod sse;
 mod stdio_server;
 pub(crate) mod streamable;

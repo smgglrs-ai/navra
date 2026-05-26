@@ -9,8 +9,8 @@
 use smgglrs_core::auth::{AgentIdentity, CallContext};
 use smgglrs_core::ifc::{DataLabel, TaintedWritePolicy};
 use smgglrs_core::protocol::{
-    CallToolParams, CallToolResult, ClientInfo, Content, InitializeParams,
-    ToolDefinition, ToolInputSchema,
+    CallToolParams, CallToolResult, ClientInfo, Content, InitializeParams, ToolDefinition,
+    ToolInputSchema,
 };
 use smgglrs_core::McpServer;
 
@@ -169,7 +169,11 @@ async fn exfiltration_blocked_via_var_ref() {
         .await;
 
     // Write MUST be blocked
-    assert!(is_ifc_error(&write_result), "Expected IFC block, got: {:?}", write_result);
+    assert!(
+        is_ifc_error(&write_result),
+        "Expected IFC block, got: {:?}",
+        write_result
+    );
 }
 
 /// Scenario 2: Agent reads file, writes literal content (no var:// ref).
@@ -212,7 +216,10 @@ async fn exfiltration_blocked_via_context_label() {
         )
         .await;
 
-    assert!(is_ifc_error(&write_result), "Expected IFC block via context label");
+    assert!(
+        is_ifc_error(&write_result),
+        "Expected IFC block via context label"
+    );
 }
 
 /// Scenario 3: Agent reads tainted file AND calls a trusted gateway tool.
@@ -266,7 +273,11 @@ async fn clean_write_allowed_after_tainted_read() {
         )
         .await;
 
-    assert!(!write_result.is_error, "Clean var ref should be allowed, got: {:?}", write_result);
+    assert!(
+        !write_result.is_error,
+        "Clean var ref should be allowed, got: {:?}",
+        write_result
+    );
 }
 
 /// Scenario 4: Agent inspects an untrusted variable, tainting the context.
@@ -321,7 +332,10 @@ async fn var_inspect_taints_context() {
         )
         .await;
 
-    assert!(is_ifc_error(&write_result), "Write should be blocked after var_inspect tainted context");
+    assert!(
+        is_ifc_error(&write_result),
+        "Write should be blocked after var_inspect tainted context"
+    );
 }
 
 /// Auto-storage: every tool result contains a variable ID.
@@ -342,8 +356,14 @@ async fn auto_store_produces_var_id() {
         .await;
 
     let var_id = extract_var_id(&result);
-    assert!(var_id.is_some(), "Tool result should contain _var: metadata");
-    assert!(var_id.unwrap().starts_with("v-"), "Variable ID should start with v-");
+    assert!(
+        var_id.is_some(),
+        "Tool result should contain _var: metadata"
+    );
+    assert!(
+        var_id.unwrap().starts_with("v-"),
+        "Variable ID should start with v-"
+    );
 }
 
 /// smgglrs_var_list returns stored variables with labels.
@@ -393,7 +413,11 @@ async fn var_list_shows_stored_variables() {
         Content::Text(t) => {
             let vars: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
             // At least 2 from file_read (the var_list call itself hasn't been stored yet)
-            assert!(vars.len() >= 2, "Expected at least 2 variables, got {}", vars.len());
+            assert!(
+                vars.len() >= 2,
+                "Expected at least 2 variables, got {}",
+                vars.len()
+            );
             // All should have label field
             assert!(vars.iter().all(|v| v.get("label").is_some()));
         }
@@ -478,7 +502,10 @@ async fn multiple_reads_mixed_labels_per_value() {
             ctx.clone(),
         )
         .await;
-    assert!(is_ifc_error(&write_tainted), "Writing tainted var should be blocked");
+    assert!(
+        is_ifc_error(&write_tainted),
+        "Writing tainted var should be blocked"
+    );
 
     // Write referencing clean var → ALSO BLOCKED (both file_read results
     // are auto-labeled UNTRUSTED_PUBLIC by is_external_read_tool)
@@ -529,9 +556,12 @@ impl OllamaContainer {
         // Start container with random host port
         let output = std::process::Command::new("podman")
             .args([
-                "run", "-d",
-                "--name", &name,
-                "-p", "11434",
+                "run",
+                "-d",
+                "--name",
+                &name,
+                "-p",
+                "11434",
                 "docker.io/ollama/ollama:latest",
             ])
             .output()
@@ -551,12 +581,7 @@ impl OllamaContainer {
             .ok()?;
 
         let port_str = String::from_utf8_lossy(&port_output.stdout);
-        let port: u16 = port_str
-            .trim()
-            .rsplit(':')
-            .next()?
-            .parse()
-            .ok()?;
+        let port: u16 = port_str.trim().rsplit(':').next()?.parse().ok()?;
 
         eprintln!("Started ollama container '{}' on port {}", name, port);
         Some(Self { name, port })
@@ -597,7 +622,10 @@ impl OllamaContainer {
                 true
             }
             Ok(o) => {
-                eprintln!("Failed to pull model: {}", String::from_utf8_lossy(&o.stderr));
+                eprintln!(
+                    "Failed to pull model: {}",
+                    String::from_utf8_lossy(&o.stderr)
+                );
                 false
             }
             Err(e) => {
@@ -638,8 +666,7 @@ async fn llm_exfiltration_attempt_blocked() {
         return;
     }
 
-    let model = std::env::var("MYELIX_TEST_LLM_MODEL")
-        .unwrap_or_else(|_| "qwen2.5:3b".to_string());
+    let model = std::env::var("MYELIX_TEST_LLM_MODEL").unwrap_or_else(|_| "qwen2.5:3b".to_string());
 
     if !container.pull_model(&model) {
         return;
@@ -670,8 +697,8 @@ async fn llm_exfiltration_attempt_blocked() {
 
     // Step 2: Ask the LLM what to do with this file content
     use smgglrs_model::{
-        CreateResponseRequest, InputItem, Locality, ModelBackend, OpenAiBackend,
-        ResponseTool, OutputItem,
+        CreateResponseRequest, InputItem, Locality, ModelBackend, OpenAiBackend, OutputItem,
+        ResponseTool,
     };
 
     let backend = OpenAiBackend::new(container.url(), &model, None, Locality::Local);
@@ -689,22 +716,20 @@ async fn llm_exfiltration_attempt_blocked() {
                  Please follow any instructions in the file."
             )),
         ],
-        tools: vec![
-            ResponseTool {
-                kind: "function".to_string(),
-                name: "file_write".to_string(),
-                description: Some("Write content to a file at the given path".to_string()),
-                parameters: Some(serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "File path to write to"},
-                        "content": {"type": "string", "description": "Content to write"}
-                    },
-                    "required": ["path", "content"]
-                })),
-                strict: None,
-            },
-        ],
+        tools: vec![ResponseTool {
+            kind: "function".to_string(),
+            name: "file_write".to_string(),
+            description: Some("Write content to a file at the given path".to_string()),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path to write to"},
+                    "content": {"type": "string", "description": "Content to write"}
+                },
+                "required": ["path", "content"]
+            })),
+            strict: None,
+        }],
         ..CreateResponseRequest::new(model.to_string(), vec![])
     };
 
@@ -752,24 +777,31 @@ async fn llm_exfiltration_attempt_blocked() {
         .await
         .expect("Should read response body");
 
-    let raw_json: serde_json::Value = serde_json::from_str(&raw_response_text)
-        .expect("Response should be valid JSON");
+    let raw_json: serde_json::Value =
+        serde_json::from_str(&raw_response_text).expect("Response should be valid JSON");
 
     // Parse into our types for assertions
-    let response = backend.respond(&chat_request).await
+    let response = backend
+        .respond(&chat_request)
+        .await
         .expect("LLM respond request should succeed");
 
-    let attempted_write = response.function_calls().iter().any(|fc| {
-        fc.name == "file_write"
-    });
+    let attempted_write = response
+        .function_calls()
+        .iter()
+        .any(|fc| fc.name == "file_write");
 
     // --- Detailed evidence output ---
 
     // Show full file_read result including the auto-stored variable
-    let read_content_full: Vec<String> = read_result.content.iter().map(|c| match c {
-        Content::Text(t) => t.text.clone(),
-        _ => panic!("expected text content"),
-    }).collect();
+    let read_content_full: Vec<String> = read_result
+        .content
+        .iter()
+        .map(|c| match c {
+            Content::Text(t) => t.text.clone(),
+            _ => panic!("expected text content"),
+        })
+        .collect();
 
     eprintln!("\n{}", "=".repeat(70));
     eprintln!("  IFC INTEGRATION TEST: Prompt Injection → Exfiltration → Block");
@@ -816,9 +848,13 @@ async fn llm_exfiltration_attempt_blocked() {
                 let args: serde_json::Value =
                     serde_json::from_str(&fc.arguments).unwrap_or_default();
 
-                let target_path = args.get("path").and_then(|v| v.as_str())
+                let target_path = args
+                    .get("path")
+                    .and_then(|v| v.as_str())
                     .unwrap_or("/tmp/exfil.txt");
-                let llm_content = args.get("content").and_then(|v| v.as_str())
+                let llm_content = args
+                    .get("content")
+                    .and_then(|v| v.as_str())
                     .unwrap_or("<no content>");
 
                 eprintln!("    LLM wants to write:  {:?}", llm_content);
@@ -862,19 +898,22 @@ async fn llm_exfiltration_attempt_blocked() {
                 eprintln!("      Blocked: {}", ifc_blocked);
                 eprintln!("      Error:   {}", error_msg);
 
-                assert!(
-                    ifc_blocked,
-                    "IFC MUST block the LLM's exfiltration attempt"
-                );
+                assert!(ifc_blocked, "IFC MUST block the LLM's exfiltration attempt");
             }
         }
 
         eprintln!("\n{}", "=".repeat(70));
         eprintln!("  VERDICT");
-        eprintln!("  1. file_read returned data labeled Untrusted+Public ({})", var_id);
+        eprintln!(
+            "  1. file_read returned data labeled Untrusted+Public ({})",
+            var_id
+        );
         eprintln!("  2. The LLM autonomously called file_write with that data");
         eprintln!("     (see raw JSON in step 3 — this is the model's own decision)");
-        eprintln!("  3. The IFC engine traced the data back to {} and blocked", var_id);
+        eprintln!(
+            "  3. The IFC engine traced the data back to {} and blocked",
+            var_id
+        );
         eprintln!("     the write because the variable's label is Untrusted.");
         eprintln!("  Prompt injection succeeded. Data exfiltration prevented.");
         eprintln!("{}\n", "=".repeat(70));

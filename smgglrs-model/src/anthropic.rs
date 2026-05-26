@@ -4,8 +4,8 @@
 //! Supports chat completion with tool use and streaming.
 
 use crate::chat::{
-    ChatMessage, ChatRequest, ChatResponse, ChatRole, FinishReason,
-    FunctionCall, ToolCall, ToolChoice,
+    ChatMessage, ChatRequest, ChatResponse, ChatRole, FinishReason, FunctionCall, ToolCall,
+    ToolChoice,
 };
 use crate::{GenerateRequest, GenerateResponse, Locality, ModelBackend, ModelError};
 /// Anthropic Messages API version.
@@ -168,9 +168,7 @@ impl AnthropicBackend {
                     }
                 }
                 Some("tool_use") => {
-                    if let (Some(id), Some(name)) =
-                        (block["id"].as_str(), block["name"].as_str())
-                    {
+                    if let (Some(id), Some(name)) = (block["id"].as_str(), block["name"].as_str()) {
                         let input = &block["input"];
                         tool_calls.push(ToolCall {
                             id: id.to_string(),
@@ -668,7 +666,10 @@ mod tests {
         assert_eq!(resp.message.tool_calls.len(), 1);
         assert_eq!(resp.message.tool_calls[0].id, "toolu_1");
         assert_eq!(resp.message.tool_calls[0].function.name, "get_weather");
-        assert_eq!(resp.message.tool_calls[0].function.arguments, r#"{"city":"Paris"}"#);
+        assert_eq!(
+            resp.message.tool_calls[0].function.arguments,
+            r#"{"city":"Paris"}"#
+        );
     }
 
     #[test]
@@ -737,7 +738,8 @@ mod tests {
     #[test]
     fn parse_stream_message_start_captures_prompt_tokens() {
         let mut prompt_tokens = None;
-        let event = r#"{"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":42}}}"#;
+        let event =
+            r#"{"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":42}}}"#;
         let result = parse_anthropic_stream_event(event, &mut prompt_tokens).unwrap();
         assert!(result.is_none()); // No chunk emitted
         assert_eq!(prompt_tokens, Some(42));

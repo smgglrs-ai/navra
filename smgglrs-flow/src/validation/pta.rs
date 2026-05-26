@@ -42,7 +42,11 @@ impl PtaNode {
 
     /// Count all nodes in this subtree (including self).
     fn subtree_count(&self) -> usize {
-        1 + self.children.iter().map(|c| c.subtree_count()).sum::<usize>()
+        1 + self
+            .children
+            .iter()
+            .map(|c| c.subtree_count())
+            .sum::<usize>()
     }
 }
 
@@ -208,24 +212,43 @@ mod tests {
 
         // Run 1: scout -> planner -> specialist1 -> specialist2 -> synthesizer
         pta.add_trace(&trace_from_seq(&[
-            "scout", "planner", "specialist1", "specialist2", "synthesizer",
+            "scout",
+            "planner",
+            "specialist1",
+            "specialist2",
+            "synthesizer",
         ]));
         // Run 2: scout -> planner -> specialist2 -> specialist1 -> synthesizer
         // (non-deterministic parallel order)
         pta.add_trace(&trace_from_seq(&[
-            "scout", "planner", "specialist2", "specialist1", "synthesizer",
+            "scout",
+            "planner",
+            "specialist2",
+            "specialist1",
+            "synthesizer",
         ]));
 
         // Both orderings accepted
         assert!(pta.accepts(&trace_from_seq(&[
-            "scout", "planner", "specialist1", "specialist2", "synthesizer",
+            "scout",
+            "planner",
+            "specialist1",
+            "specialist2",
+            "synthesizer",
         ])));
         assert!(pta.accepts(&trace_from_seq(&[
-            "scout", "planner", "specialist2", "specialist1", "synthesizer",
+            "scout",
+            "planner",
+            "specialist2",
+            "specialist1",
+            "synthesizer",
         ])));
         // Different specialist ordering not seen before
         assert!(!pta.accepts(&trace_from_seq(&[
-            "scout", "planner", "specialist1", "synthesizer",
+            "scout",
+            "planner",
+            "specialist1",
+            "synthesizer",
         ])));
     }
 

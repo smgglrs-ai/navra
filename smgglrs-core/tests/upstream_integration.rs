@@ -18,7 +18,10 @@ fn test_server_path() -> PathBuf {
 async fn upstream_spawn_and_discover_tools() {
     let upstream = Upstream::spawn(
         "test",
-        &["python3".to_string(), test_server_path().to_string_lossy().to_string()],
+        &[
+            "python3".to_string(),
+            test_server_path().to_string_lossy().to_string(),
+        ],
         None,
     )
     .await
@@ -37,7 +40,10 @@ async fn upstream_spawn_and_discover_tools() {
 async fn upstream_spawn_and_discover_prompts() {
     let upstream = Upstream::spawn(
         "test",
-        &["python3".to_string(), test_server_path().to_string_lossy().to_string()],
+        &[
+            "python3".to_string(),
+            test_server_path().to_string_lossy().to_string(),
+        ],
         None,
     )
     .await
@@ -56,7 +62,10 @@ async fn upstream_spawn_and_discover_prompts() {
 async fn upstream_call_tool_through_module() {
     let upstream = Upstream::spawn(
         "test",
-        &["python3".to_string(), test_server_path().to_string_lossy().to_string()],
+        &[
+            "python3".to_string(),
+            test_server_path().to_string_lossy().to_string(),
+        ],
         None,
     )
     .await
@@ -87,7 +96,10 @@ async fn upstream_call_tool_through_module() {
 async fn upstream_get_prompt_through_module() {
     let upstream = Upstream::spawn(
         "test",
-        &["python3".to_string(), test_server_path().to_string_lossy().to_string()],
+        &[
+            "python3".to_string(),
+            test_server_path().to_string_lossy().to_string(),
+        ],
         None,
     )
     .await
@@ -115,7 +127,10 @@ async fn upstream_get_prompt_through_module() {
 async fn upstream_registers_in_server() {
     let upstream = Upstream::spawn(
         "test",
-        &["python3".to_string(), test_server_path().to_string_lossy().to_string()],
+        &[
+            "python3".to_string(),
+            test_server_path().to_string_lossy().to_string(),
+        ],
         None,
     )
     .await
@@ -125,9 +140,7 @@ async fn upstream_registers_in_server() {
         .await
         .expect("Failed to discover");
 
-    let server = smgglrs_core::McpServer::builder()
-        .module(module)
-        .build();
+    let server = smgglrs_core::McpServer::builder().module(module).build();
 
     // 1 upstream tool + 3 gateway tools (smgglrs_var_*)
     assert_eq!(server.tool_count(), 4);

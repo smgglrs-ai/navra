@@ -94,7 +94,10 @@ enabled = false
     assert_eq!(config.upstream[0].name, "smgglrs");
     assert_eq!(config.upstream[0].transport, "stdio");
     assert_eq!(config.upstream[0].command[0], "poetry");
-    assert_eq!(config.upstream[0].cwd.as_deref(), Some("/home/user/smgglrs"));
+    assert_eq!(
+        config.upstream[0].cwd.as_deref(),
+        Some("/home/user/smgglrs")
+    );
 
     // http
     assert_eq!(config.upstream[1].name, "api-server");
@@ -207,7 +210,10 @@ max_delegation_depth = 2
 "#;
     let config: Config = toml::from_str(toml).unwrap();
     let identity = config.server.identity.as_ref().unwrap();
-    assert_eq!(identity.key_path.as_deref(), Some("/etc/smgglrs/identity.key"));
+    assert_eq!(
+        identity.key_path.as_deref(),
+        Some("/etc/smgglrs/identity.key")
+    );
     assert_eq!(identity.token_ttl, 1800);
     assert_eq!(identity.max_delegation_depth, 2);
 }
@@ -251,7 +257,10 @@ token_ttl = 900
 "#;
     let config: Config = toml::from_str(toml).unwrap();
     let agent = &config.agents[0];
-    assert_eq!(agent.pubkey.as_deref(), Some("~/.config/smgglrs/agents/leader.pub"));
+    assert_eq!(
+        agent.pubkey.as_deref(),
+        Some("~/.config/smgglrs/agents/leader.pub")
+    );
     assert!(agent.capability_token);
     assert_eq!(agent.token_ttl, Some(900));
 }
@@ -402,7 +411,10 @@ patterns = ["*_create", "*_review"]
     assert_eq!(config.routing.tiers[0].name, "small");
     assert_eq!(config.routing.tiers[0].model, "qwen2.5:3b");
     assert_eq!(config.routing.tiers[0].max_tokens, 500);
-    assert_eq!(config.routing.tiers[1].patterns, vec!["file_write", "git_commit", "github_*"]);
+    assert_eq!(
+        config.routing.tiers[1].patterns,
+        vec!["file_write", "git_commit", "github_*"]
+    );
     assert_eq!(config.routing.tiers[2].name, "large");
 }
 
@@ -446,7 +458,11 @@ debounce_ms = 1000
     assert_eq!(config.triggers.len(), 3);
 
     match &config.triggers[0] {
-        crate::triggers::TriggerConfig::Webhook { path, secret, flow_name } => {
+        crate::triggers::TriggerConfig::Webhook {
+            path,
+            secret,
+            flow_name,
+        } => {
             assert_eq!(path, "/hook/deploy");
             assert_eq!(secret.as_deref(), Some("my-webhook-secret"));
             assert_eq!(flow_name, "review");
@@ -455,7 +471,10 @@ debounce_ms = 1000
     }
 
     match &config.triggers[1] {
-        crate::triggers::TriggerConfig::Cron { schedule, flow_name } => {
+        crate::triggers::TriggerConfig::Cron {
+            schedule,
+            flow_name,
+        } => {
             assert_eq!(schedule, "0 9 * * 1-5");
             assert_eq!(flow_name, "daily-review");
         }
@@ -463,7 +482,12 @@ debounce_ms = 1000
     }
 
     match &config.triggers[2] {
-        crate::triggers::TriggerConfig::FileWatch { path, pattern, flow_name, debounce_ms } => {
+        crate::triggers::TriggerConfig::FileWatch {
+            path,
+            pattern,
+            flow_name,
+            debounce_ms,
+        } => {
             assert_eq!(path, "~/Documents/inbox");
             assert_eq!(pattern.as_deref(), Some("*.pdf"));
             assert_eq!(flow_name, "process-document");

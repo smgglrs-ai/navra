@@ -230,7 +230,10 @@ impl SessionBackend for DashMapSessionBackend {
     }
 
     fn list_all(&self) -> Vec<Session> {
-        self.sessions.iter().map(|entry| entry.value().clone()).collect()
+        self.sessions
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 }
 
@@ -372,7 +375,10 @@ mod tests {
             confidentiality: crate::ifc::Confidentiality::Public,
         };
         store.update_context_label("d1", tainted);
-        assert_eq!(store.context_label("d1").integrity, crate::ifc::Integrity::Untrusted);
+        assert_eq!(
+            store.context_label("d1").integrity,
+            crate::ifc::Integrity::Untrusted
+        );
     }
 
     #[test]
@@ -383,8 +389,7 @@ mod tests {
         store.create(test_session("c"));
         let all = store.list_all();
         assert_eq!(all.len(), 3);
-        let ids: std::collections::HashSet<&str> =
-            all.iter().map(|s| s.id.as_str()).collect();
+        let ids: std::collections::HashSet<&str> = all.iter().map(|s| s.id.as_str()).collect();
         assert!(ids.contains("a"));
         assert!(ids.contains("b"));
         assert!(ids.contains("c"));

@@ -3,17 +3,17 @@
 //! Connects to vLLM, ollama, or any OpenAI-compatible API server.
 //! Supports generate, embed, classify, transcribe, and synthesize.
 
+use crate::chat::{
+    ChatMessage, ChatRequest, ChatResponse, ChatRole, FinishReason, FunctionCall, ToolCall,
+    ToolChoice,
+};
 use crate::{
-    ClassifyLabel, ClassifyRequest, ClassifyResponse, EmbedRequest, EmbedResponse,
-    GenerateRequest, GenerateResponse, Locality, ModelBackend, ModelError, SynthesizeRequest,
-    SynthesizeResponse, TranscribeRequest, TranscribeResponse,
+    ClassifyLabel, ClassifyRequest, ClassifyResponse, EmbedRequest, EmbedResponse, GenerateRequest,
+    GenerateResponse, Locality, ModelBackend, ModelError, SynthesizeRequest, SynthesizeResponse,
+    TranscribeRequest, TranscribeResponse,
 };
 use std::future::Future;
 use std::pin::Pin;
-use crate::chat::{
-    ChatMessage, ChatRequest, ChatResponse, ChatRole,
-    FinishReason, FunctionCall, ToolCall, ToolChoice,
-};
 
 /// External model backend using OpenAI-compatible HTTP APIs.
 pub struct OpenAiBackend {
@@ -73,9 +73,8 @@ impl ModelBackend for OpenAiBackend {
         if request.images.is_empty() {
             messages.push(serde_json::json!({"role": "user", "content": &request.prompt}));
         } else {
-            let mut content_parts = vec![
-                serde_json::json!({"type": "text", "text": &request.prompt}),
-            ];
+            let mut content_parts =
+                vec![serde_json::json!({"type": "text", "text": &request.prompt})];
             for image in &request.images {
                 content_parts.push(serde_json::json!({
                     "type": "image_url",
@@ -435,7 +434,8 @@ impl ModelBackend for OpenAiBackend {
     }
 
     fn cancel(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
-        self.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         Box::pin(async {})
     }
 }
@@ -588,7 +588,9 @@ impl OpenAiBackend {
             .unwrap_or(FinishReason::Stop);
 
         let prompt_tokens = json["usage"]["prompt_tokens"].as_u64().map(|v| v as u32);
-        let completion_tokens = json["usage"]["completion_tokens"].as_u64().map(|v| v as u32);
+        let completion_tokens = json["usage"]["completion_tokens"]
+            .as_u64()
+            .map(|v| v as u32);
 
         Ok(ChatResponse {
             message: ChatMessage {

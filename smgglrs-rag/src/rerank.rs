@@ -74,7 +74,7 @@ impl CrossEncoderReranker {
         let session = ort::session::Session::builder()
             .map_err(|e| CrossEncoderError::Load(format!("session builder: {e}")))?
             .with_execution_providers([
-                ort::execution_providers::CPUExecutionProvider::default().build(),
+                ort::execution_providers::CPUExecutionProvider::default().build()
             ])
             .map_err(|e| CrossEncoderError::Load(format!("execution provider: {e}")))?
             .commit_from_file(model_path)
@@ -123,11 +123,7 @@ impl CrossEncoderReranker {
             .iter()
             .map(|&m| m as i64)
             .collect();
-        let token_type_ids: Vec<i64> = encoding
-            .get_type_ids()
-            .iter()
-            .map(|&t| t as i64)
-            .collect();
+        let token_type_ids: Vec<i64> = encoding.get_type_ids().iter().map(|&t| t as i64).collect();
 
         let seq_len = input_ids.len();
 
@@ -157,9 +153,9 @@ impl CrossEncoderReranker {
             CrossEncoderError::Inference("no output from cross-encoder".to_string())
         })?;
 
-        let (_shape, data) = output.try_extract_tensor::<f32>().map_err(|e| {
-            CrossEncoderError::Inference(format!("output extraction: {e}"))
-        })?;
+        let (_shape, data) = output
+            .try_extract_tensor::<f32>()
+            .map_err(|e| CrossEncoderError::Inference(format!("output extraction: {e}")))?;
 
         // The model may output a single value or a pair [not-relevant, relevant].
         // For ms-marco models, it's a single logit.

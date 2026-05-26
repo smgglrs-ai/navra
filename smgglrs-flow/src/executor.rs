@@ -220,11 +220,8 @@ impl DagExecutor {
                         .and_then(|r| r(&task.mandate));
 
                     // Build prompt, injecting past insight and prior failure context
-                    let mut prompt = build_task_prompt_with_insight(
-                        task,
-                        &results,
-                        past_insight.as_deref(),
-                    );
+                    let mut prompt =
+                        build_task_prompt_with_insight(task, &results, past_insight.as_deref());
                     if !attempts.is_empty() {
                         prompt = inject_retry_context(&prompt, &attempts);
                     }
@@ -341,8 +338,10 @@ impl DagExecutor {
                                             "For [{}] with mandate \"{}\", \
                                              the approach succeeded in {} iteration(s). \
                                              Key outcome: {}.",
-                                            task.id, task.mandate,
-                                            retry + 1, summary,
+                                            task.id,
+                                            task.mandate,
+                                            retry + 1,
+                                            summary,
                                         ),
                                         tags: vec!["success".into(), "strategy".into()],
                                         confidence: 0.85,
@@ -408,7 +407,10 @@ impl DagExecutor {
                                 RecoveryAction::Abort => {
                                     return Err(FlowError::TaskFailed {
                                         task: task.id.clone(),
-                                        reason: attempts.last().map(|a| a.error.clone()).unwrap_or_else(|| "unknown error".into()),
+                                        reason: attempts
+                                            .last()
+                                            .map(|a| a.error.clone())
+                                            .unwrap_or_else(|| "unknown error".into()),
                                     });
                                 }
                                 RecoveryAction::Skip => break,
@@ -480,10 +482,7 @@ impl DagExecutor {
                                 TaskResult {
                                     task_id: skip_id.clone(),
                                     status: TaskStatus::Skipped,
-                                    output: format!(
-                                        "Skipped: dependency '{}' failed",
-                                        task.id
-                                    ),
+                                    output: format!("Skipped: dependency '{}' failed", task.id),
                                     prompt_tokens: 0,
                                     completion_tokens: 0,
                                     taint: DataLabel::TRUSTED_PUBLIC,
@@ -510,10 +509,7 @@ impl DagExecutor {
 /// Build the user prompt for a task, injecting dependency outputs and
 /// an optional retrieved insight (ReasoningBank k=1) as context.
 #[cfg(test)]
-fn build_task_prompt(
-    task: &Task,
-    results: &HashMap<String, TaskResult>,
-) -> String {
+fn build_task_prompt(task: &Task, results: &HashMap<String, TaskResult>) -> String {
     build_task_prompt_with_insight(task, results, None)
 }
 

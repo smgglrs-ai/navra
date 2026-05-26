@@ -1,8 +1,7 @@
 use crate::auth::CallContext;
 use crate::protocol::a2a::{
-    self, Artifact, Message, MessageSendParams, Part, Task, TaskIdParams,
-    TaskQueryParams, TaskState, TaskStatus, TASK_NOT_CANCELABLE, TASK_NOT_FOUND,
-    UNSUPPORTED_OPERATION,
+    self, Artifact, Message, MessageSendParams, Part, Task, TaskIdParams, TaskQueryParams,
+    TaskState, TaskStatus, TASK_NOT_CANCELABLE, TASK_NOT_FOUND, UNSUPPORTED_OPERATION,
 };
 use crate::protocol::{CallToolParams, JsonRpcError};
 use crate::server::McpServer;
@@ -184,9 +183,9 @@ pub async fn handle_message_send(
         },
     );
 
-    task_store.get(&task_id).ok_or_else(|| {
-        JsonRpcError::internal("Task disappeared after creation")
-    })
+    task_store
+        .get(&task_id)
+        .ok_or_else(|| JsonRpcError::internal("Task disappeared after creation"))
 }
 
 /// Handle `tasks/get` — retrieve an existing task by ID.

@@ -59,7 +59,10 @@ mod tests {
 
         let response_tool = tool_def_to_response(&tool);
         assert_eq!(response_tool.name, "file_read");
-        assert_eq!(response_tool.description.as_deref(), Some("Read a document"));
+        assert_eq!(
+            response_tool.description.as_deref(),
+            Some("Read a document")
+        );
         let params = response_tool.parameters.unwrap();
         assert_eq!(params["type"], "object");
         assert_eq!(params["properties"]["path"]["type"], "string");

@@ -19,8 +19,8 @@ pub use transport::Transport;
 
 use crate::mcp::{
     CallToolParams, CallToolResult, GetPromptParams, GetPromptResult, ListPromptsResult,
-    ListResourcesResult, ListToolsResult, PromptDefinition, ReadResourceParams,
-    ReadResourceResult, ResourceDefinition, ToolDefinition, PROTOCOL_VERSION,
+    ListResourcesResult, ListToolsResult, PromptDefinition, ReadResourceParams, ReadResourceResult,
+    ResourceDefinition, ToolDefinition, PROTOCOL_VERSION,
 };
 use std::sync::atomic::{AtomicI64, Ordering};
 
@@ -63,9 +63,7 @@ impl UpstreamError {
     /// Returns true if this error is permanent and should NOT be retried.
     pub fn is_permanent(&self) -> bool {
         match self {
-            UpstreamError::Spawn { source, .. } => {
-                source.kind() == std::io::ErrorKind::NotFound
-            }
+            UpstreamError::Spawn { source, .. } => source.kind() == std::io::ErrorKind::NotFound,
             UpstreamError::Protocol { message, .. } => {
                 message.contains("HTTP 401")
                     || message.contains("HTTP 403")
@@ -86,10 +84,7 @@ pub struct Upstream {
 
 impl Upstream {
     /// Create an upstream from a transport and initialize the MCP connection.
-    pub async fn connect(
-        name: &str,
-        transport: impl Transport,
-    ) -> Result<Self, UpstreamError> {
+    pub async fn connect(name: &str, transport: impl Transport) -> Result<Self, UpstreamError> {
         let mut upstream = Self {
             name: name.to_string(),
             transport: Box::new(transport),
@@ -155,12 +150,8 @@ impl Upstream {
         config: RetryConfig,
     ) -> Result<Self, UpstreamError> {
         let factory = retry::StdioTransportFactory::new(name, command, cwd);
-        let transport = retry::ResilientTransport::from_factory(
-            name,
-            Box::new(factory),
-            config,
-        )
-        .await?;
+        let transport =
+            retry::ResilientTransport::from_factory(name, Box::new(factory), config).await?;
         Self::connect(name, transport).await
     }
 
@@ -171,12 +162,8 @@ impl Upstream {
         config: RetryConfig,
     ) -> Result<Self, UpstreamError> {
         let factory = retry::HttpTransportFactory::new(name, url);
-        let transport = retry::ResilientTransport::from_factory(
-            name,
-            Box::new(factory),
-            config,
-        )
-        .await?;
+        let transport =
+            retry::ResilientTransport::from_factory(name, Box::new(factory), config).await?;
         Self::connect(name, transport).await
     }
 
@@ -188,12 +175,8 @@ impl Upstream {
         config: RetryConfig,
     ) -> Result<Self, UpstreamError> {
         let factory = retry::HttpTransportFactory::with_tls(name, url, tls);
-        let transport = retry::ResilientTransport::from_factory(
-            name,
-            Box::new(factory),
-            config,
-        )
-        .await?;
+        let transport =
+            retry::ResilientTransport::from_factory(name, Box::new(factory), config).await?;
         Self::connect(name, transport).await
     }
 
@@ -225,12 +208,8 @@ impl Upstream {
         config: RetryConfig,
     ) -> Result<Self, UpstreamError> {
         let factory = retry::SseTransportFactory::new(name, url);
-        let transport = retry::ResilientTransport::from_factory(
-            name,
-            Box::new(factory),
-            config,
-        )
-        .await?;
+        let transport =
+            retry::ResilientTransport::from_factory(name, Box::new(factory), config).await?;
         Self::connect(name, transport).await
     }
 
@@ -242,12 +221,8 @@ impl Upstream {
         config: RetryConfig,
     ) -> Result<Self, UpstreamError> {
         let factory = retry::SseTransportFactory::with_tls(name, url, tls);
-        let transport = retry::ResilientTransport::from_factory(
-            name,
-            Box::new(factory),
-            config,
-        )
-        .await?;
+        let transport =
+            retry::ResilientTransport::from_factory(name, Box::new(factory), config).await?;
         Self::connect(name, transport).await
     }
 
@@ -264,10 +239,7 @@ impl Upstream {
 
         let _result = self.call("initialize", Some(params)).await?;
 
-        let _ack = self
-            .call("notifications/initialized", None)
-            .await
-            .ok();
+        let _ack = self.call("notifications/initialized", None).await.ok();
 
         Ok(())
     }
@@ -350,11 +322,10 @@ impl Upstream {
         &mut self,
         params: CallToolParams,
     ) -> Result<CallToolResult, UpstreamError> {
-        let value =
-            serde_json::to_value(&params).map_err(|e| UpstreamError::Json {
-                name: self.name.clone(),
-                source: e,
-            })?;
+        let value = serde_json::to_value(&params).map_err(|e| UpstreamError::Json {
+            name: self.name.clone(),
+            source: e,
+        })?;
         let result = self.call("tools/call", Some(value)).await?;
         serde_json::from_value(result).map_err(|e| UpstreamError::Json {
             name: self.name.clone(),
@@ -366,11 +337,10 @@ impl Upstream {
         &mut self,
         params: GetPromptParams,
     ) -> Result<GetPromptResult, UpstreamError> {
-        let value =
-            serde_json::to_value(&params).map_err(|e| UpstreamError::Json {
-                name: self.name.clone(),
-                source: e,
-            })?;
+        let value = serde_json::to_value(&params).map_err(|e| UpstreamError::Json {
+            name: self.name.clone(),
+            source: e,
+        })?;
         let result = self.call("prompts/get", Some(value)).await?;
         serde_json::from_value(result).map_err(|e| UpstreamError::Json {
             name: self.name.clone(),
@@ -382,11 +352,10 @@ impl Upstream {
         &mut self,
         params: ReadResourceParams,
     ) -> Result<ReadResourceResult, UpstreamError> {
-        let value =
-            serde_json::to_value(&params).map_err(|e| UpstreamError::Json {
-                name: self.name.clone(),
-                source: e,
-            })?;
+        let value = serde_json::to_value(&params).map_err(|e| UpstreamError::Json {
+            name: self.name.clone(),
+            source: e,
+        })?;
         let result = self.call("resources/read", Some(value)).await?;
         serde_json::from_value(result).map_err(|e| UpstreamError::Json {
             name: self.name.clone(),

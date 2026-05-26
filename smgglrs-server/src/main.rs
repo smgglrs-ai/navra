@@ -11,8 +11,8 @@ mod memory_tools;
 mod plan_execute;
 mod registry_tools;
 mod team_tools;
-mod triggers;
 mod tray;
+mod triggers;
 mod ui;
 mod ui_agent;
 mod ui_events;
@@ -20,9 +20,9 @@ pub(crate) mod workspace;
 
 use clap::Parser;
 use smgglrs_core::auth::{AgentIdentity, TokenAuthenticator};
-use smgglrs_core::Module;
 use smgglrs_core::identity::{self, CapSigner, Ed25519Signer};
 use smgglrs_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
+use smgglrs_core::Module;
 use std::sync::Arc;
 
 use cli::{Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
@@ -36,7 +36,12 @@ impl Module for ExecModuleRef {
     fn name(&self) -> &str {
         self.0.name()
     }
-    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
+    fn tools(
+        &self,
+    ) -> Vec<(
+        smgglrs_core::protocol::ToolDefinition,
+        smgglrs_core::ToolHandler,
+    )> {
         self.0.tools()
     }
 }
@@ -64,8 +69,8 @@ fn init_tracing() -> anyhow::Result<()> {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
 
-    let env_filter = tracing_subscriber::EnvFilter::from_default_env()
-        .add_directive("smgglrs=info".parse()?);
+    let env_filter =
+        tracing_subscriber::EnvFilter::from_default_env().add_directive("smgglrs=info".parse()?);
     let fmt_layer = tracing_subscriber::fmt::layer();
 
     let registry = tracing_subscriber::registry()
@@ -86,8 +91,7 @@ fn init_tracing() -> anyhow::Result<()> {
                         .build(),
                 )
                 .build();
-            let otel_layer = tracing_opentelemetry::layer()
-                .with_tracer(provider.tracer("smgglrs"));
+            let otel_layer = tracing_opentelemetry::layer().with_tracer(provider.tracer("smgglrs"));
             registry.with(otel_layer).init();
             return Ok(());
         }
@@ -104,43 +108,46 @@ async fn main() -> anyhow::Result<()> {
     init_tracing()?;
 
     match cli.command {
-        Commands::Serve { config: config_path, no_tray } => {
+        Commands::Serve {
+            config: config_path,
+            no_tray,
+        } => {
             let cfg = config::Config::load(config_path.as_deref())?;
             serve(cfg, no_tray).await?;
         }
-        Commands::Stdio { config: config_path } => {
+        Commands::Stdio {
+            config: config_path,
+        } => {
             let cfg = config::Config::load(config_path.as_deref())?;
             stdio(cfg).await?;
         }
-        Commands::Token { action } => {
-            match action {
-                TokenAction::Generate { name, permissions } => {
-                    let token = config::generate_token();
-                    let hash = TokenAuthenticator::hash_token(&token);
-                    println!("Agent: {name}");
-                    println!("Permissions: {permissions}");
-                    println!("Token: {token}");
-                    println!("Hash:  {hash}");
-                    println!("\nAdd to config.toml:");
-                    println!("[[agents]]");
-                    println!("name = \"{name}\"");
-                    println!("token_hash = \"{hash}\"");
-                    println!("permissions = \"{permissions}\"");
-                }
-                TokenAction::List => {
-                    let cfg = config::Config::load(None)?;
-                    if cfg.agents.is_empty() {
-                        println!("No agents configured.");
-                    } else {
-                        println!("{:<20} {:<20}", "NAME", "PERMISSIONS");
-                        println!("{:<20} {:<20}", "----", "-----------");
-                        for agent in &cfg.agents {
-                            println!("{:<20} {:<20}", agent.name, agent.permissions);
-                        }
+        Commands::Token { action } => match action {
+            TokenAction::Generate { name, permissions } => {
+                let token = config::generate_token();
+                let hash = TokenAuthenticator::hash_token(&token);
+                println!("Agent: {name}");
+                println!("Permissions: {permissions}");
+                println!("Token: {token}");
+                println!("Hash:  {hash}");
+                println!("\nAdd to config.toml:");
+                println!("[[agents]]");
+                println!("name = \"{name}\"");
+                println!("token_hash = \"{hash}\"");
+                println!("permissions = \"{permissions}\"");
+            }
+            TokenAction::List => {
+                let cfg = config::Config::load(None)?;
+                if cfg.agents.is_empty() {
+                    println!("No agents configured.");
+                } else {
+                    println!("{:<20} {:<20}", "NAME", "PERMISSIONS");
+                    println!("{:<20} {:<20}", "----", "-----------");
+                    for agent in &cfg.agents {
+                        println!("{:<20} {:<20}", agent.name, agent.permissions);
                     }
                 }
             }
-        }
+        },
         Commands::Approve { id } => {
             let cfg = config::Config::load(None)?;
             let addr = cfg.server.listen_addr();
@@ -186,7 +193,11 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Config { action } => match action {
-            ConfigAction::ImportMcp { path, discover, no_redact } => {
+            ConfigAction::ImportMcp {
+                path,
+                discover,
+                no_redact,
+            } => {
                 let redact = !no_redact;
                 if discover || path.is_none() {
                     let files = if discover {
@@ -210,17 +221,32 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         },
-        Commands::Improve { target, cycles, branch, config } => {
+        Commands::Improve {
+            target,
+            cycles,
+            branch,
+            config,
+        } => {
             println!("smgglrs self-improvement: {} cycles on {}", cycles, target);
             println!("Branch: {branch}");
 
-            let target_path = std::path::Path::new(&target).canonicalize()
-                .unwrap_or_else(|e| { eprintln!("Cannot resolve target: {e}"); std::process::exit(1); });
+            let target_path = std::path::Path::new(&target)
+                .canonicalize()
+                .unwrap_or_else(|e| {
+                    eprintln!("Cannot resolve target: {e}");
+                    std::process::exit(1);
+                });
 
             // Create git worktree
             let worktree_path = target_path.join(".smgglrs-improve").join(&branch);
             let worktree_result = std::process::Command::new("git")
-                .args(["worktree", "add", worktree_path.to_str().unwrap(), "-b", &branch])
+                .args([
+                    "worktree",
+                    "add",
+                    worktree_path.to_str().unwrap(),
+                    "-b",
+                    &branch,
+                ])
                 .current_dir(&target_path)
                 .output();
 
@@ -237,7 +263,10 @@ async fn main() -> anyhow::Result<()> {
                         std::process::exit(1);
                     }
                 }
-                Err(e) => { eprintln!("git worktree failed: {e}"); std::process::exit(1); }
+                Err(e) => {
+                    eprintln!("git worktree failed: {e}");
+                    std::process::exit(1);
+                }
             }
 
             // Start the server, run cycles, then stop
@@ -247,7 +276,10 @@ async fn main() -> anyhow::Result<()> {
             println!();
             println!("Use 'smgglrs serve' in another terminal, then call:");
             println!("  flow_start(flow_name=\"self-improve\", prompt=\"Improve the project\",");
-            println!("    parameters={{\"target_dir\": \"{}\", \"cycle\": \"1\"}})", worktree_path.display());
+            println!(
+                "    parameters={{\"target_dir\": \"{}\", \"cycle\": \"1\"}})",
+                worktree_path.display()
+            );
             println!();
             println!("After each cycle, review the worktree and merge if satisfied:");
             println!("  cd {} && git log --oneline", target_path.display());
@@ -276,15 +308,60 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        Commands::Run { prompt, model, persona, endpoint, token, max_iterations, upstream_prompts } => {
-            run_agent(&prompt, model.as_deref(), &persona, &endpoint, token.as_deref(), max_iterations, &upstream_prompts).await?;
+        Commands::Run {
+            prompt,
+            model,
+            persona,
+            endpoint,
+            token,
+            max_iterations,
+            upstream_prompts,
+        } => {
+            run_agent(
+                &prompt,
+                model.as_deref(),
+                &persona,
+                &endpoint,
+                token.as_deref(),
+                max_iterations,
+                &upstream_prompts,
+            )
+            .await?;
         }
-        Commands::Audit { limit, detail, agent, tool, verify } => {
+        Commands::Audit {
+            limit,
+            detail,
+            agent,
+            tool,
+            verify,
+        } => {
             audit_command(limit, detail, agent, tool, verify)?;
         }
-        Commands::Demo { project, live, model, max_rounds, files_per_round, min_delta, prompt, writable, allow_read, allow_write } => {
+        Commands::Demo {
+            project,
+            live,
+            model,
+            max_rounds,
+            files_per_round,
+            min_delta,
+            prompt,
+            writable,
+            allow_read,
+            allow_write,
+        } => {
             if live {
-                demo::run_demo_live(&project, &model, max_rounds, files_per_round, min_delta, prompt.as_deref(), writable, &allow_read, &allow_write).await?;
+                demo::run_demo_live(
+                    &project,
+                    &model,
+                    max_rounds,
+                    files_per_round,
+                    min_delta,
+                    prompt.as_deref(),
+                    writable,
+                    &allow_read,
+                    &allow_write,
+                )
+                .await?;
             } else {
                 demo::run_demo(&project).await?;
             }
@@ -297,7 +374,12 @@ async fn main() -> anyhow::Result<()> {
 fn import_mcp_file(path: &str, redact: bool) -> anyhow::Result<()> {
     let content = std::fs::read_to_string(path)?;
     let (format, servers) = config::import::detect_and_parse(&content)?;
-    eprintln!("# {} — detected {} format, {} server(s)", path, format, servers.len());
+    eprintln!(
+        "# {} — detected {} format, {} server(s)",
+        path,
+        format,
+        servers.len()
+    );
     print!("{}", config::import::to_toml(&servers, redact));
     Ok(())
 }
@@ -322,7 +404,9 @@ fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
                 "Keyring unavailable, falling back to file identity"
             );
             let default_path = dirs::config_dir()
-                .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory for identity key"))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Cannot determine config directory for identity key")
+                })?
                 .join("smgglrs/identity.key");
             identity::load_or_create_file_identity(&default_path)
         }
@@ -405,7 +489,8 @@ async fn start_model_server_container(
     let gguf_path = model_path.ok_or_else(|| {
         anyhow::anyhow!("No chat/generate GGUF model found for model server container")
     })?;
-    let gguf_str = gguf_path.to_str()
+    let gguf_str = gguf_path
+        .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid model path"))?;
 
     // Pick a free port
@@ -434,15 +519,23 @@ async fn start_model_server_container(
         .arg("run")
         .arg("-d")
         .arg("--rm")
-        .arg("--name").arg(&container_name)
-        .arg("--device").arg("nvidia.com/gpu=all")
-        .arg("-v").arg(format!("{gguf_str}:/model/model.gguf:ro,Z"))
-        .arg("-p").arg(format!("127.0.0.1:{port}:8080"))
+        .arg("--name")
+        .arg(&container_name)
+        .arg("--device")
+        .arg("nvidia.com/gpu=all")
+        .arg("-v")
+        .arg(format!("{gguf_str}:/model/model.gguf:ro,Z"))
+        .arg("-p")
+        .arg(format!("127.0.0.1:{port}:8080"))
         .arg(image)
-        .arg("-m").arg("/model/model.gguf")
-        .arg("-ngl").arg("99")
-        .arg("--parallel").arg(parallel.to_string())
-        .arg("--ctx-size").arg("8192")
+        .arg("-m")
+        .arg("/model/model.gguf")
+        .arg("-ngl")
+        .arg("99")
+        .arg("--parallel")
+        .arg(parallel.to_string())
+        .arg("--ctx-size")
+        .arg("8192")
         .arg("--cont-batching")
         .output()
         .await
@@ -466,7 +559,10 @@ async fn start_model_server_container(
             }
         }
         if attempt % 20 == 19 {
-            tracing::info!(attempt = attempt + 1, "Still waiting for model server health...");
+            tracing::info!(
+                attempt = attempt + 1,
+                "Still waiting for model server health..."
+            );
         }
     }
 
@@ -475,7 +571,9 @@ async fn start_model_server_container(
         .args(["stop", &container_name])
         .output()
         .await;
-    Err(anyhow::anyhow!("Model server did not become healthy within 120s"))
+    Err(anyhow::anyhow!(
+        "Model server did not become healthy within 120s"
+    ))
 }
 
 enum TransportMode {
@@ -503,14 +601,11 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     );
 
     // Build credential store from config mappings
-    let _credential_store = Arc::new(
-        smgglrs_core::credentials::MappedCredentialStore::new(cfg.credentials.clone())
-    );
+    let _credential_store = Arc::new(smgglrs_core::credentials::MappedCredentialStore::new(
+        cfg.credentials.clone(),
+    ));
     if !cfg.credentials.is_empty() {
-        tracing::info!(
-            count = cfg.credentials.len(),
-            "Credential mappings loaded"
-        );
+        tracing::info!(count = cfg.credentials.len(), "Credential mappings loaded");
     }
 
     let perm_engine = Arc::new(build_perm_engine(&cfg));
@@ -568,9 +663,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     use smgglrs_core::session::SessionBackend;
                     backend.count()
                 };
-                let store = smgglrs_core::session::SessionStore::with_backend(
-                    std::sync::Arc::new(backend),
-                );
+                let store =
+                    smgglrs_core::session::SessionStore::with_backend(std::sync::Arc::new(backend));
                 session_store = store.clone();
                 builder = builder.session_store(store);
                 tracing::info!(
@@ -612,7 +706,11 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 if let Some(days) = cfg.memory_audit_retention_days() {
                     let deleted = bb.expire_older_than(days);
                     if deleted > 0 {
-                        tracing::info!(deleted = deleted, days = days, "Retention: expired old blackbox entries");
+                        tracing::info!(
+                            deleted = deleted,
+                            days = days,
+                            "Retention: expired old blackbox entries"
+                        );
                     }
                 }
                 let count = bb.count();
@@ -758,7 +856,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
 
         let nonce_cache_ttl = std::time::Duration::from_secs(
-            cfg.server.identity.as_ref()
+            cfg.server
+                .identity
+                .as_ref()
                 .map(|i| i.nonce_cache_ttl_secs)
                 .unwrap_or(7200),
         );
@@ -769,8 +869,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 Box::new(Arc::clone(&root_signer)),
                 nonce_cache_ttl,
             );
-            let mut chain = smgglrs_core::auth::chain::ChainAuthenticator::new()
-                .add(cap_auth);
+            let mut chain = smgglrs_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
 
             // Insert OpenShell authenticator at position 2 if configured
             if let Some(os_config) = cfg.server.openshell_auth.clone() {
@@ -791,7 +890,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // those tokens are verified (with proper DID identity), falling back
         // to anonymous for external clients.
         let nonce_cache_ttl = std::time::Duration::from_secs(
-            cfg.server.identity.as_ref()
+            cfg.server
+                .identity
+                .as_ref()
                 .map(|i| i.nonce_cache_ttl_secs)
                 .unwrap_or(7200),
         );
@@ -802,8 +903,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         let no_auth = smgglrs_core::auth::NoAuthenticator {
             default_identity: AgentIdentity::new("anonymous", "readonly"),
         };
-        let mut chain = smgglrs_core::auth::chain::ChainAuthenticator::new()
-            .add(cap_auth);
+        let mut chain = smgglrs_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
 
         // Insert OpenShell authenticator if configured
         if let Some(os_config) = cfg.server.openshell_auth.clone() {
@@ -823,8 +923,10 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     // --- Load models into registry ---
     let mut models: std::collections::HashMap<String, Arc<dyn smgglrs_model::ModelBackend>> =
         std::collections::HashMap::new();
-    let mut running_endpoints: Vec<(Box<dyn smgglrs_model_runtime::ModelRuntime>, smgglrs_model_runtime::Endpoint)> =
-        Vec::new();
+    let mut running_endpoints: Vec<(
+        Box<dyn smgglrs_model_runtime::ModelRuntime>,
+        smgglrs_model_runtime::Endpoint,
+    )> = Vec::new();
 
     let hub = smgglrs_model_hub::ModelHub::new().ok();
 
@@ -885,7 +987,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     .tokenizer_path
                     .as_ref()
                     .map(|p| std::path::PathBuf::from(expand_tilde(p)));
-                match smgglrs_model::OnnxBackend::load(name, &resolved_path, tokenizer_path.as_deref(), task, device.clone()) {
+                match smgglrs_model::OnnxBackend::load(
+                    name,
+                    &resolved_path,
+                    tokenizer_path.as_deref(),
+                    task,
+                    device.clone(),
+                ) {
                     Ok(model) => Arc::new(model),
                     Err(e) => {
                         tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
@@ -904,7 +1012,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     .tokenizer_path
                     .as_ref()
                     .map(|p| std::path::PathBuf::from(expand_tilde(p)));
-                match smgglrs_model::OnnxBackend::load(name, &resolved_path, tokenizer_path.as_deref(), task, device.clone()) {
+                match smgglrs_model::OnnxBackend::load(
+                    name,
+                    &resolved_path,
+                    tokenizer_path.as_deref(),
+                    task,
+                    device.clone(),
+                ) {
                     Ok(model) => Arc::new(model),
                     Err(e) => {
                         tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
@@ -969,14 +1083,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 );
 
                 let model_id = model_cfg.model_name.clone().unwrap_or_else(|| name.clone());
-                let backend: Arc<dyn smgglrs_model::ModelBackend> = Arc::new(
-                    smgglrs_model::OpenAiBackend::new(
+                let backend: Arc<dyn smgglrs_model::ModelBackend> =
+                    Arc::new(smgglrs_model::OpenAiBackend::new(
                         &endpoint.url,
                         &model_id,
                         None,
                         smgglrs_model::Locality::Local,
-                    ),
-                );
+                    ));
 
                 running_endpoints.push((runtime, endpoint));
                 backend
@@ -1207,18 +1320,16 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         cfg.approval.grant_ttl_secs,
     ));
     let notifier: Arc<dyn smgglrs_core::notify::Notifier> = match cfg.approval.notify.as_str() {
-        "dbus" => {
-            match smgglrs_core::notify::DbusNotifier::new().await {
-                Ok(n) => {
-                    tracing::info!("D-Bus notifier connected");
-                    Arc::new(n)
-                }
-                Err(e) => {
-                    tracing::warn!("D-Bus unavailable ({e}), falling back to CLI-only approvals");
-                    Arc::new(smgglrs_core::notify::NoopNotifier)
-                }
+        "dbus" => match smgglrs_core::notify::DbusNotifier::new().await {
+            Ok(n) => {
+                tracing::info!("D-Bus notifier connected");
+                Arc::new(n)
             }
-        }
+            Err(e) => {
+                tracing::warn!("D-Bus unavailable ({e}), falling back to CLI-only approvals");
+                Arc::new(smgglrs_core::notify::NoopNotifier)
+            }
+        },
         _ => Arc::new(smgglrs_core::notify::NoopNotifier),
     };
 
@@ -1273,7 +1384,10 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // Set default root for file_tree.
         // Priority: [modules.file] default_root > top-level cognitive_core
         let mut docs = docs;
-        let docs_root = cfg.modules.file.as_ref()
+        let docs_root = cfg
+            .modules
+            .file
+            .as_ref()
             .and_then(|d| d.default_root.as_deref())
             .or(cfg.cognitive_core.as_deref());
         if let Some(root_path) = docs_root {
@@ -1356,8 +1470,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             let channel = tonic::transport::Channel::from_shared(gateway.clone())
                 .expect("valid OpenShell gateway URL")
                 .connect_lazy();
-            let client =
-                smgglrs_model_runtime::openshell::ComputeDriverClient::new(channel);
+            let client = smgglrs_model_runtime::openshell::ComputeDriverClient::new(channel);
             let module = Arc::new(smgglrs_tools_exec::ExecModule::new(client));
             tracing::info!(gateway = %gateway, "Module 'exec' enabled (OpenShell)");
             builder = builder.module(ExecModuleRef(Arc::clone(&module)));
@@ -1407,8 +1520,12 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         let model_path = cfg.rag_reranker_model_path();
                         let tokenizer_path = cfg.rag_reranker_tokenizer_path();
                         let r = smgglrs_rag::load_reranker(
-                            model_path.as_ref().map(|p| std::path::Path::new(p.as_str())),
-                            tokenizer_path.as_ref().map(|p| std::path::Path::new(p.as_str())),
+                            model_path
+                                .as_ref()
+                                .map(|p| std::path::Path::new(p.as_str())),
+                            tokenizer_path
+                                .as_ref()
+                                .map(|p| std::path::Path::new(p.as_str())),
                         );
                         Arc::from(r)
                     };
@@ -1509,10 +1626,14 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             domains = cfg.discover.len(),
             "Discovering upstream MCP servers via AID"
         );
-        let discovery_timeout = cfg.server.discovery.as_ref()
+        let discovery_timeout = cfg
+            .server
+            .discovery
+            .as_ref()
             .map(|d| std::time::Duration::from_secs(d.timeout_secs))
             .unwrap_or_else(|| std::time::Duration::from_secs(10));
-        let discovered = discover::discover_all_with_timeout(&cfg.discover, discovery_timeout).await;
+        let discovered =
+            discover::discover_all_with_timeout(&cfg.discover, discovery_timeout).await;
         for endpoint in &discovered {
             tracing::info!(
                 domain = %endpoint.domain,
@@ -1522,33 +1643,37 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 "Discovered MCP endpoint"
             );
             match smgglrs_core::Upstream::http(&endpoint.domain, &endpoint.url).await {
-                Ok(upstream) => match smgglrs_core::UpstreamModule::discover(upstream, None).await {
-                    Ok(module) => {
-                        tracing::info!(
-                            domain = %endpoint.domain,
-                            "Connected discovered upstream"
-                        );
-                        for prompt_def in module.discovered_prompts() {
-                            if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
-                                let description = prompt_def.description.as_deref().unwrap_or("");
-                                forge.register_upstream_persona(
-                                    persona_name,
-                                    module.upstream_name(),
-                                    &prompt_def.name,
-                                    description,
-                                );
+                Ok(upstream) => {
+                    match smgglrs_core::UpstreamModule::discover(upstream, None).await {
+                        Ok(module) => {
+                            tracing::info!(
+                                domain = %endpoint.domain,
+                                "Connected discovered upstream"
+                            );
+                            for prompt_def in module.discovered_prompts() {
+                                if let Some(persona_name) = prompt_def.name.strip_prefix("persona:")
+                                {
+                                    let description =
+                                        prompt_def.description.as_deref().unwrap_or("");
+                                    forge.register_upstream_persona(
+                                        persona_name,
+                                        module.upstream_name(),
+                                        &prompt_def.name,
+                                        description,
+                                    );
+                                }
                             }
+                            builder = builder.module(module);
                         }
-                        builder = builder.module(module);
+                        Err(e) => {
+                            tracing::warn!(
+                                domain = %endpoint.domain,
+                                error = %e,
+                                "Failed to discover capabilities of AID endpoint"
+                            );
+                        }
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            domain = %endpoint.domain,
-                            error = %e,
-                            "Failed to discover capabilities of AID endpoint"
-                        );
-                    }
-                },
+                }
                 Err(e) => {
                     tracing::warn!(
                         domain = %endpoint.domain,
@@ -1574,44 +1699,50 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     let mut _mdns_daemon: Option<mdns_sd::ServiceDaemon> = None;
 
     if mdns_enabled {
-        let mdns_browse_secs = cfg.server.discovery.as_ref()
+        let mdns_browse_secs = cfg
+            .server
+            .discovery
+            .as_ref()
             .map(|d| d.mdns_browse_secs)
             .unwrap_or(3);
         tracing::info!("Browsing LAN for MCP servers via mDNS...");
-        let lan_servers =
-            mdns::browse(std::time::Duration::from_secs(mdns_browse_secs)).await;
+        let lan_servers = mdns::browse(std::time::Duration::from_secs(mdns_browse_secs)).await;
 
         for server in &lan_servers {
             let url = server.url();
             match smgglrs_core::Upstream::http(&server.name, &url).await {
-                Ok(upstream) => match smgglrs_core::UpstreamModule::discover(upstream, None).await {
-                    Ok(module) => {
-                        tracing::info!(
-                            name = %server.name,
-                            url = %url,
-                            "Connected LAN upstream"
-                        );
-                        for prompt_def in module.discovered_prompts() {
-                            if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
-                                let description = prompt_def.description.as_deref().unwrap_or("");
-                                forge.register_upstream_persona(
-                                    persona_name,
-                                    module.upstream_name(),
-                                    &prompt_def.name,
-                                    description,
-                                );
+                Ok(upstream) => {
+                    match smgglrs_core::UpstreamModule::discover(upstream, None).await {
+                        Ok(module) => {
+                            tracing::info!(
+                                name = %server.name,
+                                url = %url,
+                                "Connected LAN upstream"
+                            );
+                            for prompt_def in module.discovered_prompts() {
+                                if let Some(persona_name) = prompt_def.name.strip_prefix("persona:")
+                                {
+                                    let description =
+                                        prompt_def.description.as_deref().unwrap_or("");
+                                    forge.register_upstream_persona(
+                                        persona_name,
+                                        module.upstream_name(),
+                                        &prompt_def.name,
+                                        description,
+                                    );
+                                }
                             }
+                            builder = builder.module(module);
                         }
-                        builder = builder.module(module);
+                        Err(e) => {
+                            tracing::debug!(
+                                name = %server.name,
+                                error = %e,
+                                "Failed to discover LAN upstream capabilities"
+                            );
+                        }
                     }
-                    Err(e) => {
-                        tracing::debug!(
-                            name = %server.name,
-                            error = %e,
-                            "Failed to discover LAN upstream capabilities"
-                        );
-                    }
-                },
+                }
                 Err(e) => {
                     tracing::debug!(
                         name = %server.name,
@@ -1721,10 +1852,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     // take precedence over auto-discovered ones.
                     for prompt_def in module.discovered_prompts() {
                         if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
-                            let description = prompt_def
-                                .description
-                                .as_deref()
-                                .unwrap_or("");
+                            let description = prompt_def.description.as_deref().unwrap_or("");
                             forge.register_upstream_persona(
                                 persona_name,
                                 module.upstream_name(),
@@ -1759,10 +1887,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         let mut manager = grpc_manager::GrpcModuleManager::new(cfg.grpc_modules.clone());
         let modules = manager.start_all().await;
         for module in modules {
-            tracing::info!(
-                module = module.name(),
-                "Connected gRPC module"
-            );
+            tracing::info!(module = module.name(), "Connected gRPC module");
             builder = builder.module(module);
         }
         Some(manager)
@@ -1771,11 +1896,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     };
 
     // Register cap_delegate tool if any agent can delegate
-    if cfg
-        .permissions
-        .values()
-        .any(|ps| ps.can_delegate)
-    {
+    if cfg.permissions.values().any(|ps| ps.can_delegate) {
         let delegate_signer = Arc::clone(&root_signer);
         let delegate_permissions = cfg.permissions.clone();
         let max_depth = cfg
@@ -1803,34 +1924,55 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     schema_type: "object".to_string(),
                     properties: {
                         let mut props = std::collections::HashMap::new();
-                        props.insert("subject_did".to_string(), serde_json::json!({
-                            "type": "string",
-                            "description": "DID of the sub-agent receiving the token"
-                        }));
-                        props.insert("ring".to_string(), serde_json::json!({
-                            "type": "integer",
-                            "description": "Ring level (must be >= caller's ring)"
-                        }));
-                        props.insert("operations".to_string(), serde_json::json!({
-                            "type": "array", "items": { "type": "string" },
-                            "description": "Operations to grant (subset of caller's)"
-                        }));
-                        props.insert("tools".to_string(), serde_json::json!({
-                            "type": "array", "items": { "type": "string" },
-                            "description": "Tool globs to grant (subset of caller's)"
-                        }));
-                        props.insert("paths".to_string(), serde_json::json!({
-                            "type": "array", "items": { "type": "string" },
-                            "description": "Path globs to grant (subset of caller's)"
-                        }));
-                        props.insert("credentials".to_string(), serde_json::json!({
-                            "type": "array", "items": { "type": "string" },
-                            "description": "Credential labels to grant (subset of caller's)"
-                        }));
-                        props.insert("ttl".to_string(), serde_json::json!({
-                            "type": "integer",
-                            "description": "Token TTL in seconds"
-                        }));
+                        props.insert(
+                            "subject_did".to_string(),
+                            serde_json::json!({
+                                "type": "string",
+                                "description": "DID of the sub-agent receiving the token"
+                            }),
+                        );
+                        props.insert(
+                            "ring".to_string(),
+                            serde_json::json!({
+                                "type": "integer",
+                                "description": "Ring level (must be >= caller's ring)"
+                            }),
+                        );
+                        props.insert(
+                            "operations".to_string(),
+                            serde_json::json!({
+                                "type": "array", "items": { "type": "string" },
+                                "description": "Operations to grant (subset of caller's)"
+                            }),
+                        );
+                        props.insert(
+                            "tools".to_string(),
+                            serde_json::json!({
+                                "type": "array", "items": { "type": "string" },
+                                "description": "Tool globs to grant (subset of caller's)"
+                            }),
+                        );
+                        props.insert(
+                            "paths".to_string(),
+                            serde_json::json!({
+                                "type": "array", "items": { "type": "string" },
+                                "description": "Path globs to grant (subset of caller's)"
+                            }),
+                        );
+                        props.insert(
+                            "credentials".to_string(),
+                            serde_json::json!({
+                                "type": "array", "items": { "type": "string" },
+                                "description": "Credential labels to grant (subset of caller's)"
+                            }),
+                        );
+                        props.insert(
+                            "ttl".to_string(),
+                            serde_json::json!({
+                                "type": "integer",
+                                "description": "Token TTL in seconds"
+                            }),
+                        );
                         Some(props)
                     },
                     required: Some(vec!["subject_did".to_string()]),
@@ -1856,7 +1998,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                             if !caps.tools.iter().any(|t| t == "cap_delegate") {
                                 return CallToolResult::error(
                                     "Permission denied: cap_delegate must be explicitly \
-                                     listed in capability token tools (wildcard not accepted)"
+                                     listed in capability token tools (wildcard not accepted)",
                                 );
                             }
                             caps
@@ -1953,39 +2095,34 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         .clone()
                         .unwrap_or_else(|| format!("agent:{}", ctx.agent.name));
 
-                    let mut child_payload = build_payload(
-                        &issuer_did,
-                        &subject_did,
-                        cap_set,
-                        ring,
-                        ttl,
-                    );
+                    let mut child_payload =
+                        build_payload(&issuer_did, &subject_did, cap_set, ring, ttl);
 
                     // Build parent payload for validation
-                    let parent_payload =
-                        smgglrs_core::auth::capability::CapabilityPayload {
-                            v: 1,
-                            iss: signer.did().to_string(),
-                            sub: issuer_did.clone(),
-                            cap: CapabilitySet {
-                                paths: parent_caps.paths.clone(),
-                                operations: parent_caps.operations.iter().cloned().collect(),
-                                tools: parent_caps.tools.clone(),
-                                credentials: parent_caps.credentials.clone(),
-                            },
-                            ring: parent_caps.ring,
-                            iat: 0,
-                            exp: parent_caps.expires_at,
-                            nonce: smgglrs_core::auth::capability::generate_nonce(),
-                            parent: None,
-                            obo: None,
-                        };
+                    let parent_payload = smgglrs_core::auth::capability::CapabilityPayload {
+                        v: 1,
+                        iss: signer.did().to_string(),
+                        sub: issuer_did.clone(),
+                        cap: CapabilitySet {
+                            paths: parent_caps.paths.clone(),
+                            operations: parent_caps.operations.iter().cloned().collect(),
+                            tools: parent_caps.tools.clone(),
+                            credentials: parent_caps.credentials.clone(),
+                        },
+                        ring: parent_caps.ring,
+                        iat: 0,
+                        exp: parent_caps.expires_at,
+                        nonce: smgglrs_core::auth::capability::generate_nonce(),
+                        parent: None,
+                        obo: None,
+                    };
 
                     // Set parent nonce reference
                     child_payload.parent = Some(parent_payload.nonce);
 
                     // Validate attenuation
-                    if let Err(e) = validate_delegation(&parent_payload, &child_payload, max_depth) {
+                    if let Err(e) = validate_delegation(&parent_payload, &child_payload, max_depth)
+                    {
                         return CallToolResult::error(format!("Delegation denied: {e}"));
                     }
 
@@ -2033,7 +2170,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 // receive a server reference.
                 Box::pin(async {
                     smgglrs_core::protocol::CallToolResult::text(
-                        "sys_status: use GET /sys/status for process table"
+                        "sys_status: use GET /sys/status for process table",
                     )
                 })
             },
@@ -2068,23 +2205,28 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             })
         })
     };
-    let audit_log: Arc<smgglrs_memory::AuditLog> = match smgglrs_memory::audit::AuditLog::open(&audit_db_path) {
-        Ok(log) => {
-            let log = match audit_sanitizer {
-                Some(sanitizer) => log.with_sanitizer(sanitizer),
-                None => log,
-            };
-            tracing::info!(path = %audit_db_path.display(), "Audit log enabled");
-            Arc::new(log)
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to open audit DB, using in-memory");
-            Arc::new(smgglrs_memory::audit::AuditLog::open_memory().unwrap())
-        }
-    };
+    let audit_log: Arc<smgglrs_memory::AuditLog> =
+        match smgglrs_memory::audit::AuditLog::open(&audit_db_path) {
+            Ok(log) => {
+                let log = match audit_sanitizer {
+                    Some(sanitizer) => log.with_sanitizer(sanitizer),
+                    None => log,
+                };
+                tracing::info!(path = %audit_db_path.display(), "Audit log enabled");
+                Arc::new(log)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to open audit DB, using in-memory");
+                Arc::new(smgglrs_memory::audit::AuditLog::open_memory().unwrap())
+            }
+        };
     if let Some(days) = cfg.memory_audit_retention_days() {
         match audit_log.expire_older_than(days) {
-            Ok(n) if n > 0 => tracing::info!(deleted = n, days = days, "Retention: expired old audit entries"),
+            Ok(n) if n > 0 => tracing::info!(
+                deleted = n,
+                days = days,
+                "Retention: expired old audit entries"
+            ),
             _ => {}
         }
     }
@@ -2096,35 +2238,26 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
         // flow_status — check progress of a flow
         let registry = Arc::clone(&flow_registry);
-        builder = builder.tool(
-            flow_tools::flow_status_tool_def(),
-            move |args, _ctx| {
-                let registry = Arc::clone(&registry);
-                Box::pin(flow_tools::handle_flow_status(args, registry))
-            },
-        );
+        builder = builder.tool(flow_tools::flow_status_tool_def(), move |args, _ctx| {
+            let registry = Arc::clone(&registry);
+            Box::pin(flow_tools::handle_flow_status(args, registry))
+        });
 
         // flow_result — get output from a completed flow or node
         let registry = Arc::clone(&flow_registry);
         let fr_audit = Arc::clone(&audit_log);
-        builder = builder.tool(
-            flow_tools::flow_result_tool_def(),
-            move |args, _ctx| {
-                let registry = Arc::clone(&registry);
-                let audit = Arc::clone(&fr_audit);
-                Box::pin(flow_tools::handle_flow_result(args, registry, Some(audit)))
-            },
-        );
+        builder = builder.tool(flow_tools::flow_result_tool_def(), move |args, _ctx| {
+            let registry = Arc::clone(&registry);
+            let audit = Arc::clone(&fr_audit);
+            Box::pin(flow_tools::handle_flow_result(args, registry, Some(audit)))
+        });
 
         // flow_list — list available YAML flows from configured directories
         let flow_dirs = resolved_flow_dirs.clone();
-        builder = builder.tool(
-            flow_tools::flow_list_tool_def(),
-            move |_args, _ctx| {
-                let flow_dirs = flow_dirs.clone();
-                Box::pin(flow_tools::handle_flow_list(flow_dirs))
-            },
-        );
+        builder = builder.tool(flow_tools::flow_list_tool_def(), move |_args, _ctx| {
+            let flow_dirs = flow_dirs.clone();
+            Box::pin(flow_tools::handle_flow_list(flow_dirs))
+        });
 
         tracing::info!("Registered flow orchestration tools (flow_start, flow_status, flow_result, flow_list, flow_escalate)");
     }
@@ -2175,128 +2308,143 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // Build composite model cards from config + vendor metadata + operator agentic metadata.
         // If no [models.*] configured, auto-discover from Ollama.
         let model_keys: Vec<(String, Option<&config::ModelConfig>)> = if cfg.models.is_empty() {
-            ollama_meta.keys().map(|name| (name.clone(), None)).collect()
+            ollama_meta
+                .keys()
+                .map(|name| (name.clone(), None))
+                .collect()
         } else {
-            cfg.models.iter().map(|(k, v)| (k.clone(), Some(v))).collect()
+            cfg.models
+                .iter()
+                .map(|(k, v)| (k.clone(), Some(v)))
+                .collect()
         };
 
-        let model_cards: Vec<team_tools::ModelCard> = model_keys.iter().map(|(name, mcfg_opt)| {
-            let mcfg_ref = mcfg_opt.as_ref();
-            let display_name = mcfg_ref.and_then(|m| m.model_name.as_deref()).unwrap_or(name);
-            let uri_str = mcfg_ref.and_then(|m| m.source.as_deref()).unwrap_or(display_name);
-            let mut card = smgglrs_model_hub::ModelCard::new(uri_str);
+        let model_cards: Vec<team_tools::ModelCard> = model_keys
+            .iter()
+            .map(|(name, mcfg_opt)| {
+                let mcfg_ref = mcfg_opt.as_ref();
+                let display_name = mcfg_ref
+                    .and_then(|m| m.model_name.as_deref())
+                    .unwrap_or(name);
+                let uri_str = mcfg_ref
+                    .and_then(|m| m.source.as_deref())
+                    .unwrap_or(display_name);
+                let mut card = smgglrs_model_hub::ModelCard::new(uri_str);
 
-            // Populate vendor metadata from config (if available)
-            if let Some(mcfg) = mcfg_ref {
-                card.vendor.source = Some(if mcfg.source.is_some() {
-                    match mcfg.source.as_deref() {
-                        Some(s) if s.starts_with("ollama://") => "ollama",
-                        Some(s) if s.starts_with("hf://") => "huggingface",
-                        Some(s) if s.starts_with("oci://") => "oci",
-                        _ => "local",
+                // Populate vendor metadata from config (if available)
+                if let Some(mcfg) = mcfg_ref {
+                    card.vendor.source = Some(
+                        if mcfg.source.is_some() {
+                            match mcfg.source.as_deref() {
+                                Some(s) if s.starts_with("ollama://") => "ollama",
+                                Some(s) if s.starts_with("hf://") => "huggingface",
+                                Some(s) if s.starts_with("oci://") => "oci",
+                                _ => "local",
+                            }
+                        } else {
+                            "local"
+                        }
+                        .into(),
+                    );
+                    card.vendor.context_window = mcfg.context_size;
+                    card.vendor.tasks = match mcfg.task.as_str() {
+                        "chat" | "generate" => vec!["text-generation".into()],
+                        "embedding" => vec!["feature-extraction".into()],
+                        "classification" => vec!["text-classification".into()],
+                        _ => vec![],
+                    };
+                    if let Some(runtime) = &mcfg.runtime {
+                        card.vendor.runtime = Some(runtime.clone());
                     }
-                } else {
-                    "local"
-                }.into());
-                card.vendor.context_window = mcfg.context_size;
-                card.vendor.tasks = match mcfg.task.as_str() {
-                    "chat" | "generate" => vec!["text-generation".into()],
-                    "embedding" => vec!["feature-extraction".into()],
-                    "classification" => vec!["text-classification".into()],
-                    _ => vec![],
-                };
-                if let Some(runtime) = &mcfg.runtime {
-                    card.vendor.runtime = Some(runtime.clone());
                 }
-            }
 
-            // Enrich with Ollama /api/show metadata if available
-            if let Some(info) = ollama_meta.get(display_name) {
-                card.vendor.source = Some("ollama".into());
-                // model_info contains parameter count, architecture, etc.
-                if let Some(model_info) = info.get("model_info") {
-                    // Extract context window from model metadata
-                    for (key, val) in model_info.as_object().into_iter().flatten() {
-                        if key.ends_with(".context_length") {
-                            if let Some(ctx) = val.as_u64() {
-                                card.vendor.context_window = Some(ctx as u32);
+                // Enrich with Ollama /api/show metadata if available
+                if let Some(info) = ollama_meta.get(display_name) {
+                    card.vendor.source = Some("ollama".into());
+                    // model_info contains parameter count, architecture, etc.
+                    if let Some(model_info) = info.get("model_info") {
+                        // Extract context window from model metadata
+                        for (key, val) in model_info.as_object().into_iter().flatten() {
+                            if key.ends_with(".context_length") {
+                                if let Some(ctx) = val.as_u64() {
+                                    card.vendor.context_window = Some(ctx as u32);
+                                }
+                            }
+                            if key.ends_with(".embedding_length") {
+                                if let Some(dim) = val.as_u64() {
+                                    card.vendor
+                                        .custom
+                                        .insert("embedding_dim".into(), serde_json::json!(dim));
+                                }
                             }
                         }
-                        if key.ends_with(".embedding_length") {
-                            if let Some(dim) = val.as_u64() {
-                                card.vendor.custom.insert(
-                                    "embedding_dim".into(),
-                                    serde_json::json!(dim),
-                                );
+                        // Parameter count from general.parameter_count
+                        if let Some(params) = model_info.get("general.parameter_count") {
+                            if let Some(p) = params.as_u64() {
+                                let label = if p >= 1_000_000_000 {
+                                    format!("{}B", p / 1_000_000_000)
+                                } else if p >= 1_000_000 {
+                                    format!("{}M", p / 1_000_000)
+                                } else {
+                                    format!("{p}")
+                                };
+                                card.vendor.parameters = Some(label);
+                            }
+                        }
+                        // Architecture / family
+                        if let Some(arch) = model_info.get("general.architecture") {
+                            if let Some(a) = arch.as_str() {
+                                card.vendor.family = Some(a.to_string());
                             }
                         }
                     }
-                    // Parameter count from general.parameter_count
-                    if let Some(params) = model_info.get("general.parameter_count") {
-                        if let Some(p) = params.as_u64() {
-                            let label = if p >= 1_000_000_000 {
-                                format!("{}B", p / 1_000_000_000)
-                            } else if p >= 1_000_000 {
-                                format!("{}M", p / 1_000_000)
-                            } else {
-                                format!("{p}")
-                            };
-                            card.vendor.parameters = Some(label);
+                    // Quantization from details
+                    if let Some(details) = info.get("details") {
+                        if let Some(quant) = details.get("quantization_level") {
+                            if let Some(q) = quant.as_str() {
+                                card.vendor.quantization = Some(q.to_string());
+                            }
+                        }
+                        if let Some(family) = details.get("family") {
+                            if card.vendor.family.is_none() {
+                                card.vendor.family = family.as_str().map(|s| s.to_string());
+                            }
                         }
                     }
-                    // Architecture / family
-                    if let Some(arch) = model_info.get("general.architecture") {
-                        if let Some(a) = arch.as_str() {
-                            card.vendor.family = Some(a.to_string());
+                    // License from license field
+                    if let Some(license) = info.get("license") {
+                        if let Some(l) = license.as_str() {
+                            // Take first line as the license identifier
+                            card.vendor.license = l.lines().next().map(|s| s.to_string());
                         }
                     }
+                    card.vendor.format = Some("gguf".into());
                 }
-                // Quantization from details
-                if let Some(details) = info.get("details") {
-                    if let Some(quant) = details.get("quantization_level") {
-                        if let Some(q) = quant.as_str() {
-                            card.vendor.quantization = Some(q.to_string());
-                        }
-                    }
-                    if let Some(family) = details.get("family") {
-                        if card.vendor.family.is_none() {
-                            card.vendor.family = family.as_str().map(|s| s.to_string());
-                        }
-                    }
-                }
-                // License from license field
-                if let Some(license) = info.get("license") {
-                    if let Some(l) = license.as_str() {
-                        // Take first line as the license identifier
-                        card.vendor.license = l.lines().next().map(|s| s.to_string());
-                    }
-                }
-                card.vendor.format = Some("gguf".into());
-            }
 
-            // Detect Claude/Anthropic models
-            if display_name.starts_with("claude") {
-                card.vendor.source = Some("anthropic".into());
-                card.vendor.family = Some("claude".into());
-                // Extract parameter hint from model name (e.g. "sonnet", "opus")
-                if display_name.contains("sonnet") {
-                    card.vendor.parameters = Some("medium".into());
-                } else if display_name.contains("opus") {
-                    card.vendor.parameters = Some("large".into());
-                } else if display_name.contains("haiku") {
-                    card.vendor.parameters = Some("small".into());
+                // Detect Claude/Anthropic models
+                if display_name.starts_with("claude") {
+                    card.vendor.source = Some("anthropic".into());
+                    card.vendor.family = Some("claude".into());
+                    // Extract parameter hint from model name (e.g. "sonnet", "opus")
+                    if display_name.contains("sonnet") {
+                        card.vendor.parameters = Some("medium".into());
+                    } else if display_name.contains("opus") {
+                        card.vendor.parameters = Some("large".into());
+                    } else if display_name.contains("haiku") {
+                        card.vendor.parameters = Some("small".into());
+                    }
                 }
-            }
 
-            // Merge operator-defined agentic metadata from config
-            if let Some(mcfg) = mcfg_ref {
-                if let Some(agentic_cfg) = &mcfg.agentic {
-                    card.merge_agentic(&agentic_cfg.to_agentic_meta());
+                // Merge operator-defined agentic metadata from config
+                if let Some(mcfg) = mcfg_ref {
+                    if let Some(agentic_cfg) = &mcfg.agentic {
+                        card.merge_agentic(&agentic_cfg.to_agentic_meta());
+                    }
                 }
-            }
 
-            card
-        }).collect();
+                card
+            })
+            .collect();
 
         let team_registry = Arc::new(team_tools::TeamRegistry::new().with_models(model_cards));
 
@@ -2339,7 +2487,11 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         };
 
         let gpu_semaphore = Arc::new(tokio::sync::Semaphore::new(
-            if cfg.budget.max_parallel == 0 { 64 } else { cfg.budget.max_parallel }
+            if cfg.budget.max_parallel == 0 {
+                64
+            } else {
+                cfg.budget.max_parallel
+            },
         ));
 
         if containerized {
@@ -2376,15 +2528,25 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         let root_cap = smgglrs_core::auth::capability::CapabilitySet {
             paths: vec!["**".to_string()],
             operations: vec![
-                "read".to_string(), "write".to_string(), "search".to_string(),
-                "list".to_string(), "git.status".to_string(), "git.diff".to_string(),
-                "git.log".to_string(), "git.commit".to_string(), "git.branch".to_string(),
+                "read".to_string(),
+                "write".to_string(),
+                "search".to_string(),
+                "list".to_string(),
+                "git.status".to_string(),
+                "git.diff".to_string(),
+                "git.log".to_string(),
+                "git.commit".to_string(),
+                "git.branch".to_string(),
             ],
             tools: vec!["*".to_string()],
             credentials: vec![],
         };
         let root_payload = smgglrs_core::auth::capability::build_payload(
-            root_signer.did(), root_signer.did(), root_cap, 1, 86400,
+            root_signer.did(),
+            root_signer.did(),
+            root_cap,
+            1,
+            86400,
         );
 
         // Build a PII filter for model reasoning text. Uses "standard"
@@ -2392,7 +2554,10 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // echoes in its reasoning even after tool results were redacted.
         let reasoning_pii_filter: Option<Arc<smgglrs_core::safety::FilterPipeline>> = {
             let has_pii_profile = cfg.permissions.values().any(|p| {
-                matches!(p.safety.as_str(), "standard" | "guardian" | "guardian-deep" | "block")
+                matches!(
+                    p.safety.as_str(),
+                    "standard" | "guardian" | "guardian-deep" | "block"
+                )
             });
             if has_pii_profile {
                 let mut pipeline = smgglrs_core::safety::build_pipeline("standard");
@@ -2435,9 +2600,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
-            Box::pin(async move {
-                team_tools::handle_team_message(args, &spawn_ctx).await
-            })
+            Box::pin(async move { team_tools::handle_team_message(args, &spawn_ctx).await })
         });
 
         // team_status
@@ -2479,17 +2642,21 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         let persona_data: Vec<serde_json::Value> = if let Some(ref cc_path) = cfg.cognitive_core {
             let expanded = expand_tilde(cc_path);
             match smgglrs_cognitive::ForgeService::load(std::path::Path::new(&expanded)) {
-                Ok(forge) => {
-                    forge.persona_names().iter().filter_map(|name| {
-                        forge.get_persona(name).map(|p| serde_json::json!({
-                            "name": p.persona_name,
-                            "display_name": p.display_name,
-                            "mandate": p.core_mandate.lines().next().unwrap_or(""),
-                            "heuristics": p.heuristics.len(),
-                            "tools": p.tools,
-                        }))
-                    }).collect()
-                }
+                Ok(forge) => forge
+                    .persona_names()
+                    .iter()
+                    .filter_map(|name| {
+                        forge.get_persona(name).map(|p| {
+                            serde_json::json!({
+                                "name": p.persona_name,
+                                "display_name": p.display_name,
+                                "mandate": p.core_mandate.lines().next().unwrap_or(""),
+                                "heuristics": p.heuristics.len(),
+                                "tools": p.tools,
+                            })
+                        })
+                    })
+                    .collect(),
                 Err(_) => vec![],
             }
         } else {
@@ -2564,11 +2731,16 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             signer: Arc::clone(&root_signer),
             forge: cfg.cognitive_core.as_ref().and_then(|p| {
                 let expanded = expand_tilde(p);
-                smgglrs_cognitive::ForgeService::load(std::path::Path::new(&expanded)).ok().map(Arc::new)
+                smgglrs_cognitive::ForgeService::load(std::path::Path::new(&expanded))
+                    .ok()
+                    .map(Arc::new)
             }),
             budget_cfg: cfg.budget.clone(),
             flow_dirs: resolved_flow_dirs.clone(),
-            docs_root: cfg.modules.file.as_ref()
+            docs_root: cfg
+                .modules
+                .file
+                .as_ref()
                 .and_then(|d| d.default_root.clone())
                 .or_else(|| cfg.cognitive_core.clone()),
             root_payload: Some(root_payload.clone()),
@@ -2591,54 +2763,38 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
         // flow_start
         let fs_ctx = Arc::clone(&flow_ctx);
-        builder = builder.tool(
-            flow_tools::flow_start_tool_def(),
-            move |args, ctx| {
-                let flow_ctx = Arc::clone(&fs_ctx);
-                let agent_name = ctx.agent.name.clone();
-                Box::pin(async move {
-                    flow_tools::handle_flow_start(args, flow_ctx, &agent_name).await
-                })
-            },
-        );
+        builder = builder.tool(flow_tools::flow_start_tool_def(), move |args, ctx| {
+            let flow_ctx = Arc::clone(&fs_ctx);
+            let agent_name = ctx.agent.name.clone();
+            Box::pin(
+                async move { flow_tools::handle_flow_start(args, flow_ctx, &agent_name).await },
+            )
+        });
 
         // flow_escalate
         let fe_ctx = Arc::clone(&flow_ctx);
-        builder = builder.tool(
-            flow_tools::flow_escalate_tool_def(),
-            move |args, ctx| {
-                let flow_ctx = Arc::clone(&fe_ctx);
-                let agent_name = ctx.agent.name.clone();
-                Box::pin(async move {
-                    flow_tools::handle_flow_escalate(args, flow_ctx, &agent_name).await
-                })
-            },
-        );
+        builder = builder.tool(flow_tools::flow_escalate_tool_def(), move |args, ctx| {
+            let flow_ctx = Arc::clone(&fe_ctx);
+            let agent_name = ctx.agent.name.clone();
+            Box::pin(
+                async move { flow_tools::handle_flow_escalate(args, flow_ctx, &agent_name).await },
+            )
+        });
 
         let fr_ctx = Arc::clone(&flow_ctx);
-        builder = builder.tool(
-            flow_tools::flow_resume_tool_def(),
-            move |args, ctx| {
-                let flow_ctx = Arc::clone(&fr_ctx);
-                let agent = ctx.agent.name.clone();
-                Box::pin(async move {
-                    flow_tools::handle_flow_resume(args, flow_ctx, &agent).await
-                })
-            },
-        );
+        builder = builder.tool(flow_tools::flow_resume_tool_def(), move |args, ctx| {
+            let flow_ctx = Arc::clone(&fr_ctx);
+            let agent = ctx.agent.name.clone();
+            Box::pin(async move { flow_tools::handle_flow_resume(args, flow_ctx, &agent).await })
+        });
 
         tracing::info!("Registered flow tools (flow_escalate, flow_resume)");
 
         // --- Event-driven triggers ---
         if !cfg.triggers.is_empty() {
-            let (registry, webhook_router) = triggers::TriggerRegistry::start(
-                &cfg.triggers,
-                Arc::clone(&flow_ctx),
-            );
-            tracing::info!(
-                count = cfg.triggers.len(),
-                "Trigger infrastructure started"
-            );
+            let (registry, webhook_router) =
+                triggers::TriggerRegistry::start(&cfg.triggers, Arc::clone(&flow_ctx));
+            tracing::info!(count = cfg.triggers.len(), "Trigger infrastructure started");
             _trigger_registry = Some(registry);
             trigger_webhook_router = Some(webhook_router);
         }
@@ -2708,16 +2864,21 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             let ks = Arc::clone(&ks_purge);
             let sanitizer = sanitizer_for_purge.clone();
             let cs = cs_purge.clone();
-            Box::pin(memory_tools::handle_memory_purge_pii(args, ks, sanitizer, cs))
+            Box::pin(memory_tools::handle_memory_purge_pii(
+                args, ks, sanitizer, cs,
+            ))
         });
 
         let ks_forget_content = Arc::clone(&ks);
         let cs_forget_content = shared_chunk_store.clone();
-        builder = builder.tool(memory_tools::memory_forget_by_content_def(), move |args, _ctx| {
-            let ks = Arc::clone(&ks_forget_content);
-            let cs = cs_forget_content.clone();
-            Box::pin(memory_tools::handle_memory_forget_by_content(args, ks, cs))
-        });
+        builder = builder.tool(
+            memory_tools::memory_forget_by_content_def(),
+            move |args, _ctx| {
+                let ks = Arc::clone(&ks_forget_content);
+                let cs = cs_forget_content.clone();
+                Box::pin(memory_tools::handle_memory_forget_by_content(args, ks, cs))
+            },
+        );
 
         // pii_report
         let ks_report = Arc::clone(&ks);
@@ -2729,7 +2890,12 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             let ks = Arc::clone(&ks_report);
             let metrics = metrics_for_report.clone();
             Box::pin(memory_tools::handle_pii_report(
-                args, ks, metrics, retention_days, pii_retention_days, audit_retention_days,
+                args,
+                ks,
+                metrics,
+                retention_days,
+                pii_retention_days,
+                audit_retention_days,
             ))
         });
 
@@ -2745,13 +2911,21 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             let store = ks.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(days) = cfg.memory_retention_days() {
                 match store.expire_older_than(days) {
-                    Ok(n) if n > 0 => tracing::info!(deleted = n, days = days, "Retention: expired old knowledge entries"),
+                    Ok(n) if n > 0 => tracing::info!(
+                        deleted = n,
+                        days = days,
+                        "Retention: expired old knowledge entries"
+                    ),
                     _ => {}
                 }
             }
             if let Some(days) = cfg.memory_pii_retention_days() {
                 match store.expire_pii_older_than(days) {
-                    Ok(n) if n > 0 => tracing::info!(deleted = n, days = days, "Retention: expired PII-flagged knowledge entries"),
+                    Ok(n) if n > 0 => tracing::info!(
+                        deleted = n,
+                        days = days,
+                        "Retention: expired PII-flagged knowledge entries"
+                    ),
                     _ => {}
                 }
             }
@@ -2780,10 +2954,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         });
 
         let rs = Arc::clone(&registry_state);
-        builder = builder.tool(registry_tools::registry_describe_def(), move |args, _ctx| {
-            let rs = Arc::clone(&rs);
-            Box::pin(registry_tools::handle_registry_describe(args, rs))
-        });
+        builder = builder.tool(
+            registry_tools::registry_describe_def(),
+            move |args, _ctx| {
+                let rs = Arc::clone(&rs);
+                Box::pin(registry_tools::handle_registry_describe(args, rs))
+            },
+        );
 
         tracing::info!(
             registries = cfg.registry.len(),
@@ -2808,10 +2985,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     schema_type: "object".to_string(),
                     properties: {
                         let mut props = std::collections::HashMap::new();
-                        props.insert("run_id".to_string(), serde_json::json!({
-                            "type": "string",
-                            "description": "Filter by run ID (returns tool calls for that run)"
-                        }));
+                        props.insert(
+                            "run_id".to_string(),
+                            serde_json::json!({
+                                "type": "string",
+                                "description": "Filter by run ID (returns tool calls for that run)"
+                            }),
+                        );
                         props.insert("summary".to_string(), serde_json::json!({
                             "type": "boolean",
                             "description": "If true, return a summary instead of individual entries"
@@ -2830,18 +3010,21 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     let run_id = args.get("run_id").and_then(|v| v.as_str());
 
                     if let Some(rid) = run_id {
-                        let summary = args.get("summary").and_then(|v| v.as_bool()).unwrap_or(false);
+                        let summary = args
+                            .get("summary")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
                         if summary {
                             match audit.get_summary(rid) {
                                 Ok(s) => CallToolResult::text(
-                                    serde_json::to_string_pretty(&s).unwrap_or_default()
+                                    serde_json::to_string_pretty(&s).unwrap_or_default(),
                                 ),
                                 Err(e) => CallToolResult::error(format!("Audit query failed: {e}")),
                             }
                         } else {
                             match audit.get_tool_calls(rid) {
                                 Ok(calls) => CallToolResult::text(
-                                    serde_json::to_string_pretty(&calls).unwrap_or_default()
+                                    serde_json::to_string_pretty(&calls).unwrap_or_default(),
                                 ),
                                 Err(e) => CallToolResult::error(format!("Audit query failed: {e}")),
                             }
@@ -2850,9 +3033,11 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         // No run_id — list recent runs
                         match audit.get_run("latest") {
                             Ok(run) => CallToolResult::text(
-                                serde_json::to_string_pretty(&run).unwrap_or_default()
+                                serde_json::to_string_pretty(&run).unwrap_or_default(),
                             ),
-                            Err(_) => CallToolResult::text("No audit runs found. Run a demo first.".to_string()),
+                            Err(_) => CallToolResult::text(
+                                "No audit runs found. Run a demo first.".to_string(),
+                            ),
                         }
                     }
                 })
@@ -2867,37 +3052,29 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     {
         let cell = Arc::clone(&server_cell);
         let allow_direct = cfg.server.allow_direct_execution;
-        builder = builder.tool(
-            plan_execute::plan_execute_tool_def(),
-            move |args, ctx| {
-                let cell = Arc::clone(&cell);
-                Box::pin(async move {
-                    match cell.get() {
-                        Some(server) => {
-                            plan_execute::handle_plan_execute(args, server, ctx, allow_direct).await
-                        }
-                        None => smgglrs_core::protocol::CallToolResult::error(
-                            "Server not yet initialized",
-                        ),
+        builder = builder.tool(plan_execute::plan_execute_tool_def(), move |args, ctx| {
+            let cell = Arc::clone(&cell);
+            Box::pin(async move {
+                match cell.get() {
+                    Some(server) => {
+                        plan_execute::handle_plan_execute(args, server, ctx, allow_direct).await
                     }
-                })
-            },
-        );
+                    None => {
+                        smgglrs_core::protocol::CallToolResult::error("Server not yet initialized")
+                    }
+                }
+            })
+        });
         tracing::info!("Registered plan_execute tool");
     }
 
     // Register build_test tool for self-improvement flows
     {
         let perm = Arc::clone(&perm_engine);
-        builder = builder.tool(
-            build_tools::build_test_tool_def(),
-            move |args, ctx| {
-                let perm = Arc::clone(&perm);
-                Box::pin(async move {
-                    build_tools::handle_build_test(args, ctx, perm).await
-                })
-            },
-        );
+        builder = builder.tool(build_tools::build_test_tool_def(), move |args, ctx| {
+            let perm = Arc::clone(&perm);
+            Box::pin(async move { build_tools::handle_build_test(args, ctx, perm).await })
+        });
         tracing::info!("Registered build_test tool");
     }
 
@@ -3205,9 +3382,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // This means truncation happens first, then safety filtering.
 
         // Collect safety pipelines for the SafetyHook
-        let mut safety_hook = smgglrs_core::hooks::SafetyHook::new(
-            std::collections::HashMap::new(),
-        );
+        let mut safety_hook =
+            smgglrs_core::hooks::SafetyHook::new(std::collections::HashMap::new());
         for (name, pset) in &cfg.permissions {
             let mut pipeline = smgglrs_core::safety::build_pipeline(&pset.safety);
             // Re-add custom PII filter
@@ -3266,10 +3442,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
         builder = builder.hook(safety_hook);
 
-        builder = builder.hook(BudgetHook::new(
-            cfg.budget.max_tool_output_tokens,
-            strategy,
-        ));
+        builder = builder.hook(BudgetHook::new(cfg.budget.max_tool_output_tokens, strategy));
         tracing::info!(
             max_tokens = cfg.budget.max_tool_output_tokens,
             strategy = %cfg.budget.truncation_strategy,
@@ -3289,14 +3462,22 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             block_on_anomaly = hook_config.block_on_anomaly,
             "Statistical guardrail enabled"
         );
-        builder = builder.hook(smgglrs_core::hooks::StatisticalGuardrailHook::new(hook_config));
+        builder = builder.hook(smgglrs_core::hooks::StatisticalGuardrailHook::new(
+            hook_config,
+        ));
     }
 
     // Memory extraction hook (observation-only, stores tool results as knowledge)
     if let Some(ref ks) = knowledge_store {
         struct KnowledgeExtractionStore(Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>);
         impl smgglrs_core::hooks::ExtractionStore for KnowledgeExtractionStore {
-            fn store_extraction(&self, title: &str, content: &str, session_id: &str, tags: &[String]) {
+            fn store_extraction(
+                &self,
+                title: &str,
+                content: &str,
+                session_id: &str,
+                tags: &[String],
+            ) {
                 if let Ok(store) = self.0.lock() {
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
@@ -3334,7 +3515,11 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     let _config_watcher = if cfg.server.config_watch {
         let config_path = config::Config::default_config_path();
         let (tx, _rx) = tokio::sync::watch::channel(std::sync::Arc::new(cfg.clone()));
-        match config_watcher::ConfigWatcher::new(config_path, cfg.server.config_watch_debounce_ms, tx) {
+        match config_watcher::ConfigWatcher::new(
+            config_path,
+            cfg.server.config_watch_debounce_ms,
+            tx,
+        ) {
             Ok(w) => Some(w),
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to start config watcher");
@@ -3488,12 +3673,18 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 let root_did_str = Some(root_signer.did().to_string());
                 let api_server_ref = Arc::clone(&server);
                 let router = smgglrs_core::transport::build_router_with_discovery(
-                    server, broadcaster, aid_record, registry_entries, a2a_endpoint, root_did_str,
+                    server,
+                    broadcaster,
+                    aid_record,
+                    registry_entries,
+                    a2a_endpoint,
+                    root_did_str,
                 );
                 (router, api_server_ref)
             } else {
                 let api_server_ref = Arc::clone(&server);
-                let router = smgglrs_core::transport::build_router_with_broadcaster(server, broadcaster);
+                let router =
+                    smgglrs_core::transport::build_router_with_broadcaster(server, broadcaster);
                 (router, api_server_ref)
             };
 
@@ -3517,16 +3708,32 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 .send()
                 .await
             {
-                resp.json::<serde_json::Value>().await.ok()
+                resp.json::<serde_json::Value>()
+                    .await
+                    .ok()
                     .and_then(|tags| tags["models"][0]["name"].as_str().map(String::from))
             } else {
                 None
             };
             let ui_broadcaster = Arc::new(ui_events::UiBroadcaster::new(256));
             ui_events::start_polling_bridge(Arc::clone(&ui_broadcaster), Arc::clone(&server));
-            let router = ui::attach_ui_routes(router, &cfg, &server, &models, ollama_fallback.as_deref(), Some(ui_broadcaster));
+            let router = ui::attach_ui_routes(
+                router,
+                &cfg,
+                &server,
+                &models,
+                ollama_fallback.as_deref(),
+                Some(ui_broadcaster),
+            );
 
-            tracing::info!("Web UI at http://localhost:{}", cfg.server.tcp.as_deref().and_then(|a| a.rsplit(':').next()).unwrap_or("9315"));
+            tracing::info!(
+                "Web UI at http://localhost:{}",
+                cfg.server
+                    .tcp
+                    .as_deref()
+                    .and_then(|a| a.rsplit(':').next())
+                    .unwrap_or("9315")
+            );
 
             // Listen on Unix socket, TCP, or both
             if let Some(ref socket_path) = cfg.server.socket {
@@ -3553,9 +3760,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 let shutdown = async {
                     let ctrl_c = tokio::signal::ctrl_c();
                     #[cfg(unix)]
-                    let mut sigterm = tokio::signal::unix::signal(
-                        tokio::signal::unix::SignalKind::terminate(),
-                    ).expect("failed to install SIGTERM handler");
+                    let mut sigterm =
+                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                            .expect("failed to install SIGTERM handler");
                     #[cfg(unix)]
                     tokio::select! {
                         _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
@@ -3577,7 +3784,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     }
                 } else {
                     axum::serve(unix_listener, router)
-                        .with_graceful_shutdown(shutdown).await?;
+                        .with_graceful_shutdown(shutdown)
+                        .await?;
                 }
             } else {
                 let addr = cfg.server.listen_addr();
@@ -3587,9 +3795,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 let shutdown = async {
                     let ctrl_c = tokio::signal::ctrl_c();
                     #[cfg(unix)]
-                    let mut sigterm = tokio::signal::unix::signal(
-                        tokio::signal::unix::SignalKind::terminate(),
-                    ).expect("failed to install SIGTERM handler");
+                    let mut sigterm =
+                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                            .expect("failed to install SIGTERM handler");
                     #[cfg(unix)]
                     tokio::select! {
                         _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),
@@ -3600,7 +3808,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 };
 
                 axum::serve(listener, router)
-                    .with_graceful_shutdown(shutdown).await?;
+                    .with_graceful_shutdown(shutdown)
+                    .await?;
             }
         }
     }
@@ -3651,7 +3860,10 @@ async fn approve_or_deny(addr: &str, request_id: &str, approve: bool) -> anyhow:
 
     let result: serde_json::Value = resp.json().await?;
     if let Some(error) = result.get("error") {
-        let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown");
+        let msg = error
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown");
         anyhow::bail!("Server error: {msg}");
     }
 
@@ -3839,13 +4051,12 @@ async fn run_agent(
             .ok()
             .and_then(|r| futures_util::FutureExt::now_or_never(r.json::<serde_json::Value>()));
         match resp {
-            Some(Ok(tags)) => {
-                tags["models"].as_array()
-                    .and_then(|m| m.first())
-                    .and_then(|m| m["name"].as_str())
-                    .unwrap_or("gemma4:26b")
-                    .to_string()
-            }
+            Some(Ok(tags)) => tags["models"]
+                .as_array()
+                .and_then(|m| m.first())
+                .and_then(|m| m["name"].as_str())
+                .unwrap_or("gemma4:26b")
+                .to_string(),
             _ => "gemma4:26b".to_string(),
         }
     };
@@ -3858,8 +4069,14 @@ async fn run_agent(
     // Detect model provider from name
     enum ModelProvider {
         Ollama,
-        VertexAI { url: String, token: Option<String>, region: String },
-        AnthropicDirect { key: String },
+        VertexAI {
+            url: String,
+            token: Option<String>,
+            region: String,
+        },
+        AnthropicDirect {
+            key: String,
+        },
     }
 
     let provider = if model_name.starts_with("claude") {
@@ -3905,12 +4122,17 @@ async fn run_agent(
 
     // Discover upstream personas from the running smgglrs server
     if let Some(ref mut f) = forge {
-        let discover_token = token.map(String::from)
+        let discover_token = token
+            .map(String::from)
             .or_else(|| std::env::var("MCPD_TOKEN").ok());
         let discover_upstream = if let Some(ref t) = discover_token {
-            smgglrs_agent::Upstream::http_with_auth("discover", endpoint, t).await.ok()
+            smgglrs_agent::Upstream::http_with_auth("discover", endpoint, t)
+                .await
+                .ok()
         } else {
-            smgglrs_agent::Upstream::http("discover", endpoint).await.ok()
+            smgglrs_agent::Upstream::http("discover", endpoint)
+                .await
+                .ok()
         };
         if let Some(upstream) = discover_upstream {
             let mut client = smgglrs_agent::McpClient::new(upstream);
@@ -3928,9 +4150,7 @@ async fn run_agent(
     }
 
     // Build agent with provider-specific backend
-    let base_builder = smgglrs_agent::Agent::builder()
-        .endpoint(endpoint)
-        .await?;
+    let base_builder = smgglrs_agent::Agent::builder().endpoint(endpoint).await?;
 
     let non_progress = vec![
         "team_status".to_string(),
@@ -3946,25 +4166,35 @@ async fn run_agent(
     macro_rules! configure_builder {
         ($b:expr) => {
             $b.max_iterations(max_iterations)
-              .temperature(0.0)
-              .max_tokens(8192)
-              .force_tool_iterations(5)
-              .non_progress_tools(non_progress.clone())
+                .temperature(0.0)
+                .max_tokens(8192)
+                .force_tool_iterations(5)
+                .non_progress_tools(non_progress.clone())
         };
     }
 
     let mut builder = match provider {
-        ModelProvider::VertexAI { url, token, ref region } => {
+        ModelProvider::VertexAI {
+            url,
+            token,
+            ref region,
+        } => {
             eprintln!("Provider: Vertex AI ({region})");
             let backend = smgglrs_model::AnthropicBackend::new(
-                url, &model_name, token, smgglrs_model::Locality::Remote,
+                url,
+                &model_name,
+                token,
+                smgglrs_model::Locality::Remote,
             );
             configure_builder!(base_builder.model(backend))
         }
         ModelProvider::AnthropicDirect { key } => {
             eprintln!("Provider: Anthropic API");
             let backend = smgglrs_model::AnthropicBackend::new(
-                "https://api.anthropic.com", &model_name, Some(key), smgglrs_model::Locality::Remote,
+                "https://api.anthropic.com",
+                &model_name,
+                Some(key),
+                smgglrs_model::Locality::Remote,
             );
             configure_builder!(base_builder.model(backend))
         }
@@ -3972,7 +4202,10 @@ async fn run_agent(
             let ollama_url = std::env::var("OLLAMA_HOST")
                 .unwrap_or_else(|_| "http://localhost:11434".to_string());
             let backend = smgglrs_model::OpenAiBackend::new(
-                format!("{ollama_url}/v1"), &model_name, None, smgglrs_model::Locality::Local,
+                format!("{ollama_url}/v1"),
+                &model_name,
+                None,
+                smgglrs_model::Locality::Local,
             );
             configure_builder!(base_builder.model(backend))
         }
@@ -4095,7 +4328,10 @@ async fn run_agent(
                 .join("\n\n");
 
             builder = builder.system_prompt(extra);
-            eprintln!("Resolved {} upstream prompt(s) (no persona)", resolved.len());
+            eprintln!(
+                "Resolved {} upstream prompt(s) (no persona)",
+                resolved.len()
+            );
         }
     }
 
@@ -4117,7 +4353,10 @@ async fn run_agent(
             eprintln!();
             eprintln!("---");
             eprintln!("Iterations: {}", result.iterations);
-            eprintln!("Tokens:     {} in + {} out", result.input_tokens, result.output_tokens);
+            eprintln!(
+                "Tokens:     {} in + {} out",
+                result.input_tokens, result.output_tokens
+            );
             eprintln!("Time:       {:.1}s", start.elapsed().as_secs_f64());
             eprintln!("Taint:      {:?}", result.taint);
             eprintln!("Blackbox:   smgglrs audit");
@@ -4140,21 +4379,32 @@ pub(crate) fn expand_tilde(path: &str) -> String {
     path.to_string()
 }
 
-fn audit_command(limit: usize, detail: bool, agent: Option<String>, tool: Option<String>, verify: bool) -> anyhow::Result<()> {
+fn audit_command(
+    limit: usize,
+    detail: bool,
+    agent: Option<String>,
+    tool: Option<String>,
+    verify: bool,
+) -> anyhow::Result<()> {
     let bb_path = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("smgglrs/blackbox.db");
     if !bb_path.exists() {
-        anyhow::bail!("No blackbox found at {}. Start the server first.", bb_path.display());
+        anyhow::bail!(
+            "No blackbox found at {}. Start the server first.",
+            bb_path.display()
+        );
     }
-    let bb = smgglrs_core::blackbox::Blackbox::open(&bb_path)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let bb =
+        smgglrs_core::blackbox::Blackbox::open(&bb_path).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     if verify {
         let (valid, broken) = bb.verify_chain();
         match broken {
             None => println!("Blackbox integrity: OK ({valid} entries, chain valid)"),
-            Some(seq) => println!("Blackbox integrity: BROKEN at seq {seq} ({valid} valid entries before break)"),
+            Some(seq) => println!(
+                "Blackbox integrity: BROKEN at seq {seq} ({valid} valid entries before break)"
+            ),
         }
         return Ok(());
     }
@@ -4162,32 +4412,50 @@ fn audit_command(limit: usize, detail: bool, agent: Option<String>, tool: Option
     println!("Blackbox: {} ({} entries)\n", bb_path.display(), bb.count());
 
     let entries = bb.recent(limit);
-    let filtered: Vec<_> = entries.iter().rev()
+    let filtered: Vec<_> = entries
+        .iter()
+        .rev()
         .filter(|e| agent.as_ref().map_or(true, |a| e.agent_name == *a))
         .filter(|e| tool.as_ref().map_or(true, |t| e.tool_name == *t))
         .collect();
 
     if detail {
         for e in &filtered {
-            println!("seq={} agent={} tool={} outcome={} duration={}us",
-                e.seq, e.agent_name, e.tool_name, e.outcome, e.duration_us);
-            let args_short = if e.tool_args.len() > 120 { &e.tool_args[..120] } else { &e.tool_args };
-            let result_short = if e.tool_result.len() > 120 { &e.tool_result[..120] } else { &e.tool_result };
+            println!(
+                "seq={} agent={} tool={} outcome={} duration={}us",
+                e.seq, e.agent_name, e.tool_name, e.outcome, e.duration_us
+            );
+            let args_short = if e.tool_args.len() > 120 {
+                &e.tool_args[..120]
+            } else {
+                &e.tool_args
+            };
+            let result_short = if e.tool_result.len() > 120 {
+                &e.tool_result[..120]
+            } else {
+                &e.tool_result
+            };
             println!("  args:   {}", args_short);
             println!("  result: {}", result_short);
             println!("  ifc:    {}", e.ifc_label);
             println!();
         }
     } else {
-        println!("{:<6} {:<12} {:<12} {:<20} {:<8} {}", "SEQ", "AGENT", "OUTCOME", "TOOL", "US", "IFC");
+        println!(
+            "{:<6} {:<12} {:<12} {:<20} {:<8} {}",
+            "SEQ", "AGENT", "OUTCOME", "TOOL", "US", "IFC"
+        );
         println!("{}", "-".repeat(80));
         for e in &filtered {
-            let ifc_short = e.ifc_label
+            let ifc_short = e
+                .ifc_label
                 .replace("DataLabel { integrity: ", "")
                 .replace(", confidentiality: ", "/")
                 .replace(" }", "");
-            println!("{:<6} {:<12} {:<12} {:<20} {:<8} {}",
-                e.seq, e.agent_name, e.outcome, e.tool_name, e.duration_us, ifc_short);
+            println!(
+                "{:<6} {:<12} {:<12} {:<20} {:<8} {}",
+                e.seq, e.agent_name, e.outcome, e.tool_name, e.duration_us, ifc_short
+            );
         }
     }
 
@@ -4201,9 +4469,7 @@ mod tests {
     use smgglrs_core::protocol::{ReadResourceResult, ResourceContent};
 
     /// Helper: build a resource handler closure for smgglrs://proc.
-    fn proc_handler(
-        pt: &smgglrs_core::process::ProcessTable,
-    ) -> smgglrs_core::ResourceHandler {
+    fn proc_handler(pt: &smgglrs_core::process::ProcessTable) -> smgglrs_core::ResourceHandler {
         let pt = pt.clone();
         Arc::new(move |uri: String| {
             let pt = pt.clone();
@@ -4223,9 +4489,7 @@ mod tests {
     }
 
     /// Helper: build a resource handler closure for smgglrs://sessions.
-    fn sessions_handler(
-        ss: &smgglrs_core::session::SessionStore,
-    ) -> smgglrs_core::ResourceHandler {
+    fn sessions_handler(ss: &smgglrs_core::session::SessionStore) -> smgglrs_core::ResourceHandler {
         let ss = ss.clone();
         Arc::new(move |uri: String| {
             let ss = ss.clone();
@@ -4341,7 +4605,10 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(parsed["name"], "smgglrs");
         assert!(parsed["version"].is_string());
-        assert_eq!(parsed["protocol_version"], smgglrs_core::protocol::PROTOCOL_VERSION);
+        assert_eq!(
+            parsed["protocol_version"],
+            smgglrs_core::protocol::PROTOCOL_VERSION
+        );
         assert!(parsed["crates"].is_number());
         assert!(parsed["uptime_secs"].is_number());
     }

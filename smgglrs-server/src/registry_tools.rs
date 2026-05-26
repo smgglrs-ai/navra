@@ -174,17 +174,10 @@ pub async fn handle_registry_search(
         None => return CallToolResult::error("Missing required parameter: query"),
     };
     let registry_filter = args.get("registry").and_then(|v| v.as_str());
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(20) as usize;
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
 
     let entries: Vec<&RegistryEntry> = if let Some(filter) = registry_filter {
-        state
-            .entries
-            .iter()
-            .filter(|e| e.name == filter)
-            .collect()
+        state.entries.iter().filter(|e| e.name == filter).collect()
     } else {
         state.entries.iter().collect()
     };
@@ -273,11 +266,7 @@ pub async fn handle_registry_describe(
     let registry_filter = args.get("registry").and_then(|v| v.as_str());
 
     let entries: Vec<&RegistryEntry> = if let Some(filter) = registry_filter {
-        state
-            .entries
-            .iter()
-            .filter(|e| e.name == filter)
-            .collect()
+        state.entries.iter().filter(|e| e.name == filter).collect()
     } else {
         state.entries.iter().collect()
     };
@@ -593,9 +582,7 @@ mod tests {
                 remote_type: "streamable-http".to_string(),
                 url: "https://registry.example.com/api".to_string(),
                 repository: None,
-                search_url: Some(
-                    "https://registry.example.com/api/search?q={query}".to_string(),
-                ),
+                search_url: Some("https://registry.example.com/api/search?q={query}".to_string()),
                 results_path: Some("data.results".to_string()),
             },
         ]
@@ -747,8 +734,7 @@ mod tests {
     #[tokio::test]
     async fn handle_search_no_registries() {
         let state = Arc::new(RegistryState::new(vec![], 3600));
-        let result =
-            handle_registry_search(serde_json::json!({"query": "test"}), state).await;
+        let result = handle_registry_search(serde_json::json!({"query": "test"}), state).await;
         assert!(result.is_error);
     }
 

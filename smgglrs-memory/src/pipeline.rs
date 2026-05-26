@@ -232,7 +232,10 @@ impl<'a> DistillationPipeline<'a> {
     ///
     /// Computes content_key, checks for existing entry, upserts
     /// or flags conflict.
-    pub fn reconcile(&self, entries: Vec<DistilledEntry>) -> Result<Vec<DistilledEntry>, MemoryError> {
+    pub fn reconcile(
+        &self,
+        entries: Vec<DistilledEntry>,
+    ) -> Result<Vec<DistilledEntry>, MemoryError> {
         // Content keys are already computed in DistilledEntry::new.
         // In this skeleton, we just pass through. A full implementation
         // would check for conflicts and merge content.
@@ -317,8 +320,9 @@ impl<'a> DistillationPipeline<'a> {
                 sanitized_content,
             );
 
-            fs::write(&path, &content)
-                .map_err(|e| MemoryError::Other(format!("failed to write {}: {e}", path.display())))?;
+            fs::write(&path, &content).map_err(|e| {
+                MemoryError::Other(format!("failed to write {}: {e}", path.display()))
+            })?;
 
             written += 1;
         }
@@ -334,7 +338,13 @@ impl<'a> DistillationPipeline<'a> {
         let sanitized: String = entry
             .title
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>()
             .to_lowercase();
 
@@ -509,7 +519,8 @@ mod tests {
     #[tokio::test]
     async fn synthesize_produces_entries() {
         let wm = WorkingMemory::open_memory().unwrap();
-        wm.add_turn(&make_turn("s1", "Rust is great", 1000)).unwrap();
+        wm.add_turn(&make_turn("s1", "Rust is great", 1000))
+            .unwrap();
 
         let ks = KnowledgeStore::open_memory().unwrap();
         let pipeline = DistillationPipeline::new(&wm, &ks);
@@ -524,7 +535,8 @@ mod tests {
     #[tokio::test]
     async fn full_pipeline_stores_entries() {
         let wm = WorkingMemory::open_memory().unwrap();
-        wm.add_turn(&make_turn("s1", "Important fact", 1000)).unwrap();
+        wm.add_turn(&make_turn("s1", "Important fact", 1000))
+            .unwrap();
         wm.add_turn(&make_turn("s1", "Another fact", 2000)).unwrap();
 
         let ks = KnowledgeStore::open_memory().unwrap();
@@ -554,7 +566,12 @@ mod tests {
             &self,
             _request: &smgglrs_model::GenerateRequest,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<smgglrs_model::GenerateResponse, smgglrs_model::ModelError>> + Send + '_>,
+            Box<
+                dyn std::future::Future<
+                        Output = Result<smgglrs_model::GenerateResponse, smgglrs_model::ModelError>,
+                    > + Send
+                    + '_,
+            >,
         > {
             let text = self.response_json.clone();
             Box::pin(async move {
@@ -575,11 +592,14 @@ mod tests {
             &self,
             _request: &smgglrs_model::GenerateRequest,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<smgglrs_model::GenerateResponse, smgglrs_model::ModelError>> + Send + '_>,
+            Box<
+                dyn std::future::Future<
+                        Output = Result<smgglrs_model::GenerateResponse, smgglrs_model::ModelError>,
+                    > + Send
+                    + '_,
+            >,
         > {
-            Box::pin(async {
-                Err(smgglrs_model::ModelError::Inference("mock failure".into()))
-            })
+            Box::pin(async { Err(smgglrs_model::ModelError::Inference("mock failure".into())) })
         }
     }
 
@@ -605,8 +625,12 @@ mod tests {
         let wm = WorkingMemory::open_memory().unwrap();
         wm.add_turn(&make_turn("s1", "I love Rust for its memory safety", 1000))
             .unwrap();
-        wm.add_turn(&make_turn("s1", "I always choose Rust for new projects", 2000))
-            .unwrap();
+        wm.add_turn(&make_turn(
+            "s1",
+            "I always choose Rust for new projects",
+            2000,
+        ))
+        .unwrap();
 
         let ks = KnowledgeStore::open_memory().unwrap();
         let model: Arc<dyn smgglrs_model::ModelBackend> =
@@ -740,7 +764,10 @@ mod tests {
         assert_eq!(files.len(), 2);
 
         // Check that expected filenames exist
-        let names: Vec<String> = files.iter().map(|f| f.file_name().to_string_lossy().to_string()).collect();
+        let names: Vec<String> = files
+            .iter()
+            .map(|f| f.file_name().to_string_lossy().to_string())
+            .collect();
         assert!(names.iter().any(|n| n.starts_with("fact_")));
         assert!(names.iter().any(|n| n.starts_with("insight_")));
     }
@@ -818,8 +845,7 @@ mod tests {
     fn export_markdown_with_sanitizer_redacts_content() {
         let wm = WorkingMemory::open_memory().unwrap();
         let ks = KnowledgeStore::open_memory().unwrap();
-        let pipeline = DistillationPipeline::new(&wm, &ks)
-            .with_sanitizer(mock_sanitizer());
+        let pipeline = DistillationPipeline::new(&wm, &ks).with_sanitizer(mock_sanitizer());
 
         let entries = vec![DistilledEntry::new(
             MemoryType::Fact,
@@ -839,33 +865,40 @@ mod tests {
             .filter_map(|e| e.ok())
             .collect();
         let content = std::fs::read_to_string(files[0].path()).unwrap();
-        assert!(!content.contains("secret"), "Expected 'secret' redacted in markdown output: {content}");
+        assert!(
+            !content.contains("secret"),
+            "Expected 'secret' redacted in markdown output: {content}"
+        );
         assert!(content.contains("[REDACTED:test]"));
     }
 
     #[tokio::test]
     async fn forge_with_sanitizer_redacts_stored_content() {
         let wm = WorkingMemory::open_memory().unwrap();
-        wm.add_turn(&make_turn("s1", "The secret is 42", 1000)).unwrap();
+        wm.add_turn(&make_turn("s1", "The secret is 42", 1000))
+            .unwrap();
 
         let ks = KnowledgeStore::open_memory().unwrap();
-        let pipeline = DistillationPipeline::new(&wm, &ks)
-            .with_sanitizer(mock_sanitizer());
+        let pipeline = DistillationPipeline::new(&wm, &ks).with_sanitizer(mock_sanitizer());
 
         let stored = pipeline.run("s1").await.unwrap();
         assert_eq!(stored, 1);
 
         let entries = ks.list(None).unwrap();
         assert_eq!(entries.len(), 1);
-        assert!(!entries[0].content.contains("secret"),
-            "Expected 'secret' redacted in knowledge store: {}", entries[0].content);
+        assert!(
+            !entries[0].content.contains("secret"),
+            "Expected 'secret' redacted in knowledge store: {}",
+            entries[0].content
+        );
         assert!(entries[0].content.contains("[REDACTED:test]"));
     }
 
     #[tokio::test]
     async fn synthesize_without_model_uses_stub() {
         let wm = WorkingMemory::open_memory().unwrap();
-        wm.add_turn(&make_turn("s1", "The sky is blue", 1000)).unwrap();
+        wm.add_turn(&make_turn("s1", "The sky is blue", 1000))
+            .unwrap();
         wm.add_turn(&make_turn("s1", "Water is wet", 2000)).unwrap();
 
         let ks = KnowledgeStore::open_memory().unwrap();
@@ -891,7 +924,10 @@ mod tests {
             "Deploy the application to production",
             "Connection refused on port 443",
             &[
-                ("Timeout after 30s".to_string(), "partial output".to_string()),
+                (
+                    "Timeout after 30s".to_string(),
+                    "partial output".to_string(),
+                ),
                 ("Connection refused on port 443".to_string(), String::new()),
             ],
         );
@@ -908,12 +944,8 @@ mod tests {
 
     #[test]
     fn failure_insight_with_empty_history() {
-        let insight = extract_failure_insight(
-            "build",
-            "Build the project",
-            "Compilation error",
-            &[],
-        );
+        let insight =
+            extract_failure_insight("build", "Build the project", "Compilation error", &[]);
 
         assert!(insight.content.contains("Compilation error"));
         assert!(insight.content.contains("build"));
@@ -941,12 +973,7 @@ mod tests {
     #[test]
     fn success_insight_truncates_long_result() {
         let long_result = "x".repeat(300);
-        let insight = extract_success_insight(
-            "task",
-            "Do something",
-            &long_result,
-            1,
-        );
+        let insight = extract_success_insight("task", "Do something", &long_result, 1);
 
         // Content should be truncated (200 chars + "...")
         assert!(insight.content.len() < 400);
@@ -956,12 +983,7 @@ mod tests {
     #[test]
     fn failure_insight_is_searchable_by_tags() {
         let ks = KnowledgeStore::open_memory().unwrap();
-        let insight = extract_failure_insight(
-            "deploy",
-            "Deploy app",
-            "Port conflict",
-            &[],
-        );
+        let insight = extract_failure_insight("deploy", "Deploy app", "Port conflict", &[]);
         ks.store_distilled(&insight).unwrap();
 
         let results = ks.search_with_tags("deploy", &["failure"]).unwrap();
@@ -974,22 +996,13 @@ mod tests {
     fn insights_superseded_by_same_task_pattern() {
         let ks = KnowledgeStore::open_memory().unwrap();
 
-        let insight1 = extract_failure_insight(
-            "deploy",
-            "Deploy app",
-            "Port conflict",
-            &[],
-        );
+        let insight1 = extract_failure_insight("deploy", "Deploy app", "Port conflict", &[]);
         let gen1 = ks.store_distilled_with_generation(&insight1).unwrap();
         assert_eq!(gen1, 1);
 
         // Same title -> same content_key -> supersession
-        let insight2 = extract_failure_insight(
-            "deploy",
-            "Deploy app",
-            "Memory limit exceeded",
-            &[],
-        );
+        let insight2 =
+            extract_failure_insight("deploy", "Deploy app", "Memory limit exceeded", &[]);
         let gen2 = ks.store_distilled_with_generation(&insight2).unwrap();
         assert_eq!(gen2, 2);
 
@@ -1005,15 +1018,13 @@ mod tests {
     fn strategy_generation_tracks_evolution() {
         let ks = KnowledgeStore::open_memory().unwrap();
 
-        let insight = extract_success_insight(
-            "build",
-            "Build project",
-            "All tests pass",
-            1,
-        );
+        let insight = extract_success_insight("build", "Build project", "All tests pass", 1);
 
         ks.store_distilled_with_generation(&insight).unwrap();
-        assert_eq!(ks.strategy_generation_of(&insight.content_key).unwrap(), Some(1));
+        assert_eq!(
+            ks.strategy_generation_of(&insight.content_key).unwrap(),
+            Some(1)
+        );
 
         // Supersede with updated insight
         let updated = DistilledEntry {
@@ -1021,11 +1032,17 @@ mod tests {
             ..insight.clone()
         };
         ks.store_distilled_with_generation(&updated).unwrap();
-        assert_eq!(ks.strategy_generation_of(&insight.content_key).unwrap(), Some(2));
+        assert_eq!(
+            ks.strategy_generation_of(&insight.content_key).unwrap(),
+            Some(2)
+        );
 
         // Third evolution
         ks.store_distilled_with_generation(&updated).unwrap();
-        assert_eq!(ks.strategy_generation_of(&insight.content_key).unwrap(), Some(3));
+        assert_eq!(
+            ks.strategy_generation_of(&insight.content_key).unwrap(),
+            Some(3)
+        );
     }
 
     #[test]

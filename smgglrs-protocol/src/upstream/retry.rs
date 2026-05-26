@@ -294,11 +294,9 @@ impl Transport for ResilientTransport {
 
             // Attempt the request with a timeout
             let transport = self.inner.as_mut().unwrap();
-            let result = tokio::time::timeout(
-                self.config.request_timeout,
-                transport.request(body.clone()),
-            )
-            .await;
+            let result =
+                tokio::time::timeout(self.config.request_timeout, transport.request(body.clone()))
+                    .await;
 
             match result {
                 Ok(Ok(response)) => {
@@ -516,7 +514,10 @@ mod tests {
             let ms = delay.as_millis() as u64;
             let lo = expected_ms * 3 / 4;
             let hi = expected_ms * 5 / 4;
-            assert!(ms >= lo && ms <= hi, "attempt {attempt}: {ms}ms not in [{lo}, {hi}]");
+            assert!(
+                ms >= lo && ms <= hi,
+                "attempt {attempt}: {ms}ms not in [{lo}, {hi}]"
+            );
         };
         check(0, 1000);
         check(1, 2000);

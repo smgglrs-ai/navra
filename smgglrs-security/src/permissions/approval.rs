@@ -134,9 +134,10 @@ impl ApprovalStore {
         grants.retain(|g| g.expires > now);
 
         // Find and consume matching grant
-        if let Some(pos) = grants.iter().position(|g| {
-            g.agent_name == agent_name && g.operation == operation && g.path == path
-        }) {
+        if let Some(pos) = grants
+            .iter()
+            .position(|g| g.agent_name == agent_name && g.operation == operation && g.path == path)
+        {
             grants.remove(pos);
             true
         } else {

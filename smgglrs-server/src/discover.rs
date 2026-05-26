@@ -28,13 +28,13 @@ pub async fn lookup_domain(domain: &str) -> Option<DiscoveredEndpoint> {
 }
 
 /// Query a domain's `.well-known/agent` endpoint with a custom timeout.
-pub async fn lookup_domain_with_timeout(domain: &str, timeout: std::time::Duration) -> Option<DiscoveredEndpoint> {
+pub async fn lookup_domain_with_timeout(
+    domain: &str,
+    timeout: std::time::Duration,
+) -> Option<DiscoveredEndpoint> {
     let url = format!("https://{}/.well-known/agent", domain);
 
-    let client = reqwest::Client::builder()
-        .timeout(timeout)
-        .build()
-        .ok()?;
+    let client = reqwest::Client::builder().timeout(timeout).build().ok()?;
 
     let resp = match client.get(&url).send().await {
         Ok(r) if r.status().is_success() => r,
@@ -96,7 +96,10 @@ pub async fn discover_all(domains: &[String]) -> Vec<DiscoveredEndpoint> {
 }
 
 /// Discover MCP endpoints from a list of domains with a custom timeout.
-pub async fn discover_all_with_timeout(domains: &[String], timeout: std::time::Duration) -> Vec<DiscoveredEndpoint> {
+pub async fn discover_all_with_timeout(
+    domains: &[String],
+    timeout: std::time::Duration,
+) -> Vec<DiscoveredEndpoint> {
     if domains.is_empty() {
         return Vec::new();
     }

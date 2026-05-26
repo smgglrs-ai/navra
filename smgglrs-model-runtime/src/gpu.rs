@@ -101,9 +101,7 @@ fn detect_amd(devices: &mut Vec<GpuDevice>) {
 
         let gpu_name = read_drm_name(&device_path).unwrap_or_else(|| "AMD GPU".to_string());
 
-        let vram = device_path
-            .join("mem_info_vram_total")
-            .pipe_read_u64();
+        let vram = device_path.join("mem_info_vram_total").pipe_read_u64();
 
         devices.push(GpuDevice {
             kind: GpuKind::Amd,
@@ -149,9 +147,7 @@ fn detect_intel(devices: &mut Vec<GpuDevice>) {
         let gpu_name = read_drm_name(&device_path).unwrap_or_else(|| "Intel GPU".to_string());
 
         // Intel integrated GPUs share system memory, no dedicated VRAM file
-        let vram = device_path
-            .join("lmem_total_bytes")
-            .pipe_read_u64();
+        let vram = device_path.join("lmem_total_bytes").pipe_read_u64();
 
         devices.push(GpuDevice {
             kind: GpuKind::Intel,
@@ -213,7 +209,9 @@ pub fn sample_nvidia_memory() -> Vec<GpuMemoryUsage> {
     let mut results = Vec::new();
     for (index, entry) in entries.flatten().enumerate() {
         let fb_path = entry.path().join("fb_memory_usage");
-        let Ok(content) = fs::read_to_string(&fb_path) else { continue };
+        let Ok(content) = fs::read_to_string(&fb_path) else {
+            continue;
+        };
 
         let mut used_mb = 0u64;
         let mut total_mb = 0u64;

@@ -25,9 +25,7 @@ pub enum PermissionScope {
         tool_name: String,
     },
     /// Access to a resource by URI.
-    ResourceAccess {
-        uri: String,
-    },
+    ResourceAccess { uri: String },
 }
 
 // --- Request ---

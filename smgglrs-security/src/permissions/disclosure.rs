@@ -40,11 +40,15 @@ impl ToolDisclosure {
     }
 
     /// Filter a list of tool names, returning only visible ones.
-    pub fn filter<'a>(&self, tools: &'a [smgglrs_protocol::ToolDefinition]) -> Vec<smgglrs_protocol::ToolDefinition> {
+    pub fn filter<'a>(
+        &self,
+        tools: &'a [smgglrs_protocol::ToolDefinition],
+    ) -> Vec<smgglrs_protocol::ToolDefinition> {
         if self.include.is_empty() && self.exclude.is_empty() {
             return tools.to_vec();
         }
-        tools.iter()
+        tools
+            .iter()
             .filter(|t| self.is_visible(&t.name))
             .cloned()
             .collect()
@@ -64,10 +68,7 @@ mod tests {
 
     #[test]
     fn include_filters_to_matching() {
-        let d = ToolDisclosure::new(
-            vec!["file_*".to_string(), "git_status".to_string()],
-            vec![],
-        );
+        let d = ToolDisclosure::new(vec!["file_*".to_string(), "git_status".to_string()], vec![]);
         assert!(d.is_visible("file_read"));
         assert!(d.is_visible("file_write"));
         assert!(d.is_visible("git_status"));
@@ -77,10 +78,7 @@ mod tests {
 
     #[test]
     fn exclude_hides_matching() {
-        let d = ToolDisclosure::new(
-            vec![],
-            vec!["shell_*".to_string()],
-        );
+        let d = ToolDisclosure::new(vec![], vec!["shell_*".to_string()]);
         assert!(d.is_visible("file_read"));
         assert!(d.is_visible("git_status"));
         assert!(!d.is_visible("shell_exec"));
@@ -101,7 +99,11 @@ mod tests {
     #[test]
     fn progressive_disclosure_for_beginner() {
         let d = ToolDisclosure::new(
-            vec!["file_read".to_string(), "file_tree".to_string(), "memory_search".to_string()],
+            vec![
+                "file_read".to_string(),
+                "file_tree".to_string(),
+                "memory_search".to_string(),
+            ],
             vec![],
         );
         assert!(d.is_visible("file_read"));

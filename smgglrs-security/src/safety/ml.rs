@@ -7,8 +7,8 @@
 //! Implements the async `ModelFilter` trait — runs after sync regex
 //! filters in the pipeline.
 
-use smgglrs_model::{ClassifyRequest, ModelBackend};
 use super::{FilterAction, FilterContext, Finding, ModelFilter};
+use smgglrs_model::{ClassifyRequest, ModelBackend};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -30,11 +30,7 @@ pub struct MlFilter {
 
 impl MlFilter {
     /// Create a new ML filter.
-    pub fn new(
-        model: Arc<dyn ModelBackend>,
-        threshold: f32,
-        category: impl Into<String>,
-    ) -> Self {
+    pub fn new(model: Arc<dyn ModelBackend>, threshold: f32, category: impl Into<String>) -> Self {
         Self {
             model,
             threshold,
@@ -124,10 +120,7 @@ pub struct MultiLabelFilter {
 
 impl MultiLabelFilter {
     /// Create a new multi-label filter with per-category policies.
-    pub fn new(
-        model: Arc<dyn ModelBackend>,
-        policies: HashMap<String, CategoryPolicy>,
-    ) -> Self {
+    pub fn new(model: Arc<dyn ModelBackend>, policies: HashMap<String, CategoryPolicy>) -> Self {
         Self {
             model,
             policies,
@@ -139,17 +132,17 @@ impl MultiLabelFilter {
     ///
     /// Convenience constructor for the common case where all categories
     /// should block content when they exceed their threshold.
-    pub fn from_thresholds(
-        model: Arc<dyn ModelBackend>,
-        thresholds: HashMap<String, f32>,
-    ) -> Self {
+    pub fn from_thresholds(model: Arc<dyn ModelBackend>, thresholds: HashMap<String, f32>) -> Self {
         let policies = thresholds
             .into_iter()
             .map(|(cat, thresh)| {
-                (cat, CategoryPolicy {
-                    threshold: thresh,
-                    action: FilterAction::Block,
-                })
+                (
+                    cat,
+                    CategoryPolicy {
+                        threshold: thresh,
+                        action: FilterAction::Block,
+                    },
+                )
             })
             .collect();
         Self {
@@ -236,9 +229,11 @@ impl ModelFilter for MultiLabelFilter {
                                 .get(&b.category)
                                 .map(|p| Self::action_severity(&p.action))
                                 .unwrap_or(3);
-                            sev_b
-                                .cmp(&sev_a)
-                                .then(b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal))
+                            sev_b.cmp(&sev_a).then(
+                                b.confidence
+                                    .partial_cmp(&a.confidence)
+                                    .unwrap_or(std::cmp::Ordering::Equal),
+                            )
                         });
                     }
 
@@ -277,9 +272,7 @@ mod tests {
             Box<dyn std::future::Future<Output = Result<ClassifyResponse, ModelError>> + Send + '_>,
         > {
             let labels = self.labels.clone();
-            Box::pin(async move {
-                Ok(ClassifyResponse { labels })
-            })
+            Box::pin(async move { Ok(ClassifyResponse { labels }) })
         }
     }
 
@@ -310,8 +303,14 @@ mod tests {
     #[tokio::test]
     async fn ml_filter_detects_unsafe() {
         let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "hap".into(), score: 0.85 },
-            ClassifyLabel { label: "safe".into(), score: 0.15 },
+            ClassifyLabel {
+                label: "hap".into(),
+                score: 0.85,
+            },
+            ClassifyLabel {
+                label: "safe".into(),
+                score: 0.15,
+            },
         ]));
         let filter = MlFilter::new(model, 0.5, "ml-unsafe");
         let findings = filter.scan("some harmful content", &test_ctx()).await;
@@ -323,8 +322,14 @@ mod tests {
     #[tokio::test]
     async fn ml_filter_passes_safe() {
         let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "safe".into(), score: 0.95 },
-            ClassifyLabel { label: "hap".into(), score: 0.05 },
+            ClassifyLabel {
+                label: "safe".into(),
+                score: 0.95,
+            },
+            ClassifyLabel {
+                label: "hap".into(),
+                score: 0.05,
+            },
         ]));
         let filter = MlFilter::new(model, 0.5, "ml-unsafe");
         let findings = filter.scan("hello world", &test_ctx()).await;
@@ -334,8 +339,14 @@ mod tests {
     #[tokio::test]
     async fn ml_filter_below_threshold_passes() {
         let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "hap".into(), score: 0.3 },
-            ClassifyLabel { label: "safe".into(), score: 0.7 },
+            ClassifyLabel {
+                label: "hap".into(),
+                score: 0.3,
+            },
+            ClassifyLabel {
+                label: "safe".into(),
+                score: 0.7,
+            },
         ]));
         let filter = MlFilter::new(model, 0.5, "ml-unsafe");
         let findings = filter.scan("borderline content", &test_ctx()).await;
@@ -364,7 +375,10 @@ mod tests {
     #[test]
     fn classify_response_single_label_compat() {
         let resp = ClassifyResponse {
-            labels: vec![ClassifyLabel { label: "safe".into(), score: 0.99 }],
+            labels: vec![ClassifyLabel {
+                label: "safe".into(),
+                score: 0.99,
+            }],
         };
         assert!(!resp.is_unsafe(0.5));
         assert_eq!(resp.top_label().unwrap().label, "safe");
@@ -374,9 +388,18 @@ mod tests {
     fn classify_response_exceeds_thresholds() {
         let resp = ClassifyResponse {
             labels: vec![
-                ClassifyLabel { label: "harm".into(), score: 0.8 },
-                ClassifyLabel { label: "pii".into(), score: 0.6 },
-                ClassifyLabel { label: "jailbreak".into(), score: 0.3 },
+                ClassifyLabel {
+                    label: "harm".into(),
+                    score: 0.8,
+                },
+                ClassifyLabel {
+                    label: "pii".into(),
+                    score: 0.6,
+                },
+                ClassifyLabel {
+                    label: "jailbreak".into(),
+                    score: 0.3,
+                },
             ],
         };
         let mut thresholds = HashMap::new();
@@ -396,24 +419,42 @@ mod tests {
     #[tokio::test]
     async fn multi_label_detects_multiple_categories() {
         let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "harm".into(), score: 0.85 },
-            ClassifyLabel { label: "pii".into(), score: 0.6 },
-            ClassifyLabel { label: "jailbreak".into(), score: 0.3 },
+            ClassifyLabel {
+                label: "harm".into(),
+                score: 0.85,
+            },
+            ClassifyLabel {
+                label: "pii".into(),
+                score: 0.6,
+            },
+            ClassifyLabel {
+                label: "jailbreak".into(),
+                score: 0.3,
+            },
         ]));
 
         let mut policies = HashMap::new();
-        policies.insert("harm".into(), CategoryPolicy {
-            threshold: 0.7,
-            action: FilterAction::Block,
-        });
-        policies.insert("pii".into(), CategoryPolicy {
-            threshold: 0.5,
-            action: FilterAction::Redact,
-        });
-        policies.insert("jailbreak".into(), CategoryPolicy {
-            threshold: 0.9,
-            action: FilterAction::Block,
-        });
+        policies.insert(
+            "harm".into(),
+            CategoryPolicy {
+                threshold: 0.7,
+                action: FilterAction::Block,
+            },
+        );
+        policies.insert(
+            "pii".into(),
+            CategoryPolicy {
+                threshold: 0.5,
+                action: FilterAction::Redact,
+            },
+        );
+        policies.insert(
+            "jailbreak".into(),
+            CategoryPolicy {
+                threshold: 0.9,
+                action: FilterAction::Block,
+            },
+        );
 
         let filter = MultiLabelFilter::new(model, policies);
         let findings = filter.scan("sensitive content", &test_ctx()).await;
@@ -429,19 +470,31 @@ mod tests {
     #[tokio::test]
     async fn multi_label_highest_severity_wins() {
         let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "pii".into(), score: 0.95 },
-            ClassifyLabel { label: "harm".into(), score: 0.75 },
+            ClassifyLabel {
+                label: "pii".into(),
+                score: 0.95,
+            },
+            ClassifyLabel {
+                label: "harm".into(),
+                score: 0.75,
+            },
         ]));
 
         let mut policies = HashMap::new();
-        policies.insert("harm".into(), CategoryPolicy {
-            threshold: 0.7,
-            action: FilterAction::Block,
-        });
-        policies.insert("pii".into(), CategoryPolicy {
-            threshold: 0.5,
-            action: FilterAction::Redact,
-        });
+        policies.insert(
+            "harm".into(),
+            CategoryPolicy {
+                threshold: 0.7,
+                action: FilterAction::Block,
+            },
+        );
+        policies.insert(
+            "pii".into(),
+            CategoryPolicy {
+                threshold: 0.5,
+                action: FilterAction::Redact,
+            },
+        );
 
         let filter = MultiLabelFilter::new(model, policies);
         let findings = filter.scan("content", &test_ctx()).await;
@@ -455,15 +508,24 @@ mod tests {
     #[tokio::test]
     async fn multi_label_no_triggers() {
         let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "safe".into(), score: 0.95 },
-            ClassifyLabel { label: "harm".into(), score: 0.1 },
+            ClassifyLabel {
+                label: "safe".into(),
+                score: 0.95,
+            },
+            ClassifyLabel {
+                label: "harm".into(),
+                score: 0.1,
+            },
         ]));
 
         let mut policies = HashMap::new();
-        policies.insert("harm".into(), CategoryPolicy {
-            threshold: 0.7,
-            action: FilterAction::Block,
-        });
+        policies.insert(
+            "harm".into(),
+            CategoryPolicy {
+                threshold: 0.7,
+                action: FilterAction::Block,
+            },
+        );
 
         let filter = MultiLabelFilter::new(model, policies);
         let findings = filter.scan("safe content", &test_ctx()).await;
@@ -472,9 +534,10 @@ mod tests {
 
     #[tokio::test]
     async fn multi_label_ignores_unlisted_categories() {
-        let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "unknown-cat".into(), score: 0.99 },
-        ]));
+        let model = Arc::new(MockClassifier::new(vec![ClassifyLabel {
+            label: "unknown-cat".into(),
+            score: 0.99,
+        }]));
 
         let policies = HashMap::new(); // no policies
         let filter = MultiLabelFilter::new(model, policies);
@@ -484,12 +547,12 @@ mod tests {
 
     #[tokio::test]
     async fn multi_label_fallback_threshold() {
-        let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "unknown-cat".into(), score: 0.8 },
-        ]));
+        let model = Arc::new(MockClassifier::new(vec![ClassifyLabel {
+            label: "unknown-cat".into(),
+            score: 0.8,
+        }]));
 
-        let filter = MultiLabelFilter::new(model, HashMap::new())
-            .with_fallback_threshold(0.7);
+        let filter = MultiLabelFilter::new(model, HashMap::new()).with_fallback_threshold(0.7);
         let findings = filter.scan("content", &test_ctx()).await;
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "unknown-cat");
@@ -497,9 +560,10 @@ mod tests {
 
     #[tokio::test]
     async fn multi_label_from_thresholds_convenience() {
-        let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "harm".into(), score: 0.8 },
-        ]));
+        let model = Arc::new(MockClassifier::new(vec![ClassifyLabel {
+            label: "harm".into(),
+            score: 0.8,
+        }]));
 
         let mut thresholds = HashMap::new();
         thresholds.insert("harm".into(), 0.7);
@@ -522,15 +586,19 @@ mod tests {
     #[tokio::test]
     async fn multi_label_safe_label_ignored() {
         // Even if "safe" has a policy, the filter skips it
-        let model = Arc::new(MockClassifier::new(vec![
-            ClassifyLabel { label: "safe".into(), score: 0.99 },
-        ]));
+        let model = Arc::new(MockClassifier::new(vec![ClassifyLabel {
+            label: "safe".into(),
+            score: 0.99,
+        }]));
 
         let mut policies = HashMap::new();
-        policies.insert("safe".into(), CategoryPolicy {
-            threshold: 0.1,
-            action: FilterAction::Block,
-        });
+        policies.insert(
+            "safe".into(),
+            CategoryPolicy {
+                threshold: 0.1,
+                action: FilterAction::Block,
+            },
+        );
 
         let filter = MultiLabelFilter::new(model, policies);
         let findings = filter.scan("content", &test_ctx()).await;

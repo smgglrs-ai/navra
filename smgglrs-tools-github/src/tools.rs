@@ -19,7 +19,12 @@ impl Module for GithubModule {
         "github"
     }
 
-    fn tools(&self) -> Vec<(smgglrs_core::protocol::ToolDefinition, smgglrs_core::ToolHandler)> {
+    fn tools(
+        &self,
+    ) -> Vec<(
+        smgglrs_core::protocol::ToolDefinition,
+        smgglrs_core::ToolHandler,
+    )> {
         vec![
             github_pr_list_handler(),
             github_pr_create_handler(),
@@ -51,9 +56,7 @@ async fn run_gh(args: &[&str]) -> Result<String, CallToolResult> {
         .output()
         .await
         .map_err(|e| {
-            CallToolResult::error(format!(
-                "Failed to run gh CLI (is it installed?): {e}"
-            ))
+            CallToolResult::error(format!("Failed to run gh CLI (is it installed?): {e}"))
         })?;
 
     if !output.status.success() {
@@ -72,7 +75,9 @@ async fn run_gh(args: &[&str]) -> Result<String, CallToolResult> {
 )]
 async fn github_pr_list(
     #[arg(description = "Repository in owner/repo format")] repo: String,
-    #[arg(description = "PR state: open, closed, merged, all (default: open)")] state: Option<String>,
+    #[arg(description = "PR state: open, closed, merged, all (default: open)")] state: Option<
+        String,
+    >,
     #[arg(description = "Maximum number of PRs to return (default: 10)")] limit: Option<i64>,
     _ctx: CallContext,
 ) -> CallToolResult {
@@ -83,12 +88,19 @@ async fn github_pr_list(
     let limit = limit.unwrap_or(10).max(1).min(100).to_string();
 
     match run_gh(&[
-        "pr", "list",
-        "--repo", &repo,
-        "--state", &state,
-        "--limit", &limit,
-        "--json", "number,title,state,author,createdAt,url",
-    ]).await {
+        "pr",
+        "list",
+        "--repo",
+        &repo,
+        "--state",
+        &state,
+        "--limit",
+        &limit,
+        "--json",
+        "number,title,state,author,createdAt,url",
+    ])
+    .await
+    {
         Ok(output) => CallToolResult::text(output),
         Err(e) => e,
     }
@@ -112,11 +124,7 @@ async fn github_pr_create(
     let base = base.unwrap_or_else(|| "main".to_string());
 
     let mut args = vec![
-        "pr", "create",
-        "--repo", &repo,
-        "--title", &title,
-        "--head", &head,
-        "--base", &base,
+        "pr", "create", "--repo", &repo, "--title", &title, "--head", &head, "--base", &base,
     ];
     let body_val;
     if let Some(ref b) = body {
@@ -148,10 +156,16 @@ async fn github_pr_view(
     let number_str = number.to_string();
 
     match run_gh(&[
-        "pr", "view", &number_str,
-        "--repo", &repo,
-        "--json", "number,title,state,body,author,createdAt,url,reviewDecision,additions,deletions,files",
-    ]).await {
+        "pr",
+        "view",
+        &number_str,
+        "--repo",
+        &repo,
+        "--json",
+        "number,title,state,body,author,createdAt,url,reviewDecision,additions,deletions,files",
+    ])
+    .await
+    {
         Ok(output) => CallToolResult::text(output),
         Err(e) => e,
     }
@@ -174,12 +188,19 @@ async fn github_issue_list(
     let limit = limit.unwrap_or(10).max(1).min(100).to_string();
 
     match run_gh(&[
-        "issue", "list",
-        "--repo", &repo,
-        "--state", &state,
-        "--limit", &limit,
-        "--json", "number,title,state,author,createdAt,url,labels",
-    ]).await {
+        "issue",
+        "list",
+        "--repo",
+        &repo,
+        "--state",
+        &state,
+        "--limit",
+        &limit,
+        "--json",
+        "number,title,state,author,createdAt,url,labels",
+    ])
+    .await
+    {
         Ok(output) => CallToolResult::text(output),
         Err(e) => e,
     }
@@ -200,11 +221,7 @@ async fn github_issue_create(
         return e;
     }
 
-    let mut args = vec![
-        "issue", "create",
-        "--repo", &repo,
-        "--title", &title,
-    ];
+    let mut args = vec!["issue", "create", "--repo", &repo, "--title", &title];
     let body_val;
     if let Some(ref b) = body {
         body_val = b.clone();
@@ -241,10 +258,16 @@ async fn github_issue_comment(
     let number_str = number.to_string();
 
     match run_gh(&[
-        "issue", "comment", &number_str,
-        "--repo", &repo,
-        "--body", &body,
-    ]).await {
+        "issue",
+        "comment",
+        &number_str,
+        "--repo",
+        &repo,
+        "--body",
+        &body,
+    ])
+    .await
+    {
         Ok(output) => CallToolResult::text(output),
         Err(e) => e,
     }
@@ -295,7 +318,11 @@ mod tests {
     fn all_tools_have_descriptions() {
         let m = GithubModule;
         for (def, _) in m.tools() {
-            assert!(def.description.is_some(), "tool {} missing description", def.name);
+            assert!(
+                def.description.is_some(),
+                "tool {} missing description",
+                def.name
+            );
         }
     }
 }

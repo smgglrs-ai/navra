@@ -231,7 +231,11 @@ mod tests {
         let embedding = vec![1.0, 0.0, 0.0, 0.0];
         let results = sample_results();
 
-        cache.insert("hello world".to_string(), embedding.clone(), results.clone());
+        cache.insert(
+            "hello world".to_string(),
+            embedding.clone(),
+            results.clone(),
+        );
 
         let hit = cache.lookup("hello world", &embedding);
         assert!(hit.is_some());

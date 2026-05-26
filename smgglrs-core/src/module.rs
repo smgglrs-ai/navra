@@ -19,9 +19,8 @@ pub type PromptHandler = Arc<
 /// Async resource handler function type.
 ///
 /// Takes the resource URI and returns the resource content.
-pub type ResourceHandler = Arc<
-    dyn Fn(String) -> Pin<Box<dyn Future<Output = ReadResourceResult> + Send>> + Send + Sync,
->;
+pub type ResourceHandler =
+    Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = ReadResourceResult> + Send>> + Send + Sync>;
 
 /// A feature module that contributes tools and prompts to the MCP server.
 ///

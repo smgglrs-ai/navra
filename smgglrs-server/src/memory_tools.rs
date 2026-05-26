@@ -78,40 +78,64 @@ pub fn memory_store_def() -> ToolDefinition {
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
-                ("kind".to_string(), serde_json::json!({
-                    "type": "string",
-                    "enum": ["fact", "event", "instruction", "insight"],
-                    "description": "Category of knowledge entry"
-                })),
-                ("title".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Short title for the entry"
-                })),
-                ("content".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Full content of the knowledge entry"
-                })),
-                ("tags".to_string(), serde_json::json!({
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Optional tags for categorization"
-                })),
-                ("entity_id".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Optional: scope to a specific user/entity identity"
-                })),
-                ("process_id".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Optional: scope to a flow/workflow execution"
-                })),
-                ("session_id".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Optional: scope to a session"
-                })),
-                ("ttl_secs".to_string(), serde_json::json!({
-                    "type": "integer",
-                    "description": "Optional: time-to-live in seconds (entry expires after this duration)"
-                })),
+                (
+                    "kind".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": ["fact", "event", "instruction", "insight"],
+                        "description": "Category of knowledge entry"
+                    }),
+                ),
+                (
+                    "title".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Short title for the entry"
+                    }),
+                ),
+                (
+                    "content".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Full content of the knowledge entry"
+                    }),
+                ),
+                (
+                    "tags".to_string(),
+                    serde_json::json!({
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional tags for categorization"
+                    }),
+                ),
+                (
+                    "entity_id".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Optional: scope to a specific user/entity identity"
+                    }),
+                ),
+                (
+                    "process_id".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Optional: scope to a flow/workflow execution"
+                    }),
+                ),
+                (
+                    "session_id".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Optional: scope to a session"
+                    }),
+                ),
+                (
+                    "ttl_secs".to_string(),
+                    serde_json::json!({
+                        "type": "integer",
+                        "description": "Optional: time-to-live in seconds (entry expires after this duration)"
+                    }),
+                ),
             ])),
             required: Some(vec![
                 "kind".to_string(),
@@ -135,31 +159,49 @@ pub fn memory_query_def() -> ToolDefinition {
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
-                ("query".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Search query text"
-                })),
-                ("kind".to_string(), serde_json::json!({
-                    "type": "string",
-                    "enum": ["fact", "event", "instruction", "insight"],
-                    "description": "Optional: filter results by kind"
-                })),
-                ("limit".to_string(), serde_json::json!({
-                    "type": "integer",
-                    "description": "Maximum number of results (default: 10)"
-                })),
-                ("entity_id".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Optional: filter to entries scoped to this user/entity"
-                })),
-                ("process_id".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Optional: filter to entries scoped to this flow/workflow"
-                })),
-                ("session_id".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Optional: filter to entries scoped to this session"
-                })),
+                (
+                    "query".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Search query text"
+                    }),
+                ),
+                (
+                    "kind".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": ["fact", "event", "instruction", "insight"],
+                        "description": "Optional: filter results by kind"
+                    }),
+                ),
+                (
+                    "limit".to_string(),
+                    serde_json::json!({
+                        "type": "integer",
+                        "description": "Maximum number of results (default: 10)"
+                    }),
+                ),
+                (
+                    "entity_id".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Optional: filter to entries scoped to this user/entity"
+                    }),
+                ),
+                (
+                    "process_id".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Optional: filter to entries scoped to this flow/workflow"
+                    }),
+                ),
+                (
+                    "session_id".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Optional: filter to entries scoped to this session"
+                    }),
+                ),
             ])),
             required: Some(vec!["query".to_string()]),
         },
@@ -195,20 +237,25 @@ pub async fn handle_memory_store(
 
     let memory_type = match smgglrs_memory::MemoryType::from_str(kind_str) {
         Ok(mt) => mt,
-        Err(_) => return CallToolResult::error(
-            format!("Invalid kind: {kind_str}. Use: fact, event, instruction, insight")
-        ),
+        Err(_) => {
+            return CallToolResult::error(format!(
+                "Invalid kind: {kind_str}. Use: fact, event, instruction, insight"
+            ))
+        }
     };
 
     let tags: Vec<String> = args
         .get("tags")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     // Detect PII in original content before sanitization
-    let has_pii = content_has_pii(content, &sanitizer)
-        || content_has_pii(title, &sanitizer);
+    let has_pii = content_has_pii(content, &sanitizer) || content_has_pii(title, &sanitizer);
 
     // Sanitize title and content through PII filter before storage
     let sanitized_title = sanitize_for_storage(title, &sanitizer).await;
@@ -216,9 +263,18 @@ pub async fn handle_memory_store(
 
     // Extract scope parameters
     let scope = smgglrs_memory::MemoryScope {
-        entity_id: args.get("entity_id").and_then(|v| v.as_str()).map(String::from),
-        process_id: args.get("process_id").and_then(|v| v.as_str()).map(String::from),
-        session_id: args.get("session_id").and_then(|v| v.as_str()).map(String::from),
+        entity_id: args
+            .get("entity_id")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        process_id: args
+            .get("process_id")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        session_id: args
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .map(String::from),
     };
     let ttl_secs = args.get("ttl_secs").and_then(|v| v.as_u64());
 
@@ -245,19 +301,21 @@ pub async fn handle_memory_store(
     let result = if !scope.is_global() || ttl_secs.is_some() {
         let valid_until = ttl_secs.map(|ttl| now + ttl as i64);
         // Store with scope first, then set PII flag if needed
-        store.store_scoped(&entry, &scope, valid_until).and_then(|()| {
-            if has_pii {
-                store.set_pii_flag(&id, true)?;
-            }
-            Ok(())
-        })
+        store
+            .store_scoped(&entry, &scope, valid_until)
+            .and_then(|()| {
+                if has_pii {
+                    store.set_pii_flag(&id, true)?;
+                }
+                Ok(())
+            })
     } else {
         store.store_with_pii(&entry, has_pii)
     };
 
     match result {
         Ok(()) => CallToolResult::text(
-            serde_json::json!({"id": id, "status": "stored", "has_pii": has_pii}).to_string()
+            serde_json::json!({"id": id, "status": "stored", "has_pii": has_pii}).to_string(),
         ),
         Err(e) => CallToolResult::error(format!("Failed to store entry: {e}")),
     }
@@ -275,19 +333,27 @@ pub async fn handle_memory_query(
         None => return CallToolResult::error("Missing required parameter: query"),
     };
 
-    let limit = args.get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(10) as usize;
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
-    let kind_filter = args.get("kind")
+    let kind_filter = args
+        .get("kind")
         .and_then(|v| v.as_str())
         .and_then(|k| smgglrs_memory::MemoryType::from_str(k).ok());
 
     // Extract scope parameters
     let scope = smgglrs_memory::MemoryScope {
-        entity_id: args.get("entity_id").and_then(|v| v.as_str()).map(String::from),
-        process_id: args.get("process_id").and_then(|v| v.as_str()).map(String::from),
-        session_id: args.get("session_id").and_then(|v| v.as_str()).map(String::from),
+        entity_id: args
+            .get("entity_id")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        process_id: args
+            .get("process_id")
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        session_id: args
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .map(String::from),
     };
 
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
@@ -301,27 +367,27 @@ pub async fn handle_memory_query(
 
     match search_result {
         Ok(entries) => {
-            let mut results: Vec<&smgglrs_memory::MemoryEntry> = entries.iter()
-                .filter(|e| {
-                    kind_filter.as_ref().map_or(true, |k| e.memory_type == *k)
-                })
+            let mut results: Vec<&smgglrs_memory::MemoryEntry> = entries
+                .iter()
+                .filter(|e| kind_filter.as_ref().map_or(true, |k| e.memory_type == *k))
                 .collect();
             results.truncate(limit);
 
-            let output: Vec<serde_json::Value> = results.iter().map(|e| {
-                serde_json::json!({
-                    "id": e.id,
-                    "kind": e.memory_type.as_str(),
-                    "title": e.title,
-                    "content": e.content,
-                    "tags": e.tags,
-                    "created_at": e.created_at,
+            let output: Vec<serde_json::Value> = results
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "id": e.id,
+                        "kind": e.memory_type.as_str(),
+                        "title": e.title,
+                        "content": e.content,
+                        "tags": e.tags,
+                        "created_at": e.created_at,
+                    })
                 })
-            }).collect();
+                .collect();
 
-            CallToolResult::text(
-                serde_json::to_string_pretty(&output).unwrap_or_default()
-            )
+            CallToolResult::text(serde_json::to_string_pretty(&output).unwrap_or_default())
         }
         Err(e) => CallToolResult::error(format!("Search failed: {e}")),
     }
@@ -353,7 +419,8 @@ pub async fn handle_memory_forget(
                     "id": id,
                     "status": "deleted",
                     "chunks_deleted": chunks_deleted,
-                }).to_string()
+                })
+                .to_string(),
             )
         }
         Ok(false) => CallToolResult::error(format!("No entry found with id: {id}")),
@@ -403,20 +470,29 @@ pub fn memory_purge_pii_def() -> ToolDefinition {
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
-                ("action".to_string(), serde_json::json!({
-                    "type": "string",
-                    "enum": ["redact", "delete"],
-                    "description": "Action to take: 'redact' replaces PII in-place, 'delete' removes entries"
-                })),
-                ("kind".to_string(), serde_json::json!({
-                    "type": "string",
-                    "enum": ["fact", "event", "instruction", "insight"],
-                    "description": "Optional: filter entries by kind"
-                })),
-                ("query".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Optional: scope the scan to entries matching this search query"
-                })),
+                (
+                    "action".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": ["redact", "delete"],
+                        "description": "Action to take: 'redact' replaces PII in-place, 'delete' removes entries"
+                    }),
+                ),
+                (
+                    "kind".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": ["fact", "event", "instruction", "insight"],
+                        "description": "Optional: filter entries by kind"
+                    }),
+                ),
+                (
+                    "query".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Optional: scope the scan to entries matching this search query"
+                    }),
+                ),
             ])),
             required: Some(vec!["action".to_string()]),
         },
@@ -439,10 +515,15 @@ pub async fn handle_memory_purge_pii(
 
     let action = match args.get("action").and_then(|v| v.as_str()) {
         Some(a @ ("redact" | "delete")) => a.to_string(),
-        _ => return CallToolResult::error("Missing or invalid parameter: action (must be 'redact' or 'delete')"),
+        _ => {
+            return CallToolResult::error(
+                "Missing or invalid parameter: action (must be 'redact' or 'delete')",
+            )
+        }
     };
 
-    let kind_filter = args.get("kind")
+    let kind_filter = args
+        .get("kind")
         .and_then(|v| v.as_str())
         .and_then(|k| smgglrs_memory::MemoryType::from_str(k).ok());
 
@@ -465,16 +546,15 @@ pub async fn handle_memory_purge_pii(
 
     // Apply kind filter if search was used (search doesn't filter by kind)
     let entries: Vec<_> = if query_filter.is_some() {
-        entries.into_iter()
+        entries
+            .into_iter()
             .filter(|e| kind_filter.as_ref().map_or(true, |k| e.memory_type == *k))
             .collect()
     } else {
         entries
     };
 
-    let limit = args.get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(1000) as usize;
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(1000) as usize;
 
     let total_candidates = entries.len();
     let entries: Vec<_> = entries.into_iter().take(limit).collect();
@@ -532,14 +612,20 @@ pub fn memory_forget_by_content_def() -> ToolDefinition {
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
-                ("query".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Text to search for in stored entries"
-                })),
-                ("confirm".to_string(), serde_json::json!({
-                    "type": "boolean",
-                    "description": "If true, actually delete matching entries. If false, return a preview (dry run)."
-                })),
+                (
+                    "query".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Text to search for in stored entries"
+                    }),
+                ),
+                (
+                    "confirm".to_string(),
+                    serde_json::json!({
+                        "type": "boolean",
+                        "description": "If true, actually delete matching entries. If false, return a preview (dry run)."
+                    }),
+                ),
             ])),
             required: Some(vec!["query".to_string(), "confirm".to_string()]),
         },
@@ -564,7 +650,8 @@ pub async fn handle_memory_forget_by_content(
         None => return CallToolResult::error("Missing required parameter: query"),
     };
 
-    let confirm = args.get("confirm")
+    let confirm = args
+        .get("confirm")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
@@ -578,14 +665,17 @@ pub async fn handle_memory_forget_by_content(
     entries.truncate(1000);
 
     if !confirm {
-        let preview: Vec<serde_json::Value> = entries.iter().map(|e| {
-            serde_json::json!({
-                "id": e.id,
-                "kind": e.memory_type.as_str(),
-                "title": e.title,
-                "created_at": e.created_at,
+        let preview: Vec<serde_json::Value> = entries
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "id": e.id,
+                    "kind": e.memory_type.as_str(),
+                    "title": e.title,
+                    "created_at": e.created_at,
+                })
             })
-        }).collect();
+            .collect();
 
         let mut result = serde_json::json!({
             "mode": "dry_run",
@@ -621,25 +711,24 @@ pub async fn handle_memory_forget_by_content(
             "mode": "confirmed",
             "deleted": deleted,
             "chunks_deleted": chunks_deleted,
-        }).to_string()
+        })
+        .to_string(),
     )
 }
 
 pub fn memory_forget_def() -> ToolDefinition {
     ToolDefinition {
         name: "memory_forget".to_string(),
-        description: Some(
-            "Delete a knowledge entry from persistent memory by its ID."
-                .to_string(),
-        ),
+        description: Some("Delete a knowledge entry from persistent memory by its ID.".to_string()),
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
-                ("id".to_string(), serde_json::json!({
+            properties: Some(HashMap::from([(
+                "id".to_string(),
+                serde_json::json!({
                     "type": "string",
                     "description": "ID of the entry to delete"
-                })),
-            ])),
+                }),
+            )])),
             required: Some(vec!["id".to_string()]),
         },
         annotations: None,
@@ -654,7 +743,11 @@ fn cascade_delete_source(chunk_store: &Option<Arc<ChunkStore>>, source_id: &str)
         match cs.delete_by_source(source_id) {
             Ok(n) => {
                 if n > 0 {
-                    tracing::debug!(source_id, chunks = n, "Cascade-deleted chunks for forgotten entry");
+                    tracing::debug!(
+                        source_id,
+                        chunks = n,
+                        "Cascade-deleted chunks for forgotten entry"
+                    );
                 }
                 n
             }
@@ -771,20 +864,29 @@ pub fn memory_consent_def() -> ToolDefinition {
         input_schema: ToolInputSchema {
             schema_type: "object".to_string(),
             properties: Some(HashMap::from([
-                ("mode".to_string(), serde_json::json!({
-                    "type": "string",
-                    "enum": ["set", "get", "list"],
-                    "description": "Operation mode: 'set' assigns a basis, 'get' queries one entry, 'list' filters by basis"
-                })),
-                ("id".to_string(), serde_json::json!({
-                    "type": "string",
-                    "description": "Entry ID (required for 'set' and 'get' modes)"
-                })),
-                ("basis".to_string(), serde_json::json!({
-                    "type": "string",
-                    "enum": ["legitimate_interest", "consent", "legal_obligation", "vital_interest", "public_task", "not_set"],
-                    "description": "Consent basis (required for 'set' mode, used as filter for 'list' mode)"
-                })),
+                (
+                    "mode".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": ["set", "get", "list"],
+                        "description": "Operation mode: 'set' assigns a basis, 'get' queries one entry, 'list' filters by basis"
+                    }),
+                ),
+                (
+                    "id".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Entry ID (required for 'set' and 'get' modes)"
+                    }),
+                ),
+                (
+                    "basis".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "enum": ["legitimate_interest", "consent", "legal_obligation", "vital_interest", "public_task", "not_set"],
+                        "description": "Consent basis (required for 'set' mode, used as filter for 'list' mode)"
+                    }),
+                ),
             ])),
             required: Some(vec!["mode".to_string()]),
         },
@@ -810,7 +912,9 @@ pub async fn handle_memory_consent(
         "set" => {
             let id = match args.get("id").and_then(|v| v.as_str()) {
                 Some(id) => id,
-                None => return CallToolResult::error("Missing required parameter: id (for 'set' mode)"),
+                None => {
+                    return CallToolResult::error("Missing required parameter: id (for 'set' mode)")
+                }
             };
             let basis = match args.get("basis").and_then(|v| v.as_str()) {
                 Some(b @ ("legitimate_interest" | "consent" | "legal_obligation" | "vital_interest" | "public_task" | "not_set")) => b,
@@ -821,7 +925,8 @@ pub async fn handle_memory_consent(
 
             match store.set_consent_basis(id, basis) {
                 Ok(true) => CallToolResult::text(
-                    serde_json::json!({"id": id, "consent_basis": basis, "status": "updated"}).to_string()
+                    serde_json::json!({"id": id, "consent_basis": basis, "status": "updated"})
+                        .to_string(),
                 ),
                 Ok(false) => CallToolResult::error(format!("No entry found with id: {id}")),
                 Err(e) => CallToolResult::error(format!("Failed to set consent basis: {e}")),
@@ -830,12 +935,14 @@ pub async fn handle_memory_consent(
         "get" => {
             let id = match args.get("id").and_then(|v| v.as_str()) {
                 Some(id) => id,
-                None => return CallToolResult::error("Missing required parameter: id (for 'get' mode)"),
+                None => {
+                    return CallToolResult::error("Missing required parameter: id (for 'get' mode)")
+                }
             };
 
             match store.get_consent_basis(id) {
                 Ok(Some(basis)) => CallToolResult::text(
-                    serde_json::json!({"id": id, "consent_basis": basis}).to_string()
+                    serde_json::json!({"id": id, "consent_basis": basis}).to_string(),
                 ),
                 Ok(None) => CallToolResult::error(format!("No entry found with id: {id}")),
                 Err(e) => CallToolResult::error(format!("Failed to get consent basis: {e}")),
@@ -844,32 +951,42 @@ pub async fn handle_memory_consent(
         "list" => {
             let basis = match args.get("basis").and_then(|v| v.as_str()) {
                 Some(b) => b,
-                None => return CallToolResult::error("Missing required parameter: basis (for 'list' mode)"),
+                None => {
+                    return CallToolResult::error(
+                        "Missing required parameter: basis (for 'list' mode)",
+                    )
+                }
             };
 
             match store.list_by_consent(basis) {
                 Ok(entries) => {
-                    let output: Vec<serde_json::Value> = entries.iter().map(|e| {
-                        serde_json::json!({
-                            "id": e.id,
-                            "kind": e.memory_type.as_str(),
-                            "title": e.title,
-                            "created_at": e.created_at,
+                    let output: Vec<serde_json::Value> = entries
+                        .iter()
+                        .map(|e| {
+                            serde_json::json!({
+                                "id": e.id,
+                                "kind": e.memory_type.as_str(),
+                                "title": e.title,
+                                "created_at": e.created_at,
+                            })
                         })
-                    }).collect();
+                        .collect();
 
                     CallToolResult::text(
                         serde_json::json!({
                             "basis": basis,
                             "count": entries.len(),
                             "entries": output,
-                        }).to_string()
+                        })
+                        .to_string(),
                     )
                 }
                 Err(e) => CallToolResult::error(format!("Failed to list by consent: {e}")),
             }
         }
-        _ => CallToolResult::error(format!("Invalid mode: {mode}. Use 'set', 'get', or 'list'.")),
+        _ => CallToolResult::error(format!(
+            "Invalid mode: {mode}. Use 'set', 'get', or 'list'."
+        )),
     }
 }
 
@@ -1290,7 +1407,8 @@ mod tests {
 
         let sanitizer = build_pii_sanitizer("standard");
         let args = serde_json::json!({"action": "delete"});
-        let result = handle_memory_purge_pii(args, ks.clone(), sanitizer, Some(Arc::clone(&cs))).await;
+        let result =
+            handle_memory_purge_pii(args, ks.clone(), sanitizer, Some(Arc::clone(&cs))).await;
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
@@ -1379,7 +1497,8 @@ mod tests {
             Some(90),
             Some(30),
             Some(365),
-        ).await;
+        )
+        .await;
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,
@@ -1400,14 +1519,7 @@ mod tests {
             smgglrs_memory::KnowledgeStore::open_memory().unwrap(),
         ));
 
-        let result = handle_pii_report(
-            serde_json::json!({}),
-            ks,
-            None,
-            None,
-            None,
-            None,
-        ).await;
+        let result = handle_pii_report(serde_json::json!({}), ks, None, None, None, None).await;
 
         let text = match result.content.first().unwrap() {
             smgglrs_core::protocol::Content::Text(t) => &t.text,

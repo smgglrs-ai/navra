@@ -27,9 +27,9 @@ mod dag;
 mod definition;
 mod engine;
 mod error;
+pub mod eval;
 mod executor;
 mod handoff;
-pub mod eval;
 pub mod iterative;
 mod mailbox;
 pub mod mesh;
@@ -41,9 +41,9 @@ pub mod verification;
 pub mod yaml_loader;
 
 pub use backedge::{BackEdgeTracker, ConditionalEdge, EdgeCondition};
-pub use checkpoint::{CheckpointState, DagCheckpoint};
 pub use blackboard::{Blackboard, BlackboardEntry};
 pub use builder::FlowBuilder;
+pub use checkpoint::{CheckpointState, DagCheckpoint};
 pub use dag::DependencyGraph;
 pub use definition::{
     generic_flow_dag, parse_planner_tasks, single_task_dag, BackEdgeDefinition, DagConfig,
@@ -62,9 +62,8 @@ pub use recovery::{
 };
 pub use task::{Attempt, Task, TaskResult, TaskStatus};
 pub use validation::{
-    validate_mandate, ValidationResult,
-    ExecutionTrace, TraceEvent, PrefixTreeAcceptor,
-    DominatorTree, extract_dominators, validate_against_dominators,
+    extract_dominators, validate_against_dominators, validate_mandate, DominatorTree,
+    ExecutionTrace, PrefixTreeAcceptor, TraceEvent, ValidationResult,
 };
 pub use verification::{
     verify_result, VerificationConfig, VerificationResult, VerificationThreshold,

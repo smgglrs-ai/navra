@@ -31,7 +31,10 @@ impl CapabilityAuthenticator {
     }
 
     /// Create with a custom nonce cache TTL.
-    pub fn with_nonce_ttl(root_signer: Box<dyn CapSigner>, nonce_cache_ttl: std::time::Duration) -> Self {
+    pub fn with_nonce_ttl(
+        root_signer: Box<dyn CapSigner>,
+        nonce_cache_ttl: std::time::Duration,
+    ) -> Self {
         Self {
             root_verifier: root_signer,
             agent_verifiers: HashMap::new(),
@@ -47,10 +50,7 @@ impl CapabilityAuthenticator {
 }
 
 impl Authenticator for CapabilityAuthenticator {
-    fn authenticate(
-        &self,
-        headers: &axum::http::HeaderMap,
-    ) -> Result<AgentIdentity, AuthError> {
+    fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError> {
         let header = headers
             .get("authorization")
             .ok_or(AuthError::MissingToken)?;
@@ -122,10 +122,7 @@ impl ChainAuthenticator {
 }
 
 impl Authenticator for ChainAuthenticator {
-    fn authenticate(
-        &self,
-        headers: &axum::http::HeaderMap,
-    ) -> Result<AgentIdentity, AuthError> {
+    fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError> {
         let mut last_err = AuthError::MissingToken;
         for auth in &self.authenticators {
             match auth.authenticate(headers) {
@@ -140,8 +137,8 @@ impl Authenticator for ChainAuthenticator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::TokenAuthenticator;
     use crate::auth::capability::{build_payload, encode_token, CapabilitySet};
+    use crate::auth::TokenAuthenticator;
     use crate::identity::Ed25519Signer;
     use axum::http::HeaderMap;
 

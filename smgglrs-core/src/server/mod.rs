@@ -57,8 +57,9 @@ pub struct McpServer {
     /// Per-session dynamic permission grants (MCP permission negotiation).
     session_permissions: crate::permissions::SessionPermissionStore,
     /// Pending permission requests awaiting grant/deny.
-    pending_permission_requests:
-        std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, PendingPermissionRequest>>>,
+    pending_permission_requests: std::sync::Arc<
+        std::sync::Mutex<std::collections::HashMap<String, PendingPermissionRequest>>,
+    >,
     /// SSE broadcaster for server-initiated notifications.
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
     /// Resource subscriptions: session_id → set of subscribed resource URIs.
@@ -96,7 +97,12 @@ impl McpServer {
     }
 
     /// Send a notification to a specific session.
-    pub fn notify_session(&self, session_id: &str, method: &str, params: Option<serde_json::Value>) {
+    pub fn notify_session(
+        &self,
+        session_id: &str,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) {
         if let Some(ref broadcaster) = self.broadcaster {
             let notification = crate::transport::sse::make_notification(method, params);
             broadcaster.send_to_session(session_id, &notification);

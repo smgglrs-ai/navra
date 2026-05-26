@@ -7,10 +7,12 @@
 //! - `--no-new-privileges`
 //! - GPU passthrough via CDI (NVIDIA) or device bind (AMD/Intel)
 
-use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
 use crate::gpu::GpuKind;
-use std::pin::Pin;
+use crate::{
+    Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig,
+};
 use std::future::Future;
+use std::pin::Pin;
 
 /// Default container images per GPU type.
 const IMAGE_CPU: &str = "ghcr.io/ggml-org/llama.cpp:server";
@@ -246,4 +248,3 @@ impl ModelRuntime for PodmanRuntime {
         }
     }
 }
-

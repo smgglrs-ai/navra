@@ -160,9 +160,7 @@ impl GrpcModuleManager {
         }
 
         let endpoint = managed.config.endpoint().ok_or_else(|| {
-            GrpcModuleError::Connection(format!(
-                "module {name}: no socket or address configured"
-            ))
+            GrpcModuleError::Connection(format!("module {name}: no socket or address configured"))
         })?;
 
         GrpcModule::connect(name, &endpoint).await
@@ -310,10 +308,7 @@ mod tests {
             restart_on_failure: true,
             max_restarts: 3,
         };
-        assert_eq!(
-            cfg.endpoint(),
-            Some("http://gpu-host:50051".to_string())
-        );
+        assert_eq!(cfg.endpoint(), Some("http://gpu-host:50051".to_string()));
     }
 
     #[test]
@@ -327,10 +322,7 @@ mod tests {
             restart_on_failure: true,
             max_restarts: 3,
         };
-        assert_eq!(
-            cfg.endpoint(),
-            Some("http://localhost:50051".to_string())
-        );
+        assert_eq!(cfg.endpoint(), Some("http://localhost:50051".to_string()));
     }
 
     #[test]
@@ -359,10 +351,7 @@ mod tests {
             max_restarts: 3,
         };
         // Socket takes priority
-        assert_eq!(
-            cfg.endpoint(),
-            Some("unix:///run/test.sock".to_string())
-        );
+        assert_eq!(cfg.endpoint(), Some("unix:///run/test.sock".to_string()));
     }
 
     #[test]

@@ -202,9 +202,7 @@ pub fn parse_stream_chunk(json_str: &str) -> Result<ChatChunk, ModelError> {
         })
         .unwrap_or_default();
 
-    let finish_reason = choice["finish_reason"]
-        .as_str()
-        .map(FinishReason::from_str);
+    let finish_reason = choice["finish_reason"].as_str().map(FinishReason::from_str);
 
     let usage = json.get("usage").and_then(|u| {
         let pt = u["prompt_tokens"].as_u64()?;

@@ -127,7 +127,11 @@ impl JsonRpcError {
 }
 
 impl JsonRpcRequest {
-    pub fn new(method: impl Into<String>, params: Option<serde_json::Value>, id: RequestId) -> Self {
+    pub fn new(
+        method: impl Into<String>,
+        params: Option<serde_json::Value>,
+        id: RequestId,
+    ) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
             method: method.into(),
@@ -192,10 +196,7 @@ mod tests {
 
     #[test]
     fn serialize_success_response() {
-        let resp = JsonRpcResponse::success(
-            RequestId::Number(1),
-            serde_json::json!({"tools": []}),
-        );
+        let resp = JsonRpcResponse::success(RequestId::Number(1), serde_json::json!({"tools": []}));
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["result"]["tools"], serde_json::json!([]));
         assert!(json.get("error").is_none());
@@ -209,7 +210,10 @@ mod tests {
         );
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["error"]["code"], -32601);
-        assert!(json["error"]["message"].as_str().unwrap().contains("foo/bar"));
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("foo/bar"));
         assert!(json.get("result").is_none());
     }
 

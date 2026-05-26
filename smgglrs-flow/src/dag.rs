@@ -193,12 +193,8 @@ mod tests {
 
     #[test]
     fn linear_chain() {
-        let dag = DependencyGraph::new(vec![
-            task("a", &[]),
-            task("b", &["a"]),
-            task("c", &["b"]),
-        ])
-        .unwrap();
+        let dag = DependencyGraph::new(vec![task("a", &[]), task("b", &["a"]), task("c", &["b"])])
+            .unwrap();
 
         let order = dag.topological_order();
         assert!(order.iter().position(|x| x == "a") < order.iter().position(|x| x == "b"));
@@ -224,29 +220,29 @@ mod tests {
 
     #[test]
     fn cycle_detected() {
-        let result = DependencyGraph::new(vec![
-            task("a", &["b"]),
-            task("b", &["a"]),
-        ]);
+        let result = DependencyGraph::new(vec![task("a", &["b"]), task("b", &["a"])]);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FlowError::CyclicDependency(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            FlowError::CyclicDependency(_)
+        ));
     }
 
     #[test]
     fn unknown_dependency() {
         let result = DependencyGraph::new(vec![task("a", &["nonexistent"])]);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FlowError::UnknownDependency(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            FlowError::UnknownDependency(_)
+        ));
     }
 
     #[test]
     fn ready_tasks_initial() {
-        let dag = DependencyGraph::new(vec![
-            task("a", &[]),
-            task("b", &[]),
-            task("c", &["a", "b"]),
-        ])
-        .unwrap();
+        let dag =
+            DependencyGraph::new(vec![task("a", &[]), task("b", &[]), task("c", &["a", "b"])])
+                .unwrap();
 
         let ready = dag.get_ready_tasks(&HashSet::new());
         let ids: HashSet<&str> = ready.iter().map(|t| t.id.as_str()).collect();
@@ -257,12 +253,9 @@ mod tests {
 
     #[test]
     fn ready_tasks_after_completion() {
-        let dag = DependencyGraph::new(vec![
-            task("a", &[]),
-            task("b", &[]),
-            task("c", &["a", "b"]),
-        ])
-        .unwrap();
+        let dag =
+            DependencyGraph::new(vec![task("a", &[]), task("b", &[]), task("c", &["a", "b"])])
+                .unwrap();
 
         let mut completed = HashSet::new();
         completed.insert("a".to_string());
@@ -279,12 +272,8 @@ mod tests {
 
     #[test]
     fn all_dependents_transitive() {
-        let dag = DependencyGraph::new(vec![
-            task("a", &[]),
-            task("b", &["a"]),
-            task("c", &["b"]),
-        ])
-        .unwrap();
+        let dag = DependencyGraph::new(vec![task("a", &[]), task("b", &["a"]), task("c", &["b"])])
+            .unwrap();
 
         let deps = dag.all_dependents("a");
         assert!(deps.contains("b"));
@@ -293,12 +282,8 @@ mod tests {
 
     #[test]
     fn independent_tasks() {
-        let dag = DependencyGraph::new(vec![
-            task("a", &[]),
-            task("b", &[]),
-            task("c", &[]),
-        ])
-        .unwrap();
+        let dag =
+            DependencyGraph::new(vec![task("a", &[]), task("b", &[]), task("c", &[])]).unwrap();
 
         let ready = dag.get_ready_tasks(&HashSet::new());
         assert_eq!(ready.len(), 3);
@@ -328,8 +313,7 @@ mod tests {
             let prev = format!("t{}", i - 1);
             let curr = format!("t{i}");
             assert!(
-                order.iter().position(|x| *x == prev)
-                    < order.iter().position(|x| *x == curr),
+                order.iter().position(|x| *x == prev) < order.iter().position(|x| *x == curr),
                 "t{} must come before t{i} in topological order",
                 i - 1
             );
@@ -400,9 +384,7 @@ mod tests {
     #[test]
     fn stress_get_ready_performance() {
         // 500 independent tasks — get_ready_tasks must return all 500.
-        let tasks: Vec<Task> = (0..500)
-            .map(|i| task(&format!("t{i}"), &[]))
-            .collect();
+        let tasks: Vec<Task> = (0..500).map(|i| task(&format!("t{i}"), &[])).collect();
 
         let dag = DependencyGraph::new(tasks).unwrap();
         assert_eq!(dag.len(), 500);

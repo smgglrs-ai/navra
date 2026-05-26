@@ -254,15 +254,9 @@ impl IndexStore {
             params![path],
             |row| row.get::<_, i64>(0),
         ) {
-            conn.execute(
-                "DELETE FROM documents_fts WHERE rowid = ?1",
-                params![id],
-            )?;
+            conn.execute("DELETE FROM documents_fts WHERE rowid = ?1", params![id])?;
             if self.embed_dimensions > 0 {
-                conn.execute(
-                    "DELETE FROM doc_embeddings WHERE rowid = ?1",
-                    params![id],
-                )?;
+                conn.execute("DELETE FROM doc_embeddings WHERE rowid = ?1", params![id])?;
             }
             conn.execute("DELETE FROM documents WHERE id = ?1", params![id])?;
             Ok(true)
@@ -309,15 +303,12 @@ impl IndexStore {
         )?;
 
         let results = stmt
-            .query_map(
-                params![query_embedding.as_bytes(), limit as i64],
-                |row| {
-                    Ok(SimilarResult {
-                        path: row.get(0)?,
-                        distance: row.get(1)?,
-                    })
-                },
-            )?
+            .query_map(params![query_embedding.as_bytes(), limit as i64], |row| {
+                Ok(SimilarResult {
+                    path: row.get(0)?,
+                    distance: row.get(1)?,
+                })
+            })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
 
         Ok(results)
@@ -375,10 +366,26 @@ mod tests {
     fn upsert_updates_existing() {
         let store = test_store();
         store
-            .upsert("/doc.md", "text/markdown", 100, "t1", "hash1", "v1", "old content")
+            .upsert(
+                "/doc.md",
+                "text/markdown",
+                100,
+                "t1",
+                "hash1",
+                "v1",
+                "old content",
+            )
             .unwrap();
         store
-            .upsert("/doc.md", "text/markdown", 200, "t2", "hash2", "v2", "new content")
+            .upsert(
+                "/doc.md",
+                "text/markdown",
+                200,
+                "t2",
+                "hash2",
+                "v2",
+                "new content",
+            )
             .unwrap();
 
         assert_eq!(store.count().unwrap(), 1);
@@ -391,13 +398,37 @@ mod tests {
     fn full_text_search() {
         let store = test_store();
         store
-            .upsert("/a.md", "text/markdown", 10, "t", "h", "Alpha", "rust programming language")
+            .upsert(
+                "/a.md",
+                "text/markdown",
+                10,
+                "t",
+                "h",
+                "Alpha",
+                "rust programming language",
+            )
             .unwrap();
         store
-            .upsert("/b.md", "text/markdown", 10, "t", "h", "Beta", "python programming language")
+            .upsert(
+                "/b.md",
+                "text/markdown",
+                10,
+                "t",
+                "h",
+                "Beta",
+                "python programming language",
+            )
             .unwrap();
         store
-            .upsert("/c.md", "text/markdown", 10, "t", "h", "Gamma", "cooking recipes")
+            .upsert(
+                "/c.md",
+                "text/markdown",
+                10,
+                "t",
+                "h",
+                "Gamma",
+                "cooking recipes",
+            )
             .unwrap();
 
         let results = store.search("programming", 10).unwrap();
@@ -416,7 +447,15 @@ mod tests {
     fn search_no_results() {
         let store = test_store();
         store
-            .upsert("/a.md", "text/markdown", 10, "t", "h", "Title", "some content")
+            .upsert(
+                "/a.md",
+                "text/markdown",
+                10,
+                "t",
+                "h",
+                "Title",
+                "some content",
+            )
             .unwrap();
 
         let results = store.search("nonexistent", 10).unwrap();

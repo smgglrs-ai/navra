@@ -105,7 +105,11 @@ fn all_tools_have_descriptions_and_object_schema() {
     let module = build_rag_module();
     let tools = module.tools();
     for (def, _) in &tools {
-        assert!(def.description.is_some(), "Tool '{}' missing description", def.name);
+        assert!(
+            def.description.is_some(),
+            "Tool '{}' missing description",
+            def.name
+        );
         assert_eq!(def.input_schema.schema_type, "object");
     }
 }

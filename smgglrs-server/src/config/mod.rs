@@ -9,12 +9,12 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+pub use crate::grpc_manager::GrpcModuleConfig;
 pub use agents::{AgentConfig, UpstreamConfig};
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
-pub use permissions::{PiiPatternConfig, PermissionSet};
+pub use permissions::{PermissionSet, PiiPatternConfig};
 pub use server::{RegistryEntry, ServerConfig};
-pub use crate::grpc_manager::GrpcModuleConfig;
 
 pub use security::StatisticalGuardrailServerConfig;
 mod security;
@@ -188,10 +188,7 @@ impl Config {
     }
 
     pub fn memory_retention_days(&self) -> Option<u32> {
-        self.modules
-            .memory
-            .as_ref()
-            .and_then(|m| m.retention_days)
+        self.modules.memory.as_ref().and_then(|m| m.retention_days)
     }
 
     pub fn memory_pii_retention_days(&self) -> Option<u32> {

@@ -142,10 +142,7 @@ pub fn encode_token(payload: &CapabilityPayload, signer: &dyn CapSigner) -> anyh
 ///
 /// Verifies the signature, checks expiry, and optionally checks the
 /// revocation list. Returns the payload if all checks pass.
-pub fn decode_token(
-    token: &str,
-    verifier: &dyn CapSigner,
-) -> anyhow::Result<CapabilityPayload> {
+pub fn decode_token(token: &str, verifier: &dyn CapSigner) -> anyhow::Result<CapabilityPayload> {
     decode_token_with_revocation(token, verifier, None)
 }
 
@@ -261,9 +258,16 @@ pub fn validate_delegation(
     }
 
     // Ring and expiry attenuation
-    check_attenuation(parent.ring, child.ring, parent.exp, child.exp)
-        .map_err(|e| anyhow::anyhow!("{}: child ring={} exp={}, parent ring={} exp={}",
-            e, child.ring, child.exp, parent.ring, parent.exp))?;
+    check_attenuation(parent.ring, child.ring, parent.exp, child.exp).map_err(|e| {
+        anyhow::anyhow!(
+            "{}: child ring={} exp={}, parent ring={} exp={}",
+            e,
+            child.ring,
+            child.exp,
+            parent.ring,
+            parent.exp
+        )
+    })?;
 
     // Operations subset
     let parent_ops: HashSet<&str> = parent.cap.operations.iter().map(|s| s.as_str()).collect();
@@ -292,7 +296,10 @@ pub fn validate_delegation(
             if parent_obo.sub != child_obo.sub || parent_obo.iss != child_obo.iss {
                 anyhow::bail!(
                     "obo mismatch: child obo (sub={}, iss={}) differs from parent (sub={}, iss={})",
-                    child_obo.sub, child_obo.iss, parent_obo.sub, parent_obo.iss
+                    child_obo.sub,
+                    child_obo.iss,
+                    parent_obo.sub,
+                    parent_obo.iss
                 );
             }
         }
@@ -302,12 +309,11 @@ pub fn validate_delegation(
 
     // Depth check: max_depth indicates how many more delegations are allowed.
     // 0 = no further delegation, 1 = one more level, etc.
-    if child.parent.is_some()
-        && max_depth == 0 {
-            anyhow::bail!("delegation chain depth exceeded (max_depth=0)");
-        }
-        // The child's effective max_depth must be strictly less than the parent's
-        // to prevent unlimited re-delegation at the same depth.
+    if child.parent.is_some() && max_depth == 0 {
+        anyhow::bail!("delegation chain depth exceeded (max_depth=0)");
+    }
+    // The child's effective max_depth must be strictly less than the parent's
+    // to prevent unlimited re-delegation at the same depth.
 
     Ok(())
 }
@@ -384,7 +390,8 @@ pub fn build_delegated_payload(
     if ring < parent.ring {
         anyhow::bail!(
             "ring escalation: requested ring {} < parent ring {}",
-            ring, parent.ring
+            ring,
+            parent.ring
         );
     }
 
@@ -397,7 +404,8 @@ pub fn build_delegated_payload(
         } else {
             anyhow::bail!(
                 "operation escalation: '{}' not in parent's grants {:?}",
-                op, parent.cap.operations
+                op,
+                parent.cap.operations
             );
         }
     }
@@ -415,7 +423,8 @@ pub fn build_delegated_payload(
         if !covered {
             anyhow::bail!(
                 "tool escalation: '{}' not covered by parent's tool grants {:?}",
-                tool, parent.cap.tools
+                tool,
+                parent.cap.tools
             );
         }
         effective_tools.push(tool.clone());
@@ -458,20 +467,18 @@ mod tests {
     fn test_cap_set() -> CapabilitySet {
         CapabilitySet {
             paths: vec!["/home/user/projects/**".to_string()],
-            operations: vec!["read".to_string(), "write".to_string(), "git.status".to_string()],
+            operations: vec![
+                "read".to_string(),
+                "write".to_string(),
+                "git.status".to_string(),
+            ],
             tools: vec!["file_*".to_string(), "git_*".to_string()],
             credentials: vec!["github.pat".to_string()],
         }
     }
 
     fn test_payload(signer: &Ed25519Signer) -> CapabilityPayload {
-        build_payload(
-            signer.did(),
-            "did:key:z6MkSubject",
-            test_cap_set(),
-            1,
-            3600,
-        )
+        build_payload(signer.did(), "did:key:z6MkSubject", test_cap_set(), 1, 3600)
     }
 
     #[test]
@@ -523,12 +530,7 @@ mod tests {
         let parts: Vec<&str> = token.splitn(3, '.').collect();
         let mut sig = URL_SAFE_NO_PAD.decode(parts[2]).unwrap();
         sig[0] ^= 0xff;
-        let tampered = format!(
-            "{}.{}.{}",
-            parts[0],
-            parts[1],
-            URL_SAFE_NO_PAD.encode(&sig),
-        );
+        let tampered = format!("{}.{}.{}", parts[0], parts[1], URL_SAFE_NO_PAD.encode(&sig),);
 
         assert!(decode_token(&tampered, &signer).is_err());
     }
@@ -880,13 +882,20 @@ mod tests {
             &parent,
             "did:teammate:team-1:reader",
             vec!["read".to_string()],
-            vec!["file_read".to_string(), "file_grep".to_string(), "git_status".to_string()],
+            vec![
+                "file_read".to_string(),
+                "file_grep".to_string(),
+                "git_status".to_string(),
+            ],
             2,
             600,
         )
         .unwrap();
 
-        assert_eq!(child.cap.tools, vec!["file_read", "file_grep", "git_status"]);
+        assert_eq!(
+            child.cap.tools,
+            vec!["file_read", "file_grep", "git_status"]
+        );
     }
 
     #[test]

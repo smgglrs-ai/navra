@@ -10,18 +10,14 @@
 
 use super::{Hook, HookDecision};
 use crate::auth::CallContext;
+use crate::safety::{is_pii_category, FilterContext, FilterPipeline};
 use smgglrs_protocol::label::Confidentiality;
 use smgglrs_protocol::{CallToolResult, Content};
-use crate::safety::{is_pii_category, FilterContext, FilterPipeline};
 use std::collections::HashMap;
 
 /// Operations that carry content from the agent into the system
 /// (write-path). These get inbound filtering.
-const WRITE_OPS: &[&str] = &[
-    "file_write",
-    "file_edit",
-    "voice_speak",
-];
+const WRITE_OPS: &[&str] = &["file_write", "file_edit", "voice_speak"];
 
 /// A hook that applies content safety filtering to tool calls.
 ///
@@ -350,9 +346,7 @@ mod tests {
         let hook = SafetyHook::single("dev", crate::safety::build_pipeline("block"));
 
         let args = serde_json::json!({"path": "/tmp/test", "content": "SSN: 123-45-6789"});
-        let decision = hook
-            .pre_tool_use("file_read", &args, &test_ctx())
-            .await;
+        let decision = hook.pre_tool_use("file_read", &args, &test_ctx()).await;
 
         // file_read is not a write-path tool, so inbound filtering skips it
         assert!(matches!(decision, HookDecision::Continue));
@@ -363,9 +357,7 @@ mod tests {
         let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
 
         let args = serde_json::json!({"path": "/tmp/test", "content": "Hello, world!"});
-        let decision = hook
-            .pre_tool_use("file_write", &args, &test_ctx())
-            .await;
+        let decision = hook.pre_tool_use("file_write", &args, &test_ctx()).await;
 
         assert!(matches!(decision, HookDecision::Continue));
     }

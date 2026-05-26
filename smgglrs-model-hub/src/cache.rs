@@ -36,7 +36,12 @@ impl ModelCache {
         fs::create_dir_all(&blobs)?;
         fs::create_dir_all(&refs)?;
         fs::create_dir_all(&cards)?;
-        Ok(Self { root, blobs, refs, cards })
+        Ok(Self {
+            root,
+            blobs,
+            refs,
+            cards,
+        })
     }
 
     /// Look up a model by URI. Returns the blob path if cached.
@@ -299,8 +304,18 @@ mod tests {
 
         let uri1 = ModelUri::parse("ollama://model-a:latest").unwrap();
         let uri2 = ModelUri::parse("ollama://model-b:latest").unwrap();
-        cache.save_card(&uri1, &crate::card::ModelCard::new("ollama://model-a:latest")).unwrap();
-        cache.save_card(&uri2, &crate::card::ModelCard::new("ollama://model-b:latest")).unwrap();
+        cache
+            .save_card(
+                &uri1,
+                &crate::card::ModelCard::new("ollama://model-a:latest"),
+            )
+            .unwrap();
+        cache
+            .save_card(
+                &uri2,
+                &crate::card::ModelCard::new("ollama://model-b:latest"),
+            )
+            .unwrap();
 
         let cards = cache.list_cards().unwrap();
         assert_eq!(cards.len(), 2);
@@ -313,7 +328,12 @@ mod tests {
         let uri = ModelUri::parse("ollama://removeme:latest").unwrap();
 
         cache.store(&uri, b"data").unwrap();
-        cache.save_card(&uri, &crate::card::ModelCard::new("ollama://removeme:latest")).unwrap();
+        cache
+            .save_card(
+                &uri,
+                &crate::card::ModelCard::new("ollama://removeme:latest"),
+            )
+            .unwrap();
 
         assert!(cache.load_card(&uri).unwrap().is_some());
         cache.remove(&uri).unwrap();
