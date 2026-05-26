@@ -27,5 +27,30 @@
       "Bash(tail *)",
       "WebSearch"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "filepath=\"$TOOL_INPUT_FILE_PATH\"; if echo \"$filepath\" | grep -qE '(Cargo\\.lock|\\.env|secrets)'; then echo 'BLOCKED: This file should not be edited directly by Claude.'; exit 1; fi"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "filepath=\"$TOOL_INPUT_FILE_PATH\"; if [ -n \"$filepath\" ] && echo \"$filepath\" | grep -q '\\.rs$'; then rustfmt --edition 2021 --config max_width=100 \"$filepath\" 2>/dev/null; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
   }
 }

@@ -28,7 +28,10 @@ pub enum ProposerType {
 #[serde(rename_all = "snake_case")]
 pub enum VerifierType {
     None,
-    SchemaCheck { schema_name: String },
+    /// Validates that output is syntactically valid JSON.
+    /// Does NOT validate against a named schema — use an external
+    /// JSON Schema validator for full conformance checking.
+    JsonSyntaxCheck,
     MandateValidator,
     SafetyHook,
     MinConfidence { threshold: f32 },
@@ -77,7 +80,7 @@ pub fn validate_proposal(
         VerifierType::None => true,
         VerifierType::MandateValidator => validation_score >= 50.0,
         VerifierType::MinConfidence { threshold } => validation_score >= *threshold,
-        VerifierType::SchemaCheck { schema_name: _ } => {
+        VerifierType::JsonSyntaxCheck => {
             serde_json::from_str::<serde_json::Value>(output).is_ok()
         }
         VerifierType::SafetyHook => true,
@@ -114,11 +117,9 @@ mod tests {
     }
 
     #[test]
-    fn schema_check_validates_json() {
+    fn json_syntax_check_validates_json() {
         let c = SdbContract {
-            verifier: VerifierType::SchemaCheck {
-                schema_name: "test".into(),
-            },
+            verifier: VerifierType::JsonSyntaxCheck,
             ..Default::default()
         };
         assert!(validate_proposal(&c, r#"{"key": "value"}"#, 0.0));

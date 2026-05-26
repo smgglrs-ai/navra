@@ -246,6 +246,16 @@ fn collect_yaml_files(dir: &Path) -> Vec<PathBuf> {
                 for entry in entries.flatten() {
                     let p = entry.path();
                     if p.extension().is_some_and(|e| e == "yaml" || e == "yml") {
+                        // Resolve symlinks and verify the file is within
+                        // the cognitive core directory to prevent traversal.
+                        if let Ok(canonical) = p.canonicalize() {
+                            if let Ok(base) = dir.canonicalize() {
+                                if canonical.starts_with(&base) {
+                                    files.push(canonical);
+                                    continue;
+                                }
+                            }
+                        }
                         files.push(p);
                     }
                 }

@@ -2329,6 +2329,7 @@ steps:
             agent: smgglrs_core::auth::AgentIdentity::new("test-agent", "readonly"),
             session_id: "test-session".to_string(),
             taint: smgglrs_core::ifc::TaintTracker::new(),
+            remaining_tokens: None,
         }
     }
 }
