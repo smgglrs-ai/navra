@@ -257,14 +257,11 @@ impl<'a> DistillationPipeline<'a> {
     fn forge(&self, entries: &[DistilledEntry]) -> Result<usize, MemoryError> {
         let mut stored = 0;
         for entry in entries {
-            let sanitized = if self.sanitizer.is_some() {
-                let mut e = entry.clone();
-                e.content = self.sanitize(&e.content);
-                e.title = self.sanitize(&e.title);
-                e
-            } else {
-                entry.clone()
-            };
+            let mut sanitized = entry.clone();
+            if self.sanitizer.is_some() {
+                sanitized.content = self.sanitize(&sanitized.content);
+                sanitized.title = self.sanitize(&sanitized.title);
+            }
             self.knowledge.store_distilled(&sanitized)?;
             stored += 1;
         }

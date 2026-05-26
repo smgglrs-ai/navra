@@ -613,11 +613,13 @@ pub async fn run_tool_loop(
     let mcp_tools = client.list_tools().await?;
     let tools: Vec<ResponseTool> = mcp_tools
         .iter()
-        .filter(|t| match &config.allowed_tools {
-            Some(allowed) => allowed.contains(&t.name),
-            None => true,
+        .filter(|t| {
+            config
+                .allowed_tools
+                .as_ref()
+                .map_or(true, |allowed| allowed.contains(&t.name))
         })
-        .map(|t| crate::convert::tool_def_to_response(t))
+        .map(crate::convert::tool_def_to_response)
         .collect();
 
     if config.allowed_tools.is_some() {

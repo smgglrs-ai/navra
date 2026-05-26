@@ -183,10 +183,9 @@ pub async fn handle_registry_search(
     };
 
     if entries.is_empty() {
-        if registry_filter.is_some() {
+        if let Some(filter) = &registry_filter {
             return CallToolResult::error(format!(
-                "No registry found with name '{}'",
-                registry_filter.unwrap()
+                "No registry found with name '{filter}'"
             ));
         }
         return CallToolResult::error("No registries configured");

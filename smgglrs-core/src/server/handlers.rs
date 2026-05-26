@@ -493,15 +493,7 @@ impl McpServer {
                 })
                 .collect::<Vec<_>>()
                 .join("");
-            let result_trunc = if result_text.len() > 4096 {
-                let mut end = 4096;
-                while end > 0 && !result_text.is_char_boundary(end) {
-                    end -= 1;
-                }
-                &result_text[..end]
-            } else {
-                &result_text
-            };
+            let result_trunc = crate::blackbox::truncate(&result_text, 4096);
             bb.record(
                 &ctx.agent.name,
                 &ctx.agent.permissions,

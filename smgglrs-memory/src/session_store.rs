@@ -140,12 +140,10 @@ impl SessionBackend for SqliteSessionBackend {
     }
 
     fn remove(&self, id: &str) -> Option<Session> {
-        let session = self.get(id);
-        if session.is_some() {
-            let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = db.execute("DELETE FROM sessions WHERE id = ?1", [id]);
-        }
-        session
+        let session = self.get(id)?;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = db.execute("DELETE FROM sessions WHERE id = ?1", [id]);
+        Some(session)
     }
 
     fn count(&self) -> usize {
