@@ -10,6 +10,7 @@ mod memory_extraction;
 mod pipeline;
 mod routing;
 mod safety_hook;
+pub mod skill_hook;
 pub mod statistical;
 mod tool_guard;
 
@@ -18,6 +19,7 @@ pub use memory_extraction::{ExtractionStore, MemoryExtractionConfig, MemoryExtra
 pub use pipeline::HookPipeline;
 pub use routing::{ModelTier, ModelTierConfig, RoutingConfig, RoutingHook};
 pub use safety_hook::SafetyHook;
+pub use skill_hook::{Intervention, SkillHook, SkillRule};
 pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
 pub use tool_guard::ToolGuardHook;
 
