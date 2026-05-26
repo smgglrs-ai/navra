@@ -442,7 +442,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | DeepSec CI integration | Evaluate | — | Low |
 | ~~Statistical guardrails~~ (cosine z-score drift + Shannon entropy) | ✅ 2026-05-15 | — | — |
 | ~~WebSocket transport~~ (alongside SSE for agentic loops) | ✅ 2026-05-15 | — | — |
-| **GLiGuard safety model evaluation** (ONNX, multi-label) | 11f | 2-3 days | High |
+| ~~GLiGuard safety model evaluation~~ (ONNX, multi-label) | ✅ | — | — |
 | **OTel GenAI observability** (traces + Prometheus /metrics) | 12c | 3-4 days | High |
 | ~~`obo` identity claim + RFC 8693 token exchange~~ | ✅ | — | — |
 | **RoutingHook** (cost-aware model routing via ONNX classifier) | 11h | 3-4 days | Medium-High |
@@ -1407,7 +1407,7 @@ isolated memory. Temporal query returns facts valid at a given time.
 Reference: Memori (MemoriLabs), Zep/Graphiti temporal KG,
 Memory for Autonomous LLM Agents survey (arXiv:2603.07670).
 
-#### 3j. Trace-based memory extraction (NEW — tech watch 2026-05-17)
+#### 3j. Trace-based memory extraction ✅
 
 **Crate**: `smgglrs-security` (new `memory_hook.rs`) +
 `smgglrs-memory` (consolidation)
@@ -1780,7 +1780,7 @@ Phase 3 (memory as context injector vs memory as tool).
 
 Reference: SemaClaw 4-layer plugin taxonomy (arXiv 2604.11548).
 
-#### 5j. Event-driven agent triggers (NEW)
+#### 5j. Event-driven agent triggers ✅
 
 **Crate**: `smgglrs-server` (new `triggers/` module)
 
@@ -3114,7 +3114,7 @@ regex misses, <50ms latency on typical tool outputs.
 
 Reference: OpenAI Privacy Filter pipeline (2026-04-29).
 
-#### 11f. GLiGuard safety model evaluation (NEW — tech watch 2026-05-17)
+#### 11f. GLiGuard safety model evaluation ✅
 
 **Crate**: `smgglrs-security` (safety classifier)
 
@@ -3183,7 +3183,7 @@ non-speculative baseline.
 
 Reference: OpenVINO speculative decoding docs, FastDraft (Intel).
 
-#### 11h. Gateway-level cost-aware routing (NEW — tech watch 2026-05-17)
+#### 11h. Gateway-level cost-aware routing ✅
 
 **Crate**: `smgglrs-security` (new `routing_hook.rs`) +
 `smgglrs-model` (backend selection)
@@ -3370,7 +3370,7 @@ Fix 8 metrics gaps that prevent accurate paper evaluation:
 **Effort**: 3-4 days. **Priority**: High (blocks papers).
 **Acceptance**: Rerun comparative flows, all 8 columns populated.
 
-#### 12d. smgglrs-flow DAG test framework (NEW)
+#### 12d. smgglrs-flow DAG test framework ✅
 
 **Crate**: `smgglrs-flow` (new `validation/` module)
 
