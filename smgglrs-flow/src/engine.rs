@@ -9,6 +9,7 @@ use crate::mesh_tools::{
     self, bb_keys_tool_def, bb_publish_tool_def, bb_read_tool_def, mesh_post_tool_def,
     mesh_recv_tool_def,
 };
+use smgglrs_agent::signal::{AgentSignal, SignalHandle};
 use smgglrs_agent::{extract_text, Agent};
 use smgglrs_model::{
     CreateResponseRequest, FunctionCallItem, FunctionCallOutputItem, FunctionCallOutputContent,
@@ -73,6 +74,7 @@ pub struct Flow {
     pub(crate) entry: String,
     pub(crate) max_hops: usize,
     pub(crate) nodes: HashMap<String, FlowNode>,
+    pub(crate) signal_handles: HashMap<String, SignalHandle>,
     pub(crate) mailbox_registry: Option<MailboxRegistry>,
     pub(crate) blackboard: Option<Blackboard>,
 }
@@ -81,6 +83,24 @@ impl Flow {
     /// Create a new [`FlowBuilder`](crate::FlowBuilder).
     pub fn builder(name: impl Into<String>) -> crate::FlowBuilder {
         crate::FlowBuilder::new(name)
+    }
+
+    /// Send a signal to a specific agent node by name.
+    pub fn agent_signal(&self, node_id: &str, signal: AgentSignal) -> Result<(), FlowError> {
+        match self.signal_handles.get(node_id) {
+            Some(handle) => {
+                handle.send(signal);
+                Ok(())
+            }
+            None => Err(FlowError::NoEntry),
+        }
+    }
+
+    /// Broadcast a signal to all agent nodes.
+    pub fn signal_all(&self, signal: AgentSignal) {
+        for handle in self.signal_handles.values() {
+            handle.send(signal.clone());
+        }
     }
 
     /// Construct a flow from a parsed TOML definition.
@@ -105,6 +125,7 @@ impl Flow {
         }
 
         let mut nodes = HashMap::new();
+        let mut signal_handles = HashMap::new();
         for node_def in &config.nodes {
             let model = OpenAiBackend::new(
                 &node_def.model_url,
@@ -113,7 +134,7 @@ impl Flow {
                 Locality::Local,
             );
 
-            let agent = Agent::builder()
+            let mut agent = Agent::builder()
                 .endpoint(&node_def.endpoint)
                 .await
                 .map_err(|e| FlowError::Agent {
@@ -128,6 +149,9 @@ impl Flow {
                     node: node_def.id.clone(),
                     source: e,
                 })?;
+
+            let handle = agent.install_signal();
+            signal_handles.insert(node_def.id.clone(), handle);
 
             let outgoing = edges_map
                 .get(&node_def.id)
@@ -166,6 +190,7 @@ impl Flow {
             entry: config.entry,
             max_hops: config.max_hops,
             nodes,
+            signal_handles,
             mailbox_registry,
             blackboard,
         })

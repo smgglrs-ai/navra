@@ -131,12 +131,16 @@ impl FlowBuilder {
                 .push(edge.clone());
         }
 
-        // Build flow nodes with effective prompts
+        // Build flow nodes with effective prompts and signal channels
         let mut nodes = HashMap::new();
-        for (id, agent, system_prompt) in self.nodes {
+        let mut signal_handles = HashMap::new();
+        for (id, mut agent, system_prompt) in self.nodes {
             let outgoing = edges_map.get(&id).map(|e| e.as_slice()).unwrap_or(&[]);
             let has_edges = !outgoing.is_empty();
             let effective_prompt = format!("{}{}", system_prompt, routing_instructions(outgoing));
+
+            let handle = agent.install_signal();
+            signal_handles.insert(id.clone(), handle);
 
             nodes.insert(
                 id,
@@ -164,6 +168,7 @@ impl FlowBuilder {
             entry,
             max_hops: self.max_hops,
             nodes,
+            signal_handles,
             mailbox_registry,
             blackboard,
         })

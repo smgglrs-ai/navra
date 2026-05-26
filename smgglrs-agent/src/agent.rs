@@ -55,6 +55,16 @@ impl Agent {
     pub fn taint(&self) -> DataLabel {
         self.client.taint()
     }
+
+    /// Install a signal channel on this agent, returning the send-side handle.
+    ///
+    /// Replaces any existing signal receiver. The caller retains the
+    /// `SignalHandle` to deliver Interrupt/Terminate/Pause/Resume signals.
+    pub fn install_signal(&mut self) -> SignalHandle {
+        let (handle, rx) = SignalHandle::new();
+        self.config.signal_rx = Some(rx);
+        handle
+    }
 }
 
 /// Builder for constructing an [`Agent`].
