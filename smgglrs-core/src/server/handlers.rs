@@ -495,14 +495,15 @@ impl McpServer {
         self.prompts.len()
     }
 
-    pub fn handle_list_resources(&self, _agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListResourcesResult {
+    pub fn handle_list_resources(&self, agent: &crate::auth::AgentIdentity, pagination: &PaginatedRequest) -> ListResourcesResult {
         let all_resources: Vec<_> = self
             .resources
             .values()
             .map(|r| r.definition.clone())
             .collect();
+        let visible = self.filter_resources_for_agent(agent, all_resources);
         let offset = pagination.decode_offset().unwrap_or(0);
-        let (resources, next_cursor) = crate::protocol::paginate(&all_resources, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        let (resources, next_cursor) = crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
         ListResourcesResult { resources, next_cursor }
     }
 
@@ -524,7 +525,7 @@ impl McpServer {
 
     pub fn handle_list_resource_templates(
         &self,
-        _agent: &crate::auth::AgentIdentity,
+        agent: &crate::auth::AgentIdentity,
         pagination: &PaginatedRequest,
     ) -> crate::protocol::ListResourceTemplatesResult {
         let all_templates: Vec<_> = self
@@ -532,9 +533,10 @@ impl McpServer {
             .iter()
             .map(|rt| rt.template.clone())
             .collect();
+        let visible = self.filter_resource_templates_for_agent(agent, all_templates);
         let offset = pagination.decode_offset().unwrap_or(0);
         let (resource_templates, next_cursor) =
-            crate::protocol::paginate(&all_templates, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+            crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
         crate::protocol::ListResourceTemplatesResult {
             resource_templates,
             next_cursor,
@@ -890,6 +892,65 @@ impl McpServer {
     /// Get the per-session value store map (for IFC variable tracking).
     pub fn value_stores(&self) -> &crate::ifc::value_store::ValueStoreMap {
         &self.value_stores
+    }
+
+    fn filter_resources_for_agent(
+        &self,
+        agent: &crate::auth::AgentIdentity,
+        resources: Vec<crate::protocol::ResourceDefinition>,
+    ) -> Vec<crate::protocol::ResourceDefinition> {
+        resources.into_iter().filter(|r| self.agent_can_see_resource(agent, &r.uri)).collect()
+    }
+
+    fn filter_resource_templates_for_agent(
+        &self,
+        agent: &crate::auth::AgentIdentity,
+        templates: Vec<crate::protocol::ResourceTemplate>,
+    ) -> Vec<crate::protocol::ResourceTemplate> {
+        templates.into_iter().filter(|t| self.agent_can_see_resource(agent, &t.uri_template)).collect()
+    }
+
+    fn agent_can_see_resource(&self, agent: &crate::auth::AgentIdentity, uri: &str) -> bool {
+        // Capability token tool globs: if the agent has caps with tool
+        // patterns, the resource URI must match at least one.
+        if let Some(ref caps) = agent.capabilities {
+            if !caps.tools.is_empty() {
+                let uri_matches = caps.tools.iter().any(|pattern| {
+                    glob::Pattern::new(pattern)
+                        .map(|p| p.matches(uri))
+                        .unwrap_or(false)
+                });
+                if !uri_matches {
+                    return false;
+                }
+            }
+        }
+
+        // IFC read clearance (Simple Security Property): check agent's
+        // read clearance against resource confidentiality.
+        if let Some(clearance) = self.ifc_read_clearances.get(&agent.permissions) {
+            let resource_level = resource_confidentiality(uri);
+            if (resource_level as u8) > (clearance.level as u8) {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+/// Assign a confidentiality level to a resource URI for IFC filtering.
+///
+/// Kernel resources with sensitive data get higher levels so agents
+/// with restricted read clearance don't see them.
+fn resource_confidentiality(uri: &str) -> crate::ifc::Confidentiality {
+    use crate::ifc::Confidentiality;
+    if uri.starts_with("smgglrs://audit") {
+        Confidentiality::Sensitive
+    } else if uri.starts_with("smgglrs://proc") && (uri.contains("/taint") || uri.contains("/capabilities")) {
+        Confidentiality::Sensitive
+    } else {
+        Confidentiality::Public
     }
 }
 
