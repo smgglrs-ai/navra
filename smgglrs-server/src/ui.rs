@@ -545,24 +545,6 @@ pub(crate) fn attach_ui_routes(
         r = r.nest("/api", agent_router);
     }
 
-    // Prometheus metrics endpoint (unauthenticated for scraper access)
-    r = r.route("/metrics", {
-        let metrics_server = Arc::clone(server);
-        axum::routing::get(move || {
-            let server = metrics_server.clone();
-            async move {
-                let body = server.metrics().render();
-                (
-                    [(
-                        axum::http::header::CONTENT_TYPE,
-                        "text/plain; version=0.0.4; charset=utf-8",
-                    )],
-                    body,
-                )
-            }
-        })
-    });
-
     r = r.route("/ws/ui", {
         let broadcaster = ui_broadcaster;
         axum::routing::get(move |
