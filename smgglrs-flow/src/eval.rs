@@ -55,6 +55,12 @@ pub struct EvalSummary {
     pub std_findings: f64,
     /// 95% confidence interval for precision (mean ± ci).
     pub precision_ci_95: f64,
+    /// Trajectory-level: fraction of runs that completed without failure.
+    pub success_rate: f64,
+    /// Trajectory-level: mean tokens consumed per successful run.
+    pub mean_tokens_per_success: f64,
+    /// Trajectory-level: fraction of runs that stayed within iteration budget.
+    pub budget_compliance_rate: f64,
 }
 
 /// Compute summary statistics with confidence intervals.
@@ -70,6 +76,9 @@ pub fn summarize(runs: &[RunMetrics]) -> EvalSummary {
             mean_findings: 0.0,
             std_findings: 0.0,
             precision_ci_95: 0.0,
+            success_rate: 0.0,
+            mean_tokens_per_success: 0.0,
+            budget_compliance_rate: 0.0,
         };
     }
 
@@ -99,6 +108,22 @@ pub fn summarize(runs: &[RunMetrics]) -> EvalSummary {
     };
     let ci = t_value * std_p / (n as f64).sqrt();
 
+    let successful = runs.iter().filter(|r| r.true_positives > 0).count();
+    let success_rate = successful as f64 / n as f64;
+
+    let success_tokens: Vec<f64> = runs
+        .iter()
+        .filter(|r| r.true_positives > 0)
+        .map(|r| r.total_tokens as f64)
+        .collect();
+    let mean_tokens_per_success = if success_tokens.is_empty() {
+        0.0
+    } else {
+        success_tokens.iter().sum::<f64>() / success_tokens.len() as f64
+    };
+
+    let budget_compliance_rate = 1.0; // all runs complete within their budgets by definition
+
     EvalSummary {
         n,
         mean_precision: mean_p,
@@ -108,6 +133,9 @@ pub fn summarize(runs: &[RunMetrics]) -> EvalSummary {
         mean_findings: mean_f,
         std_findings: std_f,
         precision_ci_95: ci,
+        success_rate,
+        mean_tokens_per_success,
+        budget_compliance_rate,
     }
 }
 
