@@ -85,6 +85,14 @@ pub struct ToolLoopConfig {
     /// Optional signal receiver for cooperative interruption.
     /// When set, the tool loop checks for signals between iterations.
     pub signal_rx: Option<SignalReceiver>,
+    /// Loop detection: after N calls to the same tool+target, inject
+    /// a "reconsider your approach" context message. 0 = disabled.
+    pub loop_detection_threshold: usize,
+    /// Reasoning phases: map iteration ranges to temperature overrides.
+    /// Format: `[(start, end, temperature)]`. Example:
+    /// `[(0, 2, 0.1), (2, 8, 0.0), (8, 10, 0.1)]` for planning→
+    /// execution→verification sandwich.
+    pub reasoning_phases: Vec<(usize, usize, f32)>,
 }
 
 impl Default for ToolLoopConfig {
@@ -108,6 +116,61 @@ impl Default for ToolLoopConfig {
             embedding_model: None,
             audit_sink: None,
             signal_rx: None,
+            loop_detection_threshold: 3,
+            reasoning_phases: Vec::new(),
+        }
+    }
+}
+
+/// Get the temperature override for a given iteration based on
+/// reasoning phases. Returns None if no phase matches.
+fn phase_temperature(phases: &[(usize, usize, f32)], iteration: usize) -> Option<f32> {
+    phases
+        .iter()
+        .find(|(start, end, _)| iteration >= *start && iteration < *end)
+        .map(|(_, _, temp)| *temp)
+}
+
+/// Loop detection: track (tool_name, primary_arg) call counts.
+struct LoopDetector {
+    counts: std::collections::HashMap<String, usize>,
+    threshold: usize,
+}
+
+impl LoopDetector {
+    fn new(threshold: usize) -> Self {
+        Self {
+            counts: std::collections::HashMap::new(),
+            threshold,
+        }
+    }
+
+    fn record(&mut self, tool_name: &str, args: &serde_json::Value) -> Option<String> {
+        if self.threshold == 0 {
+            return None;
+        }
+        let primary_arg = args
+            .as_object()
+            .and_then(|o| o.values().next())
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let key = format!("{tool_name}:{primary_arg}");
+        let count = self.counts.entry(key.clone()).or_insert(0);
+        *count += 1;
+
+        if *count == self.threshold {
+            Some(format!(
+                "You have called {tool_name} on the same target {count} times. \
+                 Reconsider your approach — try a different tool or strategy."
+            ))
+        } else if *count == self.threshold + 2 {
+            Some(format!(
+                "WARNING: {tool_name} called {} times on same target. \
+                 You must use a different approach.",
+                count
+            ))
+        } else {
+            None
         }
     }
 }
@@ -584,6 +647,7 @@ pub async fn run_tool_loop(
     let mut prev_outputs: Vec<String> = Vec::new();
 
     let mut actions: Vec<ActionRecord> = Vec::new();
+    let mut loop_detector = LoopDetector::new(config.loop_detection_threshold);
     let mut compressed_chars_saved: usize = 0;
     let mut budget_exhausted = false;
 
@@ -696,7 +760,8 @@ pub async fn run_tool_loop(
                 smgglrs_model::ResponseToolChoice::auto()
             }),
             max_output_tokens: config.max_tokens,
-            temperature: config.temperature,
+            temperature: phase_temperature(&config.reasoning_phases, progress_iterations)
+                .or(config.temperature),
             text: text_config,
             ..CreateResponseRequest::new(String::new(), vec![])
         };
@@ -962,6 +1027,7 @@ pub async fn run_tool_loop(
             );
 
             let action = AgentAction::classify(&fc.name, &args);
+            let loop_warning = loop_detector.record(&fc.name, &args);
             let call_start = std::time::Instant::now();
             let result = client.call_tool(&fc.name, args).await?;
             let duration_ms = call_start.elapsed().as_millis() as u64;
@@ -1025,6 +1091,20 @@ pub async fn run_tool_loop(
                 output: FunctionCallOutputContent::Text(text),
                 status: Some(ItemStatus::Completed),
             }));
+
+            if let Some(warning) = loop_warning {
+                tracing::warn!(
+                    tool = %fc.name,
+                    iteration,
+                    "Loop detection triggered"
+                );
+                input.push(InputItem::Message(smgglrs_model::MessageItem {
+                    role: smgglrs_model::MessageRole::System,
+                    content: smgglrs_model::MessageContent::Text(warning),
+                    id: None,
+                    status: None,
+                }));
+            }
 
             // Record timestamp for rate monitoring
             call_timestamps.push(std::time::Instant::now());
@@ -2369,5 +2449,55 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
             .unwrap();
         assert_eq!(result.response, "Hello!");
         assert!(!result.interrupted);
+    }
+
+    #[test]
+    fn loop_detector_triggers_at_threshold() {
+        let mut detector = LoopDetector::new(3);
+        let args = serde_json::json!({"path": "/src/main.rs"});
+        assert!(detector.record("file_edit", &args).is_none());
+        assert!(detector.record("file_edit", &args).is_none());
+        let warning = detector.record("file_edit", &args);
+        assert!(warning.is_some());
+        assert!(warning.unwrap().contains("Reconsider"));
+    }
+
+    #[test]
+    fn loop_detector_disabled_when_zero() {
+        let mut detector = LoopDetector::new(0);
+        let args = serde_json::json!({"path": "/x"});
+        for _ in 0..10 {
+            assert!(detector.record("file_edit", &args).is_none());
+        }
+    }
+
+    #[test]
+    fn loop_detector_different_targets_independent() {
+        let mut detector = LoopDetector::new(2);
+        let a = serde_json::json!({"path": "/a.rs"});
+        let b = serde_json::json!({"path": "/b.rs"});
+        assert!(detector.record("file_edit", &a).is_none());
+        assert!(detector.record("file_edit", &b).is_none());
+        // Second call to each — hits threshold
+        let wa = detector.record("file_edit", &a);
+        assert!(wa.is_some());
+        let wb = detector.record("file_edit", &b);
+        assert!(wb.is_some());
+    }
+
+    #[test]
+    fn phase_temperature_selects_correct_phase() {
+        let phases = vec![(0, 2, 0.1), (2, 8, 0.0), (8, 10, 0.1)];
+        assert_eq!(phase_temperature(&phases, 0), Some(0.1));
+        assert_eq!(phase_temperature(&phases, 1), Some(0.1));
+        assert_eq!(phase_temperature(&phases, 2), Some(0.0));
+        assert_eq!(phase_temperature(&phases, 7), Some(0.0));
+        assert_eq!(phase_temperature(&phases, 8), Some(0.1));
+        assert_eq!(phase_temperature(&phases, 10), None);
+    }
+
+    #[test]
+    fn phase_temperature_empty_returns_none() {
+        assert_eq!(phase_temperature(&[], 5), None);
     }
 }
