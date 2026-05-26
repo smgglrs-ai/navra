@@ -20,6 +20,16 @@ hibernation, preemptive scheduling, kernel resources).
 
 ### Recent (2026-05-26)
 
+- **Sprint 4 (Depth)**: 3 substantial items implemented
+  - **Phase 2e**: Event log — append-only SQLite log with sequence
+    numbers, typed FlowEvent enum, divergence detection, backfill
+    for SSE recovery. 8 new tests.
+  - **Phase 9p**: HASP SkillHook — executable guardrails in hook
+    pipeline (Block/ModifyArg/InjectContext/Noop interventions),
+    tool+path pattern matching. 8 new tests.
+  - **Phase 12f**: RAMPART safety test suite — 129 attack variants
+    across 5 categories (injection, Unicode, desc injection, schema
+    abuse, credentials) with statistical thresholds. 6 tests.
 - **Sprint 3 (High priority)**: 4 of 5 items implemented
   - **Phase 7h**: Batch cross-encoder scoring — single ONNX inference
     for all candidates, 10x reranking speedup.
@@ -406,6 +416,9 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Phase 1h: Deterministic replay (recipe store, matching, substitution) | 2026-05-26 |
 | Phase 2d: Durable DAG execution (per-node checkpoint, idempotency cache) | 2026-05-26 |
 | Phase 12a: Flow audit completeness (started_at UPSERT fix, 7/8 already done) | 2026-05-26 |
+| Phase 2e: Event log (append-only, sequence-numbered, divergence detection) | 2026-05-26 |
+| Phase 9p: HASP SkillHook (Block/ModifyArg/InjectContext/Noop interventions) | 2026-05-26 |
+| Phase 12f: RAMPART safety test suite (129 variants, 5 attack categories) | 2026-05-26 |
 
 ### Remaining
 
@@ -440,16 +453,16 @@ audit/blackbox logs, distillation output, and vector embeddings
 | ~~Breadcrumb injection~~ (zero-cost retrieval improvement) | ✅ 2026-05-26 | — | — |
 | ~~Anti-propagation hop limits~~ (network red-teaming defense) | ✅ 2026-05-26 | — | — |
 | ~~Provenance headers~~ (anti-amplification defense) | ✅ 2026-05-26 | — | — |
-| **Event log durable execution** (Google AX pattern) | 2e | 3-4 days | High |
+| ~~Event log durable execution~~ (append-only, sequence-numbered) | ✅ 2026-05-26 | — | — |
 | ~~Deterministic replay~~ (recipe compilation + replay) | ✅ 2026-05-26 | — | — |
 | ~~Confidence gating~~ (RAG abstention) | ✅ 2026-05-26 | — | — |
 | ~~MCP tunnel compatibility~~ (documentation + validation) | ✅ 2026-05-26 | — | — |
 | **Gateway field filtering** (token optimization) | 9o | 1-2 days | Medium-High |
-| **HASP Program Functions** (SkillHook) | 9p | 2-3 days | Medium-High |
+| ~~HASP Program Functions~~ (SkillHook in hook pipeline) | ✅ 2026-05-26 | — | — |
 | ~~Batch cross-encoder scoring~~ | ✅ 2026-05-26 | — | — |
 | **Early commitment fast paths** | 1i | 1-2 days | Medium-High |
 | **Section-level pointer retrieval** | 7i | 1-2 days | Medium-High |
-| **RAMPART-style safety test suite** | 12f | 2-3 days | Medium-High |
+| ~~RAMPART-style safety test suite~~ (129 variants, 5 categories) | ✅ 2026-05-26 | — | — |
 | **SDB formalization** | 2h | 2-3 days | Medium |
 | **Self-verification gate** | 2j | 1-2 days | Medium |
 | **Loop detection middleware** | 8j | 0.5-1 day | Medium |
@@ -979,7 +992,7 @@ tool calls not repeated.
 Reference: Google ADK pause/resume (2026-05), DBOS durable
 execution, Inngest durable execution for AI agents.
 
-#### 2e. Event log and snapshotting for durable execution (NEW — tech watch 2026-05-25)
+#### 2e. Event log and snapshotting for durable execution ✅ (2026-05-26)
 
 **Crate**: `smgglrs-flow` (executor, new `event_log.rs`)
 
@@ -2753,7 +2766,7 @@ before reaching agent. Token savings measured.
 Reference: Token burn problem (TDS), TOON compact notation,
 MindStudio MCP token optimization.
 
-#### 9p. HASP Program Functions as SkillHook (NEW — tech watch 2026-05-25)
+#### 9p. HASP Program Functions as SkillHook ✅ (2026-05-26)
 
 **Crate**: `smgglrs-security` (new `skill_hook.rs`)
 
@@ -3419,7 +3432,7 @@ efficiency, and failure mode distribution.
 Reference: NVIDIA Mastering Agentic Techniques (2026-05),
 DeepEval agentic metrics, Galileo agent evaluation framework.
 
-#### 12f. RAMPART-style safety test suite (NEW — tech watch 2026-05-25)
+#### 12f. RAMPART-style safety test suite ✅ (2026-05-26)
 
 **Crate**: `smgglrs-security` (tests)
 
