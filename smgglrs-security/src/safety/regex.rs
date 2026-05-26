@@ -163,6 +163,27 @@ impl PromptInjectionFilter {
                         r"!\[\]\(https?://[^)]+\?(?:data|d|q|payload)="
                     ).unwrap(),
                 },
+                // Obfuscated injection: base64-encoded instructions
+                SecretPattern {
+                    category: "encoded-injection",
+                    regex: regex_lite::Regex::new(
+                        r"(?i)(?:base64|decode|eval|atob)\s*\("
+                    ).unwrap(),
+                },
+                // Markdown link exfiltration (any external URL in image)
+                SecretPattern {
+                    category: "markdown-link-exfil",
+                    regex: regex_lite::Regex::new(
+                        r"!\[[^\]]*\]\(https?://[^)]*\)"
+                    ).unwrap(),
+                },
+                // Special token sequences used by various LLMs
+                SecretPattern {
+                    category: "special-token",
+                    regex: regex_lite::Regex::new(
+                        r"(?i)<\|(?:im_start|im_end|endoftext|pad|sep|cls|mask)\|>"
+                    ).unwrap(),
+                },
             ],
         }
     }

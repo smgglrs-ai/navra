@@ -93,6 +93,25 @@ impl IntegrityMonitor {
         let current_files = collect_yaml_files(&self.cognitive_core_dir);
         let current_set: std::collections::HashSet<_> = current_files.iter().cloned().collect();
 
+        // Alert if all monitored files have disappeared
+        if current_files.is_empty() && !self.baselines.is_empty() {
+            let alert = IntegrityAlert {
+                path: self.cognitive_core_dir.clone(),
+                severity: AlertSeverity::Malicious,
+                old_hash: format!("{} files", self.baselines.len()),
+                new_hash: String::new(),
+                semantic_drift: None,
+                timestamp: std::time::SystemTime::now(),
+                message: "All cognitive files deleted — monitor silencing attempt".to_string(),
+            };
+            tracing::error!(
+                dir = %self.cognitive_core_dir.display(),
+                baseline_count = self.baselines.len(),
+                "MALICIOUS: all cognitive files deleted"
+            );
+            self.alerts.write().await.push(alert);
+        }
+
         // Check for missing files
         let baseline_paths: Vec<_> = self.baselines.keys().cloned().collect();
         for path in &baseline_paths {
@@ -127,7 +146,14 @@ impl IntegrityMonitor {
             let new_hash = sha256_hex(content.as_bytes());
 
             if let Some(baseline) = self.baselines.get(&path) {
-                if baseline.hash == new_hash {
+                let hash_match = baseline.hash.len() == new_hash.len()
+                    && baseline
+                        .hash
+                        .bytes()
+                        .zip(new_hash.bytes())
+                        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                        == 0;
+                if hash_match {
                     continue;
                 }
 
@@ -366,9 +392,10 @@ mod tests {
         monitor.check(None).await;
 
         let alerts = monitor.alerts.read().await;
-        assert_eq!(alerts.len(), 1);
-        assert_eq!(alerts[0].severity, AlertSeverity::Malicious);
-        assert!(alerts[0].message.contains("deleted"));
+        // 2 alerts: "all files deleted" + individual file deletion
+        assert_eq!(alerts.len(), 2);
+        assert!(alerts.iter().all(|a| a.severity == AlertSeverity::Malicious));
+        assert!(alerts.iter().any(|a| a.message.contains("deleted")));
     }
 
     #[tokio::test]

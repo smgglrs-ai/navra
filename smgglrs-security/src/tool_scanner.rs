@@ -192,11 +192,12 @@ pub fn check_tool_poisoning(desc: &str) -> Vec<ToolFinding> {
 
 fn check_typosquatting(name: &str, known_names: &[String], threshold: usize) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
+    let normalized = normalize_confusables(name);
     for known in known_names {
         if name == known {
             continue;
         }
-        let dist = levenshtein(name, known);
+        let dist = levenshtein(&normalized, known);
         if dist > 0 && dist <= threshold {
             findings.push(ToolFinding {
                 category: ToolThreatCategory::Typosquatting,
@@ -208,8 +209,40 @@ fn check_typosquatting(name: &str, known_names: &[String], threshold: usize) -> 
                 description: format!("Name '{name}' is {dist} edit(s) from known tool '{known}'"),
             });
         }
+        // Also check if the name is identical after normalization (homoglyph attack)
+        if dist == 0 && name != known {
+            findings.push(ToolFinding {
+                category: ToolThreatCategory::Typosquatting,
+                severity: FindingSeverity::Critical,
+                description: format!(
+                    "Name '{name}' is a Unicode confusable of '{known}' (identical after normalization)"
+                ),
+            });
+        }
     }
     findings
+}
+
+fn normalize_confusables(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_ascii_control() && !matches!(c,
+            '\u{0300}'..='\u{036F}' | // combining diacriticals
+            '\u{200B}'..='\u{200F}' | // zero-width chars
+            '\u{2060}'..='\u{2064}' | // invisible formatters
+            '\u{FEFF}'                // BOM
+        ))
+        .map(|c| match c {
+            // Cyrillic → Latin homoglyphs
+            '\u{0430}' => 'a', // а → a
+            '\u{0435}' => 'e', // е → e
+            '\u{043E}' => 'o', // о → o
+            '\u{0440}' => 'p', // р → p
+            '\u{0441}' => 'c', // с → c
+            '\u{0443}' => 'y', // у → y
+            '\u{0445}' => 'x', // х → x
+            _ => c,
+        })
+        .collect()
 }
 
 pub fn check_schema_abuse(
