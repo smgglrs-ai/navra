@@ -47,6 +47,8 @@ pub mod hibernate;
 pub mod quota;
 /// Upstream MCP prompt resolution utilities.
 pub mod resolve;
+/// Deterministic replay for repetitive tool-loop tasks.
+pub mod replay;
 /// Cooperative signal delivery for running agents.
 pub mod signal;
 mod tool_loop;

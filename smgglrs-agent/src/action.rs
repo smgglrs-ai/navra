@@ -247,6 +247,29 @@ impl AgentAction {
             Self::Unknown { tool } => format!("Unknown tool: {tool}"),
         }
     }
+    /// Extract the tool name and arguments for recipe compilation.
+    ///
+    /// Returns `(tool_name, arguments_json)` for actions that map to
+    /// a single tool call. Returns `None` for actions that don't have
+    /// a direct tool call mapping.
+    pub fn tool_call_parts(&self) -> Option<(String, serde_json::Value)> {
+        match self {
+            Self::FileRead { path } => Some(("file_read".into(), serde_json::json!({"path": path}))),
+            Self::FileWrite { path } => Some(("file_write".into(), serde_json::json!({"path": path}))),
+            Self::FileEdit { path } => Some(("file_edit".into(), serde_json::json!({"path": path}))),
+            Self::FileDelete { path } => Some(("file_delete".into(), serde_json::json!({"path": path}))),
+            Self::FileSearch { query } => Some(("file_search".into(), serde_json::json!({"query": query}))),
+            Self::GitStatus { repo } => Some(("git_status".into(), serde_json::json!({"repo": repo}))),
+            Self::GitDiff { repo } => Some(("git_diff".into(), serde_json::json!({"repo": repo}))),
+            Self::GitCommit { repo, message } => Some(("git_commit".into(), serde_json::json!({"repo": repo, "message": message}))),
+            Self::RagSearch { query } => Some(("rag_search".into(), serde_json::json!({"query": query}))),
+            Self::MemoryStore { kind } => Some(("memory_store".into(), serde_json::json!({"kind": kind}))),
+            Self::MemoryQuery { query } => Some(("memory_query".into(), serde_json::json!({"query": query}))),
+            Self::McpToolCall { tool } => Some((tool.clone(), serde_json::json!({}))),
+            Self::Unknown { tool } => Some((tool.clone(), serde_json::json!({}))),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
