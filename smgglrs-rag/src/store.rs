@@ -563,6 +563,8 @@ mod tests {
                 end_byte: 11,
                 index: 0,
                 breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
             },
             Chunk {
                 content: "Second chunk".to_string(),
@@ -570,6 +572,8 @@ mod tests {
                 end_byte: 24,
                 index: 1,
                 breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
             },
         ]
     }
@@ -605,6 +609,8 @@ mod tests {
             end_byte: 11,
             index: 0,
                 breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
         }];
         let new_embeddings = vec![vec![0.0, 0.0, 1.0, 0.0]];
         store
@@ -664,6 +670,8 @@ mod tests {
             end_byte: 16,
             index: 0,
                 breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
         }];
         let other_embeddings = vec![vec![0.9, 0.1, 0.0, 0.0]]; // close to /a.md chunk 0
         store
@@ -766,6 +774,8 @@ mod tests {
                 end_byte: 28,
                 index: 0,
             breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
             },
             Chunk {
                 content: "Python garbage collection".to_string(),
@@ -773,6 +783,8 @@ mod tests {
                 end_byte: 54,
                 index: 1,
             breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
             },
         ];
         let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 0.0, 0.0]];
@@ -799,6 +811,8 @@ mod tests {
                 end_byte: 20,
                 index: 0,
             breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
             },
             Chunk {
                 content: "Python memory model".to_string(),
@@ -806,6 +820,8 @@ mod tests {
                 end_byte: 40,
                 index: 1,
             breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
             },
         ];
         let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 0.0, 0.0]];
@@ -839,6 +855,8 @@ mod tests {
                 end_byte: (i + 1) * 30,
                 index: i,
                 breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
             });
             let mut emb = vec![0.0; 4];
             emb[i % 4] = 1.0;
@@ -887,6 +905,8 @@ mod tests {
             end_byte: 19,
             index: 0,
         breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
         }];
         store
             .index_document("/doc.md", &new_chunks, &[vec![0.5, 0.5, 0.0, 0.0]])
@@ -915,6 +935,8 @@ mod tests {
             end_byte: 30,
             index: 0,
                 breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
         }];
         let other_embeddings = vec![vec![0.5, 0.5, 0.0, 0.0]];
         store
