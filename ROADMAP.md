@@ -20,6 +20,19 @@ hibernation, preemptive scheduling, kernel resources).
 
 ### Recent (2026-05-26)
 
+- **Sprint 2 (High priority)**: 7 items (3 already done, 4 implemented)
+  - **Phase 7a**: Cross-encoder reranking — already implemented ✅
+  - **Phase 9k**: OBO identity claim — already implemented ✅
+  - **Phase 9l**: RFC 8693 token exchange — already implemented ✅
+  - **Phase 7f**: Breadcrumb injection — heading hierarchy prepended
+    to chunks for positional awareness in embeddings. 5 new tests.
+  - **Phase 7g**: Confidence gating — GatedReranker wrapper with
+    mean-score threshold abstention. 4 new tests.
+  - **Phase 2f**: Anti-propagation hop limits — max_hops on DagExecutor,
+    per-agent message rate limiting on MailboxRegistry.
+  - **Phase 2g**: Provenance headers — provenance chain on MailboxMessage
+    and BlackboardEntry, circular provenance detection.
+  - **Phase 12a**: Flow audit completeness — deferred to next session.
 - **Sprint 1 (P0 Critical)**: 4 items implemented in parallel worktrees
   - **Phase 7e**: Hybrid FTS5+vector search in ChunkStore with RRF
     fusion (k=60). Content-sync FTS5 table + triggers. 7 new tests.
@@ -370,6 +383,10 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Phase 14c: Resource list filtering by agent permissions | 2026-05-26 |
 | Phase 14d: Agent process hibernation (conversation + KV cache) | 2026-05-26 |
 | Phase 14e: Preemptive scheduling (cancel on ModelBackend, token quotas) | 2026-05-26 |
+| Phase 7f: Breadcrumb injection in chunking (heading hierarchy for embeddings) | 2026-05-26 |
+| Phase 7g: Confidence gating (GatedReranker with mean-score abstention) | 2026-05-26 |
+| Phase 2f: Anti-propagation hop limits (max_hops + rate limiting) | 2026-05-26 |
+| Phase 2g: Provenance headers (chain on messages + blackboard entries) | 2026-05-26 |
 
 ### Remaining
 
@@ -401,12 +418,12 @@ audit/blackbox logs, distillation output, and vector embeddings
 | ~~Cognitive file integrity~~ (SHA-256 + semantic drift detection) | ✅ 2026-05-26 | — | — |
 | ~~Hybrid FTS5+vector in ChunkStore~~ (RAG consensus) | ✅ 2026-05-26 | — | — |
 | ~~OTel observability~~ (Prometheus + OTel trace export) | ✅ 2026-05-26 | — | — |
-| **Breadcrumb injection** (zero-cost retrieval improvement) | 7f | 1-2 days | High |
-| **Anti-propagation hop limits** (network red-teaming defense) | 2f | 1-2 days | High |
-| **Provenance headers** (anti-amplification defense) | 2g | 1-2 days | High |
+| ~~Breadcrumb injection~~ (zero-cost retrieval improvement) | ✅ 2026-05-26 | — | — |
+| ~~Anti-propagation hop limits~~ (network red-teaming defense) | ✅ 2026-05-26 | — | — |
+| ~~Provenance headers~~ (anti-amplification defense) | ✅ 2026-05-26 | — | — |
 | **Event log durable execution** (Google AX pattern) | 2e | 3-4 days | High |
 | **Deterministic replay** (93%+ token savings) | 1h | 2-3 days | High |
-| **Confidence gating** (RAG abstention) | 7g | 0.5-1 day | High |
+| ~~Confidence gating~~ (RAG abstention) | ✅ 2026-05-26 | — | — |
 | **MCP tunnel compatibility** (Anthropic + OpenAI) | 6f | 1-2 days | High |
 | **Gateway field filtering** (token optimization) | 9o | 1-2 days | Medium-High |
 | **HASP Program Functions** (SkillHook) | 9p | 2-3 days | Medium-High |
@@ -979,7 +996,7 @@ with different model version triggers divergence warning.
 Reference: Google AX (github.com/google/ax), arXiv 2605.20173
 (SDB formalization), DBOS durable execution.
 
-#### 2f. Anti-propagation hop limits (NEW — tech watch 2026-05-25)
+#### 2f. Anti-propagation hop limits ✅ (2026-05-26)
 
 **Crate**: `smgglrs-flow` (executor, mesh)
 
@@ -1007,7 +1024,7 @@ than 3 agent transitions. Abnormal message volume triggers quarantine.
 
 Reference: Microsoft "Red-teaming a network of agents" (2026-05).
 
-#### 2g. Provenance headers for inter-agent messages (NEW — tech watch 2026-05-25)
+#### 2g. Provenance headers for inter-agent messages ✅ (2026-05-26)
 
 **Crate**: `smgglrs-flow` (mesh, mailbox, blackboard)
 
@@ -1992,7 +2009,7 @@ on identifier/error-code queries. Measured via recall@10.
 Reference: ZeroClaw hybrid memory, Llama-Stack hybrid API proposal
 (Issue #1158), LiteSearch, ceaksan hybrid search guide.
 
-#### 7f. Breadcrumb injection in chunking (NEW — tech watch 2026-05-25)
+#### 7f. Breadcrumb injection in chunking ✅ (2026-05-26)
 
 **Crate**: `smgglrs-rag` (chunk.rs)
 
@@ -2022,7 +2039,7 @@ by a separate model.
 
 Reference: Proxy-Pointer RAG (TDS, 2026-05-20).
 
-#### 7g. Confidence gating on RAG results (NEW — tech watch 2026-05-25)
+#### 7g. Confidence gating on RAG results ✅ (2026-05-26)
 
 **Crate**: `smgglrs-rag` (rerank.rs, module.rs)
 
