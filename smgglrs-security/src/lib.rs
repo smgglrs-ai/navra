@@ -25,3 +25,4 @@ pub mod process;
 pub mod quota;
 pub mod safety;
 pub mod tool_scanner;
+pub mod trust_score;
