@@ -33,6 +33,10 @@ pub struct CallContext {
     /// IFC taint tracker for this session. Accumulates the highest
     /// data label seen across tool calls. Taint only rises.
     pub taint: crate::ifc::TaintTracker,
+    /// Remaining token budget for this call's response. When set,
+    /// modules should self-compress tool output to fit within this
+    /// limit. None = no budget constraint.
+    pub remaining_tokens: Option<u32>,
 }
 
 impl CallContext {
@@ -42,6 +46,7 @@ impl CallContext {
             agent,
             session_id: session_id.into(),
             taint: crate::ifc::TaintTracker::new(),
+            remaining_tokens: None,
         }
     }
 }
