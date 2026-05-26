@@ -561,18 +561,21 @@ mod tests {
                 start_byte: 0,
                 end_byte: 25,
                 index: 0,
+                breadcrumb: None,
             },
             crate::chunk::Chunk {
                 content: "Beta document about Python".to_string(),
                 start_byte: 26,
                 end_byte: 52,
                 index: 1,
+                breadcrumb: None,
             },
             crate::chunk::Chunk {
                 content: "Gamma document about Go".to_string(),
                 start_byte: 53,
                 end_byte: 76,
                 index: 2,
+                breadcrumb: None,
             },
         ];
         let embeddings = vec![

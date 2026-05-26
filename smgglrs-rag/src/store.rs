@@ -164,6 +164,15 @@ impl ChunkStore {
             ",
         )?;
 
+        // Migration: add breadcrumb column if missing
+        let has_breadcrumb: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('rag_chunks') WHERE name = 'breadcrumb'")
+            .and_then(|mut s| s.exists([]))
+            .unwrap_or(false);
+        if !has_breadcrumb {
+            conn.execute_batch("ALTER TABLE rag_chunks ADD COLUMN breadcrumb TEXT")?;
+        }
+
         if self.dimensions > 0 {
             conn.execute_batch(&format!(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS rag_chunk_vectors \
@@ -217,14 +226,15 @@ impl ChunkStore {
         let mut count = 0;
         for (chunk, embedding) in chunks.iter().zip(embeddings.iter()) {
             conn.execute(
-                "INSERT INTO rag_chunks (path, chunk_index, content, start_byte, end_byte)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO rag_chunks (path, chunk_index, content, start_byte, end_byte, breadcrumb)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
                     path,
                     chunk.index as i64,
                     chunk.content,
                     chunk.start_byte as i64,
                     chunk.end_byte as i64,
+                    chunk.breadcrumb,
                 ],
             )?;
 
@@ -552,12 +562,14 @@ mod tests {
                 start_byte: 0,
                 end_byte: 11,
                 index: 0,
+                breadcrumb: None,
             },
             Chunk {
                 content: "Second chunk".to_string(),
                 start_byte: 12,
                 end_byte: 24,
                 index: 1,
+                breadcrumb: None,
             },
         ]
     }
@@ -592,6 +604,7 @@ mod tests {
             start_byte: 0,
             end_byte: 11,
             index: 0,
+                breadcrumb: None,
         }];
         let new_embeddings = vec![vec![0.0, 0.0, 1.0, 0.0]];
         store
@@ -650,6 +663,7 @@ mod tests {
             start_byte: 0,
             end_byte: 16,
             index: 0,
+                breadcrumb: None,
         }];
         let other_embeddings = vec![vec![0.9, 0.1, 0.0, 0.0]]; // close to /a.md chunk 0
         store
@@ -894,6 +908,7 @@ mod tests {
             start_byte: 0,
             end_byte: 30,
             index: 0,
+                breadcrumb: None,
         }];
         let other_embeddings = vec![vec![0.5, 0.5, 0.0, 0.0]];
         store

@@ -308,6 +308,7 @@ mod tests {
             start_byte: 0,
             end_byte: 22,
             index: 0,
+            breadcrumb: None,
         }];
         let embeddings = vec![vec![1.0_f32, 0.0, 0.0, 0.0]];
         chunk_store
@@ -351,15 +352,11 @@ mod tests {
         let chunks = vec![
             smgglrs_rag::chunk::Chunk {
                 content: "BLAKE3 token validation with deny-wins ACLs".to_string(),
-                start_byte: 0,
-                end_byte: 44,
-                index: 0,
+                start_byte: 0, end_byte: 44, index: 0, breadcrumb: None,
             },
             smgglrs_rag::chunk::Chunk {
                 content: "Structured JSON logging to stderr".to_string(),
-                start_byte: 45,
-                end_byte: 77,
-                index: 1,
+                start_byte: 45, end_byte: 77, index: 1, breadcrumb: None,
             },
         ];
         let embeddings = vec![
