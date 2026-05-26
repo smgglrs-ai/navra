@@ -285,7 +285,7 @@ impl HibernationStore {
             )
             .ok();
 
-        if let Some(Some(path)) = kv_path.as_ref().map(|p| Some(p)) {
+        if let Some(path) = &kv_path {
             let pb = PathBuf::from(path);
             if pb.exists() {
                 let _ = std::fs::remove_file(&pb);

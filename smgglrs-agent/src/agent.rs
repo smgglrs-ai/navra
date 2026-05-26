@@ -289,26 +289,11 @@ impl AgentBuilder {
             smgglrs_cognitive::assemble_with_phase(forge, name, "", specialization, context, phase)
                 .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
-        self.config.system_prompt = Some(output.system_prompt());
-
-        if let Some(schema) = output.output_json_schema {
-            self.config.output_json_schema = Some(schema);
-        }
-
-        // Restrict to persona's declared tools if any
         let persona = forge
             .get_persona(name)
             .ok_or_else(|| AgentError::Config(format!("persona '{name}' not found")))?;
-        if !persona.tools.is_empty() {
-            self.config.allowed_tools = Some(persona.tools.clone());
-        }
 
-        if let Some(limit) = output.context_limit {
-            self.config.context_window_tokens = limit;
-        }
-        if let Some(max_output) = persona.max_tool_output_tokens {
-            self.config.max_tool_output_tokens = max_output;
-        }
+        self.apply_persona_config(output.system_prompt(), &output, persona);
 
         tracing::info!(
             persona = name,
@@ -335,25 +320,11 @@ impl AgentBuilder {
             smgglrs_cognitive::assemble_full(forge, name, "", None, None, None, resolved_prompts)
                 .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
-        self.config.system_prompt = Some(output.system_prompt());
-
-        if let Some(schema) = output.output_json_schema {
-            self.config.output_json_schema = Some(schema);
-        }
-
         let persona = forge
             .get_persona(name)
             .ok_or_else(|| AgentError::Config(format!("persona '{name}' not found")))?;
-        if !persona.tools.is_empty() {
-            self.config.allowed_tools = Some(persona.tools.clone());
-        }
 
-        if let Some(limit) = output.context_limit {
-            self.config.context_window_tokens = limit;
-        }
-        if let Some(max_output) = persona.max_tool_output_tokens {
-            self.config.max_tool_output_tokens = max_output;
-        }
+        self.apply_persona_config(output.system_prompt(), &output, persona);
 
         tracing::info!(
             persona = name,
@@ -392,26 +363,46 @@ impl AgentBuilder {
         let (resolved_persona, resolved_prompts) =
             crate::resolve::resolve_persona(client, persona, user_prompt).await?;
 
-        // Assemble with the resolved persona injected into a temporary forge
-        // is not needed — we use assemble_full with the resolved mandate.
-        // But assemble_full takes a persona name and looks it up in the forge,
-        // so we assemble manually using the resolved persona directly.
-
-        // Build the system prompt from the resolved persona
         let output =
             smgglrs_cognitive::assemble_full(forge, name, "", None, None, None, &resolved_prompts)
                 .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
-        if persona.source.is_some() && resolved_persona.core_mandate != persona.core_mandate {
-            let system = output.system_prompt();
-            let patched = system.replacen(&persona.core_mandate, &resolved_persona.core_mandate, 1);
-            self.config.system_prompt = Some(patched);
+        // Patch the system prompt if the upstream source overrode the core mandate
+        let system = if persona.source.is_some()
+            && resolved_persona.core_mandate != persona.core_mandate
+        {
+            output
+                .system_prompt()
+                .replacen(&persona.core_mandate, &resolved_persona.core_mandate, 1)
         } else {
-            self.config.system_prompt = Some(output.system_prompt());
-        }
+            output.system_prompt()
+        };
 
-        if let Some(schema) = output.output_json_schema {
-            self.config.output_json_schema = Some(schema);
+        self.apply_persona_config(system, &output, persona);
+
+        tracing::info!(
+            persona = name,
+            source = persona.source.is_some(),
+            tokens = output.estimated_tokens,
+            upstream_prompts = resolved_prompts.len(),
+            "Loaded MCP-sourced persona"
+        );
+
+        Ok(self)
+    }
+
+    /// Apply common persona configuration (tools, schema, limits) to
+    /// the builder config.
+    fn apply_persona_config(
+        &mut self,
+        system_prompt: String,
+        output: &smgglrs_cognitive::WeaverOutput,
+        persona: &smgglrs_cognitive::Persona,
+    ) {
+        self.config.system_prompt = Some(system_prompt);
+
+        if let Some(schema) = &output.output_json_schema {
+            self.config.output_json_schema = Some(schema.clone());
         }
 
         if !persona.tools.is_empty() {
@@ -424,16 +415,6 @@ impl AgentBuilder {
         if let Some(max_output) = persona.max_tool_output_tokens {
             self.config.max_tool_output_tokens = max_output;
         }
-
-        tracing::info!(
-            persona = name,
-            source = persona.source.is_some(),
-            tokens = output.estimated_tokens,
-            upstream_prompts = resolved_prompts.len(),
-            "Loaded MCP-sourced persona"
-        );
-
-        Ok(self)
     }
 
     /// Build the agent. Requires endpoint and model to be set.

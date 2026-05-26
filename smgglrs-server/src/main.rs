@@ -2832,8 +2832,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
     };
 
-    if knowledge_store.is_some() {
-        let ks = knowledge_store.clone().unwrap();
+    if let Some(ks) = knowledge_store.clone() {
 
         let ks_store = Arc::clone(&ks);
         let sanitizer_for_store = pii_sanitizer.clone();

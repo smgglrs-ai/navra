@@ -1563,19 +1563,14 @@ fn spawn_containerized_agent(
             };
 
             // Mount cognitive core directory if persona is set and path is known
-            let cognitive_mount: Vec<String> = if tm_persona.is_some() {
-                if let Some(ref core_path) = cognitive_core_path {
-                    vec![
-                        "-v".to_string(),
-                        format!("{core_path}:/cognitive_core:ro,Z"),
-                        "-e".to_string(),
-                        "SMGGLRS_COGNITIVE_CORE=/cognitive_core".to_string(),
-                    ]
-                } else {
-                    vec![]
-                }
-            } else {
-                vec![]
+            let cognitive_mount: Vec<String> = match (&tm_persona, &cognitive_core_path) {
+                (Some(_), Some(core_path)) => vec![
+                    "-v".to_string(),
+                    format!("{core_path}:/cognitive_core:ro,Z"),
+                    "-e".to_string(),
+                    "SMGGLRS_COGNITIVE_CORE=/cognitive_core".to_string(),
+                ],
+                _ => vec![],
             };
 
             let mut cmd = tokio::process::Command::new("podman");
@@ -1919,14 +1914,12 @@ fn spawn_openshell_agent(
                     read_only: false,
                 });
             }
-            if let Some(ref core_path) = cognitive_core_path {
-                if tm_persona.is_some() {
-                    mounts.push(smgglrs_model_runtime::openshell::Mount {
-                        source: core_path.clone(),
-                        target: "/cognitive_core".to_string(),
-                        read_only: true,
-                    });
-                }
+            if let (Some(ref core_path), Some(_)) = (&cognitive_core_path, &tm_persona) {
+                mounts.push(smgglrs_model_runtime::openshell::Mount {
+                    source: core_path.clone(),
+                    target: "/cognitive_core".to_string(),
+                    read_only: true,
+                });
             }
 
             // Build env vars
@@ -1940,14 +1933,12 @@ fn spawn_openshell_agent(
                 "SMGGLRS_MAX_ITERATIONS".to_string(),
                 max_iterations.to_string(),
             );
-            if tm_persona.is_some() {
-                if let Some(ref name) = tm_persona {
-                    env.insert("SMGGLRS_PERSONA".to_string(), name.clone());
-                    env.insert(
-                        "SMGGLRS_COGNITIVE_CORE".to_string(),
-                        "/cognitive_core".to_string(),
-                    );
-                }
+            if let Some(ref name) = tm_persona {
+                env.insert("SMGGLRS_PERSONA".to_string(), name.clone());
+                env.insert(
+                    "SMGGLRS_COGNITIVE_CORE".to_string(),
+                    "/cognitive_core".to_string(),
+                );
             }
 
             // Build sandbox labels
