@@ -4,15 +4,43 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform.
 
-## Current state (2026-05-25)
+## Current state (2026-05-26)
 
-22 crates, ~103K LoC, 2055+ tests, 0 warnings. 43 personas, 36
+22 crates, ~105K LoC, 2110+ tests, 0 warnings. 43 personas, 36
 heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
 Fully local multi-agent demos. Full PII pipeline (regex + NER + file
 paths, pseudonymization, GDPR tools, IFC integration). Containerized
 agent execution via Podman (shared model server + per-agent sandboxes).
 Full MCP spec coverage (~39/39). WebSocket transport. GitHub forge
-tools. Statistical guardrails. Context budget enforcement.
+tools. Statistical guardrails. Context budget enforcement. Hybrid
+FTS5+vector RAG with RRF fusion. Upstream tool scanning (8 threat
+categories). Cognitive file integrity monitoring. Prometheus /metrics
+endpoint + OTel trace export. Agentic OS primitives (agent signals,
+hibernation, preemptive scheduling, kernel resources).
+
+### Recent (2026-05-26)
+
+- **Sprint 1 (P0 Critical)**: 4 items implemented in parallel worktrees
+  - **Phase 7e**: Hybrid FTS5+vector search in ChunkStore with RRF
+    fusion (k=60). Content-sync FTS5 table + triggers. 7 new tests.
+  - **Phase 12c**: Prometheus `/metrics` endpoint (existing in
+    streamable transport, 5 new security counters added). OTel trace
+    export via `tracing-opentelemetry` (feature-gated `--features otel`).
+    Structured `tool_call.start`/`tool_call.complete` tracing events.
+  - **Phase 9m**: Upstream tool definition scanning — 8 threat
+    categories (poisoning, typosquatting, schema abuse, hidden Unicode,
+    description injection, cross-server refs, intent-behavior mismatch,
+    rug pull). Wired into `UpstreamModule::discover()`. 14 new tests.
+  - **Phase 9n**: Cognitive file integrity monitoring — SHA-256
+    baselines + optional semantic drift detection via embeddings.
+    Background `tokio::spawn` task (60s interval). Malicious/Suspicious/
+    Benign classification. 8 new tests.
+- **Phase 14 (Agentic OS completeness)**: All 5 items implemented
+  - 14a: Agent signal (Interrupt/Terminate/Pause/Resume via watch channel)
+  - 14b: Kernel state as MCP resources (`smgglrs://proc`, `smgglrs://ifc/labels`, etc.)
+  - 14c: Resource list filtering by agent permissions
+  - 14d: Agent process hibernation (conversation + optional KV cache)
+  - 14e: Preemptive scheduling (`cancel()` on ModelBackend, per-agent token quotas)
 
 ### Recent (2026-05-25)
 
@@ -333,6 +361,15 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Context budget enforcement (BudgetHook, head+tail truncation) | 2026-05-15 |
 | All tools migrated to `#[tool]` proc macro | 2026-05-15 |
 | Git remote operations (git_push, git_pull, git_fetch) | 2026-05-15 |
+| Phase 7e: Hybrid FTS5+vector search in ChunkStore (RRF fusion, k=60) | 2026-05-26 |
+| Phase 9m: Upstream tool scanning (8 categories, wired into discover()) | 2026-05-26 |
+| Phase 9n: Cognitive file integrity monitoring (SHA-256 + semantic drift) | 2026-05-26 |
+| Phase 12c: Prometheus /metrics + OTel trace export (feature-gated) | 2026-05-26 |
+| Phase 14a: Agent signal (Interrupt/Terminate/Pause/Resume) | 2026-05-26 |
+| Phase 14b: Kernel state as MCP resources (smgglrs:// URIs) | 2026-05-26 |
+| Phase 14c: Resource list filtering by agent permissions | 2026-05-26 |
+| Phase 14d: Agent process hibernation (conversation + KV cache) | 2026-05-26 |
+| Phase 14e: Preemptive scheduling (cancel on ModelBackend, token quotas) | 2026-05-26 |
 
 ### Remaining
 
@@ -360,10 +397,10 @@ audit/blackbox logs, distillation output, and vector embeddings
 | **smgglrs-flow DAG test framework** (PTA/dominator validation) | 12 | 3-4 days | Medium |
 | **Event-driven triggers** (voice assistant: email/Slack/calendar → agent) | 5 | 3-5 days | Medium |
 | **fd-passing TOCTOU mitigation** (smgglrs-tools-file) | 12b | 1-2 days | Medium |
-| **Upstream tool scanning** (poisoning, typosquatting, schema abuse) | 9m | 2-3 days | P0 Critical |
-| **Cognitive file integrity** (SHA-256 + semantic drift detection) | 9n | 1-2 days | P0 Critical |
-| **Hybrid FTS5+vector in ChunkStore** (RAG consensus) | 7e | 2-3 days | P0 Critical |
-| **OTel observability** (regulatory — EU AI Act August 2026) | 12c | 3-4 days | P0 Critical |
+| ~~Upstream tool scanning~~ (poisoning, typosquatting, schema abuse) | ✅ 2026-05-26 | — | — |
+| ~~Cognitive file integrity~~ (SHA-256 + semantic drift detection) | ✅ 2026-05-26 | — | — |
+| ~~Hybrid FTS5+vector in ChunkStore~~ (RAG consensus) | ✅ 2026-05-26 | — | — |
+| ~~OTel observability~~ (Prometheus + OTel trace export) | ✅ 2026-05-26 | — | — |
 | **Breadcrumb injection** (zero-cost retrieval improvement) | 7f | 1-2 days | High |
 | **Anti-propagation hop limits** (network red-teaming defense) | 2f | 1-2 days | High |
 | **Provenance headers** (anti-amplification defense) | 2g | 1-2 days | High |
@@ -1925,7 +1962,7 @@ Evaluate as replacement for current embedding model:
 **Effort**: 2 days. **Priority**: Medium-High.
 **Acceptance**: Recall@10 improves or matches at lower latency.
 
-#### 7e. Hybrid FTS5+vector search in ChunkStore (NEW — tech watch 2026-05-25)
+#### 7e. Hybrid FTS5+vector search in ChunkStore ✅ (2026-05-26)
 
 **Crate**: `smgglrs-rag` (store.rs)
 
@@ -2570,7 +2607,7 @@ latency reduction vs SSE in 10+ call sequences.
 Reference: OpenAI WebSocket Responses API (InfoQ, 2026-05-08),
 40% latency reduction at Vercel, 30% at Cursor.
 
-#### 9m. Upstream tool definition scanning at startup (NEW — tech watch 2026-05-25)
+#### 9m. Upstream tool definition scanning at startup ✅ (2026-05-26)
 
 **Crate**: `smgglrs-core` (upstream module) + `smgglrs-security`
 (new `tool_scanner.rs`)
@@ -2615,7 +2652,7 @@ tool description is detected and blocked. Typosquatting flagged.
 Reference: Microsoft AGT MCP Extensions startup scanning,
 NVIDIA SkillSpector, OWASP Agentic Top 10 (ASI04 Supply Chain).
 
-#### 9n. Cognitive file integrity monitoring (NEW — tech watch 2026-05-25)
+#### 9n. Cognitive file integrity monitoring ✅ (2026-05-26)
 
 **Crate**: `smgglrs-security` (new `integrity_monitor.rs`)
 
@@ -3389,7 +3426,7 @@ Collected from Code Health, self-review findings, and DESIGN.md:
 | Sync ureq → async in authenticator | Self-review sec-01 | 1 day |
 | fd-passing TOCTOU mitigation in file tools | AWS REX (2026-05-08) | 1-2 days |
 
-#### 12c. Observability (HIGH — table-stakes for gateways, updated 2026-05-17)
+#### 12c. Observability ✅ (2026-05-26, Prometheus + OTel)
 
 **Upgraded from LOW to HIGH**: All competing MCP gateways (Lunar MCPX,
 MintMCP, Kong, Bifrost) now advertise OTel traces + Prometheus metrics.
