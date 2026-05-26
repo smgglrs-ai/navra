@@ -11,11 +11,13 @@ its re-exports.
 
 ## Key types
 
-- `McpServer` / `McpServerBuilder` -- HTTP server with MCP/SSE transport
+- `McpServer` / `McpServerBuilder` -- HTTP server with MCP/SSE/WebSocket transport
 - `Module` -- trait that all tool modules implement
-- `UpstreamModule` -- wraps proxied MCP servers as modules
+- `UpstreamModule` -- wraps proxied MCP servers as modules (with tool scanning)
 - `Session` -- per-connection session state
 - `ToolHandler` / `PromptHandler` / `ResourceHandler` -- handler types
+- `Metrics` -- Prometheus text format counters (tool calls, safety, IFC, scanning)
+- Kernel resources: `smgglrs://proc`, `smgglrs://ifc/labels`, etc.
 
 ## Re-exports
 

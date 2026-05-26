@@ -2,7 +2,8 @@
 
 Multi-agent orchestration engine for smgglrs. Provides three execution
 modes -- DAG, Handoff, and Iterative -- plus mesh communication
-(mailbox and blackboard) and mandate validation.
+(mailbox and blackboard), mandate validation, anti-propagation hop
+limits, and provenance tracking on inter-agent messages.
 
 ## Execution modes
 

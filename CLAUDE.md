@@ -27,20 +27,22 @@ package only provides shared libraries.
 | `smgglrs-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
 | `smgglrs-model-runtime` | Infrastructure | Serve models with pluggable isolation (direct, Podman, OpenShell) |
 | `smgglrs-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
-| `smgglrs-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks |
+| `smgglrs-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks, upstream tool scanning, cognitive file integrity monitoring |
 | `smgglrs-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
 | `smgglrs-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
-| `smgglrs-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, standalone binary (`Dockerfile.agent`) |
-| `smgglrs-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation |
-| `smgglrs-core` | Infrastructure | Server, module trait, session, transport, re-exports |
+| `smgglrs-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, deterministic replay, standalone binary (`Dockerfile.agent`) |
+| `smgglrs-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation, hop limits, provenance tracking |
+| `smgglrs-core` | Infrastructure | Server, module trait, session, transport, Prometheus metrics, OTel traces, re-exports |
 | `smgglrs-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
-| `smgglrs-tools-git` | Tool | Git tools (status, diff, log, branch, commit; planned: push, pull, fetch) |
+| `smgglrs-tools-git` | Tool | Git tools (status, diff, log, branch, commit, push, pull, fetch) |
 | `smgglrs-tools-exec` | Tool | Command execution inside OpenShell sandboxes |
-| `smgglrs-rag` | Context enrichment | Vector search, sqlite-vec, semantic chunking, cross-encoder reranking |
+| `smgglrs-rag` | Context enrichment | Hybrid FTS5+vector search (RRF fusion), breadcrumb chunking, cross-encoder reranking (batched), confidence gating |
 | `smgglrs-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
 | `smgglrs-modal-vision` | Modality | Image/screen understanding (GPU tier) |
 | `smgglrs-macros` | Dev tooling | `#[tool]` proc macro for generating tool definitions from functions |
-| `smgglrs-server` | Binary | CLI, config, module wiring, systemd, tray (binary: `smgglrs`) |
+| `smgglrs-tools-github` | Tool | GitHub forge tools (PR create/list/view, issue create/list/comment) via `gh` CLI |
+| `smgglrs-tools-gitlab` | Tool | GitLab forge tools (MR, issues) via `glab` CLI |
+| `smgglrs-server` | Binary | CLI, config, module wiring, systemd, tray, Prometheus /metrics (binary: `smgglrs`) |
 | `benchmarks` | Dev tooling | Criterion performance benchmarks |
 
 ### Dependency layering
@@ -86,12 +88,15 @@ AI Agent (Claude Code, etc.)
     | MCP Streamable HTTP + SSE (Unix socket or TCP)
     v
 smgglrs-server / smgglrs (gateway)
-    |-- Auth (BLAKE3 tokens)
-    |-- Permission engine (path ACLs, tool rules)
+    |-- Auth (BLAKE3 tokens, OAuth 2.0, capability delegation)
+    |-- Permission engine (path ACLs, tool rules, Cedar)
     |-- Hook pipeline (pre/post tool-call)
-    |-- Safety filters (regex + ML)
-    |-- Built-in modules (file, git, exec, rag, voice, vision)
-    |-- Upstream MCP servers (proxied, safety-filtered)
+    |-- Safety filters (regex + ML + NER)
+    |-- Upstream tool scanning (8 threat categories)
+    |-- Cognitive file integrity monitoring
+    |-- Built-in modules (file, git, exec, rag, voice, vision, github)
+    |-- Upstream MCP servers (proxied, safety-filtered, scanned)
+    |-- Prometheus /metrics + OTel traces
     |-- Discovery (AID, mDNS, MCP registry)
     v
 Desktop (D-Bus notifications, system tray, systemd)
@@ -164,10 +169,12 @@ Stale worktrees with uncommitted changes will be lost on cleanup.
 
 ### Testing
 
+2110+ tests (1884 unit, 199 integration, 12 e2e). See TESTING.md
+for per-crate breakdown.
+
 Prerequisites:
 - ONNX Runtime (`onnxruntime-devel` on Fedora)
-- Ollama with at least one model (e2e tests auto-detect the first
-  available model via the Ollama API)
+- Ollama with any model for 1 e2e test (`ollama pull qwen2.5:0.5b`)
 
 ```bash
 # Unit + integration tests
@@ -226,8 +233,9 @@ See DESIGN.md for full config reference.
 ## Reference Documents
 
 - `DESIGN.md` — Full architecture, protocol, security model, config reference
-- `TESTING.md` — Test prerequisites, running tests, crate test counts
-- `ROADMAP.md` — Phased development plan
+- `TESTING.md` — Test prerequisites, running tests, crate test counts (2110+)
+- `ROADMAP.md` — Phased development plan (15 phases, sprints 1-3 complete)
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)
 - `OPENSHELL.md` — OpenShell integration: identity federation, A2A mesh, gRPC modules
+- `docs/mcp-tunnels.md` — MCP tunnel compatibility (Anthropic + OpenAI)
