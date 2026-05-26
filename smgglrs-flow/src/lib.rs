@@ -36,6 +36,7 @@ mod mailbox;
 pub mod mesh;
 mod mesh_tools;
 mod recovery;
+pub mod sdb;
 mod task;
 mod validation;
 pub mod verification;
