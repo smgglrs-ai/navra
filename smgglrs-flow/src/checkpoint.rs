@@ -27,6 +27,10 @@ pub struct CheckpointState {
     pub team_id: String,
     /// Original prompt that started the flow.
     pub prompt: String,
+    /// Idempotency cache: tool call key → cached result text.
+    /// Prevents re-executing non-idempotent operations on replay.
+    #[serde(default)]
+    pub idempotency_cache: HashMap<String, String>,
 }
 
 /// SQLite-backed checkpoint store.
@@ -116,6 +120,87 @@ impl DagCheckpoint {
         Ok(())
     }
 
+    /// Save a per-node checkpoint atomically: mark a task as completed.
+    pub fn save_node(
+        &self,
+        flow_id: &str,
+        task_id: &str,
+        output: &str,
+    ) -> anyhow::Result<()> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = db.unchecked_transaction()?;
+
+        let mut state = {
+            let mut stmt =
+                tx.prepare("SELECT state FROM dag_checkpoints WHERE flow_id = ?1")?;
+            match stmt.query_row(params![flow_id], |row| {
+                let blob: Vec<u8> = row.get(0)?;
+                Ok(blob)
+            }) {
+                Ok(blob) => serde_json::from_slice::<CheckpointState>(&blob)?,
+                Err(rusqlite::Error::QueryReturnedNoRows) => CheckpointState {
+                    flow_id: flow_id.to_string(),
+                    completed: HashMap::new(),
+                    failed: HashSet::new(),
+                    task_defs: Vec::new(),
+                    team_id: String::new(),
+                    prompt: String::new(),
+                    idempotency_cache: HashMap::new(),
+                },
+                Err(e) => return Err(e.into()),
+            }
+        };
+
+        state
+            .completed
+            .insert(task_id.to_string(), output.to_string());
+        state.task_defs.retain(|t| t.id != task_id);
+
+        let json = serde_json::to_vec(&state)?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        tx.execute(
+            "INSERT OR REPLACE INTO dag_checkpoints (flow_id, state, updated_at)
+             VALUES (?1, ?2, ?3)",
+            params![flow_id, json, now],
+        )?;
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Cache a tool call result for idempotency on replay.
+    pub fn cache_tool_result(
+        &self,
+        flow_id: &str,
+        tool_call_key: &str,
+        result: &str,
+    ) -> anyhow::Result<()> {
+        if let Some(mut state) = self.load(flow_id)? {
+            state
+                .idempotency_cache
+                .insert(tool_call_key.to_string(), result.to_string());
+            self.save(&state)?;
+        }
+        Ok(())
+    }
+
+    /// Check if a tool call result is cached for idempotency.
+    pub fn get_cached_tool_result(
+        &self,
+        flow_id: &str,
+        tool_call_key: &str,
+    ) -> anyhow::Result<Option<String>> {
+        if let Some(state) = self.load(flow_id)? {
+            Ok(state.idempotency_cache.get(tool_call_key).cloned())
+        } else {
+            Ok(None)
+        }
+    }
+
     /// List flow IDs that have incomplete checkpoints.
     pub fn list_incomplete(&self) -> anyhow::Result<Vec<String>> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
@@ -165,7 +250,62 @@ mod tests {
             ],
             team_id: "team-abc".to_string(),
             prompt: "Review the codebase".to_string(),
+            idempotency_cache: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn save_node_per_task_checkpoint() {
+        let tmp = NamedTempFile::new().unwrap();
+        let cp = DagCheckpoint::open(tmp.path()).unwrap();
+
+        // Create initial state
+        let state = make_state("flow-node");
+        cp.save(&state).unwrap();
+
+        // Checkpoint a node completion
+        cp.save_node("flow-node", "task3", "analysis result")
+            .unwrap();
+
+        let loaded = cp.load("flow-node").unwrap().expect("should exist");
+        assert!(loaded.completed.contains_key("task3"));
+        assert_eq!(loaded.completed["task3"], "analysis result");
+        // task3 should be removed from remaining task_defs
+        assert!(!loaded.task_defs.iter().any(|t| t.id == "task3"));
+    }
+
+    #[test]
+    fn save_node_creates_state_if_missing() {
+        let tmp = NamedTempFile::new().unwrap();
+        let cp = DagCheckpoint::open(tmp.path()).unwrap();
+
+        cp.save_node("new-flow", "task1", "output").unwrap();
+
+        let loaded = cp.load("new-flow").unwrap().expect("should exist");
+        assert_eq!(loaded.completed.len(), 1);
+        assert_eq!(loaded.completed["task1"], "output");
+    }
+
+    #[test]
+    fn idempotency_cache_roundtrip() {
+        let tmp = NamedTempFile::new().unwrap();
+        let cp = DagCheckpoint::open(tmp.path()).unwrap();
+
+        let state = make_state("flow-idem");
+        cp.save(&state).unwrap();
+
+        cp.cache_tool_result("flow-idem", "git_commit:abc123", "commit SHA: def456")
+            .unwrap();
+
+        let cached = cp
+            .get_cached_tool_result("flow-idem", "git_commit:abc123")
+            .unwrap();
+        assert_eq!(cached.as_deref(), Some("commit SHA: def456"));
+
+        let missing = cp
+            .get_cached_tool_result("flow-idem", "nonexistent")
+            .unwrap();
+        assert!(missing.is_none());
     }
 
     #[test]

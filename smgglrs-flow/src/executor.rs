@@ -2,6 +2,7 @@
 
 use crate::backedge::{BackEdgeTracker, ConditionalEdge};
 use crate::blackboard::Blackboard;
+use crate::checkpoint::DagCheckpoint;
 use crate::dag::DependencyGraph;
 use crate::error::FlowError;
 use crate::recovery::{classify_failure, detect_circular_fix, get_strategy, RecoveryAction};
@@ -77,6 +78,7 @@ pub struct DagExecutor {
     /// Maximum agent-to-agent transitions in a single execution path.
     /// Prevents agent worm propagation patterns. 0 = unlimited.
     max_hops: usize,
+    checkpoint: Option<(Arc<DagCheckpoint>, String)>,
 }
 
 impl Default for DagExecutor {
@@ -96,6 +98,7 @@ impl DagExecutor {
             max_hops: 0,
             insight_callback: None,
             insight_retriever: None,
+            checkpoint: None,
         }
     }
 
@@ -169,6 +172,16 @@ impl DagExecutor {
         self
     }
 
+    /// Enable per-node checkpointing for crash recovery.
+    ///
+    /// After each task completes, the executor saves a checkpoint to
+    /// the provided store. On resume (via `run()` with the same flow_id),
+    /// completed tasks are skipped.
+    pub fn with_checkpoint(mut self, store: Arc<DagCheckpoint>, flow_id: String) -> Self {
+        self.checkpoint = Some((store, flow_id));
+        self
+    }
+
     /// Execute a DAG of tasks.
     ///
     /// Tasks are run in dependency order. Independent tasks execute
@@ -194,6 +207,35 @@ impl DagExecutor {
         let mut total_completion = 0u32;
         let mut back_edge_tracker = BackEdgeTracker::new();
         let mut hop_count: usize = 0;
+
+        // Resume from checkpoint: pre-populate completed tasks
+        if let Some((ref cp, ref flow_id)) = self.checkpoint {
+            if let Ok(Some(cp_state)) = cp.load(flow_id) {
+                for (task_id, output) in &cp_state.completed {
+                    completed.insert(task_id.clone());
+                    results.insert(
+                        task_id.clone(),
+                        TaskResult {
+                            task_id: task_id.clone(),
+                            status: TaskStatus::Complete,
+                            output: output.clone(),
+                            prompt_tokens: 0,
+                            completion_tokens: 0,
+                            taint: DataLabel::TRUSTED_PUBLIC,
+                            validation_score: None,
+                            validation_notes: Vec::new(),
+                        },
+                    );
+                }
+                if !completed.is_empty() {
+                    tracing::info!(
+                        flow_id = %flow_id,
+                        resumed = completed.len(),
+                        "Resuming DAG from checkpoint"
+                    );
+                }
+            }
+        }
 
         loop {
             // Hop limit enforcement
@@ -379,6 +421,21 @@ impl DagExecutor {
                                     });
                                 }
 
+                                // Per-node checkpoint
+                                if let Some((ref cp, ref flow_id)) = self.checkpoint {
+                                    if let Err(e) = cp.save_node(
+                                        flow_id,
+                                        &task.id,
+                                        &task_result.output,
+                                    ) {
+                                        tracing::warn!(
+                                            task = %task.id,
+                                            error = %e,
+                                            "Failed to save per-node checkpoint"
+                                        );
+                                    }
+                                }
+
                                 results.insert(task.id.clone(), task_result);
                                 completed.insert(task.id.clone());
                                 hop_count += 1;
@@ -524,6 +581,13 @@ impl DagExecutor {
                     completed.insert(task.id.clone());
                     hop_count += 1;
                 }
+            }
+        }
+
+        // Delete checkpoint on successful completion
+        if let Some((ref cp, ref flow_id)) = self.checkpoint {
+            if let Err(e) = cp.delete(flow_id) {
+                tracing::warn!(flow_id = %flow_id, error = %e, "Failed to delete checkpoint");
             }
         }
 
