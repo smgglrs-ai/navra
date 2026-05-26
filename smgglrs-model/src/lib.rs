@@ -298,6 +298,15 @@ pub trait ModelBackend: Send + Sync + 'static {
     ) -> Pin<Box<dyn Future<Output = Result<SynthesizeResponse, ModelError>> + Send + '_>> {
         Box::pin(async { Err(ModelError::NotLoaded("synthesize not supported".into())) })
     }
+
+    /// Cancel an in-flight inference request.
+    ///
+    /// Used by the preemptive scheduler to yield GPU to a higher-priority
+    /// agent. Default implementation is a no-op (backends that don't
+    /// support cancellation simply let the request complete).
+    fn cancel(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async {})
+    }
 }
 
 // --- Internal translation helpers ---
