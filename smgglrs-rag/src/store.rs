@@ -30,6 +30,14 @@ pub struct ChunkResult {
     pub distance: f64,
 }
 
+/// Filter constraints for scoped search.
+#[derive(Debug, Clone, Default)]
+pub struct SearchFilter {
+    pub doc_type: Option<String>,
+    pub min_updated_at: Option<i64>,
+    pub tag: Option<String>,
+}
+
 /// Index statistics.
 #[derive(Debug, Clone)]
 pub struct IndexStats {
@@ -171,6 +179,22 @@ impl ChunkStore {
             .unwrap_or(false);
         if !has_breadcrumb {
             conn.execute_batch("ALTER TABLE rag_chunks ADD COLUMN breadcrumb TEXT")?;
+        }
+
+        // Migration: add metadata columns for pre-filtering
+        for col in ["doc_type", "updated_at", "tags_json"] {
+            let exists: bool = conn
+                .prepare(&format!(
+                    "SELECT 1 FROM pragma_table_info('rag_chunks') WHERE name = '{col}'"
+                ))
+                .and_then(|mut s| s.exists([]))
+                .unwrap_or(false);
+            if !exists {
+                let col_type = if col == "updated_at" { "INTEGER" } else { "TEXT" };
+                conn.execute_batch(&format!(
+                    "ALTER TABLE rag_chunks ADD COLUMN {col} {col_type}"
+                ))?;
+            }
         }
 
         if self.dimensions > 0 {
@@ -388,6 +412,77 @@ impl ChunkStore {
                 results.clone(),
             );
         }
+
+        Ok(results)
+    }
+
+    /// Search with metadata pre-filtering.
+    ///
+    /// Applies SQL WHERE clauses for doc_type, updated_at, and tags
+    /// before the vector search. Filters reduce the candidate set
+    /// before scoring, not after.
+    pub fn search_filtered(
+        &self,
+        query_embedding: &[f32],
+        filter: &SearchFilter,
+        limit: usize,
+    ) -> rusqlite::Result<Vec<ChunkResult>> {
+        if self.dimensions == 0 {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.conn.lock().unwrap();
+
+        let mut conditions = Vec::new();
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(ref dt) = filter.doc_type {
+            conditions.push("c.doc_type = ?");
+            param_values.push(Box::new(dt.clone()));
+        }
+        if let Some(ts) = filter.min_updated_at {
+            conditions.push("c.updated_at >= ?");
+            param_values.push(Box::new(ts));
+        }
+        if let Some(ref tag) = filter.tag {
+            conditions.push("c.tags_json LIKE ?");
+            param_values.push(Box::new(format!("%{tag}%")));
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!(" AND {}", conditions.join(" AND "))
+        };
+
+        let sql = format!(
+            "SELECT c.path, c.content, c.chunk_index, v.distance \
+             FROM rag_chunk_vectors v \
+             JOIN rag_chunks c ON c.id = v.rowid \
+             WHERE v.embedding MATCH ?1 AND k = ?2{where_clause} \
+             ORDER BY v.distance"
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let n_fixed = 2;
+        let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        params_vec.push(Box::new(query_embedding.as_bytes().to_vec()));
+        params_vec.push(Box::new(limit as i64));
+        params_vec.extend(param_values);
+
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+
+        let results = stmt
+            .query_map(params_refs.as_slice(), |row| {
+                Ok(ChunkResult {
+                    path: row.get(0)?,
+                    content: row.get(1)?,
+                    chunk_index: row.get(2)?,
+                    distance: row.get(3)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
 
         Ok(results)
     }
