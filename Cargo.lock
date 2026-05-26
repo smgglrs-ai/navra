@@ -4195,6 +4195,7 @@ dependencies = [
  "smgglrs-protocol",
  "smgglrs-responses",
  "smgglrs-security",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
