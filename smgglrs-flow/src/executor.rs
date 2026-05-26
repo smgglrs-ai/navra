@@ -697,6 +697,7 @@ mod tests {
             max_retries: 2,
             back_edges: Vec::new(),
             verification: None,
+            temperature: None,
         }
     }
 
@@ -751,6 +752,7 @@ mod tests {
             max_retries: 2,
             back_edges: Vec::new(),
             verification: None,
+            temperature: None,
         };
 
         let prompt = build_task_prompt(&task, &HashMap::new());

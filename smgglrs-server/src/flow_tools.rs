@@ -1679,6 +1679,7 @@ pub async fn handle_flow_escalate(
                 verification: None,
                 tools: None,
                 operations: None,
+                temperature: None,
             });
         }
         smgglrs_flow::DagConfig {
