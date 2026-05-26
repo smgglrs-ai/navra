@@ -20,6 +20,12 @@ hibernation, preemptive scheduling, kernel resources).
 
 ### Recent (2026-05-26)
 
+- **Sprint 5 (Quick wins)**: 6 items implemented
+  - **Phase 8j+8k**: Loop detection + reasoning sandwich in tool loop
+  - **Phase 2k**: Per-agent temperature in flow YAML
+  - **Phase 9o**: Gateway field filtering (FieldFilterHook)
+  - **Phase 7i**: Section-level pointer retrieval
+  - **Phase 1i**: Early commitment fast paths (task classification)
 - **Sprint 4 (Depth)**: 3 substantial items implemented
   - **Phase 2e**: Event log — append-only SQLite log with sequence
     numbers, typed FlowEvent enum, divergence detection, backfill
@@ -768,7 +774,7 @@ token consumption. Replay produces equivalent output.
 
 Reference: LOOP framework (TDS, 2026-05-21), Hermes trace export.
 
-#### 1i. Early commitment / task classification fast paths (NEW — tech watch 2026-05-25)
+#### 1i. Early commitment / task classification fast paths ✅ (2026-05-26)
 
 **Crate**: `smgglrs-cognitive` (weaver.rs, new `fast_path.rs`)
 
@@ -1175,7 +1181,7 @@ independent verifier before downstream nodes execute.
 Reference: WebWright self-verification gate (Microsoft Research),
 LangChain PreCompletionChecklistMiddleware.
 
-#### 2k. Per-agent temperature in flow definitions (NEW — tech watch 2026-05-25)
+#### 2k. Per-agent temperature in flow definitions ✅ (2026-05-26)
 
 **Crate**: `smgglrs-flow` (yaml loader, executor)
 
@@ -2121,7 +2127,7 @@ pairs into a single ONNX inference call instead of N sequential calls:
 
 Reference: BGE reranker batch scoring, Ailog cross-encoder study.
 
-#### 7i. Section-level pointer retrieval (NEW — tech watch 2026-05-25)
+#### 7i. Section-level pointer retrieval ✅ (2026-05-26)
 
 **Crate**: `smgglrs-rag` (store.rs, chunk.rs)
 
@@ -2336,7 +2342,7 @@ are available at all.
 Reference: Genkit Skills middleware (2026-05), Osmani harness
 engineering (O'Reilly Radar, 2026-05).
 
-#### 8j. Loop detection middleware (NEW — tech watch 2026-05-25)
+#### 8j. Loop detection middleware ✅ (2026-05-26)
 
 **Crate**: `smgglrs-agent` (tool_loop.rs)
 
@@ -2362,7 +2368,7 @@ this pattern on Terminal Bench 2.0.
 
 Reference: LangChain harness engineering, WebWright loop detection.
 
-#### 8k. Reasoning compute allocation (NEW — tech watch 2026-05-25)
+#### 8k. Reasoning compute allocation ✅ (2026-05-26)
 
 **Crate**: `smgglrs-agent` (tool_loop.rs)
 
@@ -2733,7 +2739,7 @@ safety rules" triggers MALICIOUS alert within 60 seconds.
 Reference: ClawPatrol cognitive file integrity (Enkrypt AI),
 OWASP Agentic Top 10 (ASI01 Goal Hijack).
 
-#### 9o. Gateway-level field filtering (NEW — tech watch 2026-05-25)
+#### 9o. Gateway-level field filtering ✅ (2026-05-26)
 
 **Crate**: `smgglrs-core` (upstream module, hooks)
 
