@@ -20,7 +20,7 @@ hibernation, preemptive scheduling, kernel resources).
 
 ### Recent (2026-05-26)
 
-- **Sprint 3 (High priority)**: 3 of 5 items implemented
+- **Sprint 3 (High priority)**: 4 of 5 items implemented
   - **Phase 7h**: Batch cross-encoder scoring — single ONNX inference
     for all candidates, 10x reranking speedup.
   - **Phase 6f**: MCP tunnel compatibility — documentation and
@@ -28,9 +28,10 @@ hibernation, preemptive scheduling, kernel resources).
   - **Phase 1h**: Deterministic replay — recipe compilation from
     successful traces, file-backed store, word-overlap matching,
     template variable substitution. 9 new tests.
-  - **Phase 12a**: Flow audit completeness — deferred.
-  - **Phase 2d**: Durable DAG execution — deferred (complex, needs
-    fresh session with full executor in context).
+  - **Phase 2d**: Durable DAG execution — per-node checkpointing wired
+    into executor, idempotency cache, atomic SQLite transactions,
+    resume from checkpoint on restart. 4 new tests.
+  - **Phase 12a**: Flow audit completeness — deferred to next session.
 - **Sprint 2 (High priority)**: 7 items (3 already done, 4 implemented)
   - **Phase 7a**: Cross-encoder reranking — already implemented ✅
   - **Phase 9k**: OBO identity claim — already implemented ✅
@@ -401,6 +402,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Phase 7h: Batch cross-encoder scoring (single ONNX call, 10x speedup) | 2026-05-26 |
 | Phase 6f: MCP tunnel compatibility (Anthropic + OpenAI documentation) | 2026-05-26 |
 | Phase 1h: Deterministic replay (recipe store, matching, substitution) | 2026-05-26 |
+| Phase 2d: Durable DAG execution (per-node checkpoint, idempotency cache) | 2026-05-26 |
 
 ### Remaining
 
@@ -420,7 +422,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | **OTel GenAI observability** (traces + Prometheus /metrics) | 12c | 3-4 days | High |
 | ~~`obo` identity claim + RFC 8693 token exchange~~ | ✅ | — | — |
 | **RoutingHook** (cost-aware model routing via ONNX classifier) | 11h | 3-4 days | Medium-High |
-| **Durable DAG execution** (SQLite checkpoint, crash recovery) | 2d | 3-4 days | Medium-High |
+| ~~Durable DAG execution~~ (per-node checkpoint, idempotency cache) | ✅ 2026-05-26 | — | — |
 | **Memory scoping** (entity/process/session, temporal validity) | 3i | 2 days | Medium |
 | **Trace-based memory extraction** (MemoryExtractionHook) | 3j | 3-4 days | Medium |
 | **Progressive tool disclosure** (session-scoped tool sets) | 8i | 1-2 days | Medium |
@@ -937,7 +939,7 @@ Flow templates encode orchestration expertise once and reuse it.
 The planner's domain knowledge goes into choosing the right
 template and parameters, not reinventing the workflow each time.
 
-#### 2d. Durable DAG execution with crash recovery (NEW — tech watch 2026-05-17)
+#### 2d. Durable DAG execution with crash recovery ✅ (2026-05-26)
 
 **Crate**: `smgglrs-flow` (executor, new `checkpoint.rs`)
 
