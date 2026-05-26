@@ -68,6 +68,29 @@ pub fn compile_recipe(
     })
 }
 
+/// A matched recipe with its similarity score.
+#[derive(Debug, Clone)]
+pub struct ReplayMatch {
+    pub recipe: Recipe,
+    pub similarity: f64,
+}
+
+impl ReplayMatch {
+    /// Whether this match should require user confirmation before replaying.
+    /// Matches below 0.8 similarity or with write operations need confirmation.
+    pub fn needs_confirmation(&self) -> bool {
+        if self.similarity < 0.8 {
+            return true;
+        }
+        self.recipe.steps.iter().any(|s| {
+            s.tool_name.contains("write")
+                || s.tool_name.contains("delete")
+                || s.tool_name.contains("commit")
+                || s.tool_name.contains("push")
+        })
+    }
+}
+
 /// File-backed recipe store.
 pub struct RecipeStore {
     dir: PathBuf,
@@ -115,13 +138,15 @@ impl RecipeStore {
 
     /// Find a recipe matching a task description using word overlap.
     ///
-    /// Returns the best match if the similarity exceeds the threshold
-    /// (0.0-1.0, default 0.6 = 60% word overlap).
+    /// Returns the best match with its similarity score if above
+    /// threshold (0.0-1.0, default 0.6 = 60% word overlap).
+    /// Callers should confirm with the user before replaying if
+    /// `needs_confirmation()` returns true.
     pub fn find_match(
         &self,
         task_description: &str,
         threshold: f64,
-    ) -> Option<Recipe> {
+    ) -> Option<ReplayMatch> {
         let query_words = tokenize_words(task_description);
         if query_words.is_empty() {
             return None;
@@ -133,13 +158,19 @@ impl RecipeStore {
                 let recipe_words = tokenize_words(&r.task_description);
                 let sim = word_overlap(&query_words, &recipe_words);
                 if sim >= threshold {
-                    Some((r, sim))
+                    Some(ReplayMatch {
+                        recipe: r,
+                        similarity: sim,
+                    })
                 } else {
                     None
                 }
             })
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(r, _)| r)
+            .max_by(|a, b| {
+                a.similarity
+                    .partial_cmp(&b.similarity)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 }
 
@@ -280,6 +311,57 @@ mod tests {
 
         let no_match = store.find_match("Deploy to production", 0.5);
         assert!(no_match.is_none());
+    }
+
+    #[test]
+    fn replay_match_needs_confirmation_for_low_similarity() {
+        let m = ReplayMatch {
+            recipe: Recipe {
+                id: "test".into(),
+                task_description: "test".into(),
+                steps: vec![RecipeStep {
+                    tool_name: "file_read".into(),
+                    arguments: serde_json::json!({}),
+                }],
+                created_at: 0,
+            },
+            similarity: 0.65,
+        };
+        assert!(m.needs_confirmation());
+    }
+
+    #[test]
+    fn replay_match_needs_confirmation_for_write_ops() {
+        let m = ReplayMatch {
+            recipe: Recipe {
+                id: "test".into(),
+                task_description: "test".into(),
+                steps: vec![RecipeStep {
+                    tool_name: "file_write".into(),
+                    arguments: serde_json::json!({}),
+                }],
+                created_at: 0,
+            },
+            similarity: 0.95,
+        };
+        assert!(m.needs_confirmation());
+    }
+
+    #[test]
+    fn replay_match_auto_for_high_sim_read_only() {
+        let m = ReplayMatch {
+            recipe: Recipe {
+                id: "test".into(),
+                task_description: "test".into(),
+                steps: vec![RecipeStep {
+                    tool_name: "file_read".into(),
+                    arguments: serde_json::json!({}),
+                }],
+                created_at: 0,
+            },
+            similarity: 0.95,
+        };
+        assert!(!m.needs_confirmation());
     }
 
     #[test]
