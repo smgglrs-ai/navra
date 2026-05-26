@@ -7,7 +7,7 @@
 //! - `--no-new-privileges`
 //! - GPU passthrough via CDI (NVIDIA) or device bind (AMD/Intel)
 
-use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeError, ServeConfig};
+use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
 use crate::gpu::GpuKind;
 use std::pin::Pin;
 use std::future::Future;
@@ -238,6 +238,12 @@ impl ModelRuntime for PodmanRuntime {
 
     fn backend(&self) -> RuntimeBackend {
         RuntimeBackend::Podman
+    }
+
+    fn capabilities(&self) -> RuntimeCapabilities {
+        RuntimeCapabilities {
+            supports_kv_checkpoint: true,
+        }
     }
 }
 

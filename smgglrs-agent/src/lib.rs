@@ -43,6 +43,8 @@ mod convert;
 mod error;
 /// Upstream MCP prompt resolution utilities.
 pub mod resolve;
+/// Agent process hibernation — save and restore agent state.
+pub mod hibernate;
 /// Cooperative signal delivery for running agents.
 pub mod signal;
 mod tool_loop;

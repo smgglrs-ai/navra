@@ -151,6 +151,17 @@ impl Default for ServeConfig {
     }
 }
 
+/// Capability flags for a model runtime.
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeCapabilities {
+    /// Whether the runtime supports saving/loading KV cache state.
+    ///
+    /// When true, the runtime can persist KV cache to disk for instant
+    /// resume (no re-prompt needed). When false, hibernation falls back
+    /// to conversation-only save (re-prompt on resume).
+    pub supports_kv_checkpoint: bool,
+}
+
 /// Trait for model serving backends.
 pub trait ModelRuntime: Send + Sync {
     /// Start serving a model, returning an endpoint with an OpenAI-compatible API.
@@ -173,6 +184,11 @@ pub trait ModelRuntime: Send + Sync {
 
     /// Which backend this runtime uses.
     fn backend(&self) -> RuntimeBackend;
+
+    /// Runtime capability flags.
+    fn capabilities(&self) -> RuntimeCapabilities {
+        RuntimeCapabilities::default()
+    }
 }
 
 /// Auto-detect the best available runtime.
