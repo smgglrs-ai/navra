@@ -1522,7 +1522,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 "Discovered MCP endpoint"
             );
             match smgglrs_core::Upstream::http(&endpoint.domain, &endpoint.url).await {
-                Ok(upstream) => match smgglrs_core::UpstreamModule::discover(upstream).await {
+                Ok(upstream) => match smgglrs_core::UpstreamModule::discover(upstream, None).await {
                     Ok(module) => {
                         tracing::info!(
                             domain = %endpoint.domain,
@@ -1584,7 +1584,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         for server in &lan_servers {
             let url = server.url();
             match smgglrs_core::Upstream::http(&server.name, &url).await {
-                Ok(upstream) => match smgglrs_core::UpstreamModule::discover(upstream).await {
+                Ok(upstream) => match smgglrs_core::UpstreamModule::discover(upstream, None).await {
                     Ok(module) => {
                         tracing::info!(
                             name = %server.name,
@@ -1707,7 +1707,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         };
 
         match connect_result {
-            Ok(upstream) => match smgglrs_core::UpstreamModule::discover(upstream).await {
+            Ok(upstream) => match smgglrs_core::UpstreamModule::discover(upstream, None).await {
                 Ok(module) => {
                     tracing::info!(
                         upstream = %upstream_cfg.name,

@@ -32,7 +32,10 @@ impl UpstreamModule {
     /// upstream, caching the definitions. Errors during discovery are
     /// logged but don't prevent the module from being created — the
     /// corresponding capability will simply be empty.
-    pub async fn discover(upstream: Upstream) -> Result<Self, UpstreamError> {
+    pub async fn discover(
+        upstream: Upstream,
+        scanner: Option<&mut smgglrs_security::tool_scanner::ToolScanner>,
+    ) -> Result<Self, UpstreamError> {
         let name = upstream.name().to_string();
         let upstream = Arc::new(Mutex::new(upstream));
 
@@ -42,6 +45,39 @@ impl UpstreamModule {
                 tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
                 Vec::new()
             })
+        };
+
+        let tools = if let Some(scanner) = scanner {
+            use smgglrs_security::tool_scanner::ScanVerdict;
+            let results = scanner.scan_tools(&name, &tools);
+            let mut filtered = Vec::new();
+            for (tool, result) in tools.into_iter().zip(results.iter()) {
+                match &result.verdict {
+                    ScanVerdict::Malicious { reasons } => {
+                        tracing::error!(
+                            upstream = %name,
+                            tool = %result.tool_name,
+                            reasons = ?reasons,
+                            "BLOCKED malicious upstream tool"
+                        );
+                    }
+                    ScanVerdict::Suspicious { reasons } => {
+                        tracing::warn!(
+                            upstream = %name,
+                            tool = %result.tool_name,
+                            reasons = ?reasons,
+                            "Suspicious upstream tool (allowed)"
+                        );
+                        filtered.push(tool);
+                    }
+                    ScanVerdict::Safe => {
+                        filtered.push(tool);
+                    }
+                }
+            }
+            filtered
+        } else {
+            tools
         };
 
         let prompts = {

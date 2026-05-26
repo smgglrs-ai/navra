@@ -37,6 +37,8 @@ ndarray = "0.17"
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 cedar-policy = { version = "4", optional = true }
+sha2 = "0.10"
+hex = "0.4"
 
 [features]
 cedar = ["dep:cedar-policy"]
