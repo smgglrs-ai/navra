@@ -108,18 +108,11 @@ impl Hook for SkillHook {
                 Intervention::InjectContext { message } => {
                     let mut modified = arguments.clone();
                     if let Some(obj) = modified.as_object_mut() {
-                        let existing = obj
-                            .get("_skill_context")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
-                        let combined = if existing.is_empty() {
-                            message.clone()
-                        } else {
-                            format!("{existing}\n{message}")
-                        };
+                        // Overwrite any existing _skill_context to prevent
+                        // injection via pre-set values in tool arguments.
                         obj.insert(
                             "_skill_context".to_string(),
-                            serde_json::Value::String(combined),
+                            serde_json::Value::String(message.clone()),
                         );
                     }
                     return HookDecision::ModifyArgs(modified);
@@ -147,6 +140,7 @@ mod tests {
             },
             session_id: "sess-1".to_string(),
             taint: crate::ifc::TaintTracker::new(),
+            remaining_tokens: None,
         }
     }
 

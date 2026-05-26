@@ -139,7 +139,9 @@ impl ToolScanner {
 
         let mut findings = Vec::new();
         if let Some(prev) = self.previous_hashes.get(&key) {
-            if *prev != hash {
+            let changed = prev.len() != hash.len()
+                || prev.bytes().zip(hash.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) != 0;
+            if changed {
                 findings.push(ToolFinding {
                     category: ToolThreatCategory::RugPull,
                     severity: FindingSeverity::High,

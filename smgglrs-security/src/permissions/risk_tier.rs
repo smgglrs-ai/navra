@@ -44,6 +44,10 @@ impl Default for RiskTierConfig {
 }
 
 impl RiskTierConfig {
+    pub fn is_valid(&self) -> bool {
+        self.auto_approve_max <= self.require_approval_max
+    }
+
     pub fn classify(&self, risk_level: RiskLevelThreshold) -> RiskTier {
         if risk_level <= self.auto_approve_max {
             RiskTier::AutoApprove

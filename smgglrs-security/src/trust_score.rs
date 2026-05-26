@@ -61,25 +61,25 @@ impl TrustScore {
     }
 
     pub fn record_success(&self) {
-        let new = self
-            .score
-            .fetch_add(self.config.positive_delta, Ordering::Relaxed)
-            + self.config.positive_delta;
-        if new > self.config.max_score {
-            self.score.store(self.config.max_score, Ordering::Relaxed);
-        }
+        let current = self.score.load(Ordering::Relaxed);
+        let new = current
+            .saturating_add(self.config.positive_delta)
+            .min(self.config.max_score);
+        self.score.store(new, Ordering::Relaxed);
         *self.last_activity.lock().unwrap() = Instant::now();
     }
 
     pub fn record_denial(&self) {
-        self.score
-            .fetch_sub(self.config.denial_penalty, Ordering::Relaxed);
+        let current = self.score.load(Ordering::Relaxed);
+        let new = current.saturating_sub(self.config.denial_penalty).max(0);
+        self.score.store(new, Ordering::Relaxed);
         *self.last_activity.lock().unwrap() = Instant::now();
     }
 
     pub fn record_safety_trigger(&self) {
-        self.score
-            .fetch_sub(self.config.safety_penalty, Ordering::Relaxed);
+        let current = self.score.load(Ordering::Relaxed);
+        let new = current.saturating_sub(self.config.safety_penalty).max(0);
+        self.score.store(new, Ordering::Relaxed);
         *self.last_activity.lock().unwrap() = Instant::now();
     }
 

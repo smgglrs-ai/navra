@@ -64,6 +64,9 @@ fn filter_json(value: &mut serde_json::Value, retain: &[String]) {
     match value {
         serde_json::Value::Object(map) => {
             map.retain(|k, _| retain.iter().any(|r| r == k));
+            for v in map.values_mut() {
+                filter_json(v, retain);
+            }
         }
         serde_json::Value::Array(arr) => {
             for item in arr {
@@ -90,6 +93,7 @@ mod tests {
             },
             session_id: "sess-1".to_string(),
             taint: crate::ifc::TaintTracker::new(),
+            remaining_tokens: None,
         }
     }
 
