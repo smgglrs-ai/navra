@@ -273,6 +273,13 @@ impl McpServer {
             &ctx.agent.name, &ctx.agent.permissions, agent_did, agent_ring, &params.name,
         );
 
+        tracing::info!(
+            tool.name = %params.name,
+            agent.name = %ctx.agent.name,
+            session.id = %ctx.session_id,
+            "tool_call.start"
+        );
+
         // Run pre-hooks (may modify arguments or block execution)
         let arguments = if self.hooks.has_hooks() {
             match self.hooks.run_pre(&params.name, resolved.arguments, &ctx).await {
@@ -306,6 +313,13 @@ impl McpServer {
         if result.is_error {
             self.metrics.tool_calls_errors.fetch_add(1, Ordering::Relaxed);
         }
+        tracing::info!(
+            tool.name = %params.name,
+            agent.name = %ctx.agent.name,
+            duration_us = tool_duration_us,
+            is_error = result.is_error,
+            "tool_call.complete"
+        );
 
         // IFC: auto-label external read tool outputs as Untrusted,
         // unless the tool's path argument matches a trusted path pattern.
