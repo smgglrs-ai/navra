@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use super::types::{RegisteredPrompt, RegisteredResource, RegisteredTool};
+use super::types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};
 use super::McpServer;
 
 /// Builder for constructing an McpServer.
@@ -21,6 +21,7 @@ pub struct McpServerBuilder {
     tools: HashMap<String, RegisteredTool>,
     prompts: HashMap<String, RegisteredPrompt>,
     resources: HashMap<String, RegisteredResource>,
+    resource_templates: Vec<RegisteredResourceTemplate>,
     authenticator: Option<Arc<dyn crate::auth::Authenticator>>,
     safety_pipelines: HashMap<String, FilterPipeline>,
     tool_permissions: HashMap<String, ToolPermissions>,
@@ -32,7 +33,7 @@ pub struct McpServerBuilder {
     trusted_paths: Option<HashMap<String, Vec<String>>>,
     session_store: Option<SessionStore>,
     process_table: Option<crate::process::ProcessTable>,
-    blackbox: Option<crate::blackbox::Blackbox>,
+    blackbox: Option<Arc<crate::blackbox::Blackbox>>,
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
     #[cfg(feature = "cedar")]
     cedar_engine: Option<smgglrs_security::permissions::CedarEngine>,
@@ -47,6 +48,7 @@ impl McpServerBuilder {
             tools: HashMap::new(),
             prompts: HashMap::new(),
             resources: HashMap::new(),
+            resource_templates: Vec::new(),
             authenticator: None,
             safety_pipelines: HashMap::new(),
             tool_permissions: HashMap::new(),
@@ -107,6 +109,16 @@ impl McpServerBuilder {
             uri,
             RegisteredResource { definition, handler },
         );
+        self
+    }
+
+    /// Register a resource template with a handler for parameterized URIs.
+    pub fn resource_template(
+        mut self,
+        template: crate::protocol::ResourceTemplate,
+        handler: crate::module::ResourceHandler,
+    ) -> Self {
+        self.resource_templates.push(RegisteredResourceTemplate { template, handler });
         self
     }
 
@@ -271,7 +283,7 @@ impl McpServerBuilder {
 
     /// Enable the gateway-level blackbox (audit recorder).
     pub fn blackbox(mut self, bb: crate::blackbox::Blackbox) -> Self {
-        self.blackbox = Some(bb);
+        self.blackbox = Some(Arc::new(bb));
         self
     }
 
@@ -466,12 +478,286 @@ impl McpServerBuilder {
             );
         }
 
+        let process_table = self.process_table.unwrap_or_default();
+        let blackbox = self.blackbox;
+
+        // Register kernel state resources (smgglrs:// scheme)
+        let mut resources = self.resources;
+        let mut resource_templates = self.resource_templates;
+
+        // smgglrs://proc — process table snapshot
+        {
+            let pt = process_table.clone();
+            resources.insert(
+                "smgglrs://proc".to_string(),
+                RegisteredResource {
+                    definition: crate::protocol::ResourceDefinition {
+                        uri: "smgglrs://proc".to_string(),
+                        name: "Process table".to_string(),
+                        description: Some("Connected agents, privilege rings, call counts".to_string()),
+                        mime_type: Some("application/json".to_string()),
+                        size: None,
+                    },
+                    handler: Arc::new(move |uri| {
+                        let pt = pt.clone();
+                        Box::pin(async move {
+                            let snapshot = pt.snapshot();
+                            let json = serde_json::to_string_pretty(&snapshot).unwrap_or_default();
+                            crate::protocol::ReadResourceResult {
+                                contents: vec![crate::protocol::ResourceContent {
+                                    uri,
+                                    mime_type: Some("application/json".to_string()),
+                                    text: Some(json),
+                                    blob: None,
+                                }],
+                            }
+                        })
+                    }),
+                },
+            );
+        }
+
+        // smgglrs://ifc/labels — all session taint labels
+        {
+            let sess = sessions.clone();
+            resources.insert(
+                "smgglrs://ifc/labels".to_string(),
+                RegisteredResource {
+                    definition: crate::protocol::ResourceDefinition {
+                        uri: "smgglrs://ifc/labels".to_string(),
+                        name: "IFC labels".to_string(),
+                        description: Some("Current IFC taint labels for all sessions".to_string()),
+                        mime_type: Some("application/json".to_string()),
+                        size: None,
+                    },
+                    handler: Arc::new(move |uri| {
+                        let sess = sess.clone();
+                        Box::pin(async move {
+                            let all = sess.list_all();
+                            let labels: Vec<serde_json::Value> = all
+                                .iter()
+                                .map(|s| {
+                                    serde_json::json!({
+                                        "session_id": s.id,
+                                        "agent": s.agent.name,
+                                        "label": format!("{}", s.context_label),
+                                    })
+                                })
+                                .collect();
+                            let json = serde_json::to_string_pretty(&labels).unwrap_or_default();
+                            crate::protocol::ReadResourceResult {
+                                contents: vec![crate::protocol::ResourceContent {
+                                    uri,
+                                    mime_type: Some("application/json".to_string()),
+                                    text: Some(json),
+                                    blob: None,
+                                }],
+                            }
+                        })
+                    }),
+                },
+            );
+        }
+
+        // smgglrs://audit/recent — last N blackbox entries
+        {
+            let bb = blackbox.clone();
+            resources.insert(
+                "smgglrs://audit/recent".to_string(),
+                RegisteredResource {
+                    definition: crate::protocol::ResourceDefinition {
+                        uri: "smgglrs://audit/recent".to_string(),
+                        name: "Recent audit entries".to_string(),
+                        description: Some("Last 50 blackbox audit entries".to_string()),
+                        mime_type: Some("application/json".to_string()),
+                        size: None,
+                    },
+                    handler: Arc::new(move |uri| {
+                        let bb = bb.clone();
+                        Box::pin(async move {
+                            let entries = bb
+                                .as_ref()
+                                .map(|b| {
+                                    let recent = b.recent(50);
+                                    serde_json::to_string_pretty(&recent).unwrap_or_default()
+                                })
+                                .unwrap_or_else(|| "[]".to_string());
+                            crate::protocol::ReadResourceResult {
+                                contents: vec![crate::protocol::ResourceContent {
+                                    uri,
+                                    mime_type: Some("application/json".to_string()),
+                                    text: Some(entries),
+                                    blob: None,
+                                }],
+                            }
+                        })
+                    }),
+                },
+            );
+        }
+
+        // smgglrs://budget/gpu — GPU semaphore state (permits info)
+        {
+            resources.insert(
+                "smgglrs://budget/gpu".to_string(),
+                RegisteredResource {
+                    definition: crate::protocol::ResourceDefinition {
+                        uri: "smgglrs://budget/gpu".to_string(),
+                        name: "GPU budget".to_string(),
+                        description: Some("GPU semaphore: permits used/available".to_string()),
+                        mime_type: Some("application/json".to_string()),
+                        size: None,
+                    },
+                    handler: Arc::new(|uri| {
+                        Box::pin(async move {
+                            let json = serde_json::json!({
+                                "note": "GPU semaphore is managed per-flow; query flow executor for live permit state"
+                            });
+                            crate::protocol::ReadResourceResult {
+                                contents: vec![crate::protocol::ResourceContent {
+                                    uri,
+                                    mime_type: Some("application/json".to_string()),
+                                    text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
+                                    blob: None,
+                                }],
+                            }
+                        })
+                    }),
+                },
+            );
+        }
+
+        // smgglrs://proc/{agent}/taint — per-agent taint label (template)
+        {
+            let sess = sessions.clone();
+            resource_templates.push(RegisteredResourceTemplate {
+                template: crate::protocol::ResourceTemplate {
+                    uri_template: "smgglrs://proc/{agent}/taint".to_string(),
+                    name: "Agent taint label".to_string(),
+                    description: Some("Current IFC taint label for a specific agent session".to_string()),
+                    mime_type: Some("application/json".to_string()),
+                    annotations: None,
+                },
+                handler: Arc::new(move |uri| {
+                    let sess = sess.clone();
+                    Box::pin(async move {
+                        let agent_name = uri
+                            .strip_prefix("smgglrs://proc/")
+                            .and_then(|rest| rest.strip_suffix("/taint"));
+                        match agent_name {
+                            Some(name) => {
+                                let all = sess.list_all();
+                                let matching: Vec<serde_json::Value> = all
+                                    .iter()
+                                    .filter(|s| s.agent.name == name)
+                                    .map(|s| {
+                                        serde_json::json!({
+                                            "session_id": s.id,
+                                            "agent": s.agent.name,
+                                            "label": format!("{}", s.context_label),
+                                        })
+                                    })
+                                    .collect();
+                                let json = serde_json::to_string_pretty(&matching).unwrap_or_default();
+                                crate::protocol::ReadResourceResult {
+                                    contents: vec![crate::protocol::ResourceContent {
+                                        uri,
+                                        mime_type: Some("application/json".to_string()),
+                                        text: Some(json),
+                                        blob: None,
+                                    }],
+                                }
+                            }
+                            None => crate::protocol::ReadResourceResult {
+                                contents: vec![crate::protocol::ResourceContent {
+                                    uri,
+                                    mime_type: Some("application/json".to_string()),
+                                    text: Some(r#"{"error": "Invalid URI"}"#.to_string()),
+                                    blob: None,
+                                }],
+                            },
+                        }
+                    })
+                }),
+            });
+        }
+
+        // smgglrs://proc/{agent}/capabilities — per-agent capability set (template)
+        {
+            let sess = sessions.clone();
+            resource_templates.push(RegisteredResourceTemplate {
+                template: crate::protocol::ResourceTemplate {
+                    uri_template: "smgglrs://proc/{agent}/capabilities".to_string(),
+                    name: "Agent capabilities".to_string(),
+                    description: Some("Active capability set for a specific agent".to_string()),
+                    mime_type: Some("application/json".to_string()),
+                    annotations: None,
+                },
+                handler: Arc::new(move |uri| {
+                    let sess = sess.clone();
+                    Box::pin(async move {
+                        let agent_name = uri
+                            .strip_prefix("smgglrs://proc/")
+                            .and_then(|rest| rest.strip_suffix("/capabilities"));
+                        match agent_name {
+                            Some(name) => {
+                                let all = sess.list_all();
+                                let matching: Vec<serde_json::Value> = all
+                                    .iter()
+                                    .filter(|s| s.agent.name == name)
+                                    .map(|s| {
+                                        let caps = s.agent.capabilities.as_ref().map(|c| {
+                                            serde_json::json!({
+                                                "issuer_did": c.issuer_did,
+                                                "subject_did": c.subject_did,
+                                                "ring": c.ring,
+                                                "paths": c.paths,
+                                                "operations": c.operations,
+                                                "tools": c.tools,
+                                                "credentials": c.credentials,
+                                                "expires_at": c.expires_at,
+                                                "obo_sub": c.obo_sub,
+                                            })
+                                        });
+                                        serde_json::json!({
+                                            "session_id": s.id,
+                                            "agent": s.agent.name,
+                                            "permissions": s.agent.permissions,
+                                            "capabilities": caps,
+                                        })
+                                    })
+                                    .collect();
+                                let json = serde_json::to_string_pretty(&matching).unwrap_or_default();
+                                crate::protocol::ReadResourceResult {
+                                    contents: vec![crate::protocol::ResourceContent {
+                                        uri,
+                                        mime_type: Some("application/json".to_string()),
+                                        text: Some(json),
+                                        blob: None,
+                                    }],
+                                }
+                            }
+                            None => crate::protocol::ReadResourceResult {
+                                contents: vec![crate::protocol::ResourceContent {
+                                    uri,
+                                    mime_type: Some("application/json".to_string()),
+                                    text: Some(r#"{"error": "Invalid URI"}"#.to_string()),
+                                    blob: None,
+                                }],
+                            },
+                        }
+                    })
+                }),
+            });
+        }
+
         McpServer {
             name: self.name,
             version: self.version,
             tools,
             prompts: self.prompts,
-            resources: self.resources,
+            resources,
+            resource_templates,
             sessions,
             authenticator,
             safety_pipelines: self.safety_pipelines,
@@ -479,13 +765,13 @@ impl McpServerBuilder {
             hooks,
             paused: Arc::new(AtomicBool::new(false)),
             task_store: crate::a2a::TaskStore::new(),
-            process_table: self.process_table.unwrap_or_default(),
+            process_table,
             quota_engine: self.quota_engine.unwrap_or_default(),
             ifc_policies: self.ifc_policies.unwrap_or_default(),
             ifc_read_clearances: self.ifc_read_clearances.unwrap_or_default(),
             trusted_paths: self.trusted_paths.unwrap_or_default(),
             value_stores,
-            blackbox: self.blackbox,
+            blackbox,
             session_permissions: crate::permissions::SessionPermissionStore::new(),
             pending_permission_requests: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),

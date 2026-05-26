@@ -193,6 +193,21 @@ pub(crate) async fn dispatch(
             )
         }
 
+        "resources/templates/list" => {
+            let pagination: PaginatedRequest = request
+                .params
+                .and_then(|p| serde_json::from_value(p).ok())
+                .unwrap_or_default();
+            let result = server.handle_list_resource_templates(&agent, &pagination);
+            (
+                JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "Failed to serialize response");
+                    serde_json::json!({"error": "serialization failed"})
+                })),
+                session_id,
+            )
+        }
+
         "resources/read" => {
             let params: ReadResourceParams = match request
                 .params

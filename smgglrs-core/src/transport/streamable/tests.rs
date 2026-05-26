@@ -305,8 +305,7 @@ async fn resources_list_returns_registered_resources() {
 
     assert_eq!(status, StatusCode::OK);
     let resources = json["result"]["resources"].as_array().unwrap();
-    assert_eq!(resources.len(), 1);
-    assert_eq!(resources[0]["uri"], "info://version");
+    assert!(resources.iter().any(|r| r["uri"] == "info://version"));
 }
 
 #[tokio::test]
@@ -470,10 +469,9 @@ async fn server_card_returns_metadata() {
     assert_eq!(prompts.len(), 1);
     assert_eq!(prompts[0]["name"], "greet");
 
-    // Resources
+    // Resources (includes kernel resources + module resources)
     let resources = json["resources"].as_array().unwrap();
-    assert_eq!(resources.len(), 1);
-    assert_eq!(resources[0]["uri"], "info://version");
+    assert!(resources.iter().any(|r| r["uri"] == "info://version"));
 
     // Capabilities
     assert!(json["capabilities"]["tools"].is_object());
