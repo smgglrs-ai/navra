@@ -169,8 +169,8 @@ Stale worktrees with uncommitted changes will be lost on cleanup.
 
 ### Testing
 
-2110+ tests (1884 unit, 199 integration, 12 e2e). See TESTING.md
-for per-crate breakdown.
+2160+ tests. See TESTING.md for per-crate unit/integration/e2e
+breakdown.
 
 Prerequisites:
 - ONNX Runtime (`onnxruntime-devel` on Fedora)
@@ -185,6 +185,10 @@ ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p smgglrs-core
 
 # E2e tests (require Ollama running)
 ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p smgglrs-server --test e2e
+
+# Build with OTel trace export
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --features otel
+# Then: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 smgglrs serve
 ```
 
 Conventions:
@@ -210,8 +214,17 @@ Tools within a module (manual):
 3. Return `(definition, handler)` pair from `Module::tools()`
 4. Tool name must be prefixed with module name
 
-Or use the `#[tool]` proc macro from `smgglrs-macros` to generate
-both the definition and handler from an annotated async function.
+Or use the `#[tool]` proc macro from `smgglrs-macros`:
+
+```rust
+#[smgglrs::tool(name = "file_read", description = "Read a file")]
+async fn file_read(
+    #[arg(description = "Path to the file")] path: String,
+    ctx: CallContext,
+) -> CallToolResult {
+    // ...
+}
+```
 
 ## Config
 
@@ -233,8 +246,8 @@ See DESIGN.md for full config reference.
 ## Reference Documents
 
 - `DESIGN.md` — Full architecture, protocol, security model, config reference
-- `TESTING.md` — Test prerequisites, running tests, crate test counts (2110+)
-- `ROADMAP.md` — Phased development plan (15 phases, sprints 1-3 complete)
+- `TESTING.md` — Test prerequisites, running tests, crate test counts (2160+)
+- `ROADMAP.md` — Phased development plan (15 phases, sprints 1-6 complete)
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)
 - `OPENSHELL.md` — OpenShell integration: identity federation, A2A mesh, gRPC modules
