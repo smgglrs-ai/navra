@@ -107,6 +107,92 @@ impl CrossEncoderReranker {
         })
     }
 
+    /// Score all (query, candidate) pairs in a single batched ONNX call.
+    ///
+    /// Tokenizes all pairs, pads to uniform length, concatenates into
+    /// batch tensors, and runs one inference. Returns one score per pair.
+    fn score_batch(&self, query: &str, documents: &[&str]) -> Result<Vec<f32>, CrossEncoderError> {
+        if documents.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let encodings: Vec<_> = documents
+            .iter()
+            .map(|doc| {
+                self.tokenizer
+                    .encode((query, *doc), true)
+                    .map_err(|e| CrossEncoderError::Inference(format!("tokenization: {e}")))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let max_len = encodings.iter().map(|e| e.get_ids().len()).max().unwrap_or(0);
+        let batch_size = encodings.len();
+
+        let mut all_ids = vec![0i64; batch_size * max_len];
+        let mut all_mask = vec![0i64; batch_size * max_len];
+        let mut all_types = vec![0i64; batch_size * max_len];
+
+        for (i, enc) in encodings.iter().enumerate() {
+            let ids = enc.get_ids();
+            let mask = enc.get_attention_mask();
+            let types = enc.get_type_ids();
+            let offset = i * max_len;
+            for (j, (&id, (&m, &t))) in ids.iter().zip(mask.iter().zip(types.iter())).enumerate() {
+                all_ids[offset + j] = id as i64;
+                all_mask[offset + j] = m as i64;
+                all_types[offset + j] = t as i64;
+            }
+        }
+
+        let ids_array = ndarray::Array2::from_shape_vec((batch_size, max_len), all_ids)
+            .map_err(|e| CrossEncoderError::Inference(format!("batch input_ids shape: {e}")))?;
+        let mask_array = ndarray::Array2::from_shape_vec((batch_size, max_len), all_mask)
+            .map_err(|e| CrossEncoderError::Inference(format!("batch attention_mask shape: {e}")))?;
+        let type_array = ndarray::Array2::from_shape_vec((batch_size, max_len), all_types)
+            .map_err(|e| CrossEncoderError::Inference(format!("batch token_type_ids shape: {e}")))?;
+
+        let ids_tensor = ort::value::TensorRef::from_array_view(&ids_array)
+            .map_err(|e| CrossEncoderError::Inference(format!("batch ids tensor: {e}")))?;
+        let mask_tensor = ort::value::TensorRef::from_array_view(&mask_array)
+            .map_err(|e| CrossEncoderError::Inference(format!("batch mask tensor: {e}")))?;
+        let type_tensor = ort::value::TensorRef::from_array_view(&type_array)
+            .map_err(|e| CrossEncoderError::Inference(format!("batch type tensor: {e}")))?;
+
+        let mut session = self.session.lock().unwrap();
+        let outputs = session
+            .run(ort::inputs![ids_tensor, mask_tensor, type_tensor])
+            .map_err(|e| {
+                CrossEncoderError::Inference(format!("batch inference error for '{}': {e}", self.name))
+            })?;
+
+        let (_name, output) = outputs.iter().next().ok_or_else(|| {
+            CrossEncoderError::Inference("no output from cross-encoder".to_string())
+        })?;
+
+        let (_shape, data) = output.try_extract_tensor::<f32>().map_err(|e| {
+            CrossEncoderError::Inference(format!("batch output extraction: {e}"))
+        })?;
+
+        let output_cols = data.len() / batch_size;
+        let mut scores = Vec::with_capacity(batch_size);
+        for i in 0..batch_size {
+            let offset = i * output_cols;
+            let score = if output_cols == 1 {
+                data[offset]
+            } else if output_cols >= 2 {
+                let max = data[offset].max(data[offset + 1]);
+                let exp0 = (data[offset] - max).exp();
+                let exp1 = (data[offset + 1] - max).exp();
+                exp1 / (exp0 + exp1)
+            } else {
+                0.0
+            };
+            scores.push(score);
+        }
+
+        Ok(scores)
+    }
+
     /// Score a single (query, document) pair.
     ///
     /// Returns a relevance score (higher = more relevant).
@@ -177,27 +263,35 @@ impl CrossEncoderReranker {
 
 impl Reranker for CrossEncoderReranker {
     fn rerank(&self, query: &str, candidates: Vec<ChunkResult>) -> Vec<ChunkResult> {
-        let mut scored: Vec<(ChunkResult, f32)> = candidates
-            .into_iter()
-            .map(|c| {
-                let score = self.score_pair(query, &c.content).unwrap_or_else(|e| {
-                    tracing::warn!(
-                        path = %c.path,
-                        chunk = c.chunk_index,
-                        error = %e,
-                        "Cross-encoder scoring failed, using original distance"
-                    );
-                    // Fall back to negated distance (lower distance = higher score)
-                    -(c.distance as f32)
-                });
-                (c, score)
-            })
-            .collect();
+        if candidates.is_empty() {
+            return candidates;
+        }
 
-        // Sort by score descending (higher = more relevant)
+        // Try batched scoring first (one ONNX call for all pairs)
+        let docs: Vec<&str> = candidates.iter().map(|c| c.content.as_str()).collect();
+        let scores = match self.score_batch(query, &docs) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    candidates = candidates.len(),
+                    "Batch scoring failed, falling back to sequential"
+                );
+                candidates
+                    .iter()
+                    .map(|c| {
+                        self.score_pair(query, &c.content)
+                            .unwrap_or(-(c.distance as f32))
+                    })
+                    .collect()
+            }
+        };
+
+        let mut scored: Vec<(ChunkResult, f32)> =
+            candidates.into_iter().zip(scores).collect();
+
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        // Replace distance with negated score (to keep lower = better convention)
         scored
             .into_iter()
             .map(|(mut c, score)| {
