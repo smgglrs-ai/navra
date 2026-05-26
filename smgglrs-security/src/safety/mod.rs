@@ -8,7 +8,7 @@ pub use self::ner::{
     default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter, NerFilter,
 };
 pub use self::pseudonym::{PseudonymMap, PseudonymReverser};
-pub use self::regex::{CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, SecretFilter};
+pub use self::regex::{CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, PromptInjectionFilter, SecretFilter};
 
 use serde::Serialize;
 use std::collections::HashMap;
