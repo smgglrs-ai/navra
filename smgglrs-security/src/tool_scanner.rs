@@ -162,7 +162,7 @@ fn sha256_hex(data: &[u8]) -> String {
     hex::encode(hasher.finalize())
 }
 
-fn check_tool_poisoning(desc: &str) -> Vec<ToolFinding> {
+pub fn check_tool_poisoning(desc: &str) -> Vec<ToolFinding> {
     let lower = desc.to_lowercase();
     let patterns = [
         ("ignore previous", FindingSeverity::Critical),
@@ -210,7 +210,7 @@ fn check_typosquatting(name: &str, known_names: &[String], threshold: usize) -> 
     findings
 }
 
-fn check_schema_abuse(
+pub fn check_schema_abuse(
     schema: &smgglrs_protocol::ToolInputSchema,
     sensitive_fields: &[String],
 ) -> Vec<ToolFinding> {
@@ -248,7 +248,7 @@ fn check_schema_abuse(
     findings
 }
 
-fn check_hidden_unicode(text: &str) -> Vec<ToolFinding> {
+pub fn check_hidden_unicode(text: &str) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
 
     let zwc: &[char] = &[
@@ -274,7 +274,7 @@ fn check_hidden_unicode(text: &str) -> Vec<ToolFinding> {
     findings
 }
 
-fn check_description_injection(desc: &str) -> Vec<ToolFinding> {
+pub fn check_description_injection(desc: &str) -> Vec<ToolFinding> {
     let lower = desc.to_lowercase();
     let patterns = [
         ("you must always", FindingSeverity::High),
