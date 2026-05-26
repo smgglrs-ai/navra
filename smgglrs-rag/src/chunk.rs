@@ -22,6 +22,10 @@ pub struct Chunk {
     /// Example: `"AMD > Financial Statements > Cash Flows"`.
     /// Set by [`inject_breadcrumbs`] after chunking.
     pub breadcrumb: Option<String>,
+    /// Parent section byte range (heading to next heading).
+    /// Set by [`inject_section_pointers`] after chunking.
+    pub section_start_byte: Option<usize>,
+    pub section_end_byte: Option<usize>,
 }
 
 /// Configuration for the chunking engine.
@@ -317,6 +321,8 @@ fn build_chunks_with_overlap(segments: &[Segment], text: &str, config: &ChunkCon
             end_byte: end,
             index: chunks.len(),
             breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
         });
     }
 
@@ -328,10 +334,45 @@ fn build_chunks_with_overlap(segments: &[Segment], text: &str, config: &ChunkCon
             end_byte: text.len(),
             index: 0,
             breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
         });
     }
 
     chunks
+}
+
+/// Inject section byte ranges into chunks based on heading structure.
+///
+/// Each chunk gets the byte range of its containing section (heading
+/// to next heading). On retrieval, the full section can be loaded
+/// instead of the chunk fragment.
+pub fn inject_section_pointers(chunks: &mut [Chunk], source: &str) {
+    let headings = parse_headings(source);
+    if headings.is_empty() {
+        return;
+    }
+
+    for chunk in chunks.iter_mut() {
+        let (start, end) = section_range_at(&headings, chunk.start_byte, source.len());
+        chunk.section_start_byte = Some(start);
+        chunk.section_end_byte = Some(end);
+    }
+}
+
+fn section_range_at(headings: &[Heading], byte_pos: usize, doc_len: usize) -> (usize, usize) {
+    let mut section_start = 0;
+    let mut section_end = doc_len;
+    for (i, h) in headings.iter().enumerate() {
+        if h.byte_offset <= byte_pos {
+            section_start = h.byte_offset;
+            section_end = headings
+                .get(i + 1)
+                .map(|next| next.byte_offset)
+                .unwrap_or(doc_len);
+        }
+    }
+    (section_start, section_end)
 }
 
 /// Inject breadcrumbs into chunks based on the source document's heading structure.
