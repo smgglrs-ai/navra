@@ -31,7 +31,8 @@ hibernation, preemptive scheduling, kernel resources).
   - **Phase 2d**: Durable DAG execution — per-node checkpointing wired
     into executor, idempotency cache, atomic SQLite transactions,
     resume from checkpoint on restart. 4 new tests.
-  - **Phase 12a**: Flow audit completeness — deferred to next session.
+  - **Phase 12a**: Flow audit completeness — started_at bug fixed.
+    7/8 gaps were already implemented.
 - **Sprint 2 (High priority)**: 7 items (3 already done, 4 implemented)
   - **Phase 7a**: Cross-encoder reranking — already implemented ✅
   - **Phase 9k**: OBO identity claim — already implemented ✅
@@ -44,7 +45,8 @@ hibernation, preemptive scheduling, kernel resources).
     per-agent message rate limiting on MailboxRegistry.
   - **Phase 2g**: Provenance headers — provenance chain on MailboxMessage
     and BlackboardEntry, circular provenance detection.
-  - **Phase 12a**: Flow audit completeness — deferred to next session.
+  - **Phase 12a**: Flow audit completeness — started_at bug fixed.
+    7/8 gaps were already implemented.
 - **Sprint 1 (P0 Critical)**: 4 items implemented in parallel worktrees
   - **Phase 7e**: Hybrid FTS5+vector search in ChunkStore with RRF
     fusion (k=60). Content-sync FTS5 table + triggers. 7 new tests.
@@ -403,6 +405,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Phase 6f: MCP tunnel compatibility (Anthropic + OpenAI documentation) | 2026-05-26 |
 | Phase 1h: Deterministic replay (recipe store, matching, substitution) | 2026-05-26 |
 | Phase 2d: Durable DAG execution (per-node checkpoint, idempotency cache) | 2026-05-26 |
+| Phase 12a: Flow audit completeness (started_at UPSERT fix, 7/8 already done) | 2026-05-26 |
 
 ### Remaining
 
@@ -3319,7 +3322,7 @@ Reference: Machine Learning Mastery statistical guardrails
 Items collected from Code Health, self-review findings, DESIGN.md
 gaps, and audit metrics gaps. Grouped into sub-phases by area.
 
-#### 12a. Flow audit completeness (HIGH — blocks paper data)
+#### 12a. Flow audit completeness ✅ (2026-05-26)
 
 **Crate**: `smgglrs-server/src/flow_tools.rs`, `smgglrs-agent`
 
