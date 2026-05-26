@@ -11,6 +11,7 @@ use std::time::Instant;
 pub struct TrustScore {
     score: AtomicI64,
     last_activity: std::sync::Mutex<Instant>,
+    gain_this_minute: std::sync::Mutex<(Instant, i64)>,
     config: TrustConfig,
 }
 
@@ -25,6 +26,9 @@ pub struct TrustConfig {
     pub decay_per_minute: i64,
     pub read_only_threshold: i64,
     pub suspend_threshold: i64,
+    /// Maximum positive score gain per minute (prevents trust ramp-up
+    /// attacks via rapid harmless operations). 0 = unlimited.
+    pub max_gain_per_minute: i64,
 }
 
 impl Default for TrustConfig {
@@ -38,6 +42,7 @@ impl Default for TrustConfig {
             decay_per_minute: 1,
             read_only_threshold: 300,
             suspend_threshold: 100,
+            max_gain_per_minute: 50,
         }
     }
 }
@@ -56,11 +61,24 @@ impl TrustScore {
         Self {
             score: AtomicI64::new(baseline),
             last_activity: std::sync::Mutex::new(Instant::now()),
+            gain_this_minute: std::sync::Mutex::new((Instant::now(), 0)),
             config,
         }
     }
 
     pub fn record_success(&self) {
+        if self.config.max_gain_per_minute > 0 {
+            let mut gain = self.gain_this_minute.lock().unwrap();
+            if gain.0.elapsed().as_secs() >= 60 {
+                *gain = (Instant::now(), 0);
+            }
+            if gain.1 >= self.config.max_gain_per_minute {
+                *self.last_activity.lock().unwrap() = Instant::now();
+                return;
+            }
+            gain.1 += self.config.positive_delta;
+        }
+
         let current = self.score.load(Ordering::Relaxed);
         let new = current
             .saturating_add(self.config.positive_delta)
@@ -167,6 +185,23 @@ mod tests {
             ts.record_success();
         }
         assert!(ts.current_score() <= 1000);
+    }
+
+    #[test]
+    fn success_rate_limited_per_minute() {
+        let ts = TrustScore::new(TrustConfig {
+            max_gain_per_minute: 30, // 3 successes at +10 each
+            ..TrustConfig::default()
+        });
+        for _ in 0..10 {
+            ts.record_success();
+        }
+        // Should cap at baseline + 30, not baseline + 100
+        assert!(
+            ts.current_score() <= 530,
+            "score {} should be <= 530 (rate limited)",
+            ts.current_score()
+        );
     }
 
     #[test]
