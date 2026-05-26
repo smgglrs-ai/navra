@@ -1913,3 +1913,75 @@ fn uri_template_matching() {
     assert!(matches_uri_template("no-template", "no-template"));
     assert!(!matches_uri_template("no-template", "other"));
 }
+
+// --- Resource filtering tests (14c) ---
+
+#[test]
+fn resource_list_filtered_by_capability_token_globs() {
+    use smgglrs_security::auth::capability::ResolvedCapabilities;
+
+    let mut agent = AgentIdentity::new("cap-agent", "dev");
+    agent.capabilities = Some(ResolvedCapabilities {
+        issuer_did: "did:key:z6MkIssuer".to_string(),
+        subject_did: "did:key:z6MkSubject".to_string(),
+        ring: 2,
+        paths: vec![],
+        operations: std::collections::HashSet::new(),
+        tools: vec!["smgglrs://proc*".to_string()],
+        credentials: vec![],
+        expires_at: u64::MAX,
+        obo_sub: None,
+    });
+
+    let server = McpServer::builder().build();
+    let result = server.handle_list_resources(&agent, &Default::default());
+
+    // Only smgglrs://proc should be visible (matches glob)
+    assert!(result.resources.iter().any(|r| r.uri == "smgglrs://proc"));
+    assert!(!result.resources.iter().any(|r| r.uri == "smgglrs://ifc/labels"));
+    assert!(!result.resources.iter().any(|r| r.uri == "smgglrs://audit/recent"));
+    assert!(!result.resources.iter().any(|r| r.uri == "smgglrs://budget/gpu"));
+}
+
+#[test]
+fn resource_list_filtered_by_read_clearance() {
+    use crate::ifc::{Confidentiality, ReadClearance, TaintedWritePolicy};
+
+    let server = McpServer::builder()
+        .ifc_read_clearance("readonly", ReadClearance::new(Confidentiality::Public, TaintedWritePolicy::Deny))
+        .build();
+
+    let agent = AgentIdentity::new("restricted", "readonly");
+    let result = server.handle_list_resources(&agent, &Default::default());
+
+    // Public resources visible
+    assert!(result.resources.iter().any(|r| r.uri == "smgglrs://proc"));
+    assert!(result.resources.iter().any(|r| r.uri == "smgglrs://budget/gpu"));
+    // Sensitive resources hidden
+    assert!(!result.resources.iter().any(|r| r.uri == "smgglrs://audit/recent"));
+}
+
+#[test]
+fn resource_templates_filtered_by_read_clearance() {
+    use crate::ifc::{Confidentiality, ReadClearance, TaintedWritePolicy};
+
+    let server = McpServer::builder()
+        .ifc_read_clearance("readonly", ReadClearance::new(Confidentiality::Public, TaintedWritePolicy::Deny))
+        .build();
+
+    let agent = AgentIdentity::new("restricted", "readonly");
+    let result = server.handle_list_resource_templates(&agent, &Default::default());
+
+    // Taint and capabilities templates are Sensitive — hidden from Public clearance
+    assert!(result.resource_templates.is_empty());
+}
+
+#[test]
+fn resource_list_no_filtering_without_caps_or_clearance() {
+    let server = McpServer::builder().build();
+    let agent = AgentIdentity::new("normal", "dev");
+    let result = server.handle_list_resources(&agent, &Default::default());
+
+    // All kernel resources visible when no restrictions
+    assert!(result.resources.len() >= 4);
+}
