@@ -1304,6 +1304,7 @@ mod tests {
             start_byte: 0,
             end_byte: content.len(),
             index: 0,
+            breadcrumb: None,
         }];
         let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]];
         cs.index_document(entry_id, &chunks, &embeddings).unwrap();
