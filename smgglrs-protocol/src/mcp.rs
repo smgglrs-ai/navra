@@ -302,6 +302,36 @@ impl CallToolResult {
         self.label = label;
         self
     }
+
+    /// Compress tool output to fit within a token budget (fallback).
+    ///
+    /// Truncates text content at sentence boundaries and appends a
+    /// truncation notice. This is the last-resort path — the tool loop
+    /// applies query-aware extractive compression via embeddings when
+    /// available (`compress_tool_output` in tool_loop.rs). Modules
+    /// should check `CallContext::remaining_tokens` and self-compress
+    /// with domain knowledge before this fallback is needed.
+    pub fn compress(&mut self, max_tokens: u32) {
+        let chars_budget = (max_tokens as usize) * 4;
+        for content in &mut self.content {
+            if let Content::Text(ref mut text) = content {
+                if text.text.len() > chars_budget {
+                    let cut = chars_budget.saturating_sub(40);
+                    let slice = &text.text[..cut.min(text.text.len())];
+                    let cut_point = slice
+                        .rfind(". ")
+                        .or_else(|| slice.rfind('\n'))
+                        .map(|p| p + 1)
+                        .unwrap_or(cut);
+                    let remaining = text.text.len() - cut_point;
+                    text.text = format!(
+                        "{}\n[compressed — {remaining} chars omitted]",
+                        &text.text[..cut_point]
+                    );
+                }
+            }
+        }
+    }
 }
 
 // --- Prompts ---

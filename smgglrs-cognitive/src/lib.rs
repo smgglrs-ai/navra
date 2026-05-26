@@ -16,6 +16,7 @@
 //! println!("{}", output.system_prompt());
 //! ```
 
+pub mod bridge;
 pub mod budget;
 mod error;
 pub mod evolution;
