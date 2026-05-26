@@ -514,6 +514,7 @@ impl AuditLog {
                  output = COALESCE(excluded.output, flow_results.output),
                  iterations = COALESCE(excluded.iterations, flow_results.iterations),
                  tokens = COALESCE(excluded.tokens, flow_results.tokens),
+                 started_at = COALESCE(flow_results.started_at, excluded.started_at),
                  completed_at = excluded.completed_at",
             params![flow_id, task_id, specialist, model, status, output, iterations, tokens, now, now],
         )?;
