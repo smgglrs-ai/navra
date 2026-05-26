@@ -387,7 +387,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | ~~WebSocket transport~~ (alongside SSE for agentic loops) | ✅ 2026-05-15 | — | — |
 | **GLiGuard safety model evaluation** (ONNX, multi-label) | 11f | 2-3 days | High |
 | **OTel GenAI observability** (traces + Prometheus /metrics) | 12c | 3-4 days | High |
-| **`obo` identity claim** + RFC 8693 token exchange | 9k-9l | 3-4 days | High |
+| ~~`obo` identity claim + RFC 8693 token exchange~~ | ✅ | — | — |
 | **RoutingHook** (cost-aware model routing via ONNX classifier) | 11h | 3-4 days | Medium-High |
 | **Durable DAG execution** (SQLite checkpoint, crash recovery) | 2d | 3-4 days | Medium-High |
 | **Memory scoping** (entity/process/session, temporal validity) | 3i | 2 days | Medium |
@@ -1907,7 +1907,7 @@ Reference: OpenShell Privacy Router documentation, Red Hat Summit
 
 ### Phase 7: RAG enhancements
 
-#### 7a. Two-stage retrieval with cross-encoder reranking (NEW)
+#### 7a. Two-stage retrieval with cross-encoder reranking ✅
 
 Add reranking stage to smgglrs-rag after sqlite-vec retrieval:
 
@@ -2521,7 +2521,7 @@ Automated test suite verifying spec compliance:
 | Resilient upstream proxy | `upstream/` | 3 transports + exponential backoff, sleep detection, per-request timeout. |
 | Safety hook pipeline | smgglrs-security | Content filtering as hook, not hardcoded in request path. |
 
-#### 9k. On-behalf-of identity binding (NEW — tech watch 2026-05-17)
+#### 9k. On-behalf-of identity binding ✅
 
 **Crate**: `smgglrs-security` (capability tokens)
 
@@ -2549,7 +2549,7 @@ actions to human delegator in audit log.
 
 Reference: MIT Media Lab PoA (arXiv:2501.09674), MCP OAuth 2.1.
 
-#### 9l. RFC 8693 token exchange (NEW — tech watch 2026-05-17)
+#### 9l. RFC 8693 token exchange ✅
 
 **Crate**: `smgglrs-security` (oauth.rs)
 
