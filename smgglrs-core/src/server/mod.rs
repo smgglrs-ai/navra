@@ -107,6 +107,11 @@ impl McpServer {
     pub fn broadcaster(&self) -> Option<&crate::transport::sse::SseBroadcaster> {
         self.broadcaster.as_ref()
     }
+
+    /// Access the gateway metrics registry.
+    pub fn metrics(&self) -> &Arc<crate::metrics::Metrics> {
+        &self.metrics
+    }
 }
 
 #[cfg(test)]

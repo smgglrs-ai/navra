@@ -26,6 +26,11 @@ pub struct Metrics {
     pub cedar_denials: AtomicU64,
     pub resource_subscriptions: AtomicU64,
     pub websocket_connections: AtomicU64,
+    pub tool_scan_total: AtomicU64,
+    pub tool_scan_blocked: AtomicU64,
+    pub tool_scan_suspicious: AtomicU64,
+    pub integrity_alerts_total: AtomicU64,
+    pub integrity_alerts_malicious: AtomicU64,
 }
 
 impl Metrics {
@@ -50,6 +55,11 @@ impl Metrics {
             cedar_denials: AtomicU64::new(0),
             resource_subscriptions: AtomicU64::new(0),
             websocket_connections: AtomicU64::new(0),
+            tool_scan_total: AtomicU64::new(0),
+            tool_scan_blocked: AtomicU64::new(0),
+            tool_scan_suspicious: AtomicU64::new(0),
+            integrity_alerts_total: AtomicU64::new(0),
+            integrity_alerts_malicious: AtomicU64::new(0),
         }
     }
 
@@ -80,6 +90,12 @@ impl Metrics {
         prom_counter(&mut out, "smgglrs_cedar_denials_total", "Cedar policy denials", self.cedar_denials.load(Ordering::Relaxed));
         prom_gauge(&mut out, "smgglrs_resource_subscriptions", "Active resource subscriptions", self.resource_subscriptions.load(Ordering::Relaxed));
         prom_gauge(&mut out, "smgglrs_websocket_connections", "Active WebSocket connections", self.websocket_connections.load(Ordering::Relaxed));
+
+        prom_counter(&mut out, "smgglrs_tool_scan_total", "Upstream tool definitions scanned", self.tool_scan_total.load(Ordering::Relaxed));
+        prom_counter(&mut out, "smgglrs_tool_scan_blocked_total", "Upstream tools blocked as malicious", self.tool_scan_blocked.load(Ordering::Relaxed));
+        prom_counter(&mut out, "smgglrs_tool_scan_suspicious_total", "Upstream tools flagged as suspicious", self.tool_scan_suspicious.load(Ordering::Relaxed));
+        prom_counter(&mut out, "smgglrs_integrity_alerts_total", "Cognitive file integrity alerts", self.integrity_alerts_total.load(Ordering::Relaxed));
+        prom_counter(&mut out, "smgglrs_integrity_alerts_malicious_total", "Cognitive file integrity alerts classified as malicious", self.integrity_alerts_malicious.load(Ordering::Relaxed));
 
         out
     }
@@ -139,6 +155,9 @@ mod tests {
         assert!(output.contains("smgglrs_ifc_write_denials_total"));
         assert!(output.contains("smgglrs_cedar_denials_total"));
         assert!(output.contains("smgglrs_websocket_connections"));
+        assert!(output.contains("smgglrs_tool_scan_total"));
+        assert!(output.contains("smgglrs_tool_scan_blocked_total"));
+        assert!(output.contains("smgglrs_integrity_alerts_total"));
     }
 
     #[test]

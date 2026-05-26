@@ -60,16 +60,48 @@ impl smgglrs_core::safety::ContentFilter for SharedCustomPiiFilter {
     }
 }
 
+fn init_tracing() -> anyhow::Result<()> {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let env_filter = tracing_subscriber::EnvFilter::from_default_env()
+        .add_directive("smgglrs=info".parse()?);
+    let fmt_layer = tracing_subscriber::fmt::layer();
+
+    let registry = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer);
+
+    #[cfg(feature = "otel")]
+    {
+        if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
+            let exporter = opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic()
+                .build()?;
+            let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_batch_exporter(exporter)
+                .with_resource(
+                    opentelemetry_sdk::Resource::builder()
+                        .with_service_name("smgglrs")
+                        .build(),
+                )
+                .build();
+            let otel_layer = tracing_opentelemetry::layer()
+                .with_tracer(provider.tracer("smgglrs"));
+            registry.with(otel_layer).init();
+            return Ok(());
+        }
+    }
+
+    registry.init();
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("smgglrs=info".parse()?),
-        )
-        .init();
+    init_tracing()?;
 
     match cli.command {
         Commands::Serve { config: config_path, no_tray } => {
