@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 pub use builder::McpServerBuilder;
 pub use types::ToolHandler;
 
-use types::{RegisteredPrompt, RegisteredResource, RegisteredTool};
+use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};
 
 /// The MCP server, holding all state and tool/prompt/resource registrations.
 pub struct McpServer {
@@ -27,6 +27,7 @@ pub struct McpServer {
     tools: HashMap<String, RegisteredTool>,
     prompts: HashMap<String, RegisteredPrompt>,
     resources: HashMap<String, RegisteredResource>,
+    resource_templates: Vec<RegisteredResourceTemplate>,
     pub(crate) sessions: SessionStore,
     pub(crate) authenticator: Arc<dyn Authenticator>,
     /// Safety filter pipelines keyed by permission set name (legacy, used when no hooks).
@@ -52,7 +53,7 @@ pub struct McpServer {
     /// Per-value variable store for IFC tracking.
     value_stores: crate::ifc::value_store::ValueStoreMap,
     /// Gateway-level audit blackbox — records every tool call.
-    blackbox: Option<crate::blackbox::Blackbox>,
+    blackbox: Option<Arc<crate::blackbox::Blackbox>>,
     /// Per-session dynamic permission grants (MCP permission negotiation).
     session_permissions: crate::permissions::SessionPermissionStore,
     /// Pending permission requests awaiting grant/deny.

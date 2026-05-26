@@ -29,3 +29,9 @@ pub(super) struct RegisteredResource {
     pub definition: ResourceDefinition,
     pub handler: ResourceHandler,
 }
+
+/// Registered resource template: template definition + handler that receives the full URI.
+pub(super) struct RegisteredResourceTemplate {
+    pub template: crate::protocol::ResourceTemplate,
+    pub handler: ResourceHandler,
+}

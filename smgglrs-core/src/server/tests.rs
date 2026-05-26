@@ -549,10 +549,10 @@ fn register_module_with_resources() {
         .module(ResourceModule)
         .build();
 
-    assert_eq!(server.resource_count(), 1);
+    let base_count = McpServer::builder().build().resource_count();
+    assert_eq!(server.resource_count(), base_count + 1);
     let result = server.handle_list_resources(&test_agent(), &Default::default());
-    assert_eq!(result.resources.len(), 1);
-    assert_eq!(result.resources[0].uri, "info://server/status");
+    assert!(result.resources.iter().any(|r| r.uri == "info://server/status"));
 }
 
 #[tokio::test]
@@ -586,8 +586,9 @@ async fn read_unknown_resource() {
 
 #[test]
 fn capabilities_reflect_resources() {
+    // Kernel resources are always registered, so resources capability is always present
     let empty = McpServer::builder().build();
-    assert!(empty.capabilities().resources.is_none());
+    assert!(empty.capabilities().resources.is_some());
 
     let with_resource = McpServer::builder()
         .module(ResourceModule)
@@ -611,6 +612,117 @@ fn duplicate_resource_uri_panics() {
         .module(ResourceModule)
         .module(DuplicateResourceModule)
         .build();
+}
+
+// --- Kernel resource tests ---
+
+#[test]
+fn kernel_resources_always_registered() {
+    let server = McpServer::builder().build();
+    let result = server.handle_list_resources(&test_agent(), &Default::default());
+    let uris: Vec<&str> = result.resources.iter().map(|r| r.uri.as_str()).collect();
+    assert!(uris.contains(&"smgglrs://proc"));
+    assert!(uris.contains(&"smgglrs://ifc/labels"));
+    assert!(uris.contains(&"smgglrs://audit/recent"));
+    assert!(uris.contains(&"smgglrs://budget/gpu"));
+}
+
+#[tokio::test]
+async fn kernel_resource_proc_returns_json() {
+    let server = McpServer::builder().build();
+    let result = server
+        .handle_read_resource(
+            crate::protocol::ReadResourceParams { uri: "smgglrs://proc".to_string() },
+            &test_agent(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.contents[0].mime_type, Some("application/json".to_string()));
+    let text = result.contents[0].text.as_ref().unwrap();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+    assert!(parsed.is_empty());
+}
+
+#[tokio::test]
+async fn kernel_resource_proc_shows_active_agents() {
+    let server = McpServer::builder().build();
+    server.process_table().record_call("test-agent", "dev", None, Some(1), "file_read");
+
+    let result = server
+        .handle_read_resource(
+            crate::protocol::ReadResourceParams { uri: "smgglrs://proc".to_string() },
+            &test_agent(),
+        )
+        .await
+        .unwrap();
+    let text = result.contents[0].text.as_ref().unwrap();
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0]["name"], "test-agent");
+    assert_eq!(parsed[0]["call_count"], 1);
+}
+
+#[tokio::test]
+async fn kernel_resource_ifc_labels_returns_json() {
+    let server = McpServer::builder().build();
+    let result = server
+        .handle_read_resource(
+            crate::protocol::ReadResourceParams { uri: "smgglrs://ifc/labels".to_string() },
+            &test_agent(),
+        )
+        .await
+        .unwrap();
+    let text = result.contents[0].text.as_ref().unwrap();
+    let _: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+}
+
+#[tokio::test]
+async fn kernel_resource_audit_recent_returns_json() {
+    let server = McpServer::builder().build();
+    let result = server
+        .handle_read_resource(
+            crate::protocol::ReadResourceParams { uri: "smgglrs://audit/recent".to_string() },
+            &test_agent(),
+        )
+        .await
+        .unwrap();
+    let text = result.contents[0].text.as_ref().unwrap();
+    let _: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+}
+
+#[test]
+fn kernel_resource_templates_registered() {
+    let server = McpServer::builder().build();
+    let result = server.handle_list_resource_templates(&test_agent(), &Default::default());
+    let templates: Vec<&str> = result.resource_templates.iter().map(|t| t.uri_template.as_str()).collect();
+    assert!(templates.contains(&"smgglrs://proc/{agent}/taint"));
+    assert!(templates.contains(&"smgglrs://proc/{agent}/capabilities"));
+}
+
+#[tokio::test]
+async fn kernel_resource_template_taint_matches() {
+    let server = McpServer::builder().build();
+    let result = server
+        .handle_read_resource(
+            crate::protocol::ReadResourceParams { uri: "smgglrs://proc/test-agent/taint".to_string() },
+            &test_agent(),
+        )
+        .await;
+    assert!(result.is_ok());
+    let text = result.unwrap().contents[0].text.as_ref().unwrap().to_string();
+    let _: Vec<serde_json::Value> = serde_json::from_str(&text).unwrap();
+}
+
+#[tokio::test]
+async fn kernel_resource_template_capabilities_matches() {
+    let server = McpServer::builder().build();
+    let result = server
+        .handle_read_resource(
+            crate::protocol::ReadResourceParams { uri: "smgglrs://proc/my-agent/capabilities".to_string() },
+            &test_agent(),
+        )
+        .await;
+    assert!(result.is_ok());
 }
 
 // --- Per-tool permission tests ---
@@ -1783,4 +1895,21 @@ async fn dynamic_grant_overrides_tool_deny() {
         crate::protocol::Content::Text(t) => assert_eq!(t.text, "reached"),
         _ => panic!("expected text content"),
     }
+}
+
+// --- URI template matching tests ---
+
+#[test]
+fn uri_template_matching() {
+    use super::handlers::matches_uri_template;
+
+    assert!(matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://proc/alice/taint"));
+    assert!(matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://proc/my-agent/taint"));
+    assert!(!matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://proc//taint"));
+    assert!(!matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://proc/a/b/taint"));
+    assert!(!matches_uri_template("smgglrs://proc/{agent}/taint", "smgglrs://other/alice/taint"));
+    assert!(matches_uri_template("smgglrs://proc/{agent}/capabilities", "smgglrs://proc/bob/capabilities"));
+    assert!(!matches_uri_template("smgglrs://proc/{agent}/capabilities", "smgglrs://proc/bob/taint"));
+    assert!(matches_uri_template("no-template", "no-template"));
+    assert!(!matches_uri_template("no-template", "other"));
 }

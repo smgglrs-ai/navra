@@ -511,9 +511,33 @@ impl McpServer {
         params: ReadResourceParams,
         _agent: &crate::auth::AgentIdentity,
     ) -> Result<ReadResourceResult, String> {
-        match self.resources.get(&params.uri) {
-            Some(resource) => Ok((resource.handler)(params.uri).await),
-            None => Err(format!("Unknown resource: {}", params.uri)),
+        if let Some(resource) = self.resources.get(&params.uri) {
+            return Ok((resource.handler)(params.uri).await);
+        }
+        for rt in &self.resource_templates {
+            if matches_uri_template(&rt.template.uri_template, &params.uri) {
+                return Ok((rt.handler)(params.uri).await);
+            }
+        }
+        Err(format!("Unknown resource: {}", params.uri))
+    }
+
+    pub fn handle_list_resource_templates(
+        &self,
+        _agent: &crate::auth::AgentIdentity,
+        pagination: &PaginatedRequest,
+    ) -> crate::protocol::ListResourceTemplatesResult {
+        let all_templates: Vec<_> = self
+            .resource_templates
+            .iter()
+            .map(|rt| rt.template.clone())
+            .collect();
+        let offset = pagination.decode_offset().unwrap_or(0);
+        let (resource_templates, next_cursor) =
+            crate::protocol::paginate(&all_templates, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        crate::protocol::ListResourceTemplatesResult {
+            resource_templates,
+            next_cursor,
         }
     }
 
@@ -828,7 +852,7 @@ impl McpServer {
     }
 
     pub fn blackbox(&self) -> Option<&crate::blackbox::Blackbox> {
-        self.blackbox.as_ref()
+        self.blackbox.as_deref()
     }
 
     pub fn tool_count(&self) -> usize {
@@ -867,4 +891,42 @@ impl McpServer {
     pub fn value_stores(&self) -> &crate::ifc::value_store::ValueStoreMap {
         &self.value_stores
     }
+}
+
+/// Match a concrete URI against a URI template (RFC 6570 Level 1).
+///
+/// Supports simple `{name}` placeholders that match one or more non-`/` characters.
+pub(super) fn matches_uri_template(template: &str, uri: &str) -> bool {
+    let parts: Vec<&str> = template.split('{').collect();
+    if parts.is_empty() {
+        return template == uri;
+    }
+    let mut remaining = uri;
+    for (i, part) in parts.iter().enumerate() {
+        if i == 0 {
+            if !remaining.starts_with(part) {
+                return false;
+            }
+            remaining = &remaining[part.len()..];
+        } else {
+            let suffix = match part.find('}') {
+                Some(end) => &part[end + 1..],
+                None => return false,
+            };
+            if suffix.is_empty() {
+                return !remaining.is_empty() && !remaining.contains('/');
+            }
+            match remaining.find(suffix) {
+                Some(pos) => {
+                    let value = &remaining[..pos];
+                    if value.is_empty() || value.contains('/') {
+                        return false;
+                    }
+                    remaining = &remaining[pos + suffix.len()..];
+                }
+                None => return false,
+            }
+        }
+    }
+    remaining.is_empty()
 }
