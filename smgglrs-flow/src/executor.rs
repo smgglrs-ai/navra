@@ -74,6 +74,9 @@ pub struct DagExecutor {
     blackboard: Option<Blackboard>,
     insight_callback: Option<InsightCallback>,
     insight_retriever: Option<InsightRetriever>,
+    /// Maximum agent-to-agent transitions in a single execution path.
+    /// Prevents agent worm propagation patterns. 0 = unlimited.
+    max_hops: usize,
 }
 
 impl Default for DagExecutor {
@@ -90,6 +93,7 @@ impl DagExecutor {
             signal_handles: HashMap::new(),
             max_concurrent: 4,
             blackboard: None,
+            max_hops: 0,
             insight_callback: None,
             insight_retriever: None,
         }
@@ -156,6 +160,15 @@ impl DagExecutor {
         self
     }
 
+    /// Set maximum agent-to-agent transitions (hop limit).
+    ///
+    /// Prevents agent worm propagation patterns. When the hop limit
+    /// is reached, further task execution is aborted. 0 = unlimited.
+    pub fn with_max_hops(mut self, max_hops: usize) -> Self {
+        self.max_hops = max_hops;
+        self
+    }
+
     /// Execute a DAG of tasks.
     ///
     /// Tasks are run in dependency order. Independent tasks execute
@@ -180,8 +193,23 @@ impl DagExecutor {
         let mut total_prompt = 0u32;
         let mut total_completion = 0u32;
         let mut back_edge_tracker = BackEdgeTracker::new();
+        let mut hop_count: usize = 0;
 
         loop {
+            // Hop limit enforcement
+            if self.max_hops > 0 && hop_count >= self.max_hops {
+                tracing::error!(
+                    hop_count,
+                    max_hops = self.max_hops,
+                    "DAG execution aborted — hop limit exceeded"
+                );
+                return Err(FlowError::Other(anyhow::anyhow!(
+                    "hop limit exceeded: {} transitions (max {})",
+                    hop_count,
+                    self.max_hops,
+                )));
+            }
+
             let ready: Vec<&Task> = dag
                 .get_ready_tasks(&completed)
                 .into_iter()
@@ -353,6 +381,7 @@ impl DagExecutor {
 
                                 results.insert(task.id.clone(), task_result);
                                 completed.insert(task.id.clone());
+                                hop_count += 1;
                                 task_completed = true;
                                 if requeued {
                                     // Don't break — continue with the outer loop to
@@ -493,6 +522,7 @@ impl DagExecutor {
                         }
                     }
                     completed.insert(task.id.clone());
+                    hop_count += 1;
                 }
             }
         }

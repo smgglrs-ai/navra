@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
-/// A labeled entry in the blackboard.
+/// A labeled entry in the blackboard with provenance tracking.
 #[derive(Debug, Clone)]
 pub struct BlackboardEntry {
     pub key: String,
@@ -22,6 +22,9 @@ pub struct BlackboardEntry {
     pub author: String,
     pub version: u64,
     pub updated_at: Instant,
+    /// Provenance: list of (agent_id, timestamp) pairs tracking who
+    /// contributed to this entry's content across versions.
+    pub provenance: Vec<(String, Instant)>,
 }
 
 /// Flow-level shared blackboard.
@@ -57,8 +60,9 @@ impl Blackboard {
     ) -> Result<u64, FlowError> {
         let mut entries = self.entries.write().unwrap_or_else(|e| e.into_inner());
 
-        let version = if let Some(existing) = entries.get(key) {
-            existing.version + 1
+        let now = Instant::now();
+        let (version, mut provenance) = if let Some(existing) = entries.get(key) {
+            (existing.version + 1, existing.provenance.clone())
         } else {
             if entries.len() >= self.max_entries {
                 return Err(FlowError::Other(anyhow::anyhow!(
@@ -67,8 +71,9 @@ impl Blackboard {
                     key,
                 )));
             }
-            1
+            (1, Vec::new())
         };
+        provenance.push((author.to_string(), now));
 
         let entry = BlackboardEntry {
             key: key.to_string(),
@@ -76,7 +81,8 @@ impl Blackboard {
             label,
             author: author.to_string(),
             version,
-            updated_at: Instant::now(),
+            updated_at: now,
+            provenance,
         };
 
         tracing::debug!(
