@@ -6,6 +6,7 @@
 //! post-hook.
 
 mod budget;
+pub mod field_filter;
 mod memory_extraction;
 mod pipeline;
 mod routing;
@@ -15,6 +16,7 @@ pub mod statistical;
 mod tool_guard;
 
 pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
+pub use field_filter::{FieldFilterConfig, FieldFilterHook};
 pub use memory_extraction::{ExtractionStore, MemoryExtractionConfig, MemoryExtractionHook};
 pub use pipeline::HookPipeline;
 pub use routing::{ModelTier, ModelTierConfig, RoutingConfig, RoutingHook};
