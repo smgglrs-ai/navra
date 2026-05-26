@@ -1335,6 +1335,7 @@ async fn run_dag_execution(
                 task_defs: remaining,
                 team_id: team_id.to_string(),
                 prompt: prompt.to_string(),
+                idempotency_cache: std::collections::HashMap::new(),
             };
             if let Err(e) = cp.save(&state) {
                 tracing::warn!(flow_id = %flow_id, error = %e, "Failed to save checkpoint");
