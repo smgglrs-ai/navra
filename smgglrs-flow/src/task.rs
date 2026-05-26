@@ -39,6 +39,9 @@ pub struct Task {
     /// Cross-validation configuration for high-stakes outputs.
     #[serde(default)]
     pub verification: Option<VerificationConfig>,
+    /// Temperature override for this task's model calls.
+    #[serde(default)]
+    pub temperature: Option<f32>,
 }
 
 fn default_max_retries() -> u32 {
@@ -59,6 +62,7 @@ impl From<TaskDefinition> for Task {
             max_retries: default_max_retries(),
             back_edges: def.back_edges,
             verification: def.verification,
+            temperature: def.temperature,
         }
     }
 }

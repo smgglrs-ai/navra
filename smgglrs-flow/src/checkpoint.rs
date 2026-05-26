@@ -236,6 +236,7 @@ mod tests {
             verification: None,
             tools: None,
             operations: None,
+            temperature: None,
         }
     }
 
@@ -427,6 +428,7 @@ mod tests {
             }),
             tools: Some(vec!["file_read".to_string(), "file_write".to_string()]),
             operations: Some(vec!["read".to_string(), "write".to_string()]),
+            temperature: Some(0.3),
         };
 
         let json = serde_json::to_string(&task).unwrap();

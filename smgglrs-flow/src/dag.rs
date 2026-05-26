@@ -181,6 +181,7 @@ mod tests {
             max_retries: 2,
             back_edges: Vec::new(),
             verification: None,
+            temperature: None,
         }
     }
 
