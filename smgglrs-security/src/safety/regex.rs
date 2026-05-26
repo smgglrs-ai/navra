@@ -124,6 +124,71 @@ impl ContentFilter for SecretFilter {
     }
 }
 
+/// Detects prompt injection patterns in tool responses.
+pub struct PromptInjectionFilter {
+    patterns: Vec<SecretPattern>,
+}
+
+impl Default for PromptInjectionFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PromptInjectionFilter {
+    pub fn new() -> Self {
+        Self {
+            patterns: vec![
+                SecretPattern {
+                    category: "prompt-injection-tag",
+                    regex: regex_lite::Regex::new(
+                        r"(?i)<(?:system|instructions|im_start|im_end|endoftext)>"
+                    ).unwrap(),
+                },
+                SecretPattern {
+                    category: "imperative-override",
+                    regex: regex_lite::Regex::new(
+                        r"(?i)(?:ignore previous instructions|disregard your training|you are now a different|forget your instructions|override your)"
+                    ).unwrap(),
+                },
+                SecretPattern {
+                    category: "exfiltration-url",
+                    regex: regex_lite::Regex::new(
+                        r"!\[[^\]]*\]\(https?://[^)]*(?:exfil|leak|steal|collect)[^)]*\)"
+                    ).unwrap(),
+                },
+                SecretPattern {
+                    category: "markdown-image-exfil",
+                    regex: regex_lite::Regex::new(
+                        r"!\[\]\(https?://[^)]+\?(?:data|d|q|payload)="
+                    ).unwrap(),
+                },
+            ],
+        }
+    }
+}
+
+impl ContentFilter for PromptInjectionFilter {
+    fn name(&self) -> &str {
+        "prompt-injection"
+    }
+
+    fn scan(&self, content: &str, _ctx: &FilterContext) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for pattern in &self.patterns {
+            for m in pattern.regex.find_iter(content) {
+                findings.push(Finding {
+                    start: m.start(),
+                    end: m.end(),
+                    category: pattern.category.to_string(),
+                    confidence: 0.9,
+                });
+            }
+        }
+        findings
+    }
+}
+
 /// Detects PII: SSNs, credit card numbers, phone numbers, email addresses.
 pub struct PiiFilter {
     patterns: Vec<PiiPattern>,
