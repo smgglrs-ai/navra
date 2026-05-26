@@ -19,6 +19,7 @@
 pub mod budget;
 mod error;
 pub mod evolution;
+pub mod fast_path;
 mod forge;
 mod types;
 mod weaver;
