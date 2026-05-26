@@ -8,6 +8,7 @@ use crate::recovery::{classify_failure, detect_circular_fix, get_strategy, Recov
 use crate::task::{Attempt, Task, TaskResult, TaskStatus};
 use crate::validation::validate_mandate;
 use crate::verification;
+use smgglrs_agent::signal::{AgentSignal, SignalHandle};
 use smgglrs_agent::Agent;
 use smgglrs_protocol::label::DataLabel;
 use smgglrs_security::ifc::TaintTracker;
@@ -68,6 +69,7 @@ pub struct DagResult {
 /// wait for their dependencies to complete.
 pub struct DagExecutor {
     agents: HashMap<String, Agent>,
+    signal_handles: HashMap<String, SignalHandle>,
     max_concurrent: usize,
     blackboard: Option<Blackboard>,
     insight_callback: Option<InsightCallback>,
@@ -85,6 +87,7 @@ impl DagExecutor {
     pub fn new() -> Self {
         Self {
             agents: HashMap::new(),
+            signal_handles: HashMap::new(),
             max_concurrent: 4,
             blackboard: None,
             insight_callback: None,
@@ -93,9 +96,33 @@ impl DagExecutor {
     }
 
     /// Register an agent for a specialist name.
-    pub fn agent(mut self, specialist: impl Into<String>, agent: Agent) -> Self {
-        self.agents.insert(specialist.into(), agent);
+    ///
+    /// Automatically installs a signal channel on the agent so the
+    /// executor can deliver Interrupt/Terminate/Pause/Resume signals.
+    pub fn agent(mut self, specialist: impl Into<String>, mut agent: Agent) -> Self {
+        let name = specialist.into();
+        let handle = agent.install_signal();
+        self.signal_handles.insert(name.clone(), handle);
+        self.agents.insert(name, agent);
         self
+    }
+
+    /// Send a signal to a specific agent by specialist name.
+    pub fn agent_signal(&self, specialist: &str, signal: AgentSignal) -> Result<(), FlowError> {
+        match self.signal_handles.get(specialist) {
+            Some(handle) => {
+                handle.send(signal);
+                Ok(())
+            }
+            None => Err(FlowError::UnknownSpecialist(specialist.to_string())),
+        }
+    }
+
+    /// Broadcast a signal to all registered agents.
+    pub fn signal_all(&self, signal: AgentSignal) {
+        for handle in self.signal_handles.values() {
+            handle.send(signal.clone());
+        }
     }
 
     /// Set the maximum number of concurrent tasks (default: 4).
@@ -674,5 +701,12 @@ mod tests {
         assert_eq!(insight.title, "Failure: deploy");
         assert_eq!(insight.tags.len(), 2);
         assert_eq!(insight.iterations, 3);
+    }
+
+    #[test]
+    fn agent_signal_unknown_specialist_returns_error() {
+        let executor = DagExecutor::new();
+        let result = executor.agent_signal("ghost", AgentSignal::Interrupt);
+        assert!(result.is_err());
     }
 }
