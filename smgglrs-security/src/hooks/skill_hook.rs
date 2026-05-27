@@ -141,6 +141,7 @@ mod tests {
             session_id: "sess-1".to_string(),
             taint: crate::ifc::TaintTracker::new(),
             remaining_tokens: None,
+            sandbox: None,
         }
     }
 

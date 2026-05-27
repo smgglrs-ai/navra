@@ -38,6 +38,10 @@ pub struct CallContext {
     /// modules should self-compress tool output to fit within this
     /// limit. None = no budget constraint.
     pub remaining_tokens: Option<u32>,
+    /// Sandbox profile from the agent's capability token.
+    /// When `Some`, the `SandboxHook` applies per-tool transformations
+    /// (simulate, redact, rate-limit, path rewrite).
+    pub sandbox: Option<sandbox_profile::SandboxProfile>,
 }
 
 impl CallContext {
@@ -48,6 +52,7 @@ impl CallContext {
             session_id: session_id.into(),
             taint: crate::ifc::TaintTracker::new(),
             remaining_tokens: None,
+            sandbox: None,
         }
     }
 }
