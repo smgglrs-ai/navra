@@ -197,6 +197,7 @@ impl MeshRouter {
                     label: data_label,
                     timestamp: now,
                     provenance: vec![(from.to_string(), now)],
+                    causal_node_id: None,
                 };
 
                 sender
