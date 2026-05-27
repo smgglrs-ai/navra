@@ -22,6 +22,7 @@
 mod backedge;
 mod blackboard;
 mod builder;
+pub mod causal_graph;
 pub mod checkpoint;
 mod dag;
 mod definition;

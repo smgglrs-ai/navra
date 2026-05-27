@@ -12,6 +12,7 @@ mod pipeline;
 mod routing;
 mod safety_hook;
 pub mod skill_hook;
+pub mod provenance_hook;
 pub mod statistical;
 mod tool_guard;
 
@@ -23,6 +24,7 @@ pub use routing::{ModelTier, ModelTierConfig, RoutingConfig, RoutingHook};
 pub use safety_hook::SafetyHook;
 pub use skill_hook::{Intervention, SkillHook, SkillRule};
 pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
+pub use provenance_hook::{CausalSink, ProvenanceHook};
 pub use tool_guard::ToolGuardHook;
 
 use crate::auth::CallContext;

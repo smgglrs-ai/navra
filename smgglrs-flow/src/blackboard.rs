@@ -25,6 +25,8 @@ pub struct BlackboardEntry {
     /// Provenance: list of (agent_id, timestamp) pairs tracking who
     /// contributed to this entry's content across versions.
     pub provenance: Vec<(String, Instant)>,
+    /// Optional causal graph node ID linking this entry to the provenance graph.
+    pub causal_node_id: Option<String>,
 }
 
 /// Flow-level shared blackboard.
@@ -83,6 +85,7 @@ impl Blackboard {
             version,
             updated_at: now,
             provenance,
+            causal_node_id: None,
         };
 
         tracing::debug!(
