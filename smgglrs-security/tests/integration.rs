@@ -278,11 +278,15 @@ async fn hook_pipeline_pre_blocks_dangerous_tool() {
         blocked: "shell_exec".to_string(),
     });
 
-    let result = pipeline
+    let outcome = pipeline
         .run_pre("shell_exec", serde_json::json!({}), &test_ctx())
         .await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("blocked"));
+    match outcome {
+        smgglrs_security::hooks::PreHookOutcome::Blocked(reason) => {
+            assert!(reason.contains("blocked"));
+        }
+        other => panic!("expected Blocked, got {:?}", other),
+    }
 }
 
 #[tokio::test]
@@ -292,10 +296,10 @@ async fn hook_pipeline_pre_allows_safe_tool() {
         blocked: "shell_exec".to_string(),
     });
 
-    let result = pipeline
+    let outcome = pipeline
         .run_pre("file_read", serde_json::json!({}), &test_ctx())
         .await;
-    assert!(result.is_ok());
+    assert!(matches!(outcome, smgglrs_security::hooks::PreHookOutcome::Proceed(_)));
 }
 
 #[tokio::test]
