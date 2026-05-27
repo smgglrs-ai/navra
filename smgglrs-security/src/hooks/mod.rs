@@ -11,6 +11,7 @@ mod memory_extraction;
 mod pipeline;
 mod routing;
 mod safety_hook;
+mod sandbox_hook;
 pub mod skill_hook;
 pub mod statistical;
 pub mod temporal_contract;
@@ -27,6 +28,7 @@ pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
 pub use temporal_contract::{
     ContractAction, SessionActionLog, TemporalContract, TemporalContractHook, TemporalPredicate,
 };
+pub use sandbox_hook::SandboxHook;
 pub use tool_guard::ToolGuardHook;
 
 use crate::auth::CallContext;
@@ -44,6 +46,23 @@ pub enum HookDecision {
     ModifyResult(CallToolResult),
     /// Block execution and return an error (pre-hook only).
     Block(String),
+    /// Short-circuit: return a simulated result without executing the tool (pre-hook only).
+    Simulate(CallToolResult),
+}
+
+/// Outcome of running pre-hooks through the pipeline.
+///
+/// Distinguishes between "proceed with (possibly modified) arguments"
+/// and "short-circuit with a simulated result" so the caller in
+/// `handlers.rs` can skip the real tool handler when appropriate.
+#[derive(Debug)]
+pub enum PreHookOutcome {
+    /// Continue to the real tool handler with these arguments.
+    Proceed(serde_json::Value),
+    /// Skip the tool handler and return this result directly.
+    Simulated(CallToolResult),
+    /// Block execution and return this error message.
+    Blocked(String),
 }
 
 /// Trait for hook implementations.

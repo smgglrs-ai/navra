@@ -932,6 +932,7 @@ fn cap_ctx(tools: Vec<&str>) -> CallContext {
                 credentials: vec![],
                 expires_at: u64::MAX,
                 obo_sub: None,
+                sandbox: None,
             }),
         },
         "cap-session",
@@ -2001,6 +2002,7 @@ fn resource_list_filtered_by_capability_token_globs() {
         credentials: vec![],
         expires_at: u64::MAX,
         obo_sub: None,
+        sandbox: None,
     });
 
     let server = McpServer::builder().build();

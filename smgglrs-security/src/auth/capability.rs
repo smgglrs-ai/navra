@@ -73,6 +73,11 @@ pub struct CapabilityPayload {
     /// Propagated through delegation chains; cannot be added during attenuation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub obo: Option<OboIdentity>,
+    /// Sandbox profile: per-tool rules that transform how the gateway
+    /// presents tools to this token's holder (simulate, redact, rate-limit,
+    /// path rewrite). Restrictions can only be added/tightened, never removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<super::sandbox_profile::SandboxProfile>,
 }
 
 /// Resolved capabilities extracted from a verified token.
@@ -88,6 +93,8 @@ pub struct ResolvedCapabilities {
     pub expires_at: u64,
     /// On-behalf-of human subject identifier, for audit trails.
     pub obo_sub: Option<String>,
+    /// Sandbox profile from the capability token.
+    pub sandbox: Option<super::sandbox_profile::SandboxProfile>,
 }
 
 /// Revocation list for capability tokens.
@@ -223,6 +230,7 @@ pub fn resolve_capabilities(payload: &CapabilityPayload) -> ResolvedCapabilities
         credentials: payload.cap.credentials.clone(),
         expires_at: payload.exp,
         obo_sub: payload.obo.as_ref().map(|o| o.sub.clone()),
+        sandbox: payload.sandbox.clone(),
     }
 }
 
@@ -307,6 +315,19 @@ pub fn validate_delegation(
                 // (None, None) is the common case
     }
 
+    // Sandbox attenuation: child can only add/tighten sandbox rules, never remove/weaken.
+    match (&parent.sandbox, &child.sandbox) {
+        (Some(parent_sandbox), Some(child_sandbox)) => {
+            parent_sandbox
+                .validate_attenuation(child_sandbox)
+                .map_err(|e| anyhow::anyhow!(e))?;
+        }
+        (Some(_), None) => {
+            anyhow::bail!("sandbox escalation: child removes sandbox profile present in parent");
+        }
+        _ => {} // (None, Some) is fine (child adds sandbox), (None, None) is common
+    }
+
     // Depth check: max_depth indicates how many more delegations are allowed.
     // 0 = no further delegation, 1 = one more level, etc.
     if child.parent.is_some() && max_depth == 0 {
@@ -363,6 +384,7 @@ pub fn build_payload(
         nonce: generate_nonce(),
         parent: None,
         obo: None,
+        sandbox: None,
     }
 }
 
@@ -456,6 +478,7 @@ pub fn build_delegated_payload(
         nonce: generate_nonce(),
         parent: Some(parent.nonce),
         obo: parent.obo.clone(),
+        sandbox: parent.sandbox.clone(),
     })
 }
 
@@ -636,6 +659,7 @@ mod tests {
             nonce: generate_nonce(),
             parent: Some(parent.nonce),
             obo: None,
+            sandbox: None,
         };
 
         assert!(validate_delegation(&parent, &child, 3).is_ok());
@@ -690,6 +714,7 @@ mod tests {
             nonce: generate_nonce(),
             parent: Some(parent.nonce),
             obo: None,
+            sandbox: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -717,6 +742,7 @@ mod tests {
             nonce: generate_nonce(),
             parent: Some(parent.nonce),
             obo: None,
+            sandbox: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1042,7 +1068,7 @@ mod tests {
         let signer = Ed25519Signer::generate();
         let parent = test_payload(&signer); // no obo
 
-        let mut child = CapabilityPayload {
+        let child = CapabilityPayload {
             v: 1,
             iss: parent.sub.clone(),
             sub: "did:key:z6MkChild".to_string(),
@@ -1058,6 +1084,7 @@ mod tests {
             nonce: generate_nonce(),
             parent: Some(parent.nonce),
             obo: Some(test_obo()), // trying to inject obo
+            sandbox: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1070,7 +1097,7 @@ mod tests {
         let mut parent = test_payload(&signer);
         parent.obo = Some(test_obo());
 
-        let mut child = CapabilityPayload {
+        let child = CapabilityPayload {
             v: 1,
             iss: parent.sub.clone(),
             sub: "did:key:z6MkChild".to_string(),
@@ -1090,6 +1117,7 @@ mod tests {
                 iss: "https://evil.com".to_string(),
                 auth_time: None,
             }),
+            sandbox: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1146,6 +1174,98 @@ mod tests {
         let obo = child2.obo.unwrap();
         assert_eq!(obo.sub, "alice@example.com");
         assert_eq!(obo.iss, "https://idp.example.com");
+    }
+
+    // --- Sandbox profile in capability token tests ---
+
+    #[test]
+    fn sandbox_none_backward_compat() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer);
+        assert!(payload.sandbox.is_none());
+
+        let token = encode_token(&payload, &signer).unwrap();
+        let decoded = decode_token(&token, &signer).unwrap();
+        assert!(decoded.sandbox.is_none());
+    }
+
+    #[test]
+    fn sandbox_roundtrip_serialization() {
+        let signer = Ed25519Signer::generate();
+        let mut payload = test_payload(&signer);
+
+        let mut profile = super::super::sandbox_profile::SandboxProfile::default();
+        profile.rules.insert(
+            "file_write".to_string(),
+            super::super::sandbox_profile::ToolSandboxRule {
+                action: super::super::sandbox_profile::SandboxAction::Simulate {
+                    response: "write disabled".to_string(),
+                },
+            },
+        );
+        payload.sandbox = Some(profile);
+
+        let token = encode_token(&payload, &signer).unwrap();
+        let decoded = decode_token(&token, &signer).unwrap();
+
+        let sandbox = decoded.sandbox.unwrap();
+        assert!(sandbox.rule_for("file_write").is_some());
+    }
+
+    #[test]
+    fn sandbox_propagated_through_delegation() {
+        let signer = Ed25519Signer::generate();
+        let mut parent = test_payload(&signer);
+
+        let mut profile = super::super::sandbox_profile::SandboxProfile::default();
+        profile.rules.insert(
+            "git_*".to_string(),
+            super::super::sandbox_profile::ToolSandboxRule {
+                action: super::super::sandbox_profile::SandboxAction::Simulate {
+                    response: "git disabled".to_string(),
+                },
+            },
+        );
+        parent.sandbox = Some(profile);
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:teammate:worker",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        assert!(child.sandbox.is_some());
+        let child_sandbox = child.sandbox.unwrap();
+        assert!(child_sandbox.rule_for("git_status").is_some());
+    }
+
+    #[test]
+    fn sandbox_removal_rejected_in_delegation() {
+        let signer = Ed25519Signer::generate();
+        let mut parent = test_payload(&signer);
+
+        let mut profile = super::super::sandbox_profile::SandboxProfile::default();
+        profile.rules.insert(
+            "file_write".to_string(),
+            super::super::sandbox_profile::ToolSandboxRule {
+                action: super::super::sandbox_profile::SandboxAction::Simulate {
+                    response: "blocked".to_string(),
+                },
+            },
+        );
+        parent.sandbox = Some(profile);
+
+        let mut child = parent.clone();
+        child.nonce = generate_nonce();
+        child.parent = Some(parent.nonce);
+        child.sandbox = None; // trying to remove sandbox
+
+        let err = validate_delegation(&parent, &child, 3).unwrap_err();
+        assert!(err.to_string().contains("sandbox escalation"));
     }
 }
 
