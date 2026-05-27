@@ -16,7 +16,7 @@ pub use modules::{ApprovalConfig, ModulesConfig};
 pub use permissions::{PermissionSet, PiiPatternConfig};
 pub use server::{RegistryEntry, ServerConfig};
 
-pub use security::StatisticalGuardrailServerConfig;
+pub use security::{StatisticalGuardrailServerConfig, TemporalContractServerConfig};
 mod security;
 
 fn default_true() -> bool {
@@ -69,6 +69,9 @@ pub struct Config {
     /// Statistical guardrail configuration for anomaly detection.
     #[serde(default)]
     pub statistical: StatisticalGuardrailServerConfig,
+    /// Temporal behavioral contracts for trajectory-level policy enforcement.
+    #[serde(default)]
+    pub temporal_contracts: TemporalContractServerConfig,
     /// Cost-aware model routing configuration.
     #[serde(default)]
     pub routing: smgglrs_core::hooks::RoutingConfig,
@@ -317,6 +320,7 @@ impl Default for Config {
             pii_patterns: Vec::new(),
             grpc_modules: Vec::new(),
             statistical: StatisticalGuardrailServerConfig::default(),
+            temporal_contracts: TemporalContractServerConfig::default(),
             routing: smgglrs_core::hooks::RoutingConfig::default(),
             triggers: Vec::new(),
         }
