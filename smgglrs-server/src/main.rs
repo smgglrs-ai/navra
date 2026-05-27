@@ -2115,6 +2115,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         nonce: smgglrs_core::auth::capability::generate_nonce(),
                         parent: None,
                         obo: None,
+                        sandbox: None,
                     };
 
                     // Set parent nonce reference
