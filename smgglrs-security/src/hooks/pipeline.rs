@@ -1,6 +1,6 @@
 //! Hook pipeline: ordered execution of hooks with timeout enforcement.
 
-use super::{Hook, HookDecision};
+use super::{Hook, HookDecision, PreHookOutcome};
 use crate::auth::CallContext;
 use smgglrs_protocol::CallToolResult;
 use std::time::Duration;
@@ -40,14 +40,15 @@ impl HookPipeline {
 
     /// Run all pre-tool-use hooks in order.
     ///
-    /// Returns the (possibly modified) arguments, or an error message
-    /// if a hook blocked execution.
+    /// Returns a `PreHookOutcome` indicating whether to proceed with
+    /// (possibly modified) arguments, short-circuit with a simulated
+    /// result, or block execution.
     pub async fn run_pre(
         &self,
         tool_name: &str,
         mut arguments: serde_json::Value,
         ctx: &CallContext,
-    ) -> Result<serde_json::Value, String> {
+    ) -> PreHookOutcome {
         for hook in &self.hooks {
             let decision =
                 tokio::time::timeout(self.timeout, hook.pre_tool_use(tool_name, &arguments, ctx))
@@ -78,7 +79,15 @@ impl HookPipeline {
                         reason = %reason,
                         "Pre-hook blocked tool execution"
                     );
-                    return Err(reason);
+                    return PreHookOutcome::Blocked(reason);
+                }
+                HookDecision::Simulate(result) => {
+                    tracing::info!(
+                        hook = hook.name(),
+                        tool = tool_name,
+                        "Pre-hook simulated tool result (skipping handler)"
+                    );
+                    return PreHookOutcome::Simulated(result);
                 }
                 HookDecision::ModifyResult(_) => {
                     tracing::warn!(
@@ -89,7 +98,7 @@ impl HookPipeline {
                 }
             }
         }
-        Ok(arguments)
+        PreHookOutcome::Proceed(arguments)
     }
 
     /// Run all post-tool-use hooks in reverse order.
@@ -141,6 +150,13 @@ impl HookPipeline {
                         hook = hook.name(),
                         tool = tool_name,
                         "Post-hook returned ModifyArgs (ignored in post-phase)"
+                    );
+                }
+                HookDecision::Simulate(_) => {
+                    tracing::warn!(
+                        hook = hook.name(),
+                        tool = tool_name,
+                        "Post-hook returned Simulate (ignored in post-phase)"
                     );
                 }
             }
@@ -255,9 +271,11 @@ mod tests {
         let pipeline = HookPipeline::new(Duration::from_secs(5));
         let args = serde_json::json!({"key": "value"});
 
-        let result = pipeline.run_pre("echo", args.clone(), &test_ctx()).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), args);
+        let outcome = pipeline.run_pre("echo", args.clone(), &test_ctx()).await;
+        match outcome {
+            PreHookOutcome::Proceed(result_args) => assert_eq!(result_args, args),
+            other => panic!("expected Proceed, got {:?}", other),
+        }
     }
 
     #[tokio::test]
@@ -267,11 +285,13 @@ mod tests {
             block_tool: "dangerous".to_string(),
         });
 
-        let result = pipeline
+        let outcome = pipeline
             .run_pre("dangerous", serde_json::json!({}), &test_ctx())
             .await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("blocked by policy"));
+        match outcome {
+            PreHookOutcome::Blocked(reason) => assert!(reason.contains("blocked by policy")),
+            other => panic!("expected Blocked, got {:?}", other),
+        }
     }
 
     #[tokio::test]
@@ -281,10 +301,10 @@ mod tests {
             block_tool: "dangerous".to_string(),
         });
 
-        let result = pipeline
+        let outcome = pipeline
             .run_pre("safe_tool", serde_json::json!({}), &test_ctx())
             .await;
-        assert!(result.is_ok());
+        assert!(matches!(outcome, PreHookOutcome::Proceed(_)));
     }
 
     #[tokio::test]
@@ -292,13 +312,17 @@ mod tests {
         let mut pipeline = HookPipeline::new(Duration::from_secs(5));
         pipeline.add(ArgModifyHook);
 
-        let result = pipeline
+        let outcome = pipeline
             .run_pre("echo", serde_json::json!({"original": true}), &test_ctx())
             .await;
 
-        let args = result.unwrap();
-        assert_eq!(args["original"], true);
-        assert_eq!(args["injected"], true);
+        match outcome {
+            PreHookOutcome::Proceed(args) => {
+                assert_eq!(args["original"], true);
+                assert_eq!(args["injected"], true);
+            }
+            other => panic!("expected Proceed, got {:?}", other),
+        }
     }
 
     #[tokio::test]
@@ -353,11 +377,11 @@ mod tests {
         });
         pipeline.add(ArgModifyHook); // should never run
 
-        let result = pipeline
+        let outcome = pipeline
             .run_pre("echo", serde_json::json!({}), &test_ctx())
             .await;
 
-        assert!(result.is_err());
+        assert!(matches!(outcome, PreHookOutcome::Blocked(_)));
     }
 
     #[tokio::test]
@@ -365,11 +389,51 @@ mod tests {
         let mut pipeline = HookPipeline::new(Duration::from_millis(50));
         pipeline.add(SlowHook);
 
-        let result = pipeline
+        let outcome = pipeline
             .run_pre("echo", serde_json::json!({}), &test_ctx())
             .await;
 
         // Slow hook times out — fail-closed (blocks the tool call)
-        assert!(result.is_err());
+        assert!(matches!(outcome, PreHookOutcome::Blocked(_)));
+    }
+
+    #[tokio::test]
+    async fn pre_hook_simulate_short_circuits() {
+        struct SimulateHook;
+
+        #[async_trait::async_trait]
+        impl Hook for SimulateHook {
+            fn name(&self) -> &str {
+                "simulate-hook"
+            }
+            async fn pre_tool_use(
+                &self,
+                _tool_name: &str,
+                _arguments: &serde_json::Value,
+                _ctx: &CallContext,
+            ) -> HookDecision {
+                HookDecision::Simulate(CallToolResult::text("simulated response"))
+            }
+        }
+
+        let mut pipeline = HookPipeline::new(Duration::from_secs(5));
+        pipeline.add(SimulateHook);
+        pipeline.add(ArgModifyHook); // should never run
+
+        let outcome = pipeline
+            .run_pre("echo", serde_json::json!({}), &test_ctx())
+            .await;
+
+        match outcome {
+            PreHookOutcome::Simulated(result) => {
+                match &result.content[0] {
+                    smgglrs_protocol::Content::Text(t) => {
+                        assert_eq!(t.text, "simulated response");
+                    }
+                    _ => panic!("expected text content"),
+                }
+            }
+            other => panic!("expected Simulated, got {:?}", other),
+        }
     }
 }

@@ -2,6 +2,7 @@ pub mod capability;
 pub mod chain;
 pub mod oauth;
 pub mod openshell;
+pub mod sandbox_profile;
 
 use std::fmt;
 
