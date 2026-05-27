@@ -13,6 +13,7 @@ mod routing;
 mod safety_hook;
 pub mod skill_hook;
 pub mod statistical;
+pub mod temporal_contract;
 mod tool_guard;
 
 pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
@@ -23,6 +24,9 @@ pub use routing::{ModelTier, ModelTierConfig, RoutingConfig, RoutingHook};
 pub use safety_hook::SafetyHook;
 pub use skill_hook::{Intervention, SkillHook, SkillRule};
 pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
+pub use temporal_contract::{
+    ContractAction, SessionActionLog, TemporalContract, TemporalContractHook, TemporalPredicate,
+};
 pub use tool_guard::ToolGuardHook;
 
 use crate::auth::CallContext;

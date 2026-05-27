@@ -3466,6 +3466,43 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         ));
     }
 
+    // Temporal behavioral contracts
+    if cfg.temporal_contracts.enabled && !cfg.temporal_contracts.contracts.is_empty() {
+        let action_log = std::sync::Arc::new(
+            smgglrs_core::hooks::SessionActionLog::new(
+                cfg.temporal_contracts.max_history_per_session,
+            ),
+        );
+        let mut contracts = Vec::new();
+        for tc in &cfg.temporal_contracts.contracts {
+            match serde_json::from_value::<smgglrs_core::hooks::TemporalContract>(
+                serde_json::json!({
+                    "name": tc.name,
+                    "description": tc.description,
+                    "predicate": tc.predicate,
+                    "action": tc.action,
+                    "applies_to": tc.applies_to,
+                }),
+            ) {
+                Ok(contract) => contracts.push(contract),
+                Err(e) => {
+                    tracing::warn!(
+                        contract = %tc.name,
+                        error = %e,
+                        "Failed to parse temporal contract — skipping"
+                    );
+                }
+            }
+        }
+        tracing::info!(
+            count = contracts.len(),
+            "Temporal behavioral contracts enabled"
+        );
+        builder = builder.hook(smgglrs_core::hooks::TemporalContractHook::new(
+            action_log, contracts,
+        ));
+    }
+
     // Memory extraction hook (observation-only, stores tool results as knowledge)
     if let Some(ref ks) = knowledge_store {
         struct KnowledgeExtractionStore(Arc<std::sync::Mutex<smgglrs_memory::KnowledgeStore>>);

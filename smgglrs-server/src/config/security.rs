@@ -86,3 +86,45 @@ impl StatisticalGuardrailServerConfig {
         }
     }
 }
+
+/// Server-side configuration for temporal behavioral contracts.
+///
+/// ```toml
+/// [temporal_contracts]
+/// enabled = true
+/// max_history_per_session = 200
+///
+/// [[temporal_contracts.contracts]]
+/// name = "read-before-write"
+/// description = "Must read a file before writing"
+/// predicate = { type = "requires", tool = "file_write", prerequisite = "file_read" }
+/// action = { type = "block", value = "Read the file first" }
+/// applies_to = ["*"]
+/// ```
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+pub struct TemporalContractServerConfig {
+    /// Whether temporal contracts are enabled. Default: false.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Maximum action history entries per session. Default: 200.
+    #[serde(default = "default_max_history")]
+    pub max_history_per_session: usize,
+    /// List of temporal contract definitions.
+    #[serde(default)]
+    pub contracts: Vec<TemporalContractConfig>,
+}
+
+fn default_max_history() -> usize {
+    200
+}
+
+/// A single temporal contract definition in server config.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct TemporalContractConfig {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub predicate: serde_json::Value,
+    pub action: serde_json::Value,
+    pub applies_to: Vec<String>,
+}
