@@ -13,6 +13,7 @@ mod routing;
 mod safety_hook;
 mod sandbox_hook;
 pub mod skill_hook;
+pub mod provenance_hook;
 pub mod statistical;
 pub mod temporal_contract;
 mod tool_guard;
@@ -29,6 +30,7 @@ pub use temporal_contract::{
     ContractAction, SessionActionLog, TemporalContract, TemporalContractHook, TemporalPredicate,
 };
 pub use sandbox_hook::SandboxHook;
+pub use provenance_hook::{CausalSink, ProvenanceHook};
 pub use tool_guard::ToolGuardHook;
 
 use crate::auth::CallContext;

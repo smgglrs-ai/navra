@@ -3545,6 +3545,32 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         tracing::info!("Memory extraction hook enabled");
     }
 
+    // Causal provenance hook (observation-only, records tool call causality)
+    {
+        let causal_db_path = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("smgglrs")
+            .join("causal_provenance.db");
+        match smgglrs_flow::causal_graph::CausalGraphStore::open(&causal_db_path) {
+            Ok(store) => {
+                let store = std::sync::Arc::new(store);
+                tracing::info!(
+                    path = %causal_db_path.display(),
+                    "Causal provenance graph enabled"
+                );
+                builder = builder.hook(smgglrs_core::hooks::ProvenanceHook::new(
+                    store as std::sync::Arc<dyn smgglrs_core::hooks::CausalSink>,
+                ));
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to open causal provenance DB — provenance tracking disabled"
+                );
+            }
+        }
+    }
+
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
 

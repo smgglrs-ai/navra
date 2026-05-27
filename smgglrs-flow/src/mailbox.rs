@@ -22,6 +22,8 @@ pub struct MailboxMessage {
     /// Provenance chain: ordered list of (agent_id, timestamp) pairs
     /// tracking all agents that contributed to this message's content.
     pub provenance: Vec<(String, Instant)>,
+    /// Optional causal graph node ID linking this message to the provenance graph.
+    pub causal_node_id: Option<String>,
 }
 
 /// Per-agent mailbox backed by tokio mpsc.
@@ -163,6 +165,7 @@ impl MailboxRegistry {
             label: sender_label,
             timestamp: now,
             provenance,
+            causal_node_id: None,
         };
 
         target
