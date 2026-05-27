@@ -118,6 +118,15 @@ impl McpServer {
             .tool_calls_total
             .fetch_add(1, Ordering::Relaxed);
 
+        // Wire sandbox profile from capability token into CallContext
+        if ctx.sandbox.is_none() {
+            if let Some(ref caps) = ctx.agent.capabilities {
+                if let Some(ref sandbox) = caps.sandbox {
+                    ctx.sandbox = Some(sandbox.clone());
+                }
+            }
+        }
+
         // Reject all tool calls when paused
         if self.paused.load(Ordering::Relaxed) {
             return CallToolResult::error(
@@ -337,15 +346,20 @@ impl McpServer {
             "tool_call.start"
         );
 
-        // Run pre-hooks (may modify arguments or block execution)
+        // Run pre-hooks (may modify arguments, simulate, or block execution)
         let arguments = if self.hooks.has_hooks() {
             match self
                 .hooks
                 .run_pre(&params.name, resolved.arguments, &ctx)
                 .await
             {
-                Ok(args) => args,
-                Err(reason) => {
+                crate::hooks::PreHookOutcome::Proceed(args) => args,
+                crate::hooks::PreHookOutcome::Simulated(result) => {
+                    self.process_table
+                        .complete_call(&ctx.agent.name, &params.name);
+                    return result;
+                }
+                crate::hooks::PreHookOutcome::Blocked(reason) => {
                     self.process_table
                         .complete_call(&ctx.agent.name, &params.name);
                     return CallToolResult::error(reason);

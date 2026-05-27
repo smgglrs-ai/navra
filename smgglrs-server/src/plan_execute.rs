@@ -2330,6 +2330,7 @@ steps:
             session_id: "test-session".to_string(),
             taint: smgglrs_core::ifc::TaintTracker::new(),
             remaining_tokens: None,
+            sandbox: None,
         }
     }
 }
