@@ -743,6 +743,7 @@ mod tests {
             credentials: vec![],
             expires_at: u64::MAX,
             obo_sub: None,
+            sandbox: None,
         };
         let result = engine.check_with_capabilities(
             "cap:ring2",
@@ -766,6 +767,7 @@ mod tests {
             credentials: vec![],
             expires_at: u64::MAX,
             obo_sub: None,
+            sandbox: None,
         };
         let result = engine.check_with_capabilities(
             "cap:ring2",
