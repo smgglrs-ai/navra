@@ -93,6 +93,8 @@ pub struct ResolvedCapabilities {
     pub expires_at: u64,
     /// On-behalf-of human subject identifier, for audit trails.
     pub obo_sub: Option<String>,
+    /// Sandbox profile from the capability token.
+    pub sandbox: Option<super::sandbox_profile::SandboxProfile>,
 }
 
 /// Revocation list for capability tokens.
@@ -228,6 +230,7 @@ pub fn resolve_capabilities(payload: &CapabilityPayload) -> ResolvedCapabilities
         credentials: payload.cap.credentials.clone(),
         expires_at: payload.exp,
         obo_sub: payload.obo.as_ref().map(|o| o.sub.clone()),
+        sandbox: payload.sandbox.clone(),
     }
 }
 

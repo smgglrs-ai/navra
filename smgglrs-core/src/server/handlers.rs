@@ -118,6 +118,15 @@ impl McpServer {
             .tool_calls_total
             .fetch_add(1, Ordering::Relaxed);
 
+        // Wire sandbox profile from capability token into CallContext
+        if ctx.sandbox.is_none() {
+            if let Some(ref caps) = ctx.agent.capabilities {
+                if let Some(ref sandbox) = caps.sandbox {
+                    ctx.sandbox = Some(sandbox.clone());
+                }
+            }
+        }
+
         // Reject all tool calls when paused
         if self.paused.load(Ordering::Relaxed) {
             return CallToolResult::error(
