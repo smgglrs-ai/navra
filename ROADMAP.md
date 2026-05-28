@@ -4,9 +4,9 @@ This document tracks the evolution of the smgglrs-* crate family from
 an MCP gateway (smgglrs) into a complete multi-agent orchestration
 platform.
 
-## Current state (2026-05-26)
+## Current state (2026-05-28)
 
-22 crates, ~105K LoC, 2110+ tests, 0 warnings. 43 personas, 36
+22 crates, ~105K LoC, 2464+ tests, 0 warnings. 43 personas, 36
 heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
 Fully local multi-agent demos. Full PII pipeline (regex + NER + file
 paths, pseudonymization, GDPR tools, IFC integration). Containerized
@@ -16,7 +16,31 @@ tools. Statistical guardrails. Context budget enforcement. Hybrid
 FTS5+vector RAG with RRF fusion. Upstream tool scanning (8 threat
 categories). Cognitive file integrity monitoring. Prometheus /metrics
 endpoint + OTel trace export. Agentic OS primitives (agent signals,
-hibernation, preemptive scheduling, kernel resources).
+hibernation, preemptive scheduling, kernel resources). vLLM backend
++ Engine×Isolation refactor (6 backends). 138 Kani formal proofs.
+
+### Recent (2026-05-28)
+
+- **Tech watch** (31 items, 7 domains, 5 research agents): MCP
+  2026-07-28 RC (largest breaking revision — sessions removed),
+  Shadow Escape zero-click MCP attack, 3 IFC competitors (FIDES,
+  MVAR, NeuroTaint), Microsoft AGT 7-package governance toolkit,
+  K8s Agent Sandbox CRDs, auth.md agent registration protocol,
+  TurboVec Rust vector index, MemForest temporal memory, MUSE
+  skill lifecycle, Cloudflare 5-channel RRF (validates smgglrs-rag),
+  OWASP ASI 2026 taxonomy (smgglrs covers 8/10)
+- **New roadmap items**: Egress allowlist (9u), OWASP ASI mapping
+  (9v), HyDE retrieval channel (7k), cross-tool anomaly detection
+  (9w), MCP 2026-07-28 runtime-gated migration (9x),
+  auth.md/ID-JAG (9y), TurboVec eval (7l), IFC cryptographic
+  witness (11k), IFC adversarial benchmark (11l), NeuroTaint
+  offline audit (11m), adaptive chunking metrics (7m), K8s
+  sandbox backend (6i), MemForest temporal memory (3l), MUSE
+  skill lifecycle (1k), Cedar policy eval (9z), dynamic tool
+  routing (8l), kill switch (2m), MCP default flip (9aa)
+- **vLLM backend**: Engine×Isolation refactor — 6 backends
+  (LlamaCpp/vLLM × direct/Podman/OpenShell), 42 tests
+- **Kani proofs**: 23→138 across 14 crates, 7 waves
 
 ### Recent (2026-05-26)
 
@@ -197,6 +221,373 @@ hibernation, preemptive scheduling, kernel resources).
 - Self-review findings: zombie process fix, port TOCTOU, pick_free_port
   dedup, git_diff ref fix, vision size limit, memory pagination, SSE
   RwLock, audience validation warnings
+
+### Dependency graph & execution plan (2026-05-28)
+
+All pending roadmap items organized by dependency chains, priority,
+and parallelism. Items at the same depth in a chain can run in
+parallel with items from other chains.
+
+#### Legend
+
+- **→** hard dependency (must complete first)
+- **⇢** soft dependency (informs but doesn't block)
+- **⏳** external gate (spec release, OSS availability, hardware)
+- Priority: P0 = Critical, P1 = High, P2 = Medium-High, P3 = Medium
+
+#### Chain 1: MCP protocol evolution (HIGH — incremental)
+
+```
+9x. MCP 2026-07-28 runtime-gated migration
+    P1, additive 3-4d + gated 5-7d (weekly increments)
+    │
+    ├─ additive items ship immediately (both versions)
+    │  Mcp-Method headers, ttlMs, Trace Context, deprecation warnings
+    │
+    ├─ gated items behind mcp_version = "2026-07-28"
+    │  stateless dispatch, session-free IFC, Tasks extension, MCP Apps
+    │
+    └──→ 9aa. Default flip + cleanup
+              P0, 3-5d, ⏳ July 28 final spec
+```
+
+9x is now incremental (weekly cadence), not a big-bang migration.
+Additive items ship under both versions. Gated items are behind a
+runtime config switch. 9aa is just flipping the default + agent
+client update after the spec finalizes.
+
+Parallel with 9x additive work:
+- 8l (dynamic tool routing) benefits from Mcp-Method headers
+- 9y (auth.md) aligns with the 6 OAuth hardening SEPs
+
+#### Chain 2: Security hardening (HIGH — Shadow Escape defense)
+
+```
+                     ┌→ 9w. Cross-tool anomaly detection (P2, 2-3d)
+9u. Egress allowlist ┤
+    P1, 2-3d         └⇢ 11m. NeuroTaint offline audit (P3, 5-7d)
+                              ↑
+9v. OWASP ASI mapping ─⇢ 11l. IFC adversarial benchmark
+    P1, 2-3d                  P3, 3-5d, ⏳ corpus availability
+
+11k. IFC crypto witness ─⇢ 11l. IFC adversarial benchmark
+     P2, 2-3d                   ↓
+                           11m. NeuroTaint offline audit
+                                P3, 5-7d
+```
+
+9u and 9v are independent P1 items — start immediately.
+9w builds on 9u's egress patterns. 11k/11l/11m form the IFC
+competitive positioning chain (benchmarking against FIDES/MVAR/
+NeuroTaint). 11l is gated on public corpus availability.
+
+#### Chain 3: Auth & policy (MEDIUM-HIGH)
+
+```
+9y. auth.md / ID-JAG ──── (independent)
+    P2, 3-4d
+
+9z. Cedar policy ──── (independent)
+    P3, 3-4d
+
+U2. GitHub module ──→ U3. GitLab ──→ U4. Jira
+    P1, 3-4d    │     P2, 3-4d       P3, 2-3d
+                ├──→ U5. Permission patterns (P1, 1d)
+                │         ↓
+                │    U7. Policy engine sidecar (P3, 3-4d)
+                └──→ U6. GraphQL scope escape (P1, 1-2d)
+```
+
+9y and 9z are independent of each other and of the U-chain.
+The U-chain (platform tools) has U2 as the foundation — U3-U7
+all depend on patterns established in U2. U8 (K8s config reload)
+is independent.
+
+#### Chain 4: RAG pipeline (MEDIUM)
+
+```
+7k. HyDE channel ──── (independent, P3, 1-2d)
+
+7l. TurboVec eval ──── (independent, P3, 2-3d)
+    ⇢ if adopted, replaces sqlite-vec in 7b/7c
+
+7m. Adaptive chunking ──── (independent, P3, 2-3d)
+
+7b. Semantic query caching (P1, 3-5d)
+7c. Agentic RAG L2 (P1, 3-5d)
+    both depend on 7a ✅
+
+7d. Nomic Embed eval (P2, 2d)
+```
+
+All RAG items are independent of each other. 7k, 7l, 7m are new;
+7b, 7c are existing high-priority items. Can run any combination
+in parallel. 7l results inform whether to proceed with TurboVec
+replacement or stay with sqlite-vec.
+
+#### Chain 5: Memory architecture (MEDIUM)
+
+```
+3b. Memory type classification ──── (independent, design complete)
+
+3k. KG triple storage ──── depends on 3j ✅
+    P3, 2-3d
+
+3l. MemForest temporal memory ──── (independent)
+    P3, 7-10d, ⏳ OSS release
+```
+
+3l is the largest memory item. Independent of 3k. Both can
+proceed in parallel. 3l is gated on MemForest's open-source
+release availability.
+
+#### Chain 6: Cognitive & skills (MEDIUM)
+
+```
+1j. Skill source pipeline ──→ 1k. MUSE skill lifecycle
+    P3, 2-3d                      P3, 5-7d
+
+1d. Lazy-loading specializations ──── (independent, P3)
+1g. Negative constraints ──── (independent, P3)
+```
+
+1k depends on 1j (skill pipeline must exist before lifecycle
+management). 1d and 1g are small independent items.
+
+#### Chain 7: Flow orchestration (MEDIUM)
+
+```
+2m. Kill switch + circuit breaker ──── (independent, P3, 2-3d)
+
+2l. Operator libraries ──── (independent, P3, 0.5-1d)
+
+2a. YAML flow definitions ──── (design complete, needs impl)
+```
+
+All independent. 2m is new (tech watch), 2l and 2a are existing.
+
+#### Chain 8: Isolation & deployment (MEDIUM)
+
+```
+6i. K8s Agent Sandbox ──── (independent)
+    P3, 3-5d, ⏳ v1alpha1 stability
+
+6g. NemoClaw MCP bridge ──── (independent, P3, 1d)
+6h. Privacy Router ──── (independent, P3, 1d)
+
+U8. K8s-friendly config reload (P2, 1-2d)
+```
+
+6i is new (tech watch). All independent — can run in any order.
+
+#### Chain 9: Model & safety research (MEDIUM — gated)
+
+```
+11a. ONNX/ort deepening ──⇢ 11b. KAME voice
+     P3, research              P3, research
+     ⏳ ONNX spec              ⏳ Moshi ONNX export
+
+11d. PII ONNX classifier ──── (independent, P3, 2-3d)
+
+11g. Speculative decoding ──── (independent, P3, 2-3d)
+     ⏳ OpenVINO 2026.1 EAGLE3
+
+11i. delta-mem OSAM eval ──── (independent, P3, 2d)
+     ⏳ ONNX integration
+
+11j. Harness-aligned training ──── (independent, P3, research)
+
+11c. Adversarial safety eval ──── (independent, P3, 3-5d)
+
+11e. Statistical guardrails ──── already impl'd ✅ (verify)
+```
+
+Most Phase 11 items are research-gated and independent. They
+can be picked up opportunistically when gates clear.
+
+#### Chain 10: Papers (blocks on code + eval)
+
+```
+13a. Critical fixes ──→ 10a. Security paper
+     ~3d total      │   ↑
+                    │   ├── 11l (IFC benchmark results)
+                    │   ├── 11k (crypto witness for claims)
+                    │   └── 9v (OWASP mapping for framing)
+                    │
+                    ├─→ 10b. Persona paper
+                    │   ↑
+                    │   └── 1k (skill lifecycle for contribution)
+                    │
+                    └─→ 10c. Review paper
+                        ↑
+                        └── C3 (external eval, 3-5d)
+
+13b. Significant fixes ──⇢ all papers (weakens if skipped)
+13c. Missing related work ──⇢ all papers (bibliography)
+13d. Restructuring decisions ──⇢ all papers (scope)
+```
+
+Papers are the terminal node for many chains. 10a benefits from
+11k, 11l, 9v results. 10b benefits from 1k. 10c needs C3
+external evaluation.
+
+#### Chain 11: Web UI (MEDIUM — independent track)
+
+```
+15a. Multi-turn chat ──→ 15e. Embeddable widget
+     P1, 3-4d              P3, 2-3d
+
+15b. Live dashboard ──→ 15c. DAG visualization
+     P1, 2-3d              P3, 2-3d
+
+15d. Branding ──── (independent, P3, 1-2d)
+```
+
+15a and 15b are parallel P1 items. Completely independent of
+all other chains — can be worked on anytime.
+
+#### Chain 12: UX & tool patterns (MEDIUM)
+
+```
+8l. Dynamic tool routing ──── (independent, P3, 2-3d)
+
+8c. Config schema gen (P3, 1d)
+8d. Computer use Actor (P2, 2d)
+8g. Intent-based tool grouping (P2, 2-3d) ─⇢ 8l
+8h. Multi-hypothesis routing (P3, 1-2d)
+8f. ToolBlock output (P2, 1d)
+
+5h. Upstream prompt injection ──── (independent)
+5i. Module trait taxonomy ──── (independent, P3, 3-5d)
+```
+
+8g and 8l are related (both about tool selection) — do 8g first,
+8l extends it with IFC-gated filtering. Others are independent.
+
+#### Chain 13: Ecosystem integration (LOW — opportunistic)
+
+```
+5b. MCP permission negotiation ──── (AAIF contribution)
+5d. LLM backend expansion ──── (independent)
+5e. A2UI generative UI ──── (independent)
+5f. Registry proxy ──── (independent)
+5g. Cross-validation in flows ──── (independent)
+9i. Spec compliance test suite (P1, 2d)
+9j. WebSocket agentic loops (P2, 2-3d)
+9t. HTML-to-markdown (P3, 1d)
+```
+
+Mostly independent, lower priority. 9i is P1 but small (2 days).
+
+---
+
+#### Execution plan: priority-sorted waves
+
+```
+WAVE 1 — Immediate (no blockers, high priority)
+════════════════════════════════════════════════
+Can all run in parallel. ~1 week with 2 tracks.
+
+  Track A (security):          Track B (features):
+  9u  Egress allowlist  P1     7k  HyDE channel      P3  1-2d
+  9v  OWASP ASI mapping P1     9i  Spec compliance    P1  2d
+  9w  Cross-tool anomaly P2    U8  K8s config reload  P2  1-2d
+
+  Track C (MCP 2026-07-28 — additive items, weekly cadence):
+  9x  Mcp-Method headers, ttlMs, Trace Context, deprecation warnings
+      P1, 3-4d for additive batch
+
+WAVE 2 — Design + evaluation (S11 prep)
+═══════════════════════════════════════
+Parallel tracks, ~2 weeks. 9x gated work continues weekly.
+
+  Track A (IFC/protocol):      Track B (auth/policy):
+  9x  MCP stateless dispatch   9y  auth.md/ID-JAG    P2  3-4d
+      + session-free IFC  P1   9z  Cedar policy       P3  3-4d
+  11k IFC crypto witness P2    U2  GitHub module      P1  3-4d
+  11l IFC adversarial    P3
+
+  Track C (RAG/UX):            Track D (infra):
+  7l  TurboVec eval      P3    2m  Kill switch        P3  2-3d
+  7m  Adaptive chunking  P3    8l  Dynamic routing    P3  2-3d
+  7b  Semantic caching   P1    1j  Skill pipeline     P3  2-3d
+
+WAVE 3 — Architecture evolution (S12)
+═════════════════════════════════════
+Larger items, ~3 weeks.
+
+  Track A (memory/cognitive):   Track B (isolation/security):
+  3l  MemForest temporal  P3    6i  K8s sandbox       P3  3-5d
+  1k  MUSE skill lifecycle P3   11m NeuroTaint audit   P3  5-7d
+  7c  Agentic RAG L2      P1    U3  GitLab module     P2  3-4d
+
+  Track C (UI — independent):
+  15a Multi-turn chat     P1    3-4d
+  15b Live dashboard      P1    2-3d
+
+WAVE 4 — Gated items (external dependencies)
+════════════════════════════════════════════
+Start when gates clear. Can interleave with W2/W3.
+
+  9aa  MCP default flip   P0   ⏳ July 28 spec (3-5d)
+  11a  ONNX/ort deepening P3   ⏳ ONNX spec
+  11b  KAME voice          P3   ⏳ Moshi ONNX
+  11g  Speculative decoding P3  ⏳ OpenVINO EAGLE3
+  11i  delta-mem OSAM      P3   ⏳ ONNX integration
+
+WAVE 5 — Papers (terminal)
+══════════════════════════
+After W2-W3 produce results.
+
+  13a  Critical paper fixes     ~3d
+  10a  Security paper           depends on 11k, 11l, 9v
+  10b  Persona paper            depends on 1k
+  10c  Review paper             depends on C3 (3-5d eval)
+```
+
+#### Critical paths (longest chains)
+
+```
+1. MCP migration:
+   9x additive (4d) + gated (7d weekly) → 9aa flip (5d)
+   No longer blocked — incremental work starts W1.
+   9aa is just the default flip after July 28 confirms spec.
+
+2. IFC competitive positioning:
+   11k (3d) → 11l (5d) → 11m (7d) → 10a     = 15d
+   Longest pure-effort chain. Start in W2.
+
+3. Cognitive skills:
+   1j (3d) → 1k (7d) → 10b                  = 10d
+   Start 1j in W2 to unblock 1k in W3.
+
+4. Platform tools:
+   U2 (4d) → U5 (1d) → U7 (4d)              = 9d
+   U2 also unblocks U3, U4, U6.
+
+5. Shadow Escape defense:
+   9u (3d) → 9w (3d)                          = 6d
+   Fast critical path. Complete in W1.
+```
+
+#### Parking lot (LOW priority, no urgency)
+
+These items have no dependencies on them and can wait:
+
+| ID | Item | Priority | Effort |
+|----|------|----------|--------|
+| 1d | Lazy-loading specializations | Low | — |
+| 1g | Negative constraints | Low | — |
+| 2l | Operator libraries | Low | 0.5-1d |
+| 3k | KG triple storage | Low-Med | 2-3d |
+| 5b-5g | Ecosystem integration batch | Various | — |
+| 8c | Config schema gen | Med | 1d |
+| 8f | ToolBlock output | Med-High | 1d |
+| 8h | Multi-hypothesis routing | Low | 1-2d |
+| 9t | HTML-to-markdown | Low-Med | 1d |
+| 11j | Harness-aligned training | Med | research |
+| 15d | Branding | Low | 1-2d |
+| 15e | Embeddable widget | Low-Med | 2-3d |
 
 ### Infrastructure (complete)
 
@@ -839,6 +1230,42 @@ registry, deduplicated, filtered by ACLs.
 Reference: Microsoft Agent Framework skill composition (2026-05-22),
 CodeWhale cross-compatible discovery (2026-05-25).
 
+#### 1k. MUSE-Autoskill lifecycle management (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-cognitive` (new `skill.rs`)
+
+Add formal skill lifecycle management based on MUSE-Autoskill
+(ByteDance/RIT, 2605.27366). smgglrs-cognitive has `Persona` with
+`skills: Vec<String>` but no creation, testing, memory, or refinement
+pipeline:
+
+- **SKILL.md format**: Adopt Anthropic Agent Skills format as skill
+  standard. Natural extension of existing YAML persona/directive
+  structure. Each skill gets: SKILL.md (definition), .memory.md
+  (per-skill experience), scripts/ (executable), tests/ (validation),
+  resources/ (data).
+- **Skill-level memory**: .memory.md files accumulating per-skill
+  experience. New memory tier alongside TraitVector persona traits.
+- **Test-before-register**: Skills require passing unit tests before
+  registration. Prevents bad skill accumulation (MUSE found this
+  critical for reliability).
+- **IFC labels on skills**: Taint-track skills to prevent skill
+  injection attacks. A skill loaded from an untrusted source gets
+  Untrusted integrity label. Skill execution inherits the label.
+- **Model-aware routing**: Skills extracted by one model may cause
+  negative transfer in another (From Raw Experience to Skill
+  Consumption, 2605.23899). Tag skills with the model that created
+  them and route accordingly.
+
+**Effort**: 5-7 days. **Priority**: Medium.
+**Depends on**: 1j (skill source pipeline).
+**Acceptance**: Skills created, tested, registered, and refined
+through lifecycle. Per-skill memory accumulates across sessions.
+Skill injection blocked by IFC.
+
+Reference: MUSE-Autoskill (2605.27366), From Raw Experience to Skill
+Consumption (2605.23899), Anthropic Agent Skills format.
+
 **Why first**: The cognitive core is smgglrs's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
 
@@ -1229,6 +1656,31 @@ out-of-vocabulary tool calls.
 
 Reference: NVIDIA financial signal discovery (2026-05-22).
 
+#### 2m. Kill switch and circuit breaker for flows (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-flow` (executor.rs)
+
+Add kill switch and circuit breaker patterns for flow orchestration
+resilience. Inspired by Microsoft AGT Agent SRE:
+
+- **Kill switch**: Immediate termination of a running flow and all
+  its sub-agents. Triggered via MCP tool call or D-Bus signal.
+  Different from existing hop limits (2f) which prevent propagation
+  — kill switch stops everything now.
+- **Circuit breaker**: Per-tool failure tracking with configurable
+  thresholds. After N consecutive failures for a tool, the circuit
+  opens and the flow skips/reroutes that tool for a cooldown period.
+  Prevents cascading failures (OWASP ASI08).
+- **SLO monitoring**: Track per-flow success rate and latency. Alert
+  when SLO thresholds are breached. Wire into existing Prometheus
+  metrics.
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Acceptance**: Kill switch terminates running flow within 1s.
+Circuit breaker opens after 3 consecutive tool failures.
+
+Reference: Microsoft AGT Agent SRE, OWASP ASI08 (Cascading Failures).
+
 ### Phase 3: Persistent memory (smgglrs-memory)
 
 **Goal**: Working memory that survives sessions, knowledge
@@ -1525,6 +1977,44 @@ and queryable via graph traversal.
 
 Reference: kg-gen (Stanford STAIR Lab, NeurIPS '25), Google Codelabs
 Gemini KG generation.
+
+#### 3l. MemForest hierarchical temporal memory (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-memory` (new `temporal.rs`)
+
+Adopt hierarchical temporal indexing from MemForest (NUS/Zero Gravity
+Labs, 2605.23986). smgglrs-memory currently uses flat SQLite tables
+with sequential writes through a single `Mutex<Connection>`:
+
+- **MemTree index**: Leaves store time-local evidence, internal nodes
+  summarize contiguous intervals, root provides coarse recall.
+  O(log N) write cost via localized ancestor-path updates.
+- **Three tree types**: Session (chronology), Entity (recurring
+  subjects), Scene (multi-entity context). Replaces flat scoping
+  columns (entity_id, process_id, session_id).
+- **Parallel chunk extraction**: Break sequential LLM bottleneck
+  by processing chunks independently and concurrently into canonical
+  facts with temporal anchors.
+- **Lazy dirty-path refresh**: Coalesce summarization updates at
+  same level. Reduces LLM summary calls compared to eager updates.
+- **Two-phase retrieval**: Forest Recall (root summaries for tree
+  selection) + Tree Browse (descent to leaf evidence). Embedding-
+  only mode for low latency, LLM-guided for higher accuracy.
+
+Do NOT abandon FTS5 or sqlite-vec. MemForest augments the existing
+hybrid search (FTS5 + vector + RRF), adding temporal structure on
+top.
+
+**Research gate**: Is the MemForest open-source release
+(github.com/Concyclics/MemForest) available and integrable with
+Rust? Does the write throughput improvement justify the complexity?
+
+**Effort**: 7-10 days. **Priority**: Medium.
+**Acceptance**: 3x+ write throughput improvement. Temporal queries
+("what did we discuss about X last week?") return relevant results
+via tree descent.
+
+Reference: MemForest (arXiv:2605.23986), LongMemEval-S benchmark.
 
 ### Phase 4: Mandate validation & failure recovery ✓
 
@@ -1962,6 +2452,39 @@ backend routing.
 Reference: OpenShell Privacy Router documentation, Red Hat Summit
 2026 announcements.
 
+#### 6i. Kubernetes Agent Sandbox backend (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-model-runtime`, `smgglrs-tools-exec`
+
+Add Kubernetes Agent Sandbox CRD as a fourth isolation backend
+alongside direct, Podman, and OpenShell:
+
+- **SandboxClaim integration**: Map smgglrs capability tokens to
+  SandboxClaim creation. Capability delegation authorizes sandbox
+  provisioning.
+- **SandboxTemplate mapping**: Define security profiles per risk
+  tier (smgglrs risk_tier → SandboxTemplate). Low risk = gVisor
+  (syscall-level), high risk = Kata Containers (VM-level).
+- **SandboxWarmPool**: Pre-warm execution sandboxes for sub-second
+  provisioning. Addresses cold-start latency for tool execution.
+- **Hibernation**: Pause idle sandboxes to save compute. Resume on
+  network activity.
+- **Model-runtime isolation**: Add `Kubernetes` variant to the
+  Engine×Isolation matrix (LlamaCpp/vLLM × direct/Podman/OpenShell/
+  Kubernetes).
+
+Kubernetes-specific — smgglrs also needs local/desktop isolation
+(Podman, OpenShell) for non-K8s deployments.
+
+**Research gate**: Is agent-sandbox v1alpha1 stable enough? What's
+the API surface we need to depend on?
+
+**Effort**: 3-5 days. **Priority**: Medium.
+**Acceptance**: Model-runtime serves a model inside a K8s sandbox
+with sub-second provisioning via warm pool.
+
+Reference: kubernetes-sigs/agent-sandbox, GKE Agent Sandbox.
+
 ### Phase 7: RAG enhancements
 
 #### 7a. Two-stage retrieval with cross-encoder reranking ✅
@@ -2180,6 +2703,91 @@ matching documents only.
 Reference: Context-Aware Search (Machine Learning Mastery),
 Context Engine library.
 
+#### 7k. HyDE retrieval channel (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-rag` (search.rs)
+
+Add Hypothetical Document Embeddings (HyDE) as a third retrieval
+channel alongside FTS5 and vector search in the RRF fusion pipeline:
+
+- **HyDE**: Generate a declarative answer to the query before vector
+  search. Embed the hypothetical answer and search against stored
+  chunks. Catches vocabulary mismatches where the query and relevant
+  chunks use different terminology.
+- **Integration**: Add as third channel in RRF fusion (FTS5 + vector
+  + HyDE). The existing `3x overfetch` pattern applies per channel.
+- **Local model**: Use in-process ONNX model for HyDE generation
+  (small, fast). Fall back to direct vector search if generation
+  fails or latency exceeds budget.
+
+Validated by Cloudflare Agent Memory (5-channel RRF with HyDE) and
+gBrain (97.6% top-5 retrieval with similar hybrid architecture).
+
+**Effort**: 1-2 days. **Priority**: Medium.
+**Acceptance**: HyDE channel improves recall on vocabulary-mismatch
+queries. Latency stays within 100ms budget.
+
+Reference: Cloudflare Agent Memory (2026-04), gBrain HyDE pattern.
+
+#### 7l. TurboVec evaluation (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-rag` (store.rs)
+
+Evaluate TurboVec as replacement for sqlite-vec in the vector search
+backend. TurboVec is a Rust vector index using Google's TurboQuant
+data-oblivious quantization algorithm:
+
+- **Memory**: 16x compression (float32 → 2-bit). 10M vectors: 31GB
+  to 4GB. Current sqlite-vec stores full float32 embeddings.
+- **Speed**: 12-20% faster than FAISS IndexPQFastScan on ARM.
+  SIMD-accelerated via NEON/AVX-512BW/AVX2.
+- **Zero training**: Data-oblivious quantization with analytically
+  precomputed codebooks. Matches smgglrs-rag's append-oriented
+  pattern (incremental `index_document()` adds).
+- **Swap feasibility**: RRF fusion layer is vector-backend-agnostic.
+  Cache layer (cosine similarity 0.92, TTL 300s) works with either.
+  Only the search interface needs implementing.
+
+**Research gate**: Benchmark on smgglrs-rag's actual workload
+(breadcrumb chunks, cross-encoder reranking). Compare recall and
+latency at 10K-100K vectors.
+
+**Effort**: 2-3 days (eval). **Priority**: Medium.
+**Acceptance**: TurboVec matches sqlite-vec recall within 1 point
+at 10x+ memory reduction.
+
+Reference: TurboVec (cargo add turbovec), TurboQuant (Google
+Research, arXiv:2504.19874).
+
+#### 7m. Adaptive chunking quality metrics (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-rag` (chunk.rs)
+
+Add document-aware chunking quality metrics from the Adaptive
+Chunking paper (arXiv:2603.25333, LREC 2026). Current breadcrumb
+chunking uses a single strategy for all documents:
+
+- **Block Integrity (BI)**: Verify tables, lists, and code blocks
+  are not split mid-block. Currently breadcrumb chunking can break
+  structured content.
+- **Intrachunk Cohesion (ICC)**: Measure semantic coherence within
+  each chunk using embedding similarity. Low-cohesion chunks should
+  be re-split or merged.
+- **Document-type-aware strategy**: Different chunking for code
+  files (AST-aware), markdown (heading-aware, already done), legal
+  (section-aware), and tabular data (row-aware).
+
+Do NOT add the LLM-regex splitter — conflicts with local-first,
+low-latency design. Keep breadcrumb as default; add document-type
+detection to select strategy.
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Acceptance**: Structured documents (tables, code) chunked without
+mid-block splits. BI metric passes on 95%+ of chunks.
+
+Reference: Adaptive Chunking (arXiv:2603.25333, Ekimetrics,
+LREC 2026).
+
 ### Phase 8: Warp-informed UX patterns (NEW — 2026-05-04)
 
 Patterns adopted from studying Warp's open-source codebase
@@ -2393,6 +3001,36 @@ vs execution iterations.
 
 Reference: LangChain reasoning sandwich, NVIDIA financial signal
 discovery (temp 0.8/0.0/0.5).
+
+#### 8l. Dynamic tool routing per request (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-core` (server.rs), `smgglrs-protocol`
+
+Surface only relevant tools per request instead of exposing all
+`RegisteredTools` via HashMap. Inspired by Composio's Tool Router:
+
+- **Intent-based filtering**: Classify agent request intent (read,
+  write, search, communicate) and filter tools/list response to
+  only relevant tools. Reduces prompt token usage and confusion.
+- **Agent-scoped views**: Different agents see different tool sets
+  based on their capability tokens and current session state.
+- **IFC-gated tools**: Tools that would violate IFC labels for the
+  current session context are hidden from tools/list, not just
+  denied at call time.
+- **ttlMs integration**: When MCP 2026-07-28 ships, use the new
+  caching metadata (ttlMs/cacheScope) to indicate tool list
+  stability.
+
+Composio's 28.4K stars validate demand for intelligent tool routing
+in MCP gateways. Currently smgglrs exposes all tools — the closest
+gateway competitor with this feature.
+
+**Effort**: 2-3 days. **Priority**: Medium.
+**Acceptance**: Agent in a read-only workflow sees only read tools
+in tools/list. Write tools appear when intent changes.
+
+Reference: Composio Tool Router, Open-Source Agent Toolkit
+Landscape 2026.
 
 ### Phase 9: Full MCP spec coverage (2026-05-04, mostly complete)
 
@@ -2930,6 +3568,243 @@ reaching agent. Token count reduced.
 Reference: Anthropic "HTML is the new Markdown" (2026-05),
 Cloudflare Markdown for Agents.
 
+#### 9u. Egress endpoint allowlist (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-security` (new `egress_hook.rs`)
+
+Add egress filtering to prevent data exfiltration through tool calls.
+Motivated by Shadow Escape — the first zero-click MCP attack where
+hidden instructions in documents trigger agents to send data to
+external endpoints:
+
+- **EgressFilterHook**: Pre-call hook that inspects tool arguments
+  for URLs, hostnames, and network destinations. Block or flag
+  calls to endpoints not on an allowlist.
+- **Allowlist config**: Per-agent or global allowlist in config.toml.
+  Supports domain wildcards (`*.example.com`), CIDR ranges, and
+  deny-all-except patterns.
+- **IFC integration**: Tainted data (Untrusted/PII/Secret) cannot
+  reach external endpoints regardless of allowlist. Combines with
+  existing TaintedWritePolicy::Deny.
+- **Cross-tool anomaly**: Flag when data discovered via one tool
+  (e.g., file_read) is sent through a different tool (e.g.,
+  exec_command with curl) to an external destination.
+
+Addresses OWASP ASI01 (Goal Hijack) and ASI02 (Tool Misuse).
+
+**Effort**: 2-3 days. **Priority**: High.
+**Acceptance**: Tool calls to non-allowlisted external endpoints
+are blocked. Tainted data never reaches external sinks.
+
+Reference: Shadow Escape (Operant AI, 2025-10), OWASP ASI 2026.
+
+#### 9v. OWASP ASI01-ASI10 compliance mapping (NEW — tech watch 2026-05-28)
+
+**Crate**: documentation + `smgglrs-security` (tests)
+
+Create formal mapping of smgglrs security features to the OWASP
+Agentic AI Top 10 (ASI01-ASI10):
+
+- **Mapping document**: Enumerate which crate/feature addresses
+  each risk. Current coverage: 8/10 (ASI01-ASI03, ASI05-ASI08,
+  ASI10).
+- **Gaps**: ASI04 (Supply Chain — no cryptographic verification of
+  upstream MCP server manifests), ASI09 (Human Trust — no built-in
+  human approval workflow or quorum logic for high-risk operations).
+- **Self-verification tests**: Automated tests that verify each
+  ASI mitigation is active and functioning.
+- **ASI04 mitigation**: Add Ed25519 signing for upstream MCP server
+  tool manifests. Verify signatures in `UpstreamModule::discover()`.
+- **ASI09 mitigation**: Add configurable human-in-the-loop approval
+  gates for high-risk tool calls in the hook pipeline.
+
+**Effort**: 2-3 days. **Priority**: High.
+**Acceptance**: All 10 ASI risks have documented mitigations.
+Automated tests verify 8/10 mitigations.
+
+Reference: OWASP Agentic AI Top 10 (2026), Microsoft AGT
+compliance package.
+
+#### 9w. Cross-tool data flow anomaly detection (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-security` (hooks)
+
+Detect suspicious cross-tool data flow patterns that indicate
+exfiltration. Extends IFC provenance tracking with behavioral
+anomaly detection:
+
+- **Data flow graph**: Track which tools produced data and which
+  tools consume it within a session. Build a directed graph of
+  data flows via ValueStore var:// references.
+- **Anomaly patterns**: Flag read-then-exfiltrate (data read from
+  local tool, immediately sent via network tool), privilege
+  escalation chains (data promoted across trust boundaries via
+  tool chaining), and bulk extraction (many reads followed by
+  single large external write).
+- **Integration**: Wire into existing CosineDriftDetector and
+  EntropyMonitor statistical guardrails. Add data-flow-specific
+  z-score thresholds.
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Acceptance**: Read-then-exfiltrate pattern detected and blocked
+in test scenarios.
+
+Reference: Shadow Escape (Operant AI), NeuroTaint causal
+influence detection (arXiv:2604.23374).
+
+#### 9x. MCP 2026-07-28: runtime-gated incremental migration (NEW — tech watch 2026-05-28)
+
+**Crates**: `smgglrs-protocol`, `smgglrs-core`, `smgglrs-security`,
+`smgglrs-server`
+
+Runtime config gate — both protocol versions compiled in, operator
+selects via config. Both paths exercised in CI always.
+
+```toml
+[server]
+mcp_version = "2025-03-26"   # default, current behavior
+# mcp_version = "2026-07-28" # opt-in to new spec
+```
+
+**Dispatch routing**: `dispatch()` checks `mcp_version` at runtime
+and delegates to the session-based or stateless path. Shared
+handler logic stays in common functions; only session management
+and IFC accumulation diverge.
+
+The migration splits into additive work (ships now under both
+versions) and version-specific work (gated by `mcp_version`):
+
+**Additive (both versions, ship immediately):**
+
+- `Mcp-Method` / `Mcp-Name` header parsing in `handlers.rs` — read
+  extra headers, log for routing. No behavior change.
+- `ttlMs` / `cacheScope` optional fields on `ToolInfo` and
+  `ResourceTemplate` responses (SEP-2549). `#[serde(skip_serializing_if)]`
+  keeps them invisible when unset.
+- W3C Trace Context propagation (`traceparent`, `tracestate`,
+  `baggage`) in `_meta` (SEP-414). Extends existing OTel support.
+- Deprecation warnings for `roots`, `sampling`, `logging` methods
+  in dispatch — log warning, keep handling.
+
+**Gated on `mcp_version = "2026-07-28"`:**
+
+- **Session removal**: Skip `Mcp-Session-Id` requirement in
+  dispatch. Resolve agent identity from capability token alone.
+  Current session-based path stays as default.
+- **Session-free IFC**: `Session::context_label` currently
+  accumulates taint across requests. In stateless mode, use
+  server-side context keyed by capability token hash instead of
+  session ID. Stateless from the protocol POV (no Mcp-Session-Id)
+  but gateway still tracks IFC state internally keyed by the
+  token's stable identity. This preserves all IFC invariants
+  without changing the taint model.
+- **Tasks extension**: Move from core to extension pattern.
+  `tasks/get`, `tasks/update`, `tasks/cancel` (remove `tasks/list`).
+- **MCP Apps**: Sandboxed iframe rendering with security review
+  via hook pipeline (SEP-1865). New extension.
+- **OAuth hardening**: Align with 6 hardening SEPs.
+
+**PROTOCOL_VERSION**: Expose both constants. `initialize` response
+uses the configured version. During the 12-month deprecation
+window, accept both versions from clients.
+
+```rust
+pub const PROTOCOL_VERSION_2025: &str = "2025-03-26";
+pub const PROTOCOL_VERSION_2026: &str = "2026-07-28";
+```
+
+**Weekly cadence**: Track RC changes weekly. Implement additive
+items first (W1-W2), then gated items incrementally. Log changes
+in ROADMAP Recent section. Flip default to `"2026-07-28"` after
+the July 28 final spec is confirmed stable.
+
+**Effort**: Additive: 3-4 days. Gated: 5-7 days (incremental,
+weekly). Default flip + cleanup: 3-5 days (after July 28).
+**Priority**: High.
+**Acceptance**: `cargo test` passes with both `mcp_version` values.
+IFC Kani proofs pass for both paths. Operators can switch at
+runtime without rebuild.
+
+Reference: MCP 2026-07-28 RC, SEP-2567, SEP-2549, SEP-414,
+SEP-1865, SEP-2596.
+
+#### 9y. auth.md / ID-JAG agent registration (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-security` (auth), `smgglrs-core` (transport)
+
+Support WorkOS auth.md protocol for external agent registration
+alongside existing BLAKE3 tokens:
+
+- **ID-JAG flow**: Agent presents provider-minted JWT (from OpenAI,
+  Anthropic, Cursor, etc.). smgglrs verifies against provider JWKS
+  and issues scoped capability token. Zero-interaction registration.
+- **Discovery**: Publish `/.well-known/oauth-protected-resource` for
+  smgglrs server discovery. Add `WWW-Authenticate` header on 401
+  responses for automatic agent bootstrap.
+- **User Claimed flow**: OTP-based email verification for agents
+  without provider-minted assertions.
+- **BLAKE3 coexistence**: Keep BLAKE3 for local/internal auth.
+  auth.md for external agent registration. Both produce the same
+  capability token format downstream.
+
+**Effort**: 3-4 days. **Priority**: Medium-High.
+**Acceptance**: External agent registers via ID-JAG without manual
+token provisioning. Scoped capability token issued automatically.
+
+Reference: auth.md (WorkOS, 2026-05-25), IETF ID-JAG draft,
+RFC 9728 (OAuth 2.1).
+
+#### 9z. Cedar policy language support (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-security` (permissions)
+
+Add Cedar policy language alongside existing deny-wins ACLs.
+Validated by Microsoft AGT (sub-millisecond Cedar evaluation,
+10/10 OWASP coverage) and AWS (Rex/Cedar for authorization):
+
+- **Cedar engine**: Integrate `cedar-policy` crate for policy
+  evaluation alongside existing ACL engine.
+- **Policy format**: YAML ACLs for simple cases, Cedar for complex
+  conditional policies (time-based, attribute-based, cross-resource).
+- **Migration path**: Existing ACLs continue to work. Cedar policies
+  are optional and evaluated after ACLs (deny-wins ACLs still
+  override Cedar permits).
+- **IFC integration**: Cedar policies can reference IFC labels
+  (e.g., "permit if data.confidentiality < PII").
+
+**Effort**: 3-4 days. **Priority**: Medium.
+**Acceptance**: Cedar policy blocks tool call that ACL alone would
+permit. Sub-millisecond evaluation overhead.
+
+Reference: Microsoft AGT Agent OS, AWS Cedar/Rex (2026-05-08).
+
+#### 9aa. MCP 2026-07-28 default flip + cleanup (NEW — tech watch 2026-05-28)
+
+**Crates**: `smgglrs-server` (config), `smgglrs-agent`
+
+After the July 28 final spec confirms no changes from RC, flip
+the default `mcp_version` from `"2025-03-26"` to `"2026-07-28"`.
+This is now a small item because 9x does the incremental work:
+
+- **Default flip**: Change config default. Update docs, examples,
+  tests.
+- **smgglrs-agent client**: Update the MCP client side to work
+  with stateless servers (no Mcp-Session-Id sent when connecting
+  to 2026-07-28 servers).
+- **smgglrs-flow**: Verify inter-agent flows work in stateless
+  mode (mesh mailbox, DAG executor).
+- **Deprecation timeline**: Start 12-month countdown for removing
+  2025-03-26 code path.
+- **Spec delta review**: Diff final spec against RC, fix any
+  last-minute changes.
+
+**Effort**: 3-5 days. **Priority**: Critical (after July 28).
+**Depends on**: 9x (runtime-gated migration — all gated code done).
+**Acceptance**: Default config uses 2026-07-28. All tests pass.
+smgglrs-agent connects to both old and new servers.
+
+Reference: MCP 2026-07-28 final spec (July 28).
+
 ### Phase 10: Papers (restructured 2026-05-06)
 
 Restructured from 4 narrow papers to 3 stronger papers.
@@ -3022,7 +3897,7 @@ Data collection (in progress):
 References: Claude Code Review (<1% FPR with cross-validation),
 SemaClaw (harness engineering), LangChain (Worker/Leader pattern).
 
-#### Shared bibliography (5 arXiv + 25 named systems)
+#### Shared bibliography (5 arXiv + 40 named systems)
 
 | Reference | Used in |
 |-----------|---------|
@@ -3042,10 +3917,26 @@ SemaClaw (harness engineering), LangChain (Worker/Leader pattern).
 | LangChain | 10a, 10c (Worker/Leader convergence) |
 | ZeroClaw | 10a (Rust competitor baseline) |
 | OWASP Top 10 for LLM | 10a (threat model) |
+| OWASP ASI 2026 | 10a (agentic threat taxonomy) |
 | EU AI Act Article 14 | 10a (compliance) |
 | NVIDIA Vera Rubin | 10b (agentic token economics, 15x multiplier) |
 | OpenAI Privacy Filter | 10a (PII detection, if 11d done) |
 | Vercel DeepSec | 10a, 10c (AI security scanning, multi-stage pattern) |
+| FIDES (arXiv:2505.23643) | 10a (IFC competitor, expanded differentiation) |
+| MVAR dual-lattice IFC | 10a (IFC competitor, execution firewall) |
+| NeuroTaint (arXiv:2604.23374) | 10a (semantic taint, F1=0.928 vs label-only) |
+| Shadow Escape (Operant AI) | 10a (zero-click MCP attack, validates gateway) |
+| MCP 2026-07-28 RC | 10a (stateless protocol redesign) |
+| auth.md (WorkOS) | 10a (agent registration protocol) |
+| K8s Agent Sandbox CRD | 10a (isolation infrastructure) |
+| MUSE-Autoskill (2605.27366) | 10b (skill lifecycle management) |
+| MemForest (2605.23986) | 10b (hierarchical temporal memory) |
+| Claw-Anything (2605.26086) | 10c (always-on benchmark) |
+| Cloudflare Agent Memory | 10b (5-channel RRF validation) |
+| gBrain (Garry Tan) | 10b (zero-LLM graph extraction) |
+| Hermes Agent (Nous Research) | 10b (consumer agent framework) |
+| TurboVec / TurboQuant (2504.19874) | 10b (vector quantization) |
+| Skill Consumption (2605.23899) | 10b (negative transfer) |
 
 ### Phase 11: Model & safety research (from tech watch 2026-05-06)
 
@@ -3279,6 +4170,93 @@ accuracy on smgglrs-specific tasks than base model.
 
 Reference: MagenticLite/MagenticBrain (Microsoft Research),
 Fara1.5 FaraGen1.5 synthetic data pipeline.
+
+#### 11k. IFC cryptographic witness for declassification (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-security` (ifc)
+
+Add cryptographic witness to declassification operations. Currently
+`TaintTracker::declassify()` exists but without formal verification.
+Gap exposed by FIDES (formal information-hiding primitives) and MVAR
+(cryptographic provenance):
+
+- **Witness record**: Each declassification produces a signed record
+  containing: original label, new label, declassifier identity,
+  timestamp, justification. Signed with Ed25519 (reuse existing
+  capability token signing infrastructure).
+- **Audit trail**: Witnesses appended to blackbox audit log. Enables
+  post-hoc verification that all declassifications were authorized.
+- **Role-based gates**: Only specific roles (configured per-agent)
+  can trigger declassification. Prevents implicit trust escalation.
+
+FIDES's information-hiding primitives are the reference design.
+smgglrs's advantage is gateway-level enforcement (can't be bypassed
+by LLM reasoning).
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Acceptance**: Every declassification produces a verifiable signed
+witness. Unauthorized declassification attempts are rejected.
+
+Reference: FIDES (Microsoft Research, arXiv:2505.23643), MVAR
+cryptographic provenance.
+
+#### 11l. IFC adversarial corpus benchmark (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-security` (tests)
+
+Benchmark smgglrs-security's IFC against MVAR's adversarial corpus
+and the NeuroTaint TaintBench:
+
+- **MVAR corpus**: 50-vector adversarial corpus across 9 attack
+  categories. MVAR claims 100% block rate. Establish smgglrs's
+  baseline.
+- **TaintBench**: 400 scenarios across 20 agent frameworks. FIDES
+  achieves F1=0.522, NeuroTaint achieves F1=0.928. smgglrs's
+  per-value IFC + statistical guardrails should fall between these.
+- **AgentDojo**: FIDES's primary evaluation benchmark. Run smgglrs's
+  IFC on AgentDojo for direct comparison.
+- **Gap analysis**: Identify which attack categories smgglrs's
+  label-only IFC misses (semantic transformation, causal influence,
+  cross-session contamination).
+
+**Effort**: 3-5 days. **Priority**: Medium.
+**Gate**: Are MVAR corpus and TaintBench publicly available?
+**Acceptance**: smgglrs IFC block rate > 90% on MVAR corpus.
+F1 measured on TaintBench.
+
+Reference: MVAR (github.com/mvar-security/mvar), NeuroTaint
+(arXiv:2604.23374), FIDES AgentDojo evaluation.
+
+#### 11m. NeuroTaint offline taint audit (NEW — tech watch 2026-05-28)
+
+**Crate**: `smgglrs-security` (new `taint_audit.rs`)
+
+Implement offline semantic taint analysis inspired by NeuroTaint.
+smgglrs's inline label-only IFC (FIDES-class, F1~0.522) is
+insufficient for semantic attacks. NeuroTaint's F1=0.928 comes from
+three mechanisms smgglrs lacks:
+
+- **Semantic transformation tracking**: Detect meaning-preserving
+  transformations (paraphrase, summarization) that bypass label
+  tracking. Use embedding similarity on tool inputs/outputs across
+  sessions.
+- **Causal influence detection**: Identify how untrusted data
+  influences agent decisions without direct content transfer. Analyze
+  decision-point traces in the blackbox audit log.
+- **Cross-session memory contamination**: Monitor smgglrs-memory's
+  knowledge store for taint propagation across sessions. Detect
+  when tainted data persists and influences future queries.
+- **Offline operation**: Analyze OTel traces and blackbox audit logs
+  post-hoc. Zero inline latency overhead. Run on schedule or
+  on-demand.
+
+**Effort**: 5-7 days. **Priority**: Medium.
+**Gate**: Does offline semantic analysis achieve measurable
+improvement on TaintBench over inline-only IFC?
+**Acceptance**: Offline audit detects semantic taint that inline
+IFC misses. F1 improves from baseline.
+
+Reference: NeuroTaint (arXiv:2604.23374), FIDES comparison.
 
 #### 11c. Adversarial safety evaluation
 
@@ -3631,6 +4609,21 @@ late 2025 are now contested.
 | Dreadnode SDK red teaming (2605.04019) | 1 | Should cite |
 | Anthropic MCP Tunnels + self-hosted sandboxes | 1 | Should cite |
 | NemoClaw MCPS signing (Issue #204) | 1 | Should cite |
+| MVAR dual-lattice IFC (github.com/mvar-security/mvar) | 1 | **Must cite** |
+| NeuroTaint / Ghost in the Agent (arXiv:2604.23374) | 1 | **Must cite** |
+| Shadow Escape zero-click MCP attack (Operant AI) | 1 | **Must cite** |
+| auth.md agent registration (WorkOS, ID-JAG) | 1 | Should cite |
+| MUSE-Autoskill skill lifecycle (2605.27366) | 2 | Should cite |
+| MemForest hierarchical temporal memory (2605.23986) | 2 | Should cite |
+| Claw-Anything always-on benchmark (2605.26086) | 3 | Should cite |
+| K8s Agent Sandbox CRD (kubernetes-sigs) | 1 | Should cite |
+| TurboVec / TurboQuant vector index (2504.19874) | 2 | Should cite |
+| MCP 2026-07-28 RC (SEP-2567 session removal) | 1 | **Must cite** |
+| Cloudflare Agent Memory 5-channel RRF | 2 | Should cite |
+| Hermes Agent (Nous Research) | 2 | Should cite |
+| gBrain knowledge layer (Garry Tan) | 2 | Should cite |
+| OSCAR attention-aware KV cache quant (2605.17757) | 2 | Should cite |
+| From Raw Experience to Skill Consumption (2605.23899) | 2 | Should cite |
 
 #### 13d. Paper restructuring decisions
 
@@ -4064,6 +5057,30 @@ Critical gap from ClawPatrol: cognitive file integrity monitoring
 
 Reference: Tech watch 2026-05-25, Lunar.dev gateway comparison,
 Composio gateway ranking.
+
+### IFC competitive landscape (May 2026 tech watch)
+
+Three IFC-for-agents systems emerged as direct competitors to
+smgglrs-security's IFC module:
+
+| System | Approach | F1 | Advantage | Gap vs smgglrs |
+|--------|----------|-----|-----------|----------------|
+| FIDES (Microsoft Research) | Planner-level lattice IFC | 0.522 | Formal info-hiding primitives | Gateway-level > planner-level (can't be bypassed) |
+| MVAR | Dual-lattice + crypto provenance | N/A (100% on 50-vector) | Execution firewall paradigm | Broader defense-in-depth stack |
+| NeuroTaint | Semantic + causal + persistent | 0.928 | Semantic taint tracking | Inline label tracking is faster |
+| **smgglrs** | **Gateway-level 2×4 product lattice** | **TBD** | **Per-value IFC + statistical guardrails** | **No semantic/causal tracking** |
+
+Key insights:
+- Pure label-only IFC is insufficient (FIDES F1=0.522)
+- smgglrs must layer offline semantic audit (NeuroTaint-style) on
+  top of inline label tracking for defense-in-depth
+- Gateway-level enforcement remains architecturally superior — none
+  of the competitors can enforce at the transport layer
+- Cryptographic witness for declassification is a gap (11k)
+- Adversarial benchmarking needed to establish smgglrs's position (11l)
+
+Reference: FIDES (arXiv:2505.23643), MVAR (github.com/mvar-security/
+mvar), NeuroTaint (arXiv:2604.23374).
 
 ### Goose relationship (April 2026 analysis)
 
