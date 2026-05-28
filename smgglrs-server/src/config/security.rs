@@ -36,6 +36,10 @@ pub struct StatisticalGuardrailServerConfig {
     /// Default: false (monitor/warn only).
     #[serde(default)]
     pub block_on_anomaly: bool,
+    #[serde(default = "default_transition_window")]
+    pub transition_window: usize,
+    #[serde(default = "default_transition_min_observations")]
+    pub transition_min_observations: usize,
 }
 
 fn default_cosine_window() -> usize {
@@ -58,6 +62,14 @@ fn default_entropy_max() -> f64 {
     4.0
 }
 
+fn default_transition_window() -> usize {
+    50
+}
+
+fn default_transition_min_observations() -> usize {
+    10
+}
+
 impl Default for StatisticalGuardrailServerConfig {
     fn default() -> Self {
         Self {
@@ -68,6 +80,8 @@ impl Default for StatisticalGuardrailServerConfig {
             entropy_min: default_entropy_min(),
             entropy_max: default_entropy_max(),
             block_on_anomaly: false,
+            transition_window: default_transition_window(),
+            transition_min_observations: default_transition_min_observations(),
         }
     }
 }
@@ -83,6 +97,8 @@ impl StatisticalGuardrailServerConfig {
             entropy_min: self.entropy_min,
             entropy_max: self.entropy_max,
             block_on_anomaly: self.block_on_anomaly,
+            transition_window: self.transition_window,
+            transition_min_observations: self.transition_min_observations,
         }
     }
 }
