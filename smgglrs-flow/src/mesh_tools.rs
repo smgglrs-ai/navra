@@ -17,6 +17,8 @@ pub const BB_PUBLISH: &str = "bb_publish";
 pub const BB_READ: &str = "bb_read";
 /// Virtual tool name for listing blackboard keys.
 pub const BB_KEYS: &str = "bb_keys";
+/// Virtual tool name for killing a running flow.
+pub const FLOW_KILL: &str = "flow_kill";
 
 pub fn mesh_post_tool_def() -> ResponseTool {
     ResponseTool {
@@ -126,6 +128,29 @@ pub fn bb_keys_tool_def() -> ResponseTool {
             "type": "object",
             "properties": {},
             "required": []
+        })),
+    }
+}
+
+pub fn flow_kill_tool_def() -> ResponseTool {
+    ResponseTool {
+        kind: "function".to_string(),
+        name: FLOW_KILL.to_string(),
+        description: Some(
+            "Kill the current flow immediately. Use this when an unrecoverable \
+             error is detected or the flow should be aborted."
+                .to_string(),
+        ),
+        strict: None,
+        parameters: Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Why the flow is being killed."
+                }
+            },
+            "required": ["reason"]
         })),
     }
 }
