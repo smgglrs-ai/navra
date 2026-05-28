@@ -1,45 +1,33 @@
-//! Direct runtime — spawn llama-server as a child process.
+//! Direct runtime — spawn an inference server as a child process.
 //!
-//! No isolation. Suitable for development and trusted models.
-//! Requires `llama-server` (from llama.cpp) on PATH.
+//! No isolation. The engine determines which binary is spawned
+//! (llama-server for LlamaCpp, vllm for Vllm).
 
-use crate::{
-    Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig,
-};
+use crate::engine::Engine;
+use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
 use tokio::process::{Child, Command};
 
-/// Runtime that spawns llama-server directly.
+const HEALTH_POLL_INTERVAL_MS: u64 = 500;
+
 pub struct DirectRuntime {
+    engine: Engine,
     children: Mutex<HashMap<String, Child>>,
 }
 
-impl Default for DirectRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl DirectRuntime {
-    pub fn new() -> Self {
+    pub fn new(engine: Engine) -> Self {
         Self {
+            engine,
             children: Mutex::new(HashMap::new()),
         }
     }
 
-    /// Check if llama-server is available on PATH.
-    pub async fn is_available() -> bool {
-        Command::new("llama-server")
-            .arg("--version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .map(|s| s.success())
-            .unwrap_or(false)
+    pub async fn is_available(engine: &Engine) -> bool {
+        engine.is_available().await
     }
 }
 
@@ -56,66 +44,37 @@ impl ModelRuntime for DirectRuntime {
                 config.port
             };
 
-            let mut cmd = Command::new("llama-server");
-            cmd.arg("--model")
-                .arg(&config.model_path)
-                .arg("--host")
-                .arg(&config.host)
-                .arg("--port")
-                .arg(port.to_string())
-                .arg("--ctx-size")
-                .arg(config.context_size.to_string())
-                .arg("--parallel")
-                .arg(config.parallel.to_string());
+            let args = self.engine.build_serve_args(&config, port);
 
-            // GPU layers
-            if !config.gpus.is_empty() {
-                cmd.arg("--n-gpu-layers").arg("999");
-            }
-
-            // KV cache quantization
-            if let Some(cache_type) = &config.cache_type {
-                cmd.arg("--cache-type-k").arg(cache_type.as_llama_arg());
-                cmd.arg("--cache-type-v").arg(cache_type.as_llama_arg());
-            }
-
-            if let Some(ref spec) = config.speculative {
-                cmd.arg("--model-draft").arg(&spec.draft_model);
-                cmd.arg("--draft-max").arg(spec.draft_tokens.to_string());
-                if spec.draft_min_p > 0.0 {
-                    cmd.arg("--draft-min-p").arg(spec.draft_min_p.to_string());
-                }
-            }
-
-            for arg in &config.extra_args {
-                cmd.arg(arg);
-            }
-
-            cmd.stdout(std::process::Stdio::null())
+            let mut cmd = Command::new(self.engine.binary());
+            cmd.args(&args)
+                .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::piped());
 
-            let child = cmd
-                .spawn()
-                .map_err(|e| RuntimeError::Start(format!("failed to spawn llama-server: {e}")))?;
+            let child = cmd.spawn().map_err(|e| {
+                RuntimeError::Start(format!("failed to spawn {}: {e}", self.engine.binary()))
+            })?;
 
-            let id = format!("direct-{port}");
+            let id = format!("{}-{port}", self.engine.name());
             let url = format!("http://{}:{port}", config.host);
 
-            // Wait for health
             let client = reqwest::Client::new();
             let health_url = format!("{url}/health");
-            for attempt in 0..60 {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let max_attempts = self.engine.health_poll_attempts();
+            for attempt in 0..max_attempts {
+                tokio::time::sleep(std::time::Duration::from_millis(HEALTH_POLL_INTERVAL_MS)).await;
                 if let Ok(resp) = client.get(&health_url).send().await {
                     if resp.status().is_success() {
-                        tracing::info!(port = port, "llama-server is ready");
+                        tracing::info!(port = port, engine = %self.engine, "Server is ready");
                         break;
                     }
                 }
-                if attempt == 59 {
-                    return Err(RuntimeError::Health(
-                        "llama-server did not become healthy within 30s".to_string(),
-                    ));
+                if attempt == max_attempts - 1 {
+                    let timeout_secs = max_attempts as u64 * HEALTH_POLL_INTERVAL_MS / 1000;
+                    return Err(RuntimeError::Health(format!(
+                        "{} did not become healthy within {timeout_secs}s",
+                        self.engine.binary()
+                    )));
                 }
             }
 
@@ -124,7 +83,7 @@ impl ModelRuntime for DirectRuntime {
             Ok(Endpoint {
                 url,
                 id,
-                backend: RuntimeBackend::Direct,
+                backend: RuntimeBackend::from_engine_direct(&self.engine),
             })
         })
     }
@@ -134,15 +93,16 @@ impl ModelRuntime for DirectRuntime {
         endpoint: &Endpoint,
     ) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
         let id = endpoint.id.clone();
+        let engine_name = self.engine.binary();
         Box::pin(async move {
             let child = self.children.lock().unwrap().remove(&id);
             if let Some(mut child) = child {
                 child
                     .kill()
                     .await
-                    .map_err(|e| RuntimeError::Stop(format!("failed to kill llama-server: {e}")))?;
+                    .map_err(|e| RuntimeError::Stop(format!("failed to kill {engine_name}: {e}")))?;
                 let _ = child.wait().await;
-                tracing::info!(id = %id, "Stopped llama-server");
+                tracing::info!(id = %id, "Stopped {engine_name}");
             }
             Ok(())
         })
@@ -163,12 +123,12 @@ impl ModelRuntime for DirectRuntime {
     }
 
     fn backend(&self) -> RuntimeBackend {
-        RuntimeBackend::Direct
+        RuntimeBackend::from_engine_direct(&self.engine)
     }
 
     fn capabilities(&self) -> RuntimeCapabilities {
         RuntimeCapabilities {
-            supports_kv_checkpoint: true,
+            supports_kv_checkpoint: self.engine.supports_kv_checkpoint(),
         }
     }
 }

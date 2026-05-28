@@ -1,50 +1,41 @@
 //! Podman runtime — run inference in rootless containers.
 //!
-//! Uses the Podman REST API (Unix socket) to manage containers.
 //! Each model gets its own container with:
 //! - Read-only model mount
 //! - `--network=none` (no data exfiltration)
 //! - `--no-new-privileges`
 //! - GPU passthrough via CDI (NVIDIA) or device bind (AMD/Intel)
+//! - `--ipc=host` when the engine requires it (vLLM NCCL)
 
+use crate::engine::Engine;
 use crate::gpu::GpuKind;
-use crate::{
-    Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig,
-};
+use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
 use std::future::Future;
 use std::pin::Pin;
 
-/// Default container images per GPU type.
-const IMAGE_CPU: &str = "ghcr.io/ggml-org/llama.cpp:server";
-const IMAGE_CUDA: &str = "ghcr.io/ggml-org/llama.cpp:server-cuda";
-const IMAGE_ROCM: &str = "ghcr.io/ggml-org/llama.cpp:server-rocm";
+const HEALTH_POLL_INTERVAL_MS: u64 = 500;
 
-const HEALTH_MAX_ATTEMPTS: usize = 120;
-
-/// Runtime that manages llama.cpp containers via Podman.
-#[derive(Default)]
-pub struct PodmanRuntime;
+pub struct PodmanRuntime {
+    engine: Engine,
+}
 
 impl PodmanRuntime {
-    pub fn new() -> Self {
-        Self
+    pub fn new(engine: Engine) -> Self {
+        Self { engine }
     }
 
-    /// Check if the Podman socket is available.
-    pub async fn is_available() -> bool {
+    /// Check if Podman is available and (for GPU-only engines) GPUs are present.
+    pub async fn is_available(engine: &Engine) -> bool {
         // SAFETY: getuid() is always safe — no preconditions, cannot cause UB.
         let uid = unsafe { libc::getuid() };
         let socket = format!("/run/user/{uid}/podman/podman.sock");
-        std::path::Path::new(&socket).exists()
-    }
-
-    /// Select container image based on GPU.
-    fn select_image(config: &ServeConfig) -> &'static str {
-        match config.gpus.first().map(|g| &g.kind) {
-            Some(GpuKind::Nvidia) => IMAGE_CUDA,
-            Some(GpuKind::Amd) => IMAGE_ROCM,
-            _ => IMAGE_CPU,
+        if !std::path::Path::new(&socket).exists() {
+            return false;
         }
+        if engine.requires_gpu() && crate::detect_gpus().is_empty() {
+            return false;
+        }
+        true
     }
 }
 
@@ -61,99 +52,70 @@ impl ModelRuntime for PodmanRuntime {
                 config.port
             };
 
-            let image = Self::select_image(&config);
-            let container_name = format!("smgglrs-model-{port}");
+            let image = self.engine.select_image(&config)?;
+            let container_name = format!("smgglrs-{}-{port}", self.engine.name());
             let model_path = config
                 .model_path
                 .to_str()
                 .ok_or_else(|| RuntimeError::Start("invalid model path".to_string()))?;
 
-            // Build container create request
-            let mut cmd = vec![
-                "--model".to_string(),
-                "/model".to_string(),
-                "--host".to_string(),
-                "0.0.0.0".to_string(),
-                "--port".to_string(),
-                "8080".to_string(),
-                "--ctx-size".to_string(),
-                config.context_size.to_string(),
-                "--parallel".to_string(),
-                config.parallel.to_string(),
+            let container_args = self.engine.build_container_args(&config);
+            let serve_port = self.engine.default_serve_port();
+
+            let mut podman_args = vec![
+                "run".to_string(),
+                "--detach".to_string(),
+                "--name".to_string(),
+                container_name.clone(),
+                "--rm".to_string(),
+                "--network=none".to_string(),
+                "--no-new-privileges".to_string(),
+                "--read-only".to_string(),
             ];
 
-            if !config.gpus.is_empty() {
-                cmd.extend_from_slice(&["--n-gpu-layers".to_string(), "999".to_string()]);
+            if self.engine.needs_ipc_host() {
+                podman_args.push("--ipc=host".to_string());
             }
 
-            // KV cache quantization
-            if let Some(cache_type) = &config.cache_type {
-                cmd.extend_from_slice(&[
-                    "--cache-type-k".to_string(),
-                    cache_type.as_llama_arg().to_string(),
-                    "--cache-type-v".to_string(),
-                    cache_type.as_llama_arg().to_string(),
-                ]);
-            }
+            podman_args.extend_from_slice(&[
+                "-v".to_string(),
+                format!("{model_path}:/model:ro"),
+                "-p".to_string(),
+                format!("{}:{port}:{serve_port}", config.host),
+            ]);
 
-            if let Some(ref spec) = config.speculative {
-                cmd.extend_from_slice(&[
-                    "--model-draft".to_string(),
-                    spec.draft_model.to_string_lossy().to_string(),
-                    "--draft-max".to_string(),
-                    spec.draft_tokens.to_string(),
-                ]);
-                if spec.draft_min_p > 0.0 {
-                    cmd.extend_from_slice(&[
-                        "--draft-min-p".to_string(),
-                        spec.draft_min_p.to_string(),
-                    ]);
-                }
-            }
-
-            cmd.extend(config.extra_args.iter().cloned());
-
-            let mut devices = Vec::new();
             for gpu in &config.gpus {
                 match gpu.kind {
                     GpuKind::Nvidia => {
-                        // CDI device for NVIDIA
-                        devices.push(format!("nvidia.com/gpu={}", gpu.index));
+                        podman_args.push("--device".to_string());
+                        podman_args.push(format!("nvidia.com/gpu={}", gpu.index));
                     }
                     GpuKind::Amd => {
-                        devices.push(format!("/dev/dri/renderD{}", 128 + gpu.index));
+                        podman_args.push("--device".to_string());
+                        podman_args.push("/dev/kfd".to_string());
+                        podman_args.push("--device".to_string());
+                        podman_args.push(format!("/dev/dri/renderD{}", 128 + gpu.index));
                     }
                     GpuKind::Intel => {
-                        devices.push(format!("/dev/dri/renderD{}", 128 + gpu.index));
+                        podman_args.push("--device".to_string());
+                        podman_args.push(format!("/dev/dri/renderD{}", 128 + gpu.index));
                     }
                 }
             }
 
-            // Create container via Podman CLI
+            podman_args.push(image.to_string());
+            podman_args.extend(container_args);
+
             tracing::info!(
                 image = image,
+                engine = %self.engine,
                 name = %container_name,
                 port = port,
                 "Creating model container"
             );
 
-            // Note: actual HTTP-over-Unix-socket requires hyper with
-            // unix connector. For now, fall back to podman CLI.
             let output = tokio::process::Command::new("podman")
-                .arg("run")
-                .arg("--detach")
-                .arg("--name")
-                .arg(&container_name)
-                .arg("--rm")
-                .arg("--network=none")
-                .arg("--no-new-privileges")
-                .arg("--read-only")
-                .arg("-v")
-                .arg(format!("{model_path}:/model:ro"))
-                .arg("-p")
-                .arg(format!("{}:{port}:8080", config.host))
-                .arg(image)
-                .args(&cmd)
+                .args(&podman_args)
                 .output()
                 .await
                 .map_err(|e| RuntimeError::Container(format!("podman run failed: {e}")))?;
@@ -167,36 +129,38 @@ impl ModelRuntime for PodmanRuntime {
 
             let url = format!("http://{}:{port}", config.host);
 
-            // Wait for health
             let client = reqwest::Client::new();
             let health_url = format!("{url}/health");
-            for attempt in 0..HEALTH_MAX_ATTEMPTS {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let max_attempts = self.engine.health_poll_attempts();
+            for attempt in 0..max_attempts {
+                tokio::time::sleep(std::time::Duration::from_millis(HEALTH_POLL_INTERVAL_MS)).await;
                 if let Ok(resp) = client.get(&health_url).send().await {
                     if resp.status().is_success() {
                         tracing::info!(
                             name = %container_name,
                             port = port,
+                            engine = %self.engine,
                             "Model container is ready"
                         );
                         break;
                     }
                 }
-                if attempt == HEALTH_MAX_ATTEMPTS - 1 {
+                if attempt == max_attempts - 1 {
                     let _ = tokio::process::Command::new("podman")
                         .args(["rm", "-f", &container_name])
                         .output()
                         .await;
-                    return Err(RuntimeError::Health(
-                        "model container did not become healthy within 60s".to_string(),
-                    ));
+                    let timeout_secs = max_attempts as u64 * HEALTH_POLL_INTERVAL_MS / 1000;
+                    return Err(RuntimeError::Health(format!(
+                        "model container did not become healthy within {timeout_secs}s"
+                    )));
                 }
             }
 
             Ok(Endpoint {
                 url,
                 id: container_name,
-                backend: RuntimeBackend::Podman,
+                backend: RuntimeBackend::from_engine_podman(&self.engine),
             })
         })
     }
@@ -239,12 +203,12 @@ impl ModelRuntime for PodmanRuntime {
     }
 
     fn backend(&self) -> RuntimeBackend {
-        RuntimeBackend::Podman
+        RuntimeBackend::from_engine_podman(&self.engine)
     }
 
     fn capabilities(&self) -> RuntimeCapabilities {
         RuntimeCapabilities {
-            supports_kv_checkpoint: true,
+            supports_kv_checkpoint: self.engine.supports_kv_checkpoint(),
         }
     }
 }

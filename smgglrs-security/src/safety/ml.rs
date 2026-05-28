@@ -102,7 +102,7 @@ pub struct CategoryPolicy {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let mut policies = HashMap::new();
 /// policies.insert("harm".into(), CategoryPolicy { threshold: 0.7, action: FilterAction::Block });
 /// policies.insert("pii".into(), CategoryPolicy { threshold: 0.5, action: FilterAction::Redact });

@@ -1,17 +1,20 @@
 //! smgglrs-model-runtime: Serve AI models with pluggable isolation.
 //!
-//! Provides the [`ModelRuntime`] trait for starting, stopping, and
-//! health-checking model inference servers. Configured via
-//! [`ServeConfig`], returns an [`Endpoint`] with an OpenAI-compatible
-//! API URL. Isolation levels:
+//! Two orthogonal axes:
 //!
-//! - `direct` — spawn `llama-server` as a child process (no isolation)
-//! - `podman` — run inference in a rootless Podman container
+//! **Engine** (what serves the model):
+//! - `LlamaCpp` — llama.cpp (`llama-server`), CPU or GPU, GGUF format
+//! - `Vllm` — vLLM (`vllm serve`), GPU required, safetensors/GGUF/AWQ/GPTQ
+//!
+//! **Isolation** (how the engine is launched):
+//! - `direct` — spawn as a child process (no isolation)
+//! - `podman` — run in a rootless Podman container
 //! - `openshell` — delegate to OpenShell compute driver via gRPC
 //!
-//! [`auto_runtime()`] picks the best available backend. GPU detection
-//! is provided by [`detect_gpus()`].
+//! [`auto_runtime()`] picks the best available combination.
+//! GPU detection is provided by [`detect_gpus()`].
 
+pub mod engine;
 mod error;
 mod gpu;
 mod npu;
@@ -23,6 +26,7 @@ pub mod openshell;
 #[cfg(feature = "podman")]
 pub mod podman;
 
+pub use engine::Engine;
 pub use error::RuntimeError;
 pub use gpu::{detect_gpus, GpuDevice, GpuKind};
 pub use npu::{detect_npus, NpuDevice};
@@ -44,20 +48,63 @@ pub struct Endpoint {
     pub backend: RuntimeBackend,
 }
 
-/// Which runtime backend is serving the model.
+/// Which runtime backend is serving the model (engine × isolation).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeBackend {
-    /// Direct child process.
-    Direct,
-    /// Podman container.
-    Podman,
-    /// OpenShell sandbox (gRPC delegation).
-    OpenShell,
+    /// llama.cpp, direct child process.
+    LlamaCpp,
+    /// llama.cpp in a Podman container.
+    LlamaCppPodman,
+    /// llama.cpp in an OpenShell sandbox.
+    LlamaCppOpenShell,
+    /// vLLM, direct child process.
+    Vllm,
+    /// vLLM in a Podman container.
+    VllmPodman,
+    /// vLLM in an OpenShell sandbox.
+    VllmOpenShell,
 }
 
-/// KV cache quantization type for llama-server.
+impl RuntimeBackend {
+    pub fn from_engine_direct(engine: &Engine) -> Self {
+        match engine {
+            Engine::LlamaCpp => Self::LlamaCpp,
+            Engine::Vllm => Self::Vllm,
+        }
+    }
+
+    pub fn from_engine_podman(engine: &Engine) -> Self {
+        match engine {
+            Engine::LlamaCpp => Self::LlamaCppPodman,
+            Engine::Vllm => Self::VllmPodman,
+        }
+    }
+
+    pub fn from_engine_openshell(engine: &Engine) -> Self {
+        match engine {
+            Engine::LlamaCpp => Self::LlamaCppOpenShell,
+            Engine::Vllm => Self::VllmOpenShell,
+        }
+    }
+}
+
+impl fmt::Display for RuntimeBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LlamaCpp => f.write_str("llama-cpp"),
+            Self::LlamaCppPodman => f.write_str("llama-cpp-podman"),
+            Self::LlamaCppOpenShell => f.write_str("llama-cpp-openshell"),
+            Self::Vllm => f.write_str("vllm"),
+            Self::VllmPodman => f.write_str("vllm-podman"),
+            Self::VllmOpenShell => f.write_str("vllm-openshell"),
+        }
+    }
+}
+
+/// KV cache quantization type.
 ///
-/// Controls the `--cache-type-k` and `--cache-type-v` flags.
+/// For llama-server: controls `--cache-type-k` and `--cache-type-v`.
+/// For vLLM: maps to `--kv-cache-dtype` (fp8).
 /// Lower precision reduces VRAM usage at the cost of quality.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -117,8 +164,7 @@ pub struct ServeConfig {
     pub context_size: u32,
     /// Number of parallel request slots.
     pub parallel: u32,
-    /// KV cache quantization type. When set, passes `--cache-type-k`
-    /// and `--cache-type-v` to llama-server. None = llama-server default (f16).
+    /// KV cache quantization type.
     pub cache_type: Option<KvCacheType>,
     /// Speculative decoding: use a draft model for faster generation.
     pub speculative: Option<SpeculativeConfig>,
@@ -157,10 +203,6 @@ impl Default for ServeConfig {
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeCapabilities {
     /// Whether the runtime supports saving/loading KV cache state.
-    ///
-    /// When true, the runtime can persist KV cache to disk for instant
-    /// resume (no re-prompt needed). When false, hibernation falls back
-    /// to conversation-only save (re-prompt on resume).
     pub supports_kv_checkpoint: bool,
 }
 
@@ -195,44 +237,51 @@ pub trait ModelRuntime: Send + Sync {
 
 /// Auto-detect the best available runtime.
 ///
-/// Prefers OpenShell (strongest isolation), then Podman, then direct execution.
+/// Picks the best isolation mode first, then the best engine within it.
+/// Preference: OpenShell > Podman > Direct.
+/// Within each mode: vLLM (if GPU available) > llama.cpp.
 pub async fn auto_runtime() -> Result<Box<dyn ModelRuntime>, RuntimeError> {
     #[cfg(feature = "openshell")]
     {
-        // OpenShell gateway socket is at a well-known path
         let gateway = "unix:///run/openshell/gateway.sock";
         if openshell::OpenShellRuntime::is_available(gateway).await {
-            tracing::info!("Using OpenShell runtime");
-            return Ok(Box::new(openshell::OpenShellRuntime::new(gateway).await?));
+            tracing::info!("Using OpenShell runtime (llama.cpp)");
+            return Ok(Box::new(
+                openshell::OpenShellRuntime::new(gateway, Engine::LlamaCpp).await?,
+            ));
         }
     }
 
     #[cfg(feature = "podman")]
     {
-        if podman::PodmanRuntime::is_available().await {
-            tracing::info!("Using Podman runtime");
-            return Ok(Box::new(podman::PodmanRuntime::new()));
+        if podman::PodmanRuntime::is_available(&Engine::Vllm).await {
+            tracing::info!("Using Podman runtime (vLLM)");
+            return Ok(Box::new(podman::PodmanRuntime::new(Engine::Vllm)));
+        }
+        if podman::PodmanRuntime::is_available(&Engine::LlamaCpp).await {
+            tracing::info!("Using Podman runtime (llama.cpp)");
+            return Ok(Box::new(podman::PodmanRuntime::new(Engine::LlamaCpp)));
         }
     }
 
     #[cfg(feature = "direct")]
     {
-        if direct::DirectRuntime::is_available().await {
-            tracing::info!("Using direct runtime (no isolation)");
-            return Ok(Box::new(direct::DirectRuntime::new()));
+        if direct::DirectRuntime::is_available(&Engine::Vllm).await {
+            tracing::info!("Using vLLM runtime (no isolation)");
+            return Ok(Box::new(direct::DirectRuntime::new(Engine::Vllm)));
+        }
+        if direct::DirectRuntime::is_available(&Engine::LlamaCpp).await {
+            tracing::info!("Using llama.cpp runtime (no isolation)");
+            return Ok(Box::new(direct::DirectRuntime::new(Engine::LlamaCpp)));
         }
     }
 
     Err(RuntimeError::NoRuntime(
-        "no suitable runtime found (need OpenShell, Podman, or llama-server)".to_string(),
+        "no suitable runtime found (need OpenShell, Podman, vLLM, or llama-server)".to_string(),
     ))
 }
 
 /// Bind to port 0 to let the OS pick a free port, then return it.
-///
-/// Note: there is a small TOCTOU window between releasing the socket
-/// and the caller binding the returned port. This is acceptable for
-/// dev/local use; production deployments should use fixed ports.
 pub fn pick_free_port() -> Result<u16, RuntimeError> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")
         .map_err(|e| RuntimeError::Start(format!("no free port: {e}")))?;
@@ -262,13 +311,6 @@ pub struct IsolationContext {
 static ISOLATION_CONTEXT: std::sync::OnceLock<IsolationContext> = std::sync::OnceLock::new();
 
 impl IsolationContext {
-    /// Detect the current isolation environment.
-    ///
-    /// Checks (in order):
-    /// 1. `OPENSHELL_SANDBOX_ID` env var → OpenShellSandbox
-    /// 2. `/.containerenv` or `/.dockerenv` file → Container
-    /// 3. `/run/.containerenv` file → Container
-    /// 4. Otherwise → BareMetal
     pub fn detect() -> &'static IsolationContext {
         ISOLATION_CONTEXT.get_or_init(|| {
             if let Ok(sandbox_id) = std::env::var("OPENSHELL_SANDBOX_ID") {
@@ -332,10 +374,30 @@ mod tests {
         let ep = Endpoint {
             url: "http://127.0.0.1:8080".to_string(),
             id: "test-123".to_string(),
-            backend: RuntimeBackend::Direct,
+            backend: RuntimeBackend::LlamaCpp,
         };
         let debug = format!("{ep:?}");
         assert!(debug.contains("127.0.0.1:8080"));
+    }
+
+    #[test]
+    fn runtime_backend_display() {
+        assert_eq!(RuntimeBackend::LlamaCpp.to_string(), "llama-cpp");
+        assert_eq!(RuntimeBackend::LlamaCppPodman.to_string(), "llama-cpp-podman");
+        assert_eq!(RuntimeBackend::LlamaCppOpenShell.to_string(), "llama-cpp-openshell");
+        assert_eq!(RuntimeBackend::Vllm.to_string(), "vllm");
+        assert_eq!(RuntimeBackend::VllmPodman.to_string(), "vllm-podman");
+        assert_eq!(RuntimeBackend::VllmOpenShell.to_string(), "vllm-openshell");
+    }
+
+    #[test]
+    fn runtime_backend_from_engine() {
+        assert_eq!(RuntimeBackend::from_engine_direct(&Engine::LlamaCpp), RuntimeBackend::LlamaCpp);
+        assert_eq!(RuntimeBackend::from_engine_direct(&Engine::Vllm), RuntimeBackend::Vllm);
+        assert_eq!(RuntimeBackend::from_engine_podman(&Engine::LlamaCpp), RuntimeBackend::LlamaCppPodman);
+        assert_eq!(RuntimeBackend::from_engine_podman(&Engine::Vllm), RuntimeBackend::VllmPodman);
+        assert_eq!(RuntimeBackend::from_engine_openshell(&Engine::LlamaCpp), RuntimeBackend::LlamaCppOpenShell);
+        assert_eq!(RuntimeBackend::from_engine_openshell(&Engine::Vllm), RuntimeBackend::VllmOpenShell);
     }
 
     #[test]
@@ -375,7 +437,6 @@ mod tests {
         let parsed: KvCacheType = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, KvCacheType::Q8_0);
 
-        // All variants
         for variant in [KvCacheType::F16, KvCacheType::Q8_0, KvCacheType::Q4_0] {
             let s = serde_json::to_string(&variant).unwrap();
             let back: KvCacheType = serde_json::from_str(&s).unwrap();
@@ -404,5 +465,39 @@ mod tests {
             format!("{:?}", IsolationLevel::OpenShellSandbox),
             "OpenShellSandbox"
         );
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    impl kani::Arbitrary for KvCacheType {
+        fn any_array<const N: usize>() -> [Self; N] {
+            [Self::F16; N]
+        }
+
+        fn any() -> Self {
+            match kani::any::<u8>() % 3 {
+                0 => KvCacheType::F16,
+                1 => KvCacheType::Q8_0,
+                _ => KvCacheType::Q4_0,
+            }
+        }
+    }
+
+    #[kani::proof]
+    fn kv_cache_type_roundtrip() {
+        let t: KvCacheType = kani::any();
+        let s = t.as_llama_arg();
+        let back: KvCacheType = s.parse().unwrap();
+        assert_eq!(t, back);
+    }
+
+    #[kani::proof]
+    fn kv_cache_all_variants_have_llama_arg() {
+        let t: KvCacheType = kani::any();
+        let s = t.as_llama_arg();
+        assert!(!s.is_empty());
     }
 }

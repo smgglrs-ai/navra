@@ -1,6 +1,6 @@
 [package]
 name = "smgglrs-model-runtime"
-description = "Serve AI models with pluggable isolation backends (Podman, OpenShell, direct)"
+description = "Serve AI models with pluggable isolation backends (llama.cpp, vLLM, Podman, OpenShell)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

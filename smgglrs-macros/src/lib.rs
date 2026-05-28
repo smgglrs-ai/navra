@@ -13,7 +13,7 @@ use syn::{
 ///
 /// # Usage
 ///
-/// ```ignore
+/// ```text
 /// #[tool(
 ///     name = "file_read",
 ///     description = "Read a file from disk",

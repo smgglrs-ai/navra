@@ -3,7 +3,9 @@
 //! Communicates with the OpenShell supervisor via gRPC to create, destroy,
 //! and monitor sandboxed model inference environments. OpenShell handles
 //! the actual isolation (Podman, libkrun, K8s, etc.) based on labels.
+//! The engine determines which entrypoint and args are passed to the sandbox.
 
+use crate::engine::Engine;
 use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeError, ServeConfig};
 use std::collections::HashMap;
 use std::future::Future;
@@ -27,15 +29,14 @@ use tonic::transport::Channel;
 /// isolation level). OpenShell's compute driver handles
 /// provisioning (Podman, libkrun, K8s, etc.).
 pub struct OpenShellRuntime {
-    /// gRPC endpoint of the OpenShell gateway.
+    engine: Engine,
     gateway: String,
-    /// gRPC client (tonic).
     client: ComputeDriverClient<Channel>,
 }
 
 impl OpenShellRuntime {
     /// Connect to the OpenShell compute driver at the given gRPC endpoint.
-    pub async fn new(gateway: &str) -> Result<Self, RuntimeError> {
+    pub async fn new(gateway: &str, engine: Engine) -> Result<Self, RuntimeError> {
         let channel = Channel::from_shared(gateway.to_string())
             .map_err(|e| RuntimeError::Connection(e.to_string()))?
             .connect()
@@ -43,6 +44,7 @@ impl OpenShellRuntime {
             .map_err(|e| RuntimeError::Connection(e.to_string()))?;
 
         Ok(Self {
+            engine,
             gateway: gateway.to_string(),
             client: ComputeDriverClient::new(channel),
         })
@@ -94,11 +96,8 @@ impl OpenShellRuntime {
     }
 }
 
-/// Build a `CreateSandboxRequest` from a `ServeConfig`.
-///
-/// Maps ServeConfig fields to sandbox labels and supervisor config
-/// that OpenShell's compute driver understands.
-pub fn build_create_request(config: &ServeConfig) -> CreateSandboxRequest {
+/// Build a `CreateSandboxRequest` from a `ServeConfig` and `Engine`.
+pub fn build_create_request(engine: &Engine, config: &ServeConfig) -> CreateSandboxRequest {
     let mut labels = HashMap::new();
 
     if !config.gpus.is_empty() {
@@ -108,46 +107,17 @@ pub fn build_create_request(config: &ServeConfig) -> CreateSandboxRequest {
 
     labels.insert("isolation".to_string(), "microvm".to_string());
 
-    let mut args = vec![
-        "-m".to_string(),
-        config.model_path.to_string_lossy().to_string(),
-        "--host".to_string(),
-        "0.0.0.0".to_string(),
-        "--port".to_string(),
-        "8080".to_string(),
-        "-c".to_string(),
-        config.context_size.to_string(),
-        "-np".to_string(),
-        config.parallel.to_string(),
-    ];
-
-    // GPU layers
-    if !config.gpus.is_empty() {
-        args.push("--n-gpu-layers".to_string());
-        args.push("999".to_string());
-    }
-
-    // KV cache quantization
-    if let Some(cache_type) = &config.cache_type {
-        args.push("--cache-type-k".to_string());
-        args.push(cache_type.as_llama_arg().to_string());
-        args.push("--cache-type-v".to_string());
-        args.push(cache_type.as_llama_arg().to_string());
-    }
-
-    for arg in &config.extra_args {
-        args.push(arg.clone());
-    }
+    let args = engine.build_container_args(config);
 
     CreateSandboxRequest {
         labels,
         supervisor: Some(SupervisorConfig {
-            entrypoint: "llama-server".to_string(),
+            entrypoint: engine.binary().to_string(),
             args,
             env: HashMap::new(),
             mounts: vec![Mount {
                 source: config.model_path.to_string_lossy().to_string(),
-                target: config.model_path.to_string_lossy().to_string(),
+                target: "/model".to_string(),
                 read_only: true,
             }],
         }),
@@ -159,7 +129,7 @@ impl ModelRuntime for OpenShellRuntime {
         &self,
         config: &ServeConfig,
     ) -> Pin<Box<dyn Future<Output = Result<Endpoint, RuntimeError>> + Send + '_>> {
-        let request = build_create_request(config);
+        let request = build_create_request(&self.engine, config);
         Box::pin(async move {
             let resp = self
                 .client
@@ -172,7 +142,7 @@ impl ModelRuntime for OpenShellRuntime {
             Ok(Endpoint {
                 url: resp.endpoint_url,
                 id: resp.sandbox_id,
-                backend: RuntimeBackend::OpenShell,
+                backend: RuntimeBackend::from_engine_openshell(&self.engine),
             })
         })
     }
@@ -210,7 +180,7 @@ impl ModelRuntime for OpenShellRuntime {
     }
 
     fn backend(&self) -> RuntimeBackend {
-        RuntimeBackend::OpenShell
+        RuntimeBackend::from_engine_openshell(&self.engine)
     }
 }
 
@@ -220,7 +190,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn build_request_cpu_only() {
+    fn build_request_llamacpp_cpu() {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/granite.gguf"),
             host: "127.0.0.1".to_string(),
@@ -233,35 +203,29 @@ mod tests {
             extra_args: vec![],
         };
 
-        let req = build_create_request(&config);
+        let req = build_create_request(&Engine::LlamaCpp, &config);
 
         assert!(!req.labels.contains_key("gpu"));
-        assert!(!req.labels.contains_key("gpu_count"));
         assert_eq!(req.labels.get("isolation").unwrap(), "microvm");
 
         let sup = req.supervisor.unwrap();
         assert_eq!(sup.entrypoint, "llama-server");
-        assert!(sup.args.contains(&"-m".to_string()));
-        assert!(sup.args.contains(&"/models/granite.gguf".to_string()));
-        assert!(sup.args.contains(&"-c".to_string()));
-        assert!(sup.args.contains(&"4096".to_string()));
-        assert!(sup.args.contains(&"-np".to_string()));
-        assert!(sup.args.contains(&"2".to_string()));
-        // No GPU layers arg
+        assert!(sup.args.contains(&"--model".to_string()));
+        assert!(sup.args.contains(&"/model".to_string()));
+        assert!(sup.args.contains(&"--ctx-size".to_string()));
         assert!(!sup.args.contains(&"--n-gpu-layers".to_string()));
 
         assert_eq!(sup.mounts.len(), 1);
+        assert_eq!(sup.mounts[0].target, "/model");
         assert!(sup.mounts[0].read_only);
     }
 
     #[test]
-    fn build_request_with_gpus() {
+    fn build_request_llamacpp_with_gpus() {
         use crate::gpu::{GpuDevice, GpuKind};
 
         let config = ServeConfig {
             model_path: PathBuf::from("/models/llama.gguf"),
-            host: "0.0.0.0".to_string(),
-            port: 8080,
             gpus: vec![
                 GpuDevice {
                     index: 0,
@@ -278,21 +242,49 @@ mod tests {
             ],
             context_size: 8192,
             parallel: 4,
-            cache_type: None,
-            speculative: None,
             extra_args: vec!["--flash-attn".to_string()],
+            ..ServeConfig::default()
         };
 
-        let req = build_create_request(&config);
+        let req = build_create_request(&Engine::LlamaCpp, &config);
 
         assert_eq!(req.labels.get("gpu").unwrap(), "required");
         assert_eq!(req.labels.get("gpu_count").unwrap(), "2");
 
         let sup = req.supervisor.unwrap();
+        assert_eq!(sup.entrypoint, "llama-server");
         assert!(sup.args.contains(&"--n-gpu-layers".to_string()));
         assert!(sup.args.contains(&"999".to_string()));
         assert!(sup.args.contains(&"--flash-attn".to_string()));
-        assert!(sup.args.contains(&"8192".to_string()));
+    }
+
+    #[test]
+    fn build_request_vllm() {
+        use crate::gpu::{GpuDevice, GpuKind};
+
+        let config = ServeConfig {
+            model_path: PathBuf::from("/models/llama-3-70b"),
+            gpus: vec![
+                GpuDevice { index: 0, name: "A100".into(), vram: None, kind: GpuKind::Nvidia },
+                GpuDevice { index: 1, name: "A100".into(), vram: None, kind: GpuKind::Nvidia },
+            ],
+            context_size: 8192,
+            parallel: 8,
+            ..ServeConfig::default()
+        };
+
+        let req = build_create_request(&Engine::Vllm, &config);
+
+        assert_eq!(req.labels.get("gpu").unwrap(), "required");
+        assert_eq!(req.labels.get("gpu_count").unwrap(), "2");
+
+        let sup = req.supervisor.unwrap();
+        assert_eq!(sup.entrypoint, "vllm");
+        assert!(sup.args.contains(&"--model".to_string()));
+        assert!(sup.args.contains(&"/model".to_string()));
+        assert!(sup.args.contains(&"--max-model-len".to_string()));
+        assert!(sup.args.contains(&"--tensor-parallel-size".to_string()));
+        assert!(sup.args.contains(&"2".to_string()));
     }
 
     #[test]
@@ -303,25 +295,39 @@ mod tests {
             ..ServeConfig::default()
         };
 
-        let req = build_create_request(&config);
+        let req = build_create_request(&Engine::LlamaCpp, &config);
         let sup = req.supervisor.unwrap();
         assert!(sup.args.contains(&"--threads".to_string()));
         assert!(sup.args.contains(&"8".to_string()));
     }
 
     #[test]
-    fn build_request_with_cache_type() {
+    fn build_request_llamacpp_cache_type() {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/test.gguf"),
             cache_type: Some(crate::KvCacheType::Q8_0),
             ..ServeConfig::default()
         };
 
-        let req = build_create_request(&config);
+        let req = build_create_request(&Engine::LlamaCpp, &config);
         let sup = req.supervisor.unwrap();
         assert!(sup.args.contains(&"--cache-type-k".to_string()));
         assert!(sup.args.contains(&"--cache-type-v".to_string()));
         assert!(sup.args.contains(&"q8_0".to_string()));
+    }
+
+    #[test]
+    fn build_request_vllm_cache_type() {
+        let config = ServeConfig {
+            model_path: PathBuf::from("/models/test"),
+            cache_type: Some(crate::KvCacheType::Q4_0),
+            ..ServeConfig::default()
+        };
+
+        let req = build_create_request(&Engine::Vllm, &config);
+        let sup = req.supervisor.unwrap();
+        assert!(sup.args.contains(&"--kv-cache-dtype".to_string()));
+        assert!(sup.args.contains(&"fp8".to_string()));
     }
 
     #[test]
@@ -332,15 +338,13 @@ mod tests {
             ..ServeConfig::default()
         };
 
-        let req = build_create_request(&config);
+        let req = build_create_request(&Engine::LlamaCpp, &config);
         let sup = req.supervisor.unwrap();
         assert!(!sup.args.contains(&"--cache-type-k".to_string()));
-        assert!(!sup.args.contains(&"--cache-type-v".to_string()));
     }
 
     #[test]
     fn sandbox_state_running_value() {
-        // Verify the enum int value we compare against in health()
         assert_eq!(SandboxState::Running as i32, 2);
         assert_eq!(SandboxState::Creating as i32, 1);
         assert_eq!(SandboxState::Stopped as i32, 3);

@@ -406,7 +406,7 @@ pub(crate) async fn model_pull(name: &str) -> anyhow::Result<()> {
     println!("[models.{}]", uri.cache_key());
     println!("source = \"{}\"", uri);
     println!("task = \"chat\"");
-    println!("runtime = \"auto\"");
+    println!("runtime = \"auto\"  # auto, llama-cpp, llama-cpp-podman, vllm, vllm-podman, llama-cpp-openshell, vllm-openshell, none");
 
     Ok(())
 }
