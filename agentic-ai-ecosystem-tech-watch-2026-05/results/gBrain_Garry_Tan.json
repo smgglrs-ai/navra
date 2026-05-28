@@ -1,0 +1,72 @@
+{
+  "basic_info": {
+    "name": "gBrain (Garry Tan)",
+    "source_url": "https://www.marktechpost.com/2026/05/22/a-step-by-step-coding-tutorial-to-implement-gbrain-the-self-wiring-memory-layer-built-by-y-combinators-garry-tan-for-ai-agents/",
+    "date": "2026-05-22",
+    "authors_org": "Garry Tan (Y Combinator CEO)",
+    "type": "tool",
+    "license": "MIT"
+  },
+  "summary": {
+    "core_contribution": "Markdown-first, Postgres-backed knowledge layer for AI agents with zero-LLM graph extraction. 'Thin harness, fat skills' design — runtime stays minimal while intelligence resides in markdown files. Regex-based typed edge inference (FOUNDED, INVESTED, ADVISES, WORKS_AT, MENTIONS) requires zero LLM calls. Hybrid search: BM25 + HNSW vector + RRF fusion (score = sum(1/(60+rank))). 74 MCP tools via stdio or HTTP. Production-tested at 146K pages, 24K people, 5K companies.",
+    "key_claims": [
+      "97.6% top-5 LongMemEval retrieval (per web search data)",
+      "+31.4 point P@5 improvement from typed knowledge graph layer on BrainBench",
+      "97.9% R@5 on BrainBench (240-page corpus)",
+      "74 MCP tools exposed via stdio or HTTP",
+      "Zero-LLM graph extraction via regex-based typed inference cascade",
+      "PGLite: full Postgres 17 compiled to WASM, ~2s provisioning, no Docker"
+    ],
+    "methodology": "Compiled truth + timeline pattern: current-best-understanding section on top with append-only evidence trail below. Knowledge graph edges extracted via regex in fixed order (FOUNDED > INVESTED > ADVISES > WORKS_AT > MENTIONS). Search uses hybrid pipeline: BM25 keyword + HNSW vector + RRF fusion with optional multi-query expansion (Haiku) and ZeroEntropy reranker. Three presets: conservative, balanced, tokenmax. Autopilot daemon runs on 5-minute tick with cost cap."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["rag", "memory"],
+    "relevance_category": "opportunity",
+    "impact_level": "high",
+    "relevance_rationale": "gBrain validates smgglrs-rag's hybrid search architecture — identical pattern (BM25 + vector + RRF with k=60). Code-level verification: smgglrs-rag uses score = sum(1/(60+rank+1)) with 3x overfetch per channel, matching gBrain's RRF formula (score = sum(1/(60+rank))). The zero-LLM regex graph extraction is a pattern smgglrs could adopt — smgglrs-memory's knowledge store has content-addressed entries (SHA-256 of kind+title) and scoping (entity_id) but no automated graph extraction. The compiled-truth-plus-timeline pattern maps to smgglrs-memory's DistilledEntry with supersession (store_distilled() upserts by content_key, increments version). gBrain's 74 MCP tools make it a natural upstream server for smgglrs to proxy and security-filter via UpstreamModule::discover() with tool scanning."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Zero-LLM regex graph extraction for building knowledge graphs from ingested documents",
+      "Compiled truth + timeline pattern for smgglrs-memory knowledge store",
+      "Cost-capped autopilot pattern for background memory maintenance",
+      "PGLite as alternative to SQLite for environments needing Postgres compatibility"
+    ],
+    "what_to_watch": [
+      "gBrain as upstream MCP server for smgglrs to proxy",
+      "BrainBench evaluation results vs smgglrs-rag performance",
+      "ZeroEntropy reranker integration pattern"
+    ],
+    "what_to_avoid": [
+      "Don't adopt gBrain's markdown-first storage — smgglrs-memory's SQLite FTS5 is more suitable for gateway workloads",
+      "Don't require full wikilink paths — too brittle for user-facing content"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S11 (RAG + memory optimization)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs-rag already implements the same hybrid search pattern (FTS5 + vector + RRF + cross-encoder reranking). gBrain adds zero-LLM graph extraction and the compiled-truth pattern that smgglrs-memory lacks. smgglrs has stronger security (IFC, safety hooks) but weaker knowledge organization.",
+    "gaps_exposed": [
+      "No knowledge graph extraction in smgglrs-rag or smgglrs-memory",
+      "No compiled-truth-plus-timeline pattern for knowledge consolidation",
+      "No cost-capped background maintenance for memory"
+    ],
+    "advantages_confirmed": [
+      "Hybrid FTS5+vector+RRF architecture validated as correct pattern (gBrain uses identical approach)",
+      "Cross-encoder reranking (smgglrs-rag) is a step beyond gBrain's ZeroEntropy reranker",
+      "smgglrs's gateway security layer adds IFC/safety that gBrain lacks entirely"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A",
+    "mcp_spec_alignment": "2025-11-25 (stdio MCP server with 74 tools)",
+    "isolation_model": "in-process (PGLite WASM or Postgres)",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "knowledge-graph",
+    "token_economics": "Zero-LLM graph extraction eliminates model inference cost for knowledge organization. Cost-capped autopilot prevents runaway API spending."
+  },
+  "uncertain": []
+}

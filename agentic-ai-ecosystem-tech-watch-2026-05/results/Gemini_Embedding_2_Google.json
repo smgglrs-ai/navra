@@ -1,0 +1,72 @@
+{
+  "basic_info": {
+    "name": "Gemini Embedding 2: A Native Multimodal Embedding Model from Gemini",
+    "source_url": "https://arxiv.org/abs/2605.27295",
+    "date": "2026-05-26",
+    "authors_org": "Google (88 authors, led by Madhuri Shanbhogue)",
+    "type": "paper",
+    "license": "CC BY 4.0"
+  },
+  "summary": {
+    "core_contribution": "Natively multimodal embedding model that maps text, image, video, and audio into a single unified representation space. Built on Gemini's multimodal capabilities using large-scale contrastive learning with a multi-task, multi-stage training setup. Handles arbitrary combinations of interleaved inputs across all four modalities.",
+    "key_claims": [
+      "State-of-the-art performance across unimodal, cross-modal, and multimodal retrieval",
+      "MSCOCO R@1: 62.9",
+      "Vatex NDCG@10: 68.8",
+      "MTEB Multilingual: 69.9",
+      "MTEB Code: 84.0",
+      "Surpasses specialized models across varied retrieval tasks",
+      "Robust zero-shot performance across specialized domains (astronomy, bioscience, fine arts, culinary arts)"
+    ],
+    "methodology": "Built on top of Gemini's multimodal architecture. Training uses large-scale contrastive learning with a multi-task, multi-stage training setup to produce embeddings that generalize across diverse task types. The model processes arbitrary combinations of interleaved inputs across four modalities (text, image, video, audio) and maps them into a single unified vector space. Zero-shot generalization is achieved without domain-specific fine-tuning, demonstrating reliable out-of-the-box representation for specialized domains. Target use cases include RAG, recommendation systems, and search."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["rag", "model", "model-hub", "modal-voice", "modal-vision"],
+    "relevance_category": "opportunity",
+    "impact_level": "medium",
+    "relevance_rationale": "Gemini Embedding 2 represents the future direction for multimodal RAG: a single embedding model handling text, images, audio, and video in one vector space. For smgglrs, this validates the architecture decision to have separate modal-voice and modal-vision crates that could converge on a unified multimodal embedding. However, as a Google proprietary model, direct integration requires API access (not local ONNX). The MTEB benchmarks set a quality bar for smgglrs-rag's embedding models. The multi-modal aspect is relevant for smgglrs-rag if the system needs to retrieve across document types (PDFs with images, audio transcripts, etc.)."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Add Gemini Embedding 2 as a supported backend in smgglrs-model for cloud-tier embedding (alongside OpenAI/Anthropic)",
+      "Design smgglrs-rag embedding abstraction to support multimodal inputs (not just text) for future-proofing",
+      "Use MTEB benchmarks (Multilingual: 69.9, Code: 84.0) as quality targets for evaluating local embedding models"
+    ],
+    "what_to_watch": [
+      "Open-source multimodal embedding models that could replicate this capability locally (ONNX-compatible)",
+      "Whether Google releases distilled/smaller versions suitable for CPU/NPU inference",
+      "MTEB leaderboard evolution — whether competitors match these scores with open weights"
+    ],
+    "what_to_avoid": [
+      "Do not make smgglrs dependent on Google API for core RAG functionality — local-first remains the principle",
+      "Do not prematurely unify modal-voice and modal-vision into a single multimodal crate without an open-weight model to back it"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S12+ (multimodal RAG abstraction, cloud embedding backend)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs-rag currently uses in-process ONNX models for text embeddings only. Gemini Embedding 2 represents a capability gap for multimodal retrieval. However, smgglrs's local-first architecture (in-process ONNX) provides privacy advantages that cloud-based Gemini embeddings cannot match. smgglrs-rag's hybrid FTS5+vector search with cross-encoder reranking addresses retrieval quality through architecture rather than relying solely on embedding quality.",
+    "gaps_exposed": [
+      "No multimodal embedding support — smgglrs-rag only handles text embeddings",
+      "No unified vector space across modalities for cross-modal retrieval",
+      "No Google/Gemini model backend in smgglrs-model (only OpenAI, Anthropic, ONNX, Ollama)"
+    ],
+    "advantages_confirmed": [
+      "Local-first ONNX embedding provides privacy that cloud-based Gemini cannot match",
+      "Hybrid search (FTS5+vector+RRF+reranker) compensates for lower embedding quality through architectural sophistication",
+      "smgglrs can add Gemini as optional cloud backend while maintaining local-first default"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A (embedding model, not a security concern)",
+    "mcp_spec_alignment": "N/A (embedding model, not MCP-specific)",
+    "isolation_model": "N/A (cloud API model; local deployment not available)",
+    "aaif_alignment": "N/A",
+    "regulatory_relevance": "EU AI Act consideration: sending user data to Google for embedding computation may conflict with data residency requirements for high-risk AI systems"
+  },
+  "economics": {
+    "memory_tier": "flat-vector (single unified vector space across modalities)",
+    "token_economics": "Google API pricing applies. Multimodal embeddings are likely more expensive per query than text-only embeddings due to processing video/audio/image inputs. However, unified embedding eliminates the need for separate embedding models per modality, potentially reducing total infrastructure cost for multimodal RAG."
+  },
+  "uncertain": ["token_economics"]
+}

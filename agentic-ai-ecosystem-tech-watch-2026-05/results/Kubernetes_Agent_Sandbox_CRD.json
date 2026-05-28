@@ -1,0 +1,73 @@
+{
+  "basic_info": {
+    "name": "Kubernetes Agent Sandbox CRD",
+    "source_url": "https://github.com/kubernetes-sigs/agent-sandbox",
+    "date": "2026-03-20",
+    "authors_org": "Kubernetes SIG Apps (kubernetes-sigs)",
+    "type": "tool",
+    "license": "Apache-2.0"
+  },
+  "summary": {
+    "core_contribution": "Kubernetes-native CRD and controller for managing isolated, stateful, singleton workloads purpose-built for AI agent runtimes. Introduces four CRDs: Sandbox (core — declarative API for stateful pods with stable identity and persistent storage), SandboxTemplate (reusable templates), SandboxClaim (user-facing abstraction for requesting sandboxes from templates), and SandboxWarmPool (pre-warmed pod pool for sub-second provisioning). Supports gVisor and Kata Containers for kernel and network isolation.",
+    "key_claims": [
+      "Sub-second sandbox provisioning via SandboxWarmPool (<1s vs. standard K8s pod scheduling)",
+      "Supports gVisor (userspace kernel, syscall interception) and Kata Containers (lightweight VM per pod) for strong isolation",
+      "Decouples execution layer from isolation technology — swap backends without changing workload specs",
+      "Handles full lifecycle: creation, scheduled deletion, pausing (hibernation), automatic resume on network activity",
+      "v1alpha1 API under agents.x-k8s.io and extensions.agents.x-k8s.io"
+    ],
+    "methodology": "Core CRD (Sandbox) in agents.x-k8s.io/v1alpha1 provides a declarative API for a single stateful pod with stable identity, persistent storage, and network accessibility. Extension CRDs (SandboxTemplate, SandboxClaim, SandboxWarmPool) in extensions.agents.x-k8s.io/v1alpha1 add templating, user-facing claims, and warm pooling. The controller manages pod lifecycle including hibernation (pause/resume) to save compute during idle periods. Runtime class abstraction allows plugging gVisor (syscall-level) or Kata Containers (VM-level) isolation without changing the Sandbox spec. SandboxWarmPool maintains pre-started pods in ready state; SandboxClaim allocates from the pool instantly."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["tools-exec", "model-runtime", "server"],
+    "relevance_category": "opportunity",
+    "impact_level": "high",
+    "relevance_rationale": "Directly relevant to smgglrs's sandbox execution model. smgglrs-tools-exec already supports OpenShell sandboxes; agent-sandbox provides the Kubernetes-native equivalent. smgglrs-model-runtime's pluggable isolation (direct, Podman, OpenShell) could add agent-sandbox as a fourth backend. The SandboxClaim/SandboxTemplate pattern maps cleanly to smgglrs's capability-based security model — a capability token could authorize a SandboxClaim. Sub-second warm pool provisioning addresses the cold-start latency problem for tool execution sandboxes."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Add agent-sandbox as a Kubernetes-native isolation backend in smgglrs-model-runtime alongside Podman and OpenShell",
+      "Map smgglrs capability tokens to SandboxClaim creation — capability delegation authorizes sandbox provisioning",
+      "Adopt the warm pool pattern (SandboxWarmPool) for pre-warming execution sandboxes to reduce tool-call latency",
+      "Use SandboxTemplate to define security profiles for different trust tiers (matching smgglrs risk_tier levels)"
+    ],
+    "what_to_watch": [
+      "Graduation from v1alpha1 to v1beta1 — stability guarantees",
+      "GKE Agent Sandbox managed offering — Google Cloud integration patterns",
+      "Whether agent-sandbox becomes the standard K8s API for agent isolation across cloud providers"
+    ],
+    "what_to_avoid": [
+      "Tightly coupling to agent-sandbox internals — use the CRD API abstraction layer",
+      "Assuming agent-sandbox replaces all isolation needs — it's Kubernetes-specific, smgglrs also needs local/desktop isolation"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "Phase 12 (Kubernetes deployment)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs-tools-exec provides command execution inside OpenShell sandboxes (local/desktop focus). agent-sandbox provides the Kubernetes-native equivalent for cloud deployments. smgglrs's model-runtime already abstracts isolation backends (direct, Podman, OpenShell), making agent-sandbox a natural addition. smgglrs adds security layers (IFC, capability auth, hook pipeline) on top of whatever isolation backend is used.",
+    "gaps_exposed": [
+      "smgglrs lacks Kubernetes-native sandbox provisioning — agent-sandbox fills this for cloud deployments",
+      "No warm pool / pre-warming mechanism in smgglrs for reducing sandbox cold-start latency",
+      "No hibernation/resume support for idle sandbox cost optimization",
+      "Missing SandboxTemplate equivalent — reusable isolation profiles for different security tiers"
+    ],
+    "advantages_confirmed": [
+      "smgglrs's pluggable isolation architecture (model-runtime) is validated — agent-sandbox confirms the abstraction pattern",
+      "smgglrs adds security layers (IFC, hooks, capability auth) that agent-sandbox does not provide — complementary, not competing",
+      "smgglrs works locally on Linux desktops without Kubernetes — broader deployment model",
+      "smgglrs's risk_tier system maps naturally to SandboxTemplate security profiles"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": ["ASI01 (Excessive Agency)", "ASI03 (Insufficient Tool/Function Access Control)", "ASI05 (Insecure Output Handling)"],
+    "mcp_spec_alignment": "N/A (Kubernetes infrastructure, protocol-agnostic)",
+    "isolation_model": "container, microVM (gVisor for syscall-level isolation, Kata Containers for VM-level isolation)",
+    "aaif_alignment": "Kubernetes SIG Apps project; aligns with AAIF's infrastructure-layer standardization goals for agent runtimes",
+    "regulatory_relevance": "EU AI Act: provides the isolation infrastructure needed for high-risk AI system deployments. Strong isolation (Kata VMs) supports data residency and tenant isolation requirements."
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "SandboxWarmPool reduces sandbox provisioning latency from seconds to sub-second, reducing time-to-first-token for tool calls. Hibernation saves compute costs during agent idle periods. The CRD abstraction avoids vendor lock-in to specific isolation technologies, enabling cost-optimal runtime selection."
+  },
+  "uncertain": ["date", "owasp_coverage", "aaif_alignment"]
+}

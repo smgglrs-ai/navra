@@ -1,0 +1,218 @@
+topic: "Agentic AI Ecosystem Tech Watch — May 2026"
+description: >
+  Comprehensive scan of inference optimization, agent frameworks, security/auth
+  protocols, RAG patterns, memory architectures, and business models. Evaluated
+  for smgglrs gateway relevance: competitors, opportunities, threats, validations.
+
+items:
+  # ── Inference Optimization ──────────────────────────────────────────
+  - id: oscar
+    name: "OSCAR (Together AI)"
+    url: https://www.marktechpost.com/2026/05/25/together-ai-open-sources-oscar-an-attention-aware-2-bit-kv-cache-quantization-system-for-long-context-llm-serving/
+    secondary_urls:
+      - https://arxiv.org/abs/2605.17757
+    type: paper+tool
+    one_liner: "Attention-aware 2-bit KV cache quantization — 8x memory reduction"
+
+  - id: eagle-3-1
+    name: "Eagle 3.1"
+    url: https://www.marktechpost.com/2026/05/27/meet-eagle-3-1-the-speculative-decoding-algorithm-that-fixes-attention-drift-in-llm-inference/
+    type: paper+tool
+    one_liner: "Speculative decoding fixing attention drift with FC normalization"
+
+  - id: turboquant-turbovec
+    name: "TurboQuant / TurboVec"
+    url: https://www.marktechpost.com/2026/05/20/meet-turbovec-a-rust-vector-index-with-python-bindings-and-built-on-googles-turboquant-algorithm/
+    type: tool
+    one_liner: "Rust vector index using Google's TurboQuant quantization"
+
+  - id: qwen-3-6-turboquant
+    name: "Qwen 3.6 122B on 16GB Mac Mini"
+    url: https://medium.com/data-science-collective/a-qwen-3-6-122b-llm-on-a-16-gb-mac-mini-moe-expert-streaming-with-turboquant-mlx-4f77f0b48518
+    type: article
+    one_liner: "MoE expert streaming with TurboQuant/MLX on consumer hardware"
+
+  - id: vllm-rust-frontend
+    name: "vLLM Rust Frontend (PR #40848)"
+    url: https://github.com/vllm-project/vllm/pull/40848
+    type: tool
+    one_liner: "Rust-based frontend integration into vLLM inference engine"
+
+  - id: ssd-saguaro
+    name: "Speculative Speculative Decoding (SAGUARO)"
+    url: https://openreview.net/pdf?id=aL1Wnml9Ef
+    type: paper
+    one_liner: "Parallelized draft-verify cycle — 30% faster than best spec decoding"
+
+  # ── Agent Architecture & Frameworks ─────────────────────────────────
+  - id: hf-agent-glossary
+    name: "HuggingFace Agent Glossary"
+    url: https://huggingface.co/blog/agent-glossary
+    type: article
+    one_liner: "Canonical 2026 definitions for agent concepts"
+
+  - id: agent-toolkit-landscape
+    name: "Open-Source Agent Toolkit Landscape 2026"
+    url: https://dev.to/anmolbaranwal/open-source-toolkit-for-building-ai-agents-in-2026-55h1
+    type: article
+    one_liner: "Survey of agent-building toolkits and frameworks"
+
+  - id: hermes-agent
+    name: "Hermes Agent (Nous Research)"
+    url: https://hermes-agent.nousresearch.com/
+    type: tool
+    one_liner: "140K+ stars, self-improving learning loop, 6 execution backends"
+
+  - id: gbrain
+    name: "gBrain (Garry Tan)"
+    url: https://www.marktechpost.com/2026/05/22/a-step-by-step-coding-tutorial-to-implement-gbrain-the-self-wiring-memory-layer-built-by-y-combinators-garry-tan-for-ai-agents/
+    type: tool
+    one_liner: "Markdown-first, Postgres-backed memory layer with 74 MCP tools"
+
+  # ── Papers ──────────────────────────────────────────────────────────
+  - id: paper-skill-consumption
+    name: "From Raw Experience to Skill Consumption (2605.23899)"
+    url: https://huggingface.co/papers/2605.23899
+    secondary_urls:
+      - https://arxiv.org/abs/2605.23899
+    type: paper
+    one_liner: "Skill lifecycle study — negative transfer, meta-skill mitigation"
+
+  - id: paper-paravt
+    name: "ParaVT: Parallel Video Tool Calling (2605.20342)"
+    url: https://huggingface.co/papers/2605.20342
+    secondary_urls:
+      - https://arxiv.org/abs/2605.20342
+    type: paper
+    one_liner: "Multi-agent end-to-end RL for parallel tool calling in video"
+
+  - id: paper-memforest
+    name: "MemForest: Hierarchical Temporal Memory (2605.23986)"
+    url: https://huggingface.co/papers/2605.23986
+    secondary_urls:
+      - https://arxiv.org/abs/2605.23986
+    type: paper
+    one_liner: "Temporal indexing for agent memory — 6x throughput, 79.8% accuracy"
+
+  - id: paper-claw-anything
+    name: "Claw-Anything: Always-On Assistant Benchmark (2605.26086)"
+    url: https://huggingface.co/papers/2605.26086
+    secondary_urls:
+      - https://arxiv.org/abs/2605.26086
+    type: paper
+    one_liner: "Benchmark for persistent assistants — GPT-5.5 reaches only 34.5%"
+
+  - id: paper-muse-autoskill
+    name: "MUSE-Autoskill: Self-Evolving Agents (2605.27366)"
+    url: https://huggingface.co/papers/2605.27366
+    secondary_urls:
+      - https://arxiv.org/abs/2605.27366
+    type: paper
+    one_liner: "Skills as long-lived evolving assets with memory and unit tests"
+
+  - id: paper-2605-28774
+    name: "Paper 2605.28774"
+    url: https://huggingface.co/papers/2605.28774
+    secondary_urls:
+      - https://arxiv.org/abs/2605.28774
+    type: paper
+    one_liner: "TBD — possibly Gemini Embedding 2 or AXPO-related"
+
+  # ── Security & Auth ─────────────────────────────────────────────────
+  - id: auth-md
+    name: "auth.md (WorkOS)"
+    url: https://www.marktechpost.com/2026/05/25/workos-releases-auth-md-an-open-agent-registration-protocol-built-on-oauth-standards/
+    type: protocol
+    one_liner: "Open agent registration protocol built on OAuth — ID-JAG + OTP"
+
+  - id: safe-coding-agents
+    name: "Safely Running Coding Agents"
+    url: https://towardsdatascience.com/how-to-safely-run-coding-agents/
+    type: article
+    one_liner: "Sandboxing and safety patterns for code-executing agents"
+
+  - id: fides-ifc
+    name: "FIDES (Microsoft Research)"
+    url: https://arxiv.org/abs/2505.23643
+    type: paper+tool
+    one_liner: "Formal IFC model for AI agent planners — dynamic taint-tracking"
+
+  - id: neurotaint
+    name: "NeuroTaint / Ghost in the Agent"
+    url: https://arxiv.org/abs/2604.23374
+    type: paper
+    one_liner: "Semantic taint-tracking — F1=0.928 vs FIDES F1=0.522"
+
+  - id: mvar-ifc
+    name: "MVAR: Dual-Lattice IFC Runtime"
+    url: https://github.com/mvar-security/mvar
+    type: tool
+    one_liner: "Execution firewall — 100% block rate on 50-vector adversarial corpus"
+
+  - id: ms-agent-governance
+    name: "Microsoft Agent Governance Toolkit"
+    url: https://github.com/microsoft/agent-governance-toolkit
+    type: tool
+    one_liner: "7-package monorepo covering all OWASP Agentic AI Top 10 — 9500+ tests"
+
+  - id: owasp-agentic-top10
+    name: "OWASP Agentic AI Top 10"
+    url: https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/
+    type: standard
+    one_liner: "Canonical risk taxonomy ASI01-ASI10 for agentic applications"
+
+  - id: shadow-escape
+    name: "Shadow Escape (Operant AI)"
+    url: https://www.operant.ai/art-kubed/shadow-escape
+    type: paper
+    one_liner: "First zero-click MCP attack — hidden instructions trigger exfiltration"
+
+  # ── RAG & Search ────────────────────────────────────────────────────
+  - id: hybrid-rag-search
+    name: "Hybrid Semantic+Lexical Search in RAG"
+    url: https://machinelearningmastery.com/implementing-hybrid-semantic-lexical-search-in-rag/
+    type: article
+    one_liner: "Implementation patterns for RRF fusion in RAG pipelines"
+
+  - id: gemini-embedding-2
+    name: "Gemini Embedding 2 (Google)"
+    url: https://arxiv.org/abs/2605.27295
+    type: paper
+    one_liner: "Natively multimodal embeddings — text/image/video/audio/PDF unified"
+
+  - id: adaptive-chunking
+    name: "Adaptive Chunking (2603.25333)"
+    url: https://arxiv.org/abs/2603.25333
+    type: paper
+    one_liner: "Document-aware strategy selection — RAG 62%→72% correctness"
+
+  # ── Agent Memory ────────────────────────────────────────────────────
+  - id: cloudflare-agent-memory
+    name: "Cloudflare Agent Memory"
+    url: https://www.infoq.com/news/2026/04/cloudflare-agent-memory-beta/
+    type: tool
+    one_liner: "5-channel RRF retrieval — validates smgglrs-rag architecture"
+
+  # ── Business & Ecosystem ────────────────────────────────────────────
+  - id: agentic-economy
+    name: "Agentic Economy Monetization"
+    url: https://metacircuits.substack.com/p/four-ways-to-make-money-in-the-agentic-economy
+    type: article
+    one_liner: "Four business model patterns for agent infrastructure"
+
+  - id: mcp-2026-07-rc
+    name: "MCP 2026-07-28 Release Candidate"
+    url: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+    type: protocol
+    one_liner: "Largest MCP revision — stateless core, Extensions, Tasks, Apps"
+
+  - id: k8s-agent-sandbox
+    name: "Kubernetes Agent Sandbox CRD"
+    url: https://github.com/kubernetes-sigs/agent-sandbox
+    type: tool
+    one_liner: "Sandbox/SandboxTemplate/SandboxClaim CRDs for agent isolation"
+
+execution:
+  batch_size: 5
+  items_per_agent: 7
+  output_dir: ./results

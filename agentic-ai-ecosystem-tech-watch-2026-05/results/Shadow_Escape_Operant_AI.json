@@ -1,0 +1,75 @@
+{
+  "basic_info": {
+    "name": "Shadow Escape (Operant AI)",
+    "source_url": "https://www.operant.ai/art-kubed/shadow-escape",
+    "date": "2025-10-22",
+    "authors_org": "Operant AI Security Research Team",
+    "type": "paper",
+    "license": "N/A (security research disclosure)"
+  },
+  "summary": {
+    "core_contribution": "First documented zero-click agentic attack exploiting MCP (Model Context Protocol). Hidden malicious instructions embedded in innocuous documents (e.g., onboarding PDFs) trigger AI agents to discover and exfiltrate sensitive data through connected MCP tools without any user interaction, phishing, or malicious browser extensions.",
+    "key_claims": [
+      "Zero-click attack requiring no user error, phishing, or malicious extensions",
+      "Operates entirely within authorized identity boundaries and inside enterprise firewalls",
+      "Invisible to conventional security tools (WAFs, DLP, endpoint detection)",
+      "Cross-platform: affects ChatGPT, Claude, Gemini, Llama-based assistants, and any MCP-enabled agent",
+      "Potential exfiltration scale described as 'trillions of records' across affected organizations",
+      "CVE designation process initiated — framed as protocol-level vulnerability, not product flaw"
+    ],
+    "methodology": "Three-stage attack chain: (1) Infiltration — hidden instructions embedded in seemingly innocuous documents such as employee onboarding PDFs from public sources; (2) Discovery — when uploaded to an MCP-enabled AI assistant, hidden instructions prompt the agent to access connected databases, CRM systems, and file shares, surfacing private data (names, addresses, credit cards, PHI); (3) Exfiltration — hidden instructions command the agent to send entire datasets to external servers, disguised as routine analytics or performance uploads. The attack exploits the trust relationship between MCP tools and the agent: the agent has authorized access to connected resources, and the hidden instructions redirect that access for data theft."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["security", "protocol", "core", "tools-file", "tools-exec", "rag"],
+    "relevance_category": "threat",
+    "impact_level": "high",
+    "relevance_rationale": "Shadow Escape validates smgglrs core design: gateway-enforced security is exactly the defense against this attack class. Code-level analysis confirms: (1) Per-value IFC (ValueStore with var:// resolution) tracks taint at individual tool-result granularity — data from an uploaded document gets labeled Untrusted, and TaintedWritePolicy::Deny prevents tainted sessions from writing to external destinations; (2) TaintGate temporal predicate can block specific tools after seeing taint elevation — e.g., block network tools after PII detection; (3) Statistical guardrails (CosineDriftDetector) would flag anomalous tool-use patterns (read document → immediate exfiltration is a behavioral anomaly); (4) Tool scanner's DescriptionInjection detection catches hidden instructions in tool descriptions. Remaining gap: no egress filtering at the network level, and IFC tracks structural taint (explicit content transfer) but not semantic taint (paraphrased exfiltration)."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Egress filtering in security hooks: flag or block tool calls that send data to external endpoints not on an allowlist",
+      "Cross-tool data flow anomaly detection: alert when data discovered via one tool is sent through a different tool to an external destination",
+      "Document content sanitization before injection into agent context — strip hidden instructions from uploaded files",
+      "MCP trust zones with explicit tool-level allowlisting per session/conversation"
+    ],
+    "what_to_watch": [
+      "CVE designation outcome — if accepted, this becomes a formal protocol vulnerability requiring spec-level mitigation",
+      "Evolution of hidden instruction embedding techniques (steganographic, Unicode, formatting-based)",
+      "MCP spec response to Shadow Escape — whether Anthropic adds protocol-level egress controls"
+    ],
+    "what_to_avoid": [
+      "Do not rely solely on prompt-level safety (system prompt instructions) to prevent exfiltration — the attack operates within authorized boundaries",
+      "Do not assume that authentication/authorization alone prevents data theft — Shadow Escape uses legitimate credentials"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S10 (egress filtering + cross-tool data flow monitoring)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs is better positioned than most MCP clients/gateways to defend against Shadow Escape because: (1) IFC tracks data provenance and can detect cross-tool exfiltration patterns; (2) the hook pipeline can intercept and analyze tool calls before execution; (3) deny-wins ACLs restrict which tools can access which resources; (4) upstream tool scanning (8 threat categories) can flag suspicious tool behavior. Most competing MCP gateways lack IFC and therefore cannot detect the data flow anomaly at the core of this attack.",
+    "gaps_exposed": [
+      "No explicit egress filtering or external endpoint allowlisting in current security hooks",
+      "No cross-tool data flow anomaly detection (IFC tracks provenance but does not yet flag suspicious cross-tool patterns automatically)",
+      "No document sanitization pipeline for uploaded content before agent context injection"
+    ],
+    "advantages_confirmed": [
+      "Per-value IFC (ValueStore with var:// resolution) tracks taint at tool-result granularity — exfiltration paths are detectable via label join on variable references",
+      "TaintedWritePolicy::Deny + TaintGate temporal predicate block exfiltration by preventing tainted sessions from reaching external sinks",
+      "CosineDriftDetector statistical guardrail would flag the anomalous tool-use pattern (read → immediate exfiltration) via z-score deviation",
+      "Gateway-enforced deny-wins ACLs (deny checked before allow, path canonicalization before check) prevent tool misuse",
+      "PromptInjectionFilter in safety pipeline (regex-based) detects hidden instruction patterns in content",
+      "8-category tool scanner detects DescriptionInjection in upstream tool definitions"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "ASI01 (Agent Goal Hijack — hidden instructions redirect agent behavior), ASI02 (Tool Misuse — tools used for exfiltration), ASI03 (Identity & Privilege Abuse — operates within authorized boundaries)",
+    "mcp_spec_alignment": "Affects all MCP versions — protocol-level vulnerability in the trust model between agents and tools",
+    "isolation_model": "N/A (attack exploits the lack of isolation between tool access and data egress)",
+    "aaif_alignment": "Relevant to AAIF runtime security discussions — demonstrates need for gateway-level protection",
+    "regulatory_relevance": "EU AI Act (data protection obligations for high-risk AI systems), GDPR (personal data exfiltration implications)"
+  },
+  "economics": {
+    "memory_tier": "N/A (attack research, not a system)",
+    "token_economics": "The attack adds zero token overhead — it piggybacks on existing agent tool calls. Defending against it (egress filtering, anomaly detection, document sanitization) adds moderate per-request overhead."
+  },
+  "uncertain": ["mcp_spec_alignment"]
+}

@@ -1,0 +1,71 @@
+{
+  "basic_info": {
+    "name": "Adaptive Chunking: Optimizing Chunking-Method Selection for RAG",
+    "source_url": "https://arxiv.org/abs/2603.25333",
+    "date": "2026-03-26",
+    "authors_org": "Paulo Roberto de Moura Junior, Jean Lelong, Annabelle Blangero (Ekimetrics)",
+    "type": "paper",
+    "license": "CC BY 4.0"
+  },
+  "summary": {
+    "core_contribution": "Framework for document-aware chunking strategy selection in RAG systems. Instead of one-size-fits-all chunking, the system selects the optimal chunking method per document using five novel intrinsic metrics that assess chunking quality without relying on downstream task performance. Introduces two new chunkers (LLM-regex splitter and split-then-merge recursive splitter) with targeted post-processing.",
+    "key_claims": [
+      "RAG answer correctness improved from 62-64% baseline to 72%",
+      "Successfully answered questions increased by over 30% (65 vs 49)",
+      "Gains achieved without changing models or prompts — chunking alone is the lever",
+      "Five novel intrinsic metrics for chunking quality evaluation",
+      "Accepted at LREC 2026"
+    ],
+    "methodology": "The framework introduces five novel intrinsic metrics for evaluating chunking quality: (1) References Completeness (RC) — ensures cross-references within chunks remain intact; (2) Intrachunk Cohesion (ICC) — measures semantic coherence within each chunk; (3) Document Contextual Coherence (DCC) — assesses how well chunks preserve document-level context; (4) Block Integrity (BI) — verifies structural elements (tables, lists) are not split mid-block; (5) Size Compliance (SC) — ensures chunks meet size constraints. Two new chunkers are introduced: an LLM-regex splitter that combines regex patterns with LLM guidance, and a split-then-merge recursive splitter that first splits aggressively then merges related segments. The adaptive selection process evaluates multiple chunking strategies against the five metrics per document and selects the optimal strategy. Evaluated on a diverse corpus spanning legal, technical, and social science domains. Code available at https://github.com/ekimetrics/adaptive-chunking."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["rag"],
+    "relevance_category": "opportunity",
+    "impact_level": "medium",
+    "relevance_rationale": "smgglrs-rag currently uses breadcrumb chunking as its chunking strategy. Adaptive chunking demonstrates that document-aware strategy selection can improve RAG correctness by 10+ percentage points without any model changes. The five intrinsic metrics (RC, ICC, DCC, BI, SC) could be integrated into smgglrs-rag to evaluate and select chunking strategies per document type. This is particularly relevant for smgglrs because the gateway handles diverse document types from multiple tools (file_read, git tools, etc.) — different documents may benefit from different chunking strategies."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Implement Block Integrity (BI) metric to ensure structured content (tables, lists, code blocks) is not split mid-block in breadcrumb chunking",
+      "Add Intrachunk Cohesion (ICC) as a quality gate — chunks with low semantic coherence should be re-split or merged",
+      "Consider document-type-aware chunking: different strategies for code files, markdown, legal documents, etc.",
+      "Evaluate the split-then-merge recursive splitter as an alternative to breadcrumb chunking for certain document types"
+    ],
+    "what_to_watch": [
+      "Ekimetrics open-source implementation (https://github.com/ekimetrics/adaptive-chunking) for reusable metric implementations",
+      "Whether the LLM-regex splitter approach can be adapted to use local ONNX models instead of large LLMs",
+      "Follow-up work on the five intrinsic metrics — whether the research community validates or refines them"
+    ],
+    "what_to_avoid": [
+      "Do not implement the full LLM-regex splitter if it requires large LLM inference per chunk — this conflicts with smgglrs local-first, low-latency design",
+      "Do not replace breadcrumb chunking entirely — adaptive selection means keeping multiple strategies and choosing per document"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S11-S12 (chunking quality metrics + document-type-aware strategy selection)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs-rag uses breadcrumb chunking as a single strategy. Adaptive chunking demonstrates that a single strategy leaves 10+ percentage points of correctness on the table. However, smgglrs-rag compensates with strong retrieval (hybrid FTS5+vector, RRF fusion, cross-encoder reranking, confidence gating) which partially offsets suboptimal chunking. The breadcrumb approach is lightweight and fast, suitable for smgglrs's desktop/local-first use case.",
+    "gaps_exposed": [
+      "Single chunking strategy (breadcrumb) may underperform for structured documents (legal, tables, code)",
+      "No chunking quality metrics — smgglrs-rag cannot currently evaluate whether its chunks are well-formed",
+      "No document-type-aware chunking — all documents are chunked identically regardless of structure"
+    ],
+    "advantages_confirmed": [
+      "smgglrs-rag's strong retrieval pipeline (RRF + reranking + confidence gating) provides defense-in-depth against suboptimal chunking",
+      "Breadcrumb chunking is fast and predictable — important for desktop latency requirements",
+      "In-process execution means chunking improvements can be deployed without infrastructure changes"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A (RAG technique, not a security concern)",
+    "mcp_spec_alignment": "N/A (chunking technique, not MCP-specific)",
+    "isolation_model": "in-process (chunking runs in-process in smgglrs-rag)",
+    "aaif_alignment": "N/A",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "flat-vector (chunking feeds into vector store)",
+    "token_economics": "Better chunking directly reduces wasted context tokens: 72% vs 62% correctness means fewer retrieval misses, fewer retries, and lower per-query token cost. The adaptive selection adds modest compute overhead (evaluating 5 metrics per document) but this is amortized over all queries against that document. The LLM-regex splitter option would add significant per-document LLM inference cost."
+  },
+  "uncertain": []
+}

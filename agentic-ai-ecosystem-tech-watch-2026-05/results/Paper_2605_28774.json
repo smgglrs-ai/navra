@@ -1,0 +1,56 @@
+{
+  "basic_info": {
+    "name": "AXPO: Agent Explorative Policy Optimization (2605.28774)",
+    "source_url": "https://huggingface.co/papers/2605.28774",
+    "date": "2026-05",
+    "authors_org": "Minki Kang, Shizhe Diao, Ryo Hachiuma, Sung Ju Hwang, Pavlo Molchanov, Yu-Chiang Frank Wang, Byung-Kwan Lee (NVIDIA)",
+    "type": "paper",
+    "license": "N/A (academic paper)"
+  },
+  "summary": {
+    "core_contribution": "Addresses the Thinking-Acting Gap in RL-trained vision-language models: standard RL (GRPO) causes models to heavily favor internal thinking over tool use, suppressing learning signal for tool-calling behavior. AXPO fixes all-wrong tool-using subgroups by fixing the thinking prefix and resampling the tool call continuation, recovering the learning signal for agentic behavior.",
+    "key_claims": [
+      "Tool use attempted in only ~30% of rollouts under standard GRPO",
+      "When attempted, tool-using rollouts are all-wrong ~40% of the time",
+      "SFT+AXPO outperforms SFT+GRPO by +1.8pp Pass@1 and +1.8pp Pass@4 at 8B scale",
+      "8B model with SFT+AXPO surpasses 32B base model on Pass@4 (4x fewer parameters)",
+      "Evaluated across three scales of Qwen3-VL-Thinking"
+    ],
+    "methodology": "For each all-wrong tool-using subgroup in RL training: (1) fix the thinking prefix (reasoning before tool call), (2) resample the tool call and its continuation to recover learning signal, (3) use uncertainty-based prefix selection to choose which prefixes to resample. This addresses the structural asymmetry where thinking (self-contained default) dominates over tool use (high-variance auxiliary acting)."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["agent", "model"],
+    "relevance_category": "reference",
+    "impact_level": "low",
+    "relevance_rationale": "The Thinking-Acting Gap finding explains why agents sometimes skip tool calls even when tools would help — relevant to understanding smgglrs-agent's tool-use loop behavior. The fix is at the RL training level (not inference), so smgglrs can't implement it directly. However, smgglrs could track tool-call skip rates as a diagnostic metric for model quality."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Track tool-call skip rates in smgglrs-agent as a model quality diagnostic"
+    ],
+    "what_to_watch": [
+      "Whether AXPO-trained models become available for local serving",
+      "Application of AXPO to text-only (non-vision) tool calling"
+    ],
+    "what_to_avoid": [],
+    "implementation_difficulty": "trivial",
+    "priority_sprint": "N/A (diagnostic metric only)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "Not directly comparable — AXPO is a training technique, smgglrs is inference infrastructure.",
+    "gaps_exposed": [],
+    "advantages_confirmed": []
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "N/A",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "AXPO reduces the need for larger models (8B matches 32B), lowering inference cost."
+  },
+  "uncertain": []
+}

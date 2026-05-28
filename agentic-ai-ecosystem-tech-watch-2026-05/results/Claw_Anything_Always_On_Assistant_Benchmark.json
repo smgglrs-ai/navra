@@ -1,0 +1,63 @@
+{
+  "basic_info": {
+    "name": "Claw-Anything: Always-On Assistant Benchmark (2605.26086)",
+    "source_url": "https://huggingface.co/papers/2605.26086",
+    "date": "2026-05",
+    "authors_org": "Yusong Lin et al. (Beijing Institute of Technology, Huawei, Peking University, CAS)",
+    "type": "paper",
+    "license": "N/A (academic paper)"
+  },
+  "summary": {
+    "core_contribution": "Benchmark for always-on personal assistants expanding agent context along three dimensions: long-horizon activity histories, interdependent backend services, and integrated GUI+CLI interaction across multiple devices. Simulates months of user activity through multi-round event injection producing complex world states with realistic noise (irrelevant events, conflicting signals). Evaluates both reactive and proactive assistance.",
+    "key_claims": [
+      "GPT-5.5 reaches only 34.5% pass@1 — shows always-on assistants are far from solved",
+      "Expands agent context beyond narrow slices to full user digital world",
+      "Evaluates proactive assistance (anticipating user needs without explicit requests)",
+      "Includes realistic noise and conflicting signals",
+      "Code at github.com/LiberCoders/Claw-Anything"
+    ],
+    "methodology": "Simulates months of user activity via multi-round event injection across multiple services and devices. Agents must reason over rich contextual environments while remaining robust to noise (irrelevant events, conflicting signals). Evaluates both reactive (explicit requests) and proactive (anticipatory) assistance capabilities."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["agent", "flow", "memory", "core"],
+    "relevance_category": "validation",
+    "impact_level": "medium",
+    "relevance_rationale": "Validates the always-on agent paradigm smgglrs serves as infrastructure for. The benchmark's three dimensions (long-horizon history, interdependent services, multi-device) map to smgglrs capabilities: memory (history), module aggregation (services), transport (multi-device). The low GPT-5.5 scores (34.5%) show this is an open problem where infrastructure quality (security, memory, context management) can be a differentiator. The '*Claw' naming continues the genre (ClawPatrol, ContextForge)."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Use Claw-Anything benchmark for evaluating smgglrs-agent's always-on capabilities",
+      "The proactive assistance evaluation dimension could inform smgglrs-flow's event-driven orchestration"
+    ],
+    "what_to_watch": [
+      "Model improvements on this benchmark — when scores pass 60%, always-on assistants become viable",
+      "Whether noise robustness becomes a differentiating feature for agent infrastructure"
+    ],
+    "what_to_avoid": [],
+    "implementation_difficulty": "N/A",
+    "priority_sprint": "N/A (evaluation benchmark)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs provides the infrastructure for always-on agents but doesn't implement the agent reasoning itself. The benchmark validates that smgglrs's design choices (persistent memory, multi-service aggregation, security) are the right infrastructure for this use case.",
+    "gaps_exposed": [
+      "smgglrs-memory may need longer-horizon storage and retrieval for always-on scenarios",
+      "No proactive assistance patterns in smgglrs-flow"
+    ],
+    "advantages_confirmed": [
+      "smgglrs's gateway model (aggregating multiple services behind unified security) is validated as essential infrastructure for always-on assistants",
+      "Memory persistence across sessions is a key requirement this benchmark confirms"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "ASI01 (Goal Hijack — noise robustness), ASI06 (Context Manipulation — conflicting signals)",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "N/A",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "EU AI Act (always-on assistants with broad access to user data raise high-risk obligations)"
+  },
+  "economics": {
+    "memory_tier": "enterprise-context",
+    "token_economics": "Long-horizon context (months of history) creates massive token budgets — efficient memory (MemForest-style) is essential for viability."
+  },
+  "uncertain": []
+}

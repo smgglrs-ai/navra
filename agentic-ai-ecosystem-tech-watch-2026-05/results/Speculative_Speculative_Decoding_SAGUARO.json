@@ -1,0 +1,52 @@
+{
+  "basic_info": {
+    "name": "Speculative Speculative Decoding (SAGUARO)",
+    "source_url": "https://openreview.net/pdf?id=aL1Wnml9Ef",
+    "date": "2026-01",
+    "authors_org": "ICLR 2026",
+    "type": "paper",
+    "license": "N/A (academic paper)"
+  },
+  "summary": {
+    "core_contribution": "SAGUARO parallelizes the sequential draft-verify cycle in speculative decoding itself. Standard speculative decoding drafts tokens then verifies them sequentially; SAGUARO overlaps these phases to reduce end-to-end latency.",
+    "key_claims": [
+      "30% faster than strongest speculative decoding baselines",
+      "Up to 5x faster than standard autoregressive decoding",
+      "Parallelizes the draft-verify cycle that was previously sequential"
+    ],
+    "methodology": "[uncertain] — paper behind OpenReview paywall. Based on web search results: SAGUARO algorithm overlaps the drafting and verification phases of speculative decoding, which are normally sequential. This eliminates idle time during the verify phase by already starting the next draft."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["model-runtime"],
+    "relevance_category": "reference",
+    "impact_level": "low",
+    "relevance_rationale": "Academic advance in speculative decoding that will eventually be absorbed by serving engines (vLLM, SGLang). smgglrs benefits transitively when model-runtime backends adopt SAGUARO. No direct implementation needed."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [],
+    "what_to_watch": [
+      "vLLM/SGLang adoption of SAGUARO algorithm",
+      "Combination with Eagle 3.1 (attention drift fix + parallelized verification)"
+    ],
+    "what_to_avoid": [],
+    "implementation_difficulty": "N/A",
+    "priority_sprint": "N/A (consumed transitively)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "Not directly comparable — smgglrs doesn't implement decoding algorithms.",
+    "gaps_exposed": [],
+    "advantages_confirmed": []
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "N/A",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "5x faster than autoregressive reduces per-token serving cost by ~80% when adopted by serving engines."
+  },
+  "uncertain": ["methodology"]
+}
