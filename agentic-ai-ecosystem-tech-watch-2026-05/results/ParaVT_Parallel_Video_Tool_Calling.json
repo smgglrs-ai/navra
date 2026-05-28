@@ -1,0 +1,59 @@
+{
+  "basic_info": {
+    "name": "ParaVT: Parallel Video Tool Calling (2605.20342)",
+    "source_url": "https://huggingface.co/papers/2605.20342",
+    "date": "2026-05",
+    "authors_org": "Zuhao Yang et al. (MiroMind, NTU, HKU, HKUST(GZ), THU, LMMs-Lab)",
+    "type": "paper",
+    "license": "N/A (academic paper)"
+  },
+  "summary": {
+    "core_contribution": "First multi-agent end-to-end RL-trained framework for parallel video tool calling. Main agent emits K parallel tool_call invocations on disjoint temporal windows; K independent sub-agents each ground one window and return textual summaries. Identifies the 'Tool Prior Paradox' where pretrained tool priors enable exploration but destabilize format compliance. PARA-GRPO algorithm solves this with targeted format rewards and per-prompt frame-budget randomization.",
+    "key_claims": [
+      "+7.9% average improvement over Qwen3-VL-8B across 6 long-video benchmarks",
+      "Format compliance lifted from 0.13 to 0.64 during training",
+      "Surpasses GPT-4o on LVBench (39.8 vs 34.7) and MMVU (68.6 vs 66.7)",
+      "Parallel dispatch outperforms sequential on same checkpoint across every benchmark",
+      "Peer-correctable evidence: mis-localized windows outvoted by peers"
+    ],
+    "methodology": "Single-turn parallel dispatch: main agent emits K tool calls, K sub-agents (weight-shared) each process one temporal window and return text summaries (not resampled frames). PARA-GRPO addresses Tool Prior Paradox via: (1) Exploration Anchoring — selective reward at structural-token positions prone to collapse, (2) nFrames Gating — randomizes overview-frame budget per prompt to create prompts where tools yield measurable reward."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["flow", "agent"],
+    "relevance_category": "reference",
+    "impact_level": "low",
+    "relevance_rationale": "The parallel tool dispatch pattern is directly relevant to smgglrs-flow's DAG execution and smgglrs-agent's tool-use loop. Peer-correctable evidence (sub-agent outputs voted on) maps to flow's mesh communication. The Tool Prior Paradox finding is relevant to understanding why agents skip tool calls — smgglrs could expose analytics on tool call rates. However, the video-specific application is outside smgglrs's scope."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Parallel tool dispatch pattern in smgglrs-flow DAG execution — emit multiple tool calls in single turn",
+      "Peer-correctable evidence pattern for multi-agent mesh validation"
+    ],
+    "what_to_watch": [
+      "Extension of PARA-GRPO to non-video tool calling scenarios",
+      "Adoption of parallel dispatch in mainstream agent frameworks"
+    ],
+    "what_to_avoid": [],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S12+ (flow optimization)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs-flow already supports parallel tool execution in DAG mode. ParaVT validates this pattern with RL-trained evidence of superiority over sequential dispatch.",
+    "gaps_exposed": [],
+    "advantages_confirmed": [
+      "smgglrs-flow's DAG execution with parallel tool calls is the correct architecture"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "N/A",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "Parallel dispatch with text summaries (not resampled frames) controls context growth — bounded token cost vs linear growth in sequential dispatch."
+  },
+  "uncertain": []
+}

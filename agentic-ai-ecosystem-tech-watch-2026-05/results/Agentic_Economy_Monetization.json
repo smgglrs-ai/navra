@@ -1,0 +1,70 @@
+{
+  "basic_info": {
+    "name": "Agentic Economy Monetization",
+    "source_url": "https://metacircuits.substack.com/p/four-ways-to-make-money-in-the-agentic-economy",
+    "date": "2026-05-25",
+    "authors_org": "Jonas Braadbaart (The Circuit / Metacircuits)",
+    "type": "article",
+    "license": "N/A (newsletter article)"
+  },
+  "summary": {
+    "core_contribution": "Presents a four-quadrant framework for monetization in the agentic economy, organized by digital/physical and owned/rented axes. Core thesis: the agentic economy converts labor from payroll to firm-owned or rentable assets, competing for the labor budget (10-30x the software budget). Models, tools, and robots all commoditize — the strategic moats are proprietary data, workflow integration, and distribution.",
+    "key_claims": [
+      "Q1 2026: 80% of global VC went to AI (~$242B), on track for $600B full year",
+      "Digital Owned Agents quadrant already at ~$45-50B revenue in 2026",
+      "Foundation Capital sizes the agentic labor TAM at $4.6 trillion",
+      "Labor budget is 10-30x the software budget in North America and Europe",
+      "Models, tools, and robots commoditize — moats are data, workflow integration, distribution",
+      "Anduril $2.1B revenue (2025), guiding $4.3B; Symbotic $2.25B; Waymo valued at $126B"
+    ],
+    "methodology": "Two-axis framework: (1) digital vs. physical agents, (2) owned vs. rented agents. Four quadrants: Digital Owned (software agents you build and deploy — the founder's quadrant), Physical Rented (robots/equipment-as-a-service — capex to opex shift), Physical Owned (fleets/factories with deep capital moats — Anduril, Waymo, Amazon warehouse robots), Digital Rented (agent labor marketplaces). Each quadrant analyzed for moat depth, TAM, who captures upside, and strategic implications."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["server", "security", "flow"],
+    "relevance_category": "reference",
+    "impact_level": "medium",
+    "relevance_rationale": "Positions smgglrs in the 'Digital Owned' quadrant infrastructure layer. The article's thesis that models and tools commoditize while data/workflow/distribution are the moats validates smgglrs's strategy of being infrastructure (the gateway) rather than competing on models. The labor-budget framing (10-30x software budget) reframes smgglrs's value proposition: it enables enterprises to safely deploy agents that compete for labor budgets, not just software budgets."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Frame smgglrs value proposition around labor automation safety, not just tool access control",
+      "Position smgglrs as infrastructure enabling the 'Digital Owned' quadrant — the gateway that makes owned agents safe to deploy",
+      "Emphasize workflow integration capabilities (MCP gateway aggregation) as a moat-builder for smgglrs users"
+    ],
+    "what_to_watch": [
+      "Agent-to-agent commerce protocols (discovery, trust, payments) — the 'Digital Rented' quadrant needs these",
+      "Whether the $4.6T labor TAM claim materializes — tracks adoption velocity",
+      "Commoditization speed of agent infrastructure layers"
+    ],
+    "what_to_avoid": [
+      "Competing on model quality or tool quantity — these commoditize per the framework",
+      "Ignoring the distribution/discovery layer — this becomes the critical infrastructure"
+    ],
+    "implementation_difficulty": "trivial",
+    "priority_sprint": "N/A (strategic positioning, not implementation)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs sits in the infrastructure layer enabling the Digital Owned quadrant. The article confirms that the moat is not in models or tools (which commoditize) but in data control, workflow integration, and distribution. smgglrs's IFC, security layer, and MCP gateway aggregation directly serve the workflow-integration moat.",
+    "gaps_exposed": [
+      "smgglrs lacks agent-to-agent commerce primitives (payments, metering, SLA enforcement) needed for the Digital Rented quadrant",
+      "No built-in agent marketplace or discovery-layer monetization features"
+    ],
+    "advantages_confirmed": [
+      "Gateway architecture (aggregating tools behind security) is the right positioning — tools commoditize, security/integration does not",
+      "IFC and capability-based auth enable safe delegation to owned agents, which is the core enabler for the Digital Owned quadrant",
+      "Local/on-premise deployment preserves proprietary data moat for enterprises"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": ["ASI01 (Excessive Agency)"],
+    "mcp_spec_alignment": "N/A (business strategy article)",
+    "isolation_model": "none",
+    "aaif_alignment": "Aligns with AAIF vision of standardized agent interoperability; the Digital Rented quadrant requires exactly the kind of agent identity and trust infrastructure AAIF promotes",
+    "regulatory_relevance": "EU AI Act: agents performing labor require transparency, accountability, and human oversight — smgglrs's audit trail and hook pipeline directly serve compliance. Colorado AI Act: automated decision-making in employment contexts triggers disclosure requirements."
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "The labor-budget framing (10-30x software budget) suggests agent infrastructure can command higher pricing than traditional software tools. Per-task or per-outcome pricing models (selling work, not tools) could yield 10x revenue compared to SaaS subscription models."
+  },
+  "uncertain": ["date", "owasp_coverage", "regulatory_relevance", "affected_crates"]
+}

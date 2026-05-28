@@ -1,0 +1,73 @@
+{
+  "basic_info": {
+    "name": "auth.md (WorkOS)",
+    "source_url": "https://www.marktechpost.com/2026/05/25/workos-releases-auth-md-an-open-agent-registration-protocol-built-on-oauth-standards/",
+    "date": "2026-05-25",
+    "authors_org": "WorkOS",
+    "type": "protocol",
+    "license": "[uncertain]"
+  },
+  "summary": {
+    "core_contribution": "Open agent registration protocol enabling AI agents to register with applications without human interaction. Published as a Markdown file at a well-known URL (e.g., service.com/auth.md) — dual-purpose human-readable documentation and machine-parseable runtime artifact. Two registration flows: (1) Agent Verified (ID-JAG from trusted provider, zero interaction, synchronous), (2) User Claimed (OTP-based, email verification). Builds on OAuth 2.1 (RFC 9728) and IETF ID-JAG draft. Not tied to WorkOS infrastructure.",
+    "key_claims": [
+      "Zero-interaction registration via ID-JAG from trusted providers (OpenAI, Anthropic, Cursor)",
+      "Discovery via Protected Resource Metadata (/.well-known/oauth-protected-resource)",
+      "Automatic bootstrap on 401 response via WWW-Authenticate header",
+      "Delegation records keyed by (iss, sub, aud) tuple",
+      "No refresh tokens for ID-JAG flow — fresh assertion required for extension",
+      "Pre-claim anonymous access with scope upgrade after OTP verification"
+    ],
+    "methodology": "Two-hop discovery: PRM at well-known URL points to Authorization Server, which contains agent_auth block with register_uri, claim_uri, revocation_uri. Two flows: ID-JAG (provider mints audience-specific JWT, app verifies against provider JWKS, returns credentials synchronously) and User Claimed (POST /agent/auth/claim triggers OTP email, POST /agent/auth/claim/complete submits code). User matching: delegation record > email match > JIT provision."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["security", "protocol", "core"],
+    "relevance_category": "opportunity",
+    "impact_level": "high",
+    "relevance_rationale": "auth.md addresses the exact authentication gap smgglrs faces when agents connect. smgglrs currently uses BLAKE3 tokens — auth.md offers a standards-based alternative for agent registration that's interoperable with the broader ecosystem. The ID-JAG flow could complement smgglrs-security's capability delegation (agents present provider-minted assertions, smgglrs issues scoped capabilities). The protocol's well-known URL discovery pattern aligns with MCP server discovery."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Support auth.md protocol as an alternative registration flow alongside BLAKE3 tokens",
+      "Publish /.well-known/oauth-protected-resource for smgglrs server discovery",
+      "Implement ID-JAG verification against provider JWKS in smgglrs-security auth module",
+      "WWW-Authenticate header on 401 responses for automatic agent bootstrap"
+    ],
+    "what_to_watch": [
+      "IETF ID-JAG draft progression — critical dependency for the Agent Verified flow",
+      "Provider adoption (which platforms mint ID-JAGs)",
+      "MCP spec alignment — auth.md could become MCP's recommended auth mechanism"
+    ],
+    "what_to_avoid": [
+      "Don't abandon BLAKE3 tokens — auth.md is complementary for external agents, BLAKE3 remains better for internal/local auth",
+      "Don't trust ID-JAGs without JWKS verification against known providers"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S11 (auth enhancement)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs's BLAKE3 + capability delegation is more secure for local scenarios but less interoperable than auth.md for external agent registration. Adding auth.md support would give smgglrs best-of-both-worlds: secure local auth + standards-based external registration.",
+    "gaps_exposed": [
+      "No ID-JAG (Identity Assertion for Authorization Grant) flow in smgglrs-security's OAuthProvider",
+      "No well-known URL discovery (/.well-known/oauth-protected-resource) for smgglrs server",
+      "No agent identity verification against provider JWKS — smgglrs validates its own Ed25519-signed JWTs but not external provider assertions"
+    ],
+    "advantages_confirmed": [
+      "smgglrs already has OAuth 2.1 with Ed25519 JWT + RFC 8693 token exchange + OBO identity — auth.md ID-JAG is complementary, not replacement",
+      "BLAKE3 + CBOR/Ed25519 capability delegation with attenuation chains (ring, expiry, operations, tools, credentials, sandbox) is far more granular than auth.md's scope-based model",
+      "deny-wins ACLs + risk-tiered approval + trust scoring provide stronger post-auth enforcement than auth.md specifies",
+      "Constant-time token comparison (CWE-208 mitigation) already implemented"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "ASI03 (Identity & Privilege Abuse — scoped agent credentials), ASI04 (Supply Chain — provider trust list)",
+    "mcp_spec_alignment": "2026-07-28-RC (OAuth 2.1/OIDC hardening aligns with auth.md)",
+    "isolation_model": "N/A (authentication protocol, not isolation)",
+    "aaif_alignment": "independent (but builds on same OAuth/OIDC foundations as MCP spec)",
+    "regulatory_relevance": "EU AI Act (auditable agent identity and delegation records support compliance)"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "N/A (authentication protocol)"
+  },
+  "uncertain": ["license"]
+}

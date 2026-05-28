@@ -1,0 +1,65 @@
+{
+  "basic_info": {
+    "name": "Qwen 3.5 122B on 16GB Mac Mini (MoE Expert Streaming)",
+    "source_url": "https://medium.com/data-science-collective/a-qwen-3-6-122b-llm-on-a-16-gb-mac-mini-moe-expert-streaming-with-turboquant-mlx-4f77f0b48518",
+    "date": "2026-05-26",
+    "authors_org": "Manjunath Janardhan (Accenture AI/ML Senior Manager)",
+    "type": "article",
+    "license": "N/A (article)"
+  },
+  "summary": {
+    "core_contribution": "Demonstrates running Qwen3.5-122B-A10B (256-expert MoE, 240GB in BF16) on a $599 Mac Mini with only 16GB RAM by combining TurboQuant-MLX 3-bit quantization (shrinks to ~54GB on disk) with MoE expert streaming — paging only the ~8 active experts per token from SSD behind a small cache. Resident memory peaks at ~9GB despite 54GB model size.",
+    "key_claims": [
+      "122B parameter model running on 16GB consumer hardware",
+      "Resident memory ~9GB (vs 54GB quantized / 240GB BF16 model size)",
+      "No swap, no sysctl tweaks required",
+      "Bit-identical output compared to standard execution",
+      "Key insight: for sparse MoE, the memory wall is really a disk-bandwidth wall"
+    ],
+    "methodology": "Two-step approach: (1) TurboQuant-MLX quantizes the model to 3-bit (~54GB on disk), (2) MoE expert streaming pages only active experts (~8 of 256) from SSD into a small RAM cache per token. Validated first on a 35B model (<4GB) before scaling to 122B. The article notes that M-series SSD bandwidth is sufficient for coherent generation."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["model-runtime", "model-hub"],
+    "relevance_category": "validation",
+    "impact_level": "medium",
+    "relevance_rationale": "Validates smgglrs's vision of local model serving on consumer hardware. Expert streaming could enable smgglrs-model-runtime to serve large MoE models (Mixtral, Qwen) on desktop hardware that would otherwise require cloud offloading. The disk-bandwidth-wall insight is directly relevant to smgglrs's hardware tier profiles in MODELS.md. model-hub's OCI/HuggingFace caching could be extended to pre-download quantized + expert-streaming-ready model artifacts."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Consider MoE expert streaming as a model-runtime strategy for large models on CPU tier",
+      "model-hub could cache TurboQuant-quantized MoE artifacts"
+    ],
+    "what_to_watch": [
+      "MLX expert streaming support maturity",
+      "ONNX Runtime MoE expert streaming (currently MLX-only)",
+      "vLLM/SGLang expert streaming support"
+    ],
+    "what_to_avoid": [
+      "Don't assume all MoE models benefit equally — disk I/O latency may be unacceptable for real-time interactive use"
+    ],
+    "implementation_difficulty": "significant",
+    "priority_sprint": "S13+ (advanced model serving)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs currently targets small ONNX models in-process and larger models via backend engines. Expert streaming would add a new tier between in-process and full backend serving.",
+    "gaps_exposed": [
+      "No MoE-aware model serving strategy in model-runtime",
+      "Hardware tier profiles don't account for SSD bandwidth as a model-serving resource"
+    ],
+    "advantages_confirmed": [
+      "smgglrs's tiered model architecture (CPU/GPU) anticipates exactly this kind of capability expansion"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "in-process (MLX)",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "Enables running 122B models on $599 hardware instead of cloud GPU instances ($1-5/hour). Significant cost reduction for local-first agent deployments."
+  },
+  "uncertain": []
+}

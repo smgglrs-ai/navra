@@ -1,0 +1,74 @@
+{
+  "basic_info": {
+    "name": "Open-Source Agent Toolkit Landscape 2026",
+    "source_url": "https://dev.to/anmolbaranwal/open-source-toolkit-for-building-ai-agents-in-2026-55h1",
+    "date": "2026-05-28",
+    "authors_org": "Anmol Baranwal (Dev.to)",
+    "type": "article",
+    "license": "N/A (article)"
+  },
+  "summary": {
+    "core_contribution": "Comprehensive survey of 70+ open-source tools across 17 categories for building AI agents in 2026. Categories: frontend/UI, skills/plugins, computer use, orchestration, coding agent harness, coding agents, browser automation, web scraping, multi-agent, document processing, voice agents, visual builders, MCP/tool integration, sandboxing, agent memory, testing/evaluation, monitoring/observability. Includes star counts, key differentiators, and three canonical protocols (MCP, A2A, AG-UI).",
+    "key_claims": [
+      "CopilotKit (31.5K stars) leads frontend; OpenCode (162K stars) leads coding agents",
+      "agent-skills (43.8K stars) establishes skill package pattern",
+      "Composio (28.4K stars) acts as intelligent MCP gateway with dynamic tool routing",
+      "E2B (12K stars) sets sandboxing standard with Firecracker microVMs (~150ms boot)",
+      "mem0 (55K stars) leads agent memory but trails Zep (63.8% vs 49% on LongMemEval)",
+      "Three protocols converging: MCP (agent-tools), A2A (agent-agent), AG-UI (agent-user)"
+    ],
+    "methodology": "Survey of GitHub repositories with star counts, feature comparison, and ecosystem mapping. Organized by agent system layer."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["protocol", "security", "tools-exec", "rag", "memory", "agent", "flow", "modal-voice"],
+    "relevance_category": "reference",
+    "impact_level": "high",
+    "relevance_rationale": "Maps the competitive landscape smgglrs operates in. Key findings: (1) Composio is the closest MCP gateway competitor with dynamic tool routing, (2) E2B/Firecracker/OpenSandbox define the sandboxing standard smgglrs-tools-exec must match, (3) mem0/Zep/Graphiti show memory architecture alternatives to smgglrs-memory, (4) AI-Infra-Guard (Tencent) and garak (NVIDIA) scan MCP servers for security — direct validation of smgglrs-security's tool scanning, (5) Pipecat/LiveKit define voice agent patterns for smgglrs-modal-voice, (6) DeepEval sets agent testing standards."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Composio's dynamic tool routing pattern (Tool Router) — smgglrs could surface only relevant tools per request",
+      "DeepEval's agent-specific test metrics (task completion, tool correctness, step efficiency) for smgglrs testing",
+      "AI-Infra-Guard's MCP server scanning approach — validates smgglrs-security's upstream tool scanning"
+    ],
+    "what_to_watch": [
+      "Composio's MCP gateway evolution — closest competitor to smgglrs's gateway role",
+      "AG-UI protocol adoption — may need smgglrs-protocol support",
+      "Graphiti (Zep) temporal knowledge graphs — 63.8% vs mem0's 49% on LongMemEval"
+    ],
+    "what_to_avoid": [
+      "Don't try to compete with full agent frameworks (LangGraph, CrewAI) — smgglrs is infrastructure, not framework",
+      "Don't replicate Composio's managed auth model — smgglrs's BLAKE3+capability approach is more secure"
+    ],
+    "implementation_difficulty": "N/A",
+    "priority_sprint": "N/A (landscape reference)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs uniquely combines MCP gateway, IFC security, and in-process ML models in a single Rust binary. No other tool in this landscape provides all three. Composio is closest as MCP gateway but lacks IFC, safety ML models, and is a SaaS product not self-hosted infrastructure. E2B/OpenSandbox handle sandboxing but not MCP routing or security. AI-Infra-Guard scans but doesn't enforce.",
+    "gaps_exposed": [
+      "No dynamic tool routing (Composio's Tool Router pattern) — McpServer exposes all RegisteredTools via HashMap, no per-request filtering based on agent intent",
+      "No AG-UI protocol support (MCP + A2A v0.2.5 are implemented, AG-UI is missing)",
+      "No vector quantization in RAG (sqlite-vec full float32 vs TurboVec 2-bit)",
+      "FTS5 search hardcoded to 20 results — limits recall for large knowledge bases"
+    ],
+    "advantages_confirmed": [
+      "IFC differentiator confirmed at code level — 2x4 product lattice with per-value tracking (ValueStore), Bell-LaPadula enforcement, Kani-proven monotonicity. No other tool in landscape has this.",
+      "In-process ONNX models confirmed — OnnxBackend supports CPU/CUDA/OpenVINO(NPU) with embed() + classify() for safety/embeddings. No other gateway embeds safety ML models.",
+      "Defense-in-depth stack confirmed — IFC + statistical guardrails (cosine drift + entropy) + temporal behavioral contracts + 8-category tool scanner + deny-wins ACLs + trust scoring + capability delegation with Ed25519/CBOR. Unmatched in landscape.",
+      "Rust implementation confirmed as differentiator — 18-crate workspace, 2160+ tests, 138 Kani formal proofs. Most competitors are Python/TypeScript.",
+      "Hash-chained blackbox audit log (SHA-256, tamper-detectable) with PII filtering — unique audit capability"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "Landscape covers ASI02 (Tool Misuse — sandboxing), ASI03 (Identity — Composio auth), ASI05 (Code Execution — E2B/OpenSandbox)",
+    "mcp_spec_alignment": "Ecosystem converging on MCP + A2A + AG-UI as the three canonical agent protocols",
+    "isolation_model": "Multiple: Firecracker microVMs (E2B), containers (OpenSandbox), gVisor (K8s), in-process (various)",
+    "aaif_alignment": "MCP under Linux Foundation/AAIF; A2A from Google; AG-UI from CopilotKit",
+    "regulatory_relevance": "N/A (landscape survey)"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "N/A (landscape survey)"
+  },
+  "uncertain": []
+}

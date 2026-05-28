@@ -1,0 +1,82 @@
+{
+  "basic_info": {
+    "name": "MCP 2026-07-28 Release Candidate",
+    "source_url": "https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/",
+    "date": "2026-05-21",
+    "authors_org": "David Soria Parra (Lead Maintainer), Den Delimarsky (Lead Maintainer) — Anthropic / MCP Project",
+    "type": "protocol",
+    "license": "Open specification (Apache-2.0 for reference implementations)"
+  },
+  "summary": {
+    "core_contribution": "Largest MCP revision since launch. Removes protocol-level sessions (SEP-2567) making the protocol fully stateless — any request can hit any server instance behind a plain load balancer. Introduces the Extensions framework with MCP Apps (SEP-1865, server-rendered HTML UIs in sandboxed iframes) and Tasks extension (long-running work with task handles). Adds caching metadata (ttlMs/cacheScope via SEP-2549), W3C Trace Context propagation (SEP-414), OAuth 2.1/OIDC alignment (6 SEPs), and a formal deprecation policy with 12-month minimum overlap (SEP-2596).",
+    "key_claims": [
+      "Stateless core: Mcp-Session-Id removed, no sticky sessions or shared session stores needed",
+      "Mcp-Method and Mcp-Name headers enable infrastructure routing without body inspection",
+      "MCP Apps (SEP-1865): first official MCP extension — server-rendered HTML UIs in sandboxed iframes",
+      "Tasks moved from core to extension; tasks/list removed (can't scope safely without sessions)",
+      "12-month minimum deprecation window guaranteed by SEP-2596",
+      "tools/list responses carry ttlMs and cacheScope for client-side caching",
+      "W3C Trace Context (traceparent, tracestate, baggage) standardized in _meta",
+      "Roots, sampling, and logging deprecated with replacements defined",
+      "Final specification ships July 28, 2026; Tier 1 SDKs expected to ship support within 10-week window"
+    ],
+    "methodology": "SEP-driven specification evolution. Key SEPs: SEP-2567 (session removal), SEP-1865 (MCP Apps), SEP-2549 (caching metadata), SEP-2596 (deprecation policy), SEP-414 (W3C Trace Context), plus 6 OAuth/OIDC hardening SEPs. Breaking changes with 10-week validation window. Deprecation policy: roots replaced by tool parameters/resource URIs, sampling replaced by direct LLM API integration, logging replaced by stderr/OpenTelemetry."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["protocol", "core", "server", "agent", "security", "flow"],
+    "relevance_category": "threat",
+    "impact_level": "high",
+    "relevance_rationale": "Breaking protocol revision. Code analysis reveals smgglrs currently implements MCP spec 2025-03-26 (constant PROTOCOL_VERSION in smgglrs-protocol/src/mcp.rs). Specific impacts: (1) Session removal breaks smgglrs-core's Session struct (id, agent, client_info, context_label, created_at, last_accessed) and SessionStore/SessionBackend trait (InMemory + DashMap backends) — context_label IFC accumulation across requests must be rethought without sessions; (2) Mcp-Method/Mcp-Name headers change routing in smgglrs-core's transport layer (build_router, build_router_with_broadcaster); (3) smgglrs-protocol defines RootsCapability, PromptRole, pagination types that may change; (4) smgglrs-security's OAuthProvider already implements OAuth 2.1 with Ed25519 JWT and RFC 8693 token exchange, but OIDC alignment may require updates; (5) Tasks extension redesign affects smgglrs-core's TaskStore (in-memory HashMap) and A2A dispatch; (6) W3C Trace Context propagation — smgglrs-core has Prometheus metrics but no OTel spans, so traceparent/tracestate in _meta needs new plumbing. Most critical risk: IFC session taint accumulation depends on session identity."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Remove Mcp-Session-Id handling and session state from smgglrs-protocol and smgglrs-core",
+      "Add Mcp-Method and Mcp-Name header parsing for request routing in smgglrs-server",
+      "Implement ttlMs/cacheScope on tools/list and resources/list responses",
+      "Add W3C Trace Context propagation (traceparent/tracestate/baggage) in _meta alongside existing OTel support",
+      "Implement MCP Apps extension: sandboxed iframe rendering with security review pipeline",
+      "Update Tasks from core to extension pattern with tasks/get, tasks/update, tasks/cancel (remove tasks/list)",
+      "Align OAuth implementation with the 6 hardening SEPs",
+      "Implement deprecation warnings for roots, sampling, and logging"
+    ],
+    "what_to_watch": [
+      "Final spec publication on July 28, 2026 for any last-minute changes",
+      "Tier 1 SDK implementations for reference patterns",
+      "Community adoption timeline — when do major MCP clients switch to 2026-07-28"
+    ],
+    "what_to_avoid": [
+      "Implementing against the RC before the final spec — wait for July 28 for production code",
+      "Removing deprecated features (roots, sampling, logging) before the 12-month window"
+    ],
+    "implementation_difficulty": "significant",
+    "priority_sprint": "Phase 11 (MCP spec compliance)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs currently implements MCP 2025-11-25 with ~35/39 methods. The stateless redesign actually benefits smgglrs's gateway architecture — a stateless protocol makes gateway proxying simpler (no session affinity needed). smgglrs's existing OTel support aligns well with the W3C Trace Context addition. The MCP Apps extension is new territory that plays to smgglrs's security review capabilities.",
+    "gaps_exposed": [
+      "smgglrs must remove its session management code and adopt stateless request handling",
+      "No MCP Apps rendering/security-review pipeline exists yet",
+      "Tasks implementation needs redesign from core to extension pattern",
+      "OAuth implementation needs alignment with 6 new hardening SEPs",
+      "ttlMs/cacheScope caching metadata not yet implemented"
+    ],
+    "advantages_confirmed": [
+      "Gateway architecture benefits from stateless protocol — simpler proxying, no session affinity needed",
+      "Existing OTel traces align with W3C Trace Context standardization",
+      "Hook pipeline is ideal for MCP Apps security review (prefetch, cache, review before rendering)",
+      "IFC labels can be applied to MCP Apps UI content for information flow control"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": ["ASI02 (Insufficient Access Control)", "ASI03 (Insufficient Tool/Function Access Control)", "ASI07 (Prompt Injection)"],
+    "mcp_spec_alignment": "2026-07-28-RC",
+    "isolation_model": "isolate (sandboxed iframe for MCP Apps)",
+    "aaif_alignment": "MCP is now governed under AAIF/Linux Foundation; this RC represents AAIF's first major spec revision process",
+    "regulatory_relevance": "OAuth 2.1/OIDC alignment improves EU AI Act compliance for authentication/authorization. W3C Trace Context enables audit trails required by both EU AI Act and Colorado AI Act."
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "Stateless protocol reduces server-side memory per connection (no session stores). ttlMs caching reduces redundant tools/list calls, saving tokens on repeated capability negotiation. Mcp-Method header routing enables more efficient load balancing, reducing infrastructure cost per request."
+  },
+  "uncertain": ["license", "owasp_coverage"]
+}

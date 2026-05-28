@@ -1,0 +1,60 @@
+{
+  "basic_info": {
+    "name": "Eagle 3.1",
+    "source_url": "https://www.marktechpost.com/2026/05/27/meet-eagle-3-1-the-speculative-decoding-algorithm-that-fixes-attention-drift-in-llm-inference/",
+    "date": "2026-05-26",
+    "authors_org": "EAGLE Team + vLLM Team + TorchSpec Team (arXiv 2605.09992)",
+    "type": "paper+tool",
+    "license": "Apache 2.0 (vLLM)"
+  },
+  "summary": {
+    "core_contribution": "Eagle 3.1 fixes attention drift in speculative decoding — a production reliability problem where the drafter model progressively shifts attention away from important sink tokens toward its own generated tokens as speculation depth increases. Two architectural changes: (1) FC normalization after target hidden states, (2) post-norm hidden-state feedback for recursive drafter behavior.",
+    "key_claims": [
+      "Up to 2x longer acceptance length in long-context workloads vs EAGLE 3",
+      "2.03x per-user output throughput at concurrency=1 (Kimi K2.6, GB200, TP=4)",
+      "1.66x throughput even at concurrency=16",
+      "Backward-compatible with EAGLE 3 checkpoints",
+      "Merged into vLLM main, stable in v0.22.0"
+    ],
+    "methodology": "Root cause analysis identified two sources of attention drift: (1) fused input representation imbalance where higher-layer hidden states dominate drafter input, (2) unnormalized residual path causing magnitude growth across speculation steps. Fix 1 applies normalization after each target hidden state before the FC layer. Fix 2 feeds normalized hidden states into the next step, making the drafter behave like recursive invocation rather than appending layers."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["model-runtime"],
+    "relevance_category": "opportunity",
+    "impact_level": "low",
+    "relevance_rationale": "Eagle 3.1 improves inference throughput for large models served via vLLM, which smgglrs-model-runtime could use as a backend. The attention drift fix is particularly relevant for long-context agent workloads where smgglrs would maintain extended conversations. However, smgglrs doesn't directly implement speculative decoding — this is consumed transitively through serving engines."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Ensure model-runtime vLLM backend uses v0.22.0+ to benefit from Eagle 3.1 automatically"
+    ],
+    "what_to_watch": [
+      "TorchSpec training support for custom draft models — could enable spec decoding for smgglrs-served models",
+      "Eagle 3.1 support across more model architectures"
+    ],
+    "what_to_avoid": [
+      "Don't implement speculative decoding in smgglrs — leave to serving engine"
+    ],
+    "implementation_difficulty": "trivial",
+    "priority_sprint": "N/A (version bump only)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs benefits transitively — model-runtime backends using vLLM 0.22.0+ get Eagle 3.1 automatically.",
+    "gaps_exposed": [],
+    "advantages_confirmed": [
+      "smgglrs's backend-agnostic model-runtime design means inference improvements like Eagle 3.1 are absorbed without code changes"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "in-process (vLLM integration)",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "2x throughput improvement for long-context workloads reduces per-token serving cost by ~50% for affected workloads."
+  },
+  "uncertain": []
+}

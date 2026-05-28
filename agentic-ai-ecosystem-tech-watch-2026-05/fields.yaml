@@ -1,0 +1,122 @@
+topic: "Agentic AI Ecosystem Tech Watch — May 2026"
+
+fields:
+  basic_info:
+    description: "Identity and provenance"
+    fields:
+      - name: name
+        description: "Full name of the item"
+        detail_level: brief
+      - name: source_url
+        description: "Primary URL"
+        detail_level: brief
+      - name: date
+        description: "Publication or release date"
+        detail_level: brief
+      - name: authors_org
+        description: "Authors or organization"
+        detail_level: brief
+      - name: type
+        description: "Category: paper, tool, protocol, article, standard"
+        detail_level: brief
+      - name: license
+        description: "Open-source license if applicable"
+        detail_level: brief
+
+  summary:
+    description: "What it is and what it claims"
+    fields:
+      - name: core_contribution
+        description: "Primary technical contribution in 2-3 sentences"
+        detail_level: moderate
+      - name: key_claims
+        description: "Quantitative claims or benchmarks cited"
+        detail_level: moderate
+      - name: methodology
+        description: "How it works — architecture, algorithm, approach"
+        detail_level: detailed
+
+  smgglrs_relevance:
+    description: "Direct impact on the smgglrs gateway project"
+    fields:
+      - name: affected_crates
+        description: >
+          Which smgglrs crates are affected: protocol, model, model-hub,
+          model-runtime, security, core, memory, agent, flow, rag,
+          modal-voice, modal-vision, tools-exec, tools-file, tools-git,
+          cognitive, server
+        detail_level: brief
+      - name: relevance_category
+        description: "competitor | opportunity | threat | validation | reference"
+        detail_level: brief
+      - name: impact_level
+        description: "high | medium | low"
+        detail_level: brief
+      - name: relevance_rationale
+        description: "Why this matters to smgglrs specifically"
+        detail_level: moderate
+
+  actionable_insights:
+    description: "What smgglrs should do about this"
+    fields:
+      - name: what_to_adopt
+        description: "Techniques, patterns, or APIs to integrate"
+        detail_level: moderate
+      - name: what_to_watch
+        description: "Items to monitor for future adoption"
+        detail_level: brief
+      - name: what_to_avoid
+        description: "Approaches or patterns to steer away from"
+        detail_level: brief
+      - name: implementation_difficulty
+        description: "trivial | moderate | significant | major"
+        detail_level: brief
+      - name: priority_sprint
+        description: "Suggested sprint/phase for roadmap placement"
+        detail_level: brief
+
+  competitive_position:
+    description: "How smgglrs compares and where to differentiate"
+    fields:
+      - name: how_smgglrs_compares
+        description: "Direct comparison with smgglrs capabilities"
+        detail_level: moderate
+      - name: gaps_exposed
+        description: "Weaknesses or missing features revealed"
+        detail_level: moderate
+      - name: advantages_confirmed
+        description: "smgglrs strengths validated by this item"
+        detail_level: moderate
+
+  ecosystem_context:
+    description: "Broader ecosystem and regulatory alignment"
+    fields:
+      - name: owasp_coverage
+        description: "Maps to OWASP Agentic AI Top 10 risks (ASI01-ASI10)"
+        detail_level: brief
+      - name: mcp_spec_alignment
+        description: "Which MCP spec version: 2025-11-25, DRAFT-2026-v1, 2026-07-28-RC"
+        detail_level: brief
+      - name: isolation_model
+        description: "Sandboxing approach: container, microVM, gVisor, isolate, in-process, none"
+        detail_level: brief
+      - name: aaif_alignment
+        description: "Relationship to AAIF/Linux Foundation governance"
+        detail_level: brief
+      - name: regulatory_relevance
+        description: "EU AI Act, Colorado AI Act applicability"
+        detail_level: brief
+
+  economics:
+    description: "Cost and business model implications"
+    fields:
+      - name: memory_tier
+        description: "working | flat-vector | tiered | knowledge-graph | enterprise-context"
+        detail_level: brief
+      - name: token_economics
+        description: "Impact on inference cost per query/task"
+        detail_level: moderate
+
+uncertain:
+  # Reserved — auto-filled during deep research phase
+  []

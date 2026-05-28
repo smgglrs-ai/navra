@@ -1,0 +1,63 @@
+{
+  "basic_info": {
+    "name": "Safely Running Coding Agents",
+    "source_url": "https://towardsdatascience.com/how-to-safely-run-coding-agents/",
+    "date": "2026-05",
+    "authors_org": "Towards Data Science",
+    "type": "article",
+    "license": "N/A (article)"
+  },
+  "summary": {
+    "core_contribution": "Practitioner guide to running coding agents (Claude Code, OpenAI Codex) with liberal permissions. Argues that infrastructure-level guardrails (backups, narrow IAM, irreversible-action gates) are more effective than manual human review. Promotes agent-on-agent code review loops over human oversight. Identifies false confidence from rubber-stamping as a key threat. Recommends blocking only irreversible commands (rm -rf, production DB writes) while allowing all reversible operations.",
+    "key_claims": [
+      "Agents should have all reversible permissions by default — only gate irreversible operations",
+      "Manual review creates false confidence — humans rubber-stamp without understanding",
+      "Agent-on-agent code review (create → review → iterate) is more effective than human review",
+      "Infrastructure design (backups, narrow IAM) is the real defense, not agent restriction",
+      "Domain-sensitive contexts (healthcare, military) warrant vastly more careful treatment"
+    ],
+    "methodology": "Practitioner experience report using Claude Code (--dangerously-skip-permissions) and Codex (YOLO mode). No formal evaluation or benchmarks. Prescriptive advice based on personal production use."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["security", "tools-exec"],
+    "relevance_category": "threat",
+    "impact_level": "medium",
+    "relevance_rationale": "This article represents the 'no security' approach that smgglrs exists to protect against. The recommendation to skip all permissions and rely on infrastructure guardrails is exactly the threat model smgglrs addresses — agents with broad permissions need IFC, safety filters, and capability delegation to prevent data exfiltration and unauthorized actions. The article notably ignores prompt injection, supply-chain attacks, and data leakage. smgglrs's value proposition is proven by the gaps in this approach."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "The reversible/irreversible distinction is valid — smgglrs-tools-exec could tag operations by reversibility",
+      "Agent-on-agent review pattern could be supported in smgglrs-flow as a safety check"
+    ],
+    "what_to_watch": [
+      "Whether this 'YOLO mode' approach leads to publicized security incidents",
+      "Industry response to liberal permission granting for coding agents"
+    ],
+    "what_to_avoid": [
+      "Don't adopt the skip-all-permissions philosophy — it ignores prompt injection, data exfiltration, and supply-chain risks",
+      "Don't rely solely on infrastructure guardrails without agent-level security"
+    ],
+    "implementation_difficulty": "N/A",
+    "priority_sprint": "N/A (anti-pattern documentation)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs exists precisely because this approach is dangerous. The article's gaps (no IFC, no safety filtering, no capability scoping, no prompt injection defense) are smgglrs's feature set.",
+    "gaps_exposed": [],
+    "advantages_confirmed": [
+      "smgglrs's entire security model (IFC, deny-wins ACLs, safety hooks, capability delegation) addresses the risks this article ignores",
+      "The reversible/irreversible distinction validates smgglrs-security's risk_tier system"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "Ignores ASI01-ASI10 entirely — notable gap",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "none (runs on developer's local machine with broad permissions)",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "Counter-example for EU AI Act compliance — this approach would not meet high-risk obligations"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "N/A"
+  },
+  "uncertain": []
+}

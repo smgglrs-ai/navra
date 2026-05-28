@@ -1,0 +1,72 @@
+{
+  "basic_info": {
+    "name": "NeuroTaint / Ghost in the Agent (2604.23374)",
+    "source_url": "https://arxiv.org/abs/2604.23374",
+    "date": "2026-04-25",
+    "authors_org": "Yuandao Cai, Wensheng Tang, Cheng Wen, Shengchao Qin",
+    "type": "paper",
+    "license": "N/A (academic paper)"
+  },
+  "summary": {
+    "core_contribution": "First comprehensive taint-tracking framework tailored for LLM agents, addressing the insight that taint propagation in LLM agents must capture semantic transformation, causal influence on decisions, and cross-session persistence through memory — not just explicit content transfer. Audits execution traces offline to reconstruct provenance from untrusted sources to privileged sinks. Substantially outperforms FIDES on TaintBench.",
+    "key_claims": [
+      "F1=0.928 on TaintBench (400 scenarios, 20 real-world agent frameworks)",
+      "Substantially outperforms FIDES (F1=0.522) on same benchmark",
+      "Three taint mechanisms: semantic evidence, causal reasoning, persistent context tracking",
+      "Effective on InjecAgent and ToolEmu benchmarks",
+      "Modest additional auditing cost (offline operation)"
+    ],
+    "methodology": "Offline audit of execution traces. Three taint propagation mechanisms: (1) semantic evidence — tracks meaning-preserving transformations (paraphrase, summarization), (2) causal reasoning — identifies how untrusted data influences agent decisions even without direct content transfer, (3) persistent context tracking — monitors cross-session memory contamination. Operates post-hoc on traces rather than inline, keeping inference latency unaffected."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["security", "core"],
+    "relevance_category": "opportunity",
+    "impact_level": "high",
+    "relevance_rationale": "NeuroTaint reveals a gap in pure label-only IFC (FIDES F1=0.522 vs NeuroTaint F1=0.928). However, smgglrs's IFC is more sophisticated than FIDES: (1) per-value IFC via ValueStore with var:// resolution tracks taint at individual tool-result granularity, not just per-session; (2) statistical guardrails (CosineDriftDetector with z-score threshold + EntropyMonitor for tool-use pattern anomalies) detect behavioral shifts that label-tracking alone misses; (3) temporal behavioral contracts (TemporalPredicate: Requires, SequenceLimit, TaintGate, DenialEscalation, Cooldown) add trajectory-level enforcement. Still, smgglrs lacks NeuroTaint's three core mechanisms (semantic transformation tracking, causal influence on decisions, cross-session memory contamination detection). smgglrs-core's hash-chained blackbox audit log (SHA-256 chain with PII filtering) provides the execution trace input NeuroTaint-style offline analysis needs."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Offline taint audit using smgglrs's OTel traces as input",
+      "Cross-session memory contamination detection in smgglrs-memory",
+      "Semantic taint analysis for smgglrs-security's safety hooks (beyond string-matching)"
+    ],
+    "what_to_watch": [
+      "NeuroTaint code release for integration testing",
+      "Whether semantic taint tracking can run inline (not just offline) with acceptable latency",
+      "Combination of FIDES-style label tracking (inline) + NeuroTaint audit (offline) as defense-in-depth"
+    ],
+    "what_to_avoid": [
+      "Don't rely solely on label-only IFC — F1=0.522 is insufficient for production security",
+      "Don't add inline semantic analysis without latency budget — keep it offline initially"
+    ],
+    "implementation_difficulty": "significant",
+    "priority_sprint": "S12 (IFC enhancement)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs-security's IFC uses label tracking (FIDES-class, F1~0.522). NeuroTaint achieves F1=0.928 via semantic+causal+persistent analysis. smgglrs should layer NeuroTaint-style offline audit on top of its inline label tracking for defense-in-depth. smgglrs's existing OTel traces provide the execution trace input NeuroTaint needs.",
+    "gaps_exposed": [
+      "No semantic taint tracking (meaning-preserving transformations like paraphrase/summarization)",
+      "No causal influence detection (how untrusted data influences agent decisions without direct content transfer)",
+      "No cross-session memory contamination detection in smgglrs-memory's knowledge store"
+    ],
+    "advantages_confirmed": [
+      "Hash-chained blackbox audit log (SHA-256 chain, tamper-detectable) provides execution traces for offline NeuroTaint-style analysis",
+      "Per-value IFC (ValueStore with var:// resolution) tracks taint at finer granularity than FIDES's per-session model",
+      "Statistical guardrails (CosineDriftDetector + EntropyMonitor) detect behavioral anomalies that neither FIDES nor NeuroTaint addresses",
+      "Temporal behavioral contracts (TaintGate predicate) can block tools after seeing specific taint labels — a form of causal enforcement",
+      "ML safety filters (NER + regex) provide partial semantic detection that pure-label systems lack"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "ASI01 (Goal Hijack — semantic taint detection), ASI06 (Context Manipulation — cross-session persistence), ASI08 (Cascading Failures — causal influence tracking)",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "N/A (offline audit tool)",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "EU AI Act (audit trail analysis supports monitoring/logging obligations)"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "Offline operation means zero inline token overhead. Audit cost is modest and can be amortized across sessions."
+  },
+  "uncertain": []
+}

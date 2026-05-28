@@ -1,0 +1,69 @@
+{
+  "basic_info": {
+    "name": "TurboQuant / TurboVec",
+    "source_url": "https://www.marktechpost.com/2026/05/20/meet-turbovec-a-rust-vector-index-with-python-bindings-and-built-on-googles-turboquant-algorithm/",
+    "date": "2026-05-20",
+    "authors_org": "Ryan Codrai (TurboVec); Google Research (TurboQuant algorithm, arXiv 2504.19874)",
+    "type": "tool",
+    "license": "MIT"
+  },
+  "summary": {
+    "core_contribution": "Rust vector index implementing Google's TurboQuant data-oblivious quantization algorithm. Four-step pipeline: normalization, random orthogonal rotation, Lloyd-Max scalar quantization (precomputed buckets, zero training passes), bit-packing. 16x compression at 2-bit (6144 bytes to 384 bytes per 1536-dim vector). SIMD-accelerated scoring via NEON/AVX-512BW/AVX2 with nibble-split lookup tables.",
+    "key_claims": [
+      "16x compression for 1536-dim float32 vectors at 2-bit",
+      "10M vectors: 31GB to 4GB",
+      "Zero training required — data-oblivious quantization with analytically precomputed codebooks",
+      "12-20% faster than FAISS IndexPQFastScan on ARM (M3 Max)",
+      "Within 0-1 point recall of FAISS on OpenAI embeddings",
+      "Distortion within 2.7x of Shannon lower bound"
+    ],
+    "methodology": "Random orthogonal rotation makes post-rotation coordinate distribution predictable (converges to Gaussian N(0,1/d) in high dimensions), enabling Lloyd-Max optimal bucket boundaries without data-dependent codebook training. Query rotated once into same domain, scored against codebook values via SIMD. Supports incremental adds without index rebuilds."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["rag"],
+    "relevance_category": "opportunity",
+    "impact_level": "high",
+    "relevance_rationale": "TurboVec is a direct replacement candidate for smgglrs-rag's vector search backend. Code analysis reveals: smgglrs-rag stores embeddings as full float32 via sqlite-vec's vec0 virtual table with L2 distance (Euclidean). Search uses MATCH operator, dimensions configurable at store creation. TurboVec would provide: (1) 16x memory reduction (full float32 → 2-bit quantized); (2) SIMD-accelerated scoring (NEON/AVX-512BW/AVX2 vs sqlite-vec's generic implementation); (3) Zero-training quantization matching smgglrs-rag's append-oriented pattern (index_document() adds embeddings incrementally). The RRF fusion layer (k=60, 3x overfetch) is vector-backend-agnostic, so swapping sqlite-vec for TurboVec only requires implementing the search interface. Cache layer (cosine similarity 0.92 threshold, TTL 300s) works with either backend."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Evaluate TurboVec as alternative to sqlite-vec in smgglrs-rag",
+      "TurboQuant's data-oblivious quantization could be used standalone for embedding compression",
+      "Framework integrations (LangChain, LlamaIndex, Haystack) validate the API pattern"
+    ],
+    "what_to_watch": [
+      "Maturity of Rust API (currently cargo add turbovec)",
+      "Performance at scale beyond 100K vectors",
+      "Community adoption and maintenance trajectory"
+    ],
+    "what_to_avoid": [
+      "Don't replace sqlite-vec without benchmarking on smgglrs-rag's actual workload (breadcrumb chunks, cross-encoder reranking)"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S11 (RAG optimization)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs-rag uses sqlite-vec which is simpler but less performant. TurboVec offers 12-20% speed improvement and 16x memory reduction. The zero-training property aligns with smgglrs's design of minimal external dependencies.",
+    "gaps_exposed": [
+      "smgglrs-rag stores full float32 embeddings via sqlite-vec vec0 — no quantization, 16x more memory than necessary",
+      "No SIMD-accelerated similarity scoring — sqlite-vec uses generic implementation",
+      "L2 (Euclidean) distance only — no cosine similarity in vector search (cache uses cosine, search doesn't)"
+    ],
+    "advantages_confirmed": [
+      "Rust-native ecosystem compatibility — TurboVec integrates naturally into smgglrs workspace",
+      "smgglrs-rag's hybrid FTS5+vector+RRF architecture is independent of vector backend, making swap feasible"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "in-process",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "flat-vector",
+    "token_economics": "16x memory reduction for embeddings reduces infrastructure cost for large knowledge bases. Zero-training property eliminates codebook computation cost."
+  },
+  "uncertain": []
+}

@@ -1,0 +1,77 @@
+{
+  "basic_info": {
+    "name": "OWASP Top 10 for Agentic Applications 2026",
+    "source_url": "https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/",
+    "date": "2025-12-09",
+    "authors_org": "OWASP GenAI Security Project (100+ industry experts, researchers, practitioners)",
+    "type": "standard",
+    "license": "CC BY-SA 4.0 (OWASP standard)"
+  },
+  "summary": {
+    "core_contribution": "First canonical risk taxonomy for autonomous AI agents, defining 10 security risks (ASI01-ASI10) specific to agentic applications. Distinguishes agentic risks from the existing OWASP LLM Top 10 by addressing tool use, multi-step reasoning, and inter-agent communication. Developed through global peer review with 100+ contributors.",
+    "key_claims": [
+      "ASI01: Agent Goal Hijack — hidden prompts redirect agent objectives via direct/indirect injection",
+      "ASI02: Tool Misuse & Exploitation — tools invoked in unintended or harmful ways",
+      "ASI03: Agent Identity & Privilege Abuse — leaked credentials let agents exceed intended scope",
+      "ASI04: Agentic Supply Chain Compromise — runtime components (MCP/A2A) poisoned",
+      "ASI05: Unexpected Code Execution — sandbox boundary failures enabling arbitrary code",
+      "ASI06: Memory & Context Poisoning — poisoned memory reshapes behavior long after initial interaction",
+      "ASI07: Insecure Inter-Agent Communication — spoofed, replayed, or unauthenticated messages",
+      "ASI08: Cascading Agent Failures — errors compound across automated pipelines",
+      "ASI09: Human-Agent Trust Exploitation — humans over-trust or are deceived by agent outputs",
+      "ASI10: Rogue Agents — agents operating outside policy by design failure, drift, or compromise"
+    ],
+    "methodology": "Collaborative risk identification through 100+ expert contributors spanning industry, academia, and security research. Peer-reviewed framework with ranked risks based on likelihood, impact, and prevalence in production agentic systems. Supplements the OWASP LLM Top 10 by focusing on three categories of risk that LLM-only systems do not face: tool use (agents take actions in the world), multi-step reasoning (single injection compounds over many turns), and inter-agent communication (agents talking to agents via MCP/A2A). Emphasizes Defense in Depth, Least Privilege, Continuous Monitoring, Isolation & Sandboxing, Human Oversight, Transparency & Explainability, and Regular Security Testing."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["security", "protocol", "core", "flow", "agent", "tools-exec", "rag", "memory", "server"],
+    "relevance_category": "reference",
+    "impact_level": "high",
+    "relevance_rationale": "The ASI taxonomy is the canonical framework smgglrs should map its security features against. smgglrs already addresses many of these risks: ASI01 (safety hooks/IFC), ASI02 (deny-wins ACLs, tool scanning), ASI03 (BLAKE3 tokens, capability delegation), ASI05 (OpenShell sandboxing), ASI06 (cognitive file integrity), ASI07 (flow mesh authentication), ASI08 (hop limits in flow), ASI10 (trust scoring). Gaps exist in ASI04 (supply chain signing), ASI09 (human oversight workflows). This taxonomy should drive smgglrs security roadmap prioritization."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Formal ASI01-ASI10 compliance mapping document for smgglrs — enumerate which crate/feature addresses each risk",
+      "ASI04 mitigation: add Ed25519 or similar signing for upstream MCP server manifests",
+      "ASI09 mitigation: add configurable human-in-the-loop approval gates for high-risk tool calls",
+      "ASI08 mitigation: strengthen circuit breaker patterns in smgglrs-flow beyond current hop limits"
+    ],
+    "what_to_watch": [
+      "AIUC-1 Crosswalks document (May 2026) for mapping ASI risks to other frameworks",
+      "OWASP Agentic Skills Top 10 (separate project) for tool-specific risk guidance",
+      "AI Security Solutions Landscape Q2 2026 reports for competitive positioning"
+    ],
+    "what_to_avoid": [
+      "Do not treat this as a checklist to pass — focus on architectural enforcement (smgglrs gateway model) rather than point-solution mitigations",
+      "Do not conflate with OWASP LLM Top 10 — different scope and different mitigations"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S10 (compliance mapping document + gap analysis)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs addresses 8 of 10 ASI risks architecturally through its gateway-enforced security model. The gateway approach means mitigations are infrastructure-level rather than application-level, which is stronger than SDK-based approaches. Key strength: ASI01/ASI02 are handled by the combination of IFC, deny-wins ACLs, safety hooks, and ML content filtering — multiple defense layers rather than single-point solutions.",
+    "gaps_exposed": [
+      "ASI04 (Supply Chain): No cryptographic verification of upstream MCP server integrity or tool manifest signing",
+      "ASI09 (Human Trust): No built-in human approval workflow or quorum logic for high-risk operations",
+      "No formal compliance self-assessment or reporting against ASI taxonomy"
+    ],
+    "advantages_confirmed": [
+      "Gateway-enforced IFC uniquely addresses ASI01 (goal hijack) at the data flow level, not just prompt level",
+      "ASI02 (tool misuse) is structurally prevented by deny-wins ACLs — tools cannot be bent to unauthorized paths",
+      "ASI06 (memory poisoning) is addressed by cognitive file integrity monitoring — unique among MCP gateways",
+      "ASI10 (rogue agents) is mitigated by trust scoring with behavioral decay — agents lose trust automatically"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "ASI01, ASI02, ASI03, ASI04, ASI05, ASI06, ASI07, ASI08, ASI09, ASI10 (defines the taxonomy)",
+    "mcp_spec_alignment": "Framework-agnostic (references MCP and A2A as attack surfaces but does not target specific spec version)",
+    "isolation_model": "Recommends sandboxing as a key design principle but does not prescribe specific isolation model",
+    "aaif_alignment": "Aligned — OWASP GenAI Security Project is a key reference for AAIF governance discussions",
+    "regulatory_relevance": "EU AI Act (high-risk AI systems mapping), Colorado AI Act (algorithmic transparency). The taxonomy is being adopted as a compliance baseline by organizations preparing for August 2026 EU AI Act enforcement."
+  },
+  "economics": {
+    "memory_tier": "N/A (risk taxonomy, not a system)",
+    "token_economics": "N/A (standard/framework, not an inference system). However, implementing mitigations for ASI01-ASI10 may add per-request overhead for safety checks, policy evaluation, and audit logging."
+  },
+  "uncertain": ["license", "aaif_alignment"]
+}

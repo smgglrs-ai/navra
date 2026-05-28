@@ -1,0 +1,72 @@
+{
+  "basic_info": {
+    "name": "MVAR: Dual-Lattice IFC Runtime",
+    "source_url": "https://github.com/mvar-security/mvar",
+    "date": "[uncertain]",
+    "authors_org": "MVAR Security",
+    "type": "tool",
+    "license": "Apache 2.0"
+  },
+  "summary": {
+    "core_contribution": "Dual-lattice IFC runtime for LLM agents with cryptographic provenance. 'Execution firewall' approach assumes injection will occur and prevents untrusted output from reaching privileged sinks. Uses two separate lattices for confidentiality and integrity with independent enforcement. Blocked 100% of a 50-vector adversarial corpus across 9 attack categories.",
+    "key_claims": [
+      "100% block rate on 50-vector adversarial corpus across 9 attack categories",
+      "Dual-lattice model (separate confidentiality and integrity lattices)",
+      "Cryptographic provenance for data flow tracking",
+      "Execution firewall paradigm — assumes injection will occur, prevents privileged sink access",
+      "Drop-in integration (LangChain callback mentioned in web search data)"
+    ],
+    "methodology": "[uncertain] — based on web search data: dual-lattice model separates confidentiality and integrity enforcement. Cryptographic provenance signs data flow records for tamper-proof audit. Execution firewall blocks data flow from untrusted sources to privileged sinks regardless of content, eliminating the need for content-based injection detection."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["security"],
+    "relevance_category": "competitor",
+    "impact_level": "high",
+    "relevance_rationale": "MVAR is a direct competitor to smgglrs-security's IFC module. Both use lattice-based models. Key differences: (1) MVAR uses dual lattices (separate confidentiality + integrity), smgglrs uses a 2x4 product lattice (2 Integrity levels x 4 Confidentiality levels) — architecturally similar but smgglrs has more confidentiality granularity (Public/Sensitive/PII/Secret vs typical binary); (2) MVAR includes cryptographic provenance — smgglrs has hash-chained blackbox audit (SHA-256 chain, tamper-detectable) but no per-data-flow cryptographic signing; (3) MVAR's execution firewall (assume injection, prevent sink access) vs smgglrs's defense-in-depth (IFC labels + statistical guardrails + temporal contracts + ML safety). smgglrs's TaintedWritePolicy (Allow/Approve/Deny) with TaintGate temporal predicate provides a form of execution firewall but at the behavioral level, not the data-flow level."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Execution firewall paradigm — assume injection will occur, focus on preventing sink access rather than detecting injection",
+      "Cryptographic provenance for tamper-proof data flow audit trails",
+      "100% adversarial corpus test as a security benchmark target for smgglrs"
+    ],
+    "what_to_watch": [
+      "MVAR's actual codebase maturity and community adoption",
+      "Whether dual-lattice vs product-lattice provides meaningful security improvement",
+      "Integration with MCP-specific attack vectors (Shadow Escape)"
+    ],
+    "what_to_avoid": [
+      "Don't assume MVAR's 100% claim generalizes — 50 vectors is a small corpus",
+      "Don't switch to dual lattices without evaluating smgglrs's product lattice against same benchmark"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "S11 (IFC hardening)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "Both use lattice-based IFC. smgglrs has broader scope (gateway with ACLs, safety hooks, ML models) while MVAR is focused purely on IFC. MVAR's cryptographic provenance and execution firewall paradigm are gaps in smgglrs. smgglrs's advantage is gateway-level enforcement (can't be bypassed) and defense-in-depth (IFC + ML + ACLs).",
+    "gaps_exposed": [
+      "No per-data-flow cryptographic provenance signing — blackbox is hash-chained but records tool calls, not individual data flows",
+      "No explicit execution firewall mode — TaintedWritePolicy::Deny + TaintGate achieve similar effect but require explicit configuration per tool",
+      "No adversarial corpus benchmark for smgglrs-security IFC"
+    ],
+    "advantages_confirmed": [
+      "Defense-in-depth stack (IFC labels + per-value ValueStore + statistical guardrails + temporal contracts + ML safety + deny-wins ACLs + trust scoring) is far broader than MVAR's pure IFC",
+      "Gateway-level enforcement (deterministic, can't be bypassed) vs callback-level (MVAR, depends on agent cooperation)",
+      "8-category upstream tool scanning detects supply-chain threats (rug pull, typosquatting, schema abuse) that MVAR doesn't address",
+      "Capability delegation with Ed25519-signed CBOR tokens and sandbox profiles (Simulate/Redact/RateLimit/PathRewrite) — MVAR has no capability model",
+      "Hash-chained blackbox audit log provides tamper-detectable records (similar intent to MVAR's cryptographic provenance but at different granularity)"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "ASI01 (Goal Hijack — execution firewall blocks hijacked sinks), ASI02 (Tool Misuse — integrity labels prevent unauthorized tool output), ASI06 (Context Manipulation — confidentiality labels prevent data leakage)",
+    "mcp_spec_alignment": "[uncertain]",
+    "isolation_model": "in-process (callback/middleware)",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "EU AI Act (cryptographic provenance supports audit obligations)"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "Execution firewall approach has lower overhead than content-based detection — no ML inference needed for blocking decisions."
+  },
+  "uncertain": ["date", "methodology", "mcp_spec_alignment"]
+}

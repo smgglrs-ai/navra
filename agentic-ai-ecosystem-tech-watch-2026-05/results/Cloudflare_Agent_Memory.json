@@ -1,0 +1,70 @@
+{
+  "basic_info": {
+    "name": "Cloudflare Agent Memory",
+    "source_url": "https://www.infoq.com/news/2026/04/cloudflare-agent-memory-beta/",
+    "date": "2026-04-30",
+    "authors_org": "Cloudflare (Tyson Trautmann, Rob Sutter); InfoQ article by Steef-Jan Wiggers",
+    "type": "tool",
+    "license": "Proprietary (Cloudflare managed service)"
+  },
+  "summary": {
+    "core_contribution": "Cloudflare Agent Memory is a managed memory service for AI agents that addresses context rot — quality degradation as context windows fill up. It uses a dual-pass extraction pipeline (broad chunking + detail extraction) with an 8-check verifier, classifies memories into four types (facts, events, instructions, tasks), and retrieves via 5 parallel channels fused with Reciprocal Rank Fusion (RRF).",
+    "key_claims": [
+      "Context rot degrades LLM output quality even beyond 1M-token windows",
+      "Models perform better with less but more relevant context",
+      "5-channel parallel retrieval with RRF fusion outperforms single-channel approaches",
+      "Content-addressed SHA-256 IDs enable idempotent re-ingestion",
+      "Llama 4 Scout (17B MoE) for extraction; Nemotron 3 (120B MoE) for synthesis — larger model only helps at synthesis stage"
+    ],
+    "methodology": "Ingestion: content-addressed via SHA-256 hash, dual-pass extraction (broad pass at ~10k chars/chunk + detail pass for names/prices/versions), 8-check verifier, classification into facts/events/instructions/tasks. Facts and instructions keyed by normalized topic with supersession semantics. Retrieval: 5 parallel channels (full-text search, exact fact-key lookup, raw message search, direct vector search, HyDE vector search) combined via RRF. HyDE generates a declarative answer to the query before vector search to catch vocabulary mismatches."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["rag", "memory"],
+    "relevance_category": "validation",
+    "impact_level": "high",
+    "relevance_rationale": "Cloudflare's 5-channel RRF architecture directly validates smgglrs-rag's hybrid FTS5+vector search with RRF fusion design. The HyDE channel is a concrete technique smgglrs-rag could adopt. The memory taxonomy (facts/events/instructions/tasks) and supersession semantics validate smgglrs-memory's working memory + knowledge store architecture. A major cloud vendor choosing RRF fusion confirms this is the right retrieval strategy."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "HyDE (Hypothetical Document Embeddings) as a third retrieval channel in smgglrs-rag alongside FTS5 and vector search",
+      "Memory taxonomy: classify stored memories into facts/events/instructions/tasks for retrieval prioritization",
+      "Supersession semantics: key facts by normalized topic, supersede rather than delete, preserving history",
+      "Content-addressed IDs (SHA-256) for idempotent memory ingestion"
+    ],
+    "what_to_watch": [
+      "Cloudflare Agent Memory moving to public beta — pricing and API details",
+      "Whether 5-channel RRF becomes the industry standard retrieval pattern"
+    ],
+    "what_to_avoid": [
+      "Using large models (120B+) for extraction/classification — Cloudflare found smaller models (17B MoE) sufficient for this stage"
+    ],
+    "implementation_difficulty": "moderate",
+    "priority_sprint": "Phase 10 (RAG enhancements)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs-rag already implements hybrid FTS5+vector with RRF fusion, which is the same core architecture. Cloudflare adds 3 additional channels (exact fact-key lookup, raw message search, HyDE vector). smgglrs runs in-process with ONNX models while Cloudflare uses cloud-scale models (17B/120B MoE).",
+    "gaps_exposed": [
+      "smgglrs-rag lacks HyDE (hypothetical document embedding) channel for vocabulary mismatch handling",
+      "No memory taxonomy or typed memory classification in smgglrs-memory",
+      "No supersession semantics for fact updates",
+      "Missing dedicated fact-key lookup channel"
+    ],
+    "advantages_confirmed": [
+      "RRF fusion architecture validated by major cloud vendor",
+      "In-process ONNX approach avoids dependency on large cloud models for extraction",
+      "Local/on-premise operation preserves data privacy — Cloudflare requires sending all data to their cloud"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": ["ASI06 (Data Leakage)", "ASI09 (Overreliance)"],
+    "mcp_spec_alignment": "N/A (standalone memory service, not MCP-specific)",
+    "isolation_model": "none (cloud-managed SaaS)",
+    "aaif_alignment": "None direct; positions memory as infrastructure layer consistent with AAIF agent architecture vision",
+    "regulatory_relevance": "EU AI Act: agent memory containing PII requires data residency and right-to-erasure compliance; supersession semantics (preserving history) may conflict with GDPR deletion requirements"
+  },
+  "economics": {
+    "memory_tier": "tiered",
+    "token_economics": "Reduces token consumption by replacing large context windows with targeted retrieval. Dual-model approach (small for extraction, large for synthesis) optimizes cost. Exact pricing not yet disclosed (private beta)."
+  },
+  "uncertain": ["license", "owasp_coverage", "regulatory_relevance"]
+}

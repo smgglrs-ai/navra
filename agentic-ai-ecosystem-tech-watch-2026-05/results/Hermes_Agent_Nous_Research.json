@@ -1,0 +1,65 @@
+{
+  "basic_info": {
+    "name": "Hermes Agent (Nous Research)",
+    "source_url": "https://hermes-agent.nousresearch.com/",
+    "date": "2026-02",
+    "authors_org": "Nous Research",
+    "type": "tool",
+    "license": "MIT"
+  },
+  "summary": {
+    "core_contribution": "Autonomous, server-resident agent framework with self-improving learning loop. Persistent memory across sessions, auto-generated reusable skills, and subagent delegation with zero-context-cost pipelines. Supports 5 execution backends (Local, Docker, SSH, Singularity, Modal) with container hardening. Cross-platform messaging (Telegram, Discord, Slack, WhatsApp, Signal, Email, CLI) with session continuity. Scheduled automations via natural-language cron.",
+    "key_claims": [
+      "140K+ GitHub stars in 3 months (per web search data)",
+      "Most-used agent on OpenRouter",
+      "Self-improving: creates reusable skills, gets more capable over time",
+      "Zero-context-cost subagent pipelines with independent conversations and terminals",
+      "5 execution backends with namespace isolation"
+    ],
+    "methodology": "Server-resident architecture where the agent runs persistently (vs IDE-bound copilots). Subagent system provides each delegated task with its own conversation context, terminal, and Python RPC scripts. Skills are auto-generated from successful task completions and stored for reuse. Memory persists across sessions for continuous learning."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["agent", "flow", "cognitive", "tools-exec"],
+    "relevance_category": "reference",
+    "impact_level": "medium",
+    "relevance_rationale": "Hermes Agent is a major consumer of gateway infrastructure like smgglrs, not a direct competitor. Its skill auto-generation and subagent patterns inform smgglrs-cognitive's directive system and smgglrs-flow's orchestration. The 5 execution backends (Local, Docker, SSH, Singularity, Modal) map to smgglrs-model-runtime's isolation modes (direct, Podman, OpenShell). Hermes using smgglrs as its MCP gateway would be a natural integration."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Zero-context-cost subagent pattern — smgglrs-flow could support isolated context per sub-agent in DAG execution",
+      "Natural-language cron scheduling — smgglrs-agent could expose as a module capability"
+    ],
+    "what_to_watch": [
+      "Hermes Agent's MCP integration path — potential first-class smgglrs consumer",
+      "Skill auto-generation quality and cross-agent transfer results",
+      "Singularity backend pattern for HPC environments"
+    ],
+    "what_to_avoid": [
+      "Don't replicate Hermes's full agent framework — smgglrs is infrastructure, Hermes is application layer"
+    ],
+    "implementation_difficulty": "N/A",
+    "priority_sprint": "N/A (consumer, not feature)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "Different layers: Hermes is an agent application, smgglrs is gateway infrastructure. Hermes would run on top of smgglrs, using it for secure tool access, safety filtering, and IFC enforcement.",
+    "gaps_exposed": [
+      "smgglrs-agent's skill system is less sophisticated than Hermes's auto-generated skills with cross-agent transfer"
+    ],
+    "advantages_confirmed": [
+      "smgglrs's gateway model is validated — Hermes needs exactly this kind of infrastructure for secure tool access",
+      "smgglrs's multiple isolation backends (direct, Podman, OpenShell) match Hermes's execution backends"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "ASI05 (Code Execution — container hardening), ASI07 (Inter-Agent Communication — subagent delegation)",
+    "mcp_spec_alignment": "[uncertain]",
+    "isolation_model": "container (Docker, Singularity), SSH, Modal",
+    "aaif_alignment": "[uncertain]",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "tiered (short-term context + long-term persistent memory + skill-level memory)",
+    "token_economics": "Zero-context-cost subagents reduce token usage for delegated tasks by not sharing parent context."
+  },
+  "uncertain": ["mcp_spec_alignment", "aaif_alignment"]
+}

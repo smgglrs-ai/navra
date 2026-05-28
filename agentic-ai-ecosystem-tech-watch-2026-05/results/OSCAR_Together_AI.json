@@ -1,0 +1,65 @@
+{
+  "basic_info": {
+    "name": "OSCAR (Together AI)",
+    "source_url": "https://www.marktechpost.com/2026/05/25/together-ai-open-sources-oscar-an-attention-aware-2-bit-kv-cache-quantization-system-for-long-context-llm-serving/",
+    "date": "2026-05-25",
+    "authors_org": "Together AI / FutureMLS-Lab (arXiv 2605.17757)",
+    "type": "paper+tool",
+    "license": "[uncertain]"
+  },
+  "summary": {
+    "core_contribution": "OSCAR (Offline Spectral Covariance-Aware Rotation) derives optimal rotation bases from query covariance (for keys) and score-weighted value covariance (for values) to enable INT2 KV cache quantization. Three-component rotation (eigenvectors + Walsh-Hadamard + permuted bit-reversal) addresses distinct failure modes. Mixed-precision layout: BF16 for sink/recent tokens, INT2 for history. 8x memory reduction with near-BF16 quality.",
+    "key_claims": [
+      "Naive INT2 scores 0.00 on Qwen3-4B/8B; OSCAR preserves quality (71.86/69.42 mean accuracy)",
+      "GLM-4.7-FP8 (358B): OSCAR matches or exceeds BF16 (78.16 vs 77.89)",
+      "Up to 3.08x decode speedup at batch=1; 7.83x job-level throughput at batch=32 on H100",
+      "RULER-NIAH: OSCAR on Qwen3-4B at 16K scores 97.8 vs QuaRot-INT2 at 0.0",
+      "Theoretical optimality proof (Theorem 1) for rotation bases under surrogate objective"
+    ],
+    "methodology": "Offline calibration: eigen-decompose query covariance CQ for key rotation RK, score-weighted value covariance CS for value rotation RV. Compose with Hadamard and permuted bit-reversal. Value rotation absorbed into model projection weights offline (zero runtime cost). Per-token asymmetric INT2, group size 64, clip thresholds cK=0.96, cV=0.92. Fused Triton kernels for paged attention compatibility. Pre-computed rotation zoo available on ModelScope."
+  },
+  "smgglrs_relevance": {
+    "affected_crates": ["model-runtime", "model"],
+    "relevance_category": "opportunity",
+    "impact_level": "medium",
+    "relevance_rationale": "OSCAR enables serving large models (358B GLM) with 8x less KV cache memory, directly relevant to smgglrs-model-runtime's hardware tier profiles. If smgglrs serves or proxies local models, OSCAR-style quantization extends context budgets dramatically. The rotation zoo pattern (pre-computed per model) could integrate with model-hub's caching. Not immediately actionable since smgglrs uses ONNX for small in-process models, but important for the model-runtime isolation backends (Podman, OpenShell) serving larger models."
+  },
+  "actionable_insights": {
+    "what_to_adopt": [
+      "Track OSCAR/SGLang integration for model-runtime backends that serve larger models",
+      "Pre-computed rotation zoo pattern for model-hub: download rotations alongside model weights"
+    ],
+    "what_to_watch": [
+      "SGLang native OSCAR support maturity",
+      "Extension to other quantization targets (FP4, mixed INT2/INT4)",
+      "Adoption by vLLM (currently SGLang-only)"
+    ],
+    "what_to_avoid": [
+      "Don't apply to small ONNX safety/embedding models — overhead not justified for models that already fit in memory"
+    ],
+    "implementation_difficulty": "significant",
+    "priority_sprint": "S12+ (when model-runtime supports large model serving)"
+  },
+  "competitive_position": {
+    "how_smgglrs_compares": "smgglrs currently uses ONNX Runtime for small in-process models where KV cache quantization is irrelevant. For larger model serving via model-runtime backends, OSCAR would be integrated at the serving engine level (vLLM/SGLang), not in smgglrs directly.",
+    "gaps_exposed": [
+      "No KV cache management in model-runtime — relies on underlying serving engine",
+      "model-hub doesn't track rotation/quantization artifacts alongside model weights"
+    ],
+    "advantages_confirmed": [
+      "smgglrs's separation of model-hub (download/cache) from model-runtime (serve) allows clean integration of quantization artifacts"
+    ]
+  },
+  "ecosystem_context": {
+    "owasp_coverage": "N/A (inference optimization, not security)",
+    "mcp_spec_alignment": "N/A",
+    "isolation_model": "in-process (SGLang kernel integration)",
+    "aaif_alignment": "independent",
+    "regulatory_relevance": "N/A"
+  },
+  "economics": {
+    "memory_tier": "N/A",
+    "token_economics": "8x KV cache memory reduction enables serving 8x longer contexts or 8x larger batches at same hardware cost. At batch=32, 7.83x throughput improvement translates directly to cost reduction per query."
+  },
+  "uncertain": ["license"]
+}
