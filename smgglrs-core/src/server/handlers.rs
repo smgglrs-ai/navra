@@ -249,6 +249,7 @@ impl McpServer {
                         agent_did,
                         agent_ring,
                     );
+                    self.metrics.cedar_denials.fetch_add(1, Ordering::Relaxed);
                     return CallToolResult::error(format!(
                         "Policy denied: tool '{}' — {}",
                         params.name, reason

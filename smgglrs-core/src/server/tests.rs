@@ -1190,6 +1190,162 @@ async fn dispatch_initialize_does_not_require_session() {
 }
 
 // ========================================================================
+// MCP spec compliance: dispatch method tests
+// ========================================================================
+
+fn init_test_session_with_modules() -> (std::sync::Arc<super::McpServer>, String) {
+    let server = std::sync::Arc::new(
+        super::McpServer::builder()
+            .name("test")
+            .module(TestModule)
+            .module(PromptModule)
+            .module(ResourceModule)
+            .build(),
+    );
+    let params = crate::protocol::InitializeParams {
+        protocol_version: "2025-03-26".to_string(),
+        capabilities: Default::default(),
+        client_info: crate::protocol::ClientInfo {
+            name: "test-client".to_string(),
+            version: None,
+        },
+    };
+    let (_, session_id) = server.handle_initialize(params, test_agent()).unwrap();
+    (server, session_id)
+}
+
+#[tokio::test]
+async fn dispatch_tools_list_returns_tools() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(&server, "tools/list", None, Some(session_id)).await;
+    assert!(resp.error.is_none());
+    let result = resp.result.unwrap();
+    let tools = result["tools"].as_array().unwrap();
+    assert!(!tools.is_empty());
+}
+
+#[tokio::test]
+async fn dispatch_tools_call_echo_returns_result() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(
+        &server,
+        "tools/call",
+        Some(serde_json::json!({
+            "name": "test_ping",
+            "arguments": {}
+        })),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_none());
+}
+
+#[tokio::test]
+async fn dispatch_tools_call_unknown_returns_error() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(
+        &server,
+        "tools/call",
+        Some(serde_json::json!({
+            "name": "nonexistent_tool",
+            "arguments": {}
+        })),
+        Some(session_id),
+    )
+    .await;
+    let result = resp.result.unwrap();
+    assert_eq!(result["isError"], true);
+}
+
+#[tokio::test]
+async fn dispatch_prompts_list_returns_prompts() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(&server, "prompts/list", None, Some(session_id)).await;
+    assert!(resp.error.is_none());
+    let result = resp.result.unwrap();
+    let prompts = result["prompts"].as_array().unwrap();
+    assert!(!prompts.is_empty());
+}
+
+#[tokio::test]
+async fn dispatch_prompts_get_returns_messages() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(
+        &server,
+        "prompts/get",
+        Some(serde_json::json!({
+            "name": "greeting",
+            "arguments": {"name": "Alice"}
+        })),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_none());
+    let result = resp.result.unwrap();
+    let messages = result["messages"].as_array().unwrap();
+    assert!(!messages.is_empty());
+}
+
+#[tokio::test]
+async fn dispatch_prompts_get_unknown_returns_error() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(
+        &server,
+        "prompts/get",
+        Some(serde_json::json!({
+            "name": "nonexistent_prompt",
+            "arguments": {}
+        })),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_some());
+}
+
+#[tokio::test]
+async fn dispatch_resources_list_returns_resources() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(&server, "resources/list", None, Some(session_id)).await;
+    assert!(resp.error.is_none());
+    let result = resp.result.unwrap();
+    let resources = result["resources"].as_array().unwrap();
+    assert!(!resources.is_empty());
+}
+
+#[tokio::test]
+async fn dispatch_resources_read_returns_content() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(
+        &server,
+        "resources/read",
+        Some(serde_json::json!({
+            "uri": "info://server/status"
+        })),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_none());
+    let result = resp.result.unwrap();
+    let contents = result["contents"].as_array().unwrap();
+    assert!(!contents.is_empty());
+}
+
+#[tokio::test]
+async fn dispatch_resources_read_unknown_returns_error() {
+    let (server, session_id) = init_test_session_with_modules();
+    let resp = dispatch_request(
+        &server,
+        "resources/read",
+        Some(serde_json::json!({
+            "uri": "info://nonexistent/resource"
+        })),
+        Some(session_id),
+    )
+    .await;
+    assert!(resp.error.is_some());
+}
+
+// ========================================================================
 // MCP spec compliance: error code tests (Phase 9i)
 // ========================================================================
 
