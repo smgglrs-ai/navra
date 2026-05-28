@@ -11,6 +11,8 @@ use super::dispatch::dispatch;
 use super::router::AppState;
 
 pub(super) const SESSION_HEADER: &str = "mcp-session-id";
+pub(super) const METHOD_HEADER: &str = "mcp-method";
+pub(super) const NAME_HEADER: &str = "mcp-name";
 
 pub(super) async fn handle_post(
     State(state): State<AppState>,
@@ -57,6 +59,13 @@ pub(super) async fn handle_post(
         .get(SESSION_HEADER)
         .and_then(|v| v.to_str().ok())
         .map(String::from);
+
+    // MCP 2026-07-28: parse routing headers (read-only, no routing changes yet)
+    let mcp_method = headers.get(METHOD_HEADER).and_then(|v| v.to_str().ok());
+    let mcp_name = headers.get(NAME_HEADER).and_then(|v| v.to_str().ok());
+    if let Some(method) = mcp_method {
+        tracing::debug!(mcp_method = %method, mcp_name = ?mcp_name, "MCP routing headers");
+    }
 
     let (response, new_session_id) =
         dispatch(state.server.clone(), request, agent, session_id).await;

@@ -16,6 +16,8 @@ fn echo_tool_def() -> ToolDefinition {
             required: None,
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -46,6 +48,8 @@ impl Module for TestModule {
                     required: None,
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             },
             Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("pong") })),
         )]
@@ -114,6 +118,8 @@ fn register_multiple_modules() {
                         required: None,
                     },
                     annotations: None,
+                    ttl_ms: None,
+                    cache_scope: None,
                 },
                 Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("hi") })),
             )]
@@ -148,6 +154,8 @@ fn duplicate_tool_name_panics() {
                         required: None,
                     },
                     annotations: None,
+                    ttl_ms: None,
+                    cache_scope: None,
                 },
                 Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("dup") })),
             )]
@@ -1416,6 +1424,8 @@ fn read_tool_def() -> ToolDefinition {
             required: None,
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -1429,6 +1439,8 @@ fn write_tool_def() -> ToolDefinition {
             required: None,
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 

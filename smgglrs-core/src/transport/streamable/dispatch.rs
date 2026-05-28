@@ -69,6 +69,14 @@ pub(crate) async fn dispatch(
         );
     }
 
+    // MCP 2026-07-28: deprecation warnings for removed methods
+    if matches!(
+        request.method.as_str(),
+        "roots/list" | "sampling/createMessage"
+    ) {
+        tracing::warn!(method = %request.method, "Deprecated MCP method — will be removed in a future version");
+    }
+
     match request.method.as_str() {
         "initialize" => {
             let params: InitializeParams =

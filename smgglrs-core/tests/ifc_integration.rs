@@ -26,6 +26,8 @@ fn read_tool_def() -> ToolDefinition {
             required: None,
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -39,6 +41,8 @@ fn write_tool_def() -> ToolDefinition {
             required: None,
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 

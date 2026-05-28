@@ -1994,6 +1994,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     required: Some(vec!["subject_did".to_string()]),
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             },
             move |args, ctx| {
                 let signer = Arc::clone(&delegate_signer);
@@ -2178,6 +2180,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     required: None,
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             },
             |_args, _ctx| {
                 // The actual data comes from the server's process table,
@@ -3019,6 +3023,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     required: None,
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             },
             move |args, _ctx| {
                 let audit = Arc::clone(&audit);
@@ -4714,6 +4720,8 @@ mod tests {
                         required: None,
                     },
                     annotations: None,
+                    ttl_ms: None,
+                    cache_scope: None,
                 },
                 |_args, _ctx| {
                     Box::pin(async { smgglrs_core::protocol::CallToolResult::text("ok") })
@@ -4729,6 +4737,8 @@ mod tests {
                         required: None,
                     },
                     annotations: None,
+                    ttl_ms: None,
+                    cache_scope: None,
                 },
                 |_args, _ctx| {
                     Box::pin(async { smgglrs_core::protocol::CallToolResult::text("ok") })

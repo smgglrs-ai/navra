@@ -384,6 +384,8 @@ impl McpServerBuilder {
                             required: None,
                         },
                         annotations: None,
+                        ttl_ms: None,
+                        cache_scope: None,
                     },
                     handler: Arc::new(move |_args, ctx| {
                         let vs = vs.clone();
@@ -430,6 +432,8 @@ impl McpServerBuilder {
                             required: Some(vec!["id".to_string()]),
                         },
                         annotations: None,
+                        ttl_ms: None,
+                        cache_scope: None,
                     },
                     handler: Arc::new(move |args, ctx| {
                         let vs = vs.clone();
@@ -474,6 +478,8 @@ impl McpServerBuilder {
                             required: Some(vec!["id".to_string()]),
                         },
                         annotations: None,
+                        ttl_ms: None,
+                        cache_scope: None,
                     },
                     handler: Arc::new(move |args, ctx| {
                         let vs = vs.clone();
@@ -660,6 +666,8 @@ impl McpServerBuilder {
                     ),
                     mime_type: Some("application/json".to_string()),
                     annotations: None,
+                    ttl_ms: None,
+                    cache_scope: None,
                 },
                 handler: Arc::new(move |uri| {
                     let sess = sess.clone();
@@ -716,6 +724,8 @@ impl McpServerBuilder {
                     description: Some("Active capability set for a specific agent".to_string()),
                     mime_type: Some("application/json".to_string()),
                     annotations: None,
+                    ttl_ms: None,
+                    cache_scope: None,
                 },
                 handler: Arc::new(move |uri| {
                     let sess = sess.clone();

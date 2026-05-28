@@ -126,6 +126,8 @@ mod tests {
                     required: None,
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             },
             smgglrs_protocol::ToolDefinition {
                 name: "shell_exec".to_string(),
@@ -136,6 +138,8 @@ mod tests {
                     required: None,
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             },
         ];
         let d = ToolDisclosure::new(vec!["file_*".to_string()], vec![]);

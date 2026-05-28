@@ -45,6 +45,8 @@ pub fn build_test_tool_def() -> ToolDefinition {
             required: Some(vec!["path".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 

@@ -476,6 +476,8 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
                     required: #required_tokens,
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             }
         }
 
