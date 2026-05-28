@@ -5,6 +5,9 @@ use std::collections::HashMap;
 /// MCP protocol version supported by this implementation.
 pub const PROTOCOL_VERSION: &str = "2025-03-26";
 
+/// MCP protocol version for the 2026-07-28 spec revision.
+pub const PROTOCOL_VERSION_2026: &str = "2026-07-28";
+
 // --- Server-initiated notification methods ---
 
 pub const NOTIFY_TOOLS_LIST_CHANGED: &str = "notifications/tools/list_changed";
@@ -154,6 +157,10 @@ pub struct ToolDefinition {
     pub input_schema: ToolInputSchema,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotations: Option<ToolAnnotations>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,6 +211,10 @@ pub struct CallToolParams {
 pub struct RequestMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress_token: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub traceparent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tracestate: Option<String>,
 }
 
 /// Parameters for `notifications/progress`.
@@ -468,6 +479,10 @@ pub struct ResourceTemplate {
     pub mime_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotations: Option<ToolAnnotations>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -696,6 +711,8 @@ mod tests {
                 required: Some(vec!["query".to_string()]),
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         let json = serde_json::to_value(&tool).unwrap();
         assert_eq!(json["name"], "file_search");
@@ -884,6 +901,8 @@ mod tests {
                 open_world_hint: None,
                 title: Some("Read File".to_string()),
             }),
+            ttl_ms: None,
+            cache_scope: None,
         };
         let json = serde_json::to_value(&tool).unwrap();
         assert!(json["annotations"]["readOnlyHint"].as_bool().unwrap());
@@ -1039,6 +1058,8 @@ mod tests {
             description: Some("Read any file".to_string()),
             mime_type: None,
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         let json = serde_json::to_value(&tmpl).unwrap();
         assert_eq!(json["uriTemplate"], "file:///{path}");
@@ -1248,6 +1269,8 @@ mod tests {
                 open_world_hint: Some(false),
                 title: Some("Read File".to_string()),
             }),
+            ttl_ms: None,
+            cache_scope: None,
         };
         let json = serde_json::to_value(&tool).unwrap();
         // Verify camelCase in annotations
@@ -1304,6 +1327,8 @@ mod tests {
     fn roundtrip_request_meta() {
         let meta = RequestMeta {
             progress_token: Some(serde_json::json!("abc")),
+            traceparent: None,
+            tracestate: None,
         };
         let json = serde_json::to_value(&meta).unwrap();
         assert_eq!(json["progressToken"], "abc");
@@ -1519,6 +1544,8 @@ mod tests {
                 open_world_hint: None,
                 title: None,
             }),
+            ttl_ms: None,
+            cache_scope: None,
         };
         let json = serde_json::to_value(&tmpl).unwrap();
         assert!(json.get("uriTemplate").is_some());
@@ -1705,5 +1732,110 @@ mod tests {
         assert_eq!(parsed.ref_name, "file_template");
         assert_eq!(parsed.argument.name, "path");
         assert_eq!(parsed.argument.value, "/home");
+    }
+
+    // ========================================================================
+    // MCP 2026-07-28 additive items
+    // ========================================================================
+
+    #[test]
+    fn protocol_version_2026_constant() {
+        assert_eq!(PROTOCOL_VERSION_2026, "2026-07-28");
+    }
+
+    #[test]
+    fn tool_definition_ttl_serialization() {
+        let tool = ToolDefinition {
+            name: "slow_search".to_string(),
+            description: None,
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+            annotations: None,
+            ttl_ms: Some(5000),
+            cache_scope: Some("session".to_string()),
+        };
+        let json = serde_json::to_value(&tool).unwrap();
+        assert_eq!(json["ttlMs"], 5000);
+        assert_eq!(json["cacheScope"], "session");
+    }
+
+    #[test]
+    fn tool_definition_ttl_none_omitted() {
+        let tool = ToolDefinition {
+            name: "test".to_string(),
+            description: None,
+            input_schema: ToolInputSchema {
+                schema_type: "object".to_string(),
+                properties: None,
+                required: None,
+            },
+            annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
+        };
+        let json = serde_json::to_value(&tool).unwrap();
+        assert!(json.get("ttlMs").is_none());
+        assert!(json.get("cacheScope").is_none());
+    }
+
+    #[test]
+    fn resource_template_cache_scope() {
+        let tmpl = ResourceTemplate {
+            uri_template: "file:///{path}".to_string(),
+            name: "File".to_string(),
+            description: None,
+            mime_type: None,
+            annotations: None,
+            ttl_ms: Some(60000),
+            cache_scope: Some("global".to_string()),
+        };
+        let json = serde_json::to_value(&tmpl).unwrap();
+        assert_eq!(json["ttlMs"], 60000);
+        assert_eq!(json["cacheScope"], "global");
+
+        let tmpl_none = ResourceTemplate {
+            uri_template: "file:///{path}".to_string(),
+            name: "File".to_string(),
+            description: None,
+            mime_type: None,
+            annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
+        };
+        let json_none = serde_json::to_value(&tmpl_none).unwrap();
+        assert!(json_none.get("ttlMs").is_none());
+        assert!(json_none.get("cacheScope").is_none());
+    }
+
+    #[test]
+    fn request_meta_trace_context() {
+        let meta = RequestMeta {
+            progress_token: None,
+            traceparent: Some("00-abcdef-01".to_string()),
+            tracestate: Some("vendor=value".to_string()),
+        };
+        let json = serde_json::to_value(&meta).unwrap();
+        assert_eq!(json["traceparent"], "00-abcdef-01");
+        assert_eq!(json["tracestate"], "vendor=value");
+
+        let meta_none = RequestMeta {
+            progress_token: None,
+            traceparent: None,
+            tracestate: None,
+        };
+        let json_none = serde_json::to_value(&meta_none).unwrap();
+        assert!(json_none.get("traceparent").is_none());
+        assert!(json_none.get("tracestate").is_none());
+    }
+
+    #[test]
+    fn request_meta_trace_context_deserialize() {
+        let json = r#"{"progressToken":"tok","traceparent":"00-1234","tracestate":"k=v"}"#;
+        let meta: RequestMeta = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.traceparent.as_deref(), Some("00-1234"));
+        assert_eq!(meta.tracestate.as_deref(), Some("k=v"));
     }
 }

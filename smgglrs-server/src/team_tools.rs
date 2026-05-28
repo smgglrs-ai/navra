@@ -717,6 +717,8 @@ pub fn team_create_def() -> ToolDefinition {
             required: Some(vec!["name".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -768,6 +770,8 @@ pub fn team_add_def() -> ToolDefinition {
             required: Some(vec!["team_id".to_string(), "name".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -801,6 +805,8 @@ pub fn team_message_def() -> ToolDefinition {
             ]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -821,6 +827,8 @@ pub fn team_status_def() -> ToolDefinition {
             required: Some(vec!["team_id".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -840,6 +848,8 @@ pub fn team_result_def() -> ToolDefinition {
             required: Some(vec!["team_id".to_string(), "teammate".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -872,6 +882,8 @@ pub fn team_bb_publish_def() -> ToolDefinition {
             ]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -891,6 +903,8 @@ pub fn team_bb_read_def() -> ToolDefinition {
             required: Some(vec!["team_id".to_string(), "key".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -913,6 +927,8 @@ pub fn team_bb_notifications_def() -> ToolDefinition {
             required: Some(vec!["team_id".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -933,6 +949,8 @@ pub fn team_shutdown_def() -> ToolDefinition {
             required: Some(vec!["team_id".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -971,6 +989,8 @@ pub fn agent_signal_def() -> ToolDefinition {
             ]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -1055,6 +1075,8 @@ pub fn models_list_def() -> ToolDefinition {
             required: None,
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -1074,6 +1096,8 @@ pub fn personas_list_def() -> ToolDefinition {
             required: None,
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 

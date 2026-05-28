@@ -55,6 +55,8 @@ mod tests {
                 required: Some(vec!["path".to_string()]),
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
 
         let response_tool = tool_def_to_response(&tool);
@@ -80,6 +82,8 @@ mod tests {
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
 
         let response_tool = tool_def_to_response(&tool);

@@ -1121,6 +1121,8 @@ pub fn plan_execute_tool_def() -> ToolDefinition {
             required: Some(vec!["format".to_string(), "plan".to_string()]),
         },
         annotations: None,
+        ttl_ms: None,
+        cache_scope: None,
     }
 }
 
@@ -1528,6 +1530,8 @@ steps:
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         let server = smgglrs_core::McpServer::builder()
             .name("test")
@@ -1589,6 +1593,8 @@ steps:
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         let server = smgglrs_core::McpServer::builder()
             .name("test")
@@ -1859,6 +1865,8 @@ steps:
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         smgglrs_core::McpServer::builder()
             .name("test")
@@ -2150,6 +2158,8 @@ steps:
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         let server = smgglrs_core::McpServer::builder()
             .name("test")
@@ -2205,6 +2215,8 @@ steps:
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         let fail_def = ToolDefinition {
             name: "maybe_fail".to_string(),
@@ -2215,6 +2227,8 @@ steps:
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         let server = smgglrs_core::McpServer::builder()
             .name("test")

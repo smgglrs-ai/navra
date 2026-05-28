@@ -206,6 +206,8 @@ impl Module for GrpcModule {
                     },
                     input_schema,
                     annotations: None,
+                    ttl_ms: None,
+                    cache_scope: None,
                 };
 
                 let client = self.client.clone();

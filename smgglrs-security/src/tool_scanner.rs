@@ -441,6 +441,8 @@ mod tests {
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         }
     }
 
@@ -533,6 +535,8 @@ mod tests {
                 required: Some(vec!["content".to_string()]),
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         };
         let findings = check_intent_behavior_mismatch(&tool);
         assert!(!findings.is_empty());
@@ -618,6 +622,8 @@ mod tests {
                 required: None,
             },
             annotations: None,
+            ttl_ms: None,
+            cache_scope: None,
         }];
         let results = s.scan_tools("evil-server", &tools);
         assert!(matches!(results[0].verdict, ScanVerdict::Malicious { .. }));
