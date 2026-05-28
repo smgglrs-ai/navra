@@ -6,6 +6,7 @@
 //! post-hook.
 
 mod budget;
+pub mod egress;
 pub mod field_filter;
 mod memory_extraction;
 mod pipeline;
@@ -19,6 +20,7 @@ pub mod temporal_contract;
 mod tool_guard;
 
 pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
+pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
 pub use memory_extraction::{ExtractionStore, MemoryExtractionConfig, MemoryExtractionHook};
 pub use pipeline::HookPipeline;
