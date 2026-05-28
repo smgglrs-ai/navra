@@ -1037,8 +1037,24 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                             continue;
                         }
                     },
-                    "podman" => Box::new(smgglrs_model_runtime::podman::PodmanRuntime::new()),
-                    "direct" => Box::new(smgglrs_model_runtime::direct::DirectRuntime::new()),
+                    "llama-cpp" | "direct" => {
+                        Box::new(smgglrs_model_runtime::direct::DirectRuntime::new(
+                            smgglrs_model_runtime::Engine::LlamaCpp,
+                        ))
+                    }
+                    "llama-cpp-podman" | "podman" => {
+                        Box::new(smgglrs_model_runtime::podman::PodmanRuntime::new(
+                            smgglrs_model_runtime::Engine::LlamaCpp,
+                        ))
+                    }
+                    "vllm" => Box::new(smgglrs_model_runtime::direct::DirectRuntime::new(
+                        smgglrs_model_runtime::Engine::Vllm,
+                    )),
+                    "vllm-podman" => {
+                        Box::new(smgglrs_model_runtime::podman::PodmanRuntime::new(
+                            smgglrs_model_runtime::Engine::Vllm,
+                        ))
+                    }
                     "none" => {
                         tracing::warn!(model = %name, "Task is chat/generate but runtime=none, skipping");
                         continue;
@@ -2469,11 +2485,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     tracing::info!(url = %url, container = %name, "Shared model server started");
                     // Track container for shutdown
                     running_endpoints.push((
-                        Box::new(smgglrs_model_runtime::podman::PodmanRuntime::new()),
+                        Box::new(smgglrs_model_runtime::podman::PodmanRuntime::new(
+                            smgglrs_model_runtime::Engine::LlamaCpp,
+                        )),
                         smgglrs_model_runtime::Endpoint {
                             url: format!("http://127.0.0.1:{port}"),
                             id: name,
-                            backend: smgglrs_model_runtime::RuntimeBackend::Podman,
+                            backend: smgglrs_model_runtime::RuntimeBackend::LlamaCppPodman,
                         },
                     ));
                     Some(url)
