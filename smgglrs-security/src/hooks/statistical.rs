@@ -309,6 +309,91 @@ impl EntropyMonitor {
 }
 
 // ---------------------------------------------------------------------------
+// Tool transition tracking
+// ---------------------------------------------------------------------------
+
+/// Result of recording a tool transition.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransitionResult {
+    /// The transition has been seen before.
+    Normal,
+    /// This is the first time this transition has been observed
+    /// (after the warm-up period).
+    Novel { from: String, to: String },
+    /// Not enough observations yet to flag novel transitions.
+    WarmingUp,
+}
+
+/// Tracks pairwise tool transitions over a sliding window to detect
+/// novel (never-before-seen) tool call sequences.
+pub struct ToolTransitionTracker {
+    window_size: usize,
+    min_observations: usize,
+    window: VecDeque<(String, String)>,
+    counts: HashMap<(String, String), usize>,
+    prev_tool: Option<String>,
+    total: usize,
+}
+
+impl ToolTransitionTracker {
+    /// Create a new tracker.
+    ///
+    /// - `window_size`: maximum number of transitions to keep in the sliding window
+    /// - `min_observations`: how many transitions to observe before flagging novelty
+    pub fn new(window_size: usize, min_observations: usize) -> Self {
+        Self {
+            window_size,
+            min_observations,
+            window: VecDeque::with_capacity(window_size),
+            counts: HashMap::new(),
+            prev_tool: None,
+            total: 0,
+        }
+    }
+
+    /// Record a tool call and return whether the transition is novel.
+    pub fn record(&mut self, tool_name: &str) -> TransitionResult {
+        let Some(ref prev) = self.prev_tool else {
+            self.prev_tool = Some(tool_name.to_string());
+            return TransitionResult::WarmingUp;
+        };
+
+        let pair = (prev.clone(), tool_name.to_string());
+        self.prev_tool = Some(tool_name.to_string());
+
+        // Evict oldest entry if window is full
+        if self.window.len() >= self.window_size {
+            if let Some(old_pair) = self.window.pop_front() {
+                if let Some(c) = self.counts.get_mut(&old_pair) {
+                    *c = c.saturating_sub(1);
+                    if *c == 0 {
+                        self.counts.remove(&old_pair);
+                    }
+                }
+            }
+        }
+
+        // Record the new transition
+        *self.counts.entry(pair.clone()).or_insert(0) += 1;
+        self.window.push_back(pair.clone());
+        self.total += 1;
+
+        if self.total < self.min_observations {
+            return TransitionResult::WarmingUp;
+        }
+
+        if self.counts[&pair] == 1 {
+            TransitionResult::Novel {
+                from: pair.0,
+                to: pair.1,
+            }
+        } else {
+            TransitionResult::Normal
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
@@ -330,6 +415,10 @@ pub struct StatisticalConfig {
     /// Whether to block tool calls when anomalies are detected.
     /// Default: false (monitor/warn only).
     pub block_on_anomaly: bool,
+    /// Sliding window size for tool transition tracking.
+    pub transition_window: usize,
+    /// Minimum observations before flagging novel transitions.
+    pub transition_min_observations: usize,
 }
 
 impl Default for StatisticalConfig {
@@ -342,6 +431,8 @@ impl Default for StatisticalConfig {
             entropy_min: 0.5,
             entropy_max: 4.0,
             block_on_anomaly: false,
+            transition_window: 50,
+            transition_min_observations: 10,
         }
     }
 }
@@ -361,6 +452,8 @@ pub struct StatisticalGuardrailHook {
     entropy_monitors: Mutex<HashMap<String, EntropyMonitor>>,
     /// Per-session cosine drift detectors, keyed by session ID.
     drift_detectors: Mutex<HashMap<String, CosineDriftDetector>>,
+    /// Per-session tool transition trackers, keyed by session ID.
+    transition_trackers: Mutex<HashMap<String, ToolTransitionTracker>>,
 }
 
 impl StatisticalGuardrailHook {
@@ -370,6 +463,7 @@ impl StatisticalGuardrailHook {
             config,
             entropy_monitors: Mutex::new(HashMap::new()),
             drift_detectors: Mutex::new(HashMap::new()),
+            transition_trackers: Mutex::new(HashMap::new()),
         }
     }
 
@@ -464,6 +558,33 @@ impl Hook for StatisticalGuardrailHook {
                 }
             }
             _ => {}
+        }
+
+        // --- Tool transition tracking ---
+        {
+            let mut trackers = self.transition_trackers.lock().unwrap();
+            let tracker = trackers.entry(session_id.clone()).or_insert_with(|| {
+                ToolTransitionTracker::new(
+                    self.config.transition_window,
+                    self.config.transition_min_observations,
+                )
+            });
+            let transition_result = tracker.record(tool_name);
+            if let TransitionResult::Novel { ref from, ref to } = transition_result {
+                tracing::warn!(
+                    session = %session_id,
+                    agent = %ctx.agent.name,
+                    from = %from,
+                    to = %to,
+                    "Statistical guardrail: novel tool transition detected"
+                );
+                if self.config.block_on_anomaly {
+                    return HookDecision::Block(format!(
+                        "statistical guardrail: novel tool transition {from} -> {to} — \
+                         this sequence has never been observed before"
+                    ));
+                }
+            }
         }
 
         // --- Cosine drift detection ---
@@ -980,5 +1101,66 @@ mod tests {
     async fn hook_name_is_correct() {
         let hook = StatisticalGuardrailHook::default_config();
         assert_eq!(hook.name(), "statistical-guardrail");
+    }
+
+    // -- Tool transition tracker tests --
+
+    #[test]
+    fn transition_tracker_flags_novel() {
+        let mut tracker = ToolTransitionTracker::new(100, 6);
+
+        // Build a known pattern: A->B->C repeated until past min_observations
+        for _ in 0..5 {
+            tracker.record("A");
+            tracker.record("B");
+            tracker.record("C");
+        }
+
+        // Now A->D is a novel transition
+        tracker.record("A"); // C->A is known
+        let result = tracker.record("D");
+        assert_eq!(
+            result,
+            TransitionResult::Novel {
+                from: "A".to_string(),
+                to: "D".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn transition_tracker_warmup() {
+        let mut tracker = ToolTransitionTracker::new(100, 10);
+
+        // With only a few observations, novel transitions should return WarmingUp
+        tracker.record("A");
+        let result = tracker.record("B");
+        assert_eq!(result, TransitionResult::WarmingUp);
+
+        let result = tracker.record("C");
+        assert_eq!(result, TransitionResult::WarmingUp);
+    }
+
+    #[test]
+    fn transition_tracker_window_eviction() {
+        let mut tracker = ToolTransitionTracker::new(4, 2);
+
+        // Record enough to pass warm-up: A->B, B->A, A->B, B->A (4 transitions)
+        tracker.record("A");
+        tracker.record("B");
+        tracker.record("A");
+        tracker.record("B");
+        tracker.record("A"); // B->A is the 4th transition
+
+        // Window is size 4, so the oldest entry (A->B from iteration 1)
+        // should be evicted. Verify window length is capped.
+        assert!(tracker.window.len() <= 4);
+
+        // Record a bunch more to force further eviction
+        for _ in 0..10 {
+            tracker.record("X");
+            tracker.record("Y");
+        }
+        assert!(tracker.window.len() <= 4);
     }
 }

@@ -79,6 +79,12 @@ pub struct DagExecutor {
     /// Prevents agent worm propagation patterns. 0 = unlimited.
     max_hops: usize,
     checkpoint: Option<(Arc<DagCheckpoint>, String)>,
+    /// Per-tool failure counts and last-failure timestamps for circuit breaking.
+    failure_counts: HashMap<String, (usize, std::time::Instant)>,
+    /// Number of consecutive failures before a circuit opens.
+    circuit_breaker_threshold: usize,
+    /// How long an open circuit stays open before allowing a retry.
+    circuit_breaker_cooldown: std::time::Duration,
 }
 
 impl Default for DagExecutor {
@@ -99,6 +105,9 @@ impl DagExecutor {
             insight_callback: None,
             insight_retriever: None,
             checkpoint: None,
+            failure_counts: HashMap::new(),
+            circuit_breaker_threshold: 5,
+            circuit_breaker_cooldown: std::time::Duration::from_secs(60),
         }
     }
 
@@ -180,6 +189,42 @@ impl DagExecutor {
     pub fn with_checkpoint(mut self, store: Arc<DagCheckpoint>, flow_id: String) -> Self {
         self.checkpoint = Some((store, flow_id));
         self
+    }
+
+    /// Configure the circuit breaker threshold and cooldown.
+    pub fn with_circuit_breaker(mut self, threshold: usize, cooldown: std::time::Duration) -> Self {
+        self.circuit_breaker_threshold = threshold;
+        self.circuit_breaker_cooldown = cooldown;
+        self
+    }
+
+    /// Check whether the circuit is open (tripped) for a given tool.
+    ///
+    /// Returns `true` when the failure count is at or above the threshold
+    /// AND the cooldown period has not yet elapsed since the last failure.
+    pub fn is_circuit_open(&self, tool: &str) -> bool {
+        if let Some(&(count, last_failure)) = self.failure_counts.get(tool) {
+            count >= self.circuit_breaker_threshold
+                && last_failure.elapsed() < self.circuit_breaker_cooldown
+        } else {
+            false
+        }
+    }
+
+    /// Record a failure for a tool, incrementing its count and updating
+    /// the last-failure timestamp.
+    pub fn record_failure(&mut self, tool: &str) {
+        let entry = self
+            .failure_counts
+            .entry(tool.to_string())
+            .or_insert((0, std::time::Instant::now()));
+        entry.0 += 1;
+        entry.1 = std::time::Instant::now();
+    }
+
+    /// Record a success for a tool, resetting its failure count.
+    pub fn record_success(&mut self, tool: &str) {
+        self.failure_counts.remove(tool);
     }
 
     /// Execute a DAG of tasks.
@@ -800,5 +845,50 @@ mod tests {
         let executor = DagExecutor::new();
         let result = executor.agent_signal("ghost", AgentSignal::Interrupt);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn circuit_breaker_trips_after_threshold() {
+        let mut executor = DagExecutor::new()
+            .with_circuit_breaker(3, std::time::Duration::from_secs(60));
+
+        assert!(!executor.is_circuit_open("tool_a"));
+
+        executor.record_failure("tool_a");
+        executor.record_failure("tool_a");
+        assert!(!executor.is_circuit_open("tool_a"));
+
+        executor.record_failure("tool_a");
+        assert!(executor.is_circuit_open("tool_a"));
+    }
+
+    #[test]
+    fn circuit_breaker_resets_on_success() {
+        let mut executor = DagExecutor::new()
+            .with_circuit_breaker(2, std::time::Duration::from_secs(60));
+
+        executor.record_failure("tool_b");
+        executor.record_failure("tool_b");
+        assert!(executor.is_circuit_open("tool_b"));
+
+        executor.record_success("tool_b");
+        assert!(!executor.is_circuit_open("tool_b"));
+    }
+
+    #[test]
+    fn circuit_breaker_cooldown_expires() {
+        let mut executor = DagExecutor::new()
+            .with_circuit_breaker(2, std::time::Duration::from_millis(1));
+
+        executor.record_failure("tool_c");
+        executor.record_failure("tool_c");
+
+        // Wait for cooldown to expire
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        assert!(
+            !executor.is_circuit_open("tool_c"),
+            "circuit should be closed after cooldown expires"
+        );
     }
 }
