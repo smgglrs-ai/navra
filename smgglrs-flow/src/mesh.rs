@@ -155,6 +155,16 @@ impl MeshRouter {
         self.teammates.keys().cloned().collect()
     }
 
+    /// Resolve the effective clearance for a teammate.
+    /// Unknown teammates default to Public (maximally restrictive).
+    /// Extracted for Kani verification.
+    fn resolve_clearance(&self, name: &str) -> Confidentiality {
+        self.clearances
+            .get(name)
+            .copied()
+            .unwrap_or(Confidentiality::Public)
+    }
+
     /// Route a message to a teammate, enforcing IFC.
     ///
     /// Bell-LaPadula no-write-down: the sender's data label
@@ -167,11 +177,7 @@ impl MeshRouter {
         data_label: DataLabel,
     ) -> Result<(), FlowError> {
         // IFC check: no-write-down
-        let target_clearance = self
-            .clearances
-            .get(to)
-            .copied()
-            .unwrap_or(Confidentiality::Public);
+        let target_clearance = self.resolve_clearance(to);
 
         if !data_label.can_write_to(target_clearance) {
             return Err(FlowError::IfcViolation {
@@ -603,5 +609,54 @@ mod tests {
         assert!(router.is_remote("remote_agent"));
         assert!(!router.is_in_process("remote_agent"));
         assert!(!router.has_teammate("nonexistent"));
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+    use smgglrs_protocol::label::{Confidentiality, DataLabel, Integrity};
+
+    fn arbitrary_confidentiality() -> Confidentiality {
+        match kani::any::<u8>() % 4 {
+            0 => Confidentiality::Public,
+            1 => Confidentiality::Sensitive,
+            2 => Confidentiality::Pii,
+            _ => Confidentiality::Secret,
+        }
+    }
+
+    fn arbitrary_label() -> DataLabel {
+        DataLabel {
+            integrity: if kani::any::<bool>() {
+                Integrity::Trusted
+            } else {
+                Integrity::Untrusted
+            },
+            confidentiality: arbitrary_confidentiality(),
+        }
+    }
+
+    #[kani::proof]
+    fn default_clearance_is_maximally_restrictive() {
+        let router = MeshRouter::new();
+        let clearance = router.resolve_clearance("unknown_agent");
+        assert_eq!(clearance, Confidentiality::Public);
+        // Public is the lowest level — Sensitive/PII/Secret data cannot write down to it
+        let sensitive_label = DataLabel {
+            integrity: Integrity::Trusted,
+            confidentiality: Confidentiality::Sensitive,
+        };
+        assert!(!sensitive_label.can_write_to(clearance));
+    }
+
+    #[kani::proof]
+    fn ifc_check_consistent_with_can_write_to() {
+        let label = arbitrary_label();
+        let clearance = arbitrary_confidentiality();
+        let allowed = label.can_write_to(clearance);
+        // The mesh send() blocks iff can_write_to returns false
+        // This proves the IFC gate is exactly the BLP *-property
+        assert_eq!(allowed, label.confidentiality <= clearance);
     }
 }

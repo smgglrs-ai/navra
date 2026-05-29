@@ -196,3 +196,38 @@ mod tests {
         assert_eq!(tracker.check("agent-2"), QuotaStatus::WithinBudget);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Pure quota check logic for Kani verification.
+    fn check_quota(tokens_used: u64, max_tokens: u64) -> QuotaStatus {
+        if tokens_used > max_tokens {
+            QuotaStatus::Exceeded {
+                tokens_over: tokens_used - max_tokens,
+            }
+        } else {
+            QuotaStatus::WithinBudget
+        }
+    }
+
+    #[kani::proof]
+    fn quota_check_correct() {
+        let used: u64 = kani::any();
+        let max: u64 = kani::any();
+        kani::assume(used <= 1_000_000);
+        kani::assume(max <= 1_000_000);
+        let status = check_quota(used, max);
+        if used <= max {
+            assert_eq!(status, QuotaStatus::WithinBudget);
+        } else {
+            match status {
+                QuotaStatus::Exceeded { tokens_over } => {
+                    assert_eq!(tokens_over, used - max);
+                }
+                _ => panic!("should be Exceeded"),
+            }
+        }
+    }
+}

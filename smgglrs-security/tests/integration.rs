@@ -729,3 +729,146 @@ fn delegated_token_permission_engine_integration() {
     );
     assert_eq!(result, PermissionResult::Allowed);
 }
+
+// =====================================================================
+// 9. OWASP ASI01-ASI10 compliance verification
+// =====================================================================
+// Verify that the mechanisms documented in docs/owasp-asi-compliance.md
+// are present and functional. Each test targets one ASI risk.
+
+/// ASI01: Agent Goal Hijack — IFC taint tracking marks untrusted inputs
+/// so tainted sessions cannot silently influence privileged operations.
+#[test]
+fn asi01_ifc_marks_untrusted_input() {
+    let mut tracker = TaintTracker::new();
+    assert!(!tracker.is_untrusted());
+    tracker.absorb(DataLabel::UNTRUSTED_PUBLIC);
+    assert!(tracker.is_untrusted());
+    // Taint only rises, never drops (monotonicity)
+    tracker.absorb(DataLabel::TRUSTED_PUBLIC);
+    assert!(tracker.is_untrusted());
+}
+
+/// ASI02: Tool Misuse — deny-wins ACLs prevent tools from accessing
+/// restricted paths even when the parent glob allows them.
+#[test]
+fn asi02_deny_wins_acl() {
+    let engine = build_permission_engine();
+    let allowed = engine.check("dev", "read", Path::new("/home/user/projects/app/main.rs"));
+    let denied = engine.check("dev", "read", Path::new("/home/user/projects/.secrets/key.pem"));
+    assert_eq!(allowed, PermissionResult::Allowed);
+    assert_eq!(denied, PermissionResult::DeniedPath);
+}
+
+/// ASI03: Identity & Privilege Abuse — capability delegation enforces
+/// privilege attenuation (child cannot escalate beyond parent).
+#[test]
+fn asi03_delegation_attenuation() {
+    let signer = Ed25519Signer::generate();
+    let root = root_payload(&signer);
+    let err = build_delegated_payload(
+        &root,
+        "did:attacker",
+        vec!["read".to_string(), "shell.exec".to_string()],
+        vec!["*".to_string()],
+        2,
+        600,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("escalation"));
+}
+
+/// ASI05: Unexpected Code Execution — tool rules can deny specific
+/// tools, preventing their execution regardless of other permissions.
+#[test]
+fn asi05_tool_deny_blocks_execution() {
+    let perms = ToolPermissions::new(
+        vec![ToolRule {
+            tool: "exec_command".to_string(),
+            policy: ToolPolicy::Deny,
+        }],
+        ToolPolicy::Allow,
+    );
+    assert_eq!(perms.check("exec_command"), ToolPolicy::Deny);
+    assert_eq!(perms.check("file_read"), ToolPolicy::Allow);
+}
+
+/// ASI06: Memory & Context Poisoning — IFC value store tracks per-value
+/// provenance so tainted data cannot silently influence clean contexts.
+#[test]
+fn asi06_value_store_taint_propagation() {
+    let store = ValueStore::new();
+    store.store(StoredValue {
+        id: "clean".to_string(),
+        content: vec![Content::text("safe")],
+        label: DataLabel::TRUSTED_PUBLIC,
+        source_tool: "file_read".to_string(),
+        created_at: std::time::Instant::now(),
+        is_error: false,
+    });
+    store.store(StoredValue {
+        id: "poisoned".to_string(),
+        content: vec![Content::text("malicious")],
+        label: DataLabel::UNTRUSTED_SENSITIVE,
+        source_tool: "web_fetch".to_string(),
+        created_at: std::time::Instant::now(),
+        is_error: false,
+    });
+    let args = serde_json::json!({"a": "var://clean", "b": "var://poisoned"});
+    let resolved = resolve_variable_refs(&args, &store).unwrap();
+    assert_eq!(resolved.effective_label, DataLabel::UNTRUSTED_SENSITIVE);
+}
+
+/// ASI07: Insecure Inter-Agent Comms — capability tokens enforce that
+/// delegated agents cannot exceed their parent's privilege scope.
+#[test]
+fn asi07_delegation_chain_cannot_escalate_ring() {
+    let signer = Ed25519Signer::generate();
+    let parent = build_payload(
+        signer.did(),
+        "did:parent",
+        CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations: vec!["read".to_string()],
+            tools: vec!["*".to_string()],
+            credentials: vec![],
+        },
+        2,
+        3600,
+    );
+    let mut child = build_payload(
+        "did:parent",
+        "did:child",
+        parent.cap.clone(),
+        1,
+        3600,
+    );
+    child.parent = Some(parent.nonce);
+    assert!(validate_delegation(&parent, &child, 3).is_err());
+}
+
+/// ASI08: Cascading Failures — quota engine rate-limits agents to
+/// prevent runaway tool loops.
+#[test]
+fn asi08_rate_limiting_prevents_runaway() {
+    let mut engine = QuotaEngine::new();
+    engine.add_limit("dev".to_string(), RateLimit { max_calls: 2, window_secs: 60 });
+    assert!(engine.check("agent", "dev"));
+    assert!(engine.check("agent", "dev"));
+    assert!(!engine.check("agent", "dev"));
+}
+
+/// ASI10: Rogue Agents — trust scoring with behavioral decay causes
+/// agents to lose trust over time and on safety triggers.
+#[test]
+fn asi10_trust_decay_on_safety_trigger() {
+    use smgglrs_security::trust_score::{TrustConfig, TrustScore, TrustState};
+    let score = TrustScore::new(TrustConfig::default());
+    let initial = score.current_score();
+    score.record_safety_trigger();
+    assert!(score.current_score() < initial);
+    for _ in 0..10 {
+        score.record_safety_trigger();
+    }
+    assert!(matches!(score.state(), TrustState::ReadOnly | TrustState::Suspended));
+}

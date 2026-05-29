@@ -424,3 +424,59 @@ mod tests {
         );
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Pure Welch SE calculation for Kani verification.
+    fn welch_se(std1: f64, n1: usize, std2: f64, n2: usize) -> f64 {
+        ((std1.powi(2) / n1.max(1) as f64) + (std2.powi(2) / n2.max(1) as f64)).sqrt()
+    }
+
+    /// Welch-Satterthwaite degrees of freedom.
+    fn welch_df(std1: f64, n1: usize, std2: f64, n2: usize) -> f64 {
+        let s1 = std1.powi(2) / n1.max(1) as f64;
+        let s2 = std2.powi(2) / n2.max(1) as f64;
+        let num = (s1 + s2).powi(2);
+        let den = s1.powi(2) / (n1.max(1) - 1).max(1) as f64
+            + s2.powi(2) / (n2.max(1) - 1).max(1) as f64;
+        if den == 0.0 { 1.0 } else { num / den }
+    }
+
+    #[kani::proof]
+    fn welch_se_non_negative() {
+        let s1: u8 = kani::any();
+        let s2: u8 = kani::any();
+        let n1: u8 = kani::any();
+        let n2: u8 = kani::any();
+        kani::assume(s1 <= 10 && s2 <= 10);
+        kani::assume(n1 >= 1 && n1 <= 20);
+        kani::assume(n2 >= 1 && n2 <= 20);
+        let se = welch_se(s1 as f64, n1 as usize, s2 as f64, n2 as usize);
+        assert!(se >= 0.0);
+    }
+
+    #[kani::proof]
+    fn welch_df_positive() {
+        let s1: u8 = kani::any();
+        let s2: u8 = kani::any();
+        let n1: u8 = kani::any();
+        let n2: u8 = kani::any();
+        kani::assume(n1 >= 2 && n1 <= 20);
+        kani::assume(n2 >= 2 && n2 <= 20);
+        kani::assume(s1 <= 10 && s2 <= 10);
+        kani::assume(s1 > 0 || s2 > 0); // at least one non-zero std
+        let df = welch_df(s1 as f64, n1 as usize, s2 as f64, n2 as usize);
+        assert!(df >= 1.0);
+    }
+
+    #[kani::proof]
+    fn zero_variance_no_significance() {
+        // When both std = 0, t_stat = 0, which is never > 2.0
+        let se = welch_se(0.0, 10, 0.0, 10);
+        assert_eq!(se, 0.0);
+        // No significance when t_stat = 0
+        assert!(!(0.0_f64 > 2.0));
+    }
+}

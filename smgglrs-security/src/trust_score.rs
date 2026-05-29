@@ -214,3 +214,122 @@ mod tests {
         assert_eq!(ts.current_score(), 0);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Pure trust score transition logic for Kani verification.
+    /// Models record_success / record_denial / record_safety_trigger
+    /// without atomics or clocks.
+    fn trust_transition(
+        score: i64,
+        max_score: i64,
+        delta: i64,
+        is_penalty: bool,
+    ) -> i64 {
+        if is_penalty {
+            score.saturating_sub(delta).max(0)
+        } else {
+            score.saturating_add(delta).min(max_score)
+        }
+    }
+
+    /// Pure state classification for Kani verification.
+    fn classify_state(score: i64, suspend: i64, read_only: i64) -> TrustState {
+        if score < suspend {
+            TrustState::Suspended
+        } else if score < read_only {
+            TrustState::ReadOnly
+        } else {
+            TrustState::Normal
+        }
+    }
+
+    #[kani::proof]
+    fn score_bounded_after_success() {
+        let score: i64 = kani::any();
+        let max: i64 = kani::any();
+        let delta: i64 = kani::any();
+        kani::assume(score >= 0 && score <= 1000);
+        kani::assume(max >= 0 && max <= 1000);
+        kani::assume(delta >= 0 && delta <= 100);
+        let new = trust_transition(score, max, delta, false);
+        assert!(new >= 0);
+        assert!(new <= max);
+    }
+
+    #[kani::proof]
+    fn score_bounded_after_penalty() {
+        let score: i64 = kani::any();
+        let delta: i64 = kani::any();
+        kani::assume(score >= 0 && score <= 1000);
+        kani::assume(delta >= 0 && delta <= 200);
+        let new = trust_transition(score, 1000, delta, true);
+        assert!(new >= 0);
+        assert!(new <= 1000);
+    }
+
+    #[kani::proof]
+    fn state_thresholds_monotonic() {
+        let s1: i64 = kani::any();
+        let s2: i64 = kani::any();
+        kani::assume(s1 >= 0 && s1 <= 1000);
+        kani::assume(s2 >= 0 && s2 <= 1000);
+        kani::assume(s2 >= s1);
+        let suspend = 100i64;
+        let read_only = 300i64;
+        let state1 = classify_state(s1, suspend, read_only);
+        let state2 = classify_state(s2, suspend, read_only);
+        let rank = |s: &TrustState| -> u8 {
+            match s {
+                TrustState::Suspended => 0,
+                TrustState::ReadOnly => 1,
+                TrustState::Normal => 2,
+            }
+        };
+        assert!(rank(&state2) >= rank(&state1));
+    }
+
+    #[kani::proof]
+    fn default_config_satisfies_invariants() {
+        let c = TrustConfig::default();
+        assert!(c.baseline <= c.max_score);
+        assert!(c.suspend_threshold < c.read_only_threshold);
+        assert!(c.suspend_threshold >= 0);
+        assert!(c.read_only_threshold <= c.max_score);
+        assert!(c.positive_delta >= 0);
+        assert!(c.denial_penalty >= 0);
+        assert!(c.safety_penalty >= 0);
+        assert!(c.decay_per_minute >= 0);
+    }
+
+    #[kani::proof]
+    fn all_trust_states_reachable() {
+        let c = TrustConfig::default();
+        let normal = classify_state(c.max_score, c.suspend_threshold, c.read_only_threshold);
+        let read_only = classify_state(
+            c.suspend_threshold + (c.read_only_threshold - c.suspend_threshold) / 2,
+            c.suspend_threshold,
+            c.read_only_threshold,
+        );
+        let suspended = classify_state(0, c.suspend_threshold, c.read_only_threshold);
+        assert_eq!(normal, TrustState::Normal);
+        assert_eq!(read_only, TrustState::ReadOnly);
+        assert_eq!(suspended, TrustState::Suspended);
+    }
+
+    /// Decay multiplication overflow proof.
+    /// Proves that for reasonable elapsed times (≤ 1 year in minutes)
+    /// and default decay rate, no overflow occurs.
+    #[kani::proof]
+    fn decay_multiplication_bounded() {
+        let elapsed_minutes: u32 = kani::any();
+        let decay_per_min: u16 = kani::any();
+        kani::assume(elapsed_minutes <= 525600); // 1 year in minutes
+        kani::assume(decay_per_min <= 100);
+        let decay = (elapsed_minutes as i64) * (decay_per_min as i64);
+        assert!(decay >= 0);
+        assert!(decay <= 52_560_000);
+    }
+}

@@ -629,3 +629,98 @@ mod tests {
         assert!(matches!(results[0].verdict, ScanVerdict::Malicious { .. }));
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    impl kani::Arbitrary for FindingSeverity {
+        fn any_array<const N: usize>() -> [Self; N] {
+            [Self::Low; N]
+        }
+
+        fn any() -> Self {
+            match kani::any::<u8>() % 4 {
+                0 => FindingSeverity::Low,
+                1 => FindingSeverity::Medium,
+                2 => FindingSeverity::High,
+                _ => FindingSeverity::Critical,
+            }
+        }
+    }
+
+    fn make_finding(severity: FindingSeverity) -> ToolFinding {
+        ToolFinding {
+            category: ToolThreatCategory::ToolPoisoning,
+            severity,
+            description: String::new(),
+        }
+    }
+
+    #[kani::proof]
+    fn critical_implies_malicious() {
+        let s1: FindingSeverity = kani::any();
+        let s2: FindingSeverity = kani::any();
+        let findings = vec![make_finding(s1), make_finding(s2)];
+        let verdict = aggregate_verdict(&findings);
+        if s1 == FindingSeverity::Critical || s2 == FindingSeverity::Critical {
+            assert!(matches!(verdict, ScanVerdict::Malicious { .. }));
+        }
+    }
+
+    #[kani::proof]
+    fn high_without_critical_implies_suspicious() {
+        let s1: FindingSeverity = kani::any();
+        let s2: FindingSeverity = kani::any();
+        kani::assume(s1 != FindingSeverity::Critical);
+        kani::assume(s2 != FindingSeverity::Critical);
+        let findings = vec![make_finding(s1), make_finding(s2)];
+        let verdict = aggregate_verdict(&findings);
+        if s1 == FindingSeverity::High || s2 == FindingSeverity::High {
+            assert!(matches!(verdict, ScanVerdict::Suspicious { .. }));
+        }
+    }
+
+    #[kani::proof]
+    fn no_high_no_critical_implies_safe() {
+        let s1: FindingSeverity = kani::any();
+        let s2: FindingSeverity = kani::any();
+        kani::assume(s1 != FindingSeverity::Critical && s1 != FindingSeverity::High);
+        kani::assume(s2 != FindingSeverity::Critical && s2 != FindingSeverity::High);
+        let findings = vec![make_finding(s1), make_finding(s2)];
+        let verdict = aggregate_verdict(&findings);
+        assert!(matches!(verdict, ScanVerdict::Safe));
+    }
+
+    #[kani::proof]
+    fn levenshtein_identity() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 3);
+        let s = match choice {
+            0 => "abc",
+            1 => "hello",
+            2 => "",
+            _ => "x",
+        };
+        assert_eq!(levenshtein(s, s), 0);
+    }
+
+    #[kani::proof]
+    fn levenshtein_symmetric() {
+        let c1: u8 = kani::any();
+        let c2: u8 = kani::any();
+        kani::assume(c1 <= 2);
+        kani::assume(c2 <= 2);
+        let a = match c1 {
+            0 => "abc",
+            1 => "abd",
+            _ => "xyz",
+        };
+        let b = match c2 {
+            0 => "abc",
+            1 => "abd",
+            _ => "xyz",
+        };
+        assert_eq!(levenshtein(a, b), levenshtein(b, a));
+    }
+}

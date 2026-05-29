@@ -599,4 +599,53 @@ mod kani_proofs {
         tracker.absorb(l2);
         assert_eq!(tracker.level(), l1.join(l2));
     }
+
+    // --- Noninterference proof ---
+    // Two runs that differ only in secret input produce the same
+    // public-visible write decision.
+
+    #[kani::proof]
+    fn noninterference_write_decision() {
+        // Two sessions start with the same public data
+        let public_label = DataLabel::TRUSTED_PUBLIC;
+        let target_clearance: Confidentiality = kani::any();
+
+        // Session A: absorbs public data only
+        let mut tracker_a = TaintTracker::new();
+        tracker_a.absorb(public_label);
+        let can_write_a = tracker_a.level().can_write_to(target_clearance);
+
+        // Session B: absorbs the SAME public data plus secret data
+        let mut tracker_b = TaintTracker::new();
+        tracker_b.absorb(public_label);
+        let secret: DataLabel = kani::any();
+        kani::assume(secret.confidentiality > Confidentiality::Public);
+        tracker_b.absorb(secret);
+        let can_write_b = tracker_b.level().can_write_to(target_clearance);
+
+        // If A can write to public target, B must NOT be able to
+        // (secret data taints the session, preventing write-down)
+        if target_clearance == Confidentiality::Public && can_write_a {
+            assert!(!can_write_b,
+                "secret data must prevent write-down to public target");
+        }
+    }
+
+    // --- Declassification safety ---
+
+    #[kani::proof]
+    fn declassify_only_steps_down() {
+        let mut tracker = TaintTracker::new();
+        let label: DataLabel = kani::any();
+        tracker.absorb(label);
+        let before = tracker.level().confidentiality;
+        let target: Confidentiality = kani::any();
+        let accepted = tracker.declassify(target);
+        if target >= before {
+            assert!(!accepted, "declassify must reject stepping up");
+        }
+        if accepted {
+            assert!(tracker.level().confidentiality < before);
+        }
+    }
 }

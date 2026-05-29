@@ -1,7 +1,7 @@
---- a/src/vpux_driver_compiler/CMakeLists.txt
-+++ b/src/vpux_driver_compiler/CMakeLists.txt
-@@ -20,8 +20,10 @@ ov_cpack_add_component(${CIP_COMPONENT})
-
+--- a/src/vpux_driver_compiler/CMakeLists.txt	2026-05-27 11:31:48.458085196 +0200
++++ b/src/vpux_driver_compiler/CMakeLists.txt	2026-05-27 11:31:48.463124436 +0200
+@@ -19,7 +19,7 @@
+ 
  if(BUILD_COMPILER_FOR_DRIVER)
      set(INSTALL_COMPONENT ${CID_COMPONENT})
 -    set(INSTALL_DESTINATION cid)
@@ -9,25 +9,34 @@
  else()
      set(INSTALL_COMPONENT ${CIP_COMPONENT})
      set(INSTALL_DESTINATION cip)
- endif()
-+
+@@ -27,6 +27,8 @@
+ 
+ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+ 
 +include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../vpux_compiler/include)
---- a/src/vpux_driver_compiler/cmake/install_target_with_debug_files.cmake
-+++ b/src/vpux_driver_compiler/cmake/install_target_with_debug_files.cmake
-@@ -30,7 +30,7 @@ function(install_target_with_debug_files target destination component)
++
+ add_subdirectory(src)
+ add_subdirectory(test)
+ 
+--- a/src/vpux_driver_compiler/cmake/install_target_with_debug_files.cmake	2026-05-27 11:31:48.458760847 +0200
++++ b/src/vpux_driver_compiler/cmake/install_target_with_debug_files.cmake	2026-05-27 11:31:48.463760814 +0200
+@@ -30,7 +30,7 @@
+         endif()
      else()
          install(TARGETS ${target}
--            LIBRARY DESTINATION ${destination}
-+            LIBRARY DESTINATION lib64
-             COMPONENT ${component})
+-            LIBRARY DESTINATION ${destination} COMPONENT ${component}
++            LIBRARY DESTINATION lib64 COMPONENT ${component}
+             RUNTIME DESTINATION ${destination} COMPONENT ${component})
      endif()
  endfunction()
---- a/src/vpux_driver_compiler/src/vpux_compiler_l0/CMakeLists.txt
-+++ b/src/vpux_driver_compiler/src/vpux_compiler_l0/CMakeLists.txt
-@@ -97,7 +97,7 @@ install_target_with_debug_files(${TARGET_NAME} ${INSTALL_DESTINATION}/lib ${INST
+--- a/src/vpux_driver_compiler/src/vpux_compiler_l0/CMakeLists.txt	2026-05-27 11:31:48.459760841 +0200
++++ b/src/vpux_driver_compiler/src/vpux_compiler_l0/CMakeLists.txt	2026-05-27 11:31:48.466256471 +0200
+@@ -69,7 +69,7 @@
  install(
          FILES
              "${PROJECT_SOURCE_DIR}/src/vpux_driver_compiler/include/npu_driver_compiler.h"
 -        DESTINATION ${INSTALL_DESTINATION}
 +        DESTINATION include
          COMPONENT ${INSTALL_COMPONENT})
+ 
+ # Install the openvino_intel_npu_compiler library to the same path of mlir_compiler

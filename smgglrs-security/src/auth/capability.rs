@@ -253,6 +253,41 @@ pub fn check_attenuation(
     Ok(())
 }
 
+/// Check OBO (on-behalf-of) escalation rules.
+/// Returns Err if child introduces or mutates OBO identity.
+/// Extracted for Kani verification.
+fn check_obo_attenuation(
+    parent_has_obo: bool,
+    child_has_obo: bool,
+    obo_matches: bool,
+) -> Result<(), &'static str> {
+    if !parent_has_obo && child_has_obo {
+        return Err("obo escalation: child introduces obo");
+    }
+    if parent_has_obo && child_has_obo && !obo_matches {
+        return Err("obo mismatch");
+    }
+    Ok(())
+}
+
+/// Check sandbox escalation rules.
+/// Returns Err if child removes a sandbox profile that parent had.
+fn check_sandbox_escalation(
+    parent_has_sandbox: bool,
+    child_has_sandbox: bool,
+) -> Result<(), &'static str> {
+    if parent_has_sandbox && !child_has_sandbox {
+        return Err("sandbox escalation: child removes sandbox");
+    }
+    Ok(())
+}
+
+/// Check that child operations are a subset of parent operations.
+/// Uses bounded arrays of u8 IDs instead of HashSet<String>.
+fn check_ops_subset(parent_ops: &[u8], child_ops: &[u8]) -> bool {
+    child_ops.iter().all(|c| parent_ops.contains(c))
+}
+
 /// Validate that a delegated token's capabilities are a subset of the parent's.
 pub fn validate_delegation(
     parent: &CapabilityPayload,
@@ -1336,5 +1371,46 @@ mod kani_proofs {
         if parent_to_child.is_ok() && child_to_grandchild.is_ok() {
             assert!(check_attenuation(r0, r2, e0, e2).is_ok());
         }
+    }
+
+    #[kani::proof]
+    fn obo_escalation_rejected() {
+        let parent_has: bool = kani::any();
+        let child_has: bool = kani::any();
+        let matches: bool = kani::any();
+        let result = check_obo_attenuation(parent_has, child_has, matches);
+        if !parent_has && child_has {
+            assert!(result.is_err());
+        }
+        if parent_has && child_has && !matches {
+            assert!(result.is_err());
+        }
+        if !child_has || (parent_has && child_has && matches) || (!parent_has && !child_has) {
+            assert!(result.is_ok());
+        }
+    }
+
+    #[kani::proof]
+    fn sandbox_removal_rejected() {
+        let parent_has: bool = kani::any();
+        let child_has: bool = kani::any();
+        let result = check_sandbox_escalation(parent_has, child_has);
+        if parent_has && !child_has {
+            assert!(result.is_err());
+        } else {
+            assert!(result.is_ok());
+        }
+    }
+
+    #[kani::proof]
+    fn ops_subset_correct() {
+        let p0: u8 = kani::any();
+        let p1: u8 = kani::any();
+        let c0: u8 = kani::any();
+        kani::assume(p0 <= 3 && p1 <= 3 && c0 <= 3);
+        let parent = [p0, p1];
+        let child = [c0];
+        let is_subset = check_ops_subset(&parent, &child);
+        assert_eq!(is_subset, parent.contains(&c0));
     }
 }

@@ -126,7 +126,7 @@ mod tests {
     ) -> TaskResult {
         TaskResult {
             task_id: "test".to_string(),
-            status: TaskStatus::Complete,
+            status: crate::task::TaskStatus::Complete,
             output: output.to_string(),
             prompt_tokens: 0,
             completion_tokens: 0,
@@ -277,5 +277,61 @@ mod tests {
             edge.condition,
             EdgeCondition::ScoreBelow(v) if (v - 75.0).abs() < f32::EPSILON
         ));
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn always_condition_always_true() {
+        let result = TaskResult {
+            task_id: String::new(),
+            output: String::new(),
+            status: crate::task::TaskStatus::Complete,
+            validation_score: None,
+            validation_notes: vec![],
+            taint: smgglrs_protocol::label::DataLabel::TRUSTED_PUBLIC,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+        };
+        assert!(evaluate_condition(&EdgeCondition::Always, &result));
+    }
+
+    #[kani::proof]
+    fn should_activate_respects_max_iterations() {
+        let max_iter: u32 = kani::any();
+        let current_count: u32 = kani::any();
+        kani::assume(max_iter <= 10);
+        kani::assume(current_count <= 20);
+
+        let edge = ConditionalEdge {
+            from: "a".to_string(),
+            to: "b".to_string(),
+            condition: EdgeCondition::Always,
+            max_iterations: max_iter,
+        };
+
+        let result = TaskResult {
+            task_id: String::new(),
+            output: String::new(),
+            status: crate::task::TaskStatus::Complete,
+            validation_score: None,
+            validation_notes: vec![],
+            taint: smgglrs_protocol::label::DataLabel::TRUSTED_PUBLIC,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+        };
+
+        let mut tracker = BackEdgeTracker::new();
+        for _ in 0..current_count {
+            tracker.record_activation("a", "b");
+        }
+
+        let activated = tracker.should_activate(&edge, &result);
+        if current_count >= max_iter {
+            assert!(!activated, "should not activate when count >= max_iterations");
+        }
     }
 }

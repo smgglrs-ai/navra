@@ -58,6 +58,21 @@ pub fn validate_mandate(task: &Task, output: &str) -> ValidationResult {
     }
 }
 
+/// Pure scoring logic for Kani verification.
+/// Computes (score, passed) from penalty flags and missed criteria count.
+fn compute_score(is_empty: bool, is_short_with_expected: bool, missed_criteria: u8) -> (f32, bool) {
+    let mut score = 100.0_f32;
+    if is_empty {
+        score -= 30.0;
+    }
+    if is_short_with_expected {
+        score -= 20.0;
+    }
+    score -= missed_criteria as f32 * 15.0;
+    score = score.max(0.0);
+    (score, score >= PASS_THRESHOLD)
+}
+
 /// Check if a criterion is met via keyword matching.
 ///
 /// Extracts significant words (>3 chars) from the criterion and checks
@@ -195,5 +210,45 @@ mod tests {
         let task = task_with_criteria(vec!["it is ok"], false);
         let result = validate_mandate(&task, "Anything goes.");
         assert!(result.passed); // Short words skipped, criterion passes by default
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn score_in_bounds() {
+        let is_empty: bool = kani::any();
+        let is_short: bool = kani::any();
+        let missed: u8 = kani::any();
+        kani::assume(missed <= 10);
+        let (score, _) = compute_score(is_empty, is_short, missed);
+        assert!(score >= 0.0);
+        assert!(score <= 100.0);
+    }
+
+    #[kani::proof]
+    fn score_monotonic_in_penalties() {
+        let is_empty: bool = kani::any();
+        let is_short: bool = kani::any();
+        let missed1: u8 = kani::any();
+        let missed2: u8 = kani::any();
+        kani::assume(missed1 <= 10);
+        kani::assume(missed2 <= 10);
+        kani::assume(missed2 >= missed1);
+        let (s1, _) = compute_score(is_empty, is_short, missed1);
+        let (s2, _) = compute_score(is_empty, is_short, missed2);
+        assert!(s2 <= s1);
+    }
+
+    #[kani::proof]
+    fn threshold_correct() {
+        let is_empty: bool = kani::any();
+        let is_short: bool = kani::any();
+        let missed: u8 = kani::any();
+        kani::assume(missed <= 10);
+        let (score, passed) = compute_score(is_empty, is_short, missed);
+        assert_eq!(passed, score >= PASS_THRESHOLD);
     }
 }

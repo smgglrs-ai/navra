@@ -17,44 +17,6 @@ endforeach()
 set(BUILD_SHARED_LIBS OFF)
 
 #
-# LLVM/MLIR
-#
-if(NOT ENABLE_PREBUILT_LLVM_MLIR_LIBS)
-    set_llvm_flags()
-    add_subdirectory(llvm-project/llvm EXCLUDE_FROM_ALL)
-    set(MLIR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/llvm-project/mlir/include")
-    set(MLIR_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/llvm-project/llvm/tools/mlir/include")
-    include_directories(SYSTEM ${MLIR_SOURCE_DIR} ${MLIR_BINARY_DIR})
-endif()
-
-#
-# flatbuffers
-#
-
-if(CMAKE_SOURCE_DIR STREQUAL OpenVINO_SOURCE_DIR AND
-    ENABLE_OV_TF_LITE_FRONTEND AND (NOT ENABLE_SYSTEM_FLATBUFFERS OR NOT Flatbuffers_FOUND))
-    # flatbuffers is already built as part of OpenVINO in a single tree
-else()
-    set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(FLATBUFFERS_INSTALL OFF CACHE BOOL "" FORCE)
-    set(FLATBUFFERS_BUILD_FLATC ON CACHE BOOL "" FORCE)
-
-    add_subdirectory(flatbuffers EXCLUDE_FROM_ALL)
-
-    if(NOT MSVC)
-        target_compile_options(flatbuffers PRIVATE -Wno-suggest-override)
-        target_compile_options(flatc PRIVATE -Wno-suggest-override)
-        if ((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") AND (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 13))
-            target_compile_options(flatbuffers PRIVATE -Wno-unused-but-set-variable)
-            target_compile_options(flatc PRIVATE -Wno-unused-but-set-variable)
-        endif()
-    endif()
-endif()
-
-set(flatc_TARGET flatc)
-set(flatc_COMMAND $<TARGET_FILE:flatc>)
-
-#
 # npu_elf
 #
 
@@ -80,3 +42,21 @@ set(VPUNN_OPT_LEGACY_ZTILING ON CACHE BOOL "" FORCE)
 set(VPUNN_OPT_LEGACY_DMA_TH_4 ON CACHE BOOL "" FORCE)
 set(VPUNN_OPT_LEGACY_DMA_TH_5 OFF CACHE BOOL "" FORCE)
 add_subdirectory(vpucostmodel EXCLUDE_FROM_ALL)
+
+#
+# LLVM/MLIR
+#
+
+if(NOT ENABLE_PREBUILT_LLVM_MLIR_LIBS)
+    set_llvm_flags()
+    add_subdirectory(llvm-project/llvm EXCLUDE_FROM_ALL)
+    set(MLIR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/llvm-project/mlir/include")
+    set(MLIR_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/llvm-project/llvm/tools/mlir/include")
+    include_directories(SYSTEM ${MLIR_SOURCE_DIR} ${MLIR_BINARY_DIR})
+endif()
+
+#
+# flatbuffers — uses OpenVINO's target when building as OPENVINO_EXTRA_MODULES
+#
+
+include(flatbuffers.cmake)

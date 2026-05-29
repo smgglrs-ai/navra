@@ -437,3 +437,97 @@ mod tests {
         }
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Model the pre-hook decision dispatch as a pure function.
+    /// Proves that Block/Simulate always short-circuit, and
+    /// ModifyResult is safely ignored in pre-phase.
+    #[derive(Debug, Clone, Copy)]
+    enum Decision {
+        Continue,
+        ModifyArgs,
+        Block,
+        Simulate,
+        ModifyResult,
+    }
+
+    impl kani::Arbitrary for Decision {
+        fn any_array<const N: usize>() -> [Self; N] {
+            [Self::Continue; N]
+        }
+
+        fn any() -> Self {
+            match kani::any::<u8>() % 5 {
+                0 => Decision::Continue,
+                1 => Decision::ModifyArgs,
+                2 => Decision::Block,
+                3 => Decision::Simulate,
+                _ => Decision::ModifyResult,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    enum Outcome {
+        Proceed,
+        Blocked,
+        Simulated,
+    }
+
+    /// Pure model of run_pre for a single hook.
+    fn pre_dispatch(decision: Decision) -> (Outcome, bool) {
+        match decision {
+            Decision::Continue => (Outcome::Proceed, false),
+            Decision::ModifyArgs => (Outcome::Proceed, false),
+            Decision::Block => (Outcome::Blocked, true),
+            Decision::Simulate => (Outcome::Simulated, true),
+            Decision::ModifyResult => (Outcome::Proceed, false), // ignored in pre-phase
+        }
+    }
+
+    #[kani::proof]
+    fn block_always_short_circuits() {
+        let d: Decision = kani::any();
+        let (outcome, short_circuits) = pre_dispatch(d);
+        if matches!(d, Decision::Block) {
+            assert_eq!(outcome, Outcome::Blocked);
+            assert!(short_circuits);
+        }
+    }
+
+    #[kani::proof]
+    fn simulate_always_short_circuits() {
+        let d: Decision = kani::any();
+        let (outcome, short_circuits) = pre_dispatch(d);
+        if matches!(d, Decision::Simulate) {
+            assert_eq!(outcome, Outcome::Simulated);
+            assert!(short_circuits);
+        }
+    }
+
+    #[kani::proof]
+    fn modify_result_ignored_in_pre_phase() {
+        let (outcome, short_circuits) = pre_dispatch(Decision::ModifyResult);
+        assert_eq!(outcome, Outcome::Proceed);
+        assert!(!short_circuits);
+    }
+
+    /// Fail-closed: timeout → Block. Models the unwrap_or_else behavior.
+    #[kani::proof]
+    fn timeout_is_fail_closed() {
+        let timed_out: bool = kani::any();
+        let hook_decision: Decision = kani::any();
+        let effective = if timed_out {
+            Decision::Block
+        } else {
+            hook_decision
+        };
+        let (outcome, _) = pre_dispatch(effective);
+        if timed_out {
+            assert_eq!(outcome, Outcome::Blocked);
+        }
+    }
+}

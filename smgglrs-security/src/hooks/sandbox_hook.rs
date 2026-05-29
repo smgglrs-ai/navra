@@ -452,3 +452,16 @@ mod tests {
         assert_eq!(result["other"].as_str().unwrap(), "unchanged");
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+    use smgglrs_protocol::CallToolResult;
+
+    #[kani::proof]
+    fn simulated_result_is_not_error() {
+        let result = CallToolResult::text("simulated output");
+        assert!(!result.is_error);
+        assert!(!result.content.is_empty());
+    }
+}

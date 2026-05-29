@@ -374,3 +374,27 @@ mod tests {
         assert_eq!(metrics.hit_rate(), 0.0);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn cosine_similarity_zero_magnitude_safe() {
+        let a = [0.0f32; 3];
+        let b: [f32; 3] = [kani::any(), kani::any(), kani::any()];
+        let sim = cosine_similarity(&a, &b);
+        assert!(sim == 0.0);
+    }
+
+    #[kani::proof]
+    fn cosine_similarity_symmetric() {
+        let a: [f32; 2] = [kani::any(), kani::any()];
+        let b: [f32; 2] = [kani::any(), kani::any()];
+        kani::assume(a[0].is_finite() && a[1].is_finite());
+        kani::assume(b[0].is_finite() && b[1].is_finite());
+        let ab = cosine_similarity(&a, &b);
+        let ba = cosine_similarity(&b, &a);
+        assert!(ab == ba);
+    }
+}

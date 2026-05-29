@@ -37,7 +37,8 @@ hibernation, preemptive scheduling, kernel resources). vLLM backend
   offline audit (11m), adaptive chunking metrics (7m), K8s
   sandbox backend (6i), MemForest temporal memory (3l), MUSE
   skill lifecycle (1k), Cedar policy eval (9z), dynamic tool
-  routing (8l), kill switch (2m), MCP default flip (9aa)
+  routing (8l), kill switch (2m), MCP default flip (9aa),
+  tool manifest signing (9ab), approval gate hook (9ac)
 - **vLLM backend**: Engine×Isolation refactor — 6 backends
   (LlamaCpp/vLLM × direct/Podman/OpenShell), 42 tests
 - **Kani proofs**: 23→138 across 14 crates, 7 waves
@@ -464,20 +465,38 @@ all other chains — can be worked on anytime.
 8g and 8l are related (both about tool selection) — do 8g first,
 8l extends it with IFC-gated filtering. Others are independent.
 
-#### Chain 13: Ecosystem integration (LOW — opportunistic)
+#### Chain 13: OWASP full coverage (MEDIUM — differentiators)
+
+```
+9ab. Tool manifest signing ──── (independent, P2, 2-3d)
+     Closes ASI04 gap → 9/10 coverage
+
+9ac. Approval gate hook ──→ 5e. AG-UI rendering
+     P3, 3-4d                P3, 2-3d
+     Closes ASI09 gap        AG-UI confirmation widgets
+     → 10/10 coverage        for approval requests
+
+     Both depend on 15a/15b (Web UI) for rendering,
+     but work headless (auto-deny on timeout).
+```
+
+9ab and 9ac are smgglrs differentiators — neither MCP nor AG-UI
+provides enforcement. Together they close the remaining OWASP gaps
+(8/10 → 10/10).
+
+#### Chain 14: Ecosystem integration (LOW — opportunistic)
 
 ```
 5b. MCP permission negotiation ──── (AAIF contribution)
 5d. LLM backend expansion ──── (independent)
-5e. A2UI generative UI ──── (independent)
 5f. Registry proxy ──── (independent)
 5g. Cross-validation in flows ──── (independent)
-9i. Spec compliance test suite (P1, 2d)
+9i. Spec compliance test suite ✅
 9j. WebSocket agentic loops (P2, 2-3d)
 9t. HTML-to-markdown (P3, 1d)
 ```
 
-Mostly independent, lower priority. 9i is P1 but small (2 days).
+Mostly independent, lower priority.
 
 ---
 
@@ -504,7 +523,7 @@ Parallel tracks, ~2 weeks. 9x gated work continues weekly.
   Track A (IFC/protocol):      Track B (auth/policy):
   9x  MCP stateless dispatch   9y  auth.md/ID-JAG    P2  3-4d
       + session-free IFC  P1   9z  Cedar policy       P3  3-4d
-  11k IFC crypto witness P2    U2  GitHub module      P1  3-4d
+  11k IFC crypto witness P2    9ab Tool manifest sign  P2  2-3d
   11l IFC adversarial    P3
 
   Track C (RAG/UX):            Track D (infra):
@@ -521,9 +540,11 @@ Larger items, ~3 weeks.
   1k  MUSE skill lifecycle P3   11m NeuroTaint audit   P3  5-7d
   7c  Agentic RAG L2      P1    U3  GitLab module     P2  3-4d
 
-  Track C (UI — independent):
+  Track C (UI + approval):
   15a Multi-turn chat     P1    3-4d
   15b Live dashboard      P1    2-3d
+  9ac Approval gate hook  P3    3-4d (needs 15a for rendering)
+  5e  AG-UI rendering     P3    2-3d (needs 9ac)
 
 WAVE 4 — Gated items (external dependencies)
 ════════════════════════════════════════════
@@ -2105,20 +2126,36 @@ Add missing model backends to smgglrs-model:
 This enables meta-agent orchestration — an agent can delegate to
 another agent runtime as a "model backend."
 
-#### 5e. A2UI generative UI for approval dialogs (NEW)
+#### 5e. AG-UI / A2UI agent-to-user protocol (updated 2026-05-29)
 
-Use Google's A2UI v0.9 standard for agent-generated UI in tray
-notifications, approval dialogs, and permission prompts:
+Support AG-UI (CopilotKit, dominant) and A2UI (Google) as the
+agent-to-user rendering layer. AG-UI is the rendering half of the
+approval gate (9ac) — smgglrs enforces, AG-UI renders.
 
-- A2UI is framework-agnostic, transport-agnostic (supports MCP,
-  WebSocket, REST, A2A), with renderers for React, Flutter, Lit.
-- Agents select from schema catalogs with version negotiation —
-  reduces hallucination vs free-form HTML generation.
-- Use case: permission prompts (`permissions/request` from 5b)
-  rendered as A2UI widgets in Goose/Zed/GNOME tray.
-- Lower priority — only relevant once 5a-5c are in place.
+- **AG-UI**: Streaming protocol for agent state → UI. Handles
+  confirmation dialogs, progress, intermediate results. React
+  renderer (CopilotKit). Three canonical protocols converging:
+  MCP (agent-tools), A2A (agent-agent), AG-UI (agent-user).
+- **A2UI**: Google's alternative. Schema catalogs with version
+  negotiation, renderers for React/Flutter/Lit.
+- **smgglrs integration**: Emit AG-UI events from the hook
+  pipeline (approval requests from 9ac, safety warnings, IFC
+  alerts). The Web UI (15a) consumes them. Third-party UIs
+  (CopilotKit, Goose) can also subscribe.
+- **AG-UI readiness**: smgglrs-core's existing SSE notification
+  channel (`notify_session()`) is the transport. AG-UI event
+  format is the payload. No new transport needed — just event
+  type definitions matching the AG-UI spec.
 
-Reference: Google A2UI v0.9 (developers.googleblog.com, 2026-04-19).
+**Effort**: 2-3 days. **Priority**: Medium.
+**Depends on**: 9ac (approval gate — the primary use case for
+  AG-UI confirmation widgets).
+**Acceptance**: Approval request from 9ac renders as AG-UI
+  confirmation widget in smgglrs Web UI. Third-party AG-UI
+  client can subscribe and render.
+
+Reference: AG-UI (CopilotKit, github.com/CopilotKit/CopilotKit),
+Google A2UI v0.9, Open-Source Agent Toolkit Landscape 2026.
 
 #### 5f. Registry proxy module (NEW)
 
@@ -3804,6 +3841,74 @@ This is now a small item because 9x does the incremental work:
 smgglrs-agent connects to both old and new servers.
 
 Reference: MCP 2026-07-28 final spec (July 28).
+
+#### 9ab. Tool manifest signing — ASI04 differentiator (NEW — 2026-05-29)
+
+**Crate**: `smgglrs-security` (tool_scanner.rs), `smgglrs-core` (upstream)
+
+Cryptographic verification of upstream MCP server tool definitions.
+MCP has no manifest signing (NemoClaw raised Issue #204, not adopted).
+Microsoft AGT does Ed25519 signing in Agent Marketplace. This is a
+smgglrs differentiator, not spec compliance.
+
+- **Signing**: Tool manifest = JSON-canonical serialization of
+  `Vec<ToolDefinition>`. Server author signs with Ed25519 (reuse
+  existing `CapSigner` infrastructure from `auth/capability.rs`).
+  Signature distributed as `X-Smgglrs-Manifest-Sig` header or
+  `.well-known/smgglrs-manifest.sig` file.
+- **Verification**: In `UpstreamModule::discover()`, after fetching
+  tool list, verify signature against server's public key (configured
+  per upstream in config.toml). Reject or warn on mismatch.
+- **Trust-on-first-use (TOFU)**: If no key is configured, pin the
+  first-seen key and warn on changes (SSH-style).
+- **Integration with tool scanner**: Unsigned tools get scanned
+  with higher sensitivity. Signed tools from trusted keys get
+  reduced scanning (fast path).
+
+Closes the ASI04 gap in OWASP ASI compliance (currently 8/10 → 9/10).
+
+**Effort**: 2-3 days. **Priority**: Medium-High.
+**Acceptance**: Upstream server with signed manifest passes
+verification. Tampered manifest is rejected. Unsigned tools get
+warning in logs.
+
+Reference: NemoClaw MCPS signing (MCP Issue #204), Microsoft AGT
+Agent Marketplace Ed25519 signing.
+
+#### 9ac. Approval gate hook — ASI09 differentiator (NEW — 2026-05-29)
+
+**Crate**: `smgglrs-security` (new `hooks/approval_gate.rs`),
+`smgglrs-core` (notifications)
+
+Human-in-the-loop approval gate as a hook in the pipeline. Neither
+MCP nor AG-UI provides enforcement — MCP deprecated `sampling` (the
+closest thing), AG-UI is a rendering protocol. The hook pipeline is
+the enforcement point; the UI (15a or AG-UI) is the rendering layer.
+
+- **ApprovalGateHook**: Pre-call hook that pauses tool execution for
+  operations above a configurable risk threshold. Returns
+  `HookDecision::Pending` (new variant — suspends the request).
+- **Notification**: Emits an SSE/WebSocket event to connected UIs
+  with the pending request details (tool name, arguments, agent,
+  risk tier). Uses existing `notify_session()` infrastructure.
+- **Resolution**: Operator approves/rejects via HTTP endpoint or
+  AG-UI confirmation widget. The hook resumes or blocks.
+- **Timeout**: Configurable timeout (default 5 min). On timeout,
+  deny by default (fail-closed).
+- **Quorum**: Optional N-of-M approval for critical operations
+  (future extension — start with single-approver).
+
+Closes the ASI09 gap in OWASP ASI compliance (9/10 → 10/10 with 9ab).
+
+**Effort**: 3-4 days. **Priority**: Medium.
+**Depends on**: 15a/15b (Web UI for rendering approval requests).
+  Works headless (auto-deny on timeout) without UI.
+**Acceptance**: High-risk tool call pauses, notification emitted,
+operator approves via HTTP, tool executes. Rejected calls return
+error. Timeout triggers auto-deny.
+
+Reference: AG-UI confirmation patterns (CopilotKit), Microsoft AGT
+Agent SRE kill switch pattern, OWASP ASI09.
 
 ### Phase 10: Papers (restructured 2026-05-06)
 

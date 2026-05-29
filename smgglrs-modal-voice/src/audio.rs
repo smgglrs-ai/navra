@@ -346,3 +346,45 @@ mod tests {
         assert!(!info.host.is_empty());
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Linear interpolation used in resampling — prove it stays bounded.
+    #[kani::proof]
+    fn lerp_bounded() {
+        let a: f32 = kani::any();
+        let b: f32 = kani::any();
+        let frac: f32 = kani::any();
+        kani::assume(a.is_finite() && b.is_finite() && frac.is_finite());
+        kani::assume(frac >= 0.0 && frac <= 1.0);
+        kani::assume(a.abs() <= 1.0 && b.abs() <= 1.0);
+        let result = a * (1.0 - frac) + b * frac;
+        assert!(result.is_finite());
+        // Result is between a and b (convex combination)
+        let lo = a.min(b);
+        let hi = a.max(b);
+        assert!(result >= lo - f32::EPSILON);
+        assert!(result <= hi + f32::EPSILON);
+    }
+
+    /// Resample identity: same rate → output equals input.
+    #[kani::proof]
+    fn resample_same_rate_is_identity() {
+        let samples = [0.5f32, -0.3, 0.8];
+        let result = resample(&samples, 16000, 16000);
+        assert_eq!(result.len(), samples.len());
+        for (a, b) in result.iter().zip(samples.iter()) {
+            assert_eq!(*a, *b);
+        }
+    }
+
+    /// Resample empty input → empty output.
+    #[kani::proof]
+    fn resample_empty_is_empty() {
+        let empty: [f32; 0] = [];
+        let result = resample(&empty, 16000, 8000);
+        assert!(result.is_empty());
+    }
+}
