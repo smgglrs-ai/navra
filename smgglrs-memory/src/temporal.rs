@@ -101,8 +101,7 @@ impl TemporalTree {
                 content TEXT NOT NULL,
                 dirty INTEGER NOT NULL DEFAULT 0,
                 is_leaf INTEGER NOT NULL DEFAULT 1,
-                child_count INTEGER NOT NULL DEFAULT 0,
-                UNIQUE(tree_type, tree_name, time_start, time_end, depth)
+                child_count INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_memory_tree_lookup
                 ON memory_tree(tree_type, tree_name, depth);
@@ -172,6 +171,176 @@ impl TemporalTree {
         self.mark_ancestors_dirty(parent_id, timestamp)?;
 
         Ok(leaf_id)
+    }
+
+    /// Batch-insert multiple facts in a single transaction. Defers
+    /// ancestor dirty-marking to the end — one pass instead of N walks.
+    pub fn insert_facts(
+        &self,
+        tree_type: TreeType,
+        tree_name: &str,
+        facts: &[(&str, i64)], // (content, timestamp)
+    ) -> Result<Vec<i64>, MemoryError> {
+        if facts.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let tx = self.db.unchecked_transaction()?;
+        let tt = tree_type.to_string();
+
+        // Find or create root.
+        let root_id: i64 = match tx.query_row(
+            "SELECT id FROM memory_tree WHERE tree_type = ?1 AND tree_name = ?2 AND depth = 0",
+            params![tt, tree_name],
+            |row| row.get(0),
+        ) {
+            Ok(id) => id,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                let min_ts = facts.iter().map(|(_, t)| *t).min().unwrap();
+                let max_ts = facts.iter().map(|(_, t)| *t).max().unwrap();
+                tx.execute(
+                    "INSERT INTO memory_tree (tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty, is_leaf, child_count)
+                     VALUES (?1, ?2, NULL, 0, ?3, ?4, '', 0, 0, 0)",
+                    params![tt, tree_name, min_ts, max_ts],
+                )?;
+                tx.last_insert_rowid()
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        let mut leaf_ids = Vec::with_capacity(facts.len());
+        let mut time_min = i64::MAX;
+        let mut time_max = i64::MIN;
+
+        // Cache parent lookup: for sequential timestamps hitting the
+        // same parent, reuse it instead of re-querying.
+        let mut cached_parent: Option<(i64, i32, i64)> = None; // (id, depth, child_count)
+
+        for &(content, timestamp) in facts {
+            time_min = time_min.min(timestamp);
+            time_max = time_max.max(timestamp);
+
+            // Try cached parent first.
+            let parent_id = if let Some((pid, _pdepth, ref mut count)) = cached_parent {
+                if (*count as usize) < self.max_children {
+                    *count += 1;
+                    pid
+                } else {
+                    cached_parent = None;
+                    self.find_insert_parent_tx(&tx, &tt, tree_name, root_id, timestamp)?
+                }
+            } else {
+                self.find_insert_parent_tx(&tx, &tt, tree_name, root_id, timestamp)?
+            };
+
+            let parent_depth: i32 = if let Some((pid, pdepth, _)) = cached_parent {
+                if pid == parent_id {
+                    pdepth
+                } else {
+                    tx.query_row(
+                        "SELECT depth FROM memory_tree WHERE id = ?1",
+                        params![parent_id],
+                        |row| row.get(0),
+                    )?
+                }
+            } else {
+                tx.query_row(
+                    "SELECT depth FROM memory_tree WHERE id = ?1",
+                    params![parent_id],
+                    |row| row.get(0),
+                )?
+            };
+
+            tx.execute(
+                "INSERT INTO memory_tree (tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty, is_leaf, child_count)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1, 0)",
+                params![tt, tree_name, parent_id, parent_depth + 1, timestamp, timestamp, content],
+            )?;
+            leaf_ids.push(tx.last_insert_rowid());
+
+            tx.execute(
+                "UPDATE memory_tree SET is_leaf = 0, child_count = child_count + 1 WHERE id = ?1",
+                params![parent_id],
+            )?;
+
+            // Update cache.
+            if cached_parent.as_ref().map(|(pid, _, _)| *pid) != Some(parent_id) {
+                let cc: i64 = tx.query_row(
+                    "SELECT child_count FROM memory_tree WHERE id = ?1",
+                    params![parent_id],
+                    |row| row.get(0),
+                )?;
+                cached_parent = Some((parent_id, parent_depth, cc));
+            }
+        }
+
+        // Batch-mark all ancestors dirty + expand root time range.
+        tx.execute(
+            "UPDATE memory_tree SET dirty = 1,
+                time_start = MIN(time_start, ?1),
+                time_end = MAX(time_end, ?2)
+             WHERE tree_type = ?3 AND tree_name = ?4 AND is_leaf = 0",
+            params![time_min, time_max, tt, tree_name],
+        )?;
+
+        tx.commit()?;
+        Ok(leaf_ids)
+    }
+
+    /// Like find_insert_parent but takes a transaction reference.
+    fn find_insert_parent_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        tt: &str,
+        tree_name: &str,
+        root_id: i64,
+        timestamp: i64,
+    ) -> Result<i64, MemoryError> {
+        let mut current_id = root_id;
+        loop {
+            let child_count: i64 = tx.query_row(
+                "SELECT child_count FROM memory_tree WHERE id = ?1",
+                params![current_id],
+                |row| row.get(0),
+            )?;
+
+            if (child_count as usize) < self.max_children {
+                return Ok(current_id);
+            }
+
+            let existing_child: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM memory_tree
+                     WHERE parent_id = ?1 AND time_start <= ?2 AND time_end >= ?3
+                           AND is_leaf = 0
+                     ORDER BY time_start ASC LIMIT 1",
+                    params![current_id, timestamp, timestamp],
+                    |row| row.get(0),
+                )
+                .ok();
+
+            if let Some(child_id) = existing_child {
+                current_id = child_id;
+                continue;
+            }
+
+            let current_depth: i32 = tx.query_row(
+                "SELECT depth FROM memory_tree WHERE id = ?1",
+                params![current_id],
+                |row| row.get(0),
+            )?;
+
+            tx.execute(
+                "INSERT INTO memory_tree (tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty, is_leaf, child_count)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, '', 1, 0, 0)",
+                params![tt, tree_name, current_id, current_depth + 1, timestamp, timestamp],
+            )?;
+            tx.execute(
+                "UPDATE memory_tree SET child_count = child_count + 1 WHERE id = ?1",
+                params![current_id],
+            )?;
+            return Ok(tx.last_insert_rowid());
+        }
     }
 
     /// Find the best parent node for a new leaf at the given timestamp.
@@ -659,6 +828,43 @@ mod tests {
             tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100).unwrap();
         }
         assert!(tree.max_depth(TreeType::Session, "s1").unwrap() >= 2);
+    }
+
+    #[test]
+    fn insert_facts_batch_matches_individual() {
+        let tree1 = TemporalTree::open_memory().unwrap().with_max_children(4);
+        let tree2 = TemporalTree::open_memory().unwrap().with_max_children(4);
+
+        let fact_strings: Vec<String> = (0..20)
+            .map(|i| format!("fact {i}"))
+            .collect();
+        let facts: Vec<(&str, i64)> = fact_strings
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.as_str(), 1000 + i as i64 * 100))
+            .collect();
+
+        // Individual inserts
+        for &(content, ts) in &facts {
+            tree1.insert_fact(TreeType::Session, "s1", content, ts).unwrap();
+        }
+
+        // Batch insert
+        let ids = tree2.insert_facts(TreeType::Session, "s1", &facts).unwrap();
+        assert_eq!(ids.len(), 20);
+
+        // Both should have the same leaf count
+        let leaves1 = tree1.leaves_in_range(TreeType::Session, "s1", 0, i64::MAX).unwrap();
+        let leaves2 = tree2.leaves_in_range(TreeType::Session, "s1", 0, i64::MAX).unwrap();
+        assert_eq!(leaves1.len(), leaves2.len());
+    }
+
+    #[test]
+    fn insert_facts_empty_is_noop() {
+        let tree = TemporalTree::open_memory().unwrap();
+        let ids = tree.insert_facts(TreeType::Session, "s1", &[]).unwrap();
+        assert!(ids.is_empty());
+        assert_eq!(tree.count().unwrap(), 0);
     }
 
     #[test]
