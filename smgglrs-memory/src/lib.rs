@@ -21,6 +21,7 @@ mod knowledge;
 pub mod pipeline;
 pub mod retrieval;
 pub mod session_store;
+pub mod temporal;
 mod types;
 mod working;
 
@@ -35,6 +36,7 @@ pub use pipeline::{
 };
 pub use retrieval::{MemoryRetriever, ScoredEntry};
 pub use session_store::SqliteSessionBackend;
+pub use temporal::{TemporalTree, TreeNode, TreeType};
 pub use types::{
     DistilledEntry, MemoryEntry, MemoryScope, MemoryType, MergeStrategy, Message, Role, Turn,
 };
