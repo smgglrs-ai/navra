@@ -300,6 +300,30 @@ fn bench_scale(c: &mut Criterion) {
     let base_ts: i64 = 1700000000;
 
     for count in [1000, 5000, 10000] {
+        // Temporal tree batch (default max_children=64)
+        group.bench_with_input(
+            BenchmarkId::new("tt_batch_b64", count),
+            &count,
+            |b, &n| {
+                b.iter(|| {
+                    let tree = TemporalTree::open_memory().unwrap();
+                    let base_ts = 1700000000i64;
+                    let facts: Vec<(String, i64)> = (0..n)
+                        .map(|i| {
+                            (
+                                format!("Component {} load {}.", i % 20, i % 5),
+                                base_ts + i as i64 * 60,
+                            )
+                        })
+                        .collect();
+                    let refs: Vec<(&str, i64)> =
+                        facts.iter().map(|(s, t)| (s.as_str(), *t)).collect();
+                    tree.insert_facts(TreeType::Session, "s1", &refs).unwrap();
+                    black_box(tree.count().unwrap());
+                });
+            },
+        );
+
         // Flat KnowledgeStore
         group.bench_with_input(
             BenchmarkId::new("ks_write", count),
