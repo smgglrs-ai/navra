@@ -16,6 +16,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 
 pub use builder::McpServerBuilder;
+pub use handlers::{IFCToolFilter, ToolFilter};
 pub use types::ToolHandler;
 
 use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};
@@ -68,6 +69,8 @@ pub struct McpServer {
     session_log_levels: Arc<RwLock<HashMap<String, smgglrs_protocol::LoggingLevel>>>,
     /// Tool disclosure rules per permission set (progressive tool disclosure).
     tool_disclosure: HashMap<String, smgglrs_security::permissions::ToolDisclosure>,
+    /// Dynamic tool filters applied during `tools/list` (runtime context-aware).
+    dynamic_filters: Vec<Box<dyn ToolFilter>>,
     /// Prometheus metrics counters.
     pub(crate) metrics: Arc<crate::metrics::Metrics>,
     /// Optional Cedar policy engine for conditional access control.

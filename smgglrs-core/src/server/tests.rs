@@ -2246,3 +2246,108 @@ fn resource_list_no_filtering_without_caps_or_clearance() {
     // All kernel resources visible when no restrictions
     assert!(result.resources.len() >= 4);
 }
+
+// --- Dynamic tool routing tests (8l) ---
+
+#[test]
+fn ifc_tool_filter_hides_write_tools_when_tainted() {
+    use super::IFCToolFilter;
+
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("data") })
+        })
+        .tool(write_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("written") })
+        })
+        .tool_filter(IFCToolFilter)
+        .build();
+
+    // Tainted context — write tools should be hidden
+    let mut ctx = test_ctx();
+    ctx.taint.absorb(crate::ifc::DataLabel::UNTRUSTED_SENSITIVE);
+
+    let result = server.handle_list_tools_dynamic(&test_agent(), &Default::default(), &ctx);
+    let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(
+        names.contains(&"file_read"),
+        "Read tool should be visible when tainted"
+    );
+    assert!(
+        !names.contains(&"file_write"),
+        "Write tool should be hidden when tainted"
+    );
+}
+
+#[test]
+fn ifc_tool_filter_shows_all_when_clean() {
+    use super::IFCToolFilter;
+
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("data") })
+        })
+        .tool(write_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("written") })
+        })
+        .tool_filter(IFCToolFilter)
+        .build();
+
+    // Clean context — all tools should be visible
+    let ctx = test_ctx();
+    let result = server.handle_list_tools_dynamic(&test_agent(), &Default::default(), &ctx);
+    let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(
+        names.contains(&"file_read"),
+        "Read tool should be visible when clean"
+    );
+    assert!(
+        names.contains(&"file_write"),
+        "Write tool should be visible when clean"
+    );
+}
+
+#[test]
+fn dynamic_filter_composes_with_static_disclosure() {
+    use super::IFCToolFilter;
+    use smgglrs_security::permissions::ToolDisclosure;
+
+    let server = McpServer::builder()
+        .tool(read_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("data") })
+        })
+        .tool(write_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("written") })
+        })
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("echo") })
+        })
+        // Static disclosure: only show file_* tools for "dev"
+        .tool_disclosure("dev", ToolDisclosure::new(vec!["file_*".to_string()], vec![]))
+        // Dynamic filter: hide write tools when tainted
+        .tool_filter(IFCToolFilter)
+        .build();
+
+    // Tainted context + static disclosure
+    let mut ctx = test_ctx();
+    ctx.taint.absorb(crate::ifc::DataLabel::UNTRUSTED_SENSITIVE);
+
+    let result = server.handle_list_tools_dynamic(&test_agent(), &Default::default(), &ctx);
+    let names: Vec<&str> = result.tools.iter().map(|t| t.name.as_str()).collect();
+
+    // Static disclosure hides "echo" (not matching file_*)
+    assert!(
+        !names.contains(&"echo"),
+        "echo should be hidden by static disclosure"
+    );
+    // Dynamic filter hides "file_write" (tainted session)
+    assert!(
+        !names.contains(&"file_write"),
+        "file_write should be hidden by IFC filter"
+    );
+    // file_read passes both filters
+    assert!(
+        names.contains(&"file_read"),
+        "file_read should survive both filters"
+    );
+}

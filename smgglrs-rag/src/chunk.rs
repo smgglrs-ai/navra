@@ -444,6 +444,196 @@ fn heading_path_at(headings: &[Heading], byte_pos: usize) -> Vec<String> {
     stack.into_iter().map(|(_, title)| title).collect()
 }
 
+/// Quality metrics for a set of chunks produced by the chunking engine.
+#[derive(Debug, Clone)]
+pub struct ChunkQuality {
+    /// Fraction of chunks that preserve structural block integrity (0.0–1.0).
+    /// A chunk with unbalanced code fences, mid-list splits, or mid-table
+    /// splits scores 0; intact chunks score 1.
+    pub block_integrity: f32,
+    /// Fraction of chunks whose size falls within target_size ± 50% (0.0–1.0).
+    pub size_compliance: f32,
+    /// Total number of chunks evaluated.
+    pub chunk_count: usize,
+}
+
+/// Evaluate the quality of a set of chunks against configuration targets.
+///
+/// Checks structural integrity (balanced code fences, no mid-list/table splits)
+/// and size compliance (within target ± 50%).
+pub fn evaluate_quality(chunks: &[Chunk], config: &ChunkConfig) -> ChunkQuality {
+    if chunks.is_empty() {
+        return ChunkQuality {
+            block_integrity: 1.0,
+            size_compliance: 1.0,
+            chunk_count: 0,
+        };
+    }
+
+    let mut intact = 0usize;
+    let mut compliant = 0usize;
+    let lower = config.target_size / 2;
+    let upper = config.target_size + config.target_size / 2;
+
+    for chunk in chunks {
+        // Block integrity: check for split code fences, mid-list, mid-table
+        let fences = chunk.content.matches("```").count();
+        let has_split_fence = fences % 2 != 0;
+
+        // Mid-list: chunk ends with a list item pattern but the content
+        // continues with list items (heuristic: ends mid-list if last
+        // non-empty line starts with "- " or "* " or a numbered pattern
+        // and doesn't look like a complete section)
+        let lines: Vec<&str> = chunk.content.lines().collect();
+        let has_mid_list = if let Some(last) = lines.last() {
+            let trimmed = last.trim();
+            let is_list_item = trimmed.starts_with("- ")
+                || trimmed.starts_with("* ")
+                || (trimmed.len() > 2
+                    && trimmed.as_bytes()[0].is_ascii_digit()
+                    && trimmed.contains(". "));
+            // Only flag if the chunk starts with non-list content
+            // (a pure list chunk is fine)
+            let first_list = lines
+                .iter()
+                .position(|l| {
+                    let t = l.trim();
+                    t.starts_with("- ") || t.starts_with("* ")
+                })
+                .unwrap_or(lines.len());
+            is_list_item && first_list > 0
+        } else {
+            false
+        };
+
+        // Mid-table: chunk contains table separator (|---|) but doesn't
+        // have a balanced structure
+        let has_mid_table = {
+            let pipe_lines = lines
+                .iter()
+                .filter(|l| l.trim_start().starts_with('|'))
+                .count();
+            // A table needs at least header + separator + 1 row = 3 pipe lines
+            // If we have 1-2 pipe lines, likely a split table
+            pipe_lines > 0 && pipe_lines < 3
+        };
+
+        if !has_split_fence && !has_mid_list && !has_mid_table {
+            intact += 1;
+        }
+
+        // Size compliance
+        let size = chunk.content.len();
+        if size >= lower && size <= upper {
+            compliant += 1;
+        }
+    }
+
+    ChunkQuality {
+        block_integrity: intact as f32 / chunks.len() as f32,
+        size_compliance: compliant as f32 / chunks.len() as f32,
+        chunk_count: chunks.len(),
+    }
+}
+
+/// Document type classification for adaptive chunking strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentType {
+    /// Source code (high ratio of indentation, braces, semicolons).
+    Code,
+    /// Natural language prose (sentences, paragraphs).
+    Prose,
+    /// Markdown with headings, lists, and mixed content.
+    Markdown,
+    /// Structured data (JSON, YAML, TOML, XML, CSV).
+    Structured,
+}
+
+/// Detect the document type from text content using line pattern heuristics.
+pub fn detect_document_type(text: &str) -> DocumentType {
+    let lines: Vec<&str> = text.lines().take(50).collect();
+    if lines.is_empty() {
+        return DocumentType::Prose;
+    }
+
+    let total = lines.len();
+
+    // Check for structured data first (JSON, YAML, TOML, XML, CSV)
+    let first_non_empty = lines.iter().find(|l| !l.trim().is_empty());
+    if let Some(first) = first_non_empty {
+        let trimmed = first.trim();
+        if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            return DocumentType::Structured;
+        }
+        if trimmed.starts_with("<?xml") || trimmed.starts_with("<!DOCTYPE") {
+            return DocumentType::Structured;
+        }
+    }
+
+    // Count YAML/TOML indicators
+    let yaml_toml_lines = lines
+        .iter()
+        .filter(|l| {
+            let t = l.trim();
+            t.contains(": ") && !t.starts_with('#') && !t.starts_with("//")
+                || t.starts_with('[') && t.ends_with(']') && !t.contains("](")
+                || t == "---"
+        })
+        .count();
+    if yaml_toml_lines > total / 2 {
+        return DocumentType::Structured;
+    }
+
+    // Count Markdown indicators
+    let markdown_lines = lines
+        .iter()
+        .filter(|l| {
+            let t = l.trim();
+            t.starts_with('#')
+                || t.starts_with("- ")
+                || t.starts_with("* ")
+                || t.starts_with("> ")
+                || t.starts_with("```")
+                || t.starts_with("| ")
+                || (t.len() > 3
+                    && t.as_bytes()[0] == b'['
+                    && t.contains("]("))
+        })
+        .count();
+
+    // Count code indicators
+    let code_lines = lines
+        .iter()
+        .filter(|l| {
+            let t = l.trim();
+            t.ends_with(';')
+                || t.ends_with('{')
+                || t.ends_with('}')
+                || t.starts_with("fn ")
+                || t.starts_with("pub ")
+                || t.starts_with("def ")
+                || t.starts_with("class ")
+                || t.starts_with("import ")
+                || t.starts_with("use ")
+                || t.starts_with("const ")
+                || t.starts_with("let ")
+                || t.starts_with("var ")
+                || t.starts_with("func ")
+                || t.starts_with("#include")
+                || t.starts_with("package ")
+        })
+        .count();
+
+    if code_lines > total / 3 {
+        return DocumentType::Code;
+    }
+    if markdown_lines > total / 4 {
+        return DocumentType::Markdown;
+    }
+
+    DocumentType::Prose
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -686,5 +876,112 @@ pub fn third_function() {\n\
         let pos = text.find("Under B").unwrap();
         let path = heading_path_at(&headings, pos);
         assert_eq!(path, vec!["Root", "B"]);
+    }
+
+    // --- Adaptive chunking metrics tests (7m) ---
+
+    #[test]
+    fn quality_detects_split_code_fences() {
+        // A chunk with an unbalanced code fence has bad block integrity
+        let chunks = vec![
+            Chunk {
+                content: "```rust\nfn main() {}\n```".to_string(),
+                start_byte: 0,
+                end_byte: 24,
+                index: 0,
+                breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
+            },
+            Chunk {
+                content: "Some text\n```python\nimport os".to_string(),
+                start_byte: 24,
+                end_byte: 55,
+                index: 1,
+                breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
+            },
+        ];
+        let config = ChunkConfig::default();
+        let quality = evaluate_quality(&chunks, &config);
+        assert_eq!(quality.chunk_count, 2);
+        // First chunk has balanced fences (2 ```) → intact
+        // Second chunk has unbalanced fence (1 ```) → broken
+        assert!(
+            quality.block_integrity < 1.0,
+            "Should detect split code fence, got {}",
+            quality.block_integrity
+        );
+        assert!(
+            quality.block_integrity > 0.0,
+            "First chunk should be intact"
+        );
+    }
+
+    #[test]
+    fn quality_perfect_for_well_formed_chunks() {
+        let config = ChunkConfig {
+            target_size: 100,
+            overlap: 0,
+            min_size: 10,
+        };
+        let content = "A ".repeat(40); // 80 chars, within 50-150 range
+        let chunks = vec![Chunk {
+            content: content.clone(),
+            start_byte: 0,
+            end_byte: content.len(),
+            index: 0,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
+        }];
+        let quality = evaluate_quality(&chunks, &config);
+        assert_eq!(quality.block_integrity, 1.0);
+        assert_eq!(quality.size_compliance, 1.0);
+    }
+
+    #[test]
+    fn quality_size_compliance_rejects_outliers() {
+        let config = ChunkConfig {
+            target_size: 100,
+            overlap: 0,
+            min_size: 10,
+        };
+        // A very short chunk (10 chars) is below lower bound (50)
+        let chunks = vec![Chunk {
+            content: "tiny chunk".to_string(),
+            start_byte: 0,
+            end_byte: 10,
+            index: 0,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
+        }];
+        let quality = evaluate_quality(&chunks, &config);
+        assert_eq!(
+            quality.size_compliance, 0.0,
+            "10-char chunk should not comply with target 100"
+        );
+    }
+
+    #[test]
+    fn detect_document_type_code() {
+        let code = "use std::io;\n\nfn main() {\n    println!(\"hello\");\n}\n";
+        assert_eq!(detect_document_type(code), DocumentType::Code);
+    }
+
+    #[test]
+    fn detect_document_type_prose() {
+        let prose = "This is a paragraph about natural language processing. \
+            It contains multiple sentences that describe concepts in detail. \
+            The text flows naturally from one idea to the next.";
+        assert_eq!(detect_document_type(prose), DocumentType::Prose);
+    }
+
+    #[test]
+    fn detect_document_type_markdown() {
+        let md = "# Title\n\n## Section One\n\n- Item A\n- Item B\n- Item C\n\n> A blockquote\n\n## Section Two\n\nSome text.\n";
+        assert_eq!(detect_document_type(md), DocumentType::Markdown);
     }
 }

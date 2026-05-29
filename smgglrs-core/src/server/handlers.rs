@@ -2,7 +2,7 @@ use crate::auth::CallContext;
 use crate::protocol::{
     CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
     InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequest,
-    ReadResourceParams, ReadResourceResult,
+    ReadResourceParams, ReadResourceResult, ToolDefinition,
 };
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::Session;
@@ -10,6 +10,33 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use super::McpServer;
+
+/// Dynamic tool filter applied during `tools/list`.
+///
+/// Filters run after static disclosure rules and can hide tools
+/// based on runtime state (e.g., session taint, quota, time-of-day).
+pub trait ToolFilter: Send + Sync {
+    fn filter(&self, tools: Vec<ToolDefinition>, ctx: &CallContext) -> Vec<ToolDefinition>;
+}
+
+/// IFC-aware tool filter that hides write tools when the session is tainted.
+///
+/// Prevents agents from even discovering write capabilities once their
+/// context has been contaminated with untrusted data.
+pub struct IFCToolFilter;
+
+impl ToolFilter for IFCToolFilter {
+    fn filter(&self, tools: Vec<ToolDefinition>, ctx: &CallContext) -> Vec<ToolDefinition> {
+        if ctx.taint.level().integrity == crate::ifc::Integrity::Untrusted {
+            tools
+                .into_iter()
+                .filter(|t| !crate::ifc::is_write_tool(&t.name, t.annotations.as_ref()))
+                .collect()
+        } else {
+            tools
+        }
+    }
+}
 
 impl McpServer {
     pub fn server_info(&self) -> crate::protocol::ServerInfo {
@@ -103,6 +130,32 @@ impl McpServer {
         } else {
             all_tools
         };
+        let offset = pagination.decode_offset().unwrap_or(0);
+        let (tools, next_cursor) =
+            crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+        ListToolsResult { tools, next_cursor }
+    }
+
+    /// List tools with dynamic filtering based on runtime context.
+    ///
+    /// Applies static disclosure rules first, then runs all registered
+    /// `ToolFilter` implementations against the filtered list.
+    pub fn handle_list_tools_dynamic(
+        &self,
+        agent: &crate::auth::AgentIdentity,
+        pagination: &PaginatedRequest,
+        ctx: &CallContext,
+    ) -> ListToolsResult {
+        let all_tools: Vec<_> = self.tools.values().map(|t| t.definition.clone()).collect();
+        let mut visible = if let Some(disclosure) = self.tool_disclosure.get(&agent.permissions) {
+            disclosure.filter(&all_tools)
+        } else {
+            all_tools
+        };
+        // Apply dynamic filters
+        for filter in &self.dynamic_filters {
+            visible = filter.filter(visible, ctx);
+        }
         let offset = pagination.decode_offset().unwrap_or(0);
         let (tools, next_cursor) =
             crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
