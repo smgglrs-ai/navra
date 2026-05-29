@@ -76,6 +76,8 @@ pub struct McpServer {
     /// Optional Cedar policy engine for conditional access control.
     #[cfg(feature = "cedar")]
     cedar_engine: Option<smgglrs_security::permissions::CedarEngine>,
+    /// MCP protocol version — "2025-03-26" (default) or "2026-07-28" (stateless).
+    mcp_version: String,
 }
 
 /// A pending permission request awaiting grant or deny.

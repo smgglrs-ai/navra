@@ -302,6 +302,7 @@ impl Default for Config {
                 container_memory: "2g".to_string(),
                 container_cpus: "2".to_string(),
                 container_pids: 256,
+                mcp_version: "2025-03-26".to_string(),
                 config_watch: false,
                 config_watch_debounce_ms: 50,
             },

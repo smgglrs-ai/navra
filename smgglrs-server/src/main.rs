@@ -646,6 +646,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     let mut builder = smgglrs_core::McpServer::builder()
         .name("smgglrs")
         .version(env!("CARGO_PKG_VERSION"))
+        .mcp_version(&cfg.server.mcp_version)
         .hook_timeout(std::time::Duration::from_secs(cfg.server.hook_timeout_secs))
         .process_table(process_table.clone());
 

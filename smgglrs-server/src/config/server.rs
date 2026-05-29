@@ -53,12 +53,20 @@ pub struct ServerConfig {
     /// Maximum PIDs per agent container.
     #[serde(default = "default_container_pids")]
     pub container_pids: u32,
+    /// MCP protocol version: "2025-03-26" (session-based, default)
+    /// or "2026-07-28" (stateless dispatch).
+    #[serde(default = "default_mcp_version")]
+    pub mcp_version: String,
     /// Watch the config file for changes and hot-reload.
     #[serde(default)]
     pub config_watch: bool,
     /// Debounce interval in ms for config file watch events.
     #[serde(default = "default_config_watch_debounce_ms")]
     pub config_watch_debounce_ms: u64,
+}
+
+fn default_mcp_version() -> String {
+    "2025-03-26".to_string()
 }
 
 fn default_config_watch_debounce_ms() -> u64 {

@@ -111,7 +111,7 @@ impl McpServer {
             .fetch_add(1, Ordering::Relaxed);
 
         let result = InitializeResult {
-            protocol_version: crate::protocol::PROTOCOL_VERSION.to_string(),
+            protocol_version: self.mcp_version.clone(),
             capabilities: self.capabilities(),
             server_info: self.server_info(),
             instructions: None,
@@ -1002,6 +1002,10 @@ impl McpServer {
 
     pub fn sessions(&self) -> &crate::session::SessionStore {
         &self.sessions
+    }
+
+    pub fn mcp_version(&self) -> &str {
+        &self.mcp_version
     }
 
     pub fn authenticator(&self) -> &dyn crate::auth::Authenticator {

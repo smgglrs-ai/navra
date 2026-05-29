@@ -41,6 +41,7 @@ pub struct McpServerBuilder {
     cedar_engine: Option<smgglrs_security::permissions::CedarEngine>,
     tool_disclosure: HashMap<String, smgglrs_security::permissions::ToolDisclosure>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
+    mcp_version: String,
 }
 
 impl McpServerBuilder {
@@ -69,7 +70,13 @@ impl McpServerBuilder {
             cedar_engine: None,
             tool_disclosure: HashMap::new(),
             dynamic_filters: Vec::new(),
+            mcp_version: smgglrs_protocol::PROTOCOL_VERSION.to_string(),
         }
+    }
+
+    pub fn mcp_version(mut self, version: &str) -> Self {
+        self.mcp_version = version.to_string();
+        self
     }
 
     pub fn name(mut self, name: impl Into<String>) -> Self {
@@ -835,6 +842,7 @@ impl McpServerBuilder {
                 std::collections::HashMap::new(),
             )),
             metrics: std::sync::Arc::new(crate::metrics::Metrics::new()),
+            mcp_version: self.mcp_version,
         }
     }
 }
