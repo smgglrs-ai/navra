@@ -22,6 +22,7 @@ mod error;
 pub mod evolution;
 pub mod fast_path;
 mod forge;
+pub mod skill_lifecycle;
 pub mod skill_pipeline;
 mod types;
 mod weaver;
@@ -38,6 +39,10 @@ pub use forge::{
 pub use types::{
     Directive, Example, Facet, HeuristicModule, HeuristicRef, InjectPosition, McpPersonaSource,
     McpPromptRef, Persona, Reference, ResolvedPrompt, Scope, SkillCard, Specialization,
+};
+pub use skill_lifecycle::{
+    validate_skill, Skill, SkillError, SkillMemoryEntry, SkillOutcome, SkillRegistry, SkillTest,
+    TestStatus,
 };
 pub use skill_pipeline::{DirectorySource, SkillPipeline, SkillSource};
 pub use weaver::{
