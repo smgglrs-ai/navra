@@ -4529,6 +4529,7 @@ dependencies = [
  "dirs",
  "ndarray",
  "ort",
+ "regex-lite",
  "rusqlite",
  "serde",
  "serde_json",
