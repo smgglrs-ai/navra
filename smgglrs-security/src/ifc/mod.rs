@@ -39,8 +39,10 @@
 //! (proven by Kani in label.rs).
 
 pub mod value_store;
+pub mod witness;
 
 pub use smgglrs_protocol::label::{Confidentiality, DataLabel, Integrity};
+pub use witness::DeclassificationWitness;
 
 /// Session taint tracker.
 ///
@@ -49,12 +51,14 @@ pub use smgglrs_protocol::label::{Confidentiality, DataLabel, Integrity};
 #[derive(Debug, Clone)]
 pub struct TaintTracker {
     current: DataLabel,
+    witnesses: Vec<DeclassificationWitness>,
 }
 
 impl TaintTracker {
     pub fn new() -> Self {
         Self {
             current: DataLabel::TRUSTED_PUBLIC,
+            witnesses: Vec::new(),
         }
     }
 
@@ -76,13 +80,39 @@ impl TaintTracker {
     ///
     /// The new level must be LOWER than the current level — stepping
     /// UP via declassify is rejected (use absorb for that).
-    pub fn declassify(&mut self, new_confidentiality: Confidentiality) -> bool {
+    ///
+    /// Returns a `DeclassificationWitness` capturing the label
+    /// transition, or `None` if the declassification was rejected.
+    pub fn declassify(
+        &mut self,
+        new_confidentiality: Confidentiality,
+        declassifier: &str,
+        justification: &str,
+    ) -> Option<DeclassificationWitness> {
         if new_confidentiality < self.current.confidentiality {
+            let original = self.current;
             self.current.confidentiality = new_confidentiality;
-            true
+            let witness = DeclassificationWitness {
+                original_label: original,
+                new_label: self.current,
+                declassifier: declassifier.to_string(),
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64,
+                justification: justification.to_string(),
+                signature: None,
+            };
+            self.witnesses.push(witness.clone());
+            Some(witness)
         } else {
-            false
+            None
         }
+    }
+
+    /// All declassification witnesses recorded in this session.
+    pub fn witnesses(&self) -> &[DeclassificationWitness] {
+        &self.witnesses
     }
 
     /// Is the session tainted with untrusted data?
@@ -531,17 +561,25 @@ mod tests {
 
         // Cannot step UP via declassify
         assert!(
-            !tracker.declassify(Confidentiality::Secret),
+            tracker
+                .declassify(Confidentiality::Secret, "test", "test justification")
+                .is_none(),
             "INV-5: declassify must reject stepping UP"
         );
         assert_eq!(tracker.level().confidentiality, Confidentiality::Pii);
 
         // Can step DOWN
-        assert!(
-            tracker.declassify(Confidentiality::Sensitive),
-            "INV-5: declassify should allow stepping DOWN"
-        );
+        let witness = tracker
+            .declassify(Confidentiality::Sensitive, "test", "test justification")
+            .expect("INV-5: declassify should allow stepping DOWN");
         assert_eq!(tracker.level().confidentiality, Confidentiality::Sensitive);
+        assert_eq!(witness.original_label.confidentiality, Confidentiality::Pii);
+        assert_eq!(
+            witness.new_label.confidentiality,
+            Confidentiality::Sensitive
+        );
+        assert_eq!(witness.declassifier, "test");
+        assert_eq!(tracker.witnesses().len(), 1);
     }
 }
 
