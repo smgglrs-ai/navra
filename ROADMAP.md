@@ -432,20 +432,22 @@ Papers are the terminal node for many chains. 10a benefits from
 11k, 11l, 9v results. 10b benefits from 1k. 10c needs C3
 external evaluation.
 
-#### Chain 11: Web UI (MEDIUM — independent track)
+#### Chain 11: Rendra desktop app (MEDIUM — independent track)
 
 ```
-15a. Multi-turn chat ──→ 15e. Embeddable widget
-     P1, 3-4d              P3, 2-3d
+15a. Agentic chat (rendra) ──→ 15e. Embeddable widget (rendra-ag-ui)
+     P1, 3-4d                       P3, 2-3d
 
-15b. Live dashboard ──→ 15c. DAG visualization
-     P1, 2-3d              P3, 2-3d
+15b. Live dashboard (rendra) ──→ 15c. DAG visualization
+     P1, 2-3d                        P3, 2-3d
 
 15d. Branding ──── (independent, P3, 1-2d)
 ```
 
-15a and 15b are parallel P1 items. Completely independent of
-all other chains — can be worked on anytime.
+15a and 15b are parallel P1 items. Built on rendra stack (Servo
+runtime + rendra-ui + rendra-ag-ui). Completely independent of
+smgglrs Rust work — can be worked on anytime. Note: rendra apps
+are separate repos (smgglrs-ai/rendra, rendra-ui, rendra-ag-ui).
 
 #### Chain 12: UX & tool patterns (MEDIUM)
 
@@ -536,15 +538,15 @@ WAVE 3 — Architecture evolution (S12)
 Larger items, ~3 weeks.
 
   Track A (memory/cognitive):   Track B (isolation/security):
-  3l  MemForest temporal  P3    6i  K8s sandbox       P3  3-5d
+  3l  Temporal tree mem   P3    6i  K8s sandbox       P3  3-5d
   1k  MUSE skill lifecycle P3   11m NeuroTaint audit   P3  5-7d
   7c  Agentic RAG L2      P1    U3  GitLab module     P2  3-4d
 
-  Track C (UI + approval):
-  15a Multi-turn chat     P1    3-4d
-  15b Live dashboard      P1    2-3d
-  9ac Approval gate hook  P3    3-4d (needs 15a for rendering)
-  5e  AG-UI rendering     P3    2-3d (needs 9ac)
+  Track C (rendra app + approval):
+  15a Agentic chat        P1    3-4d (rendra + smgglrs backend)
+  15b Live dashboard      P1    2-3d (rendra + AG-UI events)
+  9ac Approval gate hook  P3    3-4d (works headless, rendra renders)
+  5e  AG-UI event layer   P3    2-3d (smgglrs → rendra-ag-ui)
 
 WAVE 4 — Gated items (external dependencies)
 ════════════════════════════════════════════
@@ -1999,43 +2001,49 @@ and queryable via graph traversal.
 Reference: kg-gen (Stanford STAIR Lab, NeurIPS '25), Google Codelabs
 Gemini KG generation.
 
-#### 3l. MemForest hierarchical temporal memory (NEW — tech watch 2026-05-28)
+#### 3l. Temporal tree memory on SQLite (MemForest architecture) (updated 2026-05-29)
 
 **Crate**: `smgglrs-memory` (new `temporal.rs`)
 
-Adopt hierarchical temporal indexing from MemForest (NUS/Zero Gravity
-Labs, 2605.23986). smgglrs-memory currently uses flat SQLite tables
-with sequential writes through a single `Mutex<Connection>`:
+Implement MemForest-style hierarchical temporal indexing directly
+on SQLite — the architecture, not the product. No external dependency
+needed. Uses the same SQLite + sqlite-vec storage smgglrs-memory
+already has.
 
-- **MemTree index**: Leaves store time-local evidence, internal nodes
-  summarize contiguous intervals, root provides coarse recall.
-  O(log N) write cost via localized ancestor-path updates.
-- **Three tree types**: Session (chronology), Entity (recurring
-  subjects), Scene (multi-entity context). Replaces flat scoping
-  columns (entity_id, process_id, session_id).
-- **Parallel chunk extraction**: Break sequential LLM bottleneck
-  by processing chunks independently and concurrently into canonical
-  facts with temporal anchors.
-- **Lazy dirty-path refresh**: Coalesce summarization updates at
-  same level. Reduces LLM summary calls compared to eager updates.
-- **Two-phase retrieval**: Forest Recall (root summaries for tree
-  selection) + Tree Browse (descent to leaf evidence). Embedding-
-  only mode for low latency, LLM-guided for higher accuracy.
+**Schema** — three SQLite tables (session_tree, entity_tree, scene_tree):
+```sql
+CREATE TABLE memory_tree_{type} (
+    id INTEGER PRIMARY KEY,
+    parent_id INTEGER REFERENCES memory_tree_{type}(id),
+    depth INTEGER NOT NULL,       -- 0 = root, max = leaf
+    time_start INTEGER NOT NULL,  -- unix epoch
+    time_end INTEGER NOT NULL,
+    summary TEXT,                  -- LLM-generated for internal nodes
+    content TEXT,                  -- raw fact for leaves
+    dirty INTEGER DEFAULT 0,      -- ancestor-path refresh needed
+    embedding BLOB                -- for vector search at any level
+);
+```
 
-Do NOT abandon FTS5 or sqlite-vec. MemForest augments the existing
-hybrid search (FTS5 + vector + RRF), adding temporal structure on
-top.
+- **Writes**: Insert leaf at depth=max, mark ancestor path dirty.
+  O(log N) per write — only the path from leaf to root is touched.
+- **Dirty-path refresh**: Background task coalesces dirty nodes at
+  same level, regenerates summaries lazily. Batches reduce LLM calls.
+- **Two-phase retrieval**: Forest Recall (search root summaries via
+  FTS5 + embedding) → Tree Browse (descend matching trees to leaves
+  via embedding similarity at each level).
+- **Three tree types**: Session (chronological), Entity (recurring
+  subjects keyed by entity name), Scene (multi-entity interactions).
 
-**Research gate**: Is the MemForest open-source release
-(github.com/Concyclics/MemForest) available and integrable with
-Rust? Does the write throughput improvement justify the complexity?
+Augments existing FTS5 + sqlite-vec + RRF. The temporal trees add
+a hierarchical index on top — not a replacement.
 
 **Effort**: 7-10 days. **Priority**: Medium.
-**Acceptance**: 3x+ write throughput improvement. Temporal queries
-("what did we discuss about X last week?") return relevant results
-via tree descent.
+**Acceptance**: Temporal queries ("what did we discuss about X last
+week?") return relevant results via tree descent. Write throughput
+improves over flat sequential inserts.
 
-Reference: MemForest (arXiv:2605.23986), LongMemEval-S benchmark.
+Reference: MemForest (arXiv:2605.23986, architecture only).
 
 ### Phase 4: Mandate validation & failure recovery ✓
 
@@ -2126,36 +2134,40 @@ Add missing model backends to smgglrs-model:
 This enables meta-agent orchestration — an agent can delegate to
 another agent runtime as a "model backend."
 
-#### 5e. AG-UI / A2UI agent-to-user protocol (updated 2026-05-29)
+#### 5e. AG-UI via rendra-ag-ui (updated 2026-05-29)
 
-Support AG-UI (CopilotKit, dominant) and A2UI (Google) as the
-agent-to-user rendering layer. AG-UI is the rendering half of the
-approval gate (9ac) — smgglrs enforces, AG-UI renders.
+AG-UI event translation from smgglrs MCP events to the rendra-ag-ui
+widget. The rendering stack is already built:
 
-- **AG-UI**: Streaming protocol for agent state → UI. Handles
-  confirmation dialogs, progress, intermediate results. React
-  renderer (CopilotKit). Three canonical protocols converging:
-  MCP (agent-tools), A2A (agent-agent), AG-UI (agent-user).
-- **A2UI**: Google's alternative. Schema catalogs with version
-  negotiation, renderers for React/Flutter/Lit.
-- **smgglrs integration**: Emit AG-UI events from the hook
-  pipeline (approval requests from 9ac, safety warnings, IFC
-  alerts). The Web UI (15a) consumes them. Third-party UIs
-  (CopilotKit, Goose) can also subscribe.
-- **AG-UI readiness**: smgglrs-core's existing SSE notification
-  channel (`notify_session()`) is the transport. AG-UI event
-  format is the payload. No new transport needed — just event
-  type definitions matching the AG-UI spec.
+- **rendra** — Servo-based desktop runtime (Electron alternative)
+- **rendra-ui** — CSS + JS widget library (25 components, `rd-*`)
+- **rendra-ag-ui** — AG-UI protocol widget (architecture designed,
+  adapter/processor/store/renderer pipeline)
 
-**Effort**: 2-3 days. **Priority**: Medium.
-**Depends on**: 9ac (approval gate — the primary use case for
-  AG-UI confirmation widgets).
-**Acceptance**: Approval request from 9ac renders as AG-UI
-  confirmation widget in smgglrs Web UI. Third-party AG-UI
-  client can subscribe and render.
+smgglrs's role is emitting the right AG-UI events. The event flow:
 
-Reference: AG-UI (CopilotKit, github.com/CopilotKit/CopilotKit),
-Google A2UI v0.9, Open-Source Agent Toolkit Landscape 2026.
+```
+smgglrs hook pipeline → AG-UI events → rendra IPC → rendra-ag-ui
+```
+
+- **Event types**: Map MCP tool calls to AG-UI `ToolCallStart`/
+  `ToolCallEnd`. Map approval requests (9ac) to AG-UI
+  `ConfirmationRequest`. Map safety warnings to AG-UI `Message`.
+- **Adapter**: smgglrs-core emits AG-UI events via `notify_session()`.
+  rendra-ag-ui's transport adapter consumes them via IPC bridge.
+- **No web UI needed**: rendra-ag-ui renders directly in the desktop
+  app. No React, no browser dependency.
+
+**Effort**: 2-3 days (smgglrs side — event translation layer).
+**Priority**: Medium.
+**Depends on**: 9ac (approval gate events), rendra-ag-ui adapter
+  implementation (separate repo).
+**Acceptance**: Tool call in smgglrs renders as AG-UI activity in
+  rendra-ag-ui widget. Approval request renders as confirmation
+  dialog.
+
+Reference: rendra-ag-ui (smgglrs-ai/rendra-ag-ui), AG-UI protocol
+(docs.ag-ui.com).
 
 #### 5f. Registry proxy module (NEW)
 
@@ -3888,11 +3900,12 @@ the enforcement point; the UI (15a or AG-UI) is the rendering layer.
 - **ApprovalGateHook**: Pre-call hook that pauses tool execution for
   operations above a configurable risk threshold. Returns
   `HookDecision::Pending` (new variant — suspends the request).
-- **Notification**: Emits an SSE/WebSocket event to connected UIs
-  with the pending request details (tool name, arguments, agent,
-  risk tier). Uses existing `notify_session()` infrastructure.
-- **Resolution**: Operator approves/rejects via HTTP endpoint or
-  AG-UI confirmation widget. The hook resumes or blocks.
+- **Notification**: Emits AG-UI `ConfirmationRequest` event via
+  `notify_session()` with pending request details (tool name,
+  arguments, agent, risk tier).
+- **Resolution**: Operator approves/rejects via rendra-ag-ui
+  confirmation widget or HTTP endpoint. Response flows back
+  through rendra IPC → smgglrs. The hook resumes or blocks.
 - **Timeout**: Configurable timeout (default 5 min). On timeout,
   deny by default (fail-closed).
 - **Quorum**: Optional N-of-M approval for critical operations
@@ -3901,7 +3914,7 @@ the enforcement point; the UI (15a or AG-UI) is the rendering layer.
 Closes the ASI09 gap in OWASP ASI compliance (9/10 → 10/10 with 9ab).
 
 **Effort**: 3-4 days. **Priority**: Medium.
-**Depends on**: 15a/15b (Web UI for rendering approval requests).
+**Depends on**: rendra-ag-ui widget for rendering approval dialogs.
   Works headless (auto-deny on timeout) without UI.
 **Acceptance**: High-risk tool call pauses, notification emitted,
 operator approves via HTTP, tool executes. Rejected calls return
@@ -4886,141 +4899,91 @@ higher-priority agent (e.g., voice input preempts batch review).
 Batch agent's KV cache is checkpointed, voice agent gets GPU.
 After voice completes, batch resumes from checkpoint.
 
-### Phase 15: Web UI & agent dashboard (2026-05-15)
+### Phase 15: Rendra desktop app (updated 2026-05-29)
 
-smgglrs already has a basic web UI (`smgglrs-server/ui/`) with chat,
-flows, models, and agents panels served by axum. This phase evolves
-it into a production-quality interface for non-developer users
-(e.g., lawyer assistants, ops teams) and agent observability.
+smgglrs desktop app built on the rendra stack — Servo-based runtime
+with rendra-ui components and rendra-ag-ui for agent activity.
 
-**Motivation**: The *Claw landscape analysis (May 2026) revealed that
-smgglrs is architecturally a *Claw — a self-hosted AI agent gateway.
-Every successful *Claw (OpenClaw, SemaClaw, Hermes) has a web UI.
-The "CLI is sufficient" assumption holds for developer agents but
-breaks for domain-specific use cases where the assistant is embedded
-in professional workflows. A lawyer, analyst, or ops engineer needs
-a chat interface and agent dashboard without installing dev tools.
+**Stack** (all smgglrs-ai repos):
+- **rendra** — Servo + winit runtime, IPC bridge, `#[command]` macros
+- **rendra-ui** — 25 CSS + JS components (`rd-*` tokens, dark/light)
+- **rendra-ag-ui** — AG-UI protocol widget (streaming text, tool
+  calls, reasoning steps, approval dialogs)
 
-**Design principle**: The web UI is a thin client to smgglrs's
-existing backend capabilities. No new business logic in the UI layer
-— chat uses smgglrs-agent's ReAct loop, persistence uses
-smgglrs-memory, orchestration uses smgglrs-flow, security uses
-smgglrs-security. The UI renders what the gateway already computes.
+**Architecture**:
+```
+smgglrs (MCP gateway) → Rust backend commands → rendra IPC
+    → rendra-ag-ui widget + rendra-ui components
+```
 
-#### 15a. Multi-turn agentic chat (HIGH)
+No Electron, no React, no browser dependency. Single Rust binary
+ships the runtime. HTML/CSS/JS frontend uses rendra-ui tokens.
 
-**Crate**: `smgglrs-server/src/ui.rs`
+#### 15a. Agentic chat via rendra (HIGH)
 
-The current `/api/chat` endpoint does a single model call with no
-tool use. Wire it to smgglrs-agent's ReAct tool-use loop for
-agentic conversations:
+**Repos**: smgglrs (backend commands), rendra app (frontend)
 
-- Replace direct `backend.respond()` with an Agent instance that
-  has access to the gateway's registered tools
-- Stream tool calls and results back to the UI via NDJSON events
-  (the streaming format already exists, add `tool_call`,
-  `tool_result`, `thinking` event types)
-- Multi-turn: send conversation history with each request
-  (smgglrs-memory's `WorkingMemory` already stores turns)
-- Session management: create/resume sessions via `/api/sessions`
-  endpoint, persist to smgglrs-memory's SQLite backend
-- Conversation sidebar: list past sessions, resume, delete
+- **Backend**: IPC commands (`chat_send`, `chat_history`,
+  `session_list`, `session_resume`) wired to smgglrs-agent's
+  ReAct loop via rendra `#[command]` macro
+- **Frontend**: rendra-ui chat layout with `rd-input`, `rd-card`
+  components. rendra-ag-ui widget renders tool calls and
+  reasoning steps inline
+- **Streaming**: Agent responses stream through rendra IPC as
+  AG-UI events (TextDelta, ToolCallStart, ToolCallEnd)
+- **Multi-turn**: smgglrs-memory WorkingMemory stores turns
 
 **Effort**: 3-4 days. **Priority**: High.
-**Depends on**: None (all backend pieces exist).
-**Acceptance**: Chat in the web UI can use tools (file_read,
-git_status, etc.), maintain multi-turn context, and resume
-sessions across page reloads.
+**Acceptance**: Chat in rendra app uses tools, maintains context,
+resumes sessions.
 
-#### 15b. Live agent dashboard via SSE (HIGH)
+#### 15b. Live agent dashboard (HIGH)
 
-**Crate**: `smgglrs-server/src/ui.rs`, `smgglrs-core`
+**Repos**: smgglrs (event source), rendra app (dashboard page)
 
-Add a Server-Sent Events endpoint for real-time agent and system
-state updates:
-
-- `/api/events` SSE stream with event types:
-  - `agent_connected` / `agent_disconnected` (name, permissions,
-    ring, taint label)
-  - `tool_call` (agent, tool name, arguments, IFC taint, timing)
-  - `tool_result` (agent, tool name, result summary, duration)
-  - `approval_requested` / `approval_resolved` (agent, operation,
-    path, decision)
-  - `flow_task_started` / `flow_task_completed` (flow name, task
-    id, specialist, status)
-  - `ifc_taint_changed` (agent, old label, new label)
-  - `safety_filter_triggered` (agent, filter name, action)
-- Agent panel: live-updating cards with current taint, active
-  tool call, token usage, session duration
-- Approval queue: approve/deny pending requests from the web UI
-  (mirror tray functionality for headless/remote deployments)
+- **Backend**: IPC event stream (`agent_connected`, `tool_call`,
+  `ifc_taint_changed`, `safety_trigger`, `approval_requested`)
+  from smgglrs-core's `notify_session()` translated to AG-UI
+- **Frontend**: rendra-ui cards for each connected agent showing
+  taint level, active tool, token usage. rendra-ag-ui renders
+  live tool call activity
+- **Approval queue**: 9ac approval requests render as rendra-ag-ui
+  confirmation dialogs — approve/deny from the dashboard
 
 **Effort**: 2-3 days. **Priority**: High.
-**Acceptance**: Open agents panel, connect an MCP client, see the
-agent appear in real time with live tool call updates.
+**Acceptance**: Connect agent, see it appear with live tool call
+updates. Approve pending requests from dashboard.
 
 #### 15c. Interactive flow DAG visualization (MEDIUM)
 
-**Crate**: `smgglrs-server/ui/app.js`, `smgglrs-server/src/ui.rs`
+**Repos**: rendra app (DAG page)
 
-The current DAG renderer is CSS-based with static level layout.
-Upgrade to interactive visualization:
-
-- Replace CSS layout with a lightweight graph library (e.g.,
-  Cytoscape.js or ELK.js — both MIT, no build step needed)
-- Live DAG execution: nodes change color/state as tasks execute,
-  fed by SSE events from 15b
-- Click a node to see: specialist persona, prompt, tool calls,
-  output, timing, IFC taint at entry/exit
-- Edge labels: show data flow (which task output feeds which input)
-- Back-edge visualization: distinguish forward edges, back-edges,
-  and mesh channels (mailbox vs blackboard)
-- Flow launcher: select a flow, configure parameters (target path,
-  model override), execute from UI
+- Layout via flexbox (no CSS Grid — Servo compat)
+- Live DAG nodes change state as tasks execute (AG-UI events)
+- Click node for details (persona, tools, output, IFC taint)
 
 **Effort**: 2-3 days. **Priority**: Medium.
-**Depends on**: 15b (SSE for live updates).
-**Acceptance**: Run a review flow from the UI, watch DAG nodes
-progress through pending → running → completed with live output.
+**Depends on**: 15b (AG-UI event stream).
 
 #### 15d. Branding and polish (LOW)
 
-**Crate**: `smgglrs-server/ui/`
-
-- Rename throughout the UI to "smgglrs"
-  (title, welcome message, header brand)
-- Responsive layout for mobile/tablet (ops dashboard on phone)
-- Dark/light theme toggle (currently dark-only)
-- Token usage charts (per-session, per-agent, historical)
-- Model health indicators (loaded, latency, error rate)
-- Keyboard shortcuts (Cmd/Ctrl+Enter to send, Cmd+K for
-  command palette)
+- smgglrs branding in rendra app
+- Dark/light theme via rendra-ui `data-theme` attribute
+- Token usage charts, model health indicators
 
 **Effort**: 1-2 days. **Priority**: Low.
 
-#### 15e. Embeddable chat widget (LOW-MEDIUM)
+#### 15e. Embeddable rendra-ag-ui widget (LOW-MEDIUM)
 
-**Crate**: `smgglrs-server/src/ui.rs`, new `smgglrs-server/ui/widget.js`
+The rendra-ag-ui widget is already designed as a self-contained
+bundle. Domain apps embed it for agent activity visualization:
 
-A self-contained chat widget that domain apps can embed via
-`<script>` tag or iframe. This is the interface for the lawyer
-app pattern — the domain app embeds smgglrs's chat in its own UI
-rather than building a chat interface from scratch:
+- `<script src="rendra-ag-ui.js">` — zero npm deps
+- Configure: smgglrs endpoint, auth token, theme
+- AG-UI events: `onToolCall`, `onApprovalRequired`, `onError`
+- IFC badge shows current taint level
 
-- Standalone JS bundle (no framework dependency, <50KB)
-- Configuration via data attributes: endpoint URL, auth token,
-  default persona, theme
-- Bidirectional: widget sends user messages to smgglrs, receives
-  streaming responses with tool call visualization
-- IFC badge: shows current taint level so the user knows what
-  data boundary they're in
-- Events API: `onToolCall`, `onApprovalRequired`, `onError` for
-  the host app to hook into
-
-**Effort**: 2-3 days. **Priority**: Low-Medium.
-**Acceptance**: Embed widget in a minimal HTML page, chat with
-smgglrs, see tool calls and IFC labels. Host page receives
-`onToolCall` events.
+**Effort**: 2-3 days (mostly in rendra-ag-ui repo). **Priority**: Low-Medium.
 
 ---
 
