@@ -81,8 +81,8 @@ impl TaintTracker {
     /// The new level must be LOWER than the current level — stepping
     /// UP via declassify is rejected (use absorb for that).
     ///
-    /// Returns a `DeclassificationWitness` capturing the label
-    /// transition, or `None` if the declassification was rejected.
+    /// Returns `Some(witness)` on success (unsigned — caller signs if
+    /// they have a signer), `None` if the declassification would step UP.
     pub fn declassify(
         &mut self,
         new_confidentiality: Confidentiality,
@@ -90,27 +90,27 @@ impl TaintTracker {
         justification: &str,
     ) -> Option<DeclassificationWitness> {
         if new_confidentiality < self.current.confidentiality {
-            let original = self.current;
+            let original_label = self.current;
             self.current.confidentiality = new_confidentiality;
-            let witness = DeclassificationWitness {
-                original_label: original,
+            let w = DeclassificationWitness {
+                original_label,
                 new_label: self.current,
                 declassifier: declassifier.to_string(),
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
+                    .unwrap()
                     .as_secs() as i64,
                 justification: justification.to_string(),
                 signature: None,
             };
-            self.witnesses.push(witness.clone());
-            Some(witness)
+            self.witnesses.push(w.clone());
+            Some(w)
         } else {
             None
         }
     }
 
-    /// All declassification witnesses recorded in this session.
+    /// All declassification witnesses accumulated in this session.
     pub fn witnesses(&self) -> &[DeclassificationWitness] {
         &self.witnesses
     }
@@ -562,24 +562,64 @@ mod tests {
         // Cannot step UP via declassify
         assert!(
             tracker
-                .declassify(Confidentiality::Secret, "test", "test justification")
+                .declassify(Confidentiality::Secret, "test", "reason")
                 .is_none(),
             "INV-5: declassify must reject stepping UP"
         );
         assert_eq!(tracker.level().confidentiality, Confidentiality::Pii);
 
         // Can step DOWN
-        let witness = tracker
-            .declassify(Confidentiality::Sensitive, "test", "test justification")
-            .expect("INV-5: declassify should allow stepping DOWN");
-        assert_eq!(tracker.level().confidentiality, Confidentiality::Sensitive);
-        assert_eq!(witness.original_label.confidentiality, Confidentiality::Pii);
-        assert_eq!(
-            witness.new_label.confidentiality,
-            Confidentiality::Sensitive
+        assert!(
+            tracker
+                .declassify(Confidentiality::Sensitive, "test", "reason")
+                .is_some(),
+            "INV-5: declassify should allow stepping DOWN"
         );
-        assert_eq!(witness.declassifier, "test");
-        assert_eq!(tracker.witnesses().len(), 1);
+        assert_eq!(tracker.level().confidentiality, Confidentiality::Sensitive);
+    }
+
+    #[test]
+    fn declassify_produces_witness() {
+        let mut tracker = TaintTracker::new();
+        tracker.absorb(DataLabel::UNTRUSTED_PII);
+        let w = tracker
+            .declassify(Confidentiality::Public, "pii-filter", "full redaction")
+            .unwrap();
+        assert_eq!(w.original_label.confidentiality, Confidentiality::Pii);
+        assert_eq!(w.new_label.confidentiality, Confidentiality::Public);
+        assert_eq!(w.declassifier, "pii-filter");
+        assert_eq!(w.justification, "full redaction");
+        assert!(w.signature.is_none());
+    }
+
+    #[test]
+    fn declassify_step_up_rejected() {
+        let mut tracker = TaintTracker::new();
+        assert!(tracker
+            .declassify(Confidentiality::Pii, "attacker", "no reason")
+            .is_none());
+    }
+
+    #[test]
+    fn witnesses_accumulate() {
+        let mut tracker = TaintTracker::new();
+        tracker.absorb(DataLabel::TRUSTED_SECRET);
+        tracker.declassify(Confidentiality::Pii, "auth-a", "step 1");
+        tracker.declassify(Confidentiality::Public, "auth-b", "step 2");
+        assert_eq!(tracker.witnesses().len(), 2);
+        assert_eq!(tracker.witnesses()[0].declassifier, "auth-a");
+        assert_eq!(tracker.witnesses()[1].declassifier, "auth-b");
+    }
+
+    #[test]
+    fn declassify_preserves_monotonicity() {
+        let mut tracker = TaintTracker::new();
+        tracker.absorb(DataLabel::UNTRUSTED_PII);
+        tracker.declassify(Confidentiality::Public, "filter", "redacted");
+        assert_eq!(tracker.level().confidentiality, Confidentiality::Public);
+        // Re-absorb raises taint back up
+        tracker.absorb(DataLabel::UNTRUSTED_SENSITIVE);
+        assert_eq!(tracker.level().confidentiality, Confidentiality::Sensitive);
     }
 }
 
@@ -678,7 +718,7 @@ mod kani_proofs {
         tracker.absorb(label);
         let before = tracker.level().confidentiality;
         let target: Confidentiality = kani::any();
-        let accepted = tracker.declassify(target);
+        let accepted = tracker.declassify(target, "kani", "proof").is_some();
         if target >= before {
             assert!(!accepted, "declassify must reject stepping up");
         }
