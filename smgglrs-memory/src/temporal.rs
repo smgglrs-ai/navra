@@ -1,10 +1,14 @@
 //! Hierarchical temporal tree index on SQLite (MemForest architecture).
 //!
 //! Three tree types — session, entity, scene — share a single table
-//! with a `tree_type` discriminator. Each tree has a root (depth=0)
-//! and leaf facts (depth=1). Internal nodes mark themselves dirty
-//! when children change; an external summarizer calls `update_summary`
-//! to regenerate roll-ups.
+//! with a `tree_type` discriminator. The tree has configurable depth:
+//! root (depth=0) → intermediate nodes → leaves (max depth). Internal
+//! nodes mark themselves dirty when children change; an external
+//! summarizer calls `update_summary` to regenerate roll-ups.
+//!
+//! When an intermediate node accumulates more than `max_children`
+//! leaves, new inserts create a deeper level — the tree grows
+//! downward automatically.
 
 use crate::error::MemoryError;
 use rusqlite::{params, Connection};
@@ -57,19 +61,31 @@ pub struct TreeNode {
 
 pub struct TemporalTree {
     db: Connection,
+    max_children: usize,
 }
 
 impl TemporalTree {
     pub fn open(path: &Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
         Self::initialize_schema(&db)?;
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            max_children: 64,
+        })
     }
 
     pub fn open_memory() -> Result<Self, MemoryError> {
         let db = Connection::open_in_memory()?;
         Self::initialize_schema(&db)?;
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            max_children: 64,
+        })
+    }
+
+    pub fn with_max_children(mut self, n: usize) -> Self {
+        self.max_children = n.max(2);
+        self
     }
 
     fn initialize_schema(db: &Connection) -> Result<(), MemoryError> {
@@ -84,18 +100,23 @@ impl TemporalTree {
                 time_end INTEGER NOT NULL,
                 content TEXT NOT NULL,
                 dirty INTEGER NOT NULL DEFAULT 0,
+                is_leaf INTEGER NOT NULL DEFAULT 1,
+                child_count INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(tree_type, tree_name, time_start, time_end, depth)
             );
             CREATE INDEX IF NOT EXISTS idx_memory_tree_lookup
                 ON memory_tree(tree_type, tree_name, depth);
             CREATE INDEX IF NOT EXISTS idx_memory_tree_dirty
-                ON memory_tree(tree_type, tree_name, dirty) WHERE dirty = 1;",
+                ON memory_tree(tree_type, tree_name, dirty) WHERE dirty = 1;
+            CREATE INDEX IF NOT EXISTS idx_memory_tree_leaves
+                ON memory_tree(tree_type, tree_name, is_leaf, time_start) WHERE is_leaf = 1;",
         )?;
         Ok(())
     }
 
-    /// Insert a leaf fact into a tree. Creates the root if the tree
-    /// doesn't exist yet. Marks the root as dirty.
+    /// Insert a leaf fact into a tree. Creates intermediate levels
+    /// when a parent exceeds `max_children`. Marks the ancestor path
+    /// dirty up to the root.
     pub fn insert_fact(
         &self,
         tree_type: TreeType,
@@ -114,8 +135,8 @@ impl TemporalTree {
             Ok(id) => id,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 self.db.execute(
-                    "INSERT INTO memory_tree (tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty)
-                     VALUES (?1, ?2, NULL, 0, ?3, ?4, '', 0)",
+                    "INSERT INTO memory_tree (tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty, is_leaf)
+                     VALUES (?1, ?2, NULL, 0, ?3, ?4, '', 0, 0)",
                     params![tt, tree_name, timestamp, timestamp],
                 )?;
                 self.db.last_insert_rowid()
@@ -123,25 +144,134 @@ impl TemporalTree {
             Err(e) => return Err(e.into()),
         };
 
-        // Insert the leaf (depth=1).
+        // Walk down from root to find the best parent for this leaf.
+        let parent_id = self.find_insert_parent(&tt, tree_name, root_id, timestamp)?;
+
+        // Get parent's current depth to compute leaf depth.
+        let parent_depth: i32 = self.db.query_row(
+            "SELECT depth FROM memory_tree WHERE id = ?1",
+            params![parent_id],
+            |row| row.get(0),
+        )?;
+
+        // Insert the leaf.
         self.db.execute(
-            "INSERT INTO memory_tree (tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty)
-             VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, 0)",
-            params![tt, tree_name, root_id, timestamp, timestamp, content],
+            "INSERT INTO memory_tree (tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty, is_leaf)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1)",
+            params![tt, tree_name, parent_id, parent_depth + 1, timestamp, timestamp, content],
         )?;
         let leaf_id = self.db.last_insert_rowid();
 
-        // Expand root's time range to cover this timestamp and mark dirty.
+        // Update parent: mark non-leaf, increment child count.
         self.db.execute(
-            "UPDATE memory_tree SET
-                time_start = MIN(time_start, ?1),
-                time_end = MAX(time_end, ?2),
-                dirty = 1
-             WHERE id = ?3",
-            params![timestamp, timestamp, root_id],
+            "UPDATE memory_tree SET is_leaf = 0, child_count = child_count + 1 WHERE id = ?1",
+            params![parent_id],
         )?;
 
+        // Mark ancestor path dirty and expand time ranges.
+        self.mark_ancestors_dirty(parent_id, timestamp)?;
+
         Ok(leaf_id)
+    }
+
+    /// Find the best parent node for a new leaf at the given timestamp.
+    /// If the deepest eligible parent has too many children, create an
+    /// intermediate node to split the load.
+    fn find_insert_parent(
+        &self,
+        tt: &str,
+        tree_name: &str,
+        root_id: i64,
+        timestamp: i64,
+    ) -> Result<i64, MemoryError> {
+        let mut current_id = root_id;
+
+        loop {
+            // Read cached child count.
+            let child_count: i64 = self.db.query_row(
+                "SELECT child_count FROM memory_tree WHERE id = ?1",
+                params![current_id],
+                |row| row.get(0),
+            )?;
+
+            if (child_count as usize) < self.max_children {
+                return Ok(current_id);
+            }
+
+            // Too many children — find an existing intermediate child
+            // whose time range covers this timestamp.
+            let existing_child: Option<i64> = self
+                .db
+                .query_row(
+                    "SELECT id FROM memory_tree
+                     WHERE parent_id = ?1 AND time_start <= ?2 AND time_end >= ?3
+                           AND id NOT IN (
+                               SELECT id FROM memory_tree
+                               WHERE parent_id = ?1 AND depth = (
+                                   SELECT MAX(depth) FROM memory_tree WHERE tree_type = ?4 AND tree_name = ?5
+                               )
+                           )
+                     ORDER BY time_start ASC LIMIT 1",
+                    params![current_id, timestamp, timestamp, tt, tree_name],
+                    |row| row.get(0),
+                )
+                .ok();
+
+            if let Some(child_id) = existing_child {
+                current_id = child_id;
+                continue;
+            }
+
+            // No suitable intermediate child — create one.
+            let current_depth: i32 = self.db.query_row(
+                "SELECT depth FROM memory_tree WHERE id = ?1",
+                params![current_id],
+                |row| row.get(0),
+            )?;
+
+            self.db.execute(
+                "INSERT INTO memory_tree (tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty, is_leaf, child_count)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, '', 1, 0, 0)",
+                params![tt, tree_name, current_id, current_depth + 1, timestamp, timestamp],
+            )?;
+            // Increment parent's child count for the new intermediate.
+            self.db.execute(
+                "UPDATE memory_tree SET child_count = child_count + 1 WHERE id = ?1",
+                params![current_id],
+            )?;
+            return Ok(self.db.last_insert_rowid());
+        }
+    }
+
+    /// Walk up from a node to the root, marking each ancestor dirty
+    /// and expanding its time range.
+    fn mark_ancestors_dirty(&self, mut node_id: i64, timestamp: i64) -> Result<(), MemoryError> {
+        loop {
+            self.db.execute(
+                "UPDATE memory_tree SET
+                    time_start = MIN(time_start, ?1),
+                    time_end = MAX(time_end, ?2),
+                    dirty = 1
+                 WHERE id = ?3",
+                params![timestamp, timestamp, node_id],
+            )?;
+
+            let parent: Option<i64> = self
+                .db
+                .query_row(
+                    "SELECT parent_id FROM memory_tree WHERE id = ?1",
+                    params![node_id],
+                    |row| row.get(0),
+                )
+                .ok()
+                .flatten();
+
+            match parent {
+                Some(pid) => node_id = pid,
+                None => break,
+            }
+        }
+        Ok(())
     }
 
     /// Get all dirty nodes that need summary regeneration.
@@ -214,7 +344,8 @@ impl TemporalTree {
         Ok(nodes)
     }
 
-    /// Get all leaf nodes in a time range.
+    /// Get all leaf nodes in a time range. Leaves are nodes with no
+    /// children (works at any depth).
     pub fn leaves_in_range(
         &self,
         tree_type: TreeType,
@@ -226,14 +357,30 @@ impl TemporalTree {
         let mut stmt = self.db.prepare(
             "SELECT id, tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty
              FROM memory_tree
-             WHERE tree_type = ?1 AND tree_name = ?2 AND depth = 1
+             WHERE tree_type = ?1 AND tree_name = ?2
                    AND time_start >= ?3 AND time_end <= ?4
+                   AND is_leaf = 1
              ORDER BY time_start ASC",
         )?;
         let nodes = stmt
             .query_map(params![tt, tree_name, start, end], row_to_node)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(nodes)
+    }
+
+    /// Get the maximum depth in a tree (0 = root only).
+    pub fn max_depth(
+        &self,
+        tree_type: TreeType,
+        tree_name: &str,
+    ) -> Result<i32, MemoryError> {
+        let tt = tree_type.to_string();
+        let depth: i32 = self.db.query_row(
+            "SELECT COALESCE(MAX(depth), 0) FROM memory_tree WHERE tree_type = ?1 AND tree_name = ?2",
+            params![tt, tree_name],
+            |row| row.get(0),
+        )?;
+        Ok(depth)
     }
 
     /// List all tree names of a given type.
@@ -457,6 +604,61 @@ mod tests {
 
         let names = tree.list_trees(TreeType::Session).unwrap();
         assert_eq!(names, vec!["alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn intermediate_levels_created_when_full() {
+        let tree = TemporalTree::open_memory().unwrap().with_max_children(4);
+        for i in 0..10 {
+            tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100)
+                .unwrap();
+        }
+        let depth = tree.max_depth(TreeType::Session, "s1").unwrap();
+        assert!(depth >= 2, "expected depth >= 2 with 10 facts and max_children=4, got {depth}");
+
+        let nodes = tree.browse_tree(TreeType::Session, "s1").unwrap();
+        let intermediates: Vec<_> = nodes.iter().filter(|n| n.depth > 0 && n.depth < depth).collect();
+        assert!(!intermediates.is_empty(), "expected intermediate nodes");
+    }
+
+    #[test]
+    fn dirty_path_marks_all_ancestors() {
+        let tree = TemporalTree::open_memory().unwrap().with_max_children(3);
+        for i in 0..9 {
+            tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100)
+                .unwrap();
+        }
+        let dirty = tree.dirty_nodes(TreeType::Session, "s1").unwrap();
+        let dirty_depths: Vec<i32> = dirty.iter().map(|n| n.depth).collect();
+        assert!(dirty_depths.contains(&0), "root should be dirty");
+    }
+
+    #[test]
+    fn leaves_in_range_works_with_deep_tree() {
+        let tree = TemporalTree::open_memory().unwrap().with_max_children(3);
+        for i in 0..12 {
+            tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100)
+                .unwrap();
+        }
+        let leaves = tree.leaves_in_range(TreeType::Session, "s1", 1500, 1800).unwrap();
+        assert!(!leaves.is_empty());
+        for leaf in &leaves {
+            assert!(leaf.time_start >= 1500 && leaf.time_end <= 1800);
+        }
+    }
+
+    #[test]
+    fn max_depth_increases_with_facts() {
+        let tree = TemporalTree::open_memory().unwrap().with_max_children(4);
+        assert_eq!(tree.max_depth(TreeType::Session, "s1").unwrap(), 0);
+
+        tree.insert_fact(TreeType::Session, "s1", "first", 1000).unwrap();
+        assert_eq!(tree.max_depth(TreeType::Session, "s1").unwrap(), 1);
+
+        for i in 1..20 {
+            tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100).unwrap();
+        }
+        assert!(tree.max_depth(TreeType::Session, "s1").unwrap() >= 2);
     }
 
     #[test]
