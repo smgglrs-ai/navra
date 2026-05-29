@@ -299,15 +299,14 @@ fn bench_scale(c: &mut Criterion) {
     group.sample_size(10);
     let base_ts: i64 = 1700000000;
 
-    for count in [1000, 5000, 10000] {
-        // Temporal tree batch (default max_children=64)
+    // --- Write benchmarks ---
+    for count in [1000, 10000, 100000, 1000000] {
         group.bench_with_input(
             BenchmarkId::new("tt_batch_b64", count),
             &count,
             |b, &n| {
                 b.iter(|| {
                     let tree = TemporalTree::open_memory().unwrap();
-                    let base_ts = 1700000000i64;
                     let facts: Vec<(String, i64)> = (0..n)
                         .map(|i| {
                             (
@@ -324,106 +323,72 @@ fn bench_scale(c: &mut Criterion) {
             },
         );
 
-        // Flat KnowledgeStore
-        group.bench_with_input(
-            BenchmarkId::new("ks_write", count),
-            &count,
-            |b, &n| {
-                b.iter(|| {
-                    let store = KnowledgeStore::open_memory().unwrap();
-                    for i in 0..n {
-                        store.store(&make_entry(i, base_ts + i as i64 * 60)).unwrap();
-                    }
-                    black_box(store.count().unwrap());
-                });
-            },
-        );
-
-        // Temporal tree (default max_children=64)
-        group.bench_with_input(
-            BenchmarkId::new("tt_write_b64", count),
-            &count,
-            |b, &n| {
-                b.iter(|| {
-                    let tree = TemporalTree::open_memory().unwrap();
-                    for i in 0..n {
-                        tree.insert_fact(
-                            TreeType::Session, "s1",
-                            &format!("Component {} load {}.", i % 20, i % 5),
-                            base_ts + i as i64 * 60,
-                        ).unwrap();
-                    }
-                    black_box(tree.count().unwrap());
-                });
-            },
-        );
-
-        // Temporal tree (branching=16)
-        group.bench_with_input(
-            BenchmarkId::new("tt_write_b16", count),
-            &count,
-            |b, &n| {
-                b.iter(|| {
-                    let tree = TemporalTree::open_memory().unwrap().with_max_children(16);
-                    for i in 0..n {
-                        tree.insert_fact(
-                            TreeType::Session, "s1",
-                            &format!("Component {} load {}.", i % 20, i % 5),
-                            base_ts + i as i64 * 60,
-                        ).unwrap();
-                    }
-                    black_box(tree.count().unwrap());
-                });
-            },
-        );
+        // KS individual insert (skip at 100K+ — too slow)
+        if count <= 10000 {
+            group.bench_with_input(
+                BenchmarkId::new("ks_write", count),
+                &count,
+                |b, &n| {
+                    b.iter(|| {
+                        let store = KnowledgeStore::open_memory().unwrap();
+                        for i in 0..n {
+                            store.store(&make_entry(i, base_ts + i as i64 * 60)).unwrap();
+                        }
+                        black_box(store.count().unwrap());
+                    });
+                },
+            );
+        }
     }
 
-    // Query benchmarks at each scale
-    for count in [1000, 5000, 10000] {
-        let ks = KnowledgeStore::open_memory().unwrap();
-        for i in 0..count {
-            ks.store(&make_entry(i, base_ts + i as i64 * 60)).unwrap();
-        }
-
-        let tt64 = TemporalTree::open_memory().unwrap();
-        let tt16 = TemporalTree::open_memory().unwrap().with_max_children(16);
-        for i in 0..count {
-            let ts = base_ts + i as i64 * 60;
-            let content = format!("Component {} load {}.", i % 20, i % 5);
-            tt64.insert_fact(TreeType::Session, "s1", &content, ts).unwrap();
-            tt16.insert_fact(TreeType::Session, "s1", &content, ts).unwrap();
-        }
+    // --- Query benchmarks at scale (pre-populate once, bench queries) ---
+    for count in [1000, 10000, 100000, 1000000] {
+        // Pre-populate temporal tree via batch insert
+        let tt = TemporalTree::open_memory().unwrap();
+        let facts: Vec<(String, i64)> = (0..count)
+            .map(|i| {
+                (
+                    format!("Component {} load {}.", i % 20, i % 5),
+                    base_ts + i as i64 * 60,
+                )
+            })
+            .collect();
+        let refs: Vec<(&str, i64)> = facts.iter().map(|(s, t)| (s.as_str(), *t)).collect();
+        tt.insert_facts(TreeType::Session, "s1", &refs).unwrap();
 
         let range_start = base_ts + (count as i64 - 100) * 60;
         let range_end = base_ts + count as i64 * 60;
 
         group.bench_with_input(
-            BenchmarkId::new("ks_search", count),
-            &count,
-            |b, _| {
-                b.iter(|| black_box(ks.search(black_box("component")).unwrap().len()));
-            },
-        );
-
-        group.bench_with_input(
-            BenchmarkId::new("tt_range_b64", count),
+            BenchmarkId::new("tt_range", count),
             &count,
             |b, _| {
                 b.iter(|| {
-                    black_box(tt64.leaves_in_range(TreeType::Session, "s1", black_box(range_start), black_box(range_end)).unwrap().len());
+                    black_box(
+                        tt.leaves_in_range(
+                            TreeType::Session, "s1",
+                            black_box(range_start), black_box(range_end),
+                        ).unwrap().len(),
+                    );
                 });
             },
         );
 
-        group.bench_with_input(
-            BenchmarkId::new("tt_range_b16", count),
-            &count,
-            |b, _| {
-                b.iter(|| {
-                    black_box(tt16.leaves_in_range(TreeType::Session, "s1", black_box(range_start), black_box(range_end)).unwrap().len());
-                });
-            },
-        );
+        // KS query (skip at 100K+ — FTS5 scan is very slow)
+        if count <= 10000 {
+            let ks = KnowledgeStore::open_memory().unwrap();
+            for i in 0..count {
+                ks.store(&make_entry(i, base_ts + i as i64 * 60)).unwrap();
+            }
+
+            group.bench_with_input(
+                BenchmarkId::new("ks_search", count),
+                &count,
+                |b, _| {
+                    b.iter(|| black_box(ks.search(black_box("component")).unwrap().len()));
+                },
+            );
+        }
     }
 
     group.finish();
