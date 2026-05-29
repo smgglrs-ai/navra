@@ -111,6 +111,16 @@ impl TokenAuthenticator {
     }
 }
 
+/// Constant-time byte comparison using XOR-OR accumulation.
+/// Returns true iff all bytes match. Never short-circuits.
+/// Extracted for Kani verification (CWE-208 prevention).
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
 impl Authenticator for TokenAuthenticator {
     fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError> {
         let header = headers
@@ -126,21 +136,10 @@ impl Authenticator for TokenAuthenticator {
         // Iterate all entries for constant-time behavior — prevents
         // timing side-channel on hash prefix matching (CWE-208).
         let mut found: Option<&AgentIdentity> = None;
-        // All BLAKE3 hashes are 64 hex chars — length check is safe but
-        // removed to maintain strict constant-time contract.
         let hash_bytes = hash.as_bytes();
         for (stored_hash, identity) in &self.agents {
             let stored_bytes = stored_hash.as_bytes();
-            // Constant-time comparison: XOR all bytes, OR into accumulator
-            let equal = if stored_bytes.len() == hash_bytes.len() {
-                stored_bytes
-                    .iter()
-                    .zip(hash_bytes)
-                    .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-            } else {
-                1u8 // different lengths — always mismatch
-            };
-            if equal == 0 {
+            if constant_time_eq(stored_bytes, hash_bytes) {
                 found = Some(identity);
             }
         }
@@ -282,5 +281,26 @@ mod tests {
 
         let identity = auth.authenticate(&headers).unwrap();
         assert_eq!(identity.name, "test-agent");
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn ct_eq_correct() {
+        let a: [u8; 4] = kani::any();
+        let b: [u8; 4] = kani::any();
+        let result = constant_time_eq(&a, &b);
+        let naive = a.iter().zip(b.iter()).all(|(x, y)| x == y);
+        assert_eq!(result, naive);
+    }
+
+    #[kani::proof]
+    fn ct_eq_different_lengths_false() {
+        let a: [u8; 4] = kani::any();
+        let b: [u8; 3] = kani::any();
+        assert!(!constant_time_eq(&a, &b));
     }
 }

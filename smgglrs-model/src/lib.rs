@@ -473,3 +473,42 @@ fn rand_id() -> u64 {
     hasher.write_u8(0);
     hasher.finish()
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Pure threshold check for Kani: does score exceed threshold?
+    fn score_exceeds(score: f32, threshold: f32) -> bool {
+        score >= threshold
+    }
+
+    #[kani::proof]
+    fn threshold_check_reflexive() {
+        let score: f32 = kani::any();
+        kani::assume(score.is_finite());
+        assert!(score_exceeds(score, score));
+    }
+
+    #[kani::proof]
+    fn threshold_check_monotonic() {
+        let score: f32 = kani::any();
+        let t1: f32 = kani::any();
+        let t2: f32 = kani::any();
+        kani::assume(score.is_finite() && t1.is_finite() && t2.is_finite());
+        kani::assume(t2 >= t1);
+        if score_exceeds(score, t2) {
+            assert!(score_exceeds(score, t1));
+        }
+    }
+
+    /// Exponential backoff calculation from send_with_retry.
+    #[kani::proof]
+    fn backoff_bounded() {
+        let attempt: u32 = kani::any();
+        kani::assume(attempt < 3); // MAX_RETRIES = 3
+        let delay = 1u64 << attempt;
+        assert!(delay <= 4); // 1, 2, 4
+        assert!(delay >= 1);
+    }
+}

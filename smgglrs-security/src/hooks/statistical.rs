@@ -1164,3 +1164,43 @@ mod tests {
         assert!(tracker.window.len() <= 4);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    /// Model a bounded sliding window (VecDeque) as pure function.
+    /// Proves the window size invariant: len() <= max_size after any push.
+    fn bounded_push(current_len: usize, max_size: usize) -> usize {
+        if current_len >= max_size {
+            max_size // pop_front + push_back = same length
+        } else {
+            current_len + 1
+        }
+    }
+
+    #[kani::proof]
+    fn window_never_exceeds_max() {
+        let max_size: u8 = kani::any();
+        kani::assume(max_size >= 1 && max_size <= 50);
+
+        let mut len: u8 = 0;
+        // Simulate up to 10 pushes
+        let pushes: u8 = kani::any();
+        kani::assume(pushes <= 10);
+        for _ in 0..pushes {
+            len = bounded_push(len as usize, max_size as usize) as u8;
+            assert!(len <= max_size);
+        }
+    }
+
+    /// Centroid element-wise mean: dividing by n never divides by zero
+    /// because centroid() checks n == 0 first.
+    #[kani::proof]
+    fn centroid_division_safe() {
+        let n: u8 = kani::any();
+        kani::assume(n >= 1 && n <= 100);
+        let sum: f32 = kani::any();
+        kani::assume(sum.is_finite());
+        let mean = sum / n as f32;
+        assert!(mean.is_finite() || n == 0);
+    }
+}

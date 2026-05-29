@@ -632,3 +632,24 @@ mod tests {
         assert_eq!(graph.edges[0].edge_type, CausalEdgeType::WasGeneratedBy);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    fn arbitrary_edge_type() -> CausalEdgeType {
+        match kani::any::<u8>() % 5 {
+            0 => CausalEdgeType::WasDerivedFrom,
+            1 => CausalEdgeType::WasGeneratedBy,
+            2 => CausalEdgeType::Used,
+            3 => CausalEdgeType::WasInformedBy,
+            _ => CausalEdgeType::WasTriggeredBy,
+        }
+    }
+
+    #[kani::proof]
+    fn edge_type_roundtrip() {
+        let t = arbitrary_edge_type();
+        assert_eq!(CausalEdgeType::from_str(t.as_str()), Some(t));
+    }
+}

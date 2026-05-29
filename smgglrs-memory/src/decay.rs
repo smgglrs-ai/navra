@@ -225,3 +225,53 @@ mod tests {
         assert!(in_archive, "low-importance entry should be in archive");
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Decay is monotonically decreasing in age.
+    /// CBMC's builtin exp() doesn't model transcendentals precisely,
+    /// so we prove the algebraic property instead: the exponent
+    /// argument -rate*age is more negative for larger age, so
+    /// the exp result must be smaller.
+    #[kani::proof]
+    fn decay_exponent_monotonic() {
+        let age1: u16 = kani::any();
+        let age2: u16 = kani::any();
+        kani::assume(age1 <= 1000);
+        kani::assume(age2 <= 1000);
+        kani::assume(age2 >= age1);
+        let rate = 0.001_f64;
+        let importance = 0.5_f64;
+        let modulated = rate / (1.0 + importance);
+        let arg1 = -modulated * age1 as f64;
+        let arg2 = -modulated * age2 as f64;
+        // More negative exponent → smaller exp result → lower score
+        assert!(arg1 >= arg2, "exponent must decrease with age");
+    }
+
+    /// Higher importance produces lower modulated rate → slower decay.
+    /// Proved algebraically: rate/(1+imp2) <= rate/(1+imp1) when imp2 >= imp1.
+    #[kani::proof]
+    fn importance_lowers_decay_rate() {
+        let imp1: u8 = kani::any();
+        let imp2: u8 = kani::any();
+        kani::assume(imp1 <= 10);
+        kani::assume(imp2 <= 10);
+        kani::assume(imp2 >= imp1);
+        let rate = 0.001_f64;
+        let modulated1 = rate / (1.0 + imp1 as f64);
+        let modulated2 = rate / (1.0 + imp2 as f64);
+        assert!(modulated2 <= modulated1, "higher importance must lower decay rate");
+    }
+
+    #[kani::proof]
+    fn relevance_boost_capped() {
+        let access: u32 = kani::any();
+        kani::assume(access <= 1000);
+        let boost = (access as f64 * 0.1).min(0.3);
+        assert!(boost <= 0.3);
+        assert!(boost >= 0.0);
+    }
+}

@@ -399,3 +399,74 @@ mod tests {
         assert!(word_overlap(&a, &b) < 0.01);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    fn make_words(a: u8, b: u8) -> Vec<String> {
+        let mut v = Vec::new();
+        if a & 1 != 0 {
+            v.push("alpha".to_string());
+        }
+        if a & 2 != 0 {
+            v.push("beta".to_string());
+        }
+        if a & 4 != 0 {
+            v.push("gamma".to_string());
+        }
+        if b & 1 != 0 {
+            v.push("delta".to_string());
+        }
+        v
+    }
+
+    #[kani::proof]
+    fn overlap_in_unit_range() {
+        let a_bits: u8 = kani::any();
+        let b_bits: u8 = kani::any();
+        let a2_bits: u8 = kani::any();
+        let b2_bits: u8 = kani::any();
+        kani::assume(a_bits <= 7);
+        kani::assume(b_bits <= 1);
+        kani::assume(a2_bits <= 7);
+        kani::assume(b2_bits <= 1);
+        let words_a = make_words(a_bits, b_bits);
+        let words_b = make_words(a2_bits, b2_bits);
+        let score = word_overlap(&words_a, &words_b);
+        assert!(score >= 0.0);
+        assert!(score <= 1.0);
+    }
+
+    #[kani::proof]
+    fn overlap_symmetric() {
+        let a_bits: u8 = kani::any();
+        let b_bits: u8 = kani::any();
+        let a2_bits: u8 = kani::any();
+        let b2_bits: u8 = kani::any();
+        kani::assume(a_bits <= 7);
+        kani::assume(b_bits <= 1);
+        kani::assume(a2_bits <= 7);
+        kani::assume(b2_bits <= 1);
+        let words_a = make_words(a_bits, b_bits);
+        let words_b = make_words(a2_bits, b2_bits);
+        let ab = word_overlap(&words_a, &words_b);
+        let ba = word_overlap(&words_b, &words_a);
+        assert!(ab == ba, "Jaccard similarity must be symmetric");
+    }
+
+    #[kani::proof]
+    fn overlap_reflexive() {
+        let bits: u8 = kani::any();
+        let b_bits: u8 = kani::any();
+        kani::assume(bits <= 7);
+        kani::assume(b_bits <= 1);
+        let words = make_words(bits, b_bits);
+        let score = word_overlap(&words, &words);
+        if words.is_empty() {
+            assert!(score == 0.0);
+        } else {
+            assert!(score == 1.0, "overlap with self must be 1.0");
+        }
+    }
+}

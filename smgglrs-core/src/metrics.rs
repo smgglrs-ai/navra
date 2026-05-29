@@ -304,3 +304,30 @@ mod tests {
         assert_eq!(m.tool_calls_total.load(Ordering::Relaxed), 1000);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Model a monotonic counter as a pure function.
+    /// Proves that fetch_add with non-negative delta preserves monotonicity.
+    fn counter_add(current: u64, delta: u64) -> u64 {
+        current.wrapping_add(delta)
+    }
+
+    #[kani::proof]
+    fn counter_monotonic() {
+        let current: u64 = kani::any();
+        let delta: u64 = kani::any();
+        kani::assume(current <= u64::MAX / 2);
+        kani::assume(delta <= 1000);
+        let next = counter_add(current, delta);
+        assert!(next >= current);
+    }
+
+    #[kani::proof]
+    fn counter_zero_delta_unchanged() {
+        let current: u64 = kani::any();
+        assert_eq!(counter_add(current, 0), current);
+    }
+}

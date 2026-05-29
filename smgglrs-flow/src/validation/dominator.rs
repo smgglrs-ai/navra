@@ -468,3 +468,73 @@ mod tests {
         assert_eq!(tree.dominators.get("d"), Some(&"a".to_string()));
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Pure dominator-set intersection for Kani verification.
+    /// Models: Dom(n) = {n} ∪ ∩{Dom(p) | p ∈ preds(n)}.
+    /// Uses bitmask representation: bit i set means node i is in the set.
+    fn dom_intersect_step(
+        node_mask: u8,
+        pred1_dom: u8,
+        pred2_dom: u8,
+        has_pred2: bool,
+    ) -> u8 {
+        let intersection = if has_pred2 {
+            pred1_dom & pred2_dom
+        } else {
+            pred1_dom
+        };
+        intersection | node_mask
+    }
+
+    #[kani::proof]
+    fn dominator_self_always_in_set() {
+        let node_bit: u8 = kani::any();
+        kani::assume(node_bit.count_ones() == 1);
+        let p1: u8 = kani::any();
+        let p2: u8 = kani::any();
+        let has_p2: bool = kani::any();
+        let result = dom_intersect_step(node_bit, p1, p2, has_p2);
+        assert!(result & node_bit != 0, "node must dominate itself");
+    }
+
+    #[kani::proof]
+    fn dominator_intersection_monotonic() {
+        let node_bit: u8 = kani::any();
+        kani::assume(node_bit.count_ones() == 1);
+        let p1: u8 = kani::any();
+        let p2: u8 = kani::any();
+        // With one pred vs two: adding a pred can only shrink the set
+        let with_one = dom_intersect_step(node_bit, p1, 0, false);
+        let with_two = dom_intersect_step(node_bit, p1, p2, true);
+        // with_two ⊆ with_one (intersection can only remove, not add)
+        assert!(with_two & !with_one == 0 || with_two == with_one | node_bit);
+    }
+
+    /// Pure order-checking: verify that required positions are strictly increasing.
+    fn check_order(positions: &[u8], len: usize) -> bool {
+        if len <= 1 {
+            return true;
+        }
+        for i in 1..len {
+            if positions[i] <= positions[i - 1] {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[kani::proof]
+    fn order_check_empty_passes() {
+        assert!(check_order(&[], 0));
+    }
+
+    #[kani::proof]
+    fn order_check_single_passes() {
+        let pos: u8 = kani::any();
+        assert!(check_order(&[pos], 1));
+    }
+}

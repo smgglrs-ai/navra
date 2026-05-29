@@ -704,3 +704,123 @@ mod tests {
         assert!(matches!(decision, HookDecision::Continue));
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+    use smgglrs_protocol::label::{Confidentiality, DataLabel, Integrity};
+
+    impl kani::Arbitrary for ResultStatus {
+        fn any_array<const N: usize>() -> [Self; N] {
+            [Self::Success; N]
+        }
+
+        fn any() -> Self {
+            match kani::any::<u8>() % 3 {
+                0 => ResultStatus::Success,
+                1 => ResultStatus::Error,
+                _ => ResultStatus::Blocked,
+            }
+        }
+    }
+
+    fn arbitrary_label() -> DataLabel {
+        let integrity = if kani::any::<bool>() {
+            Integrity::Trusted
+        } else {
+            Integrity::Untrusted
+        };
+        let confidentiality = match kani::any::<u8>() % 4 {
+            0 => Confidentiality::Public,
+            1 => Confidentiality::Sensitive,
+            2 => Confidentiality::Pii,
+            _ => Confidentiality::Secret,
+        };
+        DataLabel {
+            integrity,
+            confidentiality,
+        }
+    }
+
+    #[kani::proof]
+    fn glob_wildcard_matches_all() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 3);
+        let text = match choice {
+            0 => "file_read",
+            1 => "git_status",
+            2 => "",
+            _ => "anything_else",
+        };
+        assert!(glob_match("*", text));
+    }
+
+    #[kani::proof]
+    fn glob_exact_is_equality() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 3);
+        let text = match choice {
+            0 => "file_read",
+            1 => "git_status",
+            2 => "team_message",
+            _ => "flow_start",
+        };
+        assert!(glob_match(text, text));
+    }
+
+    #[kani::proof]
+    fn sequence_limit_count_bounded() {
+        let len: u8 = kani::any();
+        kani::assume(len <= 3);
+        let mut history = Vec::new();
+        for _ in 0..len {
+            let status: ResultStatus = kani::any();
+            history.push(ActionEntry {
+                tool_name: "file_write".to_string(),
+                result_status: status,
+                ifc_label: DataLabel::TRUSTED_PUBLIC,
+                timestamp: std::time::Instant::now(),
+            });
+        }
+        let consecutive = history
+            .iter()
+            .rev()
+            .take_while(|e| glob_match("file_write", &e.tool_name))
+            .count();
+        assert!(consecutive <= history.len());
+    }
+
+    #[kani::proof]
+    fn denial_escalation_monotonic() {
+        let len: u8 = kani::any();
+        kani::assume(len <= 3);
+        let mut history = Vec::new();
+        for _ in 0..len {
+            let status: ResultStatus = kani::any();
+            history.push(ActionEntry {
+                tool_name: "any_tool".to_string(),
+                result_status: status,
+                ifc_label: DataLabel::TRUSTED_PUBLIC,
+                timestamp: std::time::Instant::now(),
+            });
+        }
+        let count_before = history
+            .iter()
+            .filter(|e| e.result_status == ResultStatus::Blocked)
+            .count();
+        history.push(ActionEntry {
+            tool_name: "blocked_tool".to_string(),
+            result_status: ResultStatus::Blocked,
+            ifc_label: DataLabel::TRUSTED_PUBLIC,
+            timestamp: std::time::Instant::now(),
+        });
+        let count_after = history
+            .iter()
+            .filter(|e| e.result_status == ResultStatus::Blocked)
+            .count();
+        assert!(
+            count_after > count_before,
+            "adding Blocked entry must increase denial count"
+        );
+    }
+}

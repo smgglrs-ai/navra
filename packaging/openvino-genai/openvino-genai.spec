@@ -1,4 +1,4 @@
-# OpenVINO GenAI 2026.1.0 spec for Fedora 44
+# OpenVINO GenAI 2026.1.2 spec for Fedora 44
 #
 # Standalone package built against installed openvino-devel.
 # Tracks the openvino.genai release cycle independently from
@@ -9,9 +9,9 @@
 #   dnf builddep openvino-genai.spec
 #   rpmbuild -ba openvino-genai.spec
 
-%global so_ver 2610
-%global genai_version 2026.1.0.0
-%global ov_version 2026.1.0
+%global so_ver 2612
+%global genai_version 2026.1.2.0
+%global ov_version 2026.1.2
 
 Name:           openvino-genai
 Version:        %{genai_version}
@@ -22,7 +22,7 @@ License:        Apache-2.0
 URL:            https://github.com/openvinotoolkit/openvino.genai
 
 Source0:        %{url}/archive/%{genai_version}/%{name}-%{genai_version}.tar.gz
-Source1:        https://github.com/openvinotoolkit/openvino_tokenizers/archive/d0dd22d077ec587f90951e77c47796138385284a/openvino_tokenizers-d0dd22d.tar.gz
+Source1:        https://github.com/openvinotoolkit/openvino_tokenizers/archive/594d8eba56195cdaaa1fc8926422f9dbcf43b24f/openvino_tokenizers-594d8eb.tar.gz
 
 # pybind11 >= 2.13 rejects keep_alive on def_readwrite/def_property.
 # Wrap in py::cpp_function as recommended by pybind11 docs.
@@ -37,7 +37,7 @@ Patch1:         genai-gguf-format-template.patch
 ExclusiveArch:  x86_64
 
 BuildRequires:  cmake >= 3.23
-%if 0%{?fedora} >= 42 || 0%{?rhel} > 10
+%if (0%{?fedora} >= 42 && 0%{?fedora} < 44) || (0%{?rhel} > 10 && 0%{?rhel} < 12)
 BuildRequires:  gcc14
 BuildRequires:  gcc14-c++
 %else
@@ -122,7 +122,7 @@ source %{_datadir}/openvino/setupvars.sh || true
 
 %cmake \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-%if 0%{?fedora} >= 42 || 0%{?rhel} > 10
+%if (0%{?fedora} >= 42 && 0%{?fedora} < 44) || (0%{?rhel} > 10 && 0%{?rhel} < 12)
     -DCMAKE_C_COMPILER=gcc-14 \
     -DCMAKE_CXX_COMPILER=g++-14 \
 %endif
@@ -186,6 +186,12 @@ print('OpenVINO GenAI imported successfully')
 # =====================================================================
 
 %changelog
+* Mon May 26 2026 Fabien Dupont <fdupont@redhat.com> - 2026.1.2.0-1
+- Update to 2026.1.2.0
+- VideoChat-Flash VLM support (backport)
+- NPM CVE fixes
+- Updated openvino_tokenizers submodule
+
 * Fri May 09 2026 Fabien Dupont <fdupont@redhat.com> - 2026.1.0.0-1
 - Initial package
 - Patches for pybind11 >= 2.13 and GCC 16 compatibility

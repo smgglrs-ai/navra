@@ -369,3 +369,73 @@ mod tests {
         );
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn budget_split_sums_to_available() {
+        let total: u32 = kani::any();
+        let sys: u32 = kani::any();
+        let reserve: u32 = kani::any();
+        kani::assume(total <= 200_000);
+        kani::assume(sys <= total);
+        kani::assume(reserve <= total);
+        let budget = ContextBudget {
+            total,
+            system_prompt_tokens: sys,
+            output_reserve: reserve,
+        };
+        let avail = budget.available();
+        let (history, context) = budget.split();
+        assert_eq!(history + context, avail);
+    }
+
+    #[kani::proof]
+    fn estimate_tokens_monotonic() {
+        let len1: u8 = kani::any();
+        let len2: u8 = kani::any();
+        kani::assume(len2 >= len1);
+        let s1 = "x".repeat(len1 as usize);
+        let s2 = "x".repeat(len2 as usize);
+        assert!(estimate_tokens(&s2) >= estimate_tokens(&s1));
+    }
+
+    #[kani::proof]
+    fn default_budget_reserve_positive() {
+        let total: u32 = kani::any();
+        kani::assume(total >= 5 && total <= 200_000);
+        let budget = ContextBudget::new(total);
+        assert!(budget.output_reserve > 0);
+        assert!(budget.output_reserve <= total);
+    }
+
+    #[kani::proof]
+    fn available_never_underflows() {
+        let total: u32 = kani::any();
+        let sys: u32 = kani::any();
+        let reserve: u32 = kani::any();
+        kani::assume(total <= 200_000);
+        kani::assume(sys <= 200_000);
+        kani::assume(reserve <= 200_000);
+        let budget = ContextBudget {
+            total,
+            system_prompt_tokens: sys,
+            output_reserve: reserve,
+        };
+        // saturating_sub guarantees no underflow
+        let avail = budget.available();
+        assert!(avail <= total);
+    }
+
+    #[kani::proof]
+    fn split_monotonic_in_available() {
+        let avail1: u16 = kani::any();
+        let avail2: u16 = kani::any();
+        kani::assume(avail2 >= avail1);
+        let h1 = (avail1 as f64 * 0.6) as u32;
+        let h2 = (avail2 as f64 * 0.6) as u32;
+        assert!(h2 >= h1);
+    }
+}

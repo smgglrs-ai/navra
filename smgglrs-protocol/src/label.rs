@@ -356,4 +356,94 @@ mod kani_proofs {
             assert!(!joined.can_write_to(target));
         }
     }
+
+    // --- Discriminant safety ---
+    // Proves that `Confidentiality as u8` and `Integrity as u8` are
+    // within bounds, so `as u8` casts in handlers.rs are lossless.
+
+    #[kani::proof]
+    fn confidentiality_discriminant_fits_u8() {
+        let c: Confidentiality = kani::any();
+        let d = c as u8;
+        assert!(d <= 3);
+        // Roundtrip: discriminant uniquely identifies the variant
+        let back = match d {
+            0 => Confidentiality::Public,
+            1 => Confidentiality::Sensitive,
+            2 => Confidentiality::Pii,
+            3 => Confidentiality::Secret,
+            _ => unreachable!(),
+        };
+        assert_eq!(c, back);
+    }
+
+    #[kani::proof]
+    fn integrity_discriminant_fits_u8() {
+        let i: Integrity = kani::any();
+        let d = i as u8;
+        assert!(d <= 1);
+    }
+
+    // --- Lattice bottom element ---
+
+    #[kani::proof]
+    fn trusted_public_is_bottom() {
+        let label: DataLabel = kani::any();
+        let bottom = DataLabel::TRUSTED_PUBLIC;
+        let joined = bottom.join(label);
+        assert_eq!(joined, label);
+    }
+
+    // --- Hash/Eq consistency ---
+
+    #[kani::proof]
+    fn hash_eq_consistent() {
+        use std::hash::{Hash, Hasher};
+        let a: DataLabel = kani::any();
+        let b: DataLabel = kani::any();
+        if a == b {
+            let mut h1 = std::collections::hash_map::DefaultHasher::new();
+            let mut h2 = std::collections::hash_map::DefaultHasher::new();
+            a.hash(&mut h1);
+            b.hash(&mut h2);
+            assert_eq!(h1.finish(), h2.finish());
+        }
+    }
+
+    // --- Display uniqueness ---
+    // Proved via discriminant uniqueness: since Display uses "{:?}+{:?}"
+    // and Debug for enums with explicit discriminants produces unique strings,
+    // distinct (integrity, confidentiality) pairs produce distinct Display output.
+    // We prove the underlying discriminant pair is unique (avoids format! OOM in CBMC).
+
+    #[kani::proof]
+    fn label_discriminant_pair_unique() {
+        let a: DataLabel = kani::any();
+        let b: DataLabel = kani::any();
+        if a != b {
+            let a_disc = (a.integrity as u8, a.confidentiality as u8);
+            let b_disc = (b.integrity as u8, b.confidentiality as u8);
+            assert_ne!(a_disc, b_disc, "distinct labels must have distinct discriminant pairs");
+        }
+    }
+
+    // --- Default is bottom ---
+
+    #[kani::proof]
+    fn default_is_bottom() {
+        assert_eq!(DataLabel::default(), DataLabel::TRUSTED_PUBLIC);
+    }
+
+    // --- Lattice top element ---
+
+    #[kani::proof]
+    fn untrusted_secret_is_top() {
+        let label: DataLabel = kani::any();
+        let top = DataLabel {
+            integrity: Integrity::Untrusted,
+            confidentiality: Confidentiality::Secret,
+        };
+        let joined = top.join(label);
+        assert_eq!(joined, top);
+    }
 }

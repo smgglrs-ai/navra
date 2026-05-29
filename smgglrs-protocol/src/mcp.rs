@@ -1839,3 +1839,60 @@ mod tests {
         assert_eq!(meta.tracestate.as_deref(), Some("k=v"));
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Pure pagination logic for Kani: given item count, offset, page_size,
+    /// return (page_len, has_next).
+    fn paginate_pure(
+        item_count: usize,
+        offset: usize,
+        page_size: usize,
+    ) -> (usize, bool) {
+        if offset >= item_count {
+            return (0, false);
+        }
+        let end = (offset + page_size).min(item_count);
+        let page_len = end - offset;
+        let has_next = end < item_count;
+        (page_len, has_next)
+    }
+
+    #[kani::proof]
+    fn paginate_offset_past_end_empty() {
+        let count: u8 = kani::any();
+        let offset: u8 = kani::any();
+        let page_size: u8 = kani::any();
+        kani::assume(count <= 20);
+        kani::assume(page_size >= 1 && page_size <= 10);
+        kani::assume(offset >= count);
+        let (page_len, has_next) = paginate_pure(count as usize, offset as usize, page_size as usize);
+        assert_eq!(page_len, 0);
+        assert!(!has_next);
+    }
+
+    #[kani::proof]
+    fn paginate_page_size_bounded() {
+        let count: u8 = kani::any();
+        let offset: u8 = kani::any();
+        let page_size: u8 = kani::any();
+        kani::assume(count <= 20);
+        kani::assume(offset <= 20);
+        kani::assume(page_size >= 1 && page_size <= 10);
+        let (page_len, _) = paginate_pure(count as usize, offset as usize, page_size as usize);
+        assert!(page_len <= page_size as usize);
+    }
+
+    #[kani::proof]
+    fn cursor_roundtrip() {
+        let offset: u8 = kani::any();
+        let encoded = encode_cursor(offset as usize);
+        let req = PaginatedRequest {
+            cursor: Some(encoded),
+        };
+        let decoded = req.decode_offset().unwrap();
+        assert_eq!(decoded, offset as usize);
+    }
+}

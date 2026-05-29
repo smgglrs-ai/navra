@@ -366,3 +366,92 @@ mod tests {
         assert!(matches!(action, AgentAction::FileRead { ref path } if path.is_empty()));
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    impl kani::Arbitrary for RiskLevel {
+        fn any_array<const N: usize>() -> [Self; N] {
+            [Self::None; N]
+        }
+
+        fn any() -> Self {
+            match kani::any::<u8>() % 5 {
+                0 => RiskLevel::None,
+                1 => RiskLevel::Low,
+                2 => RiskLevel::Medium,
+                3 => RiskLevel::High,
+                _ => RiskLevel::Critical,
+            }
+        }
+    }
+
+    fn rank(r: &RiskLevel) -> u8 {
+        match r {
+            RiskLevel::None => 0,
+            RiskLevel::Low => 1,
+            RiskLevel::Medium => 2,
+            RiskLevel::High => 3,
+            RiskLevel::Critical => 4,
+        }
+    }
+
+    /// read_only actions must have risk level None or Low.
+    #[kani::proof]
+    fn read_only_implies_low_risk() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 5);
+        let action = match choice {
+            0 => AgentAction::FileRead { path: String::new() },
+            1 => AgentAction::FileSearch { query: String::new() },
+            2 => AgentAction::GitStatus { repo: String::new() },
+            3 => AgentAction::GitDiff { repo: String::new() },
+            4 => AgentAction::RagSearch { query: String::new() },
+            _ => AgentAction::MemoryQuery { query: String::new() },
+        };
+        assert!(action.is_read_only());
+        assert!(rank(&action.risk_level()) <= rank(&RiskLevel::Low));
+    }
+
+    /// Non-read-only actions must have risk level >= Medium.
+    #[kani::proof]
+    fn write_actions_at_least_medium_risk() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 4);
+        let action = match choice {
+            0 => AgentAction::FileWrite { path: String::new() },
+            1 => AgentAction::FileDelete { path: String::new() },
+            2 => AgentAction::GitCommit { repo: String::new(), message: String::new() },
+            3 => AgentAction::FlowStart { flow: String::new() },
+            _ => AgentAction::TeamCreate { name: String::new() },
+        };
+        assert!(!action.is_read_only());
+        assert!(rank(&action.risk_level()) >= rank(&RiskLevel::Medium));
+    }
+
+    /// Every action has a defined risk level (no panic).
+    #[kani::proof]
+    fn risk_level_total() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 13);
+        let action = match choice {
+            0 => AgentAction::FileRead { path: String::new() },
+            1 => AgentAction::FileWrite { path: String::new() },
+            2 => AgentAction::FileEdit { path: String::new() },
+            3 => AgentAction::FileDelete { path: String::new() },
+            4 => AgentAction::FileSearch { query: String::new() },
+            5 => AgentAction::GitStatus { repo: String::new() },
+            6 => AgentAction::GitDiff { repo: String::new() },
+            7 => AgentAction::GitCommit { repo: String::new(), message: String::new() },
+            8 => AgentAction::RagSearch { query: String::new() },
+            9 => AgentAction::MemoryStore { kind: String::new() },
+            10 => AgentAction::MemoryQuery { query: String::new() },
+            11 => AgentAction::TeamCreate { name: String::new() },
+            12 => AgentAction::TeamMessage { team: String::new(), target: String::new() },
+            _ => AgentAction::FlowStart { flow: String::new() },
+        };
+        let r = action.risk_level();
+        assert!(rank(&r) <= 4);
+    }
+}

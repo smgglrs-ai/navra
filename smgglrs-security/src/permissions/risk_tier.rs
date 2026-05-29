@@ -121,3 +121,102 @@ mod tests {
         assert_eq!(back.auto_approve_max, RiskLevelThreshold::Low);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    impl kani::Arbitrary for RiskLevelThreshold {
+        fn any_array<const N: usize>() -> [Self; N] {
+            [Self::None; N]
+        }
+
+        fn any() -> Self {
+            match kani::any::<u8>() % 5 {
+                0 => RiskLevelThreshold::None,
+                1 => RiskLevelThreshold::Low,
+                2 => RiskLevelThreshold::Medium,
+                3 => RiskLevelThreshold::High,
+                _ => RiskLevelThreshold::Critical,
+            }
+        }
+    }
+
+    #[kani::proof]
+    fn rank_is_total_order() {
+        let a: RiskLevelThreshold = kani::any();
+        let b: RiskLevelThreshold = kani::any();
+        let c: RiskLevelThreshold = kani::any();
+        // Transitivity: a <= b && b <= c => a <= c
+        if a <= b && b <= c {
+            assert!(a <= c);
+        }
+    }
+
+    #[kani::proof]
+    fn classify_monotonic() {
+        let auto_max: RiskLevelThreshold = kani::any();
+        let approval_max: RiskLevelThreshold = kani::any();
+        kani::assume(auto_max <= approval_max);
+        let config = RiskTierConfig {
+            auto_approve_max: auto_max,
+            require_approval_max: approval_max,
+        };
+
+        let r1: RiskLevelThreshold = kani::any();
+        let r2: RiskLevelThreshold = kani::any();
+        kani::assume(r1 <= r2);
+        let t1 = config.classify(r1);
+        let t2 = config.classify(r2);
+        // Higher risk level never gets a less restrictive tier
+        let tier_rank = |t: &RiskTier| -> u8 {
+            match t {
+                RiskTier::AutoApprove => 0,
+                RiskTier::RequireApproval => 1,
+                RiskTier::HardGate => 2,
+            }
+        };
+        assert!(tier_rank(&t2) >= tier_rank(&t1));
+    }
+
+    #[kani::proof]
+    fn valid_config_auto_below_approval() {
+        let auto_max: RiskLevelThreshold = kani::any();
+        let approval_max: RiskLevelThreshold = kani::any();
+        let config = RiskTierConfig {
+            auto_approve_max: auto_max,
+            require_approval_max: approval_max,
+        };
+        assert_eq!(config.is_valid(), auto_max <= approval_max);
+    }
+
+    #[kani::proof]
+    fn default_config_is_valid() {
+        assert!(RiskTierConfig::default().is_valid());
+    }
+
+    #[kani::proof]
+    fn classify_safe_even_if_invalid() {
+        let auto_max: RiskLevelThreshold = kani::any();
+        let approval_max: RiskLevelThreshold = kani::any();
+        let risk: RiskLevelThreshold = kani::any();
+        let config = RiskTierConfig {
+            auto_approve_max: auto_max,
+            require_approval_max: approval_max,
+        };
+        // classify() never panics regardless of config validity
+        let _tier = config.classify(risk);
+    }
+
+    #[kani::proof]
+    fn all_trust_states_reachable() {
+        // Prove every TrustState variant can be produced by classify
+        let config = RiskTierConfig::default();
+        let auto = config.classify(RiskLevelThreshold::None);
+        let approval = config.classify(RiskLevelThreshold::Medium);
+        let gate = config.classify(RiskLevelThreshold::Critical);
+        assert!(matches!(auto, RiskTier::AutoApprove));
+        assert!(matches!(approval, RiskTier::RequireApproval));
+        assert!(matches!(gate, RiskTier::HardGate));
+    }
+}

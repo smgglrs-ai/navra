@@ -66,6 +66,38 @@ fn default_replacement() -> String {
     "[REDACTED]".to_string()
 }
 
+/// Check if a child sandbox action is a valid attenuation of a parent action.
+/// Extracted for Kani verification — operates on primitive types without HashMap/String.
+fn check_action_attenuation(
+    parent: &SandboxAction,
+    child: &SandboxAction,
+) -> Result<(), &'static str> {
+    if matches!(parent, SandboxAction::Simulate { .. })
+        && !matches!(child, SandboxAction::Simulate { .. })
+    {
+        return Err("weakens Simulate");
+    }
+    if let SandboxAction::RateLimit {
+        max_calls: p_max,
+        window_secs: p_win,
+    } = parent
+    {
+        if let SandboxAction::RateLimit {
+            max_calls: c_max,
+            window_secs: c_win,
+        } = child
+        {
+            if c_max > p_max {
+                return Err("escalates rate limit");
+            }
+            if c_win > p_win {
+                return Err("extends rate window");
+            }
+        }
+    }
+    Ok(())
+}
+
 impl SandboxProfile {
     /// Find the matching rule for a tool name, checking exact match first
     /// then glob patterns.
@@ -101,41 +133,13 @@ impl SandboxProfile {
                     ));
                 }
                 Some(child_rule) => {
-                    // Simulate rules cannot be weakened
-                    if matches!(parent_rule.action, SandboxAction::Simulate { .. })
-                        && !matches!(child_rule.action, SandboxAction::Simulate { .. })
-                    {
-                        return Err(format!(
-                            "sandbox attenuation error: child weakens Simulate rule for '{}'",
-                            tool_pattern
-                        ));
-                    }
-                    // RateLimit can only be tightened
-                    if let SandboxAction::RateLimit {
-                        max_calls: parent_max,
-                        window_secs: parent_window,
-                    } = &parent_rule.action
-                    {
-                        if let SandboxAction::RateLimit {
-                            max_calls: child_max,
-                            window_secs: child_window,
-                        } = &child_rule.action
-                        {
-                            if child_max > parent_max {
-                                return Err(format!(
-                                    "sandbox attenuation error: child escalates rate limit for '{}' ({} > {})",
-                                    tool_pattern, child_max, parent_max
-                                ));
-                            }
-                            if child_window > parent_window {
-                                return Err(format!(
-                                    "sandbox attenuation error: child extends rate window for '{}' ({} > {})",
-                                    tool_pattern, child_window, parent_window
-                                ));
-                            }
-                        }
-                        // Replacing RateLimit with Simulate is fine (more restrictive)
-                    }
+                    check_action_attenuation(&parent_rule.action, &child_rule.action)
+                        .map_err(|e| {
+                            format!(
+                                "sandbox attenuation error: {} for '{}'",
+                                e, tool_pattern
+                            )
+                        })?;
                 }
             }
         }
@@ -376,5 +380,85 @@ mod tests {
             },
         );
         assert!(parent.validate_attenuation(&child).is_ok());
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    fn arbitrary_action() -> SandboxAction {
+        match kani::any::<u8>() % 4 {
+            0 => SandboxAction::Simulate {
+                response: String::new(),
+            },
+            1 => SandboxAction::Redact {
+                patterns: vec![],
+                replacement: String::new(),
+            },
+            2 => SandboxAction::RateLimit {
+                max_calls: kani::any(),
+                window_secs: kani::any(),
+            },
+            _ => SandboxAction::PathRewrite {
+                strip_prefix: String::new(),
+                add_prefix: String::new(),
+            },
+        }
+    }
+
+    #[kani::proof]
+    fn simulate_weakening_rejected() {
+        let parent = SandboxAction::Simulate {
+            response: String::new(),
+        };
+        let child = arbitrary_action();
+        if !matches!(child, SandboxAction::Simulate { .. }) {
+            assert!(check_action_attenuation(&parent, &child).is_err());
+        }
+    }
+
+    #[kani::proof]
+    fn rate_limit_escalation_rejected() {
+        let p_max: u32 = kani::any();
+        let p_win: u64 = kani::any();
+        let c_max: u32 = kani::any();
+        let c_win: u64 = kani::any();
+        kani::assume(p_max <= 100);
+        kani::assume(p_win <= 3600);
+        kani::assume(c_max <= 100);
+        kani::assume(c_win <= 3600);
+        let parent = SandboxAction::RateLimit { max_calls: p_max, window_secs: p_win };
+        let child = SandboxAction::RateLimit { max_calls: c_max, window_secs: c_win };
+        let result = check_action_attenuation(&parent, &child);
+        if c_max > p_max || c_win > p_win {
+            assert!(result.is_err());
+        }
+    }
+
+    #[kani::proof]
+    fn rate_limit_tightening_accepted() {
+        let p_max: u32 = kani::any();
+        let p_win: u64 = kani::any();
+        let c_max: u32 = kani::any();
+        let c_win: u64 = kani::any();
+        kani::assume(p_max <= 100);
+        kani::assume(p_win <= 3600);
+        kani::assume(c_max <= p_max);
+        kani::assume(c_win <= p_win);
+        let parent = SandboxAction::RateLimit { max_calls: p_max, window_secs: p_win };
+        let child = SandboxAction::RateLimit { max_calls: c_max, window_secs: c_win };
+        assert!(check_action_attenuation(&parent, &child).is_ok());
+    }
+
+    #[kani::proof]
+    fn non_simulate_parent_any_child_accepted() {
+        let parent = arbitrary_action();
+        let child = arbitrary_action();
+        if !matches!(parent, SandboxAction::Simulate { .. })
+            && !matches!(parent, SandboxAction::RateLimit { .. })
+        {
+            assert!(check_action_attenuation(&parent, &child).is_ok());
+        }
     }
 }

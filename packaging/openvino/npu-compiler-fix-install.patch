@@ -1,10 +1,9 @@
---- a/src/vpux_driver_compiler/CMakeLists.txt
-+++ b/src/vpux_driver_compiler/CMakeLists.txt
-@@ -31,14 +31,3 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-
+--- a/src/vpux_driver_compiler/CMakeLists.txt	2026-05-27 14:18:10.661637022 +0200
++++ b/src/vpux_driver_compiler/CMakeLists.txt	2026-05-27 14:18:10.662144001 +0200
+@@ -30,14 +30,3 @@
  add_subdirectory(src)
  add_subdirectory(test)
--
+ 
 -install(
 -    FILES
 -        "${PROJECT_SOURCE_DIR}/src/vpux_driver_compiler/CHANGES.txt"

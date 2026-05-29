@@ -230,3 +230,54 @@ mod tests {
         assert_eq!(strategy.max_retries, 3);
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    fn arbitrary_failure_type() -> FailureType {
+        match kani::any::<u8>() % 6 {
+            0 => FailureType::CircularFix,
+            1 => FailureType::EmptyOutput,
+            2 => FailureType::ValidationFailed,
+            3 => FailureType::MaxIterations,
+            4 => FailureType::AgentError,
+            _ => FailureType::Unknown,
+        }
+    }
+
+    /// Every failure type has a bounded recovery strategy.
+    #[kani::proof]
+    fn all_failures_have_bounded_retries() {
+        let ft = arbitrary_failure_type();
+        let strategy = get_strategy(&ft);
+        assert!(strategy.max_retries <= 3);
+    }
+
+    /// CircularFix always maps to Skip with 0 retries (never retry a loop).
+    #[kani::proof]
+    fn circular_fix_never_retries() {
+        let strategy = get_strategy(&FailureType::CircularFix);
+        assert_eq!(strategy.action, RecoveryAction::Skip);
+        assert_eq!(strategy.max_retries, 0);
+    }
+
+    /// Circular fix detection requires at least `threshold` attempts.
+    #[kani::proof]
+    fn circular_fix_requires_threshold() {
+        let threshold: u8 = kani::any();
+        kani::assume(threshold >= 2 && threshold <= 5);
+        let count: u8 = kani::any();
+        kani::assume(count < threshold);
+        // Build attempts shorter than threshold
+        let mut attempts = Vec::new();
+        for _ in 0..count {
+            attempts.push(Attempt {
+                error: String::new(),
+                error_type: "same_error".to_string(),
+                output: String::new(),
+            });
+        }
+        assert!(!detect_circular_fix(&attempts, threshold as usize));
+    }
+}

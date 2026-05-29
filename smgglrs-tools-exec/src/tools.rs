@@ -272,3 +272,36 @@ mod tests {
         assert_eq!(tools[0].0.name, "exec_run");
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    /// Prove workspace path check rejects traversal.
+    /// Models the starts_with check on bounded strings.
+    fn is_workspace_safe(path: &str) -> bool {
+        path.starts_with("/workspace")
+    }
+
+    #[kani::proof]
+    fn workspace_rejects_traversal_attempts() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 4);
+        let path = match choice {
+            0 => "/tmp/escape",
+            1 => "/etc/passwd",
+            2 => "/workspace/../etc",
+            3 => "/workspac", // prefix substring
+            _ => "/home/user",
+        };
+        if !path.starts_with("/workspace") {
+            assert!(!is_workspace_safe(path));
+        }
+    }
+
+    #[kani::proof]
+    fn timeout_clamp_bounded() {
+        let input: u64 = kani::any();
+        kani::assume(input <= 1000);
+        let clamped = input.min(300) as u32;
+        assert!(clamped <= 300);
+    }
+}

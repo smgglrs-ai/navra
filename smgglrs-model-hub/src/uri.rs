@@ -184,3 +184,71 @@ mod tests {
         assert!(key.starts_with("hf_"));
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    impl kani::Arbitrary for Registry {
+        fn any_array<const N: usize>() -> [Self; N] {
+            [Self::Ollama; N]
+        }
+
+        fn any() -> Self {
+            match kani::any::<u8>() % 4 {
+                0 => Registry::Ollama,
+                1 => Registry::HuggingFace,
+                2 => Registry::Oci,
+                _ => Registry::File,
+            }
+        }
+    }
+
+    #[kani::proof]
+    fn cache_key_no_slashes_or_colons() {
+        let registry: Registry = kani::any();
+        let uri = ModelUri {
+            registry,
+            path: "a/b:c".to_string(),
+        };
+        let key = uri.cache_key();
+        assert!(!key.contains('/'));
+        assert!(!key.contains(':'));
+    }
+
+    #[kani::proof]
+    fn display_roundtrip_all_registries() {
+        let registry: Registry = kani::any();
+        let uri = ModelUri {
+            registry: registry.clone(),
+            path: "test/path".to_string(),
+        };
+        let displayed = uri.to_string();
+        let parsed = ModelUri::parse(&displayed).unwrap();
+        assert_eq!(parsed.registry, registry);
+        assert_eq!(parsed.path, "test/path");
+    }
+
+    #[kani::proof]
+    fn cache_key_distinct_for_different_registries() {
+        let r1: Registry = kani::any();
+        let r2: Registry = kani::any();
+        kani::assume(r1 != r2);
+        let u1 = ModelUri {
+            registry: r1,
+            path: "same/path".to_string(),
+        };
+        let u2 = ModelUri {
+            registry: r2,
+            path: "same/path".to_string(),
+        };
+        assert_ne!(u1.cache_key(), u2.cache_key());
+    }
+
+    #[kani::proof]
+    fn bare_name_defaults_to_ollama() {
+        let uri = ModelUri::parse("granite-code:3b").unwrap();
+        assert_eq!(uri.registry, Registry::Ollama);
+        assert_eq!(uri.path, "granite-code:3b");
+    }
+}

@@ -1,5 +1,5 @@
---- a/src/plugins/intel_npu/thirdparty/CMakeLists.txt	2025-04-22 08:56:17.128557002 +0300
-+++ b/src/plugins/intel_npu/thirdparty/CMakeLists.txt	2025-04-22 08:56:27.085760995 +0300
+--- a/src/plugins/intel_npu/thirdparty/CMakeLists.txt	2026-05-27 14:09:43.588163278 +0200
++++ b/src/plugins/intel_npu/thirdparty/CMakeLists.txt	2026-05-27 14:09:43.589285645 +0200
 @@ -11,16 +11,3 @@
      set_property(TARGET level-zero-ext APPEND PROPERTY INTERFACE_INCLUDE_DIRECTORIES $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/level-zero-ext/>)
      add_library(LevelZero::NPUExt ALIAS level-zero-ext)
@@ -17,103 +17,9 @@
 -        target_compile_options(yaml-cpp PRIVATE -Wno-suggest-override)
 -    endif()
 -endif()
---- a/src/plugins/intel_npu/tools/compile_tool/CMakeLists.txt	2025-04-22 08:56:52.338766209 +0300
-+++ b/src/plugins/intel_npu/tools/compile_tool/CMakeLists.txt	2025-04-22 08:57:28.380471138 +0300
-@@ -45,13 +45,6 @@
- #
- 
- install(TARGETS ${TARGET_NAME}
--        RUNTIME DESTINATION "tools/${TARGET_NAME}"
-+        RUNTIME DESTINATION "bin"
-         COMPONENT ${NPU_INTERNAL_COMPONENT}
-         ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
--
--if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
--    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
--            DESTINATION "tools/${TARGET_NAME}"
--            COMPONENT ${NPU_INTERNAL_COMPONENT}
--            ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
--endif()
---- a/src/plugins/intel_npu/tools/protopipe/CMakeLists.txt	2025-04-22 08:57:42.031656000 +0300
-+++ b/src/plugins/intel_npu/tools/protopipe/CMakeLists.txt	2025-04-22 08:58:18.596665997 +0300
-@@ -64,13 +64,6 @@
- #
- 
- install(TARGETS ${TARGET_NAME}
--        RUNTIME DESTINATION "tools/${TARGET_NAME}"
-+        RUNTIME DESTINATION "bin/${TARGET_NAME}"
-         COMPONENT ${NPU_INTERNAL_COMPONENT}
-         ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
--
--if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
--    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
--            DESTINATION "tools/${TARGET_NAME}"
--            COMPONENT ${NPU_INTERNAL_COMPONENT}
--            ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
--endif()
---- a/src/plugins/intel_npu/tools/single-image-test/CMakeLists.txt	2025-04-22 08:58:29.092032832 +0300
-+++ b/src/plugins/intel_npu/tools/single-image-test/CMakeLists.txt	2025-04-22 08:58:55.051015815 +0300
-@@ -67,13 +67,6 @@
- #
- 
- install(TARGETS ${TARGET_NAME}
--        RUNTIME DESTINATION "tools/${TARGET_NAME}"
-+        RUNTIME DESTINATION "bin/${TARGET_NAME}"
-         COMPONENT ${NPU_INTERNAL_COMPONENT}
-         ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
--
--if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
--    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
--            DESTINATION "tools/${TARGET_NAME}"
--            COMPONENT ${NPU_INTERNAL_COMPONENT}
--            ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
--endif()
---- a/src/plugins/intel_npu/src/backend/include/zero_memory.hpp	2025-04-22 09:05:56.846233909 +0300
-+++ b/src/plugins/intel_npu/src/backend/include/zero_memory.hpp	2025-04-22 09:06:16.087659601 +0300
-@@ -5,7 +5,7 @@
- #pragma once
- 
- #include <ze_api.h>
--#include <ze_graph_ext.h>
-+#include "ze_graph_ext.h"
- 
- #include <map>
- #include <string>
---- a/src/plugins/intel_npu/src/backend/src/zero_pipeline.cpp	2025-04-22 09:07:43.393381649 +0300
-+++ b/src/plugins/intel_npu/src/backend/src/zero_pipeline.cpp	2025-04-22 09:07:56.183659457 +0300
-@@ -5,7 +5,7 @@
- #include "zero_pipeline.hpp"
- 
- #include <ze_api.h>
--#include <ze_graph_ext.h>
-+#include "ze_graph_ext.h"
- 
- #include "intel_npu/common/itt.hpp"
- #include "intel_npu/config/runtime.hpp"
---- a/src/plugins/intel_npu/src/backend/src/zero_profiling.cpp	2025-04-22 09:08:57.774124447 +0300
-+++ b/src/plugins/intel_npu/src/backend/src/zero_profiling.cpp	2025-04-22 09:09:12.295471482 +0300
-@@ -4,7 +4,7 @@
- 
- #include "zero_profiling.hpp"
- 
--#include <ze_graph_profiling_ext.h>
-+#include "ze_graph_profiling_ext.h"
- 
- #include "intel_npu/config/compiler.hpp"
- #include "intel_npu/profiling.hpp"
---- a/src/plugins/intel_npu/src/backend/include/zero_infer_request.hpp	2025-04-22 09:10:24.837226950 +0300
-+++ b/src/plugins/intel_npu/src/backend/include/zero_infer_request.hpp	2025-04-22 09:10:41.016084607 +0300
-@@ -5,7 +5,7 @@
- #pragma once
- 
- #include <ze_api.h>
--#include <ze_graph_ext.h>
-+#include "ze_graph_ext.h"
- 
- #include "intel_npu/common/npu.hpp"
- #include "intel_npu/common/sync_infer_request.hpp"
---- a/src/plugins/intel_npu/src/backend/include/zero_device.hpp	2025-04-22 09:11:34.924583352 +0300
-+++ b/src/plugins/intel_npu/src/backend/include/zero_device.hpp	2025-04-22 09:12:49.755738068 +0300
+diff -ruN a/src/plugins/intel_npu/src/backend/include/zero_device.hpp b/src/plugins/intel_npu/src/backend/include/zero_device.hpp
+--- a/src/plugins/intel_npu/src/backend/include/zero_device.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/backend/include/zero_device.hpp	2026-05-27 10:39:45.154721517 +0200
 @@ -5,7 +5,7 @@
  #pragma once
  
@@ -123,23 +29,9 @@
  
  #include "intel_npu/common/icompiled_model.hpp"
  #include "intel_npu/common/npu.hpp"
---- a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_init.hpp	2025-04-22 08:54:18.123636777 +0300
-+++ b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_init.hpp	2025-04-22 08:54:44.392999512 +0300
-@@ -5,9 +5,9 @@
- #pragma once
- 
- #include <ze_api.h>
--#include <ze_command_queue_npu_ext.h>
--#include <ze_graph_ext.h>
--#include <ze_intel_npu_uuid.h>
-+#include "ze_command_queue_npu_ext.h"
-+#include "ze_graph_ext.h"
-+#include "ze_intel_npu_uuid.h"
- 
- #include <memory>
- 
---- a/src/plugins/intel_npu/src/compiler_adapter/include/ze_graph_ext_wrappers.hpp	2025-04-22 09:15:19.821223694 +0300
-+++ b/src/plugins/intel_npu/src/compiler_adapter/include/ze_graph_ext_wrappers.hpp	2025-04-22 09:15:30.186617303 +0300
+diff -ruN a/src/plugins/intel_npu/src/backend/include/zero_infer_request.hpp b/src/plugins/intel_npu/src/backend/include/zero_infer_request.hpp
+--- a/src/plugins/intel_npu/src/backend/include/zero_infer_request.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/backend/include/zero_infer_request.hpp	2026-05-27 10:39:45.159127013 +0200
 @@ -5,7 +5,7 @@
  #pragma once
  
@@ -147,25 +39,139 @@
 -#include <ze_graph_ext.h>
 +#include "ze_graph_ext.h"
  
- #include <type_traits>
- #include <utility>
---- a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_types.hpp	2025-04-22 09:16:54.687791603 +0300
-+++ b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_types.hpp	2025-04-22 09:17:15.958572870 +0300
-@@ -5,9 +5,9 @@
+ #include "intel_npu/common/npu.hpp"
+ #include "intel_npu/common/sync_infer_request.hpp"
+diff -ruN a/src/plugins/intel_npu/src/backend/include/zero_profiling.hpp b/src/plugins/intel_npu/src/backend/include/zero_profiling.hpp
+--- a/src/plugins/intel_npu/src/backend/include/zero_profiling.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/backend/include/zero_profiling.hpp	2026-05-27 10:39:45.161695795 +0200
+@@ -5,7 +5,7 @@
+ #pragma once
+ 
+ #include <ze_api.h>
+-#include <ze_graph_ext.h>
++#include "ze_graph_ext.h"
+ 
+ #include <climits>
+ #include <map>
+diff -ruN a/src/plugins/intel_npu/src/backend/src/zero_dynamic_pipeline.cpp b/src/plugins/intel_npu/src/backend/src/zero_dynamic_pipeline.cpp
+--- a/src/plugins/intel_npu/src/backend/src/zero_dynamic_pipeline.cpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/backend/src/zero_dynamic_pipeline.cpp	2026-05-27 10:39:45.167462244 +0200
+@@ -5,7 +5,7 @@
+ #include "zero_dynamic_pipeline.hpp"
+ 
+ #include <ze_api.h>
+-#include <ze_graph_ext.h>
++#include "ze_graph_ext.h"
+ 
+ #include <sstream>
+ 
+diff -ruN a/src/plugins/intel_npu/src/backend/src/zero_pipeline.cpp b/src/plugins/intel_npu/src/backend/src/zero_pipeline.cpp
+--- a/src/plugins/intel_npu/src/backend/src/zero_pipeline.cpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/backend/src/zero_pipeline.cpp	2026-05-27 10:39:45.172043635 +0200
+@@ -5,7 +5,7 @@
+ #include "zero_pipeline.hpp"
+ 
+ #include <ze_api.h>
+-#include <ze_graph_ext.h>
++#include "ze_graph_ext.h"
+ 
+ #include "intel_npu/common/itt.hpp"
+ #include "intel_npu/config/options.hpp"
+diff -ruN a/src/plugins/intel_npu/src/backend/src/zero_profiling.cpp b/src/plugins/intel_npu/src/backend/src/zero_profiling.cpp
+--- a/src/plugins/intel_npu/src/backend/src/zero_profiling.cpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/backend/src/zero_profiling.cpp	2026-05-27 10:39:45.173730423 +0200
+@@ -4,7 +4,7 @@
+ 
+ #include "zero_profiling.hpp"
+ 
+-#include <ze_graph_profiling_ext.h>
++#include "ze_graph_profiling_ext.h"
+ 
+ #include "intel_npu/config/options.hpp"
+ #include "intel_npu/profiling.hpp"
+diff -ruN a/src/plugins/intel_npu/src/compiler_adapter/include/dynamic_graph.hpp b/src/plugins/intel_npu/src/compiler_adapter/include/dynamic_graph.hpp
+--- a/src/plugins/intel_npu/src/compiler_adapter/include/dynamic_graph.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/compiler_adapter/include/dynamic_graph.hpp	2026-05-27 10:39:45.188524440 +0200
+@@ -4,7 +4,7 @@
+ 
+ #pragma once
+ 
+-#include <ze_graph_ext.h>
++#include "ze_graph_ext.h"
+ 
+ #include "intel_npu/common/idynamic_graph.hpp"
+ #include "intel_npu/network_metadata.hpp"
+diff -ruN a/src/plugins/intel_npu/src/compiler_adapter/include/graph.hpp b/src/plugins/intel_npu/src/compiler_adapter/include/graph.hpp
+--- a/src/plugins/intel_npu/src/compiler_adapter/include/graph.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/compiler_adapter/include/graph.hpp	2026-05-27 10:39:45.190078177 +0200
+@@ -6,7 +6,7 @@
+ 
+ #pragma once
+ 
+-#include <ze_graph_ext.h>
++#include "ze_graph_ext.h"
+ 
+ #include "intel_npu/common/igraph.hpp"
+ #include "intel_npu/utils/zero/zero_init.hpp"
+diff -ruN a/src/plugins/intel_npu/src/compiler_adapter/include/model_serializer.hpp b/src/plugins/intel_npu/src/compiler_adapter/include/model_serializer.hpp
+--- a/src/plugins/intel_npu/src/compiler_adapter/include/model_serializer.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/compiler_adapter/include/model_serializer.hpp	2026-05-27 10:39:45.193086181 +0200
+@@ -3,7 +3,7 @@
+ //
+ 
+ #pragma once
+-#include <ze_graph_ext.h>
++#include "ze_graph_ext.h"
+ 
+ #include <functional>
+ #include <iostream>
+diff -ruN a/src/plugins/intel_npu/src/compiler_adapter/include/ze_graph_ext_wrappers.hpp b/src/plugins/intel_npu/src/compiler_adapter/include/ze_graph_ext_wrappers.hpp
+--- a/src/plugins/intel_npu/src/compiler_adapter/include/ze_graph_ext_wrappers.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/compiler_adapter/include/ze_graph_ext_wrappers.hpp	2026-05-27 10:39:45.202579035 +0200
+@@ -5,7 +5,7 @@
+ #pragma once
+ 
+ #include <ze_api.h>
+-#include <ze_graph_ext.h>
++#include "ze_graph_ext.h"
+ 
+ #include <memory>
+ #include <optional>
+diff -ruN a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_init.hpp b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_init.hpp
+--- a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_init.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_init.hpp	2026-05-27 10:39:45.515131632 +0200
+@@ -4,7 +4,7 @@
+ 
+ #pragma once
+ 
+-#include <ze_intel_npu_uuid.h>
++#include "ze_intel_npu_uuid.h"
+ 
+ #include <memory>
+ #include <mutex>
+diff -ruN a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_types.hpp b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_types.hpp
+--- a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_types.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_types.hpp	2026-05-27 10:39:45.524690094 +0200
+@@ -5,11 +5,11 @@
  #pragma once
  
  #include <ze_api.h>
 -#include <ze_command_queue_npu_ext.h>
+-#include <ze_context_npu_ext.h>
+-#include <ze_driver_npu_ext.h>
 -#include <ze_graph_ext.h>
 -#include <ze_graph_profiling_ext.h>
 +#include "ze_command_queue_npu_ext.h"
++#include "ze_context_npu_ext.h"
++#include "ze_driver_npu_ext.h"
 +#include "ze_graph_ext.h"
 +#include "ze_graph_profiling_ext.h"
  
  #include <string_view>
  
---- a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_utils.hpp	2025-04-22 09:18:29.594493912 +0300
-+++ b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_utils.hpp	2025-04-22 09:18:42.216166698 +0300
+diff -ruN a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_utils.hpp b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_utils.hpp
+--- a/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_utils.hpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/utils/include/intel_npu/utils/zero/zero_utils.hpp	2026-05-27 10:39:45.526579739 +0200
 @@ -6,7 +6,7 @@
  
  #include <limits.h>
@@ -173,38 +179,59 @@
 -#include <ze_graph_ext.h>
 +#include "ze_graph_ext.h"
  
- #include "intel_npu/utils/logger/logger.hpp"
- #include "intel_npu/utils/zero/zero_api.hpp"
---- a/src/plugins/intel_npu/src/compiler_adapter/include/plugin_graph.hpp	2025-04-22 09:23:42.150544550 +0300
-+++ b/src/plugins/intel_npu/src/compiler_adapter/include/plugin_graph.hpp	2025-04-22 09:24:26.961320914 +0300
-@@ -6,7 +6,7 @@
+ #include <optional>
  
- #pragma once
- 
--#include <ze_graph_ext.h>
-+#include "ze_graph_ext.h"
- 
- #include "intel_npu/common/igraph.hpp"
- #include "intel_npu/icompiler.hpp"
---- a/src/plugins/intel_npu/src/compiler_adapter/include/driver_graph.hpp	2025-04-22 09:26:36.769713083 +0300
-+++ b/src/plugins/intel_npu/src/compiler_adapter/include/driver_graph.hpp	2025-04-22 09:27:38.382076030 +0300
-@@ -6,7 +6,7 @@
- 
- #pragma once
- 
--#include <ze_graph_ext.h>
-+#include "ze_graph_ext.h"
- 
- #include "intel_npu/common/igraph.hpp"
- #include "intel_npu/utils/zero/zero_init.hpp"
---- a/src/plugins/intel_npu/src/utils/src/zero/zero_init.cpp	2025-04-22 09:28:33.202081565 +0300
-+++ b/src/plugins/intel_npu/src/utils/src/zero/zero_init.cpp	2025-04-22 09:31:04.864198534 +0300
-@@ -4,7 +4,7 @@
+diff -ruN a/src/plugins/intel_npu/src/utils/src/zero/zero_init.cpp b/src/plugins/intel_npu/src/utils/src/zero/zero_init.cpp
+--- a/src/plugins/intel_npu/src/utils/src/zero/zero_init.cpp	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/src/utils/src/zero/zero_init.cpp	2026-05-27 10:39:45.494459917 +0200
+@@ -4,10 +4,10 @@
  
  #include "intel_npu/utils/zero/zero_init.hpp"
  
 -#include <ze_command_queue_npu_ext.h>
+-#include <ze_context_npu_ext.h>
+-#include <ze_driver_npu_ext.h>
+-#include <ze_graph_ext.h>
 +#include "ze_command_queue_npu_ext.h"
++#include "ze_context_npu_ext.h"
++#include "ze_driver_npu_ext.h"
++#include "ze_graph_ext.h"
  
  #include <regex>
  
+diff -ruN a/src/plugins/intel_npu/tools/protopipe/CMakeLists.txt b/src/plugins/intel_npu/tools/protopipe/CMakeLists.txt
+--- a/src/plugins/intel_npu/tools/protopipe/CMakeLists.txt	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/tools/protopipe/CMakeLists.txt	2026-05-27 10:39:45.596362715 +0200
+@@ -79,13 +79,7 @@
+ #
+ 
+ install(TARGETS ${TARGET_NAME}
+-        RUNTIME DESTINATION "tools/${TARGET_NAME}"
++        RUNTIME DESTINATION "bin/${TARGET_NAME}"
+         COMPONENT ${NPU_INTERNAL_COMPONENT}
+         ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
+ 
+-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+-            DESTINATION "tools/${TARGET_NAME}"
+-            COMPONENT ${NPU_INTERNAL_COMPONENT}
+-            ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
+-endif()
+diff -ruN a/src/plugins/intel_npu/tools/single-image-test/CMakeLists.txt b/src/plugins/intel_npu/tools/single-image-test/CMakeLists.txt
+--- a/src/plugins/intel_npu/tools/single-image-test/CMakeLists.txt	2026-04-13 16:11:19.000000000 +0200
++++ b/src/plugins/intel_npu/tools/single-image-test/CMakeLists.txt	2026-05-27 10:39:45.598891978 +0200
+@@ -66,13 +66,7 @@
+ #
+ 
+ install(TARGETS ${TARGET_NAME}
+-        RUNTIME DESTINATION "tools/${TARGET_NAME}"
++        RUNTIME DESTINATION "bin/${TARGET_NAME}"
+         COMPONENT ${NPU_INTERNAL_COMPONENT}
+         ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
+ 
+-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+-    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+-            DESTINATION "tools/${TARGET_NAME}"
+-            COMPONENT ${NPU_INTERNAL_COMPONENT}
+-            ${OV_CPACK_COMP_NPU_INTERNAL_EXCLUDE_ALL})
+-endif()

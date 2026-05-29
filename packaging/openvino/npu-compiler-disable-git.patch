@@ -1,8 +1,9 @@
---- a/cmake/compiler_commit_hash.cmake
-+++ b/cmake/compiler_commit_hash.cmake
-@@ -4,14 +4,8 @@
+--- a/cmake/compiler_commit_hash.cmake	2026-05-27 10:57:21.792420552 +0200
++++ cmake/compiler_commit_hash.cmake	2026-05-27 10:57:21.795080776 +0200
+@@ -3,18 +3,9 @@
+ # SPDX-License-Identifier: Apache-2.0
  #
-
+ 
 -execute_process(
 -    COMMAND
 -        git rev-parse HEAD
@@ -11,12 +12,12 @@
 -    OUTPUT_STRIP_TRAILING_WHITESPACE
 -    RESULT_VARIABLE ERROR_CODE
 -)
--
++# RPM build: no .git directory available
++set(CURRENT_COMMIT_HASH "npu_ud_2026_20_rc1")
+ 
 -if (NOT ${ERROR_CODE} EQUAL 0)
 -    message(FATAL_ERROR "Failed to capture compiler git commit.")
 -endif()
-+# RPM build: no .git directory available
-+set(CURRENT_COMMIT_HASH "npu_ud_2026_12_1_rc1")
-
+ 
  set(LAST_COMMIT_HASH "")
  if (EXISTS ${COMMIT_HASH_CACHE})
