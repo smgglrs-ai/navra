@@ -154,6 +154,8 @@ mod tests {
                     required: None,
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             },
             ToolDefinition {
                 name: "git_status".to_string(),
@@ -164,6 +166,8 @@ mod tests {
                     required: None,
                 },
                 annotations: None,
+                ttl_ms: None,
+                cache_scope: None,
             },
         ]
     }
