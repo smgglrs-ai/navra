@@ -312,7 +312,7 @@ impl ChunkStore {
     }
 
     /// Full-text search using FTS5 BM25 ranking.
-    fn search_fts(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<ChunkResult>> {
+    pub(crate) fn search_fts(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<ChunkResult>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT c.path, c.content, c.chunk_index, rank \
