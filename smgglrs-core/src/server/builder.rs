@@ -40,6 +40,7 @@ pub struct McpServerBuilder {
     #[cfg(feature = "cedar")]
     cedar_engine: Option<smgglrs_security::permissions::CedarEngine>,
     tool_disclosure: HashMap<String, smgglrs_security::permissions::ToolDisclosure>,
+    dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
 }
 
 impl McpServerBuilder {
@@ -67,6 +68,7 @@ impl McpServerBuilder {
             #[cfg(feature = "cedar")]
             cedar_engine: None,
             tool_disclosure: HashMap::new(),
+            dynamic_filters: Vec::new(),
         }
     }
 
@@ -301,6 +303,16 @@ impl McpServerBuilder {
     ) -> Self {
         self.tool_disclosure
             .insert(permission_set.into(), disclosure);
+        self
+    }
+
+    /// Add a dynamic tool filter.
+    ///
+    /// Dynamic filters run during `handle_list_tools_dynamic()` after
+    /// static disclosure rules. They can hide tools based on runtime
+    /// state such as session taint or quota.
+    pub fn tool_filter(mut self, filter: impl super::ToolFilter + 'static) -> Self {
+        self.dynamic_filters.push(Box::new(filter));
         self
     }
 
@@ -815,6 +827,7 @@ impl McpServerBuilder {
             #[cfg(feature = "cedar")]
             cedar_engine: self.cedar_engine,
             tool_disclosure: self.tool_disclosure,
+            dynamic_filters: self.dynamic_filters,
             resource_subscriptions: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
