@@ -296,11 +296,12 @@ fn bench_tree_depth(c: &mut Criterion) {
 
 fn bench_scale(c: &mut Criterion) {
     let mut group = c.benchmark_group("scale");
-    group.sample_size(10);
     let base_ts: i64 = 1700000000;
 
     // --- Write benchmarks ---
-    for count in [1000, 10000, 100000, 1000000] {
+    for count in [1000, 10000, 100000] {
+        // 2 samples for >=100K to avoid thermal throttling (~4 min instead of 40)
+        group.sample_size(if count >= 100000 { 2 } else { 10 });
         group.bench_with_input(
             BenchmarkId::new("tt_batch_b64", count),
             &count,
@@ -342,7 +343,9 @@ fn bench_scale(c: &mut Criterion) {
     }
 
     // --- Query benchmarks at scale (pre-populate once, bench queries) ---
-    for count in [1000, 10000, 100000, 1000000] {
+    // Skip 1M — pre-population takes 163s per benchmark group
+    for count in [1000, 10000, 100000] {
+        group.sample_size(10);
         // Pre-populate temporal tree via batch insert
         let tt = TemporalTree::open_memory().unwrap();
         let facts: Vec<(String, i64)> = (0..count)
