@@ -4,6 +4,8 @@
 //! categories before exposing them to agents. Called during
 //! `UpstreamModule::discover()`.
 
+use crate::identity::CapSigner;
+use crate::manifest::{ManifestKeyStore, ManifestSignature, ToolManifest, verify_manifest_option};
 use sha2::{Digest, Sha256};
 use smgglrs_protocol::ToolDefinition;
 use std::collections::HashMap;
@@ -20,6 +22,7 @@ pub struct ToolScanResult {
     pub tool_name: String,
     pub verdict: ScanVerdict,
     pub findings: Vec<ToolFinding>,
+    pub manifest_verified: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,9 +130,20 @@ impl ToolScanner {
                     tool_name: tool.name.clone(),
                     verdict,
                     findings,
+                    manifest_verified: None,
                 }
             })
             .collect()
+    }
+
+    pub fn verify_manifest(
+        &self,
+        manifest: &ToolManifest,
+        signature: Option<&ManifestSignature>,
+        key_store: &mut ManifestKeyStore,
+        signer: &dyn CapSigner,
+    ) -> Option<bool> {
+        verify_manifest_option(manifest, signature, key_store, signer)
     }
 
     fn check_rug_pull(&mut self, upstream_name: &str, tool: &ToolDefinition) -> Vec<ToolFinding> {

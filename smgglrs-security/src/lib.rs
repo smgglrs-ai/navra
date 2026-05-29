@@ -18,6 +18,7 @@ pub mod credentials;
 pub mod hooks;
 pub mod identity;
 pub mod ifc;
+pub mod manifest;
 pub mod integrity_monitor;
 pub mod notify;
 pub mod permissions;
