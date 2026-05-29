@@ -418,6 +418,11 @@ impl McpServer {
                         .complete_call(&ctx.agent.name, &params.name);
                     return CallToolResult::error(reason);
                 }
+                crate::hooks::PreHookOutcome::Pending { request_id, reason } => {
+                    return CallToolResult::error(format!(
+                        "Pending approval {request_id}: {reason}"
+                    ));
+                }
             }
         } else {
             resolved.arguments
