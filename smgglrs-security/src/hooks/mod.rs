@@ -5,6 +5,7 @@
 //! can modify results. Safety filtering is implemented as a built-in
 //! post-hook.
 
+pub mod approval_gate;
 mod budget;
 pub mod egress;
 pub mod field_filter;
@@ -19,6 +20,7 @@ pub mod statistical;
 pub mod temporal_contract;
 mod tool_guard;
 
+pub use approval_gate::{ApprovalGateConfig, ApprovalGateHook, ApprovalStatus, PendingApproval};
 pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
 pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
@@ -52,6 +54,8 @@ pub enum HookDecision {
     Block(String),
     /// Short-circuit: return a simulated result without executing the tool (pre-hook only).
     Simulate(CallToolResult),
+    /// Suspend execution pending human approval (pre-hook only).
+    Pending(String),
 }
 
 /// Outcome of running pre-hooks through the pipeline.
@@ -67,6 +71,11 @@ pub enum PreHookOutcome {
     Simulated(CallToolResult),
     /// Block execution and return this error message.
     Blocked(String),
+    /// Awaiting human approval before proceeding.
+    Pending {
+        request_id: String,
+        reason: String,
+    },
 }
 
 /// Trait for hook implementations.

@@ -42,7 +42,7 @@ impl HookPipeline {
     ///
     /// Returns a `PreHookOutcome` indicating whether to proceed with
     /// (possibly modified) arguments, short-circuit with a simulated
-    /// result, or block execution.
+    /// result, block execution, or pause pending approval.
     pub async fn run_pre(
         &self,
         tool_name: &str,
@@ -88,6 +88,22 @@ impl HookPipeline {
                         "Pre-hook simulated tool result (skipping handler)"
                     );
                     return PreHookOutcome::Simulated(result);
+                }
+                HookDecision::Pending(id) => {
+                    tracing::info!(
+                        hook = hook.name(),
+                        tool = tool_name,
+                        request_id = %id,
+                        "Pre-hook suspended execution pending approval"
+                    );
+                    return PreHookOutcome::Pending {
+                        request_id: id.clone(),
+                        reason: format!(
+                            "hook '{}' requires approval for '{}'",
+                            hook.name(),
+                            tool_name
+                        ),
+                    };
                 }
                 HookDecision::ModifyResult(_) => {
                     tracing::warn!(
@@ -157,6 +173,13 @@ impl HookPipeline {
                         hook = hook.name(),
                         tool = tool_name,
                         "Post-hook returned Simulate (ignored in post-phase)"
+                    );
+                }
+                HookDecision::Pending(_) => {
+                    tracing::warn!(
+                        hook = hook.name(),
+                        tool = tool_name,
+                        "Post-hook returned Pending (ignored in post-phase)"
                     );
                 }
             }
