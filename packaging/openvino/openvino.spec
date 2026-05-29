@@ -404,15 +404,30 @@ mkdir -p "$TMPDIR"
 %install
 %cmake_install
 
-# Generate python dist-info (setup.py removed in 2026.1.2, use pyproject.toml)
-mkdir -p %{buildroot}/%{python3_sitearch}/%{name}-%{version}.dist-info
-cat > %{buildroot}/%{python3_sitearch}/%{name}-%{version}.dist-info/METADATA << 'EOF'
-Metadata-Version: 2.1
+# Generate python dist-info (setup.py removed in 2026.1.2)
+mkdir -p %{buildroot}/%{python3_sitearch}/%{name}-%{version}.dist-info/licenses
+cat > %{buildroot}/%{python3_sitearch}/%{name}-%{version}.dist-info/METADATA << EOF
+Metadata-Version: 2.4
 Name: openvino
 Version: %{version}
-Summary: OpenVINO Runtime
+Summary: OpenVINO(TM) Runtime
+Home-page: https://github.com/openvinotoolkit/openvino
+Author: Intel(R) Corporation
+Author-email: openvino@intel.com
+License: Apache-2.0
+Requires-Dist: numpy>=1.16.6
+Requires-Dist: packaging
+EOF
+cat > %{buildroot}/%{python3_sitearch}/%{name}-%{version}.dist-info/entry_points.txt << 'EOF'
+[console_scripts]
+benchmark_app = openvino.tools.benchmark.main:main
+ovc = openvino.tools.ovc.main:main
+
+[torch_dynamo_backends]
+openvino = openvino.frontend.pytorch.torchdynamo.backend:openvino
 EOF
 echo "openvino" > %{buildroot}/%{python3_sitearch}/%{name}-%{version}.dist-info/top_level.txt
+cp LICENSE %{buildroot}/%{python3_sitearch}/%{name}-%{version}.dist-info/licenses/LICENSE
 rm -vf %{buildroot}/%{python3_sitearch}/requirements.txt
 rm -vf %{buildroot}/%{python3_sitearch}/%{name}/preprocess/torchvision/requirements.txt
 mkdir -p -m 755 %{buildroot}%{_datadir}/%{name}

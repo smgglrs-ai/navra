@@ -1,5 +1,6 @@
 pub mod capability;
 pub mod chain;
+pub mod idjag;
 pub mod oauth;
 pub mod openshell;
 pub mod sandbox_profile;
