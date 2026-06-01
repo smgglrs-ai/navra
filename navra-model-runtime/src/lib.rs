@@ -16,7 +16,9 @@
 
 pub mod engine;
 mod error;
+pub mod format;
 mod gpu;
+pub mod hardware;
 mod npu;
 
 #[cfg(feature = "direct")]
@@ -28,7 +30,9 @@ pub mod podman;
 
 pub use engine::Engine;
 pub use error::RuntimeError;
+pub use format::ModelFormat;
 pub use gpu::{detect_gpus, GpuDevice, GpuKind};
+pub use hardware::HardwareTarget;
 pub use npu::{detect_npus, NpuDevice};
 
 use serde::{Deserialize, Serialize};
@@ -48,55 +52,45 @@ pub struct Endpoint {
     pub backend: RuntimeBackend,
 }
 
+/// Isolation mode — how the inference engine is launched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Isolation {
+    /// Spawn as a child process (no isolation).
+    Direct,
+    /// Run in a rootless Podman container.
+    Podman,
+    /// Delegate to OpenShell compute driver via gRPC.
+    OpenShell,
+}
+
+impl fmt::Display for Isolation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Direct => f.write_str("direct"),
+            Self::Podman => f.write_str("podman"),
+            Self::OpenShell => f.write_str("openshell"),
+        }
+    }
+}
+
 /// Which runtime backend is serving the model (engine × isolation).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RuntimeBackend {
-    /// llama.cpp, direct child process.
-    LlamaCpp,
-    /// llama.cpp in a Podman container.
-    LlamaCppPodman,
-    /// llama.cpp in an OpenShell sandbox.
-    LlamaCppOpenShell,
-    /// vLLM, direct child process.
-    Vllm,
-    /// vLLM in a Podman container.
-    VllmPodman,
-    /// vLLM in an OpenShell sandbox.
-    VllmOpenShell,
+pub struct RuntimeBackend {
+    pub engine: Engine,
+    pub isolation: Isolation,
 }
 
 impl RuntimeBackend {
-    pub fn from_engine_direct(engine: &Engine) -> Self {
-        match engine {
-            Engine::LlamaCpp => Self::LlamaCpp,
-            Engine::Vllm => Self::Vllm,
-        }
-    }
-
-    pub fn from_engine_podman(engine: &Engine) -> Self {
-        match engine {
-            Engine::LlamaCpp => Self::LlamaCppPodman,
-            Engine::Vllm => Self::VllmPodman,
-        }
-    }
-
-    pub fn from_engine_openshell(engine: &Engine) -> Self {
-        match engine {
-            Engine::LlamaCpp => Self::LlamaCppOpenShell,
-            Engine::Vllm => Self::VllmOpenShell,
-        }
+    pub fn new(engine: Engine, isolation: Isolation) -> Self {
+        Self { engine, isolation }
     }
 }
 
 impl fmt::Display for RuntimeBackend {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::LlamaCpp => f.write_str("llama-cpp"),
-            Self::LlamaCppPodman => f.write_str("llama-cpp-podman"),
-            Self::LlamaCppOpenShell => f.write_str("llama-cpp-openshell"),
-            Self::Vllm => f.write_str("vllm"),
-            Self::VllmPodman => f.write_str("vllm-podman"),
-            Self::VllmOpenShell => f.write_str("vllm-openshell"),
+        match self.isolation {
+            Isolation::Direct => write!(f, "{}", self.engine),
+            other => write!(f, "{}-{other}", self.engine),
         }
     }
 }
@@ -160,6 +154,10 @@ pub struct ServeConfig {
     pub port: u16,
     /// GPU devices to use (empty = CPU only).
     pub gpus: Vec<GpuDevice>,
+    /// Hardware target (derived from `gpus` if not set explicitly).
+    pub target: HardwareTarget,
+    /// Model serialization format (auto-detected from path if not set).
+    pub format: Option<ModelFormat>,
     /// Number of context tokens.
     pub context_size: u32,
     /// Number of parallel request slots.
@@ -190,6 +188,8 @@ impl Default for ServeConfig {
             host: "127.0.0.1".to_string(),
             port: 0,
             gpus: Vec::new(),
+            target: HardwareTarget::Cpu,
+            format: None,
             context_size: 4096,
             parallel: 1,
             cache_type: None,
@@ -374,7 +374,7 @@ mod tests {
         let ep = Endpoint {
             url: "http://127.0.0.1:8080".to_string(),
             id: "test-123".to_string(),
-            backend: RuntimeBackend::LlamaCpp,
+            backend: RuntimeBackend::new(Engine::LlamaCpp, Isolation::Direct),
         };
         let debug = format!("{ep:?}");
         assert!(debug.contains("127.0.0.1:8080"));
@@ -382,22 +382,44 @@ mod tests {
 
     #[test]
     fn runtime_backend_display() {
-        assert_eq!(RuntimeBackend::LlamaCpp.to_string(), "llama-cpp");
-        assert_eq!(RuntimeBackend::LlamaCppPodman.to_string(), "llama-cpp-podman");
-        assert_eq!(RuntimeBackend::LlamaCppOpenShell.to_string(), "llama-cpp-openshell");
-        assert_eq!(RuntimeBackend::Vllm.to_string(), "vllm");
-        assert_eq!(RuntimeBackend::VllmPodman.to_string(), "vllm-podman");
-        assert_eq!(RuntimeBackend::VllmOpenShell.to_string(), "vllm-openshell");
+        assert_eq!(
+            RuntimeBackend::new(Engine::LlamaCpp, Isolation::Direct).to_string(),
+            "llama-cpp"
+        );
+        assert_eq!(
+            RuntimeBackend::new(Engine::LlamaCpp, Isolation::Podman).to_string(),
+            "llama-cpp-podman"
+        );
+        assert_eq!(
+            RuntimeBackend::new(Engine::LlamaCpp, Isolation::OpenShell).to_string(),
+            "llama-cpp-openshell"
+        );
+        assert_eq!(
+            RuntimeBackend::new(Engine::Vllm, Isolation::Direct).to_string(),
+            "vllm"
+        );
+        assert_eq!(
+            RuntimeBackend::new(Engine::Vllm, Isolation::Podman).to_string(),
+            "vllm-podman"
+        );
+        assert_eq!(
+            RuntimeBackend::new(Engine::Vllm, Isolation::OpenShell).to_string(),
+            "vllm-openshell"
+        );
     }
 
     #[test]
-    fn runtime_backend_from_engine() {
-        assert_eq!(RuntimeBackend::from_engine_direct(&Engine::LlamaCpp), RuntimeBackend::LlamaCpp);
-        assert_eq!(RuntimeBackend::from_engine_direct(&Engine::Vllm), RuntimeBackend::Vllm);
-        assert_eq!(RuntimeBackend::from_engine_podman(&Engine::LlamaCpp), RuntimeBackend::LlamaCppPodman);
-        assert_eq!(RuntimeBackend::from_engine_podman(&Engine::Vllm), RuntimeBackend::VllmPodman);
-        assert_eq!(RuntimeBackend::from_engine_openshell(&Engine::LlamaCpp), RuntimeBackend::LlamaCppOpenShell);
-        assert_eq!(RuntimeBackend::from_engine_openshell(&Engine::Vllm), RuntimeBackend::VllmOpenShell);
+    fn runtime_backend_composed() {
+        let backend = RuntimeBackend::new(Engine::LlamaCpp, Isolation::Podman);
+        assert_eq!(backend.engine, Engine::LlamaCpp);
+        assert_eq!(backend.isolation, Isolation::Podman);
+    }
+
+    #[test]
+    fn isolation_display() {
+        assert_eq!(Isolation::Direct.to_string(), "direct");
+        assert_eq!(Isolation::Podman.to_string(), "podman");
+        assert_eq!(Isolation::OpenShell.to_string(), "openshell");
     }
 
     #[test]

@@ -4,7 +4,7 @@
 //! (llama-server for LlamaCpp, vllm for Vllm).
 
 use crate::engine::Engine;
-use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
+use crate::{Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -83,7 +83,7 @@ impl ModelRuntime for DirectRuntime {
             Ok(Endpoint {
                 url,
                 id,
-                backend: RuntimeBackend::from_engine_direct(&self.engine),
+                backend: RuntimeBackend::new(self.engine, Isolation::Direct),
             })
         })
     }
@@ -123,7 +123,7 @@ impl ModelRuntime for DirectRuntime {
     }
 
     fn backend(&self) -> RuntimeBackend {
-        RuntimeBackend::from_engine_direct(&self.engine)
+        RuntimeBackend::new(self.engine, Isolation::Direct)
     }
 
     fn capabilities(&self) -> RuntimeCapabilities {

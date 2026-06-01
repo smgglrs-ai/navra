@@ -8,8 +8,7 @@
 //! - `--ipc=host` when the engine requires it (vLLM NCCL)
 
 use crate::engine::Engine;
-use crate::gpu::GpuKind;
-use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
+use crate::{Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -85,22 +84,7 @@ impl ModelRuntime for PodmanRuntime {
             ]);
 
             for gpu in &config.gpus {
-                match gpu.kind {
-                    GpuKind::Nvidia => {
-                        podman_args.push("--device".to_string());
-                        podman_args.push(format!("nvidia.com/gpu={}", gpu.index));
-                    }
-                    GpuKind::Amd => {
-                        podman_args.push("--device".to_string());
-                        podman_args.push("/dev/kfd".to_string());
-                        podman_args.push("--device".to_string());
-                        podman_args.push(format!("/dev/dri/renderD{}", 128 + gpu.index));
-                    }
-                    GpuKind::Intel => {
-                        podman_args.push("--device".to_string());
-                        podman_args.push(format!("/dev/dri/renderD{}", 128 + gpu.index));
-                    }
-                }
+                podman_args.extend(config.target.podman_device_args(gpu.index));
             }
 
             podman_args.push(image.to_string());
@@ -160,7 +144,7 @@ impl ModelRuntime for PodmanRuntime {
             Ok(Endpoint {
                 url,
                 id: container_name,
-                backend: RuntimeBackend::from_engine_podman(&self.engine),
+                backend: RuntimeBackend::new(self.engine, Isolation::Podman),
             })
         })
     }
@@ -203,7 +187,7 @@ impl ModelRuntime for PodmanRuntime {
     }
 
     fn backend(&self) -> RuntimeBackend {
-        RuntimeBackend::from_engine_podman(&self.engine)
+        RuntimeBackend::new(self.engine, Isolation::Podman)
     }
 
     fn capabilities(&self) -> RuntimeCapabilities {

@@ -33,6 +33,10 @@ pub struct ModelConfig {
     /// Confidence threshold for safety classification (default: 0.5).
     #[serde(default = "default_threshold")]
     pub threshold: Option<f32>,
+    /// Model format: "gguf", "safetensors", "awq", "gptq".
+    /// Auto-detected from the model path if not specified.
+    #[serde(default)]
+    pub format: Option<String>,
     /// Runtime backend: "auto", "podman", "direct", or "none" (default).
     /// Used for chat/generate tasks served via navra-model-runtime.
     #[serde(default)]
