@@ -84,6 +84,7 @@ pub struct McpServer {
 #[derive(Debug, Clone)]
 pub(crate) struct PendingPermissionRequest {
     pub session_id: String,
+    pub agent_name: String,
     pub scope: navra_protocol::permissions::PermissionScope,
     pub duration_secs: Option<u64>,
 }

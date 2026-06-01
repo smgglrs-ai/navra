@@ -169,8 +169,21 @@ impl PermissionEngine {
             return PermissionResult::DeniedOperation;
         }
 
-        // Check path against capability token's allowed paths
         let canonical = Self::normalize_path(path);
+
+        // Deny-wins: check deny rules from the "default" permission set
+        // (if it exists) before evaluating capability token allow paths.
+        // This prevents capability tokens from bypassing global deny rules.
+        if let Some(default_acl) = self.permission_sets.get("default") {
+            for pattern in &default_acl.deny {
+                let expanded = Self::expand_tilde(pattern);
+                if Self::glob_matches(&expanded, &canonical) {
+                    return PermissionResult::DeniedPath;
+                }
+            }
+        }
+
+        // Check path against capability token's allowed paths
         let allowed = caps.paths.iter().any(|pattern| {
             let expanded = Self::expand_tilde(pattern);
             Self::glob_matches(&expanded, &canonical)

@@ -249,7 +249,7 @@ async fn client_call_external_read_taints() {
 }
 
 #[tokio::test]
-async fn client_call_non_read_stays_trusted() {
+async fn client_call_git_status_taints_session() {
     let mut client = mock_client_no_list(vec![serde_json::json!({
         "jsonrpc": "2.0",
         "result": {
@@ -264,7 +264,7 @@ async fn client_call_non_read_stays_trusted() {
         .call_tool("git_status", serde_json::json!({}))
         .await
         .unwrap();
-    assert_eq!(client.taint(), DataLabel::TRUSTED_PUBLIC);
+    assert_eq!(client.taint(), DataLabel::UNTRUSTED_PUBLIC);
 }
 
 // =====================================================================
