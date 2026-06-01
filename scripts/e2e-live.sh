@@ -2,7 +2,7 @@
 #
 # End-to-end live demo test script.
 #
-# Exercises the full smgglrs pipeline: gateway startup, MCP protocol,
+# Exercises the full navra pipeline: gateway startup, MCP protocol,
 # memory tools, model proxy, optional agent run, and blackbox audit.
 #
 # Usage:
@@ -21,7 +21,7 @@ set -euo pipefail
 # --- Configuration ---
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEMO_DIR="/tmp/smgglrs-e2e-live-$$"
+DEMO_DIR="/tmp/navra-e2e-live-$$"
 CONFIG_PATH="$DEMO_DIR/config.toml"
 MCPD_PID=""
 WITH_AGENT=false
@@ -101,13 +101,13 @@ echo "  Port:    $PORT"
 echo "  Model:   $MODEL (agent: $WITH_AGENT, live-demo: $LIVE_DEMO)"
 
 # Build
-echo "  Building smgglrs..."
+echo "  Building navra..."
 cd "$REPO_ROOT"
-if ! cargo build --bin smgglrs 2>"$DEMO_DIR/build.log"; then
+if ! cargo build --bin navra 2>"$DEMO_DIR/build.log"; then
     echo "  Build failed. See $DEMO_DIR/build.log"
     exit 2
 fi
-MCPD_BIN="$REPO_ROOT/target/debug/smgglrs"
+MCPD_BIN="$REPO_ROOT/target/debug/navra"
 echo "  Built:   $MCPD_BIN"
 
 # Write config
@@ -130,10 +130,10 @@ operations = ["read", "write", "search", "list", "delete"]
 safety = "standard"
 EOF
 
-# Start smgglrs
-echo "  Starting smgglrs..."
+# Start navra
+echo "  Starting navra..."
 "$MCPD_BIN" serve --config "$CONFIG_PATH" --no-tray \
-    >"$DEMO_DIR/smgglrs-stdout.log" 2>"$DEMO_DIR/smgglrs-stderr.log" &
+    >"$DEMO_DIR/navra-stdout.log" 2>"$DEMO_DIR/navra-stderr.log" &
 MCPD_PID=$!
 
 # Wait for ready
@@ -142,18 +142,18 @@ for i in $(seq 1 30); do
         break
     fi
     if ! kill -0 "$MCPD_PID" 2>/dev/null; then
-        echo "  smgglrs exited prematurely. Stderr:"
-        cat "$DEMO_DIR/smgglrs-stderr.log"
+        echo "  navra exited prematurely. Stderr:"
+        cat "$DEMO_DIR/navra-stderr.log"
         exit 2
     fi
     sleep 0.5
 done
 
 if ! curl -sf "$BASE_URL/api/status" >/dev/null 2>&1; then
-    echo "  smgglrs did not start within 15 seconds"
+    echo "  navra did not start within 15 seconds"
     exit 2
 fi
-echo "  smgglrs running (PID $MCPD_PID)"
+echo "  navra running (PID $MCPD_PID)"
 
 # --- Helper: JSON-RPC call ---
 rpc() {
@@ -555,7 +555,7 @@ fi
 # audit_query queries the structured audit.db (agent runs), not blackbox.db.
 # The blackbox is verified by the Rust e2e tests; here we just confirm the
 # audit tool responds and the blackbox DB file grew.
-BLACKBOX_DB="$HOME/.local/share/smgglrs/blackbox.db"
+BLACKBOX_DB="$HOME/.local/share/navra/blackbox.db"
 if [[ -f "$BLACKBOX_DB" ]]; then
     BB_SIZE=$(stat -c%s "$BLACKBOX_DB" 2>/dev/null || echo "0")
     if [[ "$BB_SIZE" -gt 0 ]]; then
@@ -655,7 +655,7 @@ if [[ "$LIVE_DEMO" == true ]]; then
     else
         pass "demo project found"
 
-        # Stop current smgglrs and restart with demo-appropriate config
+        # Stop current navra and restart with demo-appropriate config
         # that serves the payments-app directory
         kill "$MCPD_PID" 2>/dev/null; wait "$MCPD_PID" 2>/dev/null || true
 
@@ -686,7 +686,7 @@ safety = "standard"
 DEMOEOF
 
         "$MCPD_BIN" serve --config "$DEMO_CONFIG" --no-tray \
-            >"$DEMO_DIR/demo-smgglrs-stdout.log" 2>"$DEMO_DIR/demo-smgglrs-stderr.log" &
+            >"$DEMO_DIR/demo-navra-stdout.log" 2>"$DEMO_DIR/demo-navra-stderr.log" &
         MCPD_PID=$!
 
         # Wait for ready
@@ -703,9 +703,9 @@ DEMOEOF
         done
 
         if [[ "$DEMO_READY" != true ]]; then
-            fail "demo smgglrs started" "check $DEMO_DIR/demo-smgglrs-stderr.log"
+            fail "demo navra started" "check $DEMO_DIR/demo-navra-stderr.log"
         else
-            pass "demo smgglrs running on port $DEMO_PORT"
+            pass "demo navra running on port $DEMO_PORT"
 
             # The prompt must trigger multi-agent behavior:
             # - Lead reads project structure (file_tree)

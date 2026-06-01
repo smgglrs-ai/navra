@@ -22,16 +22,16 @@
     ],
     "methodology": "SEP-driven specification evolution. Key SEPs: SEP-2567 (session removal), SEP-1865 (MCP Apps), SEP-2549 (caching metadata), SEP-2596 (deprecation policy), SEP-414 (W3C Trace Context), plus 6 OAuth/OIDC hardening SEPs. Breaking changes with 10-week validation window. Deprecation policy: roots replaced by tool parameters/resource URIs, sampling replaced by direct LLM API integration, logging replaced by stderr/OpenTelemetry."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["protocol", "core", "server", "agent", "security", "flow"],
     "relevance_category": "threat",
     "impact_level": "high",
-    "relevance_rationale": "Breaking protocol revision. Code analysis reveals smgglrs currently implements MCP spec 2025-03-26 (constant PROTOCOL_VERSION in smgglrs-protocol/src/mcp.rs). Specific impacts: (1) Session removal breaks smgglrs-core's Session struct (id, agent, client_info, context_label, created_at, last_accessed) and SessionStore/SessionBackend trait (InMemory + DashMap backends) — context_label IFC accumulation across requests must be rethought without sessions; (2) Mcp-Method/Mcp-Name headers change routing in smgglrs-core's transport layer (build_router, build_router_with_broadcaster); (3) smgglrs-protocol defines RootsCapability, PromptRole, pagination types that may change; (4) smgglrs-security's OAuthProvider already implements OAuth 2.1 with Ed25519 JWT and RFC 8693 token exchange, but OIDC alignment may require updates; (5) Tasks extension redesign affects smgglrs-core's TaskStore (in-memory HashMap) and A2A dispatch; (6) W3C Trace Context propagation — smgglrs-core has Prometheus metrics but no OTel spans, so traceparent/tracestate in _meta needs new plumbing. Most critical risk: IFC session taint accumulation depends on session identity."
+    "relevance_rationale": "Breaking protocol revision. Code analysis reveals navra currently implements MCP spec 2025-03-26 (constant PROTOCOL_VERSION in navra-protocol/src/mcp.rs). Specific impacts: (1) Session removal breaks navra-core's Session struct (id, agent, client_info, context_label, created_at, last_accessed) and SessionStore/SessionBackend trait (InMemory + DashMap backends) — context_label IFC accumulation across requests must be rethought without sessions; (2) Mcp-Method/Mcp-Name headers change routing in navra-core's transport layer (build_router, build_router_with_broadcaster); (3) navra-protocol defines RootsCapability, PromptRole, pagination types that may change; (4) navra-security's OAuthProvider already implements OAuth 2.1 with Ed25519 JWT and RFC 8693 token exchange, but OIDC alignment may require updates; (5) Tasks extension redesign affects navra-core's TaskStore (in-memory HashMap) and A2A dispatch; (6) W3C Trace Context propagation — navra-core has Prometheus metrics but no OTel spans, so traceparent/tracestate in _meta needs new plumbing. Most critical risk: IFC session taint accumulation depends on session identity."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Remove Mcp-Session-Id handling and session state from smgglrs-protocol and smgglrs-core",
-      "Add Mcp-Method and Mcp-Name header parsing for request routing in smgglrs-server",
+      "Remove Mcp-Session-Id handling and session state from navra-protocol and navra-core",
+      "Add Mcp-Method and Mcp-Name header parsing for request routing in navra-server",
       "Implement ttlMs/cacheScope on tools/list and resources/list responses",
       "Add W3C Trace Context propagation (traceparent/tracestate/baggage) in _meta alongside existing OTel support",
       "Implement MCP Apps extension: sandboxed iframe rendering with security review pipeline",
@@ -52,9 +52,9 @@
     "priority_sprint": "Phase 11 (MCP spec compliance)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs currently implements MCP 2025-11-25 with ~35/39 methods. The stateless redesign actually benefits smgglrs's gateway architecture — a stateless protocol makes gateway proxying simpler (no session affinity needed). smgglrs's existing OTel support aligns well with the W3C Trace Context addition. The MCP Apps extension is new territory that plays to smgglrs's security review capabilities.",
+    "how_navra_compares": "navra currently implements MCP 2025-11-25 with ~35/39 methods. The stateless redesign actually benefits navra's gateway architecture — a stateless protocol makes gateway proxying simpler (no session affinity needed). navra's existing OTel support aligns well with the W3C Trace Context addition. The MCP Apps extension is new territory that plays to navra's security review capabilities.",
     "gaps_exposed": [
-      "smgglrs must remove its session management code and adopt stateless request handling",
+      "navra must remove its session management code and adopt stateless request handling",
       "No MCP Apps rendering/security-review pipeline exists yet",
       "Tasks implementation needs redesign from core to extension pattern",
       "OAuth implementation needs alignment with 6 new hardening SEPs",

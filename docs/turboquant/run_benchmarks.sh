@@ -8,7 +8,7 @@
 set -euo pipefail
 
 TURBOQUANT="/home/fdupont/Code/github.com/craftogrammer/llama.cpp-adaptive-turboquant"
-MODEL="${1:-/home/fdupont/.local/share/smgglrs/models/qwen3-8b.gguf}"
+MODEL="${1:-/home/fdupont/.local/share/navra/models/qwen3-8b.gguf}"
 RUNS="${2:-5}"
 PORT=8090
 BENCH_SCRIPT="$(dirname "$0")/tool_calling_bench.py"

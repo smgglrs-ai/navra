@@ -19,17 +19,17 @@
     ],
     "methodology": "Two-axis framework: (1) digital vs. physical agents, (2) owned vs. rented agents. Four quadrants: Digital Owned (software agents you build and deploy — the founder's quadrant), Physical Rented (robots/equipment-as-a-service — capex to opex shift), Physical Owned (fleets/factories with deep capital moats — Anduril, Waymo, Amazon warehouse robots), Digital Rented (agent labor marketplaces). Each quadrant analyzed for moat depth, TAM, who captures upside, and strategic implications."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["server", "security", "flow"],
     "relevance_category": "reference",
     "impact_level": "medium",
-    "relevance_rationale": "Positions smgglrs in the 'Digital Owned' quadrant infrastructure layer. The article's thesis that models and tools commoditize while data/workflow/distribution are the moats validates smgglrs's strategy of being infrastructure (the gateway) rather than competing on models. The labor-budget framing (10-30x software budget) reframes smgglrs's value proposition: it enables enterprises to safely deploy agents that compete for labor budgets, not just software budgets."
+    "relevance_rationale": "Positions navra in the 'Digital Owned' quadrant infrastructure layer. The article's thesis that models and tools commoditize while data/workflow/distribution are the moats validates navra's strategy of being infrastructure (the gateway) rather than competing on models. The labor-budget framing (10-30x software budget) reframes navra's value proposition: it enables enterprises to safely deploy agents that compete for labor budgets, not just software budgets."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Frame smgglrs value proposition around labor automation safety, not just tool access control",
-      "Position smgglrs as infrastructure enabling the 'Digital Owned' quadrant — the gateway that makes owned agents safe to deploy",
-      "Emphasize workflow integration capabilities (MCP gateway aggregation) as a moat-builder for smgglrs users"
+      "Frame navra value proposition around labor automation safety, not just tool access control",
+      "Position navra as infrastructure enabling the 'Digital Owned' quadrant — the gateway that makes owned agents safe to deploy",
+      "Emphasize workflow integration capabilities (MCP gateway aggregation) as a moat-builder for navra users"
     ],
     "what_to_watch": [
       "Agent-to-agent commerce protocols (discovery, trust, payments) — the 'Digital Rented' quadrant needs these",
@@ -44,9 +44,9 @@
     "priority_sprint": "N/A (strategic positioning, not implementation)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs sits in the infrastructure layer enabling the Digital Owned quadrant. The article confirms that the moat is not in models or tools (which commoditize) but in data control, workflow integration, and distribution. smgglrs's IFC, security layer, and MCP gateway aggregation directly serve the workflow-integration moat.",
+    "how_navra_compares": "navra sits in the infrastructure layer enabling the Digital Owned quadrant. The article confirms that the moat is not in models or tools (which commoditize) but in data control, workflow integration, and distribution. navra's IFC, security layer, and MCP gateway aggregation directly serve the workflow-integration moat.",
     "gaps_exposed": [
-      "smgglrs lacks agent-to-agent commerce primitives (payments, metering, SLA enforcement) needed for the Digital Rented quadrant",
+      "navra lacks agent-to-agent commerce primitives (payments, metering, SLA enforcement) needed for the Digital Rented quadrant",
       "No built-in agent marketplace or discovery-layer monetization features"
     ],
     "advantages_confirmed": [
@@ -60,7 +60,7 @@
     "mcp_spec_alignment": "N/A (business strategy article)",
     "isolation_model": "none",
     "aaif_alignment": "Aligns with AAIF vision of standardized agent interoperability; the Digital Rented quadrant requires exactly the kind of agent identity and trust infrastructure AAIF promotes",
-    "regulatory_relevance": "EU AI Act: agents performing labor require transparency, accountability, and human oversight — smgglrs's audit trail and hook pipeline directly serve compliance. Colorado AI Act: automated decision-making in employment contexts triggers disclosure requirements."
+    "regulatory_relevance": "EU AI Act: agents performing labor require transparency, accountability, and human oversight — navra's audit trail and hook pipeline directly serve compliance. Colorado AI Act: automated decision-making in employment contexts triggers disclosure requirements."
   },
   "economics": {
     "memory_tier": "N/A",

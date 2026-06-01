@@ -19,17 +19,17 @@
     ],
     "methodology": "Two-hop discovery: PRM at well-known URL points to Authorization Server, which contains agent_auth block with register_uri, claim_uri, revocation_uri. Two flows: ID-JAG (provider mints audience-specific JWT, app verifies against provider JWKS, returns credentials synchronously) and User Claimed (POST /agent/auth/claim triggers OTP email, POST /agent/auth/claim/complete submits code). User matching: delegation record > email match > JIT provision."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["security", "protocol", "core"],
     "relevance_category": "opportunity",
     "impact_level": "high",
-    "relevance_rationale": "auth.md addresses the exact authentication gap smgglrs faces when agents connect. smgglrs currently uses BLAKE3 tokens — auth.md offers a standards-based alternative for agent registration that's interoperable with the broader ecosystem. The ID-JAG flow could complement smgglrs-security's capability delegation (agents present provider-minted assertions, smgglrs issues scoped capabilities). The protocol's well-known URL discovery pattern aligns with MCP server discovery."
+    "relevance_rationale": "auth.md addresses the exact authentication gap navra faces when agents connect. navra currently uses BLAKE3 tokens — auth.md offers a standards-based alternative for agent registration that's interoperable with the broader ecosystem. The ID-JAG flow could complement navra-security's capability delegation (agents present provider-minted assertions, navra issues scoped capabilities). The protocol's well-known URL discovery pattern aligns with MCP server discovery."
   },
   "actionable_insights": {
     "what_to_adopt": [
       "Support auth.md protocol as an alternative registration flow alongside BLAKE3 tokens",
-      "Publish /.well-known/oauth-protected-resource for smgglrs server discovery",
-      "Implement ID-JAG verification against provider JWKS in smgglrs-security auth module",
+      "Publish /.well-known/oauth-protected-resource for navra server discovery",
+      "Implement ID-JAG verification against provider JWKS in navra-security auth module",
       "WWW-Authenticate header on 401 responses for automatic agent bootstrap"
     ],
     "what_to_watch": [
@@ -45,14 +45,14 @@
     "priority_sprint": "S11 (auth enhancement)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs's BLAKE3 + capability delegation is more secure for local scenarios but less interoperable than auth.md for external agent registration. Adding auth.md support would give smgglrs best-of-both-worlds: secure local auth + standards-based external registration.",
+    "how_navra_compares": "navra's BLAKE3 + capability delegation is more secure for local scenarios but less interoperable than auth.md for external agent registration. Adding auth.md support would give navra best-of-both-worlds: secure local auth + standards-based external registration.",
     "gaps_exposed": [
-      "No ID-JAG (Identity Assertion for Authorization Grant) flow in smgglrs-security's OAuthProvider",
-      "No well-known URL discovery (/.well-known/oauth-protected-resource) for smgglrs server",
-      "No agent identity verification against provider JWKS — smgglrs validates its own Ed25519-signed JWTs but not external provider assertions"
+      "No ID-JAG (Identity Assertion for Authorization Grant) flow in navra-security's OAuthProvider",
+      "No well-known URL discovery (/.well-known/oauth-protected-resource) for navra server",
+      "No agent identity verification against provider JWKS — navra validates its own Ed25519-signed JWTs but not external provider assertions"
     ],
     "advantages_confirmed": [
-      "smgglrs already has OAuth 2.1 with Ed25519 JWT + RFC 8693 token exchange + OBO identity — auth.md ID-JAG is complementary, not replacement",
+      "navra already has OAuth 2.1 with Ed25519 JWT + RFC 8693 token exchange + OBO identity — auth.md ID-JAG is complementary, not replacement",
       "BLAKE3 + CBOR/Ed25519 capability delegation with attenuation chains (ring, expiry, operations, tools, credentials, sandbox) is far more granular than auth.md's scope-based model",
       "deny-wins ACLs + risk-tiered approval + trust scoring provide stronger post-auth enforcement than auth.md specifies",
       "Constant-time token comparison (CWE-208 mitigation) already implemented"

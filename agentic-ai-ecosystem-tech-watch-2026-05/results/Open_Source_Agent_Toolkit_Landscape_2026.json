@@ -19,32 +19,32 @@
     ],
     "methodology": "Survey of GitHub repositories with star counts, feature comparison, and ecosystem mapping. Organized by agent system layer."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["protocol", "security", "tools-exec", "rag", "memory", "agent", "flow", "modal-voice"],
     "relevance_category": "reference",
     "impact_level": "high",
-    "relevance_rationale": "Maps the competitive landscape smgglrs operates in. Key findings: (1) Composio is the closest MCP gateway competitor with dynamic tool routing, (2) E2B/Firecracker/OpenSandbox define the sandboxing standard smgglrs-tools-exec must match, (3) mem0/Zep/Graphiti show memory architecture alternatives to smgglrs-memory, (4) AI-Infra-Guard (Tencent) and garak (NVIDIA) scan MCP servers for security — direct validation of smgglrs-security's tool scanning, (5) Pipecat/LiveKit define voice agent patterns for smgglrs-modal-voice, (6) DeepEval sets agent testing standards."
+    "relevance_rationale": "Maps the competitive landscape navra operates in. Key findings: (1) Composio is the closest MCP gateway competitor with dynamic tool routing, (2) E2B/Firecracker/OpenSandbox define the sandboxing standard navra-tools-exec must match, (3) mem0/Zep/Graphiti show memory architecture alternatives to navra-memory, (4) AI-Infra-Guard (Tencent) and garak (NVIDIA) scan MCP servers for security — direct validation of navra-security's tool scanning, (5) Pipecat/LiveKit define voice agent patterns for navra-modal-voice, (6) DeepEval sets agent testing standards."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Composio's dynamic tool routing pattern (Tool Router) — smgglrs could surface only relevant tools per request",
-      "DeepEval's agent-specific test metrics (task completion, tool correctness, step efficiency) for smgglrs testing",
-      "AI-Infra-Guard's MCP server scanning approach — validates smgglrs-security's upstream tool scanning"
+      "Composio's dynamic tool routing pattern (Tool Router) — navra could surface only relevant tools per request",
+      "DeepEval's agent-specific test metrics (task completion, tool correctness, step efficiency) for navra testing",
+      "AI-Infra-Guard's MCP server scanning approach — validates navra-security's upstream tool scanning"
     ],
     "what_to_watch": [
-      "Composio's MCP gateway evolution — closest competitor to smgglrs's gateway role",
-      "AG-UI protocol adoption — may need smgglrs-protocol support",
+      "Composio's MCP gateway evolution — closest competitor to navra's gateway role",
+      "AG-UI protocol adoption — may need navra-protocol support",
       "Graphiti (Zep) temporal knowledge graphs — 63.8% vs mem0's 49% on LongMemEval"
     ],
     "what_to_avoid": [
-      "Don't try to compete with full agent frameworks (LangGraph, CrewAI) — smgglrs is infrastructure, not framework",
-      "Don't replicate Composio's managed auth model — smgglrs's BLAKE3+capability approach is more secure"
+      "Don't try to compete with full agent frameworks (LangGraph, CrewAI) — navra is infrastructure, not framework",
+      "Don't replicate Composio's managed auth model — navra's BLAKE3+capability approach is more secure"
     ],
     "implementation_difficulty": "N/A",
     "priority_sprint": "N/A (landscape reference)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs uniquely combines MCP gateway, IFC security, and in-process ML models in a single Rust binary. No other tool in this landscape provides all three. Composio is closest as MCP gateway but lacks IFC, safety ML models, and is a SaaS product not self-hosted infrastructure. E2B/OpenSandbox handle sandboxing but not MCP routing or security. AI-Infra-Guard scans but doesn't enforce.",
+    "how_navra_compares": "navra uniquely combines MCP gateway, IFC security, and in-process ML models in a single Rust binary. No other tool in this landscape provides all three. Composio is closest as MCP gateway but lacks IFC, safety ML models, and is a SaaS product not self-hosted infrastructure. E2B/OpenSandbox handle sandboxing but not MCP routing or security. AI-Infra-Guard scans but doesn't enforce.",
     "gaps_exposed": [
       "No dynamic tool routing (Composio's Tool Router pattern) — McpServer exposes all RegisteredTools via HashMap, no per-request filtering based on agent intent",
       "No AG-UI protocol support (MCP + A2A v0.2.5 are implemented, AG-UI is missing)",

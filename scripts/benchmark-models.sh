@@ -10,7 +10,7 @@
 #   ./scripts/benchmark-models.sh gemma4:e4b qwen3:8b # benchmark specific models
 #
 # Prerequisites:
-#   - smgglrs running (smgglrs serve)
+#   - navra running (navra serve)
 #   - Ollama running with models pulled
 #   - A project directory to analyze (default: examples/payments-app)
 
@@ -18,7 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENDPOINT="${SMGGLRS_ENDPOINT:-http://127.0.0.1:9315/mcp}"
+ENDPOINT="${NAVRA_ENDPOINT:-http://127.0.0.1:9315/mcp}"
 PROJECT="${BENCHMARK_PROJECT:-$REPO_ROOT/examples/payments-app}"
 RESULTS_DIR="$REPO_ROOT/benchmarks/model-results"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -49,7 +49,7 @@ if [[ ${#MODELS[@]} -eq 0 ]]; then
 fi
 
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║  smgglrs Model Benchmark                            ║"
+echo "║  navra Model Benchmark                            ║"
 echo "╠══════════════════════════════════════════════════════╣"
 echo "║  Endpoint: $ENDPOINT"
 echo "║  Project:  $PROJECT"

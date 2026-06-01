@@ -218,7 +218,7 @@ For each consecutive pair of agents on the same model:
 
 ### Step 1: Route outputs through blackboard (HIGH — IFC fix)
 
-**Files**: `smgglrs-server/src/flow_tools.rs`
+**Files**: `navra-server/src/flow_tools.rs`
 
 Replace inline output injection with blackboard-mediated flow:
 
@@ -239,7 +239,7 @@ Replace inline output injection with blackboard-mediated flow:
 
 ### Step 2: Model grouping in ready queue (1 day)
 
-**File**: `smgglrs-server/src/flow_tools.rs`
+**File**: `navra-server/src/flow_tools.rs`
 
 In `run_dag_execution`, after `get_ready_tasks()` and before
 `truncate(max_parallel)`:

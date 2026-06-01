@@ -16,11 +16,11 @@
     ],
     "methodology": "[uncertain] — paper behind OpenReview paywall. Based on web search results: SAGUARO algorithm overlaps the drafting and verification phases of speculative decoding, which are normally sequential. This eliminates idle time during the verify phase by already starting the next draft."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["model-runtime"],
     "relevance_category": "reference",
     "impact_level": "low",
-    "relevance_rationale": "Academic advance in speculative decoding that will eventually be absorbed by serving engines (vLLM, SGLang). smgglrs benefits transitively when model-runtime backends adopt SAGUARO. No direct implementation needed."
+    "relevance_rationale": "Academic advance in speculative decoding that will eventually be absorbed by serving engines (vLLM, SGLang). navra benefits transitively when model-runtime backends adopt SAGUARO. No direct implementation needed."
   },
   "actionable_insights": {
     "what_to_adopt": [],
@@ -33,7 +33,7 @@
     "priority_sprint": "N/A (consumed transitively)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "Not directly comparable — smgglrs doesn't implement decoding algorithms.",
+    "how_navra_compares": "Not directly comparable — navra doesn't implement decoding algorithms.",
     "gaps_exposed": [],
     "advantages_confirmed": []
   },

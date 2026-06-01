@@ -16,20 +16,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-SMGGLRS_BIN="$ROOT_DIR/target/release/smgglrs"
+NAVRA_BIN="$ROOT_DIR/target/release/navra"
 EVAL_BIN="$ROOT_DIR/target/release/eval"
-SOCK="/run/user/$(id -u)/smgglrs/smgglrs.sock"
-LOG="/tmp/smgglrs-s9-eval.log"
+SOCK="/run/user/$(id -u)/navra/navra.sock"
+LOG="/tmp/navra-s9-eval.log"
 
 # Check binaries exist
-if [ ! -x "$SMGGLRS_BIN" ] || [ ! -x "$EVAL_BIN" ]; then
+if [ ! -x "$NAVRA_BIN" ] || [ ! -x "$EVAL_BIN" ]; then
     echo "Building release binaries..."
-    ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --release -p smgglrs-server -p smgglrs-agent
+    ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --release -p navra-server -p navra-agent
 fi
 
 # Write config
-mkdir -p ~/.config/smgglrs
-cat > ~/.config/smgglrs/config.toml << 'TOML'
+mkdir -p ~/.config/navra
+cat > ~/.config/navra/config.toml << 'TOML'
 [server]
 tcp = "127.0.0.1:9315"
 containerized = false
@@ -51,18 +51,18 @@ TOML
 
 cleanup() {
     echo "Stopping server..."
-    pkill -f "smgglrs serve" 2>/dev/null || true
+    pkill -f "navra serve" 2>/dev/null || true
     sleep 2
 }
 trap cleanup EXIT
 
 # Start server
-echo "Starting smgglrs (release)..."
-pkill -f "smgglrs serve" 2>/dev/null || true
+echo "Starting navra (release)..."
+pkill -f "navra serve" 2>/dev/null || true
 sleep 2
 rm -f "$LOG" "$SOCK"
-NO_COLOR=1 ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 RUST_LOG=smgglrs=info \
-    "$SMGGLRS_BIN" serve &>"$LOG" &
+NO_COLOR=1 ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 RUST_LOG=navra=info \
+    "$NAVRA_BIN" serve &>"$LOG" &
 SERVER_PID=$!
 echo "Server PID: $SERVER_PID"
 
@@ -86,10 +86,10 @@ echo ""
 echo "=== Starting S9 Evaluation ==="
 echo ""
 
-SMGGLRS_ENDPOINT="http://localhost:9315/mcp" \
-SMGGLRS_FLOW="review-lite" \
-SMGGLRS_EVAL_RUNS=3 \
-SMGGLRS_EVAL_OUTPUT="$ROOT_DIR/results/s9-eval" \
+NAVRA_ENDPOINT="http://localhost:9315/mcp" \
+NAVRA_FLOW="review-lite" \
+NAVRA_EVAL_RUNS=3 \
+NAVRA_EVAL_OUTPUT="$ROOT_DIR/results/s9-eval" \
     "$EVAL_BIN"
 
 echo ""

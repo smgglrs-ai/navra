@@ -18,36 +18,36 @@
     ],
     "methodology": "Definitional article establishing shared vocabulary. Draws on HuggingFace's agent framework ecosystem experience. Community-reviewed by Pedro Cuenca, Quentin Gallouedec, Shaun Smith, Adithya S Kolavi."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["protocol", "agent", "flow", "cognitive"],
     "relevance_category": "reference",
     "impact_level": "medium",
-    "relevance_rationale": "Establishes canonical vocabulary for the agent ecosystem smgglrs serves. The Agent=Model+Harness formula maps directly to smgglrs architecture: smgglrs IS the harness infrastructure (security, tool routing, context management). The skill/sub-agent/orchestrator hierarchy maps to smgglrs-cognitive (skills), smgglrs-agent (sub-agents), and smgglrs-flow (orchestrator). MCP positioned at Tool Use / Harness interface validates smgglrs-protocol's role."
+    "relevance_rationale": "Establishes canonical vocabulary for the agent ecosystem navra serves. The Agent=Model+Harness formula maps directly to navra architecture: navra IS the harness infrastructure (security, tool routing, context management). The skill/sub-agent/orchestrator hierarchy maps to navra-cognitive (skills), navra-agent (sub-agents), and navra-flow (orchestrator). MCP positioned at Tool Use / Harness interface validates navra-protocol's role."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Adopt this vocabulary in smgglrs documentation and API naming",
-      "Align smgglrs-cognitive's persona/directive system with the 'scaffolding' concept",
-      "Validate smgglrs-flow's orchestrator role matches the glossary definition"
+      "Adopt this vocabulary in navra documentation and API naming",
+      "Align navra-cognitive's persona/directive system with the 'scaffolding' concept",
+      "Validate navra-flow's orchestrator role matches the glossary definition"
     ],
     "what_to_watch": [
       "Whether this taxonomy becomes the industry standard (HuggingFace has significant ecosystem influence)",
       "How the skill vs tool distinction evolves in MCP spec"
     ],
     "what_to_avoid": [
-      "Don't conflate smgglrs's module concept with 'tool' — smgglrs modules are harness infrastructure, not tools in this taxonomy"
+      "Don't conflate navra's module concept with 'tool' — navra modules are harness infrastructure, not tools in this taxonomy"
     ],
     "implementation_difficulty": "trivial",
     "priority_sprint": "N/A (documentation alignment)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs maps cleanly to this taxonomy as harness infrastructure — the gateway that mediates between agents and tools. smgglrs-flow is an orchestrator. smgglrs-cognitive provides scaffolding. smgglrs-agent is a sub-agent framework.",
+    "how_navra_compares": "navra maps cleanly to this taxonomy as harness infrastructure — the gateway that mediates between agents and tools. navra-flow is an orchestrator. navra-cognitive provides scaffolding. navra-agent is a sub-agent framework.",
     "gaps_exposed": [
-      "smgglrs doesn't have an explicit 'skill' abstraction — cognitive directives are close but not the same as portable skill packages"
+      "navra doesn't have an explicit 'skill' abstraction — cognitive directives are close but not the same as portable skill packages"
     ],
     "advantages_confirmed": [
-      "smgglrs's architecture as gateway (harness infrastructure) is validated as the correct abstraction layer",
-      "MCP at the Tool/Harness interface is exactly where smgglrs-protocol operates"
+      "navra's architecture as gateway (harness infrastructure) is validated as the correct abstraction layer",
+      "MCP at the Tool/Harness interface is exactly where navra-protocol operates"
     ]
   },
   "ecosystem_context": {

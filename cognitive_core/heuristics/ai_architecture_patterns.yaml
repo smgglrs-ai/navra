@@ -14,7 +14,7 @@ facets:
     content: |
       - **Goal:** To select the appropriate model for agent interaction and collaboration.
       - **Patterns:**
-        - **Leader/Specialist (Mixture of Experts):** A central "Leader" or "router" agent analyzes tasks and delegates them to the most appropriate "Specialist" agent. This is the core pattern for smgglrs.
+        - **Leader/Specialist (Mixture of Experts):** A central "Leader" or "router" agent analyzes tasks and delegates them to the most appropriate "Specialist" agent. This is the core pattern for navra.
         - **Hierarchical:** A top-level agent decomposes a complex goal into sub-tasks, which are then passed down to more specialized agents.
         - **Collaborative:** Multiple agents work together in a "swarm," sharing information and dynamically handing off tasks to the agent best suited for the current step.
   - facet_name: "memory_architectures"

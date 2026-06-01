@@ -1,13 +1,13 @@
 # OpenShell Sandbox Integration Design
 
-Implementation-ready design for smgglrs integration with the
+Implementation-ready design for navra integration with the
 OpenShell secure sandbox platform. Covers ROADMAP.md Phase 6
 (6a through 6e).
 
 **Status**: Implementation complete (2026-04-25). Containerized
 agent execution is operational (2026-05-03) using Podman directly
 (shared model server + per-agent sandboxes, `Dockerfile.agent`,
-`smgglrs-agent` binary). OpenShell integration remains the target
+`navra-agent` binary). OpenShell integration remains the target
 for production sandbox deployments with full MAC + DAC defense in
 depth.
 
@@ -18,7 +18,7 @@ depth.
 ### The Sealed Sandbox Unit
 
 An OpenShell sandbox is a self-contained execution environment
-where an agent runs with everything it needs: an smgglrs gateway
+where an agent runs with everything it needs: an navra gateway
 instance, upstream MCP servers, a local model endpoint, and a
 network firewall that blocks everything else.
 
@@ -43,7 +43,7 @@ network firewall that blocks everything else.
   |           Sandbox Boundary                    |
   |                                               |
   |  +------------------------------------------+ |
-  |  |            smgglrs (gateway)             | |
+  |  |            navra (gateway)             | |
   |  |                                          | |
   |  |  Auth: OpenShellAuthenticator            | |
   |  |  ACLs: deny-wins path + tool rules       | |
@@ -67,7 +67,7 @@ network firewall that blocks everything else.
   |  +---------+  +------------+  +-----------+   |
   |                                               |
   |  Network firewall (proxy-enforced):           |
-  |    ALLOW: smgglrs gateway, model endpoint,    |
+  |    ALLOW: navra gateway, model endpoint,    |
   |           OpenShell gateway                   |
   |    DENY:  everything else                     |
   +----------------------------------------------+
@@ -80,11 +80,11 @@ The three-layer architecture maps to an operating system:
 | OS Layer | Component | Role |
 |----------|-----------|------|
 | Hardware | OpenShell | Process isolation, memory protection, I/O control |
-| Kernel | smgglrs | Syscall interface, capability tokens, IFC, access control |
+| Kernel | navra | Syscall interface, capability tokens, IFC, access control |
 | Userland | MCP servers, agents | Applications that request kernel services |
 
 OpenShell provides mandatory access control (MAC) at the OS layer.
-smgglrs provides discretionary access control (DAC) at the
+navra provides discretionary access control (DAC) at the
 application layer. Neither is sufficient alone. Together they
 implement defense in depth where compromising one layer does not
 grant full access.
@@ -95,14 +95,14 @@ grant full access.
 
 ### Problem
 
-smgglrs currently authenticates agents via `ChainAuthenticator`
+navra currently authenticates agents via `ChainAuthenticator`
 with two backends: `CapabilityAuthenticator` (CBOR+Ed25519 tokens)
 and `TokenAuthenticator` (BLAKE3 bearer tokens). Both require
-smgglrs to manage credentials independently.
+navra to manage credentials independently.
 
 Inside an OpenShell sandbox, the supervisor has already established
 the agent's identity through the gateway's identity subsystem.
-Re-authenticating at the smgglrs layer is redundant.
+Re-authenticating at the navra layer is redundant.
 
 ### OpenShellAuthenticator
 
@@ -113,13 +113,13 @@ issued by the OpenShell supervisor.
 
 ```
 ChainAuthenticator
-  1. CapabilityAuthenticator    (smgglrs-native cap tokens)
+  1. CapabilityAuthenticator    (navra-native cap tokens)
   2. OpenShellAuthenticator     (OpenShell identity)  <-- NEW
   3. TokenAuthenticator         (legacy BLAKE3)
   4. NoAuthenticator            (dev-only fallback)
 ```
 
-The ordering matters: smgglrs-native capability tokens take
+The ordering matters: navra-native capability tokens take
 priority (they carry inline capabilities). OpenShell tokens are
 tried next. Legacy BLAKE3 tokens are the fallback. This ensures
 existing deployments work unchanged.
@@ -149,10 +149,10 @@ signature check + expiry + claims extraction). The OS path uses
 ### Identity Mapping
 
 The authenticator extracts claims from the verified token and
-maps them to smgglrs's `AgentIdentity`:
+maps them to navra's `AgentIdentity`:
 
 ```
-OpenShell Token Claim              smgglrs AgentIdentity Field
+OpenShell Token Claim              navra AgentIdentity Field
 ---------------------------------------------------------------
 sub (SPIFFE URI or agent name)  -> name
 sandbox labels "role=X"         -> permissions (via config map)
@@ -162,14 +162,14 @@ gateway-scoped operations       -> capabilities.operations
 
 ### Data Types
 
-**File**: `smgglrs-security/src/auth/openshell.rs`
+**File**: `navra-security/src/auth/openshell.rs`
 
 ```rust
 /// Configuration for OpenShell identity verification.
 pub struct OpenShellAuthConfig {
     /// Verification mode.
     pub mode: OpenShellAuthMode,
-    /// Maps OpenShell label expressions to smgglrs permission set names.
+    /// Maps OpenShell label expressions to navra permission set names.
     /// Example: "role=worker" -> "restricted"
     pub label_mapping: HashMap<String, String>,
     /// Default permission set when no label matches.
@@ -222,7 +222,7 @@ impl Authenticator for OpenShellAuthenticator {
         let token = extract_bearer_token(headers)?;
 
         // Skip tokens that belong to other authenticators
-        if token.starts_with("smgglrs_cap_v1.") {
+        if token.starts_with("navra_cap_v1.") {
             return Err(AuthError::InvalidToken);
         }
 
@@ -259,7 +259,7 @@ impl Authenticator for OpenShellAuthenticator {
 
 ### Permission Resolution
 
-The authenticator maps OpenShell sandbox labels to smgglrs
+The authenticator maps OpenShell sandbox labels to navra
 permission set names using the configured label mapping:
 
 ```rust
@@ -294,7 +294,7 @@ default_permissions = "restricted"
 Extend `MappedCredentialStore` with an `openshell` backend that
 reads credentials from the supervisor's delivery channel:
 
-**File**: `smgglrs-security/src/credentials.rs` (extend existing)
+**File**: `navra-security/src/credentials.rs` (extend existing)
 
 ```rust
 pub enum CredentialSource {
@@ -319,8 +319,8 @@ and cached for the session lifetime.
 
 ### Implementation Steps
 
-1. Create `smgglrs-security/src/auth/openshell.rs`
-2. Add `OpenShellAuthConfig` to `smgglrs-server/src/config/`
+1. Create `navra-security/src/auth/openshell.rs`
+2. Add `OpenShellAuthConfig` to `navra-server/src/config/`
 3. Wire into `ChainAuthenticator` in `main.rs` (between cap and legacy)
 4. Add `OpenShell` variant to `CredentialSource`
 5. Unit tests with mock JWT tokens
@@ -332,13 +332,13 @@ and cached for the session lifetime.
 
 ### Problem
 
-smgglrs-flow uses three in-process communication primitives:
+navra-flow uses three in-process communication primitives:
 mailbox (tokio mpsc), blackboard (Arc<RwLock<HashMap>>), and
 mesh tools (virtual tools). These cannot span sandbox boundaries.
 
 ### A2A Client
 
-**File**: `smgglrs-protocol/src/a2a_client.rs`
+**File**: `navra-protocol/src/a2a_client.rs`
 
 ```rust
 /// Client for outbound A2A (Agent-to-Agent) protocol calls.
@@ -403,7 +403,7 @@ mesh_post("analyst", data)
     +-- IFC check applied in both paths
 ```
 
-**File**: `smgglrs-flow/src/mesh.rs` (extend existing)
+**File**: `navra-flow/src/mesh.rs` (extend existing)
 
 ```rust
 pub enum TeammateLocation {
@@ -455,11 +455,11 @@ impl MeshRouter {
 
 ### Agent Card Registration
 
-smgglrs maintains a local directory of teammate Agent Cards.
-Teammates discover each other through smgglrs, not through
+navra maintains a local directory of teammate Agent Cards.
+Teammates discover each other through navra, not through
 external registries.
 
-**File**: `smgglrs-core/src/transport/a2a.rs` (extend existing)
+**File**: `navra-core/src/transport/a2a.rs` (extend existing)
 
 ```rust
 /// Local directory of teammate Agent Cards.
@@ -486,7 +486,7 @@ impl AgentCardDirectory {
 
 When the flow engine creates a teammate, it mints a scoped
 capability token that limits what the teammate can do. This uses
-the existing delegation mechanism in `smgglrs-security/src/auth/capability.rs`.
+the existing delegation mechanism in `navra-security/src/auth/capability.rs`.
 
 ```rust
 // In the flow engine, when spawning a remote teammate:
@@ -515,23 +515,23 @@ message metadata:
 ```
 POST /a2a/teammates/analyst HTTP/1.1
 Authorization: Bearer <teammate_cap_token>
-X-Smgglrs-DataLabel: untrusted:sensitive
+X-Navra-DataLabel: untrusted:sensitive
 Content-Type: application/json
 
 { "jsonrpc": "2.0", "method": "message/send", ... }
 ```
 
-The A2A transport handler in smgglrs extracts the label, applies
+The A2A transport handler in navra extracts the label, applies
 Bell-LaPadula checks, and propagates taint to the receiving
 session's `TaintTracker`.
 
 ### Implementation Steps
 
-1. Create `smgglrs-protocol/src/a2a_client.rs` with `A2aClient`
-2. Add `TeammateLocation` and `MeshRouter` to `smgglrs-flow`
+1. Create `navra-protocol/src/a2a_client.rs` with `A2aClient`
+2. Add `TeammateLocation` and `MeshRouter` to `navra-flow`
 3. Extend mesh tool handlers to route via `MeshRouter`
-4. Add `AgentCardDirectory` to `smgglrs-core`
-5. Add `X-Smgglrs-DataLabel` header handling to A2A transport
+4. Add `AgentCardDirectory` to `navra-core`
+5. Add `X-Navra-DataLabel` header handling to A2A transport
 6. Unit tests with mock A2A server
 7. Integration test: two in-process agents communicating via A2A
 
@@ -541,7 +541,7 @@ session's `TaintTracker`.
 
 ### Current State
 
-`smgglrs-model-runtime` has three `RuntimeBackend` variants:
+`navra-model-runtime` has three `RuntimeBackend` variants:
 
 | Backend | Status | Code |
 |---------|--------|------|
@@ -562,12 +562,12 @@ checks for libkrun.
 
 ### OpenShell Runtime Backend
 
-**File**: `smgglrs-model-runtime/src/openshell.rs`
+**File**: `navra-model-runtime/src/openshell.rs`
 
 ```rust
 /// Model runtime that delegates sandbox creation to OpenShell.
 ///
-/// smgglrs requests a sandbox with labels (gpu requirements,
+/// navra requests a sandbox with labels (gpu requirements,
 /// isolation level). OpenShell's compute driver handles
 /// provisioning (Podman, libkrun, K8s, etc.).
 pub struct OpenShellRuntime {
@@ -602,11 +602,11 @@ impl OpenShellRuntime {
 
 ### gRPC Interface to OpenShell Compute Driver
 
-smgglrs uses a minimal subset of the OpenShell compute driver
+navra uses a minimal subset of the OpenShell compute driver
 gRPC API. The proto definitions are vendored (not generated from
 an OpenShell dependency) to avoid version coupling.
 
-**File**: `smgglrs-model-runtime/proto/openshell_compute.proto`
+**File**: `navra-model-runtime/proto/openshell_compute.proto`
 
 ```protobuf
 syntax = "proto3";
@@ -809,8 +809,8 @@ sandbox_labels = { gpu = "required", isolation = "microvm" }
 
 1. Remove `Libkrun` variant from `RuntimeBackend`, add `OpenShell`
 2. Remove `libkrun` feature flag from `Cargo.toml`, add `openshell`
-3. Add vendored proto file at `smgglrs-model-runtime/proto/`
-4. Create `smgglrs-model-runtime/src/openshell.rs`
+3. Add vendored proto file at `navra-model-runtime/proto/`
+4. Create `navra-model-runtime/src/openshell.rs`
 5. Update `auto_runtime()` to try OpenShell first
 6. Add `tonic` + `prost` + `prost-build` to `Cargo.toml`
 7. Add `build.rs` for proto compilation
@@ -845,11 +845,11 @@ McpServer
 
 ### Proto Service Definition
 
-**File**: `smgglrs-core/proto/module.proto`
+**File**: `navra-core/proto/module.proto`
 
 ```protobuf
 syntax = "proto3";
-package smgglrs.module.v1;
+package navra.module.v1;
 
 service ModuleService {
     // Discovery: return all tools, prompts, resources
@@ -967,11 +967,11 @@ message HealthResponse {
 
 ### GrpcModule Implementation
 
-**File**: `smgglrs-core/src/grpc_module.rs`
+**File**: `navra-core/src/grpc_module.rs`
 
 ```rust
 use crate::server::{Module, ToolDefinition, ToolHandler, CallToolResult};
-use smgglrs_security::auth::CallContext;
+use navra_security::auth::CallContext;
 
 pub struct GrpcModule {
     name: String,
@@ -1084,7 +1084,7 @@ impl Module for GrpcModule {
 
 ### Module Lifecycle Management
 
-**File**: `smgglrs-server/src/grpc_manager.rs`
+**File**: `navra-server/src/grpc_manager.rs`
 
 ```rust
 /// Manages lifecycle of gRPC module processes.
@@ -1133,8 +1133,8 @@ enabled = true
 [modules.custom_tool]
 enabled = true
 transport = "grpc"
-binary = "/usr/libexec/smgglrs/modules/custom-tool"
-socket = "/run/smgglrs/modules/custom-tool.sock"
+binary = "/usr/libexec/navra/modules/custom-tool"
+socket = "/run/navra/modules/custom-tool.sock"
 health_interval_secs = 10
 restart_on_failure = true
 max_restarts = 3
@@ -1153,10 +1153,10 @@ health_interval_secs = 30
   (same as OpenShell's driver model)
 - TCP modules: require capability token in gRPC metadata
   (`authorization` key in `tonic::Request::metadata()`)
-- smgglrs's ACLs still apply: gRPC modules do not bypass the
+- navra's ACLs still apply: gRPC modules do not bypass the
   permission engine. The `ToolCallContext` carries the agent
   identity through to the module.
-- Crash isolation: a failing module process does not crash smgglrs.
+- Crash isolation: a failing module process does not crash navra.
   The `GrpcModuleManager` detects the broken connection and
   restarts the module up to `max_restarts` times.
 
@@ -1164,7 +1164,7 @@ health_interval_secs = 30
 
 The `CallToolResponse` carries a `result_data_label` field. When
 a gRPC module taints its output (e.g., a read tool that accessed
-external data), it sets this field. smgglrs merges the returned
+external data), it sets this field. navra merges the returned
 label into the session's `TaintTracker` via `absorb()`.
 
 ### Dependencies
@@ -1175,10 +1175,10 @@ label into the session's `TaintTracker` via `absorb()`.
 
 ### Implementation Steps
 
-1. Add `smgglrs-core/proto/module.proto`
-2. Add `build.rs` to `smgglrs-core` for proto compilation
-3. Create `smgglrs-core/src/grpc_module.rs`
-4. Create `smgglrs-server/src/grpc_manager.rs`
+1. Add `navra-core/proto/module.proto`
+2. Add `build.rs` to `navra-core` for proto compilation
+3. Create `navra-core/src/grpc_module.rs`
+4. Create `navra-server/src/grpc_manager.rs`
 5. Add `GrpcModuleConfig` to server config
 6. Wire gRPC modules into the `McpServer` builder in `main.rs`
 7. Unit tests with mock gRPC service
@@ -1206,7 +1206,7 @@ alone:
 |  | seccomp: syscall filtering                          |  |
 |  +----------------------------------------------------+  |
 |                                                          |
-|  Layer 2: smgglrs (DAC - Discretionary Access Control)   |
+|  Layer 2: navra (DAC - Discretionary Access Control)   |
 |  +----------------------------------------------------+  |
 |  | Auth: capability tokens with scoped permissions     |  |
 |  | ACLs: deny-wins path rules + per-tool rules         |  |
@@ -1220,19 +1220,19 @@ alone:
 
 ### Why Both Are Necessary
 
-**OpenShell without smgglrs**: The agent can reach smgglrs over
-the network, but without smgglrs's ACLs it could call any tool,
+**OpenShell without navra**: The agent can reach navra over
+the network, but without navra's ACLs it could call any tool,
 read any path, and ignore IFC labels. A compromised agent
 process has unrestricted tool access.
 
-**smgglrs without OpenShell**: The agent respects smgglrs's ACLs
+**navra without OpenShell**: The agent respects navra's ACLs
 at the application layer, but a compromised agent process can
-bypass smgglrs entirely: open raw sockets, exfiltrate data to
+bypass navra entirely: open raw sockets, exfiltrate data to
 the internet, read arbitrary files via the OS, or tamper with
 other processes.
 
 **Both together**: OpenShell prevents reaching anything except
-smgglrs and the model. smgglrs prevents doing anything except
+navra and the model. navra prevents doing anything except
 what the capability token allows. Compromise of either layer
 alone is insufficient for a full breach.
 
@@ -1245,7 +1245,7 @@ Each sandbox has exactly three allowed destinations:
 | Destination   | Protocol    | Purpose                       |
 +---------------+-------------+-------------------------------+
 | Model endpoint| HTTP        | Inference (llama-server, etc) |
-| smgglrs       | MCP (HTTP)  | Tool access + A2A mesh        |
+| navra       | MCP (HTTP)  | Tool access + A2A mesh        |
 |               | + A2A (HTTP)|                               |
 | OpenShell GW  | gRPC        | Control plane, credentials    |
 +---------------+-------------+-------------------------------+
@@ -1263,15 +1263,15 @@ package openshell.sandbox.network
 
 import rego.v1
 
-# Sandbox network policy for smgglrs-managed agents.
+# Sandbox network policy for navra-managed agents.
 # Applied by the OpenShell supervisor's HTTP CONNECT proxy.
 
 default allow := false
 
-# Allow connections to the smgglrs gateway
+# Allow connections to the navra gateway
 allow if {
-    input.destination.host == data.config.smgglrs_host
-    input.destination.port == data.config.smgglrs_port
+    input.destination.host == data.config.navra_host
+    input.destination.port == data.config.navra_port
 }
 
 # Allow connections to the model endpoint
@@ -1292,17 +1292,17 @@ deny if {
 }
 ```
 
-### smgglrs Config Template for OpenShell Deployments
+### navra Config Template for OpenShell Deployments
 
-**File**: `docs/openshell/smgglrs-sandbox.toml`
+**File**: `docs/openshell/navra-sandbox.toml`
 
 ```toml
-# smgglrs configuration template for OpenShell-managed sandboxes.
+# navra configuration template for OpenShell-managed sandboxes.
 # Deployed automatically by the OpenShell supervisor.
 
 [server]
 # Unix socket inside sandbox (supervisor connects agents to it)
-socket = "/run/smgglrs/smgglrs.sock"
+socket = "/run/navra/navra.sock"
 # No TCP listener (not needed inside sandbox)
 
 [auth.openshell]
@@ -1321,7 +1321,7 @@ enabled = true
 [modules.git]
 enabled = true
 
-# Upstream MCP servers (deployed alongside smgglrs in sandbox)
+# Upstream MCP servers (deployed alongside navra in sandbox)
 [[upstream]]
 name = "domain-tools"
 transport = "stdio"
@@ -1369,12 +1369,12 @@ These run in CI with a mock OpenShell supervisor.
 
 **Test 3: Denied tool call**
 - Agent calls `git_commit` without the operation in its token
-- Verify: smgglrs returns permission denied
+- Verify: navra returns permission denied
 
 **Test 4: IFC enforcement across A2A**
 - Agent A (tainted with Sensitive data) sends A2A message to
   Agent B (Public clearance)
-- Verify: smgglrs rejects the write-down (Bell-LaPadula)
+- Verify: navra rejects the write-down (Bell-LaPadula)
 
 **Test 5: Lateral movement blocked**
 - Agent attempts to connect to another sandbox's IP directly
@@ -1394,11 +1394,11 @@ These run in CI with a mock OpenShell supervisor.
 |           | System-wide       | Network namespace +        |
 |           | mandatory rules   | Landlock + seccomp         |
 +-----------+-------------------+---------------------------+
-| DAC       | Unix permissions  | smgglrs ACLs + IFC         |
+| DAC       | Unix permissions  | navra ACLs + IFC         |
 |           | Owner-controlled  | Agent-scoped capability    |
 |           | file access       | tokens with deny-wins      |
 +-----------+-------------------+---------------------------+
-| Kernel    | Linux kernel      | smgglrs gateway            |
+| Kernel    | Linux kernel      | navra gateway            |
 |           | Syscall interface | Tool access interface      |
 |           | Process isolation | Session isolation          |
 +-----------+-------------------+---------------------------+
@@ -1420,7 +1420,7 @@ bundles everything the agent needs:
 
 ```
 Sandbox Contents:
-  smgglrs gateway (security + tool aggregation)
+  navra gateway (security + tool aggregation)
   + Upstream MCP server (domain tools + methodology prompt)
   + Persona YAML (agent identity + heuristics)
   + Model endpoint (local inference)
@@ -1430,38 +1430,38 @@ Sandbox Contents:
 
 ### Runtime Discovery Flow
 
-When a sandbox starts, the agent bootstraps through smgglrs:
+When a sandbox starts, the agent bootstraps through navra:
 
 ```
 1. Sandbox created by OpenShell supervisor
-   - smgglrs started with sandbox config
+   - navra started with sandbox config
    - Model endpoint started
    - Upstream MCP servers started
 
 2. Agent process starts
    |
-   +-- Connects to smgglrs (Unix socket)
+   +-- Connects to navra (Unix socket)
    |     Authorization: Bearer <supervisor-issued-token>
    |
    +-- Calls initialize
-   |     smgglrs returns capabilities
+   |     navra returns capabilities
    |
    +-- Calls tools/list
-   |     smgglrs returns aggregated tools from:
+   |     navra returns aggregated tools from:
    |       - Built-in modules (docs, git)
    |       - Upstream MCP servers (domain tools)
    |       - gRPC modules (if any)
    |
    +-- Calls prompts/get("domain_methodology")
-   |     smgglrs proxies to upstream, returns methodology prompt
+   |     navra proxies to upstream, returns methodology prompt
    |     Agent injects into system prompt (Phase 5h)
    |
-   +-- Loads persona YAML (from /workspace/.smgglrs/persona.yml
-   |     or from smgglrs cognitive module)
+   +-- Loads persona YAML (from /workspace/.navra/persona.yml
+   |     or from navra cognitive module)
    |
    +-- Enters tool-use loop
          Model endpoint provides inference
-         smgglrs enforces security on every tool call
+         navra enforces security on every tool call
 ```
 
 ### No External Config Needed
@@ -1481,11 +1481,11 @@ CreateSandbox {
         "model": "granite3.3:8b",
     },
     supervisor: {
-        entrypoint: "/usr/bin/smgglrs",
-        args: ["serve", "--config", "/etc/smgglrs/sandbox.toml"],
+        entrypoint: "/usr/bin/navra",
+        args: ["serve", "--config", "/etc/navra/sandbox.toml"],
         env: {
-            "SMGGLRS_PERSONA": "legal_analyst",
-            "SMGGLRS_MODEL": "granite3.3:8b",
+            "NAVRA_PERSONA": "legal_analyst",
+            "NAVRA_MODEL": "granite3.3:8b",
         },
     },
 }
@@ -1496,7 +1496,7 @@ CreateSandbox {
 ```
 +-- OpenShell Sandbox: legal-analyst-001 --+
 |                                          |
-|  smgglrs (gateway)                       |
+|  navra (gateway)                       |
 |    +-- Auth: SPIFFE from supervisor      |
 |    +-- ACLs: /workspace/cases/** only    |
 |    +-- Safety: PII filter enabled        |
@@ -1514,13 +1514,13 @@ CreateSandbox {
 |  Model: granite3.3:8b (local, Ollama)    |
 |                                          |
 |  Agent process                           |
-|    +-- Connects to smgglrs via socket    |
+|    +-- Connects to navra via socket    |
 |    +-- Discovers Syllogis tools          |
 |    +-- Loads legal_analyst persona       |
 |    +-- Injects Syllogis methodology      |
 |    +-- Runs analysis in tool loop        |
 |                                          |
-|  Network: ONLY smgglrs + model + GW      |
+|  Network: ONLY navra + model + GW      |
 +------------------------------------------+
 ```
 
@@ -1533,30 +1533,30 @@ CreateSandbox {
 ```
 Phase 6a: Identity Federation
     |  (no dependencies, can start immediately)
-    |  OpenShellAuthenticator in smgglrs-security
+    |  OpenShellAuthenticator in navra-security
     |  Credential delegation backend
     v
 Phase 6b: A2A Teammate Mesh
     |  (independent of 6a, can run in parallel)
-    |  A2aClient in smgglrs-protocol
-    |  MeshRouter in smgglrs-flow
-    |  AgentCardDirectory in smgglrs-core
+    |  A2aClient in navra-protocol
+    |  MeshRouter in navra-flow
+    |  AgentCardDirectory in navra-core
     v
 Phase 6c: Sandbox Delegation
     |  (depends on 6a for identity in sandboxes)
-    |  OpenShellRuntime in smgglrs-model-runtime
+    |  OpenShellRuntime in navra-model-runtime
     |  Remove libkrun stub
     v
 Phase 6d: gRPC Module Architecture
     |  (independent, can run in parallel with 6c)
     |  Proto definitions + tonic setup
-    |  GrpcModule adapter in smgglrs-core
-    |  GrpcModuleManager in smgglrs-server
+    |  GrpcModule adapter in navra-core
+    |  GrpcModuleManager in navra-server
     v
 Phase 6e: Network Security Model
     (depends on 6a + 6c)
     OPA policy templates
-    smgglrs config templates
+    navra config templates
     Integration test suite
     Paper section (MAC + DAC)
 ```
@@ -1569,7 +1569,7 @@ instance:
 | Phase | Mock Strategy |
 |-------|---------------|
 | 6a | Generate test JWTs locally, mock JWKS endpoint with `wiremock` |
-| 6b | Use in-process mode as baseline, test A2A client against smgglrs's own A2A endpoint |
+| 6b | Use in-process mode as baseline, test A2A client against navra's own A2A endpoint |
 | 6c | Mock gRPC compute driver that spawns a local llama-server (same as Direct backend) |
 | 6d | Mock gRPC module service that returns hardcoded tools |
 | 6e | Docker Compose setup: two containers (sandbox + gateway) with network policy |
@@ -1590,7 +1590,7 @@ Level 2: Integration tests (multi-crate, local processes)
   - Full tool call through gRPC module
 
 Level 3: System tests (containers, network isolation)
-  - Two smgglrs instances communicating via A2A
+  - Two navra instances communicating via A2A
   - Agent in container with network policy
   - End-to-end: sandbox creation -> tool call -> result
 ```
@@ -1615,35 +1615,35 @@ together.
 
 | Crate | Used By | Purpose |
 |-------|---------|---------|
-| `jsonwebtoken` | smgglrs-security | JWT decode + verify |
-| `tonic` | smgglrs-model-runtime, smgglrs-core | gRPC client/server |
-| `prost` | smgglrs-model-runtime, smgglrs-core | Protobuf codegen |
-| `prost-build` | smgglrs-model-runtime, smgglrs-core | Build-time proto compile |
+| `jsonwebtoken` | navra-security | JWT decode + verify |
+| `tonic` | navra-model-runtime, navra-core | gRPC client/server |
+| `prost` | navra-model-runtime, navra-core | Protobuf codegen |
+| `prost-build` | navra-model-runtime, navra-core | Build-time proto compile |
 
 ### Files Created or Modified
 
 **New files:**
-- `smgglrs-security/src/auth/openshell.rs`
-- `smgglrs-protocol/src/a2a_client.rs`
-- `smgglrs-core/src/grpc_module.rs`
-- `smgglrs-core/proto/module.proto`
-- `smgglrs-model-runtime/src/openshell.rs`
-- `smgglrs-model-runtime/proto/openshell_compute.proto`
-- `smgglrs-server/src/grpc_manager.rs`
+- `navra-security/src/auth/openshell.rs`
+- `navra-protocol/src/a2a_client.rs`
+- `navra-core/src/grpc_module.rs`
+- `navra-core/proto/module.proto`
+- `navra-model-runtime/src/openshell.rs`
+- `navra-model-runtime/proto/openshell_compute.proto`
+- `navra-server/src/grpc_manager.rs`
 - `docs/openshell/opa-sandbox-policy.rego`
-- `docs/openshell/smgglrs-sandbox.toml`
+- `docs/openshell/navra-sandbox.toml`
 
 **Modified files:**
-- `smgglrs-security/src/auth/mod.rs` (add `pub mod openshell`)
-- `smgglrs-security/src/credentials.rs` (add `OpenShell` source variant)
-- `smgglrs-protocol/src/lib.rs` (add `pub mod a2a_client`)
-- `smgglrs-core/src/lib.rs` (add `pub mod grpc_module`)
-- `smgglrs-core/src/transport/a2a.rs` (add `AgentCardDirectory`)
-- `smgglrs-model-runtime/src/lib.rs` (replace `Libkrun` with `OpenShell`)
-- `smgglrs-model-runtime/Cargo.toml` (replace `libkrun` feature with `openshell`)
-- `smgglrs-flow/src/mesh.rs` (add `TeammateLocation`, `MeshRouter`)
-- `smgglrs-server/src/config/` (add OpenShell + gRPC module config structs)
-- `smgglrs-server/src/main.rs` (wire OpenShell auth + gRPC modules)
+- `navra-security/src/auth/mod.rs` (add `pub mod openshell`)
+- `navra-security/src/credentials.rs` (add `OpenShell` source variant)
+- `navra-protocol/src/lib.rs` (add `pub mod a2a_client`)
+- `navra-core/src/lib.rs` (add `pub mod grpc_module`)
+- `navra-core/src/transport/a2a.rs` (add `AgentCardDirectory`)
+- `navra-model-runtime/src/lib.rs` (replace `Libkrun` with `OpenShell`)
+- `navra-model-runtime/Cargo.toml` (replace `libkrun` feature with `openshell`)
+- `navra-flow/src/mesh.rs` (add `TeammateLocation`, `MeshRouter`)
+- `navra-server/src/config/` (add OpenShell + gRPC module config structs)
+- `navra-server/src/main.rs` (wire OpenShell auth + gRPC modules)
 
 ---
 
@@ -1654,6 +1654,6 @@ together.
 - SPIFFE/SPIRE (CNCF, workload identity via mTLS)
 - Terraform provider model (HashiCorp, gRPC plugins)
 - Bell-LaPadula model (no-write-down, mandatory access control)
-- DESIGN.md -- smgglrs architecture, auth, transport, ACLs
+- DESIGN.md -- navra architecture, auth, transport, ACLs
 - ROADMAP.md -- Phase 6 (6a-6e) overview
 - OPENSHELL.md -- High-level integration design

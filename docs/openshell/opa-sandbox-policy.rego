@@ -1,12 +1,12 @@
 # OPA policy for OpenShell sandbox network proxy.
 #
 # Applied by the OpenShell supervisor's HTTP CONNECT proxy to enforce
-# network isolation for smgglrs-managed agent sandboxes. Each sandbox
+# network isolation for navra-managed agent sandboxes. Each sandbox
 # runs in a network namespace where all outbound connections are
 # tunneled through the proxy and evaluated against this policy.
 #
 # Default: deny all traffic. Only three destinations are allowed:
-#   1. The smgglrs gateway (MCP tool access + A2A teammate mesh)
+#   1. The navra gateway (MCP tool access + A2A teammate mesh)
 #   2. The model endpoint (LLM inference)
 #   3. The OpenShell gateway (control plane, credential delivery)
 #
@@ -17,8 +17,8 @@
 # `data.config.*` (injected by the supervisor at sandbox creation):
 #
 #   {
-#     "smgglrs_host": "10.0.0.2",
-#     "smgglrs_port": 9315,
+#     "navra_host": "10.0.0.2",
+#     "navra_port": 9315,
 #     "model_host": "10.0.0.3",
 #     "model_port": 8080,
 #     "gateway_host": "10.0.0.1",
@@ -46,19 +46,19 @@ import rego.v1
 # means blocked traffic, not open traffic.
 default allow := false
 
-# Rule 1: Allow connections to the smgglrs gateway.
+# Rule 1: Allow connections to the navra gateway.
 #
-# The agent process connects to smgglrs over MCP (Streamable HTTP)
+# The agent process connects to navra over MCP (Streamable HTTP)
 # for tool calls, and over A2A (HTTP) for teammate communication.
 # This is the only way the agent can interact with tools and data.
 allow if {
-    input.destination.host == data.config.smgglrs_host
-    input.destination.port == data.config.smgglrs_port
+    input.destination.host == data.config.navra_host
+    input.destination.port == data.config.navra_port
 }
 
 # Rule 2: Allow connections to the model endpoint.
 #
-# The agent (or smgglrs on the agent's behalf) connects to the
+# The agent (or navra on the agent's behalf) connects to the
 # local model server (llama-server, Ollama, vLLM, etc.) for LLM
 # inference. Without this, the agent cannot reason.
 allow if {
@@ -69,7 +69,7 @@ allow if {
 # Rule 3: Allow connections to the OpenShell gateway.
 #
 # The supervisor's control plane endpoint for credential delivery,
-# sandbox lifecycle management, and health reporting. smgglrs uses
+# sandbox lifecycle management, and health reporting. navra uses
 # this for the OpenShell runtime backend (gRPC) and credential
 # delegation.
 allow if {

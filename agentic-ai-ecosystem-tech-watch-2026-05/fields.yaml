@@ -36,12 +36,12 @@ fields:
         description: "How it works — architecture, algorithm, approach"
         detail_level: detailed
 
-  smgglrs_relevance:
-    description: "Direct impact on the smgglrs gateway project"
+  navra_relevance:
+    description: "Direct impact on the navra gateway project"
     fields:
       - name: affected_crates
         description: >
-          Which smgglrs crates are affected: protocol, model, model-hub,
+          Which navra crates are affected: protocol, model, model-hub,
           model-runtime, security, core, memory, agent, flow, rag,
           modal-voice, modal-vision, tools-exec, tools-file, tools-git,
           cognitive, server
@@ -53,11 +53,11 @@ fields:
         description: "high | medium | low"
         detail_level: brief
       - name: relevance_rationale
-        description: "Why this matters to smgglrs specifically"
+        description: "Why this matters to navra specifically"
         detail_level: moderate
 
   actionable_insights:
-    description: "What smgglrs should do about this"
+    description: "What navra should do about this"
     fields:
       - name: what_to_adopt
         description: "Techniques, patterns, or APIs to integrate"
@@ -76,16 +76,16 @@ fields:
         detail_level: brief
 
   competitive_position:
-    description: "How smgglrs compares and where to differentiate"
+    description: "How navra compares and where to differentiate"
     fields:
-      - name: how_smgglrs_compares
-        description: "Direct comparison with smgglrs capabilities"
+      - name: how_navra_compares
+        description: "Direct comparison with navra capabilities"
         detail_level: moderate
       - name: gaps_exposed
         description: "Weaknesses or missing features revealed"
         detail_level: moderate
       - name: advantages_confirmed
-        description: "smgglrs strengths validated by this item"
+        description: "navra strengths validated by this item"
         detail_level: moderate
 
   ecosystem_context:

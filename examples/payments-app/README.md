@@ -1,6 +1,6 @@
 # Security Audit Demo — payments-app
 
-End-to-end demonstration of the smgglrs-* framework performing a
+End-to-end demonstration of the navra-* framework performing a
 multi-agent security audit on a vulnerable payment application.
 
 ## What it demonstrates
@@ -16,7 +16,7 @@ multi-agent security audit on a vulnerable payment application.
 | 7 | **Memory + RAG** | Analyst recalls previous audit findings from March 2026 (SQL injection was found but unresolved). Cross-references with current scan. |
 | 8 | **Mandate Validation** | After fixes are proposed, the flow engine validates each task output against `success_criteria`. Drift detector checks agents stayed on mandate. |
 | 9 | **Failure Recovery** | If review-fixes rejects a fix, the flow engine routes back to propose-fixes with feedback (retry with context). Circular fix detector prevents infinite loops. |
-| 10 | **Human-in-the-Loop** | `git_commit` requires approval. D-Bus notification sent to desktop. User approves via system tray or `smgglrs approve <id>`. |
+| 10 | **Human-in-the-Loop** | `git_commit` requires approval. D-Bus notification sent to desktop. User approves via system tray or `navra approve <id>`. |
 | 11 | **Agent Commit Signing** | Commit is signed with the agent's Ed25519 key, traceable to the DID:key identity. |
 | 12 | **Managed Models** | Granite model pulled from hub and served via Podman at startup. Safety classifier loaded in-process via ONNX Runtime. |
 
@@ -46,8 +46,8 @@ examples/payments-app/
 │   ├── owasp_top_10.yaml         # Vulnerability patterns
 │   ├── secure_coding.yaml        # Fix patterns
 │   └── risk_assessment.yaml      # Prioritization
-└── config/                       # smgglrs + flow configuration
-    ├── demo-config.toml           # smgglrs gateway config
+└── config/                       # navra + flow configuration
+    ├── demo-config.toml           # navra gateway config
     ├── audit-flow.toml            # 7-task DAG definition
     └── seed-memory.json           # Previous audit findings
 ```
@@ -55,11 +55,11 @@ examples/payments-app/
 ## Running the demo
 
 ```bash
-# Build smgglrs
+# Build navra
 ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build
 
-# Run the demo (future: smgglrs demo --project examples/payments-app)
-smgglrs serve --config examples/payments-app/config/demo-config.toml
+# Run the demo (future: navra demo --project examples/payments-app)
+navra serve --config examples/payments-app/config/demo-config.toml
 ```
 
 ## Expected output

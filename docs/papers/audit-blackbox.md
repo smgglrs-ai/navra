@@ -10,7 +10,7 @@
 AI agents increasingly make autonomous decisions through tool calls,
 yet most agent frameworks provide no audit trail. When failures occur,
 the sequence of tool calls, arguments, and outcomes is lost. We present
-a gateway-level blackbox recorder embedded in smgglrs, an MCP gateway
+a gateway-level blackbox recorder embedded in navra, an MCP gateway
 daemon. The blackbox records every tool call at the protocol chokepoint
 with no opt-in required. Entries are append-only in SQLite and
 SHA-256 hash-chained for tamper detection. We describe the design,
@@ -46,19 +46,19 @@ on a system.
 
 ### 3.1 Gateway-level recording
 
-smgglrs is an MCP (Model Context Protocol) gateway. All tool calls from
+navra is an MCP (Model Context Protocol) gateway. All tool calls from
 any connected agent pass through a single function:
 `McpServer::handle_call_tool`. This is the chokepoint. By recording at
 this layer, every tool call is captured regardless of which agent made
 it, which framework it uses, or whether the agent cooperates.
 
 The blackbox is **always on**. There is no configuration flag, no
-opt-in, no per-agent toggle. If smgglrs runs, it records. Agents are
+opt-in, no per-agent toggle. If navra runs, it records. Agents are
 not informed that recording is occurring.
 
 ### 3.2 Storage: append-only SQLite
 
-Entries are stored in a SQLite database (`~/.local/share/smgglrs/blackbox.db`).
+Entries are stored in a SQLite database (`~/.local/share/navra/blackbox.db`).
 The table uses `INSERT` only -- no `UPDATE` or `DELETE` operations exist
 in the codebase. The schema is a single `blackbox` table with indexes
 on `agent_name`, `tool_name`, and `timestamp_ms`.
@@ -111,17 +111,17 @@ bounding storage growth.
 
 ## 5. CLI Interface
 
-The `smgglrs audit` command queries the blackbox offline (the server
+The `navra audit` command queries the blackbox offline (the server
 need not be running):
 
 | Command | Effect |
 |---------|--------|
-| `smgglrs audit` | Tabular summary of last 20 entries (seq, agent, outcome, tool, duration, IFC label) |
-| `smgglrs audit --detail` | Full entries with truncated args and result (120 chars in CLI) |
-| `smgglrs audit --limit 100` | Show last 100 entries |
-| `smgglrs audit --tool file_tree` | Filter to a specific tool |
-| `smgglrs audit --agent claude` | Filter to a specific agent |
-| `smgglrs audit --verify` | Verify hash chain integrity, report valid count and first broken sequence |
+| `navra audit` | Tabular summary of last 20 entries (seq, agent, outcome, tool, duration, IFC label) |
+| `navra audit --detail` | Full entries with truncated args and result (120 chars in CLI) |
+| `navra audit --limit 100` | Show last 100 entries |
+| `navra audit --tool file_tree` | Filter to a specific tool |
+| `navra audit --agent claude` | Filter to a specific agent |
+| `navra audit --verify` | Verify hash chain integrity, report valid count and first broken sequence |
 
 Filters compose: `--agent X --tool Y` shows only entries matching both.
 
@@ -138,7 +138,7 @@ normally. No error appeared in stdout. The operator saw only an
 unhelpful final report with zero findings. Debugging required reading
 agent source code and guessing which tool call failed.
 
-**With the blackbox**, the operator ran `smgglrs audit --detail` and
+**With the blackbox**, the operator ran `navra audit --detail` and
 immediately saw:
 
 ```

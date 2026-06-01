@@ -18,15 +18,15 @@
     ],
     "methodology": "Sessions partitioned into fixed-size chunks (default b=2 turns), processed independently and concurrently into canonical facts with temporal anchors, entity mentions, and source references. MemTree organizes facts as balanced trees with lazy dirty-path refresh (coalesces updates, same-level parallel). Two-phase retrieval: Forest Recall retrieves relevant trees via root summaries + fact-to-tree mapping; Tree Browse descends from interval summaries to leaf evidence (embedding-only for low latency, LLM-guided for higher accuracy)."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["memory", "rag"],
     "relevance_category": "opportunity",
     "impact_level": "high",
-    "relevance_rationale": "MemForest directly addresses smgglrs-memory's architecture limitations revealed by code analysis. smgglrs-memory currently uses: (1) Working memory with SQLite-backed Turn/Message tables (fork/merge supported but flat chronological ordering); (2) Knowledge store with FTS5 (BM25 ranking, hardcoded 20-result limit) and content-addressed storage (SHA-256 hash of kind+title); (3) Exponential decay with importance modulation (importance * exp(-rate/(1+importance) * age_hours) + min(0.1*access_count, 0.3)) — temporal but flat, no hierarchical summarization; (4) Scoping (entity_id, process_id, session_id) — but flat, not tree-structured. MemForest's three tree types (session, entity, scene) would replace the flat scoping model. The 6x write throughput is critical because smgglrs-memory's knowledge store writes are sequential (single SQLite connection with Mutex). Parallel chunk extraction could integrate with smgglrs-rag's breadcrumb chunking (currently single-strategy heading injection)."
+    "relevance_rationale": "MemForest directly addresses navra-memory's architecture limitations revealed by code analysis. navra-memory currently uses: (1) Working memory with SQLite-backed Turn/Message tables (fork/merge supported but flat chronological ordering); (2) Knowledge store with FTS5 (BM25 ranking, hardcoded 20-result limit) and content-addressed storage (SHA-256 hash of kind+title); (3) Exponential decay with importance modulation (importance * exp(-rate/(1+importance) * age_hours) + min(0.1*access_count, 0.3)) — temporal but flat, no hierarchical summarization; (4) Scoping (entity_id, process_id, session_id) — but flat, not tree-structured. MemForest's three tree types (session, entity, scene) would replace the flat scoping model. The 6x write throughput is critical because navra-memory's knowledge store writes are sequential (single SQLite connection with Mutex). Parallel chunk extraction could integrate with navra-rag's breadcrumb chunking (currently single-strategy heading injection)."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Hierarchical temporal indexing for smgglrs-memory knowledge store",
+      "Hierarchical temporal indexing for navra-memory knowledge store",
       "Three tree types (session, entity, scene) as memory organization",
       "Parallel chunk extraction to break sequential write bottleneck",
       "Canonical facts with temporal anchors as write units",
@@ -45,7 +45,7 @@
     "priority_sprint": "S11-S12 (memory architecture upgrade)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-memory currently uses flat working memory (conversation turns) + FTS5 knowledge store. MemForest offers a fundamentally better architecture with temporal indexing, O(log N) writes, and parallel extraction. However, smgglrs-memory is simpler and has lower operational overhead.",
+    "how_navra_compares": "navra-memory currently uses flat working memory (conversation turns) + FTS5 knowledge store. MemForest offers a fundamentally better architecture with temporal indexing, O(log N) writes, and parallel extraction. However, navra-memory is simpler and has lower operational overhead.",
     "gaps_exposed": [
       "No temporal indexing — knowledge store uses flat SQLite tables with FTS5, not hierarchical trees (O(N) writes vs MemForest's O(log N))",
       "Sequential write path — single Mutex<Connection> bottleneck limits throughput under high interaction frequency",
@@ -54,7 +54,7 @@
       "Decay is exponential with importance modulation but no hierarchical summarization — no way to lazily coalesce old entries like MemForest's dirty-path refresh"
     ],
     "advantages_confirmed": [
-      "smgglrs-memory's SQLite FTS5 + smgglrs-rag's hybrid search (FTS5 + sqlite-vec + RRF k=60) provides the lexical+vector retrieval MemForest lacks",
+      "navra-memory's SQLite FTS5 + navra-rag's hybrid search (FTS5 + sqlite-vec + RRF k=60) provides the lexical+vector retrieval MemForest lacks",
       "Cross-encoder reranking (ONNX batched) + GatedReranker (0.4 confidence threshold) complements MemForest's two-phase retrieval",
       "Content-addressed storage (SHA-256 hash of kind+title) with version tracking enables supersession semantics",
       "Fork/merge on working memory (Append/Replace/Summarize strategies) supports conversation branching"

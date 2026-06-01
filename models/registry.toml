@@ -1,11 +1,11 @@
-# smgglrs Model Registry
+# navra Model Registry
 #
-# Available models for `smgglrs model pull <name>`.
+# Available models for `navra model pull <name>`.
 # Add your own entries or edit existing ones — no recompilation needed.
 #
 # Each [[models]] entry defines a downloadable model with:
 #   name        — short name for CLI use
-#   description — shown in `smgglrs model available`
+#   description — shown in `navra model available`
 #   repo        — HuggingFace repo ID
 #   model_file  — filename to download from the repo
 #   license     — license identifier for user awareness
@@ -56,7 +56,7 @@ model_file = "model.onnx"
 license = "MIT"
 tokenizer = "tokenizer.json"
 config = """
-# Auto-detected at startup from ~/.local/share/smgglrs/models/pii-ner/
+# Auto-detected at startup from ~/.local/share/navra/models/pii-ner/
 """
 
 [[models]]
@@ -68,7 +68,7 @@ license = "MIT"
 tokenizer = "tokenizer.json"
 extra_files = ["label_map.json"]
 config = """
-# Auto-detected at startup from ~/.local/share/smgglrs/models/pii-ner-multilingual/
+# Auto-detected at startup from ~/.local/share/navra/models/pii-ner-multilingual/
 """
 
 # --- Agent / inference models (GGUF, for llama-server or Ollama) ---

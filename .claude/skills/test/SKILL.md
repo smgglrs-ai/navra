@@ -1,6 +1,6 @@
 ---
 name: test
-description: Run smgglrs tests with ONNX Runtime environment variables
+description: Run navra tests with ONNX Runtime environment variables
 ---
 
 Run tests with the required ONNX Runtime environment variables.
@@ -28,7 +28,7 @@ ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace
 E2e tests (require Ollama running):
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p smgglrs-server --test e2e
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test e2e
 ```
 
 ## Notes

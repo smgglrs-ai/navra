@@ -1,7 +1,7 @@
-# smgglrs Roadmap
+# navra Roadmap
 
-This document tracks the evolution of the smgglrs-* crate family from
-an MCP gateway (smgglrs) into a complete multi-agent orchestration
+This document tracks the evolution of the navra-* crate family from
+an MCP gateway (navra) into a complete multi-agent orchestration
 platform.
 
 ## Current state (2026-05-29)
@@ -62,8 +62,8 @@ ID-JAG agent registration. IFC declassification witness. Prometheus
   MVAR, NeuroTaint), Microsoft AGT 7-package governance toolkit,
   K8s Agent Sandbox CRDs, auth.md agent registration protocol,
   TurboVec Rust vector index, MemForest temporal memory, MUSE
-  skill lifecycle, Cloudflare 5-channel RRF (validates smgglrs-rag),
-  OWASP ASI 2026 taxonomy (smgglrs covers 8/10)
+  skill lifecycle, Cloudflare 5-channel RRF (validates navra-rag),
+  OWASP ASI 2026 taxonomy (navra covers 8/10)
 - **New roadmap items**: Egress allowlist (9u), OWASP ASI mapping
   (9v), HyDE retrieval channel (7k), cross-tool anomaly detection
   (9w), MCP 2026-07-28 runtime-gated migration (9x),
@@ -142,7 +142,7 @@ ID-JAG agent registration. IFC declassification witness. Prometheus
     Benign classification. 8 new tests.
 - **Phase 14 (Agentic OS completeness)**: All 5 items implemented
   - 14a: Agent signal (Interrupt/Terminate/Pause/Resume via watch channel)
-  - 14b: Kernel state as MCP resources (`smgglrs://proc`, `smgglrs://ifc/labels`, etc.)
+  - 14b: Kernel state as MCP resources (`navra://proc`, `navra://ifc/labels`, etc.)
   - 14c: Resource list filtering by agent permissions
   - 14d: Agent process hibernation (conversation + optional KV cache)
   - 14e: Preemptive scheduling (`cancel()` on ModelBackend, per-agent token quotas)
@@ -151,7 +151,7 @@ ID-JAG agent registration. IFC declassification witness. Prometheus
 
 - **Tech watch** (40+ sources, 7 research agents): MCP security
   market exploding (97M monthly SDK downloads, 30 CVEs in 60 days),
-  OpenShell+Claude self-hosted sandboxes validating smgglrs position,
+  OpenShell+Claude self-hosted sandboxes validating navra position,
   RAG consensus shifting to hybrid FTS5+vector, agent frameworks
   converging on durable execution, competitive landscape intensifying
 - **New competitors**: IBM ContextForge (strongest OSS gateway, 3500+
@@ -183,7 +183,7 @@ ID-JAG agent registration. IFC declassification witness. Prometheus
 - **Tech watch** (15 articles, 7 research agents): GLiGuard 300M
   safety model (encoder-based, ONNX, Apache 2.0), Microsoft AGT
   competitor analysis, OTel GenAI semantic conventions for
-  observability, Power of Attorney auth model (smgglrs cap tokens
+  observability, Power of Attorney auth model (navra cap tokens
   are superset), cost-aware LLM routing (vLLM Semantic Router),
   prompt compression (ACON/LLMLingua-2), Memori agent memory
   (3D scoping), hybrid attention (Qwen3.5), ADK durable execution,
@@ -200,7 +200,7 @@ ID-JAG agent registration. IFC declassification witness. Prometheus
   logging/setLevel (per-session log level filtering),
   resources/subscribe + unsubscribe (session-scoped subscription
   tracking with notifications/resources/updated delivery)
-- **GitHub forge module** (smgglrs-tools-github, 21st crate): 6
+- **GitHub forge module** (navra-tools-github, 21st crate): 6
   tools via `gh` CLI (github_pr_list, github_pr_create,
   github_pr_view, github_issue_list, github_issue_create,
   github_issue_comment). Input validation, config wiring
@@ -234,7 +234,7 @@ ID-JAG agent registration. IFC declassification witness. Prometheus
 
 ### Recent (2026-05-06)
 
-- Renamed smgglrs-tools-docs → smgglrs-tools-file (DocsModule→FileModule)
+- Renamed navra-tools-docs → navra-tools-file (DocsModule→FileModule)
 - WebMCP transport skeleton (feature-gated, CDP bridge pattern)
 - Persona semantic validation (cross-reference checks + CLI subcommand)
 - Working memory decay wired into turn selection (get_turns_by_score)
@@ -250,9 +250,9 @@ ID-JAG agent registration. IFC declassification witness. Prometheus
 - Phase 9c: Cursor-based pagination for all list operations
 - Phase 9d-9e: Notification infrastructure (notify/notify_session on
   McpServer, progress tracking via _meta.progressToken)
-- Phase 9f: Stdio server transport (`smgglrs stdio` for IDE integration)
+- Phase 9f: Stdio server transport (`navra stdio` for IDE integration)
 - Phase 9g: OAuth 2.0 (provider, authenticator, HTTP endpoints wired)
-- Phase 9h: smgglrs-macros crate (`#[tool]` proc macro)
+- Phase 9h: navra-macros crate (`#[tool]` proc macro)
 - Two self-review rounds (23+8 agents) with findings fixed
 - Self-review findings: zombie process fix, port TOCTOU, pick_free_port
   dedup, git_diff ref fix, vision size limit, memory pagination, SSE
@@ -481,8 +481,8 @@ external evaluation.
 
 15a and 15b are parallel P1 items. Built on rendra stack (Servo
 runtime + rendra-ui + rendra-ag-ui). Completely independent of
-smgglrs Rust work — can be worked on anytime. Note: rendra apps
-are separate repos (smgglrs-ai/rendra, rendra-ui, rendra-ag-ui).
+navra Rust work — can be worked on anytime. Note: rendra apps
+are separate repos (navra-ai/rendra, rendra-ui, rendra-ag-ui).
 
 #### Chain 12: UX & tool patterns (MEDIUM)
 
@@ -517,7 +517,7 @@ are separate repos (smgglrs-ai/rendra, rendra-ui, rendra-ag-ui).
      but work headless (auto-deny on timeout).
 ```
 
-9ab and 9ac are smgglrs differentiators — neither MCP nor AG-UI
+9ab and 9ac are navra differentiators — neither MCP nor AG-UI
 provides enforcement. Together they close the remaining OWASP gaps
 (8/10 → 10/10).
 
@@ -600,7 +600,7 @@ WAVE 5 — Papers (terminal)
 NEXT ACTIONS (unblocked, priority order):
   1. 7l  TurboVec eval         P3  2-3d  (benchmark sqlite-vec vs turbovec)
   2. U3  GitLab module         P2  3-4d  (port of U2)
-  3. 5e  AG-UI event layer     P3  2-3d  (smgglrs → rendra-ag-ui)
+  3. 5e  AG-UI event layer     P3  2-3d  (navra → rendra-ag-ui)
   4. 13a Paper fixes           P1  3d    (FIDES diff, gateway positioning)
   5. 10a Security paper        P1  5-7d  (most deps resolved)
 ```
@@ -652,30 +652,30 @@ These items have no dependencies on them and can wait:
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| smgglrs-protocol | Done (Phase 9) | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry). 39/39 MCP spec features. |
-| smgglrs-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
-| smgglrs-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
-| smgglrs-model-runtime | Done | Serve models via llama-server or Podman. libkrun delegated to OpenShell (see OPENSHELL.md) |
-| smgglrs-security | Done | Auth (BLAKE3, capability tokens, DID:key), ACLs, IFC with trusted paths, safety filters, hooks |
-| smgglrs-core | Done | MCP server, module trait, session, IFC value store, transport |
-| smgglrs-server | Done | Gateway binary (smgglrs), config, model hub/runtime integration, CLI |
+| navra-protocol | Done (Phase 9) | MCP/A2A types, upstream client (stdio/HTTP/SSE + retry). 39/39 MCP spec features. |
+| navra-model | Done | ModelBackend trait, ONNX (in-process), OpenAI-compat, Anthropic (direct + Vertex AI) |
+| navra-model-hub | Done | Pull/cache models from OCI, HuggingFace, Ollama registries. Composite model cards (vendor + agentic + runtime) |
+| navra-model-runtime | Done | Serve models via llama-server or Podman. libkrun delegated to OpenShell (see OPENSHELL.md) |
+| navra-security | Done | Auth (BLAKE3, capability tokens, DID:key), ACLs, IFC with trusted paths, safety filters, hooks |
+| navra-core | Done | MCP server, module trait, session, IFC value store, transport |
+| navra-server | Done | Gateway binary (navra), config, model hub/runtime integration, CLI |
 
 ### Client & Orchestration (v1 complete)
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| smgglrs-agent | Done | Client SDK: Agent builder with `.persona()`, McpClient with taint tracking, ReAct tool-use loop, non-progress iterations, scoped capability tokens. Standalone binary (`smgglrs-agent`) for containerized execution + `Dockerfile.agent` |
-| smgglrs-flow | Done (v2) | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), IFC-gated, mandate validation |
+| navra-agent | Done | Client SDK: Agent builder with `.persona()`, McpClient with taint tracking, ReAct tool-use loop, non-progress iterations, scoped capability tokens. Standalone binary (`navra-agent`) for containerized execution + `Dockerfile.agent` |
+| navra-flow | Done (v2) | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), IFC-gated, mandate validation |
 
 ### Tools & Modalities (scaffolded)
 
 | Crate | Status | What it does |
 |-------|--------|-------------|
-| smgglrs-tools-file | Done | File CRUD, FTS5, sqlite-vec (renamed from smgglrs-tools-docs 2026-05-06) |
-| smgglrs-tools-git | Done | Git status, diff, log, branch, commit |
-| smgglrs-rag | Done | Vector search, semantic chunking |
-| smgglrs-modal-voice | Scaffolded | ASR + TTS via ONNX (Whisper, Piper) |
-| smgglrs-modal-vision | Scaffolded | Image understanding (GPU tier) |
+| navra-tools-file | Done | File CRUD, FTS5, sqlite-vec (renamed from navra-tools-docs 2026-05-06) |
+| navra-tools-git | Done | Git status, diff, log, branch, commit |
+| navra-rag | Done | Vector search, semantic chunking |
+| navra-modal-voice | Scaffolded | ASR + TTS via ONNX (Whisper, Piper) |
+| navra-modal-vision | Scaffolded | Image understanding (GPU tier) |
 
 ---
 
@@ -695,7 +695,7 @@ using DAG-based multi-agent flows. Four flow templates are available:
 
 ```bash
 # Start the server
-smgglrs serve
+navra serve
 
 # Run a review via MCP (from any MCP client)
 flow_start(flow_name="review", prompt="Review the project",
@@ -705,7 +705,7 @@ flow_start(flow_name="review", prompt="Review the project",
 flow_start(flow_name="comprehensive-review", ...)
 
 # Improvement cycle (creates git worktree for isolation)
-smgglrs improve --target . --cycles 3 --branch self-improve
+navra improve --target . --cycles 3 --branch self-improve
 ```
 
 ### Comparative results (2026-05-07)
@@ -774,7 +774,7 @@ than spreading evenly across hardcoded categories.
 | Model reasoning filter | PII detection on agent text output (model reasoning), not just tool results |
 | File path PII detection | `PathPiiFilter` detects PII leaked via file paths (e.g., `/home/jean.dupont/`) |
 | Consent tracking | Per-data-subject consent records; `pii_report` tool for GDPR data subject access requests |
-| PII model download | `smgglrs pii download` CLI command to fetch NER models (protectai, xlm-roberta) |
+| PII model download | `navra pii download` CLI command to fetch NER models (protectai, xlm-roberta) |
 
 ### Detection layers
 
@@ -833,17 +833,17 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Rename docs_* → file_*, MCP resources for reads | 2026-04-25 |
 | Full PII pipeline (regex + NER + paths, pseudonymization, GDPR tools) | 2026-04-25 |
 | Containerized agent execution (shared model server + per-agent sandboxes) | 2026-05-03 |
-| smgglrs-agent standalone binary + Dockerfile.agent | 2026-05-03 |
+| navra-agent standalone binary + Dockerfile.agent | 2026-05-03 |
 | Two self-review rounds: 20+ findings fixed (security, perf, code quality) | 2026-05-05 |
 | Phase 8a: Typed agent action/result model (AgentAction, RiskLevel) | 2026-05-05 |
 | Phase 8b: MCP config import (Claude Desktop, VSCode, Codex) | 2026-05-05 |
 | Phase 9a-9h: MCP spec coverage 14→35/39 (types, pagination, notifications, OAuth, stdio, proc macros) | 2026-05-05 |
 | Notification bus: notify()/notify_session() on McpServer | 2026-05-05 |
 | OAuth 2.0 endpoints wired into Axum router | 2026-05-05 |
-| smgglrs-macros crate: `#[tool]` proc macro (18th crate) | 2026-05-05 |
+| navra-macros crate: `#[tool]` proc macro (18th crate) | 2026-05-05 |
 | Domain-agnostic review + improve flows with dynamic persona selection | 2026-05-07 |
 | build_test MCP tool, task-level tool/operation grants in flow YAML | 2026-05-07 |
-| Git branch creation, `smgglrs improve` CLI | 2026-05-07 |
+| Git branch creation, `navra improve` CLI | 2026-05-07 |
 | Planner JSON resilience (markdown stripping, id-boundary recovery) | 2026-05-07 |
 | Schema enforcement on generates_tasks agents (in-process + container) | 2026-05-07 |
 | response_format plumbed through ChatRequest → Ollama API | 2026-05-07 |
@@ -851,7 +851,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Comparative flow evaluation: hardcoded vs dynamic persona selection | 2026-05-07 |
 | MCP spec complete: completion/complete, logging/setLevel, resources/subscribe+unsubscribe | 2026-05-15 |
 | WebSocket transport (`/ws` endpoint alongside SSE) | 2026-05-15 |
-| GitHub forge module (smgglrs-tools-github, 21st crate, 6 tools via `gh` CLI) | 2026-05-15 |
+| GitHub forge module (navra-tools-github, 21st crate, 6 tools via `gh` CLI) | 2026-05-15 |
 | Statistical guardrails (cosine drift + Shannon entropy, post-hook) | 2026-05-15 |
 | Context budget enforcement (BudgetHook, head+tail truncation) | 2026-05-15 |
 | All tools migrated to `#[tool]` proc macro | 2026-05-15 |
@@ -861,7 +861,7 @@ audit/blackbox logs, distillation output, and vector embeddings
 | Phase 9n: Cognitive file integrity monitoring (SHA-256 + semantic drift) | 2026-05-26 |
 | Phase 12c: Prometheus /metrics + OTel trace export (feature-gated) | 2026-05-26 |
 | Phase 14a: Agent signal (Interrupt/Terminate/Pause/Resume) | 2026-05-26 |
-| Phase 14b: Kernel state as MCP resources (smgglrs:// URIs) | 2026-05-26 |
+| Phase 14b: Kernel state as MCP resources (navra:// URIs) | 2026-05-26 |
 | Phase 14c: Resource list filtering by agent permissions | 2026-05-26 |
 | Phase 14d: Agent process hibernation (conversation + KV cache) | 2026-05-26 |
 | Phase 14e: Preemptive scheduling (cancel on ModelBackend, token quotas) | 2026-05-26 |
@@ -902,9 +902,9 @@ audit/blackbox logs, distillation output, and vector embeddings
 | ~~Trace-based memory extraction~~ (MemoryExtractionHook) | ✅ | — | — |
 | ~~Progressive tool disclosure~~ (session-scoped tool sets) | ✅ | — | — |
 | **Speculative decoding** (EAGLE3/FastDraft in model-runtime) | 11g | 2-3 days | Medium |
-| ~~smgglrs-flow DAG test framework~~ (PTA/dominator validation) | ✅ | — | — |
+| ~~navra-flow DAG test framework~~ (PTA/dominator validation) | ✅ | — | — |
 | ~~Event-driven triggers~~ (webhook, cron, file watch) | ✅ | — | — |
-| ~~fd-passing TOCTOU mitigation~~ (smgglrs-tools-file) | ✅ | — | — |
+| ~~fd-passing TOCTOU mitigation~~ (navra-tools-file) | ✅ | — | — |
 | ~~Upstream tool scanning~~ (poisoning, typosquatting, schema abuse) | ✅ 2026-05-26 | — | — |
 | ~~Cognitive file integrity~~ (SHA-256 + semantic drift detection) | ✅ 2026-05-26 | — | — |
 | ~~Hybrid FTS5+vector in ChunkStore~~ (RAG consensus) | ✅ 2026-05-26 | — | — |
@@ -987,22 +987,22 @@ each gap to a planned crate or enhancement.
 ### URGENT: Platform tool modules (git remote + forge integration)
 
 **Goal**: Add remote Git operations (push/pull/fetch) to
-`smgglrs-tools-git` and create per-provider forge modules
-(`smgglrs-tools-github`, `smgglrs-tools-gitlab`, `smgglrs-tools-jira`)
+`navra-tools-git` and create per-provider forge modules
+(`navra-tools-github`, `navra-tools-gitlab`, `navra-tools-jira`)
 exposing platform-specific tools with scoped permissions.
 
 **Context**: Inspired by [service-gator](https://github.com/LobsterTrap/service-gator)
-(Rust MCP server for scoped forge access). smgglrs already has
+(Rust MCP server for scoped forge access). navra already has
 local git tools but no remote operations or forge API integration.
 The tool naming convention (`<provider>_<resource>_<action>`) is
 documented in DESIGN.md.
 
 #### U1. Git remote operations ✅ (2026-05-15)
 
-`git_push`, `git_pull`, `git_fetch` added to `smgglrs-tools-git`.
+`git_push`, `git_pull`, `git_fetch` added to `navra-tools-git`.
 Push requires approval. Input validation for remote/branch names.
 
-#### U2. GitHub module (`smgglrs-tools-github`)
+#### U2. GitHub module (`navra-tools-github`)
 
 New crate. Tools: `github_pr_create`, `github_pr_list`,
 `github_pr_review`, `github_issue_create`, `github_issue_list`,
@@ -1013,7 +1013,7 @@ MCP resources: `github://org/repo/pulls`, `github://org/repo/issues`.
 **Acceptance**: Create a PR from an agent with scoped permissions,
 glob-based ACLs on tool names (`github_pr_*`).
 
-#### U3. GitLab module (`smgglrs-tools-gitlab`)
+#### U3. GitLab module (`navra-tools-gitlab`)
 
 New crate. Tools: `gitlab_mr_create`, `gitlab_mr_list`,
 `gitlab_mr_approve`, `gitlab_issue_list`, `gitlab_issue_comment`.
@@ -1022,7 +1022,7 @@ Uses `glab` CLI or GitLab REST API.
 **Effort**: 3-4 days **Priority**: Medium-High
 **Acceptance**: Create an MR from an agent with fork-only push support.
 
-#### U4. Jira module (`smgglrs-tools-jira`)
+#### U4. Jira module (`navra-tools-jira`)
 
 New crate. Tools: `jira_issue_create`, `jira_issue_list`,
 `jira_issue_get`, `jira_issue_transition`, `jira_issue_comment`.
@@ -1097,12 +1097,12 @@ within 1s without restart. Invalid TOML keeps old config.
 
 ---
 
-### Phase 1: Cognitive core (smgglrs-cognitive)
+### Phase 1: Cognitive core (navra-cognitive)
 
 **Goal**: Load persona/directive/heuristic YAML files, compile them
-into structured system prompts, and integrate with smgglrs-agent.
+into structured system prompts, and integrate with navra-agent.
 
-New crate: `smgglrs-cognitive` (**Status**: Complete.
+New crate: `navra-cognitive` (**Status**: Complete.
 Forge + Weaver, specializations, output schema, per-phase model,
 token budgeting, context compaction, per-phase context limits,
 43 personas (38 from Python + 5 general-purpose), agent `.persona()` builder.)
@@ -1197,7 +1197,7 @@ constraints as prompt-layer technique for precision.
 
 #### 1h. Deterministic replay for repetitive tasks ✅ (2026-05-26)
 
-**Crate**: `smgglrs-agent` (tool_loop.rs, new `replay.rs`)
+**Crate**: `navra-agent` (tool_loop.rs, new `replay.rs`)
 
 When a tool loop completes successfully, export the trace as a
 replayable recipe. Future runs with the same task pattern bypass
@@ -1218,7 +1218,7 @@ substitution.
   output structure to original). If verification fails, discard
   replay and fall back to LLM.
 - **Token savings**: LOOP framework reports 93-99% token reduction
-  for repetitive tasks. smgglrs already exports Hermes traces —
+  for repetitive tasks. navra already exports Hermes traces —
   this extends them with replay capability.
 
 **Effort**: 2-3 days. **Priority**: High.
@@ -1229,7 +1229,7 @@ Reference: LOOP framework (TDS, 2026-05-21), Hermes trace export.
 
 #### 1i. Early commitment / task classification fast paths ✅ (2026-05-26)
 
-**Crate**: `smgglrs-cognitive` (weaver.rs, new `fast_path.rs`)
+**Crate**: `navra-cognitive` (weaver.rs, new `fast_path.rs`)
 
 Add a lightweight classification step before full LLM reasoning.
 The persona's heuristics YAML defines "fast paths" — recognized
@@ -1260,7 +1260,7 @@ Reference: Token burn problem (TDS, 2026-05-21).
 
 #### 1j. Composable skill source pipeline (NEW — tech watch 2026-05-25) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-cognitive` (new `skill_pipeline.rs`)
+**Crate**: `navra-cognitive` (new `skill_pipeline.rs`)
 
 Replace flat YAML directory scanning with a composable pipeline
 for skill discovery, inspired by Microsoft Agent Framework's
@@ -1269,7 +1269,7 @@ five-source architecture:
 - **FileSkillsSource**: Current behavior — scan YAML dirs for
   personas, directives, heuristics.
 - **RegistrySkillsSource**: Pull skills from OCI registries or
-  HuggingFace (reuses smgglrs-model-hub pull infrastructure).
+  HuggingFace (reuses navra-model-hub pull infrastructure).
 - **CrossCompatSkillsSource**: Scan `.claude/skills`,
   `.cursor/skills`, `.agents/skills` directories for cross-tool
   skill definitions (CodeWhale/Cursor/Claude Code format).
@@ -1292,10 +1292,10 @@ CodeWhale cross-compatible discovery (2026-05-25).
 
 #### 1k. MUSE-Autoskill lifecycle management (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-cognitive` (new `skill.rs`)
+**Crate**: `navra-cognitive` (new `skill.rs`)
 
 Add formal skill lifecycle management based on MUSE-Autoskill
-(ByteDance/RIT, 2605.27366). smgglrs-cognitive has `Persona` with
+(ByteDance/RIT, 2605.27366). navra-cognitive has `Persona` with
 `skills: Vec<String>` but no creation, testing, memory, or refinement
 pipeline:
 
@@ -1326,12 +1326,12 @@ Skill injection blocked by IFC.
 Reference: MUSE-Autoskill (2605.27366), From Raw Experience to Skill
 Consumption (2605.23899), Anthropic Agent Skills format.
 
-**Why first**: The cognitive core is smgglrs's identity. Without it,
+**Why first**: The cognitive core is navra's identity. Without it,
 agents are generic. Every other feature builds on top of personas.
 
 #### 1e. Context budget → tool output compression ✅ (2026-05-26)
 
-**Crate**: `smgglrs-cognitive` (budget.rs) + `smgglrs-core` (CallContext)
+**Crate**: `navra-cognitive` (budget.rs) + `navra-core` (CallContext)
 
 `ContextBudget` exists but tools ignore it. Wire budget awareness
 into `CallContext` so modules self-compress based on remaining tokens:
@@ -1348,7 +1348,7 @@ into `CallContext` so modules self-compress based on remaining tokens:
 
 #### 1f. Bidirectional persona bridge ✅ (2026-05-26)
 
-**Crate**: `smgglrs-cognitive` (new `bridge.rs`)
+**Crate**: `navra-cognitive` (new `bridge.rs`)
 
 Import and export personas across agent frameworks:
 
@@ -1357,16 +1357,16 @@ Import and export personas across agent frameworks:
   `scripts/*.py` → upstream tool definitions)
 - **Export**: persona + heuristics + directives → single markdown
   for Claude Code, Cursor, or other systems
-- CLI: `smgglrs persona import <dir>`, `smgglrs persona export <name>`
+- CLI: `navra persona import <dir>`, `navra persona export <name>`
 
 **Effort**: 2-3 days. **Priority**: High.
 **Acceptance**: Round-trip import/export preserves persona semantics.
 
-### Phase 2: DAG execution & mesh communication (smgglrs-flow v2) ✓
+### Phase 2: DAG execution & mesh communication (navra-flow v2) ✓
 
 **Status**: Core done. Enhancements planned.
 
-Implemented in `smgglrs-flow`:
+Implemented in `navra-flow`:
 
 - Task struct: id, specialist, mandate, depends_on, inputs,
   expected_output, success_criteria, back_edges
@@ -1397,8 +1397,8 @@ support via file extension detection — same serde structs):
 - Add fields to flow/DAG definitions: `parameters` (Jinja-style
   template variables), `output_json_schema`, `retry` policy,
   `required_extensions` (MCP servers needed to run the flow).
-- `smgglrs flow import-goose <recipe.yaml>` CLI command to convert
-  Goose recipes into smgglrs flow definitions (with human review).
+- `navra flow import-goose <recipe.yaml>` CLI command to convert
+  Goose recipes into navra flow definitions (with human review).
 - YAML is consistent with cognitive core (personas/heuristics).
 
 #### 2b. Dynamic subflow spawning from tool loop ✅
@@ -1439,7 +1439,7 @@ exposed via MCP:
   synthesis). The flow engine resolves to actual models via
   model cards at runtime.
 
-This bridges the existing `smgglrs-flow` DAG engine with the
+This bridges the existing `navra-flow` DAG engine with the
 team orchestration tools. The pieces exist (YAML loader with
 `{{ param }}` substitution, `ParameterDef`, `single_task_dag()`,
 flow MCP tools) — they need to be composed.
@@ -1452,7 +1452,7 @@ template and parameters, not reinventing the workflow each time.
 
 #### 2d. Durable DAG execution with crash recovery ✅ (2026-05-26)
 
-**Crate**: `smgglrs-flow` (executor, new `checkpoint.rs`)
+**Crate**: `navra-flow` (executor, new `checkpoint.rs`)
 
 Add SQLite-backed checkpointing to the DAG executor for crash
 recovery, inspired by Google ADK's pause/resume and DBOS:
@@ -1477,10 +1477,10 @@ recovery, inspired by Google ADK's pause/resume and DBOS:
 
 DBOS validates this pattern: SQLite-backed, in-process library,
 each agent gets its own database, no external infrastructure.
-This maps cleanly to smgglrs's existing SQLite usage.
+This maps cleanly to navra's existing SQLite usage.
 
 **Effort**: 3-4 days. **Priority**: Medium-High.
-**Acceptance**: Kill smgglrs mid-flow, restart, flow resumes from
+**Acceptance**: Kill navra mid-flow, restart, flow resumes from
 last checkpoint without re-running completed nodes. Non-idempotent
 tool calls not repeated.
 
@@ -1489,7 +1489,7 @@ execution, Inngest durable execution for AI agents.
 
 #### 2e. Event log and snapshotting for durable execution ✅ (2026-05-26)
 
-**Crate**: `smgglrs-flow` (executor, new `event_log.rs`)
+**Crate**: `navra-flow` (executor, new `event_log.rs`)
 
 Upgrade 2d (SQLite checkpoint) with a full event-sourcing model
 inspired by Google AX's distributed agent runtime:
@@ -1516,7 +1516,7 @@ with full event sourcing for audit, replay, and debugging.
 
 **Effort**: 3-4 days (on top of 2d). **Priority**: High.
 **Depends on**: 2d (SQLite checkpoint infrastructure).
-**Acceptance**: Kill smgglrs mid-flow, restart, flow resumes from
+**Acceptance**: Kill navra mid-flow, restart, flow resumes from
 event log. Client reconnects and receives missed events. Replay
 with different model version triggers divergence warning.
 
@@ -1525,7 +1525,7 @@ Reference: Google AX (github.com/google/ax), arXiv 2605.20173
 
 #### 2f. Anti-propagation hop limits ✅ (2026-05-26)
 
-**Crate**: `smgglrs-flow` (executor, mesh)
+**Crate**: `navra-flow` (executor, mesh)
 
 Add configurable hop limits to DAG execution to prevent agent worm
 propagation patterns discovered in Microsoft's 100+ agent sandbox
@@ -1540,7 +1540,7 @@ red-teaming:
 - **Rate limiting**: Per-agent message rate limit on mailbox
   channels. Abnormal message volume (>10x baseline) triggers
   quarantine of the sending agent.
-- **IFC extension**: smgglrs's IFC taint tracking already prevents
+- **IFC extension**: navra's IFC taint tracking already prevents
   untainted data from flowing to tainted sinks. Extend to track
   "hop count" as a taint dimension — data that has transited N
   agents carries a hop taint that restricts further propagation.
@@ -1553,9 +1553,9 @@ Reference: Microsoft "Red-teaming a network of agents" (2026-05).
 
 #### 2g. Provenance headers for inter-agent messages ✅ (2026-05-26)
 
-**Crate**: `smgglrs-flow` (mesh, mailbox, blackboard)
+**Crate**: `navra-flow` (mesh, mailbox, blackboard)
 
-Add provenance tracking to all inter-agent messages in smgglrs-flow
+Add provenance tracking to all inter-agent messages in navra-flow
 to defend against amplification attacks:
 
 - **Provenance chain**: Each message carries a provenance header
@@ -1582,7 +1582,7 @@ NIST AI RMF Playbook (2026-03 update).
 
 #### 2h. Formalize Stochastic-Deterministic Boundary ✅ (2026-05-26)
 
-**Crate**: `smgglrs-flow` (executor, new `sdb.rs`)
+**Crate**: `navra-flow` (executor, new `sdb.rs`)
 
 Make the boundary between LLM output and tool execution a first-class
 architectural primitive in DAG node transitions, inspired by the SDB
@@ -1603,7 +1603,7 @@ formalization paper (arXiv 2605.20173):
       verify: { schema: findings_schema, min_confidence: 0.7 }
   ```
 - **Pattern mapping**: The paper catalogues 6 runtime patterns.
-  smgglrs-flow already implements Hierarchical Delegation (DAG),
+  navra-flow already implements Hierarchical Delegation (DAG),
   Shared State Machine (blackboard), and Supervisor+Gate (handoff
   routing). Formalizing the SDB makes these patterns explicit
   rather than implicit in the code.
@@ -1617,7 +1617,7 @@ Production LLM Agents).
 
 #### 2i. Trajectory branching / checkpoint forking ✅
 
-**Crate**: `smgglrs-flow` (executor, event_log)
+**Crate**: `navra-flow` (executor, event_log)
 
 Fork agent execution paths from checkpoints for evaluation or
 A/B testing, inspired by Google AX:
@@ -1641,7 +1641,7 @@ Reference: Google AX trajectory branching.
 
 #### 2j. Self-verification gate for DAG nodes ✅
 
-**Crate**: `smgglrs-flow` (executor)
+**Crate**: `navra-flow` (executor)
 
 After a DAG node claims completion, run a verification step in a
 clean context before proceeding to downstream nodes:
@@ -1672,7 +1672,7 @@ LangChain PreCompletionChecklistMiddleware.
 
 #### 2k. Per-agent temperature in flow definitions ✅ (2026-05-26)
 
-**Crate**: `smgglrs-flow` (yaml loader, executor)
+**Crate**: `navra-flow` (yaml loader, executor)
 
 Add per-task `temperature` override in flow YAML definitions,
 enabling the reasoning sandwich pattern within a single flow:
@@ -1695,7 +1695,7 @@ discovery multi-agent system.
 
 #### 2l. Operator libraries as constrained tool vocabularies (NEW — tech watch 2026-05-25)
 
-**Crate**: `smgglrs-flow` (yaml loader)
+**Crate**: `navra-flow` (yaml loader)
 
 For domain-specific flows, allow restricting the available tool set
 to a named "operator library" — reducing hallucination of invalid
@@ -1718,7 +1718,7 @@ Reference: NVIDIA financial signal discovery (2026-05-22).
 
 #### 2m. Kill switch and circuit breaker for flows (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-flow` (executor.rs)
+**Crate**: `navra-flow` (executor.rs)
 
 Add kill switch and circuit breaker patterns for flow orchestration
 resilience. Inspired by Microsoft AGT Agent SRE:
@@ -1741,12 +1741,12 @@ Circuit breaker opens after 3 consecutive tool failures.
 
 Reference: Microsoft AGT Agent SRE, OWASP ASI08 (Cascading Failures).
 
-### Phase 3: Persistent memory (smgglrs-memory)
+### Phase 3: Persistent memory (navra-memory)
 
 **Goal**: Working memory that survives sessions, knowledge
 distillation pipeline, case-based reasoning. Backed by SQLite.
 
-New crate: `smgglrs-memory` (**Status**: All phases complete —
+New crate: `navra-memory` (**Status**: All phases complete —
 WorkingMemory, KnowledgeStore, SqliteSessionBackend, distillation
 pipeline with Markdown export, RRF retrieval (4 channels + vector
 integration test), memory decay with exponential scoring, model-aware
@@ -1754,9 +1754,9 @@ compaction strategies, MCP memory tools, audit log storage.)
 
 #### 3a. Session persistence ✅
 
-- `SessionBackend` trait in smgglrs-core, `SqliteSessionBackend`
-  in smgglrs-memory. Sessions survive server restarts.
-- Wired in smgglrs-server at `~/.local/share/smgglrs/sessions.db`.
+- `SessionBackend` trait in navra-core, `SqliteSessionBackend`
+  in navra-memory. Sessions survive server restarts.
+- Wired in navra-server at `~/.local/share/navra/sessions.db`.
 - No auto-expiry (sessions persist indefinitely to preserve context
   across long work sessions). `expire()` available for manual use.
 
@@ -1886,7 +1886,7 @@ terminal_precision.
 
 #### 3i. Multi-user/multi-agent memory scoping ✅
 
-**Crate**: `smgglrs-memory` (schema + query)
+**Crate**: `navra-memory` (schema + query)
 
 Add three-dimensional memory scoping inspired by Memori's data model
 and validated by the agent memory landscape survey:
@@ -1896,7 +1896,7 @@ and validated by the agent memory landscape survey:
   claim being added to capability tokens (Phase 9k).
 - **`process_id`** (agent/role): Same user can maintain separate
   memory contexts per agent persona (e.g., "fitness-coach" vs
-  "legal-analyst"). Maps to smgglrs-cognitive persona names.
+  "legal-analyst"). Maps to navra-cognitive persona names.
 - **`session_id`**: Already exists. Scopes ephemeral conversation
   state.
 
@@ -1913,7 +1913,7 @@ Also add **temporal validity windows**:
   point-in-time retrieval.
 
 **Effort**: 2 days. **Priority**: Medium.
-**Acceptance**: Two users querying the same smgglrs instance get
+**Acceptance**: Two users querying the same navra instance get
 isolated memory. Temporal query returns facts valid at a given time.
 
 Reference: Memori (MemoriLabs), Zep/Graphiti temporal KG,
@@ -1921,10 +1921,10 @@ Memory for Autonomous LLM Agents survey (arXiv:2603.07670).
 
 #### 3j. Trace-based memory extraction ✅
 
-**Crate**: `smgglrs-security` (new `memory_hook.rs`) +
-`smgglrs-memory` (consolidation)
+**Crate**: `navra-security` (new `memory_hook.rs`) +
+`navra-memory` (consolidation)
 
-smgglrs's hook pipeline intercepts every tool call — exactly the
+navra's hook pipeline intercepts every tool call — exactly the
 data that Memori captures for trace-based memory. Implement a
 `MemoryExtractionHook` that distills tool-call patterns into
 semantic facts:
@@ -1990,7 +1990,7 @@ and AI decisions have no provenance.
 - Retained indefinitely (no decay — audit logs are immutable)
 
 **Implementation:**
-- Add `AuditLog` struct to `smgglrs-memory`
+- Add `AuditLog` struct to `navra-memory`
 - `ToolLoopResult` gains `audit_entries: Vec<AuditEntry>`
 - Tool loop records each call as it executes
 - Demo prints audit summary alongside the report
@@ -2006,7 +2006,7 @@ blocking — agents work without it, just less effectively.
 
 #### 3k. Knowledge graph triple storage (NEW — tech watch 2026-05-25)
 
-**Crate**: `smgglrs-memory` (knowledge store)
+**Crate**: `navra-memory` (knowledge store)
 
 Add a lightweight knowledge graph layer on top of KnowledgeStore
 using entity-relationship triples, without requiring a full graph
@@ -2040,11 +2040,11 @@ Gemini KG generation.
 
 #### 3l. Temporal tree memory on SQLite (MemForest architecture) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-memory` (new `temporal.rs`)
+**Crate**: `navra-memory` (new `temporal.rs`)
 
 Implement MemForest-style hierarchical temporal indexing directly
 on SQLite — the architecture, not the product. No external dependency
-needed. Uses the same SQLite + sqlite-vec storage smgglrs-memory
+needed. Uses the same SQLite + sqlite-vec storage navra-memory
 already has.
 
 **Schema** — three SQLite tables (session_tree, entity_tree, scene_tree):
@@ -2086,7 +2086,7 @@ Reference: MemForest (arXiv:2605.23986, architecture only).
 
 **Status**: Done.
 
-Implemented in `smgglrs-flow`:
+Implemented in `navra-flow`:
 
 - Mandate validator: keyword + success_criteria matching with
   scoring (0-100), expected_output length check
@@ -2102,15 +2102,15 @@ Implemented in `smgglrs-flow`:
 
 #### 5a. ACP transport (skeleton ✅, prompt streaming TODO)
 
-Add Agent Client Protocol support to smgglrs-server:
+Add Agent Client Protocol support to navra-server:
 
 - ACP is JSON-RPC 2.0 over Streamable HTTP (single `POST /acp`
   endpoint) — same transport as MCP, different method set.
 - Methods: `initialize`, `authenticate`, `session/new`,
   `session/load`, `session/prompt` (streaming responses).
-- Enables smgglrs agents to appear in Zed and JetBrains IDEs
+- Enables navra agents to appear in Zed and JetBrains IDEs
   without building editor plugins.
-- Reuses existing Axum HTTP infrastructure from smgglrs-server.
+- Reuses existing Axum HTTP infrastructure from navra-server.
 
 Reference: ACP spec (github.com/i-am-bee/acp), Goose's
 goose-acp crate, JetBrains AI Assistant ACP support.
@@ -2123,33 +2123,33 @@ Design and implement a permission negotiation extension for MCP:
   elevated permissions from the client (e.g., write access to a path).
 - Client-side: present permission request to user, relay decision
   back to server via `permissions/grant` / `permissions/deny`.
-- Server-side (smgglrs): update ACLs dynamically based on granted
+- Server-side (navra): update ACLs dynamically based on granted
   permissions. Scoped to session, with optional persistence.
 - Integrate with Goose's approval model: when Goose is the client,
   its permission prompt maps to `permissions/request`.
 - Propose as MCP specification extension to AAIF.
 
 This bridges the gap between Goose's UI-level permission prompts
-and smgglrs's infrastructure-level ACLs.
+and navra's infrastructure-level ACLs.
 
 #### 5c. Goose-as-frontend integration ✅ (docs + config examples)
 
-Enable Goose desktop app to connect to smgglrs as a single MCP
+Enable Goose desktop app to connect to navra as a single MCP
 extension over Streamable HTTP:
 
-- smgglrs already speaks MCP over HTTP — Goose can connect today.
+- navra already speaks MCP over HTTP — Goose can connect today.
 - Build a Goose extension config snippet and test end-to-end:
-  Goose UI → smgglrs gateway → downstream tools with full
+  Goose UI → navra gateway → downstream tools with full
   auth/ACL/IFC/safety.
 - Document the setup for users.
 - Capture feedback on: permission flow UX, latency, tool
   discovery, error messages.
 - Stretch: build a Goose deeplink (`goose://extension?...`)
-  for one-click smgglrs installation.
+  for one-click navra installation.
 
 #### 5d. LLM backend expansion (NEW)
 
-Add missing model backends to smgglrs-model:
+Add missing model backends to navra-model:
 
 | Backend | Transport | Priority |
 |---------|-----------|----------|
@@ -2164,7 +2164,7 @@ Add missing model backends to smgglrs-model:
 - Supports: `claude` (Claude Code), `gemini` (Gemini CLI),
   `codex` (OpenAI Codex), `goose`, any custom CLI command.
 - Optional Podman isolation: `--network=none` container wrapping
-  the CLI subprocess (reuses smgglrs-model-runtime isolation).
+  the CLI subprocess (reuses navra-model-runtime isolation).
 - Config: `cli_command`, `cli_args_template`, `isolation: "none" |
   "podman"`, `timeout_secs`.
 
@@ -2173,7 +2173,7 @@ another agent runtime as a "model backend."
 
 #### 5e. AG-UI via rendra-ag-ui (updated 2026-05-29)
 
-AG-UI event translation from smgglrs MCP events to the rendra-ag-ui
+AG-UI event translation from navra MCP events to the rendra-ag-ui
 widget. The rendering stack is already built:
 
 - **rendra** — Servo-based desktop runtime (Electron alternative)
@@ -2181,43 +2181,43 @@ widget. The rendering stack is already built:
 - **rendra-ag-ui** — AG-UI protocol widget (architecture designed,
   adapter/processor/store/renderer pipeline)
 
-smgglrs's role is emitting the right AG-UI events. The event flow:
+navra's role is emitting the right AG-UI events. The event flow:
 
 ```
-smgglrs hook pipeline → AG-UI events → rendra IPC → rendra-ag-ui
+navra hook pipeline → AG-UI events → rendra IPC → rendra-ag-ui
 ```
 
 - **Event types**: Map MCP tool calls to AG-UI `ToolCallStart`/
   `ToolCallEnd`. Map approval requests (9ac) to AG-UI
   `ConfirmationRequest`. Map safety warnings to AG-UI `Message`.
-- **Adapter**: smgglrs-core emits AG-UI events via `notify_session()`.
+- **Adapter**: navra-core emits AG-UI events via `notify_session()`.
   rendra-ag-ui's transport adapter consumes them via IPC bridge.
 - **No web UI needed**: rendra-ag-ui renders directly in the desktop
   app. No React, no browser dependency.
 
-**Effort**: 2-3 days (smgglrs side — event translation layer).
+**Effort**: 2-3 days (navra side — event translation layer).
 **Priority**: Medium.
 **Depends on**: 9ac (approval gate events), rendra-ag-ui adapter
   implementation (separate repo).
-**Acceptance**: Tool call in smgglrs renders as AG-UI activity in
+**Acceptance**: Tool call in navra renders as AG-UI activity in
   rendra-ag-ui widget. Approval request renders as confirmation
   dialog.
 
-Reference: rendra-ag-ui (smgglrs-ai/rendra-ag-ui), AG-UI protocol
+Reference: rendra-ag-ui (navra-ai/rendra-ag-ui), AG-UI protocol
 (docs.ag-ui.com).
 
 #### 5f. Registry proxy module (NEW)
 
-Add a `RegistryModule` to smgglrs that aggregates external agent/tool
+Add a `RegistryModule` to navra that aggregates external agent/tool
 discovery registries behind the gateway's unified security layer:
 
 - **Proxy to external registries**: AWS Agent Registry, Azure Agent
-  Registry, MCP Registry — agents behind smgglrs get unified discovery
+  Registry, MCP Registry — agents behind navra get unified discovery
   without needing provider-specific SDK access.
 - **Registry as MCP server**: Expose discovery as MCP tools
   (`registry_search`, `registry_list`, `registry_describe`).
 - **Hybrid search**: Forward keyword + semantic queries to upstream
-  registries, merge results, apply smgglrs's ACLs to filter what the
+  registries, merge results, apply navra's ACLs to filter what the
   requesting agent is allowed to discover.
 - **Caching**: Cache registry responses locally with configurable
   TTL (default 1h). Avoid hammering external APIs.
@@ -2225,14 +2225,14 @@ discovery registries behind the gateway's unified security layer:
   quality (AWS registry fails 33% of Japanese queries). Use local
   embedding model as fallback for non-English queries.
 
-This fits the gateway pattern — smgglrs aggregates discovery sources
+This fits the gateway pattern — navra aggregates discovery sources
 just like it aggregates upstream MCP servers.
 
 Reference: AWS Agent Registry (InfoQ, 2026-04-20), DISCOVERY.md.
 
 #### 5g. Multi-agent cross-validation in flows (NEW)
 
-Add cross-validation pattern to smgglrs-flow for high-stakes
+Add cross-validation pattern to navra-flow for high-stakes
 agent outputs:
 
 - After an agent produces a result, spawn N verifier agents in
@@ -2305,7 +2305,7 @@ mcp_prompts:
 without modifying persona YAML:
 
 ```bash
-smgglrs run "Analyze this case..." \
+navra run "Analyze this case..." \
   --persona legal_analyst \
   --upstream-prompt syllogis:legal_analysis
 ```
@@ -2324,8 +2324,8 @@ own methodology prompt).
 
 **Implementation priority**: Medium. The CLI `--upstream-prompt`
 flag is a 1-hour change in `main.rs run_agent()`. The YAML schema
-+ weaver integration is a half-day change across smgglrs-cognitive
-and smgglrs-agent.
++ weaver integration is a half-day change across navra-cognitive
+and navra-agent.
 
 **Discovered via**: Syllogis legal workbench integration
 (2026-04-24). The agent had 40 tools available (6 from Syllogis)
@@ -2334,16 +2334,16 @@ but never called the Syllogis tools because its system prompt
 
 #### 5i. Module trait taxonomy review (NEW)
 
-Review whether smgglrs-core's flat `Module` trait should be split
+Review whether navra-core's flat `Module` trait should be split
 into a richer taxonomy, inspired by SemaClaw's 4-layer plugin
 architecture:
 
-| Layer | SemaClaw | smgglrs equivalent | Example |
+| Layer | SemaClaw | navra equivalent | Example |
 |-------|----------|-----------------|---------|
-| **Action** | MCP Tools | Tool modules (docs, git) | `smgglrs-tools-*` |
-| **Thought** | Subagents | Cognitive specializations | `smgglrs-cognitive` |
-| **Context** | Skills (lazy-loaded) | Context injectors (RAG, memory) | `smgglrs-rag`, `smgglrs-memory` |
-| **Harness** | Lifecycle hooks | Hook pipeline, safety filters | `smgglrs-security` |
+| **Action** | MCP Tools | Tool modules (docs, git) | `navra-tools-*` |
+| **Thought** | Subagents | Cognitive specializations | `navra-cognitive` |
+| **Context** | Skills (lazy-loaded) | Context injectors (RAG, memory) | `navra-rag`, `navra-memory` |
+| **Harness** | Lifecycle hooks | Hook pipeline, safety filters | `navra-security` |
 
 Currently all modules implement the same `Module` trait regardless
 of their role. Distinguishing tool-providers from context-injectors
@@ -2358,7 +2358,7 @@ Reference: SemaClaw 4-layer plugin taxonomy (arXiv 2604.11548).
 
 #### 5j. Event-driven agent triggers ✅
 
-**Crate**: `smgglrs-server` (new `triggers/` module)
+**Crate**: `navra-server` (new `triggers/` module)
 
 Add push-triggered agent activation for Voice assistant. Agents
 currently only activate on explicit MCP requests (pull model).
@@ -2402,60 +2402,60 @@ delegation, and gRPC module architecture.
 
 #### 6a. OpenShell-provided identity ✅ (2026-04-24)
 
-`OpenShellAuthenticator` in smgglrs-security accepts identity
+`OpenShellAuthenticator` in navra-security accepts identity
 tokens from the OpenShell supervisor (SPIFFE SVIDs, OIDC JWTs,
 or gateway-signed tokens). Slots into `ChainAuthenticator`
-between capability and legacy auth. No impact on standalone smgglrs.
+between capability and legacy auth. No impact on standalone navra.
 
 #### 6b. A2A client and teammate mesh ✅ (2026-04-24)
 
-`A2aClient` in smgglrs-protocol for outbound A2A calls.
-`MeshRouter` in smgglrs-flow routes messages to in-process
+`A2aClient` in navra-protocol for outbound A2A calls.
+`MeshRouter` in navra-flow routes messages to in-process
 (mailbox) or remote (A2A) teammates transparently.
-`AgentCardDirectory` in smgglrs-core for teammate discovery.
-IFC enforcement on all A2A messages via `X-Smgglrs-DataLabel` header.
+`AgentCardDirectory` in navra-core for teammate discovery.
+IFC enforcement on all A2A messages via `X-Navra-DataLabel` header.
 
 #### 6c. Sandbox delegation to OpenShell ✅ (2026-04-24)
 
 Removed aspirational libkrun feature flag. Added `openshell`
 runtime backend that delegates sandbox creation to OpenShell's
 compute driver via gRPC. Vendored proto definitions at
-`smgglrs-model-runtime/proto/`. Direct and Podman backends
-remain for standalone smgglrs.
+`navra-model-runtime/proto/`. Direct and Podman backends
+remain for standalone navra.
 
 #### 6d. gRPC module architecture ✅ (2026-04-24)
 
 `GrpcModule` adapter implements Module trait by forwarding calls
 to gRPC services. `GrpcModuleManager` handles lifecycle (spawn,
-health check, restart). Proto definitions at `smgglrs-core/proto/`.
+health check, restart). Proto definitions at `navra-core/proto/`.
 Configured via `grpc_modules` in server config.
 
 #### 6e. Defense-in-depth network security model ✅ (2026-04-25)
 
-Combined OpenShell + smgglrs security model documented and tested:
+Combined OpenShell + navra security model documented and tested:
 
 - OPA policy template: `docs/openshell/opa-sandbox-policy.rego`
-- smgglrs config template: `docs/openshell/smgglrs-sandbox.toml`
-- Integration tests: `smgglrs-server/tests/openshell_integration.rs`
+- navra config template: `docs/openshell/navra-sandbox.toml`
+- Integration tests: `navra-server/tests/openshell_integration.rs`
   (6 tests covering network isolation, ACLs, IFC, identity, tokens, PII)
 - MAC + DAC defense in depth section added to DESIGN.md
 - Microkernel analogy for Phase 8 papers
 
 **Updated 2026-05-25**: Red Hat Summit validated the Layer 0 + Layer 1
 model. OpenShell = Layer 0 (kernel sandbox, cannot inspect MCP request
-bodies), smgglrs = Layer 1 (application-layer governance — tool names,
+bodies), navra = Layer 1 (application-layer governance — tool names,
 arguments, schemas, IFC). Deconvolute Labs analysis confirms this
 architectural split. Claude self-hosted sandboxes (public beta) and
-three-mode sandboxing taxonomy (Mode 1/2/3) further validate smgglrs's
+three-mode sandboxing taxonomy (Mode 1/2/3) further validate navra's
 position. Red Hat GA'd Zero Trust Workload Identity Manager (SPIFFE/
 SPIRE), validating the SPIFFE auth path in OpenShellAuthenticator.
 DefenseClaw (Cisco) entered as a Layer 1 competitor but lacks IFC.
 
 #### 6f. MCP tunnel compatibility ✅ (2026-05-26)
 
-**Crate**: `smgglrs-server` (transport)
+**Crate**: `navra-server` (transport)
 
-Verify and document smgglrs as the private MCP server target behind
+Verify and document navra as the private MCP server target behind
 both Anthropic and OpenAI MCP tunnels:
 
 - **Anthropic tunnel**: Outbound-only HTTPS via Cloudflare with
@@ -2465,16 +2465,16 @@ both Anthropic and OpenAI MCP tunnels:
 - **OpenAI tunnel**: `tunnel-client` long-polls for queued MCP work,
   forwards locally, returns responses. Harpoon pattern: named
   targets with bounded requests, not arbitrary proxy.
-- **Testing**: Set up both tunnel clients pointing at smgglrs,
+- **Testing**: Set up both tunnel clients pointing at navra,
   verify all MCP methods work through the tunnel. Document any
   latency characteristics or transport quirks.
-- **Harpoon validation**: smgglrs's explicit upstream declarations
+- **Harpoon validation**: navra's explicit upstream declarations
   in config (not open-ended proxying) match the Harpoon pattern.
   Document this alignment.
 
-smgglrs adds security enforcement that tunnels do not — tunnels
-just transport MCP traffic; smgglrs inspects, filters, and governs
-it. A tunnel + smgglrs combination provides both transport security
+navra adds security enforcement that tunnels do not — tunnels
+just transport MCP traffic; navra inspects, filters, and governs
+it. A tunnel + navra combination provides both transport security
 and content-level governance.
 
 **Effort**: 1-2 days. **Priority**: High.
@@ -2486,23 +2486,23 @@ Tunnels (Code with Claude, 2026-05-19).
 
 #### 6g. NemoClaw MCP bridge alternative design (NEW — tech watch 2026-05-25)
 
-**Crate**: `smgglrs-server` (documentation + integration test)
+**Crate**: `navra-server` (documentation + integration test)
 
-Document smgglrs as the architecturally superior alternative to
+Document navra as the architecturally superior alternative to
 NemoClaw's per-server MCP bridge pattern (Issue #566):
 
 - **NemoClaw approach**: One stdio-to-HTTP proxy per MCP server,
   each with its own egress rule, spawning server subprocesses on
   the host with API keys from host env.
-- **smgglrs approach**: One gateway, one egress rule from the
-  sandbox to smgglrs. smgglrs handles multiplexing to upstream
+- **navra approach**: One gateway, one egress rule from the
+  sandbox to navra. navra handles multiplexing to upstream
   MCP servers with credential injection, IFC enforcement, and
   safety filtering.
 - **Integration test**: Agent inside OpenShell sandbox → one
-  egress rule to smgglrs → smgglrs proxies to 3+ upstream MCP
+  egress rule to navra → navra proxies to 3+ upstream MCP
   servers with IFC and safety filtering.
 - **MCPS alignment**: Track NemoClaw Issue #204 (cryptographic
-  message signing for MCP tool calls). smgglrs's capability tokens
+  message signing for MCP tool calls). navra's capability tokens
   partially address this — document the overlap.
 
 **Effort**: 1 day (documentation + integration test). **Priority**: Medium.
@@ -2514,25 +2514,25 @@ Reference: NemoClaw Issue #566 (MCP bridge), NemoClaw Issue #204
 
 #### 6h. Privacy Router coordination (NEW — tech watch 2026-05-25)
 
-**Crate**: `smgglrs-model` (backend selection)
+**Crate**: `navra-model` (backend selection)
 
 Define the boundary between OpenShell's Privacy Router (inference
-routing via `inference.local`) and smgglrs-model's multi-backend
+routing via `inference.local`) and navra-model's multi-backend
 routing to avoid duplication:
 
-- **Inside sandbox mode**: smgglrs delegates inference routing to
+- **Inside sandbox mode**: navra delegates inference routing to
   OpenShell's Privacy Router (use `inference.local` as the model
   endpoint). Privacy Router handles credential injection and
   data sensitivity classification.
-- **Standalone mode**: smgglrs retains its own routing via
-  smgglrs-model backends (Ollama, OpenAI-compat, Anthropic).
+- **Standalone mode**: navra retains its own routing via
+  navra-model backends (Ollama, OpenAI-compat, Anthropic).
 - **Auto-detection**: Use IsolationContext (Phase 8e) to detect
-  whether smgglrs is running inside an OpenShell sandbox. If yes,
+  whether navra is running inside an OpenShell sandbox. If yes,
   default to `inference.local` unless explicitly overridden.
 
 **Effort**: 1 day. **Priority**: Medium.
-**Acceptance**: smgglrs inside OpenShell routes model calls through
-Privacy Router. Same smgglrs binary works standalone with direct
+**Acceptance**: navra inside OpenShell routes model calls through
+Privacy Router. Same navra binary works standalone with direct
 backend routing.
 
 Reference: OpenShell Privacy Router documentation, Red Hat Summit
@@ -2540,16 +2540,16 @@ Reference: OpenShell Privacy Router documentation, Red Hat Summit
 
 #### 6i. Kubernetes Agent Sandbox backend (NEW — tech watch 2026-05-28)
 
-**Crate**: `smgglrs-model-runtime`, `smgglrs-tools-exec`
+**Crate**: `navra-model-runtime`, `navra-tools-exec`
 
 Add Kubernetes Agent Sandbox CRD as a fourth isolation backend
 alongside direct, Podman, and OpenShell:
 
-- **SandboxClaim integration**: Map smgglrs capability tokens to
+- **SandboxClaim integration**: Map navra capability tokens to
   SandboxClaim creation. Capability delegation authorizes sandbox
   provisioning.
 - **SandboxTemplate mapping**: Define security profiles per risk
-  tier (smgglrs risk_tier → SandboxTemplate). Low risk = gVisor
+  tier (navra risk_tier → SandboxTemplate). Low risk = gVisor
   (syscall-level), high risk = Kata Containers (VM-level).
 - **SandboxWarmPool**: Pre-warm execution sandboxes for sub-second
   provisioning. Addresses cold-start latency for tool execution.
@@ -2559,7 +2559,7 @@ alongside direct, Podman, and OpenShell:
   Engine×Isolation matrix (LlamaCpp/vLLM × direct/Podman/OpenShell/
   Kubernetes).
 
-Kubernetes-specific — smgglrs also needs local/desktop isolation
+Kubernetes-specific — navra also needs local/desktop isolation
 (Podman, OpenShell) for non-K8s deployments.
 
 **Research gate**: Is agent-sandbox v1alpha1 stable enough? What's
@@ -2575,7 +2575,7 @@ Reference: kubernetes-sigs/agent-sandbox, GKE Agent Sandbox.
 
 #### 7a. Two-stage retrieval with cross-encoder reranking ✅
 
-Add reranking stage to smgglrs-rag after sqlite-vec retrieval:
+Add reranking stage to navra-rag after sqlite-vec retrieval:
 
 - ColBERT-style late interaction (preferred: preindexable, low
   latency, fits ONNX in-process strategy)
@@ -2594,7 +2594,7 @@ similar queries.
 
 #### 7c. Agentic RAG L2 ✅ (2026-05-29)
 
-**Crate**: `smgglrs-rag` (new `agentic.rs`)
+**Crate**: `navra-rag` (new `agentic.rs`)
 
 Move from passive retrieval to active, multi-step retrieval:
 
@@ -2605,7 +2605,7 @@ Move from passive retrieval to active, multi-step retrieval:
 - **Multi-hop chaining**: Answer requires combining results from
   multiple retrievals (e.g., "find the function that calls X,
   then check its error handling")
-- Uses existing `smgglrs-flow` DAG for multi-step orchestration
+- Uses existing `navra-flow` DAG for multi-step orchestration
 
 **Effort**: 3-5 days. **Priority**: High.
 **Depends on**: 7a (reranker provides relevance scoring for
@@ -2615,7 +2615,7 @@ across 3+ document hops.
 
 #### 7d. Nomic Embed v1.5 evaluation
 
-**Crate**: `smgglrs-model` (OnnxBackend) + `smgglrs-rag` (store)
+**Crate**: `navra-model` (OnnxBackend) + `navra-rag` (store)
 
 Evaluate as replacement for current embedding model:
 
@@ -2630,7 +2630,7 @@ Evaluate as replacement for current embedding model:
 
 #### 7e. Hybrid FTS5+vector search in ChunkStore ✅ (2026-05-26)
 
-**Crate**: `smgglrs-rag` (store.rs)
+**Crate**: `navra-rag` (store.rs)
 
 Add FTS5 alongside sqlite-vec in the same SQLite database for
 hybrid retrieval with RRF fusion — the 2026 production consensus
@@ -2645,11 +2645,11 @@ hybrid retrieval with RRF fusion — the 2026 production consensus
   RRF (k=60).
 - **Performance target**: ZeroClaw demonstrates 0.3ms FTS5 + 2ms
   vector + 0.1ms merge = under 3ms total on a Raspberry Pi Zero 2W.
-- **smgglrs-rag gap**: ChunkStore currently does vector-only search.
+- **navra-rag gap**: ChunkStore currently does vector-only search.
   FTS5 exists in KnowledgeStore (separate database). Unifying them
   enables true hybrid search.
 - **MemoryRetriever already has RRF**: Reuse the same RRF
-  implementation (k=60) from `smgglrs-memory`.
+  implementation (k=60) from `navra-memory`.
 
 **Effort**: 2-3 days. **Priority**: P0 — Critical.
 **Acceptance**: Hybrid search returns better results than vector-only
@@ -2660,7 +2660,7 @@ Reference: ZeroClaw hybrid memory, Llama-Stack hybrid API proposal
 
 #### 7f. Breadcrumb injection in chunking ✅ (2026-05-26)
 
-**Crate**: `smgglrs-rag` (chunk.rs)
+**Crate**: `navra-rag` (chunk.rs)
 
 Prepend the full structural path (heading hierarchy) to each chunk
 before embedding, giving every chunk positional awareness at zero
@@ -2690,7 +2690,7 @@ Reference: Proxy-Pointer RAG (TDS, 2026-05-20).
 
 #### 7g. Confidence gating on RAG results ✅ (2026-05-26)
 
-**Crate**: `smgglrs-rag` (rerank.rs, module.rs)
+**Crate**: `navra-rag` (rerank.rs, module.rs)
 
 After cross-encoder reranking, compute mean relevance score of
 top-k results and abstain if below threshold:
@@ -2719,7 +2719,7 @@ Production RAG Guide 2026.
 
 #### 7h. Batch cross-encoder scoring ✅ (2026-05-26)
 
-**Crate**: `smgglrs-rag` (rerank.rs)
+**Crate**: `navra-rag` (rerank.rs)
 
 Change `CrossEncoderReranker::rerank` to batch all `(query, candidate)`
 pairs into a single ONNX inference call instead of N sequential calls:
@@ -2740,7 +2740,7 @@ Reference: BGE reranker batch scoring, Ailog cross-encoder study.
 
 #### 7i. Section-level pointer retrieval ✅ (2026-05-26)
 
-**Crate**: `smgglrs-rag` (store.rs, chunk.rs)
+**Crate**: `navra-rag` (store.rs, chunk.rs)
 
 Store the parent section byte range alongside chunk byte range.
 On retrieval, return the full intact section content instead of
@@ -2767,7 +2767,7 @@ Reference: Proxy-Pointer RAG pointer-based context.
 
 #### 7j. Metadata pre-filtering ✅ (2026-05-26)
 
-**Crate**: `smgglrs-rag` (store.rs)
+**Crate**: `navra-rag` (store.rs)
 
 Add structured metadata columns to `rag_chunks` for pre-filtering
 before vector search (filter before scoring, not after):
@@ -2791,7 +2791,7 @@ Context Engine library.
 
 #### 7k. HyDE retrieval channel (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-rag` (search.rs)
+**Crate**: `navra-rag` (search.rs)
 
 Add Hypothetical Document Embeddings (HyDE) as a third retrieval
 channel alongside FTS5 and vector search in the RRF fusion pipeline:
@@ -2817,7 +2817,7 @@ Reference: Cloudflare Agent Memory (2026-04), gBrain HyDE pattern.
 
 #### 7l. TurboVec evaluation (NEW — tech watch 2026-05-28)
 
-**Crate**: `smgglrs-rag` (store.rs)
+**Crate**: `navra-rag` (store.rs)
 
 Evaluate TurboVec as replacement for sqlite-vec in the vector search
 backend. TurboVec is a Rust vector index using Google's TurboQuant
@@ -2828,13 +2828,13 @@ data-oblivious quantization algorithm:
 - **Speed**: 12-20% faster than FAISS IndexPQFastScan on ARM.
   SIMD-accelerated via NEON/AVX-512BW/AVX2.
 - **Zero training**: Data-oblivious quantization with analytically
-  precomputed codebooks. Matches smgglrs-rag's append-oriented
+  precomputed codebooks. Matches navra-rag's append-oriented
   pattern (incremental `index_document()` adds).
 - **Swap feasibility**: RRF fusion layer is vector-backend-agnostic.
   Cache layer (cosine similarity 0.92, TTL 300s) works with either.
   Only the search interface needs implementing.
 
-**Research gate**: Benchmark on smgglrs-rag's actual workload
+**Research gate**: Benchmark on navra-rag's actual workload
 (breadcrumb chunks, cross-encoder reranking). Compare recall and
 latency at 10K-100K vectors.
 
@@ -2847,7 +2847,7 @@ Research, arXiv:2504.19874).
 
 #### 7m. Adaptive chunking quality metrics (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-rag` (chunk.rs)
+**Crate**: `navra-rag` (chunk.rs)
 
 Add document-aware chunking quality metrics from the Adaptive
 Chunking paper (arXiv:2603.25333, LREC 2026). Current breadcrumb
@@ -2882,7 +2882,7 @@ re-implementations of design patterns, not code copies.
 
 #### 8a. Typed agent action/result model ✅ (2026-05-05)
 
-Adopt Warp's action/result enum symmetry pattern for `smgglrs-agent`.
+Adopt Warp's action/result enum symmetry pattern for `navra-agent`.
 Currently, tool results are flat `CallToolResult` (text content +
 is_error). A typed model enables better rendering, auto-approval,
 cancellation, and audit:
@@ -2894,36 +2894,36 @@ cancellation, and audit:
   Success/Error/Cancelled variants.
 - Metadata methods: `is_read_only()`, `risk_level()`,
   `user_friendly_name()`, `cancelled_result()`.
-- Wire into permission engine: `smgglrs-security` ACL decisions
+- Wire into permission engine: `navra-security` ACL decisions
   use `risk_level()` for auto-approval thresholds.
 - Audit: structured entries in blackbox log (action type, args,
   result, timing, risk classification).
 
-**Effort**: 2-3 days. ~500 lines in smgglrs-agent + wiring.
+**Effort**: 2-3 days. ~500 lines in navra-agent + wiring.
 
 #### 8b. MCP config import ✅ (2026-05-05)
 
 Let users import upstream MCP server configs from existing tools
-without maintaining separate smgglrs config:
+without maintaining separate navra config:
 
 - Parse Claude Desktop format (`.mcp.json` with `mcpServers` key)
 - Parse VSCode format (`mcp.servers` key)
 - Parse Codex TOML format (`[mcp_servers.name]` tables)
-- Normalize all to smgglrs's `[[upstream]]` config entries
-- CLI: `smgglrs config import-mcp <path>` to merge into config.toml
+- Normalize all to navra's `[[upstream]]` config entries
+- CLI: `navra config import-mcp <path>` to merge into config.toml
 - Auto-discovery: scan `~/.claude.json`, `.mcp.json` in project root
 - Secret-safe: `#[serde(skip_serializing)]` on credential fields
   to prevent accidental exposure in config dumps.
 
-**Effort**: 1 day. ~200 lines in smgglrs-server/src/config.rs.
+**Effort**: 1 day. ~200 lines in navra-server/src/config.rs.
 
 #### 8c. Config schema generation (MEDIUM priority)
 
-Generate JSON Schema from smgglrs config types for editor
+Generate JSON Schema from navra config types for editor
 autocomplete in TOML files:
 
 - Add `schemars::JsonSchema` derives to config structs
-- CLI: `smgglrs schema > config.schema.json`
+- CLI: `navra schema > config.schema.json`
 - Hot-reload: file watcher on `config.toml`, update in-memory
   config without restart (load-only, no write-back loop)
 - Validate on load with defaults for invalid values
@@ -2932,7 +2932,7 @@ autocomplete in TOML files:
 
 #### 8d. Computer use Actor trait (MEDIUM priority)
 
-Clean platform abstraction for `smgglrs-modal-vision`:
+Clean platform abstraction for `navra-modal-vision`:
 
 - `Actor` trait: `async fn perform_actions(&mut self, actions: &[Action]) -> ActionResult`
 - `Action` enum: `Wait`, `MouseDown/Up/Move`, `TypeText`, `KeyDown/Up`
@@ -2940,7 +2940,7 @@ Clean platform abstraction for `smgglrs-modal-vision`:
 - `ScreenshotParams`: `max_long_edge_px`, `max_total_px` for LLM-friendly sizing
 - Use `xcap` (MIT) for actual capture, not Warp's XDG portal code
 
-**Effort**: 2 days. ~300 lines in smgglrs-modal-vision.
+**Effort**: 2 days. ~300 lines in navra-modal-vision.
 
 #### 8e. Isolation context detection (MEDIUM priority)
 
@@ -2952,7 +2952,7 @@ Detect runtime isolation environment for OpenShell integration:
 - Workload token abstraction for identity federation
 - Memoize with `OnceLock` for process lifetime
 
-**Effort**: 0.5 day. ~100 lines in smgglrs-model-runtime.
+**Effort**: 0.5 day. ~100 lines in navra-model-runtime.
 
 #### 8f. ToolBlock structured output (LOW-MEDIUM priority)
 
@@ -2964,11 +2964,11 @@ Block-based tool execution model for future CLI/TUI:
 - Blocks carry metadata for rendering (exit code, timing, risk)
 - Foundation for eventual terminal-style agent UX
 
-**Effort**: 1 day. ~150 lines in smgglrs-agent.
+**Effort**: 1 day. ~150 lines in navra-agent.
 
 #### 8g. Intent-based tool grouping
 
-**Crate**: `smgglrs-core` (server, dispatch) + `smgglrs-agent` (tool_loop)
+**Crate**: `navra-core` (server, dispatch) + `navra-agent` (tool_loop)
 
 Reduce tool count per request for small models that struggle with
 large tool lists:
@@ -2986,8 +2986,8 @@ grouped tools where they previously failed with 40+ individual tools.
 
 #### 8h. Multi-hypothesis tool routing (NEW)
 
-Use verbalized sampling to improve tool selection in smgglrs-flow
-and smgglrs-agent tool loops:
+Use verbalized sampling to improve tool selection in navra-flow
+and navra-agent tool loops:
 
 - Instead of the LLM picking one tool, prompt for 3 ranked
   candidates with confidence scores and rationale
@@ -3009,10 +3009,10 @@ output with confidence scores for decision-making.
 
 #### 8i. Progressive tool disclosure ✅
 
-**Crate**: `smgglrs-core` (server, dispatch)
+**Crate**: `navra-core` (server, dispatch)
 
 Filter the tool list returned by `tools/list` based on session
-state, declared skills, or query context. Currently smgglrs loads
+state, declared skills, or query context. Currently navra loads
 all module tools at startup and exposes all to every agent.
 
 - **Session-scoped tool sets**: A `tools_filter` hook that reduces
@@ -3040,7 +3040,7 @@ engineering (O'Reilly Radar, 2026-05).
 
 #### 8j. Loop detection middleware ✅ (2026-05-26)
 
-**Crate**: `smgglrs-agent` (tool_loop.rs)
+**Crate**: `navra-agent` (tool_loop.rs)
 
 Add per-tool-per-target counters in the tool loop to detect
 repetitive behavior and inject course-correction context:
@@ -3066,7 +3066,7 @@ Reference: LangChain harness engineering, WebWright loop detection.
 
 #### 8k. Reasoning compute allocation ✅ (2026-05-26)
 
-**Crate**: `smgglrs-agent` (tool_loop.rs)
+**Crate**: `navra-agent` (tool_loop.rs)
 
 Add a `reasoning_phase` field to `ToolLoopConfig` that maps
 iteration ranges to temperature/reasoning levels:
@@ -3090,7 +3090,7 @@ discovery (temp 0.8/0.0/0.5).
 
 #### 8l. Dynamic tool routing per request (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-core` (server.rs), `smgglrs-protocol`
+**Crate**: `navra-core` (server.rs), `navra-protocol`
 
 Surface only relevant tools per request instead of exposing all
 `RegisteredTools` via HashMap. Inspired by Composio's Tool Router:
@@ -3108,7 +3108,7 @@ Surface only relevant tools per request instead of exposing all
   stability.
 
 Composio's 28.4K stars validate demand for intelligent tool routing
-in MCP gateways. Currently smgglrs exposes all tools — the closest
+in MCP gateways. Currently navra exposes all tools — the closest
 gateway competitor with this feature.
 
 **Effort**: 2-3 days. **Priority**: Medium.
@@ -3120,7 +3120,7 @@ Landscape 2026.
 
 ### Phase 9: Full MCP spec coverage (2026-05-04, mostly complete)
 
-**Goal**: smgglrs-protocol covers 100% of the MCP 2025-03-26 spec,
+**Goal**: navra-protocol covers 100% of the MCP 2025-03-26 spec,
 including proc macros for third-party module authors. Competitive
 parity with rmcp (official Rust MCP SDK, 4.7M downloads) while
 maintaining our differentiators (IFC labels, permissions extension,
@@ -3191,7 +3191,7 @@ structural gap — blocks 5 features:
 - Resource subscription store: track which resources each session
   has subscribed to, emit `resources/updated` on change
 
-**Effort**: 3 days. ~400 lines across smgglrs-core + smgglrs-protocol.
+**Effort**: 3 days. ~400 lines across navra-core + navra-protocol.
 
 #### 9e. Progress tracking ✅ (2026-05-05)
 
@@ -3211,32 +3211,32 @@ Server-mode stdio transport (currently only client-side exists):
 
 - Read JSON-RPC from stdin, write to stdout
 - Reuse existing dispatch logic from HTTP transport
-- Enables: `smgglrs stdio` mode for IDE integration (similar
+- Enables: `navra stdio` mode for IDE integration (similar
   to how LSP servers work over stdio)
-- Claude Desktop and Cursor can spawn smgglrs as a stdio subprocess
+- Claude Desktop and Cursor can spawn navra as a stdio subprocess
 
-**Effort**: 2 days. ~200 lines in smgglrs-core.
+**Effort**: 2 days. ~200 lines in navra-core.
 
 #### 9g. OAuth 2.0 authorization framework ✅ (2026-05-05)
 
-MCP spec defines OAuth for client-server auth. smgglrs currently
+MCP spec defines OAuth for client-server auth. navra currently
 uses BLAKE3 tokens:
 
 - Implement MCP OAuth flow: discovery → authorize → token → refresh
 - Support as alternative to BLAKE3 (not replacement)
 - Enables third-party clients (not just trusted local agents)
   to authenticate via standard OAuth
-- Reuse existing auth chain in smgglrs-security
+- Reuse existing auth chain in navra-security
 
-**Effort**: 3-4 days. ~500 lines across smgglrs-security + smgglrs-core.
+**Effort**: 3-4 days. ~500 lines across navra-security + navra-core.
 
-#### 9h. Proc macro crate: `smgglrs-macros` ✅ (2026-05-05)
+#### 9h. Proc macro crate: `navra-macros` ✅ (2026-05-05)
 
 Proc macro for ergonomic tool/prompt/resource definition,
 competing with rmcp's `#[tool]` macro:
 
 ```rust
-#[smgglrs::tool(
+#[navra::tool(
     name = "file_read",
     description = "Read a file from disk",
     annotations(read_only, idempotent),
@@ -3256,7 +3256,7 @@ The macro generates:
 - `(ToolDefinition, Handler)` pair for `Module::tools()` registration
 - Compile-time validation of required vs optional args
 
-Also provide `#[smgglrs::prompt]` and `#[smgglrs::resource]` macros.
+Also provide `#[navra::prompt]` and `#[navra::resource]` macros.
 
 **Differentiators over rmcp**: IFC label propagation built into
 generated handlers, permission annotation on tool definitions,
@@ -3292,7 +3292,7 @@ Automated test suite verifying spec compliance:
 | 9i. Test suite | Compliance tests | Remaining |
 | **Remaining** | completion, logging, subscribe | ~1 day |
 
-**smgglrs differentiators** (not in rmcp, not in MCP spec):
+**navra differentiators** (not in rmcp, not in MCP spec):
 
 | Feature | Location | Description |
 |---------|----------|-------------|
@@ -3300,11 +3300,11 @@ Automated test suite verifying spec compliance:
 | Permission negotiation | `permissions.rs` | 4-method extension (request/grant/deny/list). Scoped, time-bounded. |
 | A2A protocol client | `a2a.rs` + `a2a_client.rs` | Full A2A v0.2.5 types + HTTP client with IFC header propagation. |
 | Resilient upstream proxy | `upstream/` | 3 transports + exponential backoff, sleep detection, per-request timeout. |
-| Safety hook pipeline | smgglrs-security | Content filtering as hook, not hardcoded in request path. |
+| Safety hook pipeline | navra-security | Content filtering as hook, not hardcoded in request path. |
 
 #### 9k. On-behalf-of identity binding ✅
 
-**Crate**: `smgglrs-security` (capability tokens)
+**Crate**: `navra-security` (capability tokens)
 
 Add an `obo` (on-behalf-of) claim to `CapabilityPayload` for the
 delegating human's OIDC subject identifier. This completes the
@@ -3320,7 +3320,7 @@ human who authorized them.
 - Audit events include `obo` for compliance trails (EU AI Act
   Article 14, SOC 2 CC6.1)
 
-smgglrs's capability tokens already have ring attenuation, glob
+navra's capability tokens already have ring attenuation, glob
 scoping, and IFC taint — this adds the missing identity provenance
 that connects agent authority to a human identity provider.
 
@@ -3332,10 +3332,10 @@ Reference: MIT Media Lab PoA (arXiv:2501.09674), MCP OAuth 2.1.
 
 #### 9l. RFC 8693 token exchange ✅
 
-**Crate**: `smgglrs-security` (oauth.rs)
+**Crate**: `navra-security` (oauth.rs)
 
 Implement OAuth Token Exchange (RFC 8693) so MCP clients can swap
-a user's OAuth token for a scoped smgglrs capability token:
+a user's OAuth token for a scoped navra capability token:
 
 - Grant type: `urn:ietf:params:oauth:grant-type:token-exchange`
 - The `act` claim preserves delegation chains: "Agent X acting on
@@ -3343,7 +3343,7 @@ a user's OAuth token for a scoped smgglrs capability token:
 - Validates the incoming user token against the configured OIDC
   provider, issues a scoped capability token with `obo` (from 9k)
 - Enables upstream MCP servers to receive delegated authority
-  through smgglrs while preserving the full chain
+  through navra while preserving the full chain
 
 This is the standard mechanism for chained delegation recommended
 by multiple 2026 agent identity guides. SPIFFE/SPIRE + Vault 2.0
@@ -3352,7 +3352,7 @@ also support this flow.
 **Effort**: 2-3 days. **Priority**: Medium-High.
 **Depends on**: 9k (obo claim).
 **Acceptance**: MCP client exchanges user OAuth token for scoped
-smgglrs capability token with `act` claim. Upstream server
+navra capability token with `act` claim. Upstream server
 receives delegated authority.
 
 Reference: RFC 8693, SPIFFE/SPIRE for agent identity,
@@ -3360,7 +3360,7 @@ Agentic JWT draft (IETF).
 
 #### 9j. WebSocket transport for agentic loops (NEW)
 
-**Crate**: `smgglrs-core` (transport) + `smgglrs-protocol` (client)
+**Crate**: `navra-core` (transport) + `navra-protocol` (client)
 
 Add WebSocket as an alternative transport alongside SSE for
 multi-step tool-use workflows. OpenAI measured 40% latency
@@ -3369,7 +3369,7 @@ handshakes:
 
 - Server-side: `ws://` upgrade on existing Axum router, reuse
   JSON-RPC dispatch. Single persistent connection per session.
-- Client-side: `smgglrs-protocol` WebSocket upstream client
+- Client-side: `navra-protocol` WebSocket upstream client
   alongside existing stdio/HTTP/SSE transports.
 - **Warm-up pattern**: Client sends system prompt + tool
   definitions on connect, before first request. Reduces
@@ -3378,7 +3378,7 @@ handshakes:
 - Feature-gated: `transport-ws` feature flag.
 - Backward compatible: SSE remains the default transport.
 
-Particularly valuable for smgglrs-agent client SDK in tight
+Particularly valuable for navra-agent client SDK in tight
 tool-use loops (10+ tool calls per turn).
 
 **Effort**: 2-3 days. **Priority**: Medium-High.
@@ -3390,7 +3390,7 @@ Reference: OpenAI WebSocket Responses API (InfoQ, 2026-05-08),
 
 #### 9m. Upstream tool definition scanning at startup ✅ (2026-05-26)
 
-**Crate**: `smgglrs-core` (upstream module) + `smgglrs-security`
+**Crate**: `navra-core` (upstream module) + `navra-security`
 (new `tool_scanner.rs`)
 
 When proxying upstream MCP servers, scan their tool definitions for
@@ -3435,7 +3435,7 @@ NVIDIA SkillSpector, OWASP Agentic Top 10 (ASI04 Supply Chain).
 
 #### 9n. Cognitive file integrity monitoring ✅ (2026-05-26)
 
-**Crate**: `smgglrs-security` (new `integrity_monitor.rs`)
+**Crate**: `navra-security` (new `integrity_monitor.rs`)
 
 Monitor persona/directive/heuristic YAML files for tampering using
 SHA-256 baselines with semantic drift detection:
@@ -3455,7 +3455,7 @@ SHA-256 baselines with semantic drift detection:
 - **Zero-bypass design**: The monitor runs as gateway code,
   independent of LLM invocation. The LLM cannot suppress it.
 
-ClawPatrol (Enkrypt AI) already ships this pattern. smgglrs should
+ClawPatrol (Enkrypt AI) already ships this pattern. navra should
 implement it before it becomes an expected feature.
 
 **Effort**: 1-2 days. **Priority**: P0 — Critical.
@@ -3467,7 +3467,7 @@ OWASP Agentic Top 10 (ASI01 Goal Hijack).
 
 #### 9o. Gateway-level field filtering ✅ (2026-05-26)
 
-**Crate**: `smgglrs-core` (upstream module, hooks)
+**Crate**: `navra-core` (upstream module, hooks)
 
 Strip unnecessary fields from upstream MCP server tool responses
 before forwarding to agents, reducing token consumption:
@@ -3485,7 +3485,7 @@ before forwarding to agents, reducing token consumption:
   (strip nulls, abbreviate keys, remove formatting whitespace).
 - **Savings**: MCP tool call returning 50 fields when 3 are needed
   wastes thousands of tokens per call. Gateway-level filtering is
-  a natural fit — only smgglrs (as a gateway) can do this.
+  a natural fit — only navra (as a gateway) can do this.
 
 Token burn data: agents burn 10-100x more tokens than chatbots.
 Structural retrieval vs grep-based shows 14x cost difference
@@ -3500,7 +3500,7 @@ MindStudio MCP token optimization.
 
 #### 9p. HASP Program Functions as SkillHook ✅ (2026-05-26)
 
-**Crate**: `smgglrs-security` (new `skill_hook.rs`)
+**Crate**: `navra-security` (new `skill_hook.rs`)
 
 Implement HASP-style Program Functions in the hook pipeline,
 transforming passive heuristics into executable guardrails:
@@ -3529,11 +3529,11 @@ HASP achieved 25% improvement over multi-loop ReAct Agent and
 injects verification context. Agent behavior improves without
 model retraining.
 
-Reference: HASP (arXiv 2605.17734), smgglrs-security hook pipeline.
+Reference: HASP (arXiv 2605.17734), navra-security hook pipeline.
 
 #### 9q. Response sanitization ✅ (2026-05-26)
 
-**Crate**: `smgglrs-security` (safety filters)
+**Crate**: `navra-security` (safety filters)
 
 Audit and extend the SafetyHook regex ruleset against AGT's
 comprehensive sanitization patterns:
@@ -3559,7 +3559,7 @@ Top 10 (ASI01 Goal Hijack).
 
 #### 9r. Dynamic trust scoring ✅ (2026-05-26)
 
-**Crate**: `smgglrs-security` (new `trust_score.rs`)
+**Crate**: `navra-security` (new `trust_score.rs`)
 
 Add dynamic trust scoring per session/agent that decays without
 positive signals, complementing static deny-wins ACLs:
@@ -3583,7 +3583,7 @@ positive signals, complementing static deny-wins ACLs:
   its trust score drops.
 
 Microsoft AGT implements this as 0-1000 with 4-ring privilege
-isolation. smgglrs's version is simpler (no rings, just progressive
+isolation. navra's version is simpler (no rings, just progressive
 restriction) but integrates with the existing IFC + ACL stack.
 
 **Effort**: 2-3 days. **Priority**: Medium.
@@ -3596,7 +3596,7 @@ Reference: Microsoft AGT trust decay, OWASP Agentic Top 10
 
 #### 9s. Risk-tiered approval ✅ (2026-05-26)
 
-**Crate**: `smgglrs-security` (permissions)
+**Crate**: `navra-security` (permissions)
 
 Upgrade binary allow/deny to graduated approval based on action
 risk level:
@@ -3628,9 +3628,9 @@ Reference: Gemini Spark tiered approval, Six Choices article
 
 #### 9t. HTML-to-markdown conversion for upstream content (NEW — tech watch 2026-05-25)
 
-**Crate**: `smgglrs-core` (upstream module, hooks)
+**Crate**: `navra-core` (upstream module, hooks)
 
-When smgglrs proxies upstream MCP servers that return HTML content,
+When navra proxies upstream MCP servers that return HTML content,
 optionally convert to markdown before feeding to agents:
 
 - **ContentConversionHook**: Post-call hook that detects HTML in
@@ -3656,7 +3656,7 @@ Cloudflare Markdown for Agents.
 
 #### 9u. Egress endpoint allowlist (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-security` (new `egress_hook.rs`)
+**Crate**: `navra-security` (new `egress_hook.rs`)
 
 Add egress filtering to prevent data exfiltration through tool calls.
 Motivated by Shadow Escape — the first zero-click MCP attack where
@@ -3686,9 +3686,9 @@ Reference: Shadow Escape (Operant AI, 2025-10), OWASP ASI 2026.
 
 #### 9v. OWASP ASI01-ASI10 compliance mapping (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: documentation + `smgglrs-security` (tests)
+**Crate**: documentation + `navra-security` (tests)
 
-Create formal mapping of smgglrs security features to the OWASP
+Create formal mapping of navra security features to the OWASP
 Agentic AI Top 10 (ASI01-ASI10):
 
 - **Mapping document**: Enumerate which crate/feature addresses
@@ -3713,7 +3713,7 @@ compliance package.
 
 #### 9w. Cross-tool data flow anomaly detection (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-security` (hooks)
+**Crate**: `navra-security` (hooks)
 
 Detect suspicious cross-tool data flow patterns that indicate
 exfiltration. Extends IFC provenance tracking with behavioral
@@ -3740,8 +3740,8 @@ influence detection (arXiv:2604.23374).
 
 #### 9x. MCP 2026-07-28: runtime-gated incremental migration ✅ (2026-05-29)
 
-**Crates**: `smgglrs-protocol`, `smgglrs-core`, `smgglrs-security`,
-`smgglrs-server`
+**Crates**: `navra-protocol`, `navra-core`, `navra-security`,
+`navra-server`
 
 Runtime config gate — both protocol versions compiled in, operator
 selects via config. Both paths exercised in CI always.
@@ -3816,16 +3816,16 @@ SEP-1865, SEP-2596.
 
 #### 9y. auth.md / ID-JAG agent registration (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-security` (auth), `smgglrs-core` (transport)
+**Crate**: `navra-security` (auth), `navra-core` (transport)
 
 Support WorkOS auth.md protocol for external agent registration
 alongside existing BLAKE3 tokens:
 
 - **ID-JAG flow**: Agent presents provider-minted JWT (from OpenAI,
-  Anthropic, Cursor, etc.). smgglrs verifies against provider JWKS
+  Anthropic, Cursor, etc.). navra verifies against provider JWKS
   and issues scoped capability token. Zero-interaction registration.
 - **Discovery**: Publish `/.well-known/oauth-protected-resource` for
-  smgglrs server discovery. Add `WWW-Authenticate` header on 401
+  navra server discovery. Add `WWW-Authenticate` header on 401
   responses for automatic agent bootstrap.
 - **User Claimed flow**: OTP-based email verification for agents
   without provider-minted assertions.
@@ -3842,7 +3842,7 @@ RFC 9728 (OAuth 2.1).
 
 #### 9z. Cedar policy language support (NEW — tech watch 2026-05-28)
 
-**Crate**: `smgglrs-security` (permissions)
+**Crate**: `navra-security` (permissions)
 
 Add Cedar policy language alongside existing deny-wins ACLs.
 Validated by Microsoft AGT (sub-millisecond Cedar evaluation,
@@ -3866,7 +3866,7 @@ Reference: Microsoft AGT Agent OS, AWS Cedar/Rex (2026-05-08).
 
 #### 9aa. MCP 2026-07-28 default flip + cleanup (NEW — tech watch 2026-05-28)
 
-**Crates**: `smgglrs-server` (config), `smgglrs-agent`
+**Crates**: `navra-server` (config), `navra-agent`
 
 After the July 28 final spec confirms no changes from RC, flip
 the default `mcp_version` from `"2025-03-26"` to `"2026-07-28"`.
@@ -3874,10 +3874,10 @@ This is now a small item because 9x does the incremental work:
 
 - **Default flip**: Change config default. Update docs, examples,
   tests.
-- **smgglrs-agent client**: Update the MCP client side to work
+- **navra-agent client**: Update the MCP client side to work
   with stateless servers (no Mcp-Session-Id sent when connecting
   to 2026-07-28 servers).
-- **smgglrs-flow**: Verify inter-agent flows work in stateless
+- **navra-flow**: Verify inter-agent flows work in stateless
   mode (mesh mailbox, DAG executor).
 - **Deprecation timeline**: Start 12-month countdown for removing
   2025-03-26 code path.
@@ -3887,24 +3887,24 @@ This is now a small item because 9x does the incremental work:
 **Effort**: 3-5 days. **Priority**: Critical (after July 28).
 **Depends on**: 9x (runtime-gated migration — all gated code done).
 **Acceptance**: Default config uses 2026-07-28. All tests pass.
-smgglrs-agent connects to both old and new servers.
+navra-agent connects to both old and new servers.
 
 Reference: MCP 2026-07-28 final spec (July 28).
 
 #### 9ab. Tool manifest signing — ASI04 differentiator (NEW — 2026-05-29) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-security` (tool_scanner.rs), `smgglrs-core` (upstream)
+**Crate**: `navra-security` (tool_scanner.rs), `navra-core` (upstream)
 
 Cryptographic verification of upstream MCP server tool definitions.
 MCP has no manifest signing (NemoClaw raised Issue #204, not adopted).
 Microsoft AGT does Ed25519 signing in Agent Marketplace. This is a
-smgglrs differentiator, not spec compliance.
+navra differentiator, not spec compliance.
 
 - **Signing**: Tool manifest = JSON-canonical serialization of
   `Vec<ToolDefinition>`. Server author signs with Ed25519 (reuse
   existing `CapSigner` infrastructure from `auth/capability.rs`).
-  Signature distributed as `X-Smgglrs-Manifest-Sig` header or
-  `.well-known/smgglrs-manifest.sig` file.
+  Signature distributed as `X-Navra-Manifest-Sig` header or
+  `.well-known/navra-manifest.sig` file.
 - **Verification**: In `UpstreamModule::discover()`, after fetching
   tool list, verify signature against server's public key (configured
   per upstream in config.toml). Reject or warn on mismatch.
@@ -3926,8 +3926,8 @@ Agent Marketplace Ed25519 signing.
 
 #### 9ac. Approval gate hook — ASI09 differentiator (NEW — 2026-05-29) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-security` (new `hooks/approval_gate.rs`),
-`smgglrs-core` (notifications)
+**Crate**: `navra-security` (new `hooks/approval_gate.rs`),
+`navra-core` (notifications)
 
 Human-in-the-loop approval gate as a hook in the pipeline. Neither
 MCP nor AG-UI provides enforcement — MCP deprecated `sampling` (the
@@ -3942,7 +3942,7 @@ the enforcement point; the UI (15a or AG-UI) is the rendering layer.
   arguments, agent, risk tier).
 - **Resolution**: Operator approves/rejects via rendra-ag-ui
   confirmation widget or HTTP endpoint. Response flows back
-  through rendra IPC → smgglrs. The hook resumes or blocks.
+  through rendra IPC → navra. The hook resumes or blocks.
 - **Timeout**: Configurable timeout (default 5 min). On timeout,
   deny by default (fail-closed).
 - **Quorum**: Optional N-of-M approval for critical operations
@@ -3969,7 +3969,7 @@ A new paper on autonomous multi-domain review is added.
 
 #### 10a. Security Gateway (flagship, full paper)
 
-**Title**: "smgglrs: A Security Microkernel for AI Agent Infrastructure"
+**Title**: "navra: A Security Microkernel for AI Agent Infrastructure"
 **Target**: USENIX Security / IEEE S&P workshop
 **Outline**: `docs/papers/security-gateway.md` (471 lines)
 
@@ -4044,7 +4044,7 @@ Contributions:
 
 Data collection (in progress):
 - Run `comprehensive-review.yaml` (hardcoded) and `review.yaml`
-  (dynamic) on smgglrs — compare findings
+  (dynamic) on navra — compare findings
 - Run `review.yaml` on a non-code project — show domain adaptation
 - Run `improve.yaml` for 3-5 cycles — convergence curves
 - Measure: issues found, fix rate, hallucination rate, token cost
@@ -4100,7 +4100,7 @@ to implementation. Each item has a research gate.
 
 #### 11a. ONNX/ort deepening
 
-**Crates**: `smgglrs-model` (OnnxBackend), `smgglrs-model-runtime`
+**Crates**: `navra-model` (OnnxBackend), `navra-model-runtime`
 
 Track and contribute to the ONNX/ort-rs ecosystem:
 
@@ -4116,7 +4116,7 @@ API stable enough to depend on?
 
 #### 11b. KAME tandem voice architecture
 
-**Crate**: `smgglrs-modal-voice`
+**Crate**: `navra-modal-voice`
 
 Evaluate Moshi-based speech-to-speech as replacement for the
 current cascaded ASR → LLM → TTS pipeline:
@@ -4132,7 +4132,7 @@ practice on our hardware (RTX 5090)?
 
 #### 11d. PII redaction via ONNX token classifier (NEW)
 
-**Crate**: `smgglrs-security` (new `pii_ner_hook.rs`)
+**Crate**: `navra-security` (new `pii_ner_hook.rs`)
 
 Evaluate OpenAI's `privacy-filter` model as an additional PII
 detection layer alongside the existing regex + ProtectAI NER:
@@ -4162,7 +4162,7 @@ Reference: OpenAI Privacy Filter pipeline (2026-04-29).
 
 #### 11f. GLiGuard safety model evaluation ✅
 
-**Crate**: `smgglrs-security` (safety classifier)
+**Crate**: `navra-security` (safety classifier)
 
 Evaluate GLiGuard (Fastino Labs, `fastino/gliguard-LLMGuardrails-300M`,
 Apache 2.0) as upgrade/replacement for the current binary ML safety
@@ -4194,7 +4194,7 @@ traffic, heavier model for uncertain inputs.
    index as cheap hallucination proxy (KDNuggets research)
 
 Also track: Qwen3Guard 8B tri-class pattern (safe/controversial/unsafe)
-maps to smgglrs's configurable safety profiles.
+maps to navra's configurable safety profiles.
 
 **Research gate**: Does GLiGuard ONNX export run on OpenVINO EP?
 How does it perform on adversarial prompts (Qwen3Guard showed 57-point
@@ -4210,7 +4210,7 @@ Reference: GLiGuard (Fastino Labs, 2026-05-13), GLiNER Guard
 
 #### 11g. Speculative decoding in model-runtime (NEW — tech watch 2026-05-17)
 
-**Crate**: `smgglrs-model-runtime`
+**Crate**: `navra-model-runtime`
 
 Add EAGLE3/FastDraft speculative decoding to the OpenVINO execution
 path. A small draft model (0.5-1B) generates candidate tokens, the
@@ -4231,7 +4231,7 @@ Reference: OpenVINO speculative decoding docs, FastDraft (Intel).
 
 #### 11n. model-runtime dimension refactor (NEW — 2026-05-29)
 
-**Crate**: `smgglrs-model-runtime`, `smgglrs-server`
+**Crate**: `navra-model-runtime`, `navra-server`
 
 Extract 3 hidden orthogonal axes from the Engine×Isolation product.
 Currently hardware target, model format, and execution mode are
@@ -4270,8 +4270,8 @@ Detailed plan: `.claude/plans/elegant-percolating-frog.md`
 
 #### 11h. Gateway-level cost-aware routing ✅
 
-**Crate**: `smgglrs-security` (new `routing_hook.rs`) +
-`smgglrs-model` (backend selection)
+**Crate**: `navra-security` (new `routing_hook.rs`) +
+`navra-model` (backend selection)
 
 Add a `RoutingHook` that classifies prompts and routes to
 appropriate model tiers, transparent to agents:
@@ -4305,7 +4305,7 @@ Reference: vLLM Semantic Router (Red Hat), NadirClaw, RouteLLM
 
 #### 11i. delta-mem OSAM evaluation (NEW — tech watch 2026-05-25)
 
-**Crate**: `smgglrs-model-runtime` (evaluation)
+**Crate**: `navra-model-runtime` (evaluation)
 
 Evaluate delta-mem's Online State of Associative Memory (OSAM) as
 a working memory mechanism for locally-served small models:
@@ -4317,7 +4317,7 @@ a working memory mechanism for locally-served small models:
   delta-mem achieved 51.66% on Qwen3-4B-Instruct (vs 46.79%
   frozen baseline).
 - **Working memory vs RAG**: delta-mem handles intra-session
-  working memory (active context management). smgglrs-memory's
+  working memory (active context management). navra-memory's
   FTS5+sqlite-vec handles cross-session retrieval. Complementary,
   not competing.
 - **Integration path**: If evaluation is positive, add OSAM
@@ -4335,15 +4335,15 @@ Memory Agent Bench.
 
 #### 11j. Harness-aligned training data generation (NEW — tech watch 2026-05-25)
 
-**Crate**: `smgglrs-model-runtime` (training data)
+**Crate**: `navra-model-runtime` (training data)
 
-Generate fine-tuning training data using smgglrs's actual tool
+Generate fine-tuning training data using navra's actual tool
 schemas and MCP message format, following MagenticBrain's
 harness-aligned training methodology:
 
 - **Training data format**: Multi-step tool-calling trajectories
-  using smgglrs tool definitions (not generic function-calling
-  examples). Include smgglrs-specific message format, tool
+  using navra tool definitions (not generic function-calling
+  examples). Include navra-specific message format, tool
   annotations, and IFC labels.
 - **Dual-trajectory**: Combine (a) tool-calling trajectories and
   (b) coding/terminal trajectories. The model learns when to call
@@ -4353,21 +4353,21 @@ harness-aligned training methodology:
 - **Three-gate verification**: Correctness (LLM rubrics) +
   efficiency (token/iteration penalty) + user-interaction
   verification. Reject training examples that fail any gate.
-- **Target**: Granite models for smgglrs-specific fine-tuning.
+- **Target**: Granite models for navra-specific fine-tuning.
   MagenticBrain proves this eliminates the train/deploy gap.
 
 **Effort**: Research + data generation. **Priority**: Medium.
 **Gate**: Is the training data quality sufficient? Does harness-
-aligned Granite outperform generic Granite on smgglrs tasks?
+aligned Granite outperform generic Granite on navra tasks?
 **Acceptance**: Fine-tuned Granite model achieves higher tool-call
-accuracy on smgglrs-specific tasks than base model.
+accuracy on navra-specific tasks than base model.
 
 Reference: MagenticLite/MagenticBrain (Microsoft Research),
 Fara1.5 FaraGen1.5 synthetic data pipeline.
 
 #### 11k. IFC cryptographic witness for declassification (NEW — tech watch 2026-05-28) ✅ (2026-05-29)
 
-**Crate**: `smgglrs-security` (ifc)
+**Crate**: `navra-security` (ifc)
 
 Add cryptographic witness to declassification operations. Currently
 `TaintTracker::declassify()` exists but without formal verification.
@@ -4384,7 +4384,7 @@ Gap exposed by FIDES (formal information-hiding primitives) and MVAR
   can trigger declassification. Prevents implicit trust escalation.
 
 FIDES's information-hiding primitives are the reference design.
-smgglrs's advantage is gateway-level enforcement (can't be bypassed
+navra's advantage is gateway-level enforcement (can't be bypassed
 by LLM reasoning).
 
 **Effort**: 2-3 days. **Priority**: Medium-High.
@@ -4396,26 +4396,26 @@ cryptographic provenance.
 
 #### 11l. IFC adversarial corpus benchmark (NEW — tech watch 2026-05-28)
 
-**Crate**: `smgglrs-security` (tests)
+**Crate**: `navra-security` (tests)
 
-Benchmark smgglrs-security's IFC against MVAR's adversarial corpus
+Benchmark navra-security's IFC against MVAR's adversarial corpus
 and the NeuroTaint TaintBench:
 
 - **MVAR corpus**: 50-vector adversarial corpus across 9 attack
-  categories. MVAR claims 100% block rate. Establish smgglrs's
+  categories. MVAR claims 100% block rate. Establish navra's
   baseline.
 - **TaintBench**: 400 scenarios across 20 agent frameworks. FIDES
-  achieves F1=0.522, NeuroTaint achieves F1=0.928. smgglrs's
+  achieves F1=0.522, NeuroTaint achieves F1=0.928. navra's
   per-value IFC + statistical guardrails should fall between these.
-- **AgentDojo**: FIDES's primary evaluation benchmark. Run smgglrs's
+- **AgentDojo**: FIDES's primary evaluation benchmark. Run navra's
   IFC on AgentDojo for direct comparison.
-- **Gap analysis**: Identify which attack categories smgglrs's
+- **Gap analysis**: Identify which attack categories navra's
   label-only IFC misses (semantic transformation, causal influence,
   cross-session contamination).
 
 **Effort**: 3-5 days. **Priority**: Medium.
 **Gate**: Are MVAR corpus and TaintBench publicly available?
-**Acceptance**: smgglrs IFC block rate > 90% on MVAR corpus.
+**Acceptance**: navra IFC block rate > 90% on MVAR corpus.
 F1 measured on TaintBench.
 
 Reference: MVAR (github.com/mvar-security/mvar), NeuroTaint
@@ -4423,12 +4423,12 @@ Reference: MVAR (github.com/mvar-security/mvar), NeuroTaint
 
 #### 11m. NeuroTaint offline taint audit (NEW — tech watch 2026-05-28)
 
-**Crate**: `smgglrs-security` (new `taint_audit.rs`)
+**Crate**: `navra-security` (new `taint_audit.rs`)
 
 Implement offline semantic taint analysis inspired by NeuroTaint.
-smgglrs's inline label-only IFC (FIDES-class, F1~0.522) is
+navra's inline label-only IFC (FIDES-class, F1~0.522) is
 insufficient for semantic attacks. NeuroTaint's F1=0.928 comes from
-three mechanisms smgglrs lacks:
+three mechanisms navra lacks:
 
 - **Semantic transformation tracking**: Detect meaning-preserving
   transformations (paraphrase, summarization) that bypass label
@@ -4437,7 +4437,7 @@ three mechanisms smgglrs lacks:
 - **Causal influence detection**: Identify how untrusted data
   influences agent decisions without direct content transfer. Analyze
   decision-point traces in the blackbox audit log.
-- **Cross-session memory contamination**: Monitor smgglrs-memory's
+- **Cross-session memory contamination**: Monitor navra-memory's
   knowledge store for taint propagation across sessions. Detect
   when tainted data persists and influences future queries.
 - **Offline operation**: Analyze OTel traces and blackbox audit logs
@@ -4454,8 +4454,8 @@ Reference: NeuroTaint (arXiv:2604.23374), FIDES comparison.
 
 #### 11c. Adversarial safety evaluation
 
-**Crates**: `smgglrs-security` (safety classifier),
-`smgglrs-flow` (pipeline orchestration)
+**Crates**: `navra-security` (safety classifier),
+`navra-flow` (pipeline orchestration)
 
 Generate adversarial training data for the safety classifier
 using AutoData's Challenger/Weak/Strong/Verifier pattern:
@@ -4465,7 +4465,7 @@ using AutoData's Challenger/Weak/Strong/Verifier pattern:
 - Weak model produces naive responses
 - Strong model produces robust responses
 - Verifier scores both; delta becomes training signal
-- Orchestrated as a `smgglrs-flow` DAG (4 specialists)
+- Orchestrated as a `navra-flow` DAG (4 specialists)
 
 **Effort**: 3-5 days. **Priority**: Medium.
 **Depends on**: Flow engine (Phase 2), safety classifier (done).
@@ -4474,7 +4474,7 @@ set after fine-tuning on generated data.
 
 #### 11e. Statistical guardrails for SafetyHook (NEW)
 
-**Crate**: `smgglrs-security` (new `statistical_hook.rs`)
+**Crate**: `navra-security` (new `statistical_hook.rs`)
 
 Add statistical methods alongside regex and ML safety filters,
 inspired by two complementary techniques:
@@ -4517,7 +4517,7 @@ gaps, and audit metrics gaps. Grouped into sub-phases by area.
 
 #### 12a. Flow audit completeness ✅ (2026-05-26)
 
-**Crate**: `smgglrs-server/src/flow_tools.rs`, `smgglrs-agent`
+**Crate**: `navra-server/src/flow_tools.rs`, `navra-agent`
 
 Fix 8 metrics gaps that prevent accurate paper evaluation:
 
@@ -4542,9 +4542,9 @@ Fix 8 metrics gaps that prevent accurate paper evaluation:
 **Effort**: 3-4 days. **Priority**: High (blocks papers).
 **Acceptance**: Rerun comparative flows, all 8 columns populated.
 
-#### 12d. smgglrs-flow DAG test framework ✅
+#### 12d. navra-flow DAG test framework ✅
 
-**Crate**: `smgglrs-flow` (new `validation/` module)
+**Crate**: `navra-flow` (new `validation/` module)
 
 Structural validation for non-deterministic flow execution,
 beyond unit tests and formal proofs. Adapts GitHub's Prefix
@@ -4581,7 +4581,7 @@ Prefix Tree Acceptors, dominator analysis.
 
 #### 12e. Trajectory-level evaluation ✅ (2026-05-26)
 
-**Crate**: `smgglrs-flow` (eval.rs)
+**Crate**: `navra-flow` (eval.rs)
 
 Extend the existing `RunMetrics` and `EvalSummary` with trajectory-
 level evaluation inspired by NVIDIA's agent evaluation framework:
@@ -4614,9 +4614,9 @@ DeepEval agentic metrics, Galileo agent evaluation framework.
 
 #### 12f. RAMPART-style safety test suite ✅ (2026-05-26)
 
-**Crate**: `smgglrs-security` (tests)
+**Crate**: `navra-security` (tests)
 
-Build an automated red-team test suite for smgglrs's safety filters,
+Build an automated red-team test suite for navra's safety filters,
 inspired by Microsoft RAMPART:
 
 - **Variant generation**: For each known attack vector (prompt
@@ -4632,7 +4632,7 @@ inspired by Microsoft RAMPART:
   imperative overrides, credential leakage, exfiltration URLs.
 - **NIST finding**: Tailored attacks raise task-hijacking from 11%
   to 81% ASR. Generic safety filters are insufficient — tests
-  must be crafted for smgglrs's specific architecture.
+  must be crafted for navra's specific architecture.
 
 **Effort**: 2-3 days. **Priority**: Medium-High.
 **Acceptance**: Safety filter regression suite with 500+ variants
@@ -4669,33 +4669,33 @@ SDK, LangChain, LlamaIndex, AutoGen) shipped OTel emitters by Q1 2026.
 
 **Implementation**:
 
-1. **`tracing-opentelemetry` in smgglrs-core**: Emit spans using
+1. **`tracing-opentelemetry` in navra-core**: Emit spans using
    `gen_ai.*` semantic conventions for every tool call transiting
    the gateway. Use Execute Tool span type from agentic conventions.
 2. **Hook pipeline as span tree**: Each hook (auth, permission,
    safety, budget) becomes a child span with duration and result
-   attributes (`smgglrs.permission.result`, `smgglrs.safety.result`).
+   attributes (`navra.permission.result`, `navra.safety.result`).
 3. **Prometheus `/metrics` endpoint**: Expose gateway-specific
    counters (see below).
 4. **Structured audit events**: OTel log events for every permission
    check, safety filter decision, deny-wins ACL activation.
    Satisfies SOC 2/GDPR compliance without a separate audit system.
 
-**Security-specific metrics** (unique to smgglrs — no proxy gateway
+**Security-specific metrics** (unique to navra — no proxy gateway
 can compute these):
 
 | Metric | What it measures |
 |--------|-----------------|
-| `smgglrs.permission.denial_rate` | Per-tool, per-agent permission denials |
-| `smgglrs.safety.filter_trigger_rate` | Safety hook triggers by category |
-| `smgglrs.safety.filter_latency_p95` | ONNX inference time for safety |
-| `smgglrs.acl.deny_wins_count` | Deny-wins ACL activations |
-| `smgglrs.hook.pipeline_duration` | Total hook pipeline execution time |
-| `smgglrs.tool.execution_success_rate` | Per-tool success rate (>0.98 threshold) |
-| `smgglrs.session.tool_call_count` | Tool calls per session (runaway loop detection) |
-| `smgglrs.guardrail.anomaly_score` | Statistical deviation from baseline patterns |
+| `navra.permission.denial_rate` | Per-tool, per-agent permission denials |
+| `navra.safety.filter_trigger_rate` | Safety hook triggers by category |
+| `navra.safety.filter_latency_p95` | ONNX inference time for safety |
+| `navra.acl.deny_wins_count` | Deny-wins ACL activations |
+| `navra.hook.pipeline_duration` | Total hook pipeline execution time |
+| `navra.tool.execution_success_rate` | Per-tool success rate (>0.98 threshold) |
+| `navra.session.tool_call_count` | Tool calls per session (runaway loop detection) |
+| `navra.guardrail.anomaly_score` | Statistical deviation from baseline patterns |
 
-**Backend choice**: smgglrs emits OTel-compatible spans + Prometheus
+**Backend choice**: navra emits OTel-compatible spans + Prometheus
 counters. Operators choose their backend (Phoenix, Langfuse,
 Datadog, Grafana). OpenLLMetry-style instrumentation for portability.
 
@@ -4731,7 +4731,7 @@ late 2025 are now contested.
 
 | ID | Issue | Detail | Effort |
 |----|-------|--------|--------|
-| C1 | **FIDES differentiation** | Microsoft Research arXiv:2505.23643 (May 2025) does IFC for agents with formal proofs. Must expand from 1 sentence to full paragraph: gateway-enforced (smgglrs) vs planner-enforced (FIDES). Failure to cite prominently = fatal at security venues. | 0.5 day |
+| C1 | **FIDES differentiation** | Microsoft Research arXiv:2505.23643 (May 2025) does IFC for agents with formal proofs. Must expand from 1 sentence to full paragraph: gateway-enforced (navra) vs planner-enforced (FIDES). Failure to cite prominently = fatal at security venues. | 0.5 day |
 | C2 | **10+ competing MCP gateways** | Gravitee 4.10, Microsoft MCP Gateway, Traefik Hub, Kong 3.13, MintMCP (SOC2 Type II), Lunar.dev, Composio, Intercept, systemprompt-template. "No existing gateway provides security" is false as of May 2026. Position on IFC/capability tokens, not on being a gateway. | 0.5 day |
 | C3 | **External evaluation** | Self-evaluation on own codebase is circular. Run on c-CRAB benchmark (code review), 5+ OSS projects, 3+ trials with statistical significance. Primary eval must be external; self-review becomes appendix case study. | 3-5 days |
 | C4 | **Compliance framing** | EU AI Act Article 14 applies to high-risk AI systems (Annex III), not infrastructure gateways. Reframe all claims: "compliance infrastructure" not "compliance." SOC2/ISO 42001 similarly. | 0.5 day |
@@ -4830,7 +4830,7 @@ late 2025 are now contested.
 
 ### Phase 14: Agentic OS completeness (2026-05-07)
 
-smgglrs already implements ~80% of an Agentic OS: process table,
+navra already implements ~80% of an Agentic OS: process table,
 IPC (BLP-gated mailbox + taint-on-read blackboard), memory
 management (decay, budget, knowledge store), DAG scheduler with
 GPU semaphore, MAC (Bell-LaPadula, both properties), capability
@@ -4839,7 +4839,7 @@ abstraction.
 
 #### 14a. Agent signal (async interrupt)
 
-**Crate**: `smgglrs-flow` (executor) + `smgglrs-agent` (tool loop)
+**Crate**: `navra-flow` (executor) + `navra-agent` (tool loop)
 
 Currently agents can only be stopped via timeout or `team_shutdown`.
 Add async signal delivery to running agents:
@@ -4858,19 +4858,19 @@ partial output. `Terminate` cleans up resources.
 
 #### 14b. Kernel state as MCP resources
 
-**Crate**: `smgglrs-core` (resource handlers)
+**Crate**: `navra-core` (resource handlers)
 
 Expose internal kernel state through the existing MCP resource
-mechanism. No new namespace — use `smgglrs://` URI scheme:
+mechanism. No new namespace — use `navra://` URI scheme:
 
 | Resource URI | Content |
 |---|---|
-| `smgglrs://proc` | Process table: connected agents, rings, call counts |
-| `smgglrs://proc/{agent}/taint` | Current IFC taint label for agent session |
-| `smgglrs://proc/{agent}/capabilities` | Active capability set |
-| `smgglrs://ifc/labels` | All session taint labels |
-| `smgglrs://audit/recent` | Last N blackbox entries |
-| `smgglrs://budget/gpu` | GPU semaphore: permits used/available |
+| `navra://proc` | Process table: connected agents, rings, call counts |
+| `navra://proc/{agent}/taint` | Current IFC taint label for agent session |
+| `navra://proc/{agent}/capabilities` | Active capability set |
+| `navra://ifc/labels` | All session taint labels |
+| `navra://audit/recent` | Last N blackbox entries |
+| `navra://budget/gpu` | GPU semaphore: permits used/available |
 
 These are read-only MCP resources, accessible to agents with
 appropriate clearance. Enables self-awareness: an agent can
@@ -4878,12 +4878,12 @@ check its own taint level before deciding whether to attempt a
 write.
 
 **Effort**: 1 day. **Priority**: Medium.
-**Acceptance**: `resources/read` on `smgglrs://proc` returns
+**Acceptance**: `resources/read` on `navra://proc` returns
 JSON with all connected agents and their privilege levels.
 
 #### 14c. Resource list filtering by agent permissions
 
-**Crate**: `smgglrs-core` (resource dispatch)
+**Crate**: `navra-core` (resource dispatch)
 
 Currently `resources/list` returns all resources regardless of
 agent permissions. Filter the resource list the same way tools
@@ -4903,7 +4903,7 @@ resources in `resources/list` than agent with `developer`.
 
 #### 14d. Agent process hibernation (KV cache checkpoint)
 
-**Crate**: `smgglrs-model-runtime` + `smgglrs-agent`
+**Crate**: `navra-model-runtime` + `navra-agent`
 
 Save and restore full agent state including model KV cache for
 suspend/resume across sessions. The agent equivalent of process
@@ -4946,7 +4946,7 @@ TokenSpeed's dual-plane scheduler achieves this in C++; Rust's
 affine types give us stronger guarantees natively.
 
 **Effort**: 3-4 days. **Priority**: Medium-High.
-**Acceptance**: Suspend a running agent, restart smgglrs, resume
+**Acceptance**: Suspend a running agent, restart navra, resume
 agent with restored conversation and KV cache. Measure resume
 latency vs full re-prompt.
 
@@ -4955,7 +4955,7 @@ Foundation, 2026-05-07).
 
 #### 14e. Preemptive scheduling (cancel in-flight generation)
 
-**Crate**: `smgglrs-model` (backend trait) + `smgglrs-agent` (tool loop)
+**Crate**: `navra-model` (backend trait) + `navra-agent` (tool loop)
 
 Cancel an ongoing model inference to give priority to a
 higher-priority agent (e.g., voice input preempts batch review).
@@ -4977,10 +4977,10 @@ After voice completes, batch resumes from checkpoint.
 
 ### Phase 15: Rendra desktop app (updated 2026-05-29)
 
-smgglrs desktop app built on the rendra stack — Servo-based runtime
+navra desktop app built on the rendra stack — Servo-based runtime
 with rendra-ui components and rendra-ag-ui for agent activity.
 
-**Stack** (all smgglrs-ai repos):
+**Stack** (all navra-ai repos):
 - **rendra** — Servo + winit runtime, IPC bridge, `#[command]` macros
 - **rendra-ui** — 25 CSS + JS components (`rd-*` tokens, dark/light)
 - **rendra-ag-ui** — AG-UI protocol widget (streaming text, tool
@@ -4988,7 +4988,7 @@ with rendra-ui components and rendra-ag-ui for agent activity.
 
 **Architecture**:
 ```
-smgglrs (MCP gateway) → Rust backend commands → rendra IPC
+navra (MCP gateway) → Rust backend commands → rendra IPC
     → rendra-ag-ui widget + rendra-ui components
 ```
 
@@ -4997,17 +4997,17 @@ ships the runtime. HTML/CSS/JS frontend uses rendra-ui tokens.
 
 #### 15a. Agentic chat via rendra (HIGH)
 
-**Repos**: smgglrs (backend commands), rendra app (frontend)
+**Repos**: navra (backend commands), rendra app (frontend)
 
 - **Backend**: IPC commands (`chat_send`, `chat_history`,
-  `session_list`, `session_resume`) wired to smgglrs-agent's
+  `session_list`, `session_resume`) wired to navra-agent's
   ReAct loop via rendra `#[command]` macro
 - **Frontend**: rendra-ui chat layout with `rd-input`, `rd-card`
   components. rendra-ag-ui widget renders tool calls and
   reasoning steps inline
 - **Streaming**: Agent responses stream through rendra IPC as
   AG-UI events (TextDelta, ToolCallStart, ToolCallEnd)
-- **Multi-turn**: smgglrs-memory WorkingMemory stores turns
+- **Multi-turn**: navra-memory WorkingMemory stores turns
 
 **Effort**: 3-4 days. **Priority**: High.
 **Acceptance**: Chat in rendra app uses tools, maintains context,
@@ -5015,11 +5015,11 @@ resumes sessions.
 
 #### 15b. Live agent dashboard (HIGH)
 
-**Repos**: smgglrs (event source), rendra app (dashboard page)
+**Repos**: navra (event source), rendra app (dashboard page)
 
 - **Backend**: IPC event stream (`agent_connected`, `tool_call`,
   `ifc_taint_changed`, `safety_trigger`, `approval_requested`)
-  from smgglrs-core's `notify_session()` translated to AG-UI
+  from navra-core's `notify_session()` translated to AG-UI
 - **Frontend**: rendra-ui cards for each connected agent showing
   taint level, active tool, token usage. rendra-ag-ui renders
   live tool call activity
@@ -5043,7 +5043,7 @@ updates. Approve pending requests from dashboard.
 
 #### 15d. Branding and polish (LOW)
 
-- smgglrs branding in rendra app
+- navra branding in rendra app
 - Dark/light theme via rendra-ui `data-theme` attribute
 - Token usage charts, model health indicators
 
@@ -5055,7 +5055,7 @@ The rendra-ag-ui widget is already designed as a self-contained
 bundle. Domain apps embed it for agent activity visualization:
 
 - `<script src="rendra-ag-ui.js">` — zero npm deps
-- Configure: smgglrs endpoint, auth token, theme
+- Configure: navra endpoint, auth token, theme
 - AG-UI events: `onToolCall`, `onApprovalRequired`, `onError`
 - IFC badge shows current taint level
 
@@ -5066,35 +5066,35 @@ bundle. Domain apps embed it for agent activity visualization:
 ## Crate dependency diagram (planned)
 
 ```
-smgglrs-protocol          (no smgglrs deps)
-smgglrs-model             (no smgglrs deps)
-smgglrs-model-hub         (no smgglrs deps)
-smgglrs-model-runtime     (no smgglrs deps)
+navra-protocol          (no navra deps)
+navra-model             (no navra deps)
+navra-model-hub         (no navra deps)
+navra-model-runtime     (no navra deps)
     ↓
-smgglrs-security          (protocol + model)
+navra-security          (protocol + model)
     ↓
-smgglrs-cognitive         (security)             PERSONAS
-smgglrs-agent             (protocol + model + security)  CLIENT
-smgglrs-memory            (security + rag)       PERSISTENCE
+navra-cognitive         (security)             PERSONAS
+navra-agent             (protocol + model + security)  CLIENT
+navra-memory            (security + rag)       PERSISTENCE
     ↓
-smgglrs-flow              (agent + cognitive + memory)   ORCHESTRATION
-smgglrs-core              (protocol + model + security)  SERVER
+navra-flow              (agent + cognitive + memory)   ORCHESTRATION
+navra-core              (protocol + model + security)  SERVER
     ↓
-smgglrs-tools-*  ─────┐
-smgglrs-rag      ─────┼── (core only)
-smgglrs-modal-*  ─────┘
+navra-tools-*  ─────┐
+navra-rag      ─────┼── (core only)
+navra-modal-*  ─────┘
     ↓
-smgglrs-server            (all + hub + runtime)
+navra-server            (all + hub + runtime)
 ```
 
 ## Ecosystem positioning
 
-smgglrs is a *Claw — a self-hosted AI agent gateway in the same
+navra is a *Claw — a self-hosted AI agent gateway in the same
 category as OpenClaw, NemoClaw, and IronClaw. It differentiates on
 security depth (gateway-enforced IFC, deny-wins ACLs, in-process ML
-safety) and orchestration (smgglrs-flow DAG + mesh + mandates).
+safety) and orchestration (navra-flow DAG + mesh + mandates).
 
-smgglrs is domain-agnostic, not developer-only. Developer agents
+navra is domain-agnostic, not developer-only. Developer agents
 (Claude Code, Goose) are one client type. Domain apps (lawyer
 assistants, ops dashboards) connect as MCP clients and expose their
 data as MCP servers — the bidirectional MCP pattern. See Phase 15
@@ -5103,7 +5103,7 @@ for the web UI that serves non-developer users directly.
 ```
 Developer agents ──┐              ┌── downstream MCP servers
   Claude Code      │              │
-  Goose            ├── MCP/SSE ──> smgglrs ──┼── built-in modules
+  Goose            ├── MCP/SSE ──> navra ──┼── built-in modules
   Zed/JetBrains    │              │          └── local ONNX models
 Domain apps      ──┘              │
   Lawyer app (↔ bidirectional)    └── domain MCP servers
@@ -5113,28 +5113,28 @@ Domain apps      ──┘              │
 
 ### *Claw landscape (May 2026 analysis)
 
-smgglrs sits in the OpenClaw ecosystem — same architectural category
+navra sits in the OpenClaw ecosystem — same architectural category
 (self-hosted MCP gateway), different depth. Key comparisons:
 
 - **OpenClaw**: Largest ecosystem (370k stars), messaging channels,
   ClawHub marketplace. Weak security (9 CVEs in 4 days, 12% malware
   rate on ClawHub, 135k exposed instances). Node.js.
 - **NemoClaw** (NVIDIA): OpenClaw + OpenShell sandbox + YAML policies.
-  Wrapper, not purpose-built. Closest to smgglrs's security model
+  Wrapper, not purpose-built. Closest to navra's security model
   but bolted-on rather than native.
 - **IronClaw** (NEAR AI): Rust, TEEs, WebAssembly tool sandboxes,
-  zero-trust capabilities. Independently validates smgglrs's design
+  zero-trust capabilities. Independently validates navra's design
   choices. No orchestration.
 - **SemaClaw** (Midea AI): DAG orchestration, PermissionBridge,
-  three-tier context. Closest to smgglrs-flow. Node.js. No gateway
+  three-tier context. Closest to navra-flow. Node.js. No gateway
   security model.
 - **Kaiden** (Red Hat/Podman Desktop): Workspace + sandbox management
   for AI coding agents. Complementary layer — Kaiden manages where
-  agents run, smgglrs manages what they can access.
+  agents run, navra manages what they can access.
 
-What smgglrs has that no *Claw has: IFC as first-class primitive,
+What navra has that no *Claw has: IFC as first-class primitive,
 in-process ML safety filters, integrated multi-agent orchestration,
-cognitive layer, Rust coherent system. What *Claws have that smgglrs
+cognitive layer, Rust coherent system. What *Claws have that navra
 is building: web UI (Phase 15), marketplace/registry (planned).
 
 ### Microsoft AGT relationship (May 2026 analysis)
@@ -5146,13 +5146,13 @@ is building: web UI (Phase 15), marketplace/registry (planned).
 - Framework-agnostic: hooks into LangChain, CrewAI, Google ADK,
   Microsoft Agent Framework
 - **Architecture difference**: AGT is a library (agent embeds it) vs
-  smgglrs is a gateway (agent cannot bypass it). Different trust
-  models — AGT trusts the agent runtime, smgglrs does not.
+  navra is a gateway (agent cannot bypass it). Different trust
+  models — AGT trusts the agent runtime, navra does not.
 - POSIX-inspired capability-based access controls (what agents *can*
-  do), vs smgglrs's deny-wins ACLs + IFC (what agents *must not* do
+  do), vs navra's deny-wins ACLs + IFC (what agents *must not* do
   + information flow tracking)
 - **AGT lacks**: IFC/taint tracking, statistical guardrails, budget
-  hooks, in-process ML safety, orchestration. These remain smgglrs
+  hooks, in-process ML safety, orchestration. These remain navra
   differentiators.
 - **AGT has**: Better framework integration story (works with any
   framework via callbacks/decorators), wider language coverage
@@ -5181,7 +5181,7 @@ AGT MCP Extensions for .NET (DevBlogs, May 2026).
 The MCP gateway space exploded: 97M monthly SDK downloads, 30 CVEs
 in 60 days, 88% of orgs reporting agent security incidents.
 
-| Gateway | Threat | Key Feature | smgglrs Advantage |
+| Gateway | Threat | Key Feature | navra Advantage |
 |---------|--------|-------------|-------------------|
 | IBM ContextForge | HIGH | Cedar RBAC, A2A, 40+ plugins, 3500+ stars | IFC, in-process ML safety |
 | Envoy AI Gateway | MEDIUM | MCPRoute v1beta1, CEL auth, AAIF/LF | Gateway-enforced IFC, orchestration |
@@ -5191,7 +5191,7 @@ in 60 days, 88% of orgs reporting agent security incidents.
 | Lasso Security | LOW | Prompt injection detection, reputation scoring | ML safety depth, IFC |
 | Docker MCP Gateway | LOW | Container isolation, Scout scanning | No RBAC, no audit — dev tool only |
 
-smgglrs unique position: **IFC + in-process ML safety + flow
+navra unique position: **IFC + in-process ML safety + flow
 orchestration + OpenShell integration**. No single competitor
 covers all four.
 
@@ -5205,23 +5205,23 @@ Composio gateway ranking.
 ### IFC competitive landscape (May 2026 tech watch)
 
 Three IFC-for-agents systems emerged as direct competitors to
-smgglrs-security's IFC module:
+navra-security's IFC module:
 
-| System | Approach | F1 | Advantage | Gap vs smgglrs |
+| System | Approach | F1 | Advantage | Gap vs navra |
 |--------|----------|-----|-----------|----------------|
 | FIDES (Microsoft Research) | Planner-level lattice IFC | 0.522 | Formal info-hiding primitives | Gateway-level > planner-level (can't be bypassed) |
 | MVAR | Dual-lattice + crypto provenance | N/A (100% on 50-vector) | Execution firewall paradigm | Broader defense-in-depth stack |
 | NeuroTaint | Semantic + causal + persistent | 0.928 | Semantic taint tracking | Inline label tracking is faster |
-| **smgglrs** | **Gateway-level 2×4 product lattice** | **TBD** | **Per-value IFC + statistical guardrails** | **No semantic/causal tracking** |
+| **navra** | **Gateway-level 2×4 product lattice** | **TBD** | **Per-value IFC + statistical guardrails** | **No semantic/causal tracking** |
 
 Key insights:
 - Pure label-only IFC is insufficient (FIDES F1=0.522)
-- smgglrs must layer offline semantic audit (NeuroTaint-style) on
+- navra must layer offline semantic audit (NeuroTaint-style) on
   top of inline label tracking for defense-in-depth
 - Gateway-level enforcement remains architecturally superior — none
   of the competitors can enforce at the transport layer
 - Cryptographic witness for declassification is a gap (11k)
-- Adversarial benchmarking needed to establish smgglrs's position (11l)
+- Adversarial benchmarking needed to establish navra's position (11l)
 
 Reference: FIDES (arXiv:2505.23643), MVAR (github.com/mvar-security/
 mvar), NeuroTaint (arXiv:2604.23374).
@@ -5229,21 +5229,21 @@ mvar), NeuroTaint (arXiv:2604.23374).
 ### Goose relationship (April 2026 analysis)
 
 - Goose: Rust agent runtime (~v1.30, Apache-2.0, AAIF/Linux Foundation)
-- Different layer: Goose = end-user agent, smgglrs = security gateway
+- Different layer: Goose = end-user agent, navra = security gateway
 - Goose has NO auth tokens, NO ACLs, NO IFC, NO content filtering
 - Goose connects to MCP servers directly (no proxy/filter)
 - Contribution targets: MCP interceptor pattern (SEP-1763),
   Linux extension sandboxing, safety hook pipeline, ACL engine
-- ACP adoption gives smgglrs agents IDE integration for free
+- ACP adoption gives navra agents IDE integration for free
 
 ### ZeroClaw (April 2026 analysis)
 
 - ZeroClaw: Rust agent runtime (<5MB memory, <10ms startup, 8.8MB binary)
 - Trait-based architecture, TOML config, 3-tier autonomy
-  (ReadOnly/Supervised/Full) — similar permission model to smgglrs
+  (ReadOnly/Supervised/Full) — similar permission model to navra
 - 70+ tools, 25+ messaging channels, hardware peripheral traits
   (ESP32/Arduino/RPi) — targets embedded/IoT
-- Key difference: flat agent runtime vs smgglrs's security gateway
+- Key difference: flat agent runtime vs navra's security gateway
 - Potential collaboration: transport adapters, tool interface traits
 - Watch for convergence — similar Rust + trait patterns, different layers
 - Migrating OpenClaw users (positions as next-gen replacement)
@@ -5252,12 +5252,12 @@ mvar), NeuroTaint (arXiv:2604.23374).
 
 - SemaClaw: Open-source two-layer agent framework (arXiv 2604.11548)
 - sema-code-core (Node.js agent runtime) + SemaClaw (application harness)
-- Closest architectural parallel to smgglrs-* crate family
+- Closest architectural parallel to navra-* crate family
 - Same problems: permissions, DAG orchestration, memory with hybrid
   retrieval, structured context injection, persona identity
 - Key differences (our advantages):
   - **Layer**: SemaClaw is a harness (wraps one framework).
-    smgglrs is a gateway (secures any framework that speaks MCP).
+    navra is a gateway (secures any framework that speaks MCP).
   - **Security depth**: Their PermissionBridge is binary
     (internal=allow, external=approve). Our IFC propagates taint
     labels through tool chains; deny-wins ACLs are more granular.
@@ -5278,7 +5278,7 @@ mvar), NeuroTaint (arXiv:2604.23374).
 - No security enforcement whatsoever — their "tool gateway" is an
   API aggregator, not a security layer
 - Validates our architecture: their Worker/Leader = our DAG
-  orchestrator/specialists, their tool gateway = smgglrs (minus security)
+  orchestrator/specialists, their tool gateway = navra (minus security)
 - Human PR review as bottleneck supports cross-validation (Phase 5g)
 
 ### AWS Agent Registry (April 2026 analysis)
@@ -5286,7 +5286,7 @@ mvar), NeuroTaint (arXiv:2604.23374).
 - Centralized agent/tool/MCP server catalog in Amazon Bedrock AgentCore
 - MCP + A2A native, hybrid keyword+semantic search, governance workflow
 - The registry itself is an MCP server (queryable by Kiro, Claude Code)
-- Governance layer (who owns what, is it approved) complements smgglrs's
+- Governance layer (who owns what, is it approved) complements navra's
   runtime security layer (what can it access, is the content safe)
 - Non-English semantic search fails 33% of tests — test our local
   embeddings for multilingual quality
@@ -5303,11 +5303,11 @@ These capabilities from the original Python prototype are intentionally NOT repl
   makes extraction impractical. Adopt Warp's UX *patterns* (Phase 8)
   instead. Note: a *web* UI is in scope (Phase 15) — the non-goal
   is a native terminal UI, not a UI altogether.
-- **A2A server**: smgglrs already serves Agent Cards; A2A orchestration
-  belongs in smgglrs-flow, not as a separate service
+- **A2A server**: navra already serves Agent Cards; A2A orchestration
+  belongs in navra-flow, not as a separate service
 - **Desktop app**: No Electron/Tauri wrapper. The web UI (Phase 15)
   runs in the browser. System tray + D-Bus for desktop integration.
-  Domain apps embed the chat widget (Phase 15e) rather than smgglrs
+  Domain apps embed the chat widget (Phase 15e) rather than navra
   shipping a standalone desktop app
 - **Adopt rmcp**: Evaluated (2026-05-04). Our hand-rolled MCP types
   carry IFC labels and permissions extensions that rmcp doesn't

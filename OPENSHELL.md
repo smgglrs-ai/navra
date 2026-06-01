@@ -1,34 +1,34 @@
 # OpenShell Integration Design
 
-This document describes how smgglrs integrates with OpenShell, the
+This document describes how navra integrates with OpenShell, the
 Red Hat/NVIDIA secure sandbox platform for autonomous agents.
 
 **Status**: Design phase (2026-04-22).
 
 ## Relationship
 
-OpenShell and smgglrs operate at different layers of the agent stack:
+OpenShell and navra operate at different layers of the agent stack:
 
-| Concern | OpenShell | smgglrs |
+| Concern | OpenShell | navra |
 |---------|-----------|------|
 | What it manages | Compute environments (sandboxes) | Tool access (MCP protocol) |
 | Security focus | OS-level isolation (Landlock, seccomp, namespaces) | Application-level (ACLs, IFC, safety filters, hooks) |
 | Protocol | gRPC (all internal communication) | MCP (JSON-RPC 2.0 over Streamable HTTP + SSE) |
 | Extensibility | gRPC drivers as separate processes | Module trait (in-process) + UpstreamModule (JSON-RPC) |
-| Agent comms | Sandbox-to-sandbox relay through gateway | smgglrs-flow (mailbox, blackboard, A2A) |
+| Agent comms | Sandbox-to-sandbox relay through gateway | navra-flow (mailbox, blackboard, A2A) |
 | Isolation | libkrun microVM, Podman, Kata, gVisor | Podman (model runtime only) |
 
 The natural integration: **agents run inside OpenShell sandboxes
-and connect to smgglrs for tool access**. OpenShell provides the
-"where agents run"; smgglrs provides "what agents can do."
+and connect to navra for tool access**. OpenShell provides the
+"where agents run"; navra provides "what agents can do."
 
 In the AI OS analogy (see Phase 8 papers): OpenShell is the
 **process isolation layer** (cgroups, namespaces, microVMs),
-smgglrs is the **syscall interface** (tool access control, IFC).
+navra is the **syscall interface** (tool access control, IFC).
 
 ## Defense in depth: network + application firewalling
 
-The combination of OpenShell and smgglrs creates two independent
+The combination of OpenShell and navra creates two independent
 security enforcement layers. Neither alone is sufficient.
 
 ### Sandbox network policy (OpenShell)
@@ -43,7 +43,7 @@ A teammate sandbox needs access to exactly three things:
 | Destination | Protocol | Purpose |
 |-------------|----------|---------|
 | Model endpoint (llama-server, Ollama, cloud API) | HTTP | Inference |
-| smgglrs gateway | MCP (HTTP) + A2A (HTTP) | Tools + teammate mesh |
+| navra gateway | MCP (HTTP) + A2A (HTTP) | Tools + teammate mesh |
 | OpenShell gateway | gRPC | Control plane (config, policy, credentials) |
 
 Everything else is **blocked** — no internet, no DNS to
@@ -58,9 +58,9 @@ OpenShell's RFC explicitly supports this:
 - Policy is evaluated at relay setup time using authenticated
   source and destination sandbox identities
 
-### Application-level enforcement (smgglrs)
+### Application-level enforcement (navra)
 
-Even when a sandbox can reach smgglrs over the network, smgglrs
+Even when a sandbox can reach navra over the network, navra
 enforces what the agent inside that sandbox can actually do:
 
 - **Tool ACLs**: agent can only call specific tools (e.g.,
@@ -82,13 +82,13 @@ enforces what the agent inside that sandbox can actually do:
 │                                                    │
 │  Agent process                                     │
 │    ├─ model call  → proxy → model endpoint ✅      │
-│    ├─ tool call   → proxy → smgglrs gateway ✅        │
-│    │                 └─► smgglrs ACL check            │
-│    │                 └─► smgglrs IFC check            │
-│    │                 └─► smgglrs safety filter         │
+│    ├─ tool call   → proxy → navra gateway ✅        │
+│    │                 └─► navra ACL check            │
+│    │                 └─► navra IFC check            │
+│    │                 └─► navra safety filter         │
 │    ├─ A2A message → proxy → OpenShell gateway      │
 │    │                 └─► relay policy check         │
-│    │                 └─► smgglrs IFC check (at dest)  │
+│    │                 └─► navra IFC check (at dest)  │
 │    ├─ curl google.com → proxy → OPA DENY ❌        │
 │    └─ raw IP connect  → netns blocks ❌            │
 │                                                    │
@@ -103,25 +103,25 @@ enforces what the agent inside that sandbox can actually do:
 
 ### Why both layers are necessary
 
-**OpenShell without smgglrs**: The agent can reach smgglrs over the
-network, but without smgglrs's ACLs it could call any tool, read
+**OpenShell without navra**: The agent can reach navra over the
+network, but without navra's ACLs it could call any tool, read
 any path, and ignore IFC labels. A compromised agent process
 has unrestricted tool access.
 
-**smgglrs without OpenShell**: The agent respects smgglrs's ACLs at
+**navra without OpenShell**: The agent respects navra's ACLs at
 the application layer, but a compromised agent process can
-bypass smgglrs entirely — open raw sockets, exfiltrate data to
+bypass navra entirely — open raw sockets, exfiltrate data to
 the internet, read arbitrary files via the OS, or tamper with
 other processes.
 
 **Both together**: OpenShell prevents the agent from reaching
-anything except smgglrs and its model. smgglrs prevents the agent
+anything except navra and its model. navra prevents the agent
 from doing anything except what its capability token allows.
 Compromising either layer alone is insufficient for a full
 breach.
 
 This maps to the AI OS analogy: OpenShell is mandatory access
-control (SELinux/AppArmor), smgglrs is discretionary access
+control (SELinux/AppArmor), navra is discretionary access
 control (Unix permissions + capability tokens). Defense in
 depth requires both.
 
@@ -129,18 +129,18 @@ depth requires both.
 
 ### Problem
 
-smgglrs currently authenticates agents via two mechanisms:
+navra currently authenticates agents via two mechanisms:
 
 1. **BLAKE3 tokens** (legacy) — pre-shared bearer tokens hashed
    with BLAKE3, mapped to `AgentIdentity` via config.
 2. **Capability tokens** (modern) — self-contained CBOR tokens
    signed with Ed25519, carrying inline capabilities.
 
-Both require smgglrs to manage credentials independently. When an
+Both require navra to manage credentials independently. When an
 agent runs inside an OpenShell sandbox, the OpenShell supervisor
 has already established the agent's identity through the
 gateway's identity subsystem (SPIFFE, OIDC, local OS, or static
-RBAC). Re-authenticating at the smgglrs layer is redundant and
+RBAC). Re-authenticating at the navra layer is redundant and
 creates a credential management burden.
 
 ### Design: OpenShellAuthenticator
@@ -155,8 +155,8 @@ Agent (inside OpenShell sandbox)
     |
     | HTTP request with "Authorization: Bearer <openshell-identity-token>"
     v
-smgglrs (ChainAuthenticator)
-    |-- 1. CapabilityAuthenticator (try smgglrs-native cap tokens)
+navra (ChainAuthenticator)
+    |-- 1. CapabilityAuthenticator (try navra-native cap tokens)
     |-- 2. OpenShellAuthenticator (try OpenShell identity) <-- NEW
     |-- 3. TokenAuthenticator (try legacy BLAKE3 tokens)
     |-- 4. NoAuthenticator (dev-only fallback)
@@ -179,7 +179,7 @@ OpenShell's identity subsystem supports multiple backends. The
 **Token-to-identity mapping:**
 
 The `OpenShellAuthenticator` extracts identity claims from the
-OpenShell token and maps them to smgglrs's `AgentIdentity`:
+OpenShell token and maps them to navra's `AgentIdentity`:
 
 ```
 OpenShell claim          -> AgentIdentity field
@@ -204,16 +204,16 @@ trust_bundle = "/run/spire/agent/bundle.pem"
 # OIDC mode: IdP endpoint for JWKS
 # issuer = "https://keycloak.example.com/realms/agents"
 
-# Permission mapping: OpenShell labels -> smgglrs permission sets
+# Permission mapping: OpenShell labels -> navra permission sets
 [auth.openshell.mapping]
 "role=worker"    = "restricted"
 "role=lead"      = "developer"
 "role=admin"     = "admin"
 ```
 
-**Implementation in smgglrs-security:**
+**Implementation in navra-security:**
 
-- New file: `smgglrs-security/src/auth/openshell.rs`
+- New file: `navra-security/src/auth/openshell.rs`
 - New struct: `OpenShellAuthenticator` implementing `Authenticator`
 - Add to `ChainAuthenticator` between capability and legacy auth
 - Dependencies: `jsonwebtoken` (JWT verification), optionally
@@ -222,7 +222,7 @@ trust_bundle = "/run/spire/agent/bundle.pem"
 **Credential delegation:**
 
 When OpenShell's credential subsystem resolves secrets (API keys,
-tokens), it delivers them to the supervisor. smgglrs's
+tokens), it delivers them to the supervisor. navra's
 `MappedCredentialStore` can be extended with an `openshell` backend
 that reads credentials from the supervisor's credential delivery
 channel instead of the local keyring:
@@ -233,18 +233,18 @@ source = "openshell"
 label = "github.pat"
 ```
 
-This avoids duplicating credential storage between OpenShell and smgglrs.
+This avoids duplicating credential storage between OpenShell and navra.
 
 ### Priority
 
 High for OpenShell-managed deployments. No impact on standalone
-smgglrs (OpenShellAuthenticator is skipped when not configured).
+navra (OpenShellAuthenticator is skipped when not configured).
 
 ## 2. A2A protocol for teammate communications
 
 ### Problem
 
-smgglrs-flow currently uses three in-process communication
+navra-flow currently uses three in-process communication
 mechanisms for multi-agent coordination:
 
 1. **Mailbox** — tokio mpsc channels, in-memory only
@@ -259,7 +259,7 @@ communication protocol.
 ### Design: A2A as the teammate protocol
 
 A2A (Agent-to-Agent) is the right protocol for teammate
-communication. smgglrs already has:
+communication. navra already has:
 
 - A2A server implementation (receive tasks, execute tools, return
   results via `/a2a` endpoint)
@@ -276,7 +276,7 @@ Planner persona (lead agent)
     | Decomposes task into sub-tasks
     | Selects teammates and models
     v
-smgglrs (flow engine)
+navra (flow engine)
     |
     | Builds A2A mesh:
     |   1. For each teammate, create/assign an A2A endpoint
@@ -285,7 +285,7 @@ smgglrs (flow engine)
     |   4. Mint scoped capability tokens per teammate
     v
 ┌─────────────────────────────────────────────┐
-│              A2A Mesh (built by smgglrs)       │
+│              A2A Mesh (built by navra)       │
 │                                             │
 │  Teammate A ◄──A2A──► Teammate B            │
 │      │                    │                 │
@@ -296,26 +296,26 @@ smgglrs (flow engine)
 │             ▼                               │
 │        Teammate C                           │
 │                                             │
-│  All traffic flows through smgglrs gateway     │
+│  All traffic flows through navra gateway     │
 │  (IFC enforcement, audit logging, ACLs)     │
 └─────────────────────────────────────────────┘
 ```
 
-**Mesh construction by smgglrs (on behalf of planner persona):**
+**Mesh construction by navra (on behalf of planner persona):**
 
 The planner persona defines the flow (teammates, dependencies,
-communication patterns). smgglrs's flow engine translates this into
+communication patterns). navra's flow engine translates this into
 an A2A mesh:
 
 1. **Teammate registration**: Each teammate gets an A2A endpoint
-   on smgglrs (e.g., `/a2a/teammates/{name}`). smgglrs acts as the
+   on navra (e.g., `/a2a/teammates/{name}`). navra acts as the
    A2A gateway — teammates don't talk directly to each other;
-   they send A2A messages through smgglrs, which enforces IFC and
+   they send A2A messages through navra, which enforces IFC and
    ACLs before relaying.
 
-2. **Agent Card directory**: smgglrs maintains a local directory of
+2. **Agent Card directory**: navra maintains a local directory of
    teammate Agent Cards. When teammate A needs to discover
-   teammate B's capabilities, it queries smgglrs's directory
+   teammate B's capabilities, it queries navra's directory
    (not an external registry).
 
 3. **Capability scoping**: Each teammate receives a scoped
@@ -329,9 +329,9 @@ an A2A mesh:
    mailbox messages. Taint labels propagate through A2A task
    artifacts.
 
-**A2A client in smgglrs-protocol:**
+**A2A client in navra-protocol:**
 
-Add an `A2aClient` struct to `smgglrs-protocol/src/a2a_client.rs`:
+Add an `A2aClient` struct to `navra-protocol/src/a2a_client.rs`:
 
 ```rust
 pub struct A2aClient {
@@ -356,7 +356,7 @@ The flow engine abstracts communication behind the mesh tools
 implementation can switch between:
 
 - **In-process mode** (current): tokio channels, same process
-- **A2A mode** (new): A2A JSON-RPC calls through smgglrs gateway
+- **A2A mode** (new): A2A JSON-RPC calls through navra gateway
 
 The mesh tool handlers detect whether a teammate is local
 (in-process) or remote (A2A endpoint) and route accordingly.
@@ -368,11 +368,11 @@ In OpenShell-managed deployments, each teammate runs in its own
 sandbox. The A2A mesh maps naturally:
 
 - Each sandbox has a supervisor connection to the OpenShell gateway
-- Each sandbox runs an smgglrs instance (or connects to a shared one)
+- Each sandbox runs an navra instance (or connects to a shared one)
 - Teammate-to-teammate A2A traffic flows through the OpenShell
-  gateway relay AND through smgglrs's IFC/ACL enforcement
+  gateway relay AND through navra's IFC/ACL enforcement
 - Double security: OpenShell enforces sandbox-level policy,
-  smgglrs enforces tool-level policy
+  navra enforces tool-level policy
 
 ### Priority
 
@@ -383,7 +383,7 @@ In-process mode remains the default for single-node.
 
 ### Current state (honest assessment)
 
-`smgglrs-model-runtime` has three isolation backends:
+`navra-model-runtime` has three isolation backends:
 
 | Backend | Status | Code |
 |---------|--------|------|
@@ -408,23 +408,23 @@ sandboxing to OpenShell:
    provides container isolation. We would be duplicating work.
 
 2. **Defense in depth**: OpenShell provides OS-level isolation
-   (Landlock, seccomp, network namespaces, microVMs). smgglrs
+   (Landlock, seccomp, network namespaces, microVMs). navra
    provides application-level security (ACLs, IFC, safety
    filters). These are complementary layers, not redundant.
 
-3. **Scope clarity**: smgglrs is a tool access gateway, not a compute
+3. **Scope clarity**: navra is a tool access gateway, not a compute
    platform. Managing sandbox lifecycle is OpenShell's job.
 
 4. **Shared libkrun expertise**: Both projects target libkrun on
    Linux. Coordinating on one implementation avoids divergence.
 
-**What changes in smgglrs:**
+**What changes in navra:**
 
-- Remove the `libkrun` feature flag from `smgglrs-model-runtime`
+- Remove the `libkrun` feature flag from `navra-model-runtime`
   (or mark it explicitly as `# Delegated to OpenShell`)
-- Keep Direct and Podman backends for standalone smgglrs (no
+- Keep Direct and Podman backends for standalone navra (no
   OpenShell dependency required)
-- Add an `openshell` backend to `smgglrs-model-runtime` that
+- Add an `openshell` backend to `navra-model-runtime` that
   delegates sandbox creation to OpenShell's compute driver:
 
 ```toml
@@ -439,7 +439,7 @@ sandbox_labels = { gpu = "required", isolation = "microvm" }
 **OpenShell compute driver interaction:**
 
 ```
-smgglrs (model serve request)
+navra (model serve request)
     |
     | gRPC: CreateSandbox { labels, supervisor_config }
     v
@@ -450,12 +450,12 @@ OpenShell Gateway
 Sandbox with llama-server
     |
     | Supervisor connects back to gateway
-    | smgglrs connects to llama-server HTTP endpoint
+    | navra connects to llama-server HTTP endpoint
     v
 Inference ready
 ```
 
-smgglrs does NOT need to know which isolation backend OpenShell
+navra does NOT need to know which isolation backend OpenShell
 uses. It requests a sandbox with labels (e.g., `gpu=required`,
 `isolation=microvm`) and OpenShell's compute driver handles the
 rest.
@@ -467,14 +467,14 @@ rest.
 2. **Phase 2** (OpenShell integration): Add `openshell` runtime
    backend that delegates to OpenShell's compute driver via gRPC.
 3. **Phase 3** (convergence): For OpenShell-managed deployments,
-   `openshell` becomes the default runtime. Standalone smgglrs
+   `openshell` becomes the default runtime. Standalone navra
    continues to use Podman.
 
 ## 4. gRPC module architecture
 
 ### Problem
 
-smgglrs's Module trait is purely in-process:
+navra's Module trait is purely in-process:
 
 ```rust
 pub trait Module: Send + Sync + 'static {
@@ -486,7 +486,7 @@ pub trait Module: Send + Sync + 'static {
 ```
 
 Handlers are `Arc<dyn Fn>` closures called directly. This is
-fast but limits modules to the smgglrs process. It prevents:
+fast but limits modules to the navra process. It prevents:
 
 - Running modules as separate processes (crash isolation)
 - Running modules on separate nodes (horizontal scaling)
@@ -496,7 +496,7 @@ fast but limits modules to the smgglrs process. It prevents:
 OpenShell's RFC explicitly rejected the in-process trait approach
 for their driver interfaces (see Alternatives section 1),
 choosing gRPC services instead. The same arguments apply to
-smgglrs's module system.
+navra's module system.
 
 ### Design: GrpcModule adapter
 
@@ -509,7 +509,7 @@ trait) but uses gRPC instead of JSON-RPC.
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              McpServer (smgglrs-core)             │
+│              McpServer (navra-core)             │
 │  tools: HashMap<String, RegisteredTool>          │
 └─────────────────────────────────────────────────┘
          ↑              ↑               ↑
@@ -527,7 +527,7 @@ trait) but uses gRPC instead of JSON-RPC.
 
 ```protobuf
 syntax = "proto3";
-package smgglrs.module.v1;
+package navra.module.v1;
 
 service ModuleService {
   // Discovery
@@ -575,13 +575,13 @@ message CallContext {
 
 **Module lifecycle (Terraform/Nomad-style):**
 
-1. smgglrs reads config to determine which modules are gRPC services
-2. smgglrs launches each module process (binary on disk)
+1. navra reads config to determine which modules are gRPC services
+2. navra launches each module process (binary on disk)
 3. Module starts gRPC server on Unix socket (or TCP port)
-4. smgglrs connects as gRPC client, calls `GetCapabilities`
-5. smgglrs registers discovered tools/prompts/resources
+4. navra connects as gRPC client, calls `GetCapabilities`
+5. navra registers discovered tools/prompts/resources
 6. Tool calls forwarded to module via `CallTool` RPC
-7. If module process dies, smgglrs detects broken connection and
+7. If module process dies, navra detects broken connection and
    restarts it
 
 **Configuration:**
@@ -595,8 +595,8 @@ enabled = true
 [modules.custom_tool]
 enabled = true
 transport = "grpc"
-binary = "/usr/libexec/smgglrs/modules/custom-tool"
-socket = "/run/smgglrs/modules/custom-tool.sock"
+binary = "/usr/libexec/navra/modules/custom-tool"
+socket = "/run/navra/modules/custom-tool.sock"
 # Or TCP for remote modules:
 # address = "module-host:50051"
 
@@ -608,7 +608,7 @@ max_restarts = 3
 
 **GrpcModule implementation:**
 
-New crate: `smgglrs-grpc` (or extend `smgglrs-core`)
+New crate: `navra-grpc` (or extend `navra-core`)
 
 ```rust
 pub struct GrpcModule {
@@ -657,7 +657,7 @@ impl Module for GrpcModule {
 
 The `CallContext` message carries the IFC data label. The module
 service must return a `data_label` in the response if the tool
-call taints the output. smgglrs merges the returned label into the
+call taints the output. navra merges the returned label into the
 session's taint tracker.
 
 **Security:**
@@ -665,9 +665,9 @@ session's taint tracker.
 - Unix socket modules inherit filesystem permissions (same as
   OpenShell's driver model)
 - TCP modules require mTLS or capability token authentication
-- smgglrs's ACLs still apply — gRPC modules don't bypass the
+- navra's ACLs still apply — gRPC modules don't bypass the
   permission engine
-- Crash isolation: a failing module process doesn't crash smgglrs
+- Crash isolation: a failing module process doesn't crash navra
 
 **Dependencies:**
 
@@ -677,12 +677,12 @@ session's taint tracker.
 
 ### Multi-node scaling
 
-With gRPC modules, smgglrs can scale beyond a single node:
+With gRPC modules, navra can scale beyond a single node:
 
 ```
 Node A (gateway)          Node B (modules)
 ┌──────────────┐          ┌──────────────┐
-│    smgglrs      │──gRPC──►│ docs module  │
+│    navra      │──gRPC──►│ docs module  │
 │  (gateway)   │          │ git module   │
 │              │──gRPC──►│ rag module   │
 └──────────────┘          └──────────────┘
@@ -705,15 +705,15 @@ OpenShell uses the same pattern for its drivers: separate
 processes communicating via gRPC over Unix sockets. The patterns
 align:
 
-| OpenShell | smgglrs |
+| OpenShell | navra |
 |-----------|------|
 | Compute driver | GrpcModule (tool provider) |
 | Credentials driver | CredentialStore backend |
 | Identity driver | OpenShellAuthenticator |
 
-If smgglrs modules run inside OpenShell sandboxes, the gRPC
+If navra modules run inside OpenShell sandboxes, the gRPC
 transport naturally bridges the sandbox boundary. The OpenShell
-supervisor can proxy gRPC connections between smgglrs and its
+supervisor can proxy gRPC connections between navra and its
 modules.
 
 ### Priority
@@ -732,8 +732,8 @@ Maps to ROADMAP.md Phase 6 (OpenShell integration).
 
 | Phase | Work | Priority | Depends on |
 |-------|------|----------|-----------|
-| **6a** | OpenShellAuthenticator in smgglrs-security | High | OpenShell identity spec |
-| **6b** | A2A client in smgglrs-protocol + mesh builder in smgglrs-flow | High | — |
+| **6a** | OpenShellAuthenticator in navra-security | High | OpenShell identity spec |
+| **6b** | A2A client in navra-protocol + mesh builder in navra-flow | High | — |
 | **6c** | Remove libkrun stub, add OpenShell compute backend | Medium | OpenShell compute driver spec |
 | **6d** | gRPC module protobuf + GrpcModule adapter | Medium | — |
 | **6e** | Defense-in-depth network security model (OPA templates, integration tests, paper section) | Medium | 6a, 6c |
@@ -755,21 +755,21 @@ sandboxes requiring **no changes to Anthropic's worker model**.
 ### MCP tunnels (research preview, 2026-05-19)
 
 Outbound-only encrypted connection from customer network to Anthropic's
-routing. Agents reach private MCP servers through the tunnel. smgglrs
+routing. Agents reach private MCP servers through the tunnel. navra
 is the natural target — one tunnel, one gateway, aggregated security.
 
 ### Three-mode sandboxing taxonomy
 
-| Mode | What's sandboxed | smgglrs role |
+| Mode | What's sandboxed | navra role |
 |------|-----------------|--------------|
-| **Mode 1** | Entire agent | smgglrs inside sandbox alongside agent |
-| **Mode 2** | Execution environment (brain decoupled from hands) | smgglrs as tool execution layer |
-| **Mode 3** | Code execution only | smgglrs irrelevant (agent has direct credentials) |
+| **Mode 1** | Entire agent | navra inside sandbox alongside agent |
+| **Mode 2** | Execution environment (brain decoupled from hands) | navra as tool execution layer |
+| **Mode 3** | Code execution only | navra irrelevant (agent has direct credentials) |
 
 ### NemoClaw MCP bridge alternative
 
 NemoClaw Issue #566 proposes per-server MCP bridges (stdio-to-HTTP
-proxy per server, each with own egress rule). smgglrs is architecturally
+proxy per server, each with own egress rule). navra is architecturally
 superior: one gateway, one egress rule, aggregated security. The
 NemoClaw proposal validates the single-gateway model.
 
@@ -777,9 +777,9 @@ NemoClaw proposal validates the single-gateway model.
 
 Deconvolute Labs analysis confirms OpenShell operates at OS/network
 layers and **cannot inspect MCP request bodies** (tool names, arguments,
-schemas). smgglrs sits at exactly this application layer:
+schemas). navra sits at exactly this application layer:
 - Layer 0 (OpenShell): kernel sandbox, Landlock, seccomp, namespaces
-- Layer 1 (smgglrs): application-layer governance, IFC, ACLs, ML safety
+- Layer 1 (navra): application-layer governance, IFC, ACLs, ML safety
 
 ### New competitors at Layer 1
 
@@ -794,7 +794,7 @@ schemas). smgglrs sits at exactly this application layer:
 - A2A v1.0 (Linux Foundation/AAIF, gRPC transport, signed Agent Cards)
 - SPIFFE/SPIRE (CNCF, workload identity via mTLS)
 - Terraform provider model (HashiCorp, gRPC plugins)
-- DESIGN.md — smgglrs architecture
+- DESIGN.md — navra architecture
 - DISCOVERY.md — A2A/AID/MCP discovery protocols
 - [Red Hat: Claude self-hosted sandboxes on OpenShell](https://www.redhat.com/en/blog/bringing-claude-self-hosted-sandboxes-to-openshell-on-red-hat-ai)
 - [Red Hat: Security-enhanced agent execution](https://www.redhat.com/en/blog/red-hat-ai-and-openshell-driving-security-enhanced-agent-execution-for-enterprise-ai)

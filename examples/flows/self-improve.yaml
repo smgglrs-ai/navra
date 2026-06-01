@@ -7,7 +7,7 @@ description: |
 
   Operates on a git worktree so the main branch is never touched.
   Only verified fixes survive. Run with:
-    smgglrs improve --target . --cycles 3
+    navra improve --target . --cycles 3
 
 parameters:
   target_dir:
@@ -64,7 +64,7 @@ tasks:
       [{"id": "fix-01", "specialist": "software_developer",
         "tools": ["file_read", "file_write", "file_edit", "file_grep", "file_tree"],
         "operations": ["read", "write", "search", "list"],
-        "mandate": "In file smgglrs-foo/src/bar.rs, replace X with Y because Z.
+        "mandate": "In file navra-foo/src/bar.rs, replace X with Y because Z.
           Read the file first to verify the context. Use file_edit with
           the exact old_string to replace."}]
 

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo/logo-192.png" alt="smgglrs logo" width="128" />
+  <img src="assets/logo/logo-192.png" alt="navra logo" width="128" />
 </p>
 
-<h1 align="center">smgglrs</h1>
+<h1 align="center">navra</h1>
 
 <p align="center">
   Secure MCP gateway for Linux desktops
@@ -20,7 +20,7 @@
 
 ---
 
-**smgglrs** is a user-level MCP (Model Context Protocol) gateway that sits
+**navra** is a user-level MCP (Model Context Protocol) gateway that sits
 between AI agents and local resources. It aggregates built-in tool modules
 and upstream MCP servers behind a unified security layer with authentication,
 path ACLs, content safety filtering, human-in-the-loop approval, and a
@@ -31,7 +31,7 @@ AI Agent (Claude Code, Goose, custom agents, ...)
     │
     │  MCP Streamable HTTP + SSE (Unix socket or TCP)
     ▼
-smgglrs (gateway)
+navra (gateway)
     ├── Auth (BLAKE3 tokens, capability tokens, DID:key)
     ├── Permission engine (path ACLs, per-tool rules)
     ├── Hook pipeline (pre/post tool-call)
@@ -74,8 +74,8 @@ smgglrs (gateway)
 ### Build and run
 
 ```bash
-git clone https://github.com/smgglrs-ai/smgglrs.git
-cd smgglrs
+git clone https://github.com/navra-ai/navra.git
+cd navra
 
 # ONNX Runtime is linked dynamically from the system package
 export ORT_LIB_PATH=/usr/lib64
@@ -91,41 +91,41 @@ cargo run -- serve
 cargo run -- token generate --name claude --permissions readwrite
 ```
 
-Add the printed `[[agents]]` block to `~/.config/smgglrs/config.toml`,
+Add the printed `[[agents]]` block to `~/.config/navra/config.toml`,
 then configure your agent to use the token in MCP requests.
 
 ## Architecture
 
-smgglrs is a Rust workspace of 20 crates organized in strict dependency
+navra is a Rust workspace of 20 crates organized in strict dependency
 layers:
 
 ```
-smgglrs-protocol          (no internal deps)
-smgglrs-model-hub         (no internal deps)
-smgglrs-model-runtime     (no internal deps)
-smgglrs-responses         (no internal deps)
-smgglrs-cognitive         (no internal deps)
-smgglrs-macros            (no internal deps, proc-macro)
+navra-protocol          (no internal deps)
+navra-model-hub         (no internal deps)
+navra-model-runtime     (no internal deps)
+navra-responses         (no internal deps)
+navra-cognitive         (no internal deps)
+navra-macros            (no internal deps, proc-macro)
     ↓
-smgglrs-model             (responses)
+navra-model             (responses)
     ↓
-smgglrs-security          (protocol + model)
+navra-security          (protocol + model)
     ↓
-smgglrs-core              (protocol + model + security)  Server
+navra-core              (protocol + model + security)  Server
     ↓
-smgglrs-memory            (core + model, opt: rag)       Persistence
-smgglrs-agent             (protocol + model + security   Client SDK
+navra-memory            (core + model, opt: rag)       Persistence
+navra-agent             (protocol + model + security   Client SDK
                            + cognitive)
-smgglrs-tools-file ───┐
-smgglrs-tools-git  ───┤
-smgglrs-tools-exec ───┼── (core, exec also: model-runtime)
-smgglrs-rag        ───┤
-smgglrs-modal-*    ───┘── (core only)
+navra-tools-file ───┐
+navra-tools-git  ───┤
+navra-tools-exec ───┼── (core, exec also: model-runtime)
+navra-rag        ───┤
+navra-modal-*    ───┘── (core only)
     ↓
-smgglrs-flow              (agent + cognitive + protocol  Orchestration
+navra-flow              (agent + cognitive + protocol  Orchestration
                            + model + security)
     ↓
-smgglrs-server            (all + hub + runtime)          Binary
+navra-server            (all + hub + runtime)          Binary
 benchmarks                (dev only)
 ```
 
@@ -138,17 +138,17 @@ benchmarks                (dev only)
 - Resilient upstream transports with exponential backoff, timeout,
   reconnection, and sleep detection.
 - **Agent isolation**: agents can run in Podman containers
-  (`smgglrs-agent` binary) with a shared model server (GPU) and
+  (`navra-agent` binary) with a shared model server (GPU) and
   per-agent sandboxes (no GPU). See [DESIGN.md](DESIGN.md) for details.
 
 ## Configuration
 
-Default config path: `~/.config/smgglrs/config.toml`
+Default config path: `~/.config/navra/config.toml`
 
 ```toml
 [server]
 transport = "unix"       # "unix" or "tcp"
-socket = "/run/user/1000/smgglrs.sock"
+socket = "/run/user/1000/navra.sock"
 
 [modules.file]
 enabled = true
@@ -172,7 +172,7 @@ See [DESIGN.md](DESIGN.md) for the full configuration reference.
 
 ### Transport security
 
-smgglrs's default transport is a **Unix domain socket** with `0600`
+navra's default transport is a **Unix domain socket** with `0600`
 permissions, restricting access to the owning user. The optional TCP
 listener binds to `127.0.0.1` only, preventing network exposure.
 These defaults mean local agent-to-gateway communication is secure
@@ -193,7 +193,7 @@ DESIGN.md for a worked example and full details.
 
 ### PII detection and GDPR compliance
 
-smgglrs detects and handles PII across three layers: regex patterns
+navra detects and handles PII across three layers: regex patterns
 (US + EU), NER models (English + multilingual ONNX), and file path
 analysis. Detected PII can be redacted, pseudonymized, or blocked.
 The PII pipeline covers tool responses, memory storage, audit logs,
@@ -211,25 +211,25 @@ the approval workflow.
 
 | Crate | Role |
 |---|---|
-| `smgglrs-protocol` | MCP/A2A/JSON-RPC types, upstream client transports |
-| `smgglrs-model` | Model backend trait + ONNX/OpenAI/Anthropic implementations |
-| `smgglrs-model-hub` | Pull/cache models from OCI, HuggingFace, Ollama registries |
-| `smgglrs-model-runtime` | Serve models with pluggable isolation (direct, Podman, OpenShell) |
-| `smgglrs-responses` | Open Responses API types (spec-compliant, no runtime) |
-| `smgglrs-security` | Auth, permissions, IFC, safety filters, hook pipeline |
-| `smgglrs-cognitive` | Persona/directive/heuristic YAML loader + prompt weaver |
-| `smgglrs-memory` | Working memory (conversation turns) + knowledge store (FTS5) |
-| `smgglrs-agent` | Client SDK: agent builder, MCP client, ReAct tool-use loop |
-| `smgglrs-flow` | Multi-agent flows: DAG execution, handoff routing, mesh |
-| `smgglrs-core` | MCP server, module trait, session, transport |
-| `smgglrs-tools-file` | File tools, SQLite FTS5 + sqlite-vec, MCP resources |
-| `smgglrs-tools-git` | Git tools (status, diff, log, branch, commit) |
-| `smgglrs-tools-exec` | Command execution inside OpenShell sandboxes |
-| `smgglrs-rag` | Vector search, sqlite-vec, semantic chunking, reranking |
-| `smgglrs-modal-voice` | Speech I/O (ASR + TTS via ONNX models) |
-| `smgglrs-modal-vision` | Image/screen understanding (GPU tier) |
-| `smgglrs-macros` | `#[tool]` proc macro for tool definition generation |
-| `smgglrs-server` | CLI, config, module wiring, systemd, tray |
+| `navra-protocol` | MCP/A2A/JSON-RPC types, upstream client transports |
+| `navra-model` | Model backend trait + ONNX/OpenAI/Anthropic implementations |
+| `navra-model-hub` | Pull/cache models from OCI, HuggingFace, Ollama registries |
+| `navra-model-runtime` | Serve models with pluggable isolation (direct, Podman, OpenShell) |
+| `navra-responses` | Open Responses API types (spec-compliant, no runtime) |
+| `navra-security` | Auth, permissions, IFC, safety filters, hook pipeline |
+| `navra-cognitive` | Persona/directive/heuristic YAML loader + prompt weaver |
+| `navra-memory` | Working memory (conversation turns) + knowledge store (FTS5) |
+| `navra-agent` | Client SDK: agent builder, MCP client, ReAct tool-use loop |
+| `navra-flow` | Multi-agent flows: DAG execution, handoff routing, mesh |
+| `navra-core` | MCP server, module trait, session, transport |
+| `navra-tools-file` | File tools, SQLite FTS5 + sqlite-vec, MCP resources |
+| `navra-tools-git` | Git tools (status, diff, log, branch, commit) |
+| `navra-tools-exec` | Command execution inside OpenShell sandboxes |
+| `navra-rag` | Vector search, sqlite-vec, semantic chunking, reranking |
+| `navra-modal-voice` | Speech I/O (ASR + TTS via ONNX models) |
+| `navra-modal-vision` | Image/screen understanding (GPU tier) |
+| `navra-macros` | `#[tool]` proc macro for tool definition generation |
+| `navra-server` | CLI, config, module wiring, systemd, tray |
 | `benchmarks` | Criterion performance benchmarks |
 
 ## Documentation

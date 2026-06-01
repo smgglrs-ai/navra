@@ -1,0 +1,29 @@
+[package]
+name = "navra-flow"
+description = "Declarative multi-agent flow engine with handoff-based routing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+navra-agent = { path = "../navra-agent" }
+navra-cognitive = { path = "../navra-cognitive" }
+navra-protocol = { path = "../navra-protocol" }
+navra-model = { path = "../navra-model" }
+navra-security = { path = "../navra-security" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+toml = "0.8"
+serde_yaml = "0.9"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+navra-responses = { path = "../navra-responses" }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"

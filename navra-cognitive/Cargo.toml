@@ -1,0 +1,21 @@
+[package]
+name = "navra-cognitive"
+description = "Cognitive core: YAML persona/directive/heuristic loader and prompt weaver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hex = "0.4"
+navra-protocol = { path = "../navra-protocol" }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+sha2 = "0.10"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

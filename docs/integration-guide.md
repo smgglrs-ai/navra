@@ -1,14 +1,14 @@
-# Integrating an MCP Server with smgglrs
+# Integrating an MCP Server with navra
 
-This guide covers how to connect any MCP server to smgglrs as an
+This guide covers how to connect any MCP server to navra as an
 upstream, using Syllogis (a French administrative law analysis
 server) as the running example. The same patterns apply to any
 domain-specific MCP server.
 
-## 1. What smgglrs provides to your MCP server
+## 1. What navra provides to your MCP server
 
-smgglrs is a security gateway that sits between AI agents and
-upstream MCP servers. When your server runs behind smgglrs, every
+navra is a security gateway that sits between AI agents and
+upstream MCP servers. When your server runs behind navra, every
 tool call passes through:
 
 - **Authentication** -- BLAKE3 token verification identifies the
@@ -33,7 +33,7 @@ tool call passes through:
 - **Observability** -- Prometheus `/metrics` endpoint and optional
   OTel trace export for every tool call through the gateway.
 
-Your server does not need to implement any of this. smgglrs
+Your server does not need to implement any of this. navra
 applies it uniformly to all upstream traffic.
 
 ### The self-describing MCP server pattern
@@ -46,13 +46,13 @@ The most effective upstream servers expose three things:
    *how* to use the tools. Without this, the agent may ignore your
    tools entirely.
 
-## 2. Making your MCP server smgglrs-compatible
+## 2. Making your MCP server navra-compatible
 
 ### No SDK required
 
-smgglrs proxies standard MCP (JSON-RPC 2.0 over stdio or HTTP).
+navra proxies standard MCP (JSON-RPC 2.0 over stdio or HTTP).
 Any MCP server works as an upstream. Your server does not need to
-import smgglrs crates or implement smgglrs-specific interfaces.
+import navra crates or implement navra-specific interfaces.
 
 ### Expose a persona prompt
 
@@ -62,9 +62,9 @@ your tools exist. The prompt tells the agent what methodology to
 follow and which tools to call.
 
 **Naming convention**: prefix your persona prompt name with
-`persona:` (e.g., `persona:legal_analyst`). smgglrs auto-discovers
+`persona:` (e.g., `persona:legal_analyst`). navra auto-discovers
 prompts with this prefix at startup and registers them as available
-personas -- no YAML configuration needed on the smgglrs side. You
+personas -- no YAML configuration needed on the navra side. You
 can also expose non-persona prompts (without the prefix) for
 injection into other personas via `mcp_prompts`.
 
@@ -127,7 +127,7 @@ Include in your prompt:
 
 ### Tool naming conventions
 
-Prefix all tool names with your server name. smgglrs aggregates
+Prefix all tool names with your server name. navra aggregates
 tools from multiple upstream servers into a single namespace.
 Prefixing prevents collisions:
 
@@ -138,7 +138,7 @@ Prefixing prevents collisions:
 ### Resource exposure
 
 If your server manages domain-specific data (code databases,
-document collections), expose them as MCP resources. smgglrs
+document collections), expose them as MCP resources. navra
 proxies `resources/list` and `resources/read`, applying the same
 ACLs and safety filters as tool calls.
 
@@ -146,9 +146,9 @@ ACLs and safety filters as tool calls.
 
 ### Adding your server as an upstream
 
-Edit `~/.config/smgglrs/config.toml`.
+Edit `~/.config/navra/config.toml`.
 
-**stdio transport** (smgglrs manages the subprocess):
+**stdio transport** (navra manages the subprocess):
 
 ```toml
 [[upstream]]
@@ -212,7 +212,7 @@ permissions = "legal_analyst"
 Generate the token:
 
 ```bash
-smgglrs token generate --name claude-code --permissions legal_analyst
+navra token generate --name claude-code --permissions legal_analyst
 ```
 
 ### Safety profiles
@@ -240,7 +240,7 @@ pattern = "\\b[12]\\s?\\d{2}\\s?\\d{2}\\s?\\d{2}\\s?\\d{3}\\s?\\d{3}\\s?\\d{2}\\
 
 ## 4. MCP-sourced personas
 
-smgglrs's cognitive system (the Weaver) assembles system prompts
+navra's cognitive system (the Weaver) assembles system prompts
 from persona definitions. Personas can come from three sources:
 auto-discovery from upstream prompts (zero config), thin YAML
 pointers, or full local YAML files.
@@ -248,8 +248,8 @@ pointers, or full local YAML files.
 ### Auto-discovery (zero config)
 
 If your MCP server exposes a prompt whose name starts with
-`persona:`, smgglrs auto-discovers it at startup. No YAML file
-is needed on the smgglrs side.
+`persona:`, navra auto-discovers it at startup. No YAML file
+is needed on the navra side.
 
 Name your prompt `persona:<name>` in your `prompts/list` response:
 
@@ -264,7 +264,7 @@ Name your prompt `persona:<name>` in your `prompts/list` response:
 }
 ```
 
-When smgglrs connects to your upstream and calls `prompts/list`,
+When navra connects to your upstream and calls `prompts/list`,
 it scans for prompts with the `persona:` prefix. For each match:
 
 - The part after `persona:` becomes the persona name
@@ -302,7 +302,7 @@ heuristics:
     facets: [evidence_analysis, source_verification]
 ```
 
-When this persona is loaded, smgglrs calls `prompts/get` on the
+When this persona is loaded, navra calls `prompts/get` on the
 `syllogis` upstream with the specified arguments. The returned
 prompt becomes the persona's `core_mandate`. The YAML stays thin
 -- it carries identity and local overrides, but the domain
@@ -397,17 +397,17 @@ for traceability.
 
 ### What happens when an agent connects
 
-1. Agent sends `initialize` to smgglrs with a bearer token.
-2. smgglrs authenticates the token, creates a session.
-3. Agent calls `tools/list`. smgglrs returns tools from all enabled
+1. Agent sends `initialize` to navra with a bearer token.
+2. navra authenticates the token, creates a session.
+3. Agent calls `tools/list`. navra returns tools from all enabled
    modules (built-in + upstream). Your server's tools appear
    alongside docs, git, and other modules.
-4. Agent calls `prompts/list`. smgglrs returns prompts from all
+4. Agent calls `prompts/list`. navra returns prompts from all
    sources, including your upstream's prompts.
 5. If the agent uses a persona with `mcp_prompts` or `source`
-   entries pointing to your upstream, smgglrs calls `prompts/get`
+   entries pointing to your upstream, navra calls `prompts/get`
    on your server and injects the result into the system prompt.
-6. Agent calls your tools via `tools/call`. smgglrs forwards the
+6. Agent calls your tools via `tools/call`. navra forwards the
    call to your server after checking auth, ACLs, tool rules, and
    safety filters. The response passes through safety filters and
    IFC taint tracking before reaching the agent.
@@ -415,7 +415,7 @@ for traceability.
 ### IFC taint tracking on upstream tool calls
 
 When an agent calls one of your tools, the result may carry data
-from your domain. smgglrs assigns an IFC label to the result based
+from your domain. navra assigns an IFC label to the result based
 on the tool's data source. If the agent later tries to write that
 data to a lower-trust destination, the `tainted_write_policy` in
 the permission set controls what happens:
@@ -430,7 +430,7 @@ Options: `allow`, `approve`, `deny`.
 
 ### Using your tools in DAG flows
 
-smgglrs-flow supports DAG execution where multiple specialist
+navra-flow supports DAG execution where multiple specialist
 agents work on tasks with dependencies. Your upstream's tools are
 available to any agent in the flow:
 
@@ -490,7 +490,7 @@ It exposes three tools and a persona prompt.
 ### Persona prompt
 
 Syllogis exposes a `persona:legal_analyst` prompt via
-`prompts/list`. When smgglrs connects, it auto-discovers this
+`prompts/list`. When navra connects, it auto-discovers this
 prompt and registers a `legal_analyst` persona pointing to
 Syllogis. No YAML file is needed.
 
@@ -500,10 +500,10 @@ The simplest integration: add Syllogis as an upstream and
 configure permissions. The persona is auto-discovered.
 
 ```toml
-# ~/.config/smgglrs/config.toml
+# ~/.config/navra/config.toml
 
 [server]
-socket = "$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock"
+socket = "$XDG_RUNTIME_DIR/navra/navra.sock"
 tcp = "127.0.0.1:9315"
 
 [[upstream]]
@@ -531,7 +531,7 @@ tool = "syllogis_*"
 policy = "allow"
 ```
 
-At startup, smgglrs connects to Syllogis, calls `prompts/list`,
+At startup, navra connects to Syllogis, calls `prompts/list`,
 finds `persona:legal_analyst`, and registers it as an available
 persona. The agent can use this persona immediately.
 

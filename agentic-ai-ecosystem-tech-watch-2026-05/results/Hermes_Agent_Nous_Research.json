@@ -18,36 +18,36 @@
     ],
     "methodology": "Server-resident architecture where the agent runs persistently (vs IDE-bound copilots). Subagent system provides each delegated task with its own conversation context, terminal, and Python RPC scripts. Skills are auto-generated from successful task completions and stored for reuse. Memory persists across sessions for continuous learning."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["agent", "flow", "cognitive", "tools-exec"],
     "relevance_category": "reference",
     "impact_level": "medium",
-    "relevance_rationale": "Hermes Agent is a major consumer of gateway infrastructure like smgglrs, not a direct competitor. Its skill auto-generation and subagent patterns inform smgglrs-cognitive's directive system and smgglrs-flow's orchestration. The 5 execution backends (Local, Docker, SSH, Singularity, Modal) map to smgglrs-model-runtime's isolation modes (direct, Podman, OpenShell). Hermes using smgglrs as its MCP gateway would be a natural integration."
+    "relevance_rationale": "Hermes Agent is a major consumer of gateway infrastructure like navra, not a direct competitor. Its skill auto-generation and subagent patterns inform navra-cognitive's directive system and navra-flow's orchestration. The 5 execution backends (Local, Docker, SSH, Singularity, Modal) map to navra-model-runtime's isolation modes (direct, Podman, OpenShell). Hermes using navra as its MCP gateway would be a natural integration."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Zero-context-cost subagent pattern — smgglrs-flow could support isolated context per sub-agent in DAG execution",
-      "Natural-language cron scheduling — smgglrs-agent could expose as a module capability"
+      "Zero-context-cost subagent pattern — navra-flow could support isolated context per sub-agent in DAG execution",
+      "Natural-language cron scheduling — navra-agent could expose as a module capability"
     ],
     "what_to_watch": [
-      "Hermes Agent's MCP integration path — potential first-class smgglrs consumer",
+      "Hermes Agent's MCP integration path — potential first-class navra consumer",
       "Skill auto-generation quality and cross-agent transfer results",
       "Singularity backend pattern for HPC environments"
     ],
     "what_to_avoid": [
-      "Don't replicate Hermes's full agent framework — smgglrs is infrastructure, Hermes is application layer"
+      "Don't replicate Hermes's full agent framework — navra is infrastructure, Hermes is application layer"
     ],
     "implementation_difficulty": "N/A",
     "priority_sprint": "N/A (consumer, not feature)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "Different layers: Hermes is an agent application, smgglrs is gateway infrastructure. Hermes would run on top of smgglrs, using it for secure tool access, safety filtering, and IFC enforcement.",
+    "how_navra_compares": "Different layers: Hermes is an agent application, navra is gateway infrastructure. Hermes would run on top of navra, using it for secure tool access, safety filtering, and IFC enforcement.",
     "gaps_exposed": [
-      "smgglrs-agent's skill system is less sophisticated than Hermes's auto-generated skills with cross-agent transfer"
+      "navra-agent's skill system is less sophisticated than Hermes's auto-generated skills with cross-agent transfer"
     ],
     "advantages_confirmed": [
-      "smgglrs's gateway model is validated — Hermes needs exactly this kind of infrastructure for secure tool access",
-      "smgglrs's multiple isolation backends (direct, Podman, OpenShell) match Hermes's execution backends"
+      "navra's gateway model is validated — Hermes needs exactly this kind of infrastructure for secure tool access",
+      "navra's multiple isolation backends (direct, Podman, OpenShell) match Hermes's execution backends"
     ]
   },
   "ecosystem_context": {

@@ -220,12 +220,12 @@ the MCP gateway's security perimeter.
 **Python/CodeAct mode.** Sandboxed Python execution for tasks
 that require computation, data transformation, or control flow
 beyond sequential tool calls. The gateway injects a bridge
-script (`smgglrs_bridge.py`) that provides MCP tool access via
+script (`navra_bridge.py`) that provides MCP tool access via
 gateway URL, session ID, and auth token environment variables.
 Sandbox backend priority: OpenShell (gRPC microVM) → Podman
 (rootless container, `10.0.2.2` for gateway access) → Direct
 (unsandboxed, requires explicit opt-in via
-`SMGGLRS_ALLOW_DIRECT_EXECUTION`). Default timeout: 300 seconds.
+`NAVRA_ALLOW_DIRECT_EXECUTION`). Default timeout: 300 seconds.
 
 The CodeAct mode enables agents to express multi-step reasoning
 as executable code rather than tool-call sequences, following
@@ -244,7 +244,7 @@ language planning for deterministic execution.
 | Analysis | 6 | analyst, researcher, business_analyst, financial_analyst, sentiment_analyzer |
 | Leadership | 3 | leader, project_leader, executive_coach |
 | Quality Assurance | 4 | watchdog, viability_challenger, devils_advocate, efficiency_expert |
-| Security | 2 | security_sentinel, smgglrs_guardian |
+| Security | 2 | security_sentinel, navra_guardian |
 | Creative & Communication | 5 | creative_director, tech_writer, summarizer, synthesizer, interviewer |
 | Ethics & Strategy | 3 | ethics_compliance_officer, strategic_advisor, value_champion |
 | Judges | 12 | 4 axes x 3 perspectives (see below) |
@@ -265,7 +265,7 @@ This enables multi-axis evaluation without single-judge bias.
 
 ### 4.3 General-Purpose Expansion
 
-5 personas added beyond the original Python smgglrs set to cover
+5 personas added beyond the original Python navra set to cover
 non-engineering domains: executive_coach, creative_director,
 strategic_advisor, ethics_compliance_officer, financial_analyst.
 These validate that the persona framework generalizes beyond
@@ -308,7 +308,7 @@ three metadata layers:
 
 Non-empty operator fields overwrite auto-populated defaults;
 empty fields preserve existing values. Cards are persisted as
-JSON in `~/.local/share/smgglrs/models/cards/`.
+JSON in `~/.local/share/navra/models/cards/`.
 
 **Scoring algorithm.** When a teammate's model is set to `"auto"`,
 `select_model_for_task()` scores each available model:
@@ -469,7 +469,7 @@ them — a concrete demonstration of persona-driven self-improvement.
 
 ### 7.2 Domain-Agnostic Review
 
-The same `review.yaml` flow template was applied to the smgglrs
+The same `review.yaml` flow template was applied to the navra
 codebase without modification. The scout classified the project
 as `domain: "software"` with `languages: ["rust"]` and
 `review_focus: ["security", "correctness", "architecture"]`.
@@ -522,7 +522,7 @@ All evaluations ran on consumer hardware with no cloud API calls:
 | Data gathering | Granite 4 8B | local | Q4_K_M |
 | Data gathering | Qwen 3.6 8B | local | Q4_K_M |
 
-Gateway: smgglrs with IFC, ACLs, and safety filters active.
+Gateway: navra with IFC, ACLs, and safety filters active.
 Transport: MCP Streamable HTTP over localhost. Hardware: consumer
 desktop with 32 GB RAM, no dedicated GPU required for Q4
 quantized models.
@@ -544,7 +544,7 @@ rather than creating it.
 
 During blackbox testing, the framework's file_tree tool defaulted
 to "." (current directory) when no explicit path was provided.
-This caused teammates to scan the smgglrs binary's working directory
+This caused teammates to scan the navra binary's working directory
 instead of the project path. Found only because the lead's report
 contained irrelevant file listings. This class of bug — path
 resolution in delegated contexts — is specific to multi-agent
@@ -620,7 +620,7 @@ domain-mismatched anchoring.
 **Upstream Model Card Contribution.** Propose the agentic
 metadata schema as well-known keys in Kubeflow Model Registry's
 `customProperties` (issue #449) and OCI side artifacts
-(`application/vnd.smgglrs.model-card.v1+json`). OpenShift AI,
+(`application/vnd.navra.model-card.v1+json`). OpenShift AI,
 which uses Kubeflow Model Registry as its catalog, would
 immediately benefit.
 

@@ -18,31 +18,31 @@
     ],
     "methodology": "Root cause analysis identified two sources of attention drift: (1) fused input representation imbalance where higher-layer hidden states dominate drafter input, (2) unnormalized residual path causing magnitude growth across speculation steps. Fix 1 applies normalization after each target hidden state before the FC layer. Fix 2 feeds normalized hidden states into the next step, making the drafter behave like recursive invocation rather than appending layers."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["model-runtime"],
     "relevance_category": "opportunity",
     "impact_level": "low",
-    "relevance_rationale": "Eagle 3.1 improves inference throughput for large models served via vLLM, which smgglrs-model-runtime could use as a backend. The attention drift fix is particularly relevant for long-context agent workloads where smgglrs would maintain extended conversations. However, smgglrs doesn't directly implement speculative decoding — this is consumed transitively through serving engines."
+    "relevance_rationale": "Eagle 3.1 improves inference throughput for large models served via vLLM, which navra-model-runtime could use as a backend. The attention drift fix is particularly relevant for long-context agent workloads where navra would maintain extended conversations. However, navra doesn't directly implement speculative decoding — this is consumed transitively through serving engines."
   },
   "actionable_insights": {
     "what_to_adopt": [
       "Ensure model-runtime vLLM backend uses v0.22.0+ to benefit from Eagle 3.1 automatically"
     ],
     "what_to_watch": [
-      "TorchSpec training support for custom draft models — could enable spec decoding for smgglrs-served models",
+      "TorchSpec training support for custom draft models — could enable spec decoding for navra-served models",
       "Eagle 3.1 support across more model architectures"
     ],
     "what_to_avoid": [
-      "Don't implement speculative decoding in smgglrs — leave to serving engine"
+      "Don't implement speculative decoding in navra — leave to serving engine"
     ],
     "implementation_difficulty": "trivial",
     "priority_sprint": "N/A (version bump only)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs benefits transitively — model-runtime backends using vLLM 0.22.0+ get Eagle 3.1 automatically.",
+    "how_navra_compares": "navra benefits transitively — model-runtime backends using vLLM 0.22.0+ get Eagle 3.1 automatically.",
     "gaps_exposed": [],
     "advantages_confirmed": [
-      "smgglrs's backend-agnostic model-runtime design means inference improvements like Eagle 3.1 are absorbed without code changes"
+      "navra's backend-agnostic model-runtime design means inference improvements like Eagle 3.1 are absorbed without code changes"
     ]
   },
   "ecosystem_context": {

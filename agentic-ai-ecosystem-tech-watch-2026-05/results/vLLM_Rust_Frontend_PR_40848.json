@@ -17,11 +17,11 @@
     ],
     "methodology": "Rust frontend compiled via setuptools-rust, managed as a separate process by a new process manager. Initially used git submodule for the Rust code (github.com/Inferact/vllm-frontend-rs), later vendored directly. Build system uses RustExtension pointing to workspace member Cargo.toml. Addressed reviewer concerns about nightly Rust by replacing coroutine_trait with stable asynk-strim library."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["model-runtime"],
     "relevance_category": "validation",
     "impact_level": "medium",
-    "relevance_rationale": "Validates the Rust-for-inference-infrastructure thesis that smgglrs embodies. vLLM adopting Rust for its frontend confirms that the Rust ecosystem is mature enough for production inference workloads. The setuptools-rust integration pattern and process manager architecture may inform smgglrs-model-runtime's vLLM backend integration."
+    "relevance_rationale": "Validates the Rust-for-inference-infrastructure thesis that navra embodies. vLLM adopting Rust for its frontend confirms that the Rust ecosystem is mature enough for production inference workloads. The setuptools-rust integration pattern and process manager architecture may inform navra-model-runtime's vLLM backend integration."
   },
   "actionable_insights": {
     "what_to_adopt": [
@@ -37,11 +37,11 @@
     "priority_sprint": "N/A (environment variable toggle)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs is already fully Rust. vLLM adopting Rust validates smgglrs's technology choice.",
+    "how_navra_compares": "navra is already fully Rust. vLLM adopting Rust validates navra's technology choice.",
     "gaps_exposed": [],
     "advantages_confirmed": [
       "Rust as the right language for inference infrastructure — validated by vLLM's largest PR",
-      "smgglrs's pure-Rust architecture avoids the hybrid Python/Rust complexity vLLM now faces"
+      "navra's pure-Rust architecture avoids the hybrid Python/Rust complexity vLLM now faces"
     ]
   },
   "ecosystem_context": {

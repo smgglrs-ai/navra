@@ -1,12 +1,12 @@
-# smgglrs-agent container image
+# navra-agent container image
 #
-# Build:   podman build -f Dockerfile.agent -t smgglrs-agent:latest .
+# Build:   podman build -f Dockerfile.agent -t navra-agent:latest .
 # Run:     podman run --rm --network=slirp4netns:allow_host_loopback=true \
-#            -e SMGGLRS_ENDPOINT=http://10.0.2.2:9400/mcp \
-#            -e SMGGLRS_MODEL_ENDPOINT=http://10.0.2.2:8091/v1 \
-#            -e SMGGLRS_MODEL_NAME=nemotron-omni \
-#            -e SMGGLRS_TASK="Review the project" \
-#            smgglrs-agent:latest
+#            -e NAVRA_ENDPOINT=http://10.0.2.2:9400/mcp \
+#            -e NAVRA_MODEL_ENDPOINT=http://10.0.2.2:8091/v1 \
+#            -e NAVRA_MODEL_NAME=nemotron-omni \
+#            -e NAVRA_TASK="Review the project" \
+#            navra-agent:latest
 
 # Stage 1: Build
 FROM quay.io/hummingbird/rust:latest-builder AS builder
@@ -32,7 +32,7 @@ RUN for dir in benchmarks; do \
 
 ENV ORT_LIB_PATH=/usr/lib64
 ENV ORT_PREFER_DYNAMIC_LINK=1
-RUN cargo build --release --bin smgglrs-agent
+RUN cargo build --release --bin navra-agent
 
 # Stage 2: Runtime
 FROM registry.fedoraproject.org/fedora-minimal:latest
@@ -41,9 +41,9 @@ RUN microdnf install -y openssl-libs dbus-libs && microdnf clean all
 
 ARG ORT_VERSION=1.25.1
 COPY --from=builder /opt/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/lib64/
-COPY --from=builder /src/target/release/smgglrs-agent /usr/bin/smgglrs-agent
+COPY --from=builder /src/target/release/navra-agent /usr/bin/navra-agent
 
 RUN ldconfig
 
 USER 1001
-ENTRYPOINT ["smgglrs-agent"]
+ENTRYPOINT ["navra-agent"]

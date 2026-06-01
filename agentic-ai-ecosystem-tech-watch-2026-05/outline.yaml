@@ -2,7 +2,7 @@ topic: "Agentic AI Ecosystem Tech Watch — May 2026"
 description: >
   Comprehensive scan of inference optimization, agent frameworks, security/auth
   protocols, RAG patterns, memory architectures, and business models. Evaluated
-  for smgglrs gateway relevance: competitors, opportunities, threats, validations.
+  for navra gateway relevance: competitors, opportunities, threats, validations.
 
 items:
   # ── Inference Optimization ──────────────────────────────────────────
@@ -191,7 +191,7 @@ items:
     name: "Cloudflare Agent Memory"
     url: https://www.infoq.com/news/2026/04/cloudflare-agent-memory-beta/
     type: tool
-    one_liner: "5-channel RRF retrieval — validates smgglrs-rag architecture"
+    one_liner: "5-channel RRF retrieval — validates navra-rag architecture"
 
   # ── Business & Ecosystem ────────────────────────────────────────────
   - id: agentic-economy

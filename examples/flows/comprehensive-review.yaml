@@ -54,7 +54,7 @@ tasks:
          Any other value will cause a fatal error.
 
       4. Scale: 15-25 tasks. One task per crate or concern.
-         GOOD mandate: "Read smgglrs-rag/src/ with file_read.
+         GOOD mandate: "Read navra-rag/src/ with file_read.
          Check chunking logic, vector store operations, and cache
          TTL handling. Report issues with file:line references."
 
