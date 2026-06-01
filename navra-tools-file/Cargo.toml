@@ -23,6 +23,12 @@ zerocopy = { version = "0.8", features = ["derive"] }
 dirs = "6"
 notify = "7"
 
+tracing-subscriber = { workspace = true }
+
+[[bin]]
+name = "navra-file"
+path = "src/main.rs"
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
