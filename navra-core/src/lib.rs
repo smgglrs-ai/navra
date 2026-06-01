@@ -32,7 +32,7 @@ pub mod session;
 mod upstream_module;
 
 pub use grpc_module::GrpcModule;
-pub use module::{Module, PromptHandler, ResourceHandler};
+pub use module::{serve_module, Module, PromptHandler, ResourceHandler};
 pub use server::{McpServer, McpServerBuilder, ToolHandler};
 pub use session::Session;
 pub use navra_protocol::{RetryConfig, Upstream};
