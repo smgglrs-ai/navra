@@ -8,7 +8,7 @@
 
 - **DONE — Microkernel framing**: Keep "security microkernel." Cite
   AIOS as prior art, differentiate on enforcement boundaries (MCP
-  protocol boundary = isolation, IFC on IPC channels, 23 Kani proofs).
+  protocol boundary = isolation, IFC on IPC channels, 138 Kani proofs).
   navra has process table, IPC (mailbox + blackboard), memory
   management, scheduler, MAC — a real microkernel, not just analogy.
   Anderson's reference monitor conditions satisfied as a subset.
@@ -20,7 +20,7 @@
   positions on IFC + capability tokens.
 - **DONE — Compliance reframing**: "compliance infrastructure" in
   §7.4, EU AI Act Art 12+14 language corrected.
-- **DONE — Formal verification**: 23 Kani proofs + 3 TLA+ specs
+- **DONE — Formal verification**: 138 Kani proofs + 6 TLA+ specs
   added (formal/ directory + PROOF_MAP.md). 5 Bell-LaPadula
   invariant property tests (INV-1 through INV-5) in ifc/mod.rs.
 - **DONE — No-read-up**: Bell-LaPadula Simple Security Property
@@ -45,7 +45,7 @@ resources. navra enforces a layered authentication chain (OAuth
 2.0 with Ed25519 JWTs, capability tokens with delegation, BLAKE3
 legacy tokens), deny-wins path ACLs with ring inheritance,
 Bell-LaPadula information flow control with per-value taint
-tracking, a content safety pipeline (12 secret patterns, 18 PII
+tracking, a content safety pipeline (13 secret patterns, 20 PII
 categories with regex + NER + ML, pseudonymization with IFC label
 elevation), containerized agent execution (Podman, OpenShell
 microVMs), typed action risk classification, and a SHA-256
@@ -104,7 +104,7 @@ Prior work has applied the OS abstraction to agent systems
 (AIOS [18]) but without enforcement boundaries: AIOS agents
 share the kernel process address space with no IFC on
 communication channels. navra enforces security properties
-on its IPC channels (23 Kani-verified proofs, 3 TLC-verified
+on its IPC channels (23 Kani-verified proofs, 6 TLC-verified
 specifications) and satisfies Anderson's reference monitor
 conditions [2]: complete mediation (single chokepoint),
 tamperproof from the agent side (protocol boundary), and
@@ -635,7 +635,7 @@ Criterion microbenchmarks (`benchmarks/benches/security_overhead.rs`):
 | Capability token decode+verify | ~13 us | Ed25519 verify + CBOR decode + expiry check |
 | Permission check (allowed) | ~1.7 us | 2 allow + 3 deny globs |
 | Permission check (denied) | ~0.8 us | Early exit on deny match |
-| Safety pipeline (clean) | ~18 us | 15 regex patterns (12 secret + 10 PII) |
+| Safety pipeline (clean) | ~18 us | 15 regex patterns (13 secret + 10 PII) |
 | Safety pipeline (with finding) | ~20 us | Regex match + redaction |
 | Safety pipeline (pseudonymize) | ~22 us | Regex match + pseudonym lookup |
 | NER filter (BERT-base) | ~5-15 ms | Token classification, 512-token window |
@@ -656,7 +656,7 @@ is < 0.5% of total latency.
 | Path ACLs | Deny-wins, ring inheritance | N/A | Per-method | Default-deny | OPA/Cedar policies | None | None | 3-tier autonomy |
 | IFC | Bell-LaPadula, per-value | **Per-value labels** | None | None | None | None | None | None |
 | Delegation | Ed25519 chain, attenuation | N/A | None | None | None | None | None | None |
-| Content safety | 12 secret + PII + Guardian ML | N/A | None | None | Policy engine | None | None | None |
+| Content safety | 13 secret + PII + Guardian ML | N/A | None | None | Policy engine | None | None | None |
 | Audit trail | SHA-256 hash-chained blackbox | N/A | Logs | Logs | Policy logs | None | None | None |
 | Enforcement | Gateway (mandatory) | Planner (inside agent) | Gateway | Gateway | Middleware | Harness | Runtime | Runtime |
 | Formal proofs | No (unit tests) | **Yes** | No | No | No | No | No | No |
@@ -778,8 +778,8 @@ taint only) rather than rejecting sessionless clients.
   verified exhaustively via Kani bounded model checking and
   TLA+ model checking (see `formal/PROOF_MAP.md`). FIDES's
   formal non-interference proofs set the bar that gateway-level
-  IFC should aspire to — navra provides 23 Kani proofs and
-  3 TLC-verified specifications as a first step.
+  IFC should aspire to — navra provides 138 Kani proofs and
+  6 TLC-verified specifications as a first step.
 - **CaMeL** [14]: Google DeepMind capability metadata on every
   value (arXiv:2503.18813, March 2025). Provable security on
   77% of AgentDojo tasks via data-flow graph construction.
@@ -915,19 +915,21 @@ A Comprehensive Survey." 2026.
 
 | Metric | Value |
 |---|---|
-| Workspace crates | 18 |
-| Rust source files | 218 |
-| Total LoC (Rust) | ~86,000 |
-| Test count | ~1,700 (1,388 sync + 330 async) |
+| Workspace crates | 22 |
+| Rust source files | 290 |
+| Total LoC (Rust) | ~126,000 |
+| Test count | 2,400+ |
+| Kani proofs | 138 |
+| TLA+ specifications | 6 |
 | Benchmark suite | 7 groups, ~30 individual benchmarks |
-| Secret detection patterns | 12 |
+| Secret detection patterns | 13 |
 | PII detection categories | 20 (12 regex + 8 NER) |
 | PII validators | 8 (Luhn, SSA, NIR, IBAN, SIRET, IP, phone context, span dedup) |
 | PII benchmark F1 | 0.889 (regex), 1.000 (regex + NER) |
-| Safety profiles | 7 (standard, pseudonymize, secrets-only, block, guardian, guardian-deep, none) |
+| Safety profiles | 8 (standard, pseudonymize, secrets-only, block, guardian, guardian-deep, multi-label, none) |
 | NER models supported | 3 (protectai/bert-base-NER, xlm-roberta-base-ner-hrl, sfermion/bert-pii-detector) |
 | Isolation backends | 3 (Direct, Podman, OpenShell) |
 | AgentAction variants | 16 |
 | RiskLevel variants | 5 |
-| Self-audit rounds | 6 |
-| Security findings | 50+ |
+| Adversarial eval scenarios | 10 (10/10 blocked) |
+| Red team findings | 10 (0 critical, 1 high, 5 medium, 3 low, 1 info) |
