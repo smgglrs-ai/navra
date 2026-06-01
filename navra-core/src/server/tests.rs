@@ -1897,7 +1897,7 @@ fn permission_request_registers_pending() {
         duration_secs: Some(3600),
     };
 
-    let result = server.handle_permission_request(params, "session-1");
+    let result = server.handle_permission_request(params, "session-1", "agent-a");
     assert_eq!(result.id, "req-1");
     assert_eq!(result.status, "pending");
 }
@@ -1913,7 +1913,7 @@ fn permission_grant_creates_dynamic_grant() {
         reason: "Need push".to_string(),
         duration_secs: None,
     };
-    server.handle_permission_request(req_params, "s1");
+    server.handle_permission_request(req_params, "s1", "agent-a");
 
     let grant_params = navra_protocol::permissions::PermissionGrantParams {
         request_id: "req-grant".to_string(),
@@ -1943,7 +1943,7 @@ fn permission_grant_with_duration() {
         reason: "Need temp write access".to_string(),
         duration_secs: Some(60),
     };
-    server.handle_permission_request(req_params, "s2");
+    server.handle_permission_request(req_params, "s2", "agent-a");
 
     let grant_params = navra_protocol::permissions::PermissionGrantParams {
         request_id: "req-timed".to_string(),
@@ -1971,7 +1971,7 @@ fn permission_deny_removes_pending() {
         reason: "Want shell".to_string(),
         duration_secs: None,
     };
-    server.handle_permission_request(req_params, "s3");
+    server.handle_permission_request(req_params, "s3", "agent-a");
 
     let deny_params = navra_protocol::permissions::PermissionDenyParams {
         request_id: "req-deny".to_string(),
@@ -2025,7 +2025,7 @@ fn permission_list_returns_grants() {
         reason: "Need write".to_string(),
         duration_secs: None,
     };
-    server.handle_permission_request(req_params, "s4");
+    server.handle_permission_request(req_params, "s4", "agent-a");
     let grant_params = navra_protocol::permissions::PermissionGrantParams {
         request_id: "req-list".to_string(),
     };
@@ -2087,7 +2087,7 @@ async fn dynamic_grant_overrides_tool_deny() {
         reason: "Need echo".to_string(),
         duration_secs: None,
     };
-    server.handle_permission_request(req_params, "test-session");
+    server.handle_permission_request(req_params, "test-session", "agent-a");
     server
         .handle_permission_grant(
             navra_protocol::permissions::PermissionGrantParams {

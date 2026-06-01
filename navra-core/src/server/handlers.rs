@@ -242,8 +242,8 @@ impl McpServer {
                             agent_ring,
                         );
                         return CallToolResult::error(format!(
-                            "Permission denied: tool '{}' is blocked for permission set '{}'",
-                            params.name, ctx.agent.permissions
+                            "Permission denied: tool '{}' is blocked",
+                            params.name,
                         ));
                     }
                     tracing::info!(
@@ -633,7 +633,14 @@ impl McpServer {
                         }
                     }
                 }
-                other => filtered_content.push(other),
+                other => {
+                    tracing::warn!(
+                        tool = tool_name,
+                        agent = ctx.agent.name,
+                        "Non-text content bypassed safety filter"
+                    );
+                    filtered_content.push(other);
+                }
             }
         }
         result.content = filtered_content;
@@ -701,9 +708,12 @@ impl McpServer {
     pub async fn handle_read_resource(
         &self,
         params: ReadResourceParams,
-        _agent: &crate::auth::AgentIdentity,
+        agent: &crate::auth::AgentIdentity,
     ) -> Result<ReadResourceResult, String> {
         if let Some(resource) = self.resources.get(&params.uri) {
+            if !self.agent_can_see_resource(agent, &resource.definition.uri) {
+                return Err("Permission denied".to_string());
+            }
             return Ok((resource.handler)(params.uri).await);
         }
         for rt in &self.resource_templates {
@@ -745,6 +755,7 @@ impl McpServer {
         &self,
         params: navra_protocol::permissions::PermissionRequestParams,
         session_id: &str,
+        agent_name: &str,
     ) -> navra_protocol::permissions::PermissionRequestResult {
         let mut pending = self.pending_permission_requests.lock().unwrap_or_else(|e| {
             tracing::warn!("pending_permission_requests Mutex poisoned, recovering");
@@ -754,6 +765,7 @@ impl McpServer {
             params.id.clone(),
             super::PendingPermissionRequest {
                 session_id: session_id.to_string(),
+                agent_name: agent_name.to_string(),
                 scope: params.scope,
                 duration_secs: params.duration_secs,
             },
@@ -785,6 +797,10 @@ impl McpServer {
                 .remove(&params.request_id)
                 .ok_or_else(|| format!("No pending request with id '{}'", params.request_id))?
         };
+
+        if pending_req.agent_name == agent_name {
+            return Err("Permission denied: agents cannot approve their own requests".to_string());
+        }
 
         let expires_at = pending_req.duration_secs.map(|d| {
             std::time::SystemTime::now()

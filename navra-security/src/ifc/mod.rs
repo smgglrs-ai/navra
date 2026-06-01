@@ -291,6 +291,10 @@ pub fn is_external_read_tool(tool_name: &str) -> bool {
         || tool_name.contains("list")
         || tool_name.contains("diff")
         || tool_name.contains("log")
+        || tool_name.contains("status")
+        || tool_name.contains("branch")
+        || tool_name.contains("fetch")
+        || tool_name.contains("pull")
 }
 
 #[cfg(test)]
@@ -403,7 +407,7 @@ mod tests {
         assert!(is_external_read_tool("file_list"));
         assert!(is_external_read_tool("git_diff"));
         assert!(is_external_read_tool("git_log"));
-        assert!(!is_external_read_tool("git_status"));
+        assert!(is_external_read_tool("git_status"));
         assert!(!is_external_read_tool("git_commit"));
     }
 

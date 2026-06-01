@@ -2,6 +2,7 @@ use navra_core::auth::CallContext;
 use navra_core::permissions::PermissionResult;
 use navra_core::protocol::CallToolResult;
 use navra_macros::tool;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -247,27 +248,24 @@ pub(crate) async fn handle_write(
         return e;
     }
 
-    // TOCTOU mitigation: verify the path hasn't become a symlink between
-    // resolve and write. If the file exists, check symlink_metadata to
-    // detect symlinks without following them.
-    if resolved.exists() {
-        match std::fs::symlink_metadata(&resolved) {
-            Ok(meta) if meta.file_type().is_symlink() => {
-                return CallToolResult::error("Write denied: target is a symlink");
-            }
-            Err(e) => {
-                tracing::warn!(path = %resolved.display(), error = %e, "Failed to check symlink status before write");
-                return CallToolResult::error("Write denied: cannot verify path safety");
-            }
-            _ => {}
-        }
-    }
+    // Atomic symlink-safe write: open with O_NOFOLLOW to prevent TOCTOU
+    // race where an attacker replaces the file with a symlink between
+    // check and write.
+    use std::io::Write;
+    let write_result = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&resolved)
+        .and_then(|mut f| f.write_all(content.as_bytes()));
 
-    if let Err(e) = std::fs::write(&resolved, &content) {
-        return {
-            tracing::warn!(path = %resolved.display(), error = %e, "File write failed");
-            CallToolResult::error("Write operation failed")
-        };
+    if let Err(e) = write_result {
+        if e.raw_os_error() == Some(libc::ELOOP) {
+            return CallToolResult::error("Write denied: target is a symlink");
+        }
+        tracing::warn!(path = %resolved.display(), error = %e, "File write failed");
+        return CallToolResult::error("Write operation failed");
     }
 
     let size = content.len() as i64;
@@ -339,23 +337,20 @@ pub(crate) async fn handle_edit(
 
     let new_content = file_content.replacen(&*old_string, &new_string, 1);
 
-    // TOCTOU mitigation: verify the path hasn't become a symlink
-    match std::fs::symlink_metadata(&resolved) {
-        Ok(meta) if meta.file_type().is_symlink() => {
+    use std::io::Write;
+    let write_result = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&resolved)
+        .and_then(|mut f| f.write_all(new_content.as_bytes()));
+
+    if let Err(e) = write_result {
+        if e.raw_os_error() == Some(libc::ELOOP) {
             return CallToolResult::error("Write denied: target is a symlink");
         }
-        Err(e) => {
-            tracing::warn!(path = %resolved.display(), error = %e, "Failed to check symlink status before write");
-            return CallToolResult::error("Write denied: cannot verify path safety");
-        }
-        _ => {}
-    }
-
-    if let Err(e) = std::fs::write(&resolved, &new_content) {
-        return {
-            tracing::warn!(path = %resolved.display(), error = %e, "File write failed");
-            CallToolResult::error("Write operation failed")
-        };
+        tracing::warn!(path = %resolved.display(), error = %e, "File write failed");
+        return CallToolResult::error("Write operation failed");
     }
 
     // Re-index
@@ -548,7 +543,16 @@ pub(crate) async fn handle_tree(
     let max_files = max_files.map(|v| v as usize).unwrap_or(500);
 
     let mut entries: Vec<(String, usize)> = Vec::new();
-    collect_tree(&root, &root, &extension_filter, max_depth, 0, &mut entries);
+    collect_tree(
+        &root,
+        &root,
+        &extension_filter,
+        max_depth,
+        0,
+        &mut entries,
+        &state.perm_engine,
+        &ctx.agent.permissions,
+    );
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
     let total = entries.len();
@@ -581,6 +585,8 @@ fn collect_tree(
     max_depth: Option<usize>,
     current_depth: usize,
     entries: &mut Vec<(String, usize)>,
+    perm_engine: &navra_core::permissions::PermissionEngine,
+    permissions: &str,
 ) {
     if let Some(max) = max_depth {
         if current_depth >= max {
@@ -605,6 +611,9 @@ fn collect_tree(
             if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
                 continue;
             }
+            if perm_engine.check(permissions, "list", &path) != PermissionResult::Allowed {
+                continue;
+            }
             collect_tree(
                 &path,
                 root,
@@ -612,9 +621,13 @@ fn collect_tree(
                 max_depth,
                 current_depth + 1,
                 entries,
+                perm_engine,
+                permissions,
             );
         } else if ft.is_file() {
-            // Apply extension filter
+            if perm_engine.check(permissions, "read", &path) != PermissionResult::Allowed {
+                continue;
+            }
             if let Some(ref ext) = ext_filter {
                 if path.extension().map(|e| e.to_string_lossy().to_string()) != Some(ext.clone()) {
                     continue;
@@ -672,6 +685,8 @@ pub(crate) async fn handle_grep(
         &mut matches,
         &mut files_searched,
         &mut files_matched,
+        &state.perm_engine,
+        &ctx.agent.permissions,
     );
 
     let mut output = format!(
@@ -697,6 +712,8 @@ fn grep_recursive(
     matches: &mut Vec<String>,
     files_searched: &mut u32,
     files_matched: &mut u32,
+    perm_engine: &navra_core::permissions::PermissionEngine,
+    permissions: &str,
 ) {
     let Ok(read_dir) = std::fs::read_dir(dir) else {
         return;
@@ -709,7 +726,6 @@ fn grep_recursive(
             Ok(ft) => ft,
             Err(_) => continue,
         };
-        // Skip symlinks to prevent escaping the ACL boundary
         if ft.is_symlink() {
             continue;
         }
@@ -718,6 +734,9 @@ fn grep_recursive(
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
             if name_str.starts_with('.') || name_str == "target" || name_str == "node_modules" {
+                continue;
+            }
+            if perm_engine.check(permissions, "list", &path) != PermissionResult::Allowed {
                 continue;
             }
             grep_recursive(
@@ -729,8 +748,13 @@ fn grep_recursive(
                 matches,
                 files_searched,
                 files_matched,
+                perm_engine,
+                permissions,
             );
         } else if ft.is_file() {
+            if perm_engine.check(permissions, "read", &path) != PermissionResult::Allowed {
+                continue;
+            }
             if let Some(ref ext) = ext_filter {
                 if path.extension().map(|e| e.to_string_lossy().to_string()) != Some(ext.clone()) {
                     continue;

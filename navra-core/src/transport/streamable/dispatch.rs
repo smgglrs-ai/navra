@@ -322,7 +322,7 @@ pub(crate) async fn dispatch(
                     );
                 }
             };
-            let result = server.handle_permission_request(params, sid);
+            let result = server.handle_permission_request(params, sid, &agent.name);
             (
                 JsonRpcResponse::success(
                     id,
@@ -822,7 +822,7 @@ async fn dispatch_with_session(
                         );
                     }
                 };
-            let result = server.handle_permission_request(params, &sid);
+            let result = server.handle_permission_request(params, &sid, &agent.name);
             (
                 JsonRpcResponse::success(
                     id,

@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn call_tool_non_read_stays_trusted() {
+    async fn call_tool_git_status_taints_session() {
         let mut client = mock_client(vec![serde_json::json!({
             "jsonrpc": "2.0",
             "result": {
@@ -208,6 +208,8 @@ mod tests {
             .call_tool("git_status", serde_json::json!({}))
             .await
             .unwrap();
-        assert_eq!(client.taint(), DataLabel::TRUSTED_PUBLIC);
+        // git_status reads external filesystem state (filenames may be
+        // attacker-controlled), so it correctly taints the session.
+        assert_eq!(client.taint(), DataLabel::UNTRUSTED_PUBLIC);
     }
 }

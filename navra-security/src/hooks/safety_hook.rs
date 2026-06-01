@@ -15,9 +15,7 @@ use navra_protocol::label::Confidentiality;
 use navra_protocol::{CallToolResult, Content};
 use std::collections::HashMap;
 
-/// Operations that carry content from the agent into the system
-/// (write-path). These get inbound filtering.
-const WRITE_OPS: &[&str] = &["file_write", "file_edit", "voice_speak"];
+use crate::ifc::is_write_tool;
 
 /// A hook that applies content safety filtering to tool calls.
 ///
@@ -61,8 +59,7 @@ impl Hook for SafetyHook {
         arguments: &serde_json::Value,
         ctx: &CallContext,
     ) -> HookDecision {
-        // Only filter write-path operations
-        if !WRITE_OPS.contains(&tool_name) {
+        if !is_write_tool(tool_name, None) {
             return HookDecision::Continue;
         }
 
@@ -136,6 +133,10 @@ impl Hook for SafetyHook {
                     }
                 }
                 _ => {
+                    tracing::warn!(
+                        tool = tool_name,
+                        "Non-text content bypassed safety filter"
+                    );
                     filtered_content.push(content.clone());
                 }
             }
