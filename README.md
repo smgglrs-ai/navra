@@ -74,7 +74,7 @@ navra (gateway)
 ### Build and run
 
 ```bash
-git clone https://github.com/navra-ai/navra.git
+git clone https://github.com/smgglrs-ai/navra.git
 cd navra
 
 # ONNX Runtime is linked dynamically from the system package

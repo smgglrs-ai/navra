@@ -169,7 +169,7 @@ Stale worktrees with uncommitted changes will be lost on cleanup.
 
 ### Testing
 
-2160+ tests. See TESTING.md for per-crate unit/integration/e2e
+2400+ tests. See TESTING.md for per-crate unit/integration/e2e
 breakdown.
 
 Prerequisites:
@@ -243,11 +243,34 @@ See DESIGN.md for full config reference.
   autonomous agents. navra integrates as the tool access layer
   inside OpenShell sandboxes. See `OPENSHELL.md` for design.
 
+## Strategic Priorities (2026-06-01)
+
+The code is ahead of the evidence. Pivot from building features to
+proving what's built.
+
+**Tier 1 — Prove the claims (June–July)**
+1. `11n` model-runtime dimension refactor — technical debt, unblocks backends
+2. `13a` Paper fixes — FIDES differentiation, gateway positioning
+3. `C3` External eval on 3+ OSS projects — statistical significance
+4. `10a` Security paper — flagship, submit to ArtSec/USENIX workshop
+
+**Tier 2 — Close gaps (July–August)**
+5. `9aa` MCP 2026-07-28 default flip — gated on July 28 final spec
+6. `U3` GitLab forge module — enterprise reach
+7. `15a`+`15b` Rendra app MVP — demo-able end-user experience
+
+**Tier 3 — Ecosystem (Q3–Q4)**
+8. First external user deployment
+9. Community docs + getting started guide
+10. `10b` Persona orchestration paper
+
+Everything else is parking lot unless it directly supports a tier 1–2 item.
+
 ## Reference Documents
 
 - `DESIGN.md` — Full architecture, protocol, security model, config reference
-- `TESTING.md` — Test prerequisites, running tests, crate test counts (2160+)
-- `ROADMAP.md` — Phased development plan (15 phases, sprints 1-6 complete)
+- `TESTING.md` — Test prerequisites, running tests, crate test counts (2400+)
+- `ROADMAP.md` — Phased development plan (15 phases, waves 1-3 complete)
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)
 - `OPENSHELL.md` — OpenShell integration: identity federation, A2A mesh, gRPC modules
