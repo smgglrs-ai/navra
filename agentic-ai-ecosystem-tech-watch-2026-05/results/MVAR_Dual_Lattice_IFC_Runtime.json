@@ -18,17 +18,17 @@
     ],
     "methodology": "[uncertain] — based on web search data: dual-lattice model separates confidentiality and integrity enforcement. Cryptographic provenance signs data flow records for tamper-proof audit. Execution firewall blocks data flow from untrusted sources to privileged sinks regardless of content, eliminating the need for content-based injection detection."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["security"],
     "relevance_category": "competitor",
     "impact_level": "high",
-    "relevance_rationale": "MVAR is a direct competitor to smgglrs-security's IFC module. Both use lattice-based models. Key differences: (1) MVAR uses dual lattices (separate confidentiality + integrity), smgglrs uses a 2x4 product lattice (2 Integrity levels x 4 Confidentiality levels) — architecturally similar but smgglrs has more confidentiality granularity (Public/Sensitive/PII/Secret vs typical binary); (2) MVAR includes cryptographic provenance — smgglrs has hash-chained blackbox audit (SHA-256 chain, tamper-detectable) but no per-data-flow cryptographic signing; (3) MVAR's execution firewall (assume injection, prevent sink access) vs smgglrs's defense-in-depth (IFC labels + statistical guardrails + temporal contracts + ML safety). smgglrs's TaintedWritePolicy (Allow/Approve/Deny) with TaintGate temporal predicate provides a form of execution firewall but at the behavioral level, not the data-flow level."
+    "relevance_rationale": "MVAR is a direct competitor to navra-security's IFC module. Both use lattice-based models. Key differences: (1) MVAR uses dual lattices (separate confidentiality + integrity), navra uses a 2x4 product lattice (2 Integrity levels x 4 Confidentiality levels) — architecturally similar but navra has more confidentiality granularity (Public/Sensitive/PII/Secret vs typical binary); (2) MVAR includes cryptographic provenance — navra has hash-chained blackbox audit (SHA-256 chain, tamper-detectable) but no per-data-flow cryptographic signing; (3) MVAR's execution firewall (assume injection, prevent sink access) vs navra's defense-in-depth (IFC labels + statistical guardrails + temporal contracts + ML safety). navra's TaintedWritePolicy (Allow/Approve/Deny) with TaintGate temporal predicate provides a form of execution firewall but at the behavioral level, not the data-flow level."
   },
   "actionable_insights": {
     "what_to_adopt": [
       "Execution firewall paradigm — assume injection will occur, focus on preventing sink access rather than detecting injection",
       "Cryptographic provenance for tamper-proof data flow audit trails",
-      "100% adversarial corpus test as a security benchmark target for smgglrs"
+      "100% adversarial corpus test as a security benchmark target for navra"
     ],
     "what_to_watch": [
       "MVAR's actual codebase maturity and community adoption",
@@ -37,17 +37,17 @@
     ],
     "what_to_avoid": [
       "Don't assume MVAR's 100% claim generalizes — 50 vectors is a small corpus",
-      "Don't switch to dual lattices without evaluating smgglrs's product lattice against same benchmark"
+      "Don't switch to dual lattices without evaluating navra's product lattice against same benchmark"
     ],
     "implementation_difficulty": "moderate",
     "priority_sprint": "S11 (IFC hardening)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "Both use lattice-based IFC. smgglrs has broader scope (gateway with ACLs, safety hooks, ML models) while MVAR is focused purely on IFC. MVAR's cryptographic provenance and execution firewall paradigm are gaps in smgglrs. smgglrs's advantage is gateway-level enforcement (can't be bypassed) and defense-in-depth (IFC + ML + ACLs).",
+    "how_navra_compares": "Both use lattice-based IFC. navra has broader scope (gateway with ACLs, safety hooks, ML models) while MVAR is focused purely on IFC. MVAR's cryptographic provenance and execution firewall paradigm are gaps in navra. navra's advantage is gateway-level enforcement (can't be bypassed) and defense-in-depth (IFC + ML + ACLs).",
     "gaps_exposed": [
       "No per-data-flow cryptographic provenance signing — blackbox is hash-chained but records tool calls, not individual data flows",
       "No explicit execution firewall mode — TaintedWritePolicy::Deny + TaintGate achieve similar effect but require explicit configuration per tool",
-      "No adversarial corpus benchmark for smgglrs-security IFC"
+      "No adversarial corpus benchmark for navra-security IFC"
     ],
     "advantages_confirmed": [
       "Defense-in-depth stack (IFC labels + per-value ValueStore + statistical guardrails + temporal contracts + ML safety + deny-wins ACLs + trust scoring) is far broader than MVAR's pure IFC",

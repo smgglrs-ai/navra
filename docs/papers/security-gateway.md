@@ -1,4 +1,4 @@
-# smgglrs: A Security Microkernel for AI Agent Infrastructure
+# navra: A Security Microkernel for AI Agent Infrastructure
 
 **Authors**: Fabien Dupont et al.
 
@@ -9,7 +9,7 @@
 - **DONE — Microkernel framing**: Keep "security microkernel." Cite
   AIOS as prior art, differentiate on enforcement boundaries (MCP
   protocol boundary = isolation, IFC on IPC channels, 23 Kani proofs).
-  smgglrs has process table, IPC (mailbox + blackboard), memory
+  navra has process table, IPC (mailbox + blackboard), memory
   management, scheduler, MAC — a real microkernel, not just analogy.
   Anderson's reference monitor conditions satisfied as a subset.
 - **DONE — Narrow to 3 contributions**: (1) gateway-enforced IFC, (2)
@@ -39,9 +39,9 @@ AI agents increasingly access local resources -- files, git
 repositories, shell commands, credentials -- via the Model Context
 Protocol (MCP). Current agent runtimes provide no security
 infrastructure: any tool call from any agent executes with the
-full privileges of the host user. We present smgglrs, a security
+full privileges of the host user. We present navra, a security
 gateway daemon that interposes between AI agents and local
-resources. smgglrs enforces a layered authentication chain (OAuth
+resources. navra enforces a layered authentication chain (OAuth
 2.0 with Ed25519 JWTs, capability tokens with delegation, BLAKE3
 legacy tokens), deny-wins path ACLs with ring inheritance,
 Bell-LaPadula information flow control with per-value taint
@@ -79,9 +79,9 @@ decisions (Article 12). Agent infrastructure must provide the
 compliance primitives that deployers need to meet these
 obligations.
 
-This paper presents smgglrs, a gateway daemon that treats agent
+This paper presents navra, a gateway daemon that treats agent
 security as an infrastructure concern rather than an application
-concern. smgglrs sits between agents and resources, enforcing
+concern. navra sits between agents and resources, enforcing
 security policies at the protocol layer regardless of which
 agent connects.
 
@@ -103,7 +103,7 @@ optional gRPC interface for out-of-process isolation.
 Prior work has applied the OS abstraction to agent systems
 (AIOS [18]) but without enforcement boundaries: AIOS agents
 share the kernel process address space with no IFC on
-communication channels. smgglrs enforces security properties
+communication channels. navra enforces security properties
 on its IPC channels (23 Kani-verified proofs, 3 TLC-verified
 specifications) and satisfies Anderson's reference monitor
 conditions [2]: complete mediation (single chokepoint),
@@ -181,9 +181,9 @@ server-side seen-nonce map, pruned after 2-hour TTL.
 
 ### 3.1 Gateway Pattern
 
-smgglrs is a gateway, not a framework. Agents (Claude Code, Goose,
+navra is a gateway, not a framework. Agents (Claude Code, Goose,
 custom) connect via MCP Streamable HTTP over Unix socket (0600
-permissions) or TCP. smgglrs aggregates built-in tool modules and
+permissions) or TCP. navra aggregates built-in tool modules and
 upstream MCP servers behind a unified security layer. The gateway
 pattern ensures that security enforcement is independent of
 agent implementation.
@@ -218,12 +218,12 @@ The `ChainAuthenticator` tries backends in priority order:
 1. **OAuthAuthenticator**: Ed25519-signed JWTs issued via an
    RFC 6749 `client_credentials` grant (Section 3.5).
 2. **CapabilityAuthenticator**: Ed25519-signed CBOR tokens
-   (`smgglrs_cap_v1.*`), with nonce replay protection.
+   (`navra_cap_v1.*`), with nonce replay protection.
 3. **TokenAuthenticator**: BLAKE3-hashed bearer tokens for
    legacy agents.
 4. **OpenShellAuthenticator**: Trusts identity assertions from
    the OpenShell sandbox supervisor (SPIFFE SVIDs, OIDC JWTs,
-   or static RBAC labels). Used when smgglrs runs inside an
+   or static RBAC labels). Used when navra runs inside an
    OpenShell sandbox (Section 3.6).
 5. **NoAuthenticator**: Development-only fallback. Requires
    explicit `allow_anonymous()` opt-in; logs an error-level
@@ -246,7 +246,7 @@ Path ACLs use glob patterns with deny-wins semantics:
 
 ### 3.5 OAuth 2.0 Authorization
 
-smgglrs implements an OAuth 2.0 authorization server following
+navra implements an OAuth 2.0 authorization server following
 RFC 6749 and RFC 8414. This provides a standards-compliant
 authentication path for agents that cannot manage capability
 tokens directly (e.g., third-party MCP clients).
@@ -265,16 +265,16 @@ providing a single trust root. Claims include issuer, subject,
 scope, issued-at, expiry, and a UUID `jti` for replay
 detection.
 
-**Scope-to-permission mapping:** OAuth scopes map to smgglrs
+**Scope-to-permission mapping:** OAuth scopes map to navra
 permission sets. `tools:read` maps to `readonly` (ring 2),
 `tools:write` maps to `developer` (ring 1). This bridges the
-OAuth authorization model to smgglrs's ring-based ACL engine
+OAuth authorization model to navra's ring-based ACL engine
 without requiring clients to understand capability tokens.
 
 **Security properties:**
 
 - Constant-time secret comparison (CWE-208 mitigation)
-- Capability tokens (`smgglrs_cap_v1.*`) bypass OAuth processing
+- Capability tokens (`navra_cap_v1.*`) bypass OAuth processing
   entirely, avoiding double-verification
 - Pre-registered and dynamically registered clients supported
 - In-memory client registry (no persistent state beyond config)
@@ -286,7 +286,7 @@ re-authenticate when tokens expire.
 
 ### 3.6 Containerized Agent Execution
 
-smgglrs supports three isolation levels for model serving and
+navra supports three isolation levels for model serving and
 agent execution, with automatic runtime detection:
 
 | Level | Backend | Isolation |
@@ -310,11 +310,11 @@ AMD/Intel.
 **OpenShell sandboxes** delegate to the OpenShell compute driver
 via gRPC. The supervisor provides identity tokens (SPIFFE SVIDs
 or OIDC JWTs) that the OpenShellAuthenticator validates. Network
-egress is restricted to the model endpoint and the smgglrs
+egress is restricted to the model endpoint and the navra
 gateway via an HTTP CONNECT proxy with OPA policies.
 
 **Defense in depth:** OpenShell provides mandatory access control
-at the OS level (namespaces, Landlock, seccomp). smgglrs provides
+at the OS level (namespaces, Landlock, seccomp). navra provides
 discretionary access control at the application level (ACLs,
 capability tokens, IFC). Both layers enforce independently — a
 bypass at one layer does not compromise the other.
@@ -344,7 +344,7 @@ as strings. Unknown tools default to `Medium` risk.
 
 ### 4.1 Token Format
 
-Wire format: `smgglrs_cap_v1.<base64url(cbor)>.<base64url(sig)>`
+Wire format: `navra_cap_v1.<base64url(cbor)>.<base64url(sig)>`
 
 Payload fields: version (`v: 1`), issuer DID (`iss`), subject
 DID (`sub`), capability set (path globs, operations, tool globs,
@@ -395,7 +395,7 @@ matching trusted path patterns (`~/Code/**`) retain Trusted
 integrity. Trusted path matching uses canonicalization and
 glob patterns with tilde expansion.
 
-Gateway tools (`smgglrs_var_*`) are excluded from auto-labeling --
+Gateway tools (`navra_var_*`) are excluded from auto-labeling --
 they return kernel-managed metadata, not external data.
 
 ### 5.3 Write Enforcement
@@ -560,7 +560,7 @@ endpoint.
 The blackbox is a flight recorder embedded in `McpServer`. It
 records every tool call at the gateway chokepoint:
 
-- **Always on**: No opt-in, no configuration. If smgglrs runs, it
+- **Always on**: No opt-in, no configuration. If navra runs, it
   records.
 - **Append-only**: `INSERT` only. No `UPDATE` or `DELETE`.
 - **Hash-chained**: Each entry stores SHA-256 of the previous
@@ -581,16 +581,16 @@ IFC label, previous hash, current hash.
 
 `verify_chain()` replays the entire chain, recomputing hashes
 and comparing. Returns `(valid_count, first_broken_seq)`.
-Exposed via `smgglrs audit verify` CLI.
+Exposed via `navra audit verify` CLI.
 
 ### 7.4 Compliance Infrastructure
 
 The blackbox provides infrastructure that supports deployers
-meeting regulatory requirements. smgglrs itself is not a
+meeting regulatory requirements. navra itself is not a
 regulated AI system — it is infrastructure that high-risk AI
 systems can build on.
 
-| Requirement | What smgglrs provides |
+| Requirement | What navra provides |
 |---|---|
 | EU AI Act Art. 12 (logging) | Append-only, hash-chained records of every tool call with agent identity, IFC label, and outcome |
 | EU AI Act Art. 14 (human oversight) | Approval workflow (4 channels), pause/resume, decision traceability via outcome + IFC label |
@@ -603,7 +603,7 @@ systems can build on.
 
 ### 8.1 Security Audit
 
-Six audit rounds used smgglrs's own multi-agent flow engine to
+Six audit rounds used navra's own multi-agent flow engine to
 audit the gateway codebase through the gateway itself. Agents
 connected via MCP, subject to the same ACLs, IFC, and safety
 filters they were auditing. Findings were recorded in the
@@ -650,7 +650,7 @@ is < 0.5% of total latency.
 
 ### 8.3 Competitive Comparison
 
-| Feature | smgglrs | FIDES [13] | Gravitee | Kong | MS Governance [11] | SemaClaw [3] | Goose | ZeroClaw [8] |
+| Feature | navra | FIDES [13] | Gravitee | Kong | MS Governance [11] | SemaClaw [3] | Goose | ZeroClaw [8] |
 |---|---|---|---|---|---|---|---|---|
 | Auth | OAuth 2.0 + Ed25519 cap + BLAKE3 | N/A (planner) | MCP auth spec | OAuth 2.0 | DID-based identity | None | None | None |
 | Path ACLs | Deny-wins, ring inheritance | N/A | Per-method | Default-deny | OPA/Cedar policies | None | None | 3-tier autonomy |
@@ -676,7 +676,7 @@ but a bypassed check cannot be retroactively enforced.
 
 ### 9.2 The NoAuthenticator Fallback
 
-When no authenticator is configured, smgglrs falls back to
+When no authenticator is configured, navra falls back to
 `NoAuthenticator` with an error-level warning. This is a
 conscious tradeoff: blocking startup would break development
 workflows; silent open access would create false security
@@ -718,44 +718,44 @@ taint only) rather than rejecting sessionless clients.
 ## 10. Related Work
 
 - **OWASP Top 10 for LLM Applications** [1]: Catalogs agent
-  security risks. smgglrs addresses LLM01 (tool misuse), LLM06
+  security risks. navra addresses LLM01 (tool misuse), LLM06
   (data exfiltration), LLM08 (privilege escalation).
-- **Bell-LaPadula model** [2]: Foundational MAC model. smgglrs
+- **Bell-LaPadula model** [2]: Foundational MAC model. navra
   adapts no-write-down to agent tool chains.
 - **SemaClaw** [3]: Two-layer agent harness with binary
   permissions (PermissionBridge). Operates at the harness layer
-  vs smgglrs's gateway layer. arXiv 2604.11548.
+  vs navra's gateway layer. arXiv 2604.11548.
 - **AWS Agent Registry** [4]: Governance-layer complement
-  (discovery + ownership) to smgglrs's runtime-security layer.
+  (discovery + ownership) to navra's runtime-security layer.
 - **Agent Tier pattern** [5]: Two-lane architecture
   (deterministic enforcement + contextual reasoning) that maps
-  1:1 to smgglrs's ACL/hook pipeline + governed tool catalogs.
+  1:1 to navra's ACL/hook pipeline + governed tool catalogs.
 - **EU AI Act** [6]: Article 12 (logging) and Article 14
   (human oversight) requirements for high-risk AI systems.
-  smgglrs provides compliance infrastructure that deployers
+  navra provides compliance infrastructure that deployers
   can use to meet these obligations — the gateway itself is
   not a regulated AI system.
-- **SOC2 CC6.1** [7]: Audit trail requirements. smgglrs's
+- **SOC2 CC6.1** [7]: Audit trail requirements. navra's
   hash-chained blackbox provides the technical primitives.
 - **ZeroClaw** [8]: Rust agent runtime with 3-tier autonomy
-  model. Flat runtime vs smgglrs's security gateway.
+  model. Flat runtime vs navra's security gateway.
 - **OpenShell** [9]: Red Hat/NVIDIA secure sandbox platform
   providing mandatory access control (Landlock, seccomp,
-  namespaces, microVMs) at the OS level. smgglrs integrates as
+  namespaces, microVMs) at the OS level. navra integrates as
   the application-level security layer inside OpenShell
   sandboxes, providing defense in depth: OpenShell enforces
-  network and filesystem isolation, smgglrs enforces tool-level
+  network and filesystem isolation, navra enforces tool-level
   ACLs, IFC, and credential brokering.
 - **Kaiden** [10]: Agent sandboxing platform with container
   isolation. Similar defense-in-depth model but without
   application-level IFC or capability delegation.
 - **Microsoft Agent Governance Toolkit** [11]: DID-based identity,
   execution rings, OPA/Cedar policies. Middleware approach vs
-  smgglrs's kernel approach. No capability delegation or
+  navra's kernel approach. No capability delegation or
   credential brokering.
 - **Claude Code Review** [12]: Multi-agent cross-validation
   achieving <1% false positive rate. Validates the pattern of
-  parallel verifier agents for high-stakes outputs. smgglrs's
+  parallel verifier agents for high-stakes outputs. navra's
   flow engine supports this pattern via back-edges and
   conditional routing.
 - **FIDES** [13]: Microsoft Research IFC for LLM agents
@@ -765,31 +765,31 @@ taint only) rather than rejecting sessionless clients.
   actions. Zero policy-violating injections on AgentDojo.
   **Key distinction**: FIDES operates at the *planner level*
   inside the agent loop — the agent's own planner decides
-  whether to honor labels. smgglrs operates at the *gateway
+  whether to honor labels. navra operates at the *gateway
   level* outside the agent — enforcement is mandatory regardless
   of agent implementation. This is analogous to kernel-enforced
   vs userspace-enforced access control: a compromised FIDES
   planner can bypass its own labels; a compromised agent behind
-  smgglrs cannot bypass the gateway's IFC checks. The tradeoff
-  is granularity: FIDES tracks labels on every value; smgglrs
+  navra cannot bypass the gateway's IFC checks. The tradeoff
+  is granularity: FIDES tracks labels on every value; navra
   tracks per-session with per-value `var://` variable tracking
-  as an intermediate. smgglrs also enforces both BLP properties
+  as an intermediate. navra also enforces both BLP properties
   (no-write-down and no-read-up with configurable clearance),
   verified exhaustively via Kani bounded model checking and
   TLA+ model checking (see `formal/PROOF_MAP.md`). FIDES's
   formal non-interference proofs set the bar that gateway-level
-  IFC should aspire to — smgglrs provides 23 Kani proofs and
+  IFC should aspire to — navra provides 23 Kani proofs and
   3 TLC-verified specifications as a first step.
 - **CaMeL** [14]: Google DeepMind capability metadata on every
   value (arXiv:2503.18813, March 2025). Provable security on
   77% of AgentDojo tasks via data-flow graph construction.
-  Inspires smgglrs's per-value `var://` tracking as a step
+  Inspires navra's per-value `var://` tracking as a step
   toward full data-flow labeling. Like FIDES, CaMeL operates
-  inside the agent; smgglrs enforces at the infrastructure
+  inside the agent; navra enforces at the infrastructure
   boundary.
 - **AIOS** [18]: LLM Agent Operating System (arXiv:2403.16971,
   COLM 2025). Formalizes the OS abstraction for agent systems
-  with process scheduling and resource management. smgglrs
+  with process scheduling and resource management. navra
   shares the OS analogy but focuses narrowly on the security
   reference monitor role (access control, IFC, audit) rather
   than full OS functionality.
@@ -799,14 +799,14 @@ taint only) rather than rejecting sessionless clients.
   MintMCP, Lunar.dev, Composio, Intercept). These provide
   authentication and per-method ACLs but none implement
   information flow control or capability-scoped delegation.
-  smgglrs's differentiator is IFC + capability tokens, not
+  navra's differentiator is IFC + capability tokens, not
   the gateway pattern itself.
 
 ---
 
 ## 11. Conclusion
 
-smgglrs demonstrates that AI agent security is an infrastructure
+navra demonstrates that AI agent security is an infrastructure
 concern that belongs in a dedicated gateway layer, not in each
 agent's application code. The gateway pattern ensures that
 security policies are enforced uniformly regardless of which
@@ -825,7 +825,7 @@ Top 10 attack surface while adding less than 0.5% overhead to
 typical tool call latencies.
 
 As AI agents gain more capabilities on local systems, the gap
-between agent capability and agent safety will widen. smgglrs
+between agent capability and agent safety will widen. navra
 provides one answer: treat the agent-resource boundary as a
 security perimeter, enforce mandatory access control at that
 perimeter, and record every crossing for auditability.

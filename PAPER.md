@@ -19,9 +19,9 @@ resource mediation. We present an AI Operating System architecture
 that applies classical OS principles — microkernel separation,
 capability-based security, graduated privilege rings, and
 cryptographic process identity — to the domain of LLM-powered
-agents. Our implementation comprises two systems: smgglrs, a Rust
+agents. Our implementation comprises two systems: navra, a Rust
 microkernel that enforces security and mediates access to local
-resources, and smgglrs, a Python userland that provides multi-agent
+resources, and navra, a Python userland that provides multi-agent
 orchestration, cognitive personas, and task planning. Agents
 communicate via the Model Context Protocol (MCP) for tool
 invocation and the Agent-to-Agent (A2A) protocol for inter-process
@@ -94,8 +94,8 @@ layer rather than relying on model compliance.
    multi-agent hierarchies.
 
 3. **Microkernel/userland separation** — A clean architectural
-   boundary between security enforcement (smgglrs, Rust) and
-   orchestration logic (smgglrs, Python), communicating via standard
+   boundary between security enforcement (navra, Rust) and
+   orchestration logic (navra, Python), communicating via standard
    protocols (MCP, A2A).
 
 4. **Credential brokering** — Agents never access raw secrets. The
@@ -278,10 +278,10 @@ extends zero-trust to agent-to-agent interactions.
    interact with resources exclusively through the kernel's
    mediation.
 
-2. **Microkernel separation** — The kernel (smgglrs) provides
+2. **Microkernel separation** — The kernel (navra) provides
    mechanism: identity, capability verification, resource mediation,
    IPC transport. Policy decisions (which agent does what task) live
-   in userland (smgglrs).
+   in userland (navra).
 
 3. **Deny-wins** — In all permission checks (path ACLs, tool rules,
    ring inheritance), deny rules take absolute precedence over allow
@@ -308,7 +308,7 @@ extends zero-trust to agent-to-agent interactions.
 └──────────────────────┬───────────────────────────────┘
                        │ approve / deny / inspect
 ┌──────────────────────▼───────────────────────────────┐
-│                  smgglrs (Userland)                    │
+│                  navra (Userland)                    │
 │                                                      │
 │  ┌─────────┐  ┌────────────┐  ┌──────────────────┐  │
 │  │ Leader  │  │ Specialist │  │   Specialist      │  │
@@ -323,7 +323,7 @@ extends zero-trust to agent-to-agent interactions.
 └───────────────────────┤──────────────────────────────┘
                         │ MCP / A2A over HTTP+SSE
 ┌───────────────────────▼──────────────────────────────┐
-│                  smgglrs (Microkernel)                   │
+│                  navra (Microkernel)                   │
 │                                                      │
 │  ┌────────────┐ ┌────────────┐ ┌──────────────────┐ │
 │  │ Capability │ │ Permission │ │   Credential     │ │
@@ -387,9 +387,9 @@ Everything else is userland:
 | Plugin distribution | OCI containers + sigstore |
 | User experience | CLI, chat interface, voice |
 
-### 3.4 Userland Architecture (smgglrs)
+### 3.4 Userland Architecture (navra)
 
-smgglrs is the AI OS's userland — a Python-based multi-agent
+navra is the AI OS's userland — a Python-based multi-agent
 orchestration framework providing the cognitive layer that
 the microkernel deliberately excludes.
 
@@ -466,31 +466,31 @@ Four-tier memory mirrors hardware memory hierarchy:
 Cognitive artifacts (personas, heuristics, directives) are
 packaged as OCI artifacts, signed with sigstore (cosign), and
 distributed via ORAS-compatible registries. This is the AI OS's
-package manager — `smgglrs install researcher` pulls a signed
+package manager — `navra install researcher` pulls a signed
 persona artifact from the registry.
 
 ### 3.5 Microkernel Boundary in Practice
 
-The boundary between smgglrs and smgglrs follows one rule: **if it
+The boundary between navra and navra follows one rule: **if it
 requires trust, it's kernel; if it requires intelligence, it's
 userland.**
 
 | Concern | Where | Why |
 |---|---|---|
-| Token verification | smgglrs (kernel) | Must not be bypassable |
-| Tool permission check | smgglrs (kernel) | Agent cannot grant itself access |
-| Credential injection | smgglrs (kernel) | Agent must never see raw secrets |
-| Content safety filtering | smgglrs (kernel) | Mandatory access control |
-| Rate limiting | smgglrs (kernel) | Agent cannot increase its quota |
-| Persona selection | smgglrs (userland) | Policy, not mechanism |
-| Task decomposition | smgglrs (userland) | Requires LLM reasoning |
-| Drift detection | smgglrs (userland) | Domain-specific cognitive heuristics |
-| Model selection | smgglrs (userland) | Cost/quality tradeoff |
-| Plugin signing/distribution | smgglrs (userland) | OCI + sigstore (userland trust chain) |
+| Token verification | navra (kernel) | Must not be bypassable |
+| Tool permission check | navra (kernel) | Agent cannot grant itself access |
+| Credential injection | navra (kernel) | Agent must never see raw secrets |
+| Content safety filtering | navra (kernel) | Mandatory access control |
+| Rate limiting | navra (kernel) | Agent cannot increase its quota |
+| Persona selection | navra (userland) | Policy, not mechanism |
+| Task decomposition | navra (userland) | Requires LLM reasoning |
+| Drift detection | navra (userland) | Domain-specific cognitive heuristics |
+| Model selection | navra (userland) | Cost/quality tradeoff |
+| Plugin signing/distribution | navra (userland) | OCI + sigstore (userland trust chain) |
 
-**Overlap resolution:** smgglrs has its own `PermissionManager`
+**Overlap resolution:** navra has its own `PermissionManager`
 with read-only vs write-enabled toolbelts. This is discretionary
-access control (the orchestrator's policy). smgglrs's path ACLs and
+access control (the orchestrator's policy). navra's path ACLs and
 tool rules are mandatory access control (the kernel's enforcement).
 Both can coexist — the orchestrator applies its policy first, and
 the kernel enforces the hard boundary underneath.
@@ -505,12 +505,12 @@ three problems:
    is a potential security bypass. The kernel should be small enough
    to audit.
 
-2. **Language lock-in** — smgglrs is Rust (memory safety, performance
-   for cryptographic operations). smgglrs is Python (LLM ecosystem,
+2. **Language lock-in** — navra is Rust (memory safety, performance
+   for cryptographic operations). navra is Python (LLM ecosystem,
    rapid iteration). A monolithic design forces one language.
 
 3. **Composability** — Other orchestrators (Claude Code Agent Teams,
-   Microsoft Agent Framework) can connect to smgglrs as userland
+   Microsoft Agent Framework) can connect to navra as userland
    processes without modification. The kernel doesn't care who the
    orchestrator is.
 
@@ -530,7 +530,7 @@ did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK
 The encoding is deterministic: multicodec prefix (0xed01) + 32-byte
 public key, multibase-encoded as base58btc with 'z' prefix.
 
-The smgglrs microkernel has its own root identity, generated at first
+The navra microkernel has its own root identity, generated at first
 startup and stored in the OS keyring. This root DID is the ultimate
 trust anchor — all capability tokens chain back to it.
 
@@ -549,7 +549,7 @@ Access is controlled by capability tokens — Ed25519-signed, CBOR-
 encoded, short-lived grants:
 
 ```
-smgglrs_cap_v1.<base64url(cbor_payload)>.<base64url(ed25519_sig)>
+navra_cap_v1.<base64url(cbor_payload)>.<base64url(ed25519_sig)>
 ```
 
 Payload structure:
@@ -620,7 +620,7 @@ another agent. Attenuation rules:
 6. `child.cap.credentials ⊆ parent.cap.credentials`
 7. Chain depth limited (default: 3 levels)
 
-All tokens are signed by the smgglrs root key, even delegated ones.
+All tokens are signed by the navra root key, even delegated ones.
 The delegation chain is tracked via the `parent` nonce field. This
 ensures the kernel can verify any token without traversing a chain
 of intermediate signers.
@@ -631,9 +631,9 @@ Agents never access raw credentials. The microkernel acts as a
 broker:
 
 1. User maps credential labels to backend sources in configuration
-   (explicit consent — smgglrs cannot discover other keyring entries)
+   (explicit consent — navra cannot discover other keyring entries)
 2. Capability tokens grant access to specific credential labels
-3. At tool execution time, smgglrs reads the credential from the OS
+3. At tool execution time, navra reads the credential from the OS
    keyring and injects it into the tool's execution context
 4. The credential is scrubbed from the environment after the tool
    completes
@@ -867,7 +867,7 @@ The full lifecycle of an agent in the AI OS:
 ```
 1. Registration    — Agent configured in config.toml with
                      token_hash, permissions, optional DID
-2. Token issuance  — On startup, smgglrs issues capability tokens
+2. Token issuance  — On startup, navra issues capability tokens
                      for agents with capability_token = true
 3. Authentication  — Agent presents Bearer token (cap or BLAKE3)
 4. Session         — MCP initialize creates a session (UUID)
@@ -880,7 +880,7 @@ The full lifecycle of an agent in the AI OS:
                      for audit
 ```
 
-The kernel (smgglrs) runs as a systemd user service, started at login
+The kernel (navra) runs as a systemd user service, started at login
 and stopped at logout. The system tray icon provides pause/resume
 and approval UI.
 
@@ -888,7 +888,7 @@ and approval UI.
 
 ## 7. Implementation
 
-### 7.1 smgglrs (Microkernel)
+### 7.1 navra (Microkernel)
 
 - **Language:** Rust
 - **Transport:** Axum (async HTTP), SSE, Unix sockets
@@ -899,7 +899,7 @@ and approval UI.
 - **Discovery:** `mdns-sd` crate, custom AID implementation
 - **Lines of code:** ~24K (Rust)
 
-### 7.2 smgglrs (Userland)
+### 7.2 navra (Userland)
 
 - **Language:** Python (Poetry, Python 3.14)
 - **Orchestration:** Three-tier hierarchy:
@@ -956,7 +956,7 @@ See Section 8.2 for measured token sizes and latency benchmarks.
 
 We test each of the five security properties (Section 4.7) with
 concrete attack scenarios. All tests are in
-`smgglrs-core/tests/security_eval.rs` (28 tests).
+`navra-core/tests/security_eval.rs` (28 tests).
 
 #### Property 1: No Privilege Escalation (5 tests)
 
@@ -1068,7 +1068,7 @@ We compare our approach against four alternatives along seven
 security dimensions. Each cell indicates whether the property is
 fully provided (+), partially provided (~), or absent (-).
 
-| Property | No isolation | API keys | OAuth 2.0 [26] | MS Governance [84] | **smgglrs (ours)** |
+| Property | No isolation | API keys | OAuth 2.0 [26] | MS Governance [84] | **navra (ours)** |
 |---|---|---|---|---|---|
 | Agent isolation | - | - | ~ | + | **+** |
 | Least privilege | - | - | ~ (scopes) | ~ (rings) | **+ (capabilities)** |
@@ -1090,7 +1090,7 @@ model drift breaks any soft boundary.
 #### Plain API keys
 
 Each agent gets a static API key (e.g., BLAKE3 hashed bearer
-token as in smgglrs's legacy mode). Keys have no expiry, no scope,
+token as in navra's legacy mode). Keys have no expiry, no scope,
 and no delegation model. An agent with a key has the same access
 as any other agent with the same key. Revocation requires
 configuration change and restart. Key theft grants full access
@@ -1125,7 +1125,7 @@ enforcement. However:
   TOML-based configuration, but adds complexity and a learning
   curve.
 
-#### smgglrs (ours)
+#### navra (ours)
 
 Our capability model aims to provide all seven properties. The
 key differentiators relative to existing approaches are:
@@ -1150,7 +1150,7 @@ key differentiators relative to existing approaches are:
 | API key (BLAKE3) | 0.1 μs | 36 bytes | Hash comparison |
 | OAuth 2.0 (JWT) | ~5--50 μs | 300--800 bytes | RSA/ECDSA verify |
 | MS Governance | N/A (middleware) | N/A | Policy engine check |
-| **smgglrs cap token** | **14 μs** | **375--773 bytes** | Ed25519 verify + CBOR decode |
+| **navra cap token** | **14 μs** | **375--773 bytes** | Ed25519 verify + CBOR decode |
 
 Our 14 μs verification latency is higher than BLAKE3 (0.1 μs)
 but negligible relative to LLM inference (100 ms--10 s). The
@@ -1168,10 +1168,10 @@ hashing provides.
   not formally verified (unlike seL4 [15]). A Coq/Lean
   formalization would strengthen the security argument.
 
-- **Trust in the kernel** — smgglrs is the TCB. A vulnerability in
-  smgglrs compromises all security properties. Rust's memory safety
+- **Trust in the kernel** — navra is the TCB. A vulnerability in
+  navra compromises all security properties. Rust's memory safety
   mitigates but does not eliminate this risk. The confused deputy
-  problem [7] applies: smgglrs's tool handlers execute with system-
+  problem [7] applies: navra's tool handlers execute with system-
   level ambient authority [14] while acting on behalf of agents.
 
 - **Prompt injection is out of scope** — The kernel enforces which
@@ -1202,7 +1202,7 @@ hashing provides.
   needed.
 
 - **Single-machine scope** — The current implementation assumes
-  smgglrs and all agents run on the same machine. Distributed
+  navra and all agents run on the same machine. Distributed
   deployment would require network-level token verification,
   encrypted IPC, and federated trust management [20][21].
 
@@ -1238,14 +1238,14 @@ structural separation of concerns may offer more durable defenses
 than detection-based approaches. However, our current capability
 model gates *access* to tools but does not yet track *data flow*
 through them — bridging this gap by integrating IFC-style taint
-labels into smgglrs's hook pipeline is the primary direction for
+labels into navra's hook pipeline is the primary direction for
 future work.
 
 Matzinger's danger model [69] suggests an orthogonal approach:
 instead of classifying instructions as legitimate or injected,
 monitor for *damage patterns* in system behavior (unexpected
 writes, anomalous API calls, credential access outside normal
-patterns). smgglrs's Cognitive Immune System already implements
+patterns). navra's Cognitive Immune System already implements
 this via the watchdog/analyst supervisory architecture — the
 same principle that Forrest et al. [70][71] applied to intrusion
 detection by monitoring system call sequences for anomalies.
@@ -1283,7 +1283,7 @@ adaptive attacks is needed for our specific implementation.
 - **Formal verification** — Formalizing the capability model's
   security properties in a proof assistant.
 
-- **Distributed kernel** — Extending smgglrs to a cluster of kernels
+- **Distributed kernel** — Extending navra to a cluster of kernels
   with federated identity and cross-kernel capability delegation.
 
 - **AI OS shell** — An interactive interface for humans to manage
@@ -1304,9 +1304,9 @@ and usability remains an open question.
 
 We presented an AI Operating System architecture that applies
 classical OS principles to multi-agent AI systems. The microkernel
-(smgglrs) provides capability-based security with DID:key identity,
+(navra) provides capability-based security with DID:key identity,
 graduated privilege rings, credential brokering, and mandatory
-content filtering. The userland (smgglrs) provides multi-agent
+content filtering. The userland (navra) provides multi-agent
 orchestration, cognitive personas, and task planning. The two
 communicate via standard protocols (MCP for tool invocation, A2A
 for inter-agent messaging), enabling clean separation of mechanism

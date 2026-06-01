@@ -1,6 +1,6 @@
 # Formal Verification
 
-Formal verification harnesses for smgglrs concurrency properties.
+Formal verification harnesses for navra concurrency properties.
 
 ## TLA+ (FlowConcurrency)
 
@@ -60,10 +60,10 @@ cargo kani --harness verify_token_accounting
 ## Relationship to the OOM crash (2026-05-07)
 
 The 145GB OOM allocation was traced to Ollama's KV cache allocation
-for a 35B model, not a smgglrs concurrency bug. The GPU semaphore
+for a 35B model, not a navra concurrency bug. The GPU semaphore
 (initialized from `max_parallel=2`) correctly limits concurrent
 containers. The TLA+ model verifies this design is sound.
 
 The fix is operational: limit `num_ctx` in Ollama config or use
-smaller models for specialist agents. The smgglrs throttle works
+smaller models for specialist agents. The navra throttle works
 correctly — the issue is downstream resource management in Ollama.

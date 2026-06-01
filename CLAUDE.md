@@ -1,4 +1,4 @@
-# smgglrs
+# navra
 
 Secure MCP gateway daemon for Linux desktops. Rust workspace.
 
@@ -22,63 +22,63 @@ package only provides shared libraries.
 
 | Crate | Category | Role |
 |---|---|---|
-| `smgglrs-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports |
-| `smgglrs-model` | Infrastructure | Model backend trait + ONNX/OpenAI/Anthropic implementations |
-| `smgglrs-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
-| `smgglrs-model-runtime` | Infrastructure | Serve models with pluggable isolation (direct, Podman, OpenShell) |
-| `smgglrs-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
-| `smgglrs-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks, upstream tool scanning, cognitive file integrity monitoring |
-| `smgglrs-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
-| `smgglrs-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
-| `smgglrs-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, deterministic replay, standalone binary (`Dockerfile.agent`) |
-| `smgglrs-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation, hop limits, provenance tracking |
-| `smgglrs-core` | Infrastructure | Server, module trait, session, transport, Prometheus metrics, OTel traces, re-exports |
-| `smgglrs-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
-| `smgglrs-tools-git` | Tool | Git tools (status, diff, log, branch, commit, push, pull, fetch) |
-| `smgglrs-tools-exec` | Tool | Command execution inside OpenShell sandboxes |
-| `smgglrs-rag` | Context enrichment | Hybrid FTS5+vector search (RRF fusion), breadcrumb chunking, cross-encoder reranking (batched), confidence gating |
-| `smgglrs-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
-| `smgglrs-modal-vision` | Modality | Image/screen understanding (GPU tier) |
-| `smgglrs-macros` | Dev tooling | `#[tool]` proc macro for generating tool definitions from functions |
-| `smgglrs-tools-github` | Tool | GitHub forge tools (PR create/list/view, issue create/list/comment) via `gh` CLI |
-| `smgglrs-tools-gitlab` | Tool | GitLab forge tools (MR, issues) via `glab` CLI |
-| `smgglrs-server` | Binary | CLI, config, module wiring, systemd, tray, Prometheus /metrics (binary: `smgglrs`) |
+| `navra-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports |
+| `navra-model` | Infrastructure | Model backend trait + ONNX/OpenAI/Anthropic implementations |
+| `navra-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
+| `navra-model-runtime` | Infrastructure | Serve models with pluggable isolation (direct, Podman, OpenShell) |
+| `navra-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
+| `navra-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks, upstream tool scanning, cognitive file integrity monitoring |
+| `navra-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
+| `navra-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
+| `navra-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, deterministic replay, standalone binary (`Dockerfile.agent`) |
+| `navra-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation, hop limits, provenance tracking |
+| `navra-core` | Infrastructure | Server, module trait, session, transport, Prometheus metrics, OTel traces, re-exports |
+| `navra-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
+| `navra-tools-git` | Tool | Git tools (status, diff, log, branch, commit, push, pull, fetch) |
+| `navra-tools-exec` | Tool | Command execution inside OpenShell sandboxes |
+| `navra-rag` | Context enrichment | Hybrid FTS5+vector search (RRF fusion), breadcrumb chunking, cross-encoder reranking (batched), confidence gating |
+| `navra-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
+| `navra-modal-vision` | Modality | Image/screen understanding (GPU tier) |
+| `navra-macros` | Dev tooling | `#[tool]` proc macro for generating tool definitions from functions |
+| `navra-tools-github` | Tool | GitHub forge tools (PR create/list/view, issue create/list/comment) via `gh` CLI |
+| `navra-tools-gitlab` | Tool | GitLab forge tools (MR, issues) via `glab` CLI |
+| `navra-server` | Binary | CLI, config, module wiring, systemd, tray, Prometheus /metrics (binary: `navra`) |
 | `benchmarks` | Dev tooling | Criterion performance benchmarks |
 
 ### Dependency layering
 
 ```
-smgglrs-protocol          (no smgglrs deps)
-smgglrs-model-hub         (no smgglrs deps)
-smgglrs-model-runtime     (no smgglrs deps)
-smgglrs-responses         (no smgglrs deps)
-smgglrs-cognitive         (no smgglrs deps)
-smgglrs-macros            (no smgglrs deps, proc-macro)
+navra-protocol          (no navra deps)
+navra-model-hub         (no navra deps)
+navra-model-runtime     (no navra deps)
+navra-responses         (no navra deps)
+navra-cognitive         (no navra deps)
+navra-macros            (no navra deps, proc-macro)
     ↓
-smgglrs-model             (responses)
+navra-model             (responses)
     ↓
-smgglrs-security          (protocol + model)
+navra-security          (protocol + model)
     ↓
-smgglrs-core              (protocol + model + security)  SERVER
+navra-core              (protocol + model + security)  SERVER
     ↓
-smgglrs-memory            (core + model, opt: rag)       PERSISTENCE
-smgglrs-agent             (protocol + model + security   CLIENT
+navra-memory            (core + model, opt: rag)       PERSISTENCE
+navra-agent             (protocol + model + security   CLIENT
                            + cognitive)
-smgglrs-tools-file ───┐
-smgglrs-tools-git  ───┤
-smgglrs-tools-exec ───┼── (core, exec also: model-runtime)
-smgglrs-rag        ───┤
-smgglrs-modal-*    ───┘── (core only)
+navra-tools-file ───┐
+navra-tools-git  ───┤
+navra-tools-exec ───┼── (core, exec also: model-runtime)
+navra-rag        ───┤
+navra-modal-*    ───┘── (core only)
     ↓
-smgglrs-flow              (agent + cognitive + protocol  ORCHESTRATION
+navra-flow              (agent + cognitive + protocol  ORCHESTRATION
                            + model + security)
     ↓
-smgglrs-server            (all + hub + runtime)
+navra-server            (all + hub + runtime)
 ```
 
 ## Architecture
 
-smgglrs is an MCP gateway that sits between AI agents and local
+navra is an MCP gateway that sits between AI agents and local
 resources. It aggregates built-in modules and upstream MCP servers
 behind a unified security layer.
 
@@ -87,7 +87,7 @@ AI Agent (Claude Code, etc.)
     |
     | MCP Streamable HTTP + SSE (Unix socket or TCP)
     v
-smgglrs-server / smgglrs (gateway)
+navra-server / navra (gateway)
     |-- Auth (BLAKE3 tokens, OAuth 2.0, capability delegation)
     |-- Permission engine (path ACLs, tool rules, Cedar)
     |-- Hook pipeline (pre/post tool-call)
@@ -104,7 +104,7 @@ Desktop (D-Bus notifications, system tray, systemd)
 
 ## Key Design Decisions
 
-- **Gateway, not framework**: smgglrs enforces security at the
+- **Gateway, not framework**: navra enforces security at the
   infrastructure layer. Orchestration belongs in the agent.
 - **Module trait**: All capabilities are modules implementing
   `Module` trait. Upstream MCP servers are wrapped in `UpstreamModule`.
@@ -113,7 +113,7 @@ Desktop (D-Bus notifications, system tray, systemd)
 - **Safety is a hook**: Content filtering runs as `SafetyHook` in
   the hook pipeline, not hardcoded in the request path.
 - **In-process models**: Small ONNX models (safety, embeddings)
-  load directly into the smgglrs process. No external dependencies
+  load directly into the navra process. No external dependencies
   for CPU tier.
 
 ## Agent Workflow (MANDATORY)
@@ -181,28 +181,28 @@ Prerequisites:
 ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace
 
 # Single crate
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p smgglrs-core
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core
 
 # E2e tests (require Ollama running)
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p smgglrs-server --test e2e
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test e2e
 
 # Build with OTel trace export
 ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --features otel
-# Then: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 smgglrs serve
+# Then: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 navra serve
 ```
 
 Conventions:
 - Unit tests live in `#[cfg(test)] mod tests` at the bottom of each file
 - Integration tests in `tests/` directories per crate
 - `echo_tool_def()` and `test_ctx()` helpers are defined locally
-  in `smgglrs-core/src/server/tests.rs`; other crates define their own
+  in `navra-core/src/server/tests.rs`; other crates define their own
   `test_ctx()` for constructing `CallContext` in tests
 - All async tests use `#[tokio::test]`
 
 ### Adding a Module
 
-1. Create crate implementing `Module` trait (from `smgglrs-core`)
-2. Add dependency in `smgglrs-server/Cargo.toml`
+1. Create crate implementing `Module` trait (from `navra-core`)
+2. Add dependency in `navra-server/Cargo.toml`
 3. Add config struct in `config.rs`
 4. Add `if cfg.xxx_enabled() { builder = builder.module(xxx); }` in `main.rs`
 
@@ -214,10 +214,10 @@ Tools within a module (manual):
 3. Return `(definition, handler)` pair from `Module::tools()`
 4. Tool name must be prefixed with module name
 
-Or use the `#[tool]` proc macro from `smgglrs-macros`:
+Or use the `#[tool]` proc macro from `navra-macros`:
 
 ```rust
-#[smgglrs::tool(name = "file_read", description = "Read a file")]
+#[navra::tool(name = "file_read", description = "Read a file")]
 async fn file_read(
     #[arg(description = "Path to the file")] path: String,
     ctx: CallContext,
@@ -228,7 +228,7 @@ async fn file_read(
 
 ## Config
 
-Default path: `~/.config/smgglrs/config.toml`
+Default path: `~/.config/navra/config.toml`
 
 Key sections: `[server]`, `[modules.*]`, `[models.*]`, `[[agents]]`,
 `[permissions.*]`, `[[upstream]]`, `discover`, `[[registry]]`.
@@ -237,10 +237,10 @@ See DESIGN.md for full config reference.
 
 ## Related Projects
 
-- **Voice-first local assistant**: Combining smgglrs (secure tools)
-  + smgglrs-flow (orchestration) + local models.
+- **Voice-first local assistant**: Combining navra (secure tools)
+  + navra-flow (orchestration) + local models.
 - **OpenShell** (Red Hat/NVIDIA): Secure sandbox platform for
-  autonomous agents. smgglrs integrates as the tool access layer
+  autonomous agents. navra integrates as the tool access layer
   inside OpenShell sandboxes. See `OPENSHELL.md` for design.
 
 ## Reference Documents

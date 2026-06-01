@@ -1,5 +1,5 @@
 heuristic_name: ai_orchestration_design
-description: Specialized heuristics for designing the core logic of a multi-agent, multi-model orchestration engine like smgglrs.
+description: Specialized heuristics for designing the core logic of a multi-agent, multi-model orchestration engine like navra.
 facets:
   - facet_name: "thread_and_state_management"
     display_name: "Thread & State Management"

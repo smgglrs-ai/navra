@@ -18,15 +18,15 @@
     ],
     "methodology": "Three-component pipeline: (1) BM25 lexical search using rank_bm25 library — search_bm25() function computes lexical relevance scores per document, ranks by decreasing score, selects top-k; (2) Dense vector semantic search using sentence-transformers — encodes texts and query into embedding space, ranks by cosine similarity; (3) Reciprocal Rank Fusion — ignores raw scores (which are on incompatible scales) and focuses on rank positions, rewarding documents appearing at top positions across both lists using harmonic-mean-like operator. The article emphasizes that simply adding scores fails because BM25 and cosine similarity operate on different numeric scales. Industry best practice extends this with a two-stage architecture: Stage 1 uses hybrid search to retrieve broad candidate pool (top 100 with high recall), Stage 2 passes candidates through a cross-encoder for deep relevance re-scoring (top 5-10 for LLM context). Key tuning parameters: rrf_k (default 60) and per-retriever top-k (start at 20)."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["rag"],
     "relevance_category": "validation",
     "impact_level": "medium",
-    "relevance_rationale": "Directly validates smgglrs-rag's existing architecture: hybrid FTS5+vector search with RRF fusion and cross-encoder reranking. The article confirms that smgglrs-rag's approach (BM25-equivalent via FTS5 + vector search + RRF + cross-encoder reranking) matches the industry-standard two-stage pattern. The specific tuning recommendations (rrf_k=60, per-retriever top-k=20) can be verified against smgglrs-rag defaults."
+    "relevance_rationale": "Directly validates navra-rag's existing architecture: hybrid FTS5+vector search with RRF fusion and cross-encoder reranking. The article confirms that navra-rag's approach (BM25-equivalent via FTS5 + vector search + RRF + cross-encoder reranking) matches the industry-standard two-stage pattern. The specific tuning recommendations (rrf_k=60, per-retriever top-k=20) can be verified against navra-rag defaults."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Verify smgglrs-rag rrf_k parameter default matches the recommended 60",
+      "Verify navra-rag rrf_k parameter default matches the recommended 60",
       "Ensure per-retriever top-k defaults start at 20 as recommended",
       "Consider exposing rrf_k and per-retriever top-k as configurable parameters if not already"
     ],
@@ -42,20 +42,20 @@
     "priority_sprint": "Current (parameter verification only)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-rag already implements the complete recommended pipeline: FTS5 (BM25-equivalent lexical search) + sqlite-vec (vector search) + RRF fusion + batched cross-encoder reranking + confidence gating. This is the exact two-stage architecture the article describes as industry standard. smgglrs-rag additionally provides breadcrumb chunking and confidence gating, which go beyond what the article covers.",
+    "how_navra_compares": "navra-rag already implements the complete recommended pipeline: FTS5 (BM25-equivalent lexical search) + sqlite-vec (vector search) + RRF fusion + batched cross-encoder reranking + confidence gating. This is the exact two-stage architecture the article describes as industry standard. navra-rag additionally provides breadcrumb chunking and confidence gating, which go beyond what the article covers.",
     "gaps_exposed": [
-      "No gaps — smgglrs-rag's architecture matches or exceeds the article's recommendations"
+      "No gaps — navra-rag's architecture matches or exceeds the article's recommendations"
     ],
     "advantages_confirmed": [
       "Hybrid FTS5+vector with RRF fusion is validated as the industry standard approach",
-      "Cross-encoder reranking (already in smgglrs-rag) is confirmed as the production-grade Stage 2",
-      "Confidence gating in smgglrs-rag provides additional quality control not mentioned in the article"
+      "Cross-encoder reranking (already in navra-rag) is confirmed as the production-grade Stage 2",
+      "Confidence gating in navra-rag provides additional quality control not mentioned in the article"
     ]
   },
   "ecosystem_context": {
     "owasp_coverage": "N/A (retrieval technique, not a security concern)",
     "mcp_spec_alignment": "N/A (RAG implementation pattern, not MCP-specific)",
-    "isolation_model": "in-process (FTS5 + sqlite-vec run in-process in smgglrs)",
+    "isolation_model": "in-process (FTS5 + sqlite-vec run in-process in navra)",
     "aaif_alignment": "N/A",
     "regulatory_relevance": "N/A"
   },

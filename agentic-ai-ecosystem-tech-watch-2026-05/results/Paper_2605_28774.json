@@ -18,15 +18,15 @@
     ],
     "methodology": "For each all-wrong tool-using subgroup in RL training: (1) fix the thinking prefix (reasoning before tool call), (2) resample the tool call and its continuation to recover learning signal, (3) use uncertainty-based prefix selection to choose which prefixes to resample. This addresses the structural asymmetry where thinking (self-contained default) dominates over tool use (high-variance auxiliary acting)."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["agent", "model"],
     "relevance_category": "reference",
     "impact_level": "low",
-    "relevance_rationale": "The Thinking-Acting Gap finding explains why agents sometimes skip tool calls even when tools would help — relevant to understanding smgglrs-agent's tool-use loop behavior. The fix is at the RL training level (not inference), so smgglrs can't implement it directly. However, smgglrs could track tool-call skip rates as a diagnostic metric for model quality."
+    "relevance_rationale": "The Thinking-Acting Gap finding explains why agents sometimes skip tool calls even when tools would help — relevant to understanding navra-agent's tool-use loop behavior. The fix is at the RL training level (not inference), so navra can't implement it directly. However, navra could track tool-call skip rates as a diagnostic metric for model quality."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Track tool-call skip rates in smgglrs-agent as a model quality diagnostic"
+      "Track tool-call skip rates in navra-agent as a model quality diagnostic"
     ],
     "what_to_watch": [
       "Whether AXPO-trained models become available for local serving",
@@ -37,7 +37,7 @@
     "priority_sprint": "N/A (diagnostic metric only)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "Not directly comparable — AXPO is a training technique, smgglrs is inference infrastructure.",
+    "how_navra_compares": "Not directly comparable — AXPO is a training technique, navra is inference infrastructure.",
     "gaps_exposed": [],
     "advantages_confirmed": []
   },

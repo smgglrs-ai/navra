@@ -18,15 +18,15 @@
     ],
     "methodology": "Single-turn parallel dispatch: main agent emits K tool calls, K sub-agents (weight-shared) each process one temporal window and return text summaries (not resampled frames). PARA-GRPO addresses Tool Prior Paradox via: (1) Exploration Anchoring — selective reward at structural-token positions prone to collapse, (2) nFrames Gating — randomizes overview-frame budget per prompt to create prompts where tools yield measurable reward."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["flow", "agent"],
     "relevance_category": "reference",
     "impact_level": "low",
-    "relevance_rationale": "The parallel tool dispatch pattern is directly relevant to smgglrs-flow's DAG execution and smgglrs-agent's tool-use loop. Peer-correctable evidence (sub-agent outputs voted on) maps to flow's mesh communication. The Tool Prior Paradox finding is relevant to understanding why agents skip tool calls — smgglrs could expose analytics on tool call rates. However, the video-specific application is outside smgglrs's scope."
+    "relevance_rationale": "The parallel tool dispatch pattern is directly relevant to navra-flow's DAG execution and navra-agent's tool-use loop. Peer-correctable evidence (sub-agent outputs voted on) maps to flow's mesh communication. The Tool Prior Paradox finding is relevant to understanding why agents skip tool calls — navra could expose analytics on tool call rates. However, the video-specific application is outside navra's scope."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Parallel tool dispatch pattern in smgglrs-flow DAG execution — emit multiple tool calls in single turn",
+      "Parallel tool dispatch pattern in navra-flow DAG execution — emit multiple tool calls in single turn",
       "Peer-correctable evidence pattern for multi-agent mesh validation"
     ],
     "what_to_watch": [
@@ -38,10 +38,10 @@
     "priority_sprint": "S12+ (flow optimization)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-flow already supports parallel tool execution in DAG mode. ParaVT validates this pattern with RL-trained evidence of superiority over sequential dispatch.",
+    "how_navra_compares": "navra-flow already supports parallel tool execution in DAG mode. ParaVT validates this pattern with RL-trained evidence of superiority over sequential dispatch.",
     "gaps_exposed": [],
     "advantages_confirmed": [
-      "smgglrs-flow's DAG execution with parallel tool calls is the correct architecture"
+      "navra-flow's DAG execution with parallel tool calls is the correct architecture"
     ]
   },
   "ecosystem_context": {

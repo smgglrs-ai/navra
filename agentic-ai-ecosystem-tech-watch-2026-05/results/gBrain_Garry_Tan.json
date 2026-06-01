@@ -19,42 +19,42 @@
     ],
     "methodology": "Compiled truth + timeline pattern: current-best-understanding section on top with append-only evidence trail below. Knowledge graph edges extracted via regex in fixed order (FOUNDED > INVESTED > ADVISES > WORKS_AT > MENTIONS). Search uses hybrid pipeline: BM25 keyword + HNSW vector + RRF fusion with optional multi-query expansion (Haiku) and ZeroEntropy reranker. Three presets: conservative, balanced, tokenmax. Autopilot daemon runs on 5-minute tick with cost cap."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["rag", "memory"],
     "relevance_category": "opportunity",
     "impact_level": "high",
-    "relevance_rationale": "gBrain validates smgglrs-rag's hybrid search architecture — identical pattern (BM25 + vector + RRF with k=60). Code-level verification: smgglrs-rag uses score = sum(1/(60+rank+1)) with 3x overfetch per channel, matching gBrain's RRF formula (score = sum(1/(60+rank))). The zero-LLM regex graph extraction is a pattern smgglrs could adopt — smgglrs-memory's knowledge store has content-addressed entries (SHA-256 of kind+title) and scoping (entity_id) but no automated graph extraction. The compiled-truth-plus-timeline pattern maps to smgglrs-memory's DistilledEntry with supersession (store_distilled() upserts by content_key, increments version). gBrain's 74 MCP tools make it a natural upstream server for smgglrs to proxy and security-filter via UpstreamModule::discover() with tool scanning."
+    "relevance_rationale": "gBrain validates navra-rag's hybrid search architecture — identical pattern (BM25 + vector + RRF with k=60). Code-level verification: navra-rag uses score = sum(1/(60+rank+1)) with 3x overfetch per channel, matching gBrain's RRF formula (score = sum(1/(60+rank))). The zero-LLM regex graph extraction is a pattern navra could adopt — navra-memory's knowledge store has content-addressed entries (SHA-256 of kind+title) and scoping (entity_id) but no automated graph extraction. The compiled-truth-plus-timeline pattern maps to navra-memory's DistilledEntry with supersession (store_distilled() upserts by content_key, increments version). gBrain's 74 MCP tools make it a natural upstream server for navra to proxy and security-filter via UpstreamModule::discover() with tool scanning."
   },
   "actionable_insights": {
     "what_to_adopt": [
       "Zero-LLM regex graph extraction for building knowledge graphs from ingested documents",
-      "Compiled truth + timeline pattern for smgglrs-memory knowledge store",
+      "Compiled truth + timeline pattern for navra-memory knowledge store",
       "Cost-capped autopilot pattern for background memory maintenance",
       "PGLite as alternative to SQLite for environments needing Postgres compatibility"
     ],
     "what_to_watch": [
-      "gBrain as upstream MCP server for smgglrs to proxy",
-      "BrainBench evaluation results vs smgglrs-rag performance",
+      "gBrain as upstream MCP server for navra to proxy",
+      "BrainBench evaluation results vs navra-rag performance",
       "ZeroEntropy reranker integration pattern"
     ],
     "what_to_avoid": [
-      "Don't adopt gBrain's markdown-first storage — smgglrs-memory's SQLite FTS5 is more suitable for gateway workloads",
+      "Don't adopt gBrain's markdown-first storage — navra-memory's SQLite FTS5 is more suitable for gateway workloads",
       "Don't require full wikilink paths — too brittle for user-facing content"
     ],
     "implementation_difficulty": "moderate",
     "priority_sprint": "S11 (RAG + memory optimization)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-rag already implements the same hybrid search pattern (FTS5 + vector + RRF + cross-encoder reranking). gBrain adds zero-LLM graph extraction and the compiled-truth pattern that smgglrs-memory lacks. smgglrs has stronger security (IFC, safety hooks) but weaker knowledge organization.",
+    "how_navra_compares": "navra-rag already implements the same hybrid search pattern (FTS5 + vector + RRF + cross-encoder reranking). gBrain adds zero-LLM graph extraction and the compiled-truth pattern that navra-memory lacks. navra has stronger security (IFC, safety hooks) but weaker knowledge organization.",
     "gaps_exposed": [
-      "No knowledge graph extraction in smgglrs-rag or smgglrs-memory",
+      "No knowledge graph extraction in navra-rag or navra-memory",
       "No compiled-truth-plus-timeline pattern for knowledge consolidation",
       "No cost-capped background maintenance for memory"
     ],
     "advantages_confirmed": [
       "Hybrid FTS5+vector+RRF architecture validated as correct pattern (gBrain uses identical approach)",
-      "Cross-encoder reranking (smgglrs-rag) is a step beyond gBrain's ZeroEntropy reranker",
-      "smgglrs's gateway security layer adds IFC/safety that gBrain lacks entirely"
+      "Cross-encoder reranking (navra-rag) is a step beyond gBrain's ZeroEntropy reranker",
+      "navra's gateway security layer adds IFC/safety that gBrain lacks entirely"
     ]
   },
   "ecosystem_context": {

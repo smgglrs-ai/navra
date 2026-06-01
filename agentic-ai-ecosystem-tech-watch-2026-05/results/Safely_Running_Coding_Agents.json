@@ -18,16 +18,16 @@
     ],
     "methodology": "Practitioner experience report using Claude Code (--dangerously-skip-permissions) and Codex (YOLO mode). No formal evaluation or benchmarks. Prescriptive advice based on personal production use."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["security", "tools-exec"],
     "relevance_category": "threat",
     "impact_level": "medium",
-    "relevance_rationale": "This article represents the 'no security' approach that smgglrs exists to protect against. The recommendation to skip all permissions and rely on infrastructure guardrails is exactly the threat model smgglrs addresses — agents with broad permissions need IFC, safety filters, and capability delegation to prevent data exfiltration and unauthorized actions. The article notably ignores prompt injection, supply-chain attacks, and data leakage. smgglrs's value proposition is proven by the gaps in this approach."
+    "relevance_rationale": "This article represents the 'no security' approach that navra exists to protect against. The recommendation to skip all permissions and rely on infrastructure guardrails is exactly the threat model navra addresses — agents with broad permissions need IFC, safety filters, and capability delegation to prevent data exfiltration and unauthorized actions. The article notably ignores prompt injection, supply-chain attacks, and data leakage. navra's value proposition is proven by the gaps in this approach."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "The reversible/irreversible distinction is valid — smgglrs-tools-exec could tag operations by reversibility",
-      "Agent-on-agent review pattern could be supported in smgglrs-flow as a safety check"
+      "The reversible/irreversible distinction is valid — navra-tools-exec could tag operations by reversibility",
+      "Agent-on-agent review pattern could be supported in navra-flow as a safety check"
     ],
     "what_to_watch": [
       "Whether this 'YOLO mode' approach leads to publicized security incidents",
@@ -41,11 +41,11 @@
     "priority_sprint": "N/A (anti-pattern documentation)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs exists precisely because this approach is dangerous. The article's gaps (no IFC, no safety filtering, no capability scoping, no prompt injection defense) are smgglrs's feature set.",
+    "how_navra_compares": "navra exists precisely because this approach is dangerous. The article's gaps (no IFC, no safety filtering, no capability scoping, no prompt injection defense) are navra's feature set.",
     "gaps_exposed": [],
     "advantages_confirmed": [
-      "smgglrs's entire security model (IFC, deny-wins ACLs, safety hooks, capability delegation) addresses the risks this article ignores",
-      "The reversible/irreversible distinction validates smgglrs-security's risk_tier system"
+      "navra's entire security model (IFC, deny-wins ACLs, safety hooks, capability delegation) addresses the risks this article ignores",
+      "The reversible/irreversible distinction validates navra-security's risk_tier system"
     ]
   },
   "ecosystem_context": {

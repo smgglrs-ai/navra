@@ -18,11 +18,11 @@
     ],
     "methodology": "Two-step approach: (1) TurboQuant-MLX quantizes the model to 3-bit (~54GB on disk), (2) MoE expert streaming pages only active experts (~8 of 256) from SSD into a small RAM cache per token. Validated first on a 35B model (<4GB) before scaling to 122B. The article notes that M-series SSD bandwidth is sufficient for coherent generation."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["model-runtime", "model-hub"],
     "relevance_category": "validation",
     "impact_level": "medium",
-    "relevance_rationale": "Validates smgglrs's vision of local model serving on consumer hardware. Expert streaming could enable smgglrs-model-runtime to serve large MoE models (Mixtral, Qwen) on desktop hardware that would otherwise require cloud offloading. The disk-bandwidth-wall insight is directly relevant to smgglrs's hardware tier profiles in MODELS.md. model-hub's OCI/HuggingFace caching could be extended to pre-download quantized + expert-streaming-ready model artifacts."
+    "relevance_rationale": "Validates navra's vision of local model serving on consumer hardware. Expert streaming could enable navra-model-runtime to serve large MoE models (Mixtral, Qwen) on desktop hardware that would otherwise require cloud offloading. The disk-bandwidth-wall insight is directly relevant to navra's hardware tier profiles in MODELS.md. model-hub's OCI/HuggingFace caching could be extended to pre-download quantized + expert-streaming-ready model artifacts."
   },
   "actionable_insights": {
     "what_to_adopt": [
@@ -41,13 +41,13 @@
     "priority_sprint": "S13+ (advanced model serving)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs currently targets small ONNX models in-process and larger models via backend engines. Expert streaming would add a new tier between in-process and full backend serving.",
+    "how_navra_compares": "navra currently targets small ONNX models in-process and larger models via backend engines. Expert streaming would add a new tier between in-process and full backend serving.",
     "gaps_exposed": [
       "No MoE-aware model serving strategy in model-runtime",
       "Hardware tier profiles don't account for SSD bandwidth as a model-serving resource"
     ],
     "advantages_confirmed": [
-      "smgglrs's tiered model architecture (CPU/GPU) anticipates exactly this kind of capability expansion"
+      "navra's tiered model architecture (CPU/GPU) anticipates exactly this kind of capability expansion"
     ]
   },
   "ecosystem_context": {

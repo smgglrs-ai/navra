@@ -18,15 +18,15 @@
     ],
     "methodology": "Ingestion: content-addressed via SHA-256 hash, dual-pass extraction (broad pass at ~10k chars/chunk + detail pass for names/prices/versions), 8-check verifier, classification into facts/events/instructions/tasks. Facts and instructions keyed by normalized topic with supersession semantics. Retrieval: 5 parallel channels (full-text search, exact fact-key lookup, raw message search, direct vector search, HyDE vector search) combined via RRF. HyDE generates a declarative answer to the query before vector search to catch vocabulary mismatches."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["rag", "memory"],
     "relevance_category": "validation",
     "impact_level": "high",
-    "relevance_rationale": "Cloudflare's 5-channel RRF architecture directly validates smgglrs-rag's hybrid FTS5+vector search with RRF fusion design. The HyDE channel is a concrete technique smgglrs-rag could adopt. The memory taxonomy (facts/events/instructions/tasks) and supersession semantics validate smgglrs-memory's working memory + knowledge store architecture. A major cloud vendor choosing RRF fusion confirms this is the right retrieval strategy."
+    "relevance_rationale": "Cloudflare's 5-channel RRF architecture directly validates navra-rag's hybrid FTS5+vector search with RRF fusion design. The HyDE channel is a concrete technique navra-rag could adopt. The memory taxonomy (facts/events/instructions/tasks) and supersession semantics validate navra-memory's working memory + knowledge store architecture. A major cloud vendor choosing RRF fusion confirms this is the right retrieval strategy."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "HyDE (Hypothetical Document Embeddings) as a third retrieval channel in smgglrs-rag alongside FTS5 and vector search",
+      "HyDE (Hypothetical Document Embeddings) as a third retrieval channel in navra-rag alongside FTS5 and vector search",
       "Memory taxonomy: classify stored memories into facts/events/instructions/tasks for retrieval prioritization",
       "Supersession semantics: key facts by normalized topic, supersede rather than delete, preserving history",
       "Content-addressed IDs (SHA-256) for idempotent memory ingestion"
@@ -42,10 +42,10 @@
     "priority_sprint": "Phase 10 (RAG enhancements)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-rag already implements hybrid FTS5+vector with RRF fusion, which is the same core architecture. Cloudflare adds 3 additional channels (exact fact-key lookup, raw message search, HyDE vector). smgglrs runs in-process with ONNX models while Cloudflare uses cloud-scale models (17B/120B MoE).",
+    "how_navra_compares": "navra-rag already implements hybrid FTS5+vector with RRF fusion, which is the same core architecture. Cloudflare adds 3 additional channels (exact fact-key lookup, raw message search, HyDE vector). navra runs in-process with ONNX models while Cloudflare uses cloud-scale models (17B/120B MoE).",
     "gaps_exposed": [
-      "smgglrs-rag lacks HyDE (hypothetical document embedding) channel for vocabulary mismatch handling",
-      "No memory taxonomy or typed memory classification in smgglrs-memory",
+      "navra-rag lacks HyDE (hypothetical document embedding) channel for vocabulary mismatch handling",
+      "No memory taxonomy or typed memory classification in navra-memory",
       "No supersession semantics for fact updates",
       "Missing dedicated fact-key lookup channel"
     ],

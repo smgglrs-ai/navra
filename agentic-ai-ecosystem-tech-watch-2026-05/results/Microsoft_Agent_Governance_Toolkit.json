@@ -18,11 +18,11 @@
     ],
     "methodology": "The toolkit intercepts every agent action (tool call, message send, delegation) in deterministic application code before the model's intent reaches the wire. The Agent OS package is a stateless policy engine supporting YAML rules, OPA Rego, and Cedar policy languages. Architecture follows a deny-by-default model: actions the kernel denies are structurally impossible, not merely unlikely. Seven packages cover distinct concerns: Agent OS (policy engine), Agent Mesh (discovery/routing/trust), Agent Runtime (execution sandboxing with four privilege rings), Agent SRE (kill switch, SLO monitoring, chaos testing), Agent Compliance (OWASP verification, policy linting), Agent Marketplace (plugin governance with Ed25519 signing), Agent Lightning (RL training governance), and Agent Hypervisor (execution audit, delta engine)."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["security", "core", "protocol", "flow", "agent", "server"],
     "relevance_category": "competitor",
     "impact_level": "high",
-    "relevance_rationale": "Microsoft AGT is the most direct competitor to smgglrs in the MCP gateway/governance space. It covers all 10 OWASP agentic risks with a comprehensive multi-package approach. Key overlaps: policy enforcement (AGT Agent OS vs smgglrs hook pipeline + ACLs), plugin/tool scanning (AGT Agent Marketplace vs smgglrs tool_scanner), execution sandboxing (AGT Agent Runtime rings vs smgglrs OpenShell integration), and inter-agent trust (AGT Agent Mesh + IATP vs smgglrs flow mesh). Microsoft's backing, MIT license, and multi-language support give it significant adoption advantage."
+    "relevance_rationale": "Microsoft AGT is the most direct competitor to navra in the MCP gateway/governance space. It covers all 10 OWASP agentic risks with a comprehensive multi-package approach. Key overlaps: policy enforcement (AGT Agent OS vs navra hook pipeline + ACLs), plugin/tool scanning (AGT Agent Marketplace vs navra tool_scanner), execution sandboxing (AGT Agent Runtime rings vs navra OpenShell integration), and inter-agent trust (AGT Agent Mesh + IATP vs navra flow mesh). Microsoft's backing, MIT license, and multi-language support give it significant adoption advantage."
   },
   "actionable_insights": {
     "what_to_adopt": [
@@ -34,29 +34,29 @@
     "what_to_watch": [
       "Agent Marketplace plugin ecosystem growth and whether it becomes a de facto standard",
       "IATP (Inter-Agent Trust Protocol) specification evolution — potential interop target",
-      "Agent Lightning RL governance patterns if smgglrs adds RL-based agent training"
+      "Agent Lightning RL governance patterns if navra adds RL-based agent training"
     ],
     "what_to_avoid": [
-      "Do not try to replicate the full 7-package scope — smgglrs should stay focused on gateway-enforced security rather than becoming a general governance framework",
-      "Avoid adopting AGT's DID-based identity wholesale — smgglrs BLAKE3 tokens + capability delegation is lighter and sufficient for desktop use case"
+      "Do not try to replicate the full 7-package scope — navra should stay focused on gateway-enforced security rather than becoming a general governance framework",
+      "Avoid adopting AGT's DID-based identity wholesale — navra BLAKE3 tokens + capability delegation is lighter and sufficient for desktop use case"
     ],
     "implementation_difficulty": "significant",
     "priority_sprint": "S10-S11 (Cedar policy support, OWASP compliance mapping)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs covers many of the same risks but through a gateway-enforced architecture rather than AGT's SDK-based approach. smgglrs has IFC (Information Flow Control) which AGT lacks — a unique differentiator for data provenance. AGT has broader framework integrations (10+ frameworks) while smgglrs focuses on being the MCP gateway layer. AGT is multi-language (Python/TS/Rust/Go/.NET) while smgglrs is Rust-only. AGT has more comprehensive compliance automation (EU AI Act, HIPAA, SOC2 mapping).",
+    "how_navra_compares": "navra covers many of the same risks but through a gateway-enforced architecture rather than AGT's SDK-based approach. navra has IFC (Information Flow Control) which AGT lacks — a unique differentiator for data provenance. AGT has broader framework integrations (10+ frameworks) while navra focuses on being the MCP gateway layer. AGT is multi-language (Python/TS/Rust/Go/.NET) while navra is Rust-only. AGT has more comprehensive compliance automation (EU AI Act, HIPAA, SOC2 mapping).",
     "gaps_exposed": [
-      "No structured OWASP ASI01-ASI10 compliance self-check or reporting in smgglrs",
+      "No structured OWASP ASI01-ASI10 compliance self-check or reporting in navra",
       "No Cedar policy language support (only deny-wins ACLs)",
       "No formal plugin/upstream MCP server signing verification (Ed25519 or similar)",
       "No kill switch or automated agent termination mechanism in flow orchestration",
       "No compliance grading or regulatory framework mapping (EU AI Act, HIPAA)"
     ],
     "advantages_confirmed": [
-      "Gateway-enforced IFC is absent from AGT — smgglrs uniquely tracks data provenance across tool calls",
+      "Gateway-enforced IFC is absent from AGT — navra uniquely tracks data provenance across tool calls",
       "In-process ONNX safety models for ML-based content filtering (AGT uses semantic classifiers but approach differs)",
       "Desktop-native integration (D-Bus, systemd, tray) vs AGT's cloud-first design",
-      "Causal provenance graphs in smgglrs-flow provide deeper audit trail than AGT's Agent Hypervisor"
+      "Causal provenance graphs in navra-flow provide deeper audit trail than AGT's Agent Hypervisor"
     ]
   },
   "ecosystem_context": {

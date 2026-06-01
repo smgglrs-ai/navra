@@ -19,17 +19,17 @@
     ],
     "methodology": "Lattice-based label model: confidentiality and integrity labels organized in lattice structure for compositional reasoning. Labels propagate dynamically as data moves through agent planning and execution pipeline. Deterministic enforcement ensures untrusted inputs cannot influence security-critical operations. Information-hiding primitives allow selective declassification for controlled data release. Taxonomy of tasks evaluating security-utility tradeoffs."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["security"],
     "relevance_category": "competitor",
     "impact_level": "high",
-    "relevance_rationale": "FIDES is the most direct academic competitor to smgglrs-security's IFC module. Both use lattice-based label models with dynamic taint-tracking. smgglrs uses a 2x4 product lattice (Integrity: Trusted/Untrusted x Confidentiality: Public/Sensitive/PII/Secret) with Bell-LaPadula enforcement. Key differences: (1) FIDES operates at the planner level (inside LLM reasoning loop), smgglrs enforces at the gateway level (deterministic, can't be bypassed by LLM); (2) FIDES has formal information-hiding primitives for selective declassification, while smgglrs has implicit declassification via PII filter pipeline (TaintTracker::declassify() exists but without cryptographic witness); (3) smgglrs already has per-value IFC via ValueStore with var:// references (FIDES-inspired) — each tool result gets its own DataLabel, and variable resolution computes effective labels as the join of all referenced values. NeuroTaint reports FIDES achieves only F1=0.522, but smgglrs augments label tracking with statistical guardrails (cosine drift detection + Shannon entropy monitoring) that neither FIDES nor NeuroTaint provides."
+    "relevance_rationale": "FIDES is the most direct academic competitor to navra-security's IFC module. Both use lattice-based label models with dynamic taint-tracking. navra uses a 2x4 product lattice (Integrity: Trusted/Untrusted x Confidentiality: Public/Sensitive/PII/Secret) with Bell-LaPadula enforcement. Key differences: (1) FIDES operates at the planner level (inside LLM reasoning loop), navra enforces at the gateway level (deterministic, can't be bypassed by LLM); (2) FIDES has formal information-hiding primitives for selective declassification, while navra has implicit declassification via PII filter pipeline (TaintTracker::declassify() exists but without cryptographic witness); (3) navra already has per-value IFC via ValueStore with var:// references (FIDES-inspired) — each tool result gets its own DataLabel, and variable resolution computes effective labels as the join of all referenced values. NeuroTaint reports FIDES achieves only F1=0.522, but navra augments label tracking with statistical guardrails (cosine drift detection + Shannon entropy monitoring) that neither FIDES nor NeuroTaint provides."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Selective declassification primitives — smgglrs-security's IFC could support controlled data release",
-      "FIDES's security-utility tradeoff taxonomy for evaluating smgglrs IFC configurations",
-      "AgentDojo benchmark for evaluating smgglrs-security effectiveness"
+      "Selective declassification primitives — navra-security's IFC could support controlled data release",
+      "FIDES's security-utility tradeoff taxonomy for evaluating navra IFC configurations",
+      "AgentDojo benchmark for evaluating navra-security effectiveness"
     ],
     "what_to_watch": [
       "NeuroTaint vs FIDES accuracy debate — F1=0.928 vs F1=0.522 on TaintBench",
@@ -37,24 +37,24 @@
       "Microsoft Agent Governance Toolkit integration with FIDES"
     ],
     "what_to_avoid": [
-      "Don't adopt FIDES's planner-level approach — smgglrs's gateway-level enforcement is more robust (doesn't depend on LLM cooperation)",
+      "Don't adopt FIDES's planner-level approach — navra's gateway-level enforcement is more robust (doesn't depend on LLM cooperation)",
       "Don't rely on label-tracking alone — NeuroTaint shows semantic/causal analysis may be needed"
     ],
     "implementation_difficulty": "moderate",
     "priority_sprint": "S11 (IFC enhancement)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-security's IFC operates at the gateway level (deterministic, can't be bypassed by the LLM), while FIDES operates at the planner level (inside the reasoning loop, requires LLM cooperation). smgglrs already has per-value IFC (ValueStore with var:// references, FIDES-inspired) providing finer granularity than per-session taint. smgglrs adds statistical guardrails (cosine drift + entropy) and temporal behavioral contracts that FIDES lacks. FIDES's advantage is formal information-hiding primitives for selective declassification — smgglrs has declassification but without cryptographic witnessing.",
+    "how_navra_compares": "navra-security's IFC operates at the gateway level (deterministic, can't be bypassed by the LLM), while FIDES operates at the planner level (inside the reasoning loop, requires LLM cooperation). navra already has per-value IFC (ValueStore with var:// references, FIDES-inspired) providing finer granularity than per-session taint. navra adds statistical guardrails (cosine drift + entropy) and temporal behavioral contracts that FIDES lacks. FIDES's advantage is formal information-hiding primitives for selective declassification — navra has declassification but without cryptographic witnessing.",
     "gaps_exposed": [
       "Declassification is implicit (PII filter trust) — no cryptographic witness or formal role check like FIDES's information-hiding primitives",
       "No formal security-utility tradeoff evaluation framework",
-      "No AgentDojo benchmark results for smgglrs"
+      "No AgentDojo benchmark results for navra"
     ],
     "advantages_confirmed": [
       "Gateway-level IFC enforcement (deterministic, can't be bypassed by LLM reasoning) is architecturally superior to planner-level",
       "Per-value IFC via ValueStore with var:// resolution already provides finer granularity than FIDES's per-session model",
       "Statistical behavioral guardrails (cosine drift + entropy monitoring) provide anomaly detection that FIDES lacks entirely",
-      "smgglrs combines IFC + ML safety filters + deny-wins ACLs + temporal contracts — FIDES uses labels only",
+      "navra combines IFC + ML safety filters + deny-wins ACLs + temporal contracts — FIDES uses labels only",
       "Kani-proven monotonicity invariants on taint propagation match FIDES's formal guarantees"
     ]
   },

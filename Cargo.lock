@@ -2754,6 +2754,474 @@ dependencies = [
 ]
 
 [[package]]
+name = "navra-agent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "navra-cognitive",
+ "navra-model",
+ "navra-protocol",
+ "navra-responses",
+ "navra-security",
+ "regex-lite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "navra-benchmarks"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "navra-cognitive",
+ "navra-core",
+ "navra-memory",
+ "navra-model",
+ "navra-responses",
+ "navra-security",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "navra-cognitive"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "navra-protocol",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "navra-core"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "dashmap",
+ "futures-util",
+ "glob",
+ "hex",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "navra-model",
+ "navra-protocol",
+ "navra-security",
+ "prost",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
+ "tower 0.5.3",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "navra-flow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "navra-agent",
+ "navra-cognitive",
+ "navra-model",
+ "navra-protocol",
+ "navra-responses",
+ "navra-security",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "navra-macros"
+version = "0.1.0"
+dependencies = [
+ "navra-core",
+ "navra-protocol",
+ "navra-security",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn",
+ "tokio",
+ "trybuild",
+]
+
+[[package]]
+name = "navra-memory"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "navra-core",
+ "navra-model",
+ "navra-rag",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "navra-modal-vision"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "dirs",
+ "futures-util",
+ "navra-core",
+ "navra-macros",
+ "navra-protocol",
+ "navra-security",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "zbus 5.15.0",
+]
+
+[[package]]
+name = "navra-modal-voice"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "dirs",
+ "navra-core",
+ "navra-macros",
+ "navra-protocol",
+ "navra-security",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "navra-model"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "futures-util",
+ "navra-responses",
+ "ndarray",
+ "ort",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "navra-model-hub"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "futures-util",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "navra-model-runtime"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "prost",
+ "reqwest",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tonic",
+ "tonic-build",
+ "tracing",
+]
+
+[[package]]
+name = "navra-protocol"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "navra-rag"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "navra-core",
+ "navra-macros",
+ "navra-protocol",
+ "navra-security",
+ "ndarray",
+ "ort",
+ "regex-lite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sqlite-vec",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
+name = "navra-responses"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "navra-security"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "blake3",
+ "bs58",
+ "cedar-policy",
+ "ciborium",
+ "dirs",
+ "ed25519-dalek",
+ "futures-util",
+ "glob",
+ "hex",
+ "jsonwebtoken",
+ "keyring",
+ "navra-model",
+ "navra-protocol",
+ "ndarray",
+ "ort",
+ "rand 0.8.6",
+ "regex-lite",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tokio",
+ "tracing",
+ "ureq",
+ "uuid",
+ "zbus 5.15.0",
+]
+
+[[package]]
+name = "navra-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "axum 0.8.9",
+ "bs58",
+ "clap",
+ "dirs",
+ "flume",
+ "futures-util",
+ "glob",
+ "hex",
+ "hmac",
+ "http-body-util",
+ "ksni",
+ "mdns-sd",
+ "navra-agent",
+ "navra-cognitive",
+ "navra-core",
+ "navra-flow",
+ "navra-memory",
+ "navra-modal-vision",
+ "navra-modal-voice",
+ "navra-model",
+ "navra-model-hub",
+ "navra-model-runtime",
+ "navra-rag",
+ "navra-tools-exec",
+ "navra-tools-file",
+ "navra-tools-git",
+ "navra-tools-github",
+ "navra-tools-gitlab",
+ "notify",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "rand 0.8.6",
+ "reqwest",
+ "rusqlite",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "toml 0.8.23",
+ "tonic",
+ "tower 0.5.3",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "navra-tools-exec"
+version = "0.1.0"
+dependencies = [
+ "navra-core",
+ "navra-macros",
+ "navra-model-runtime",
+ "navra-protocol",
+ "navra-security",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "tracing",
+]
+
+[[package]]
+name = "navra-tools-file"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "dirs",
+ "navra-core",
+ "navra-macros",
+ "navra-protocol",
+ "navra-security",
+ "notify",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sqlite-vec",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
+name = "navra-tools-git"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "navra-core",
+ "navra-macros",
+ "navra-protocol",
+ "navra-security",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "navra-tools-github"
+version = "0.1.0"
+dependencies = [
+ "glob",
+ "navra-core",
+ "navra-macros",
+ "navra-protocol",
+ "navra-security",
+ "regex",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "navra-tools-gitlab"
+version = "0.1.0"
+dependencies = [
+ "navra-core",
+ "navra-macros",
+ "navra-protocol",
+ "navra-security",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ndarray"
 version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4271,472 +4739,6 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
-
-[[package]]
-name = "smgglrs-agent"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "regex-lite",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "smgglrs-cognitive",
- "smgglrs-model",
- "smgglrs-protocol",
- "smgglrs-responses",
- "smgglrs-security",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "smgglrs-benchmarks"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "serde_json",
- "smgglrs-cognitive",
- "smgglrs-core",
- "smgglrs-model",
- "smgglrs-responses",
- "smgglrs-security",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "smgglrs-cognitive"
-version = "0.1.0"
-dependencies = [
- "hex",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-core"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "async-trait",
- "axum 0.8.9",
- "base64 0.22.1",
- "dashmap",
- "futures-util",
- "glob",
- "hex",
- "http-body-util",
- "hyper",
- "hyper-util",
- "prost",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "smgglrs-model",
- "smgglrs-protocol",
- "smgglrs-security",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-build",
- "tower 0.5.3",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "smgglrs-flow"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "smgglrs-agent",
- "smgglrs-cognitive",
- "smgglrs-model",
- "smgglrs-protocol",
- "smgglrs-responses",
- "smgglrs-security",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_json",
- "smgglrs-core",
- "smgglrs-protocol",
- "smgglrs-security",
- "syn",
- "tokio",
- "trybuild",
-]
-
-[[package]]
-name = "smgglrs-memory"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "smgglrs-core",
- "smgglrs-model",
- "smgglrs-rag",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "smgglrs-modal-vision"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "dirs",
- "futures-util",
- "serde",
- "serde_json",
- "smgglrs-core",
- "smgglrs-macros",
- "smgglrs-protocol",
- "smgglrs-security",
- "tempfile",
- "tokio",
- "tracing",
- "zbus 5.15.0",
-]
-
-[[package]]
-name = "smgglrs-modal-voice"
-version = "0.1.0"
-dependencies = [
- "cpal",
- "dirs",
- "serde",
- "serde_json",
- "smgglrs-core",
- "smgglrs-macros",
- "smgglrs-protocol",
- "smgglrs-security",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-model"
-version = "0.1.0"
-dependencies = [
- "async-stream",
- "futures-util",
- "ndarray",
- "ort",
- "reqwest",
- "serde",
- "serde_json",
- "smgglrs-responses",
- "thiserror 2.0.18",
- "tokenizers",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-model-hub"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "futures-util",
- "hex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-model-runtime"
-version = "0.1.0"
-dependencies = [
- "libc",
- "prost",
- "reqwest",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tonic",
- "tonic-build",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-protocol"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-rag"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "ndarray",
- "ort",
- "regex-lite",
- "rusqlite",
- "serde",
- "serde_json",
- "smgglrs-core",
- "smgglrs-macros",
- "smgglrs-protocol",
- "smgglrs-security",
- "sqlite-vec",
- "tempfile",
- "thiserror 2.0.18",
- "tokenizers",
- "tokio",
- "tracing",
- "uuid",
- "zerocopy",
-]
-
-[[package]]
-name = "smgglrs-responses"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "smgglrs-security"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum 0.8.9",
- "base64 0.22.1",
- "blake3",
- "bs58",
- "cedar-policy",
- "ciborium",
- "dirs",
- "ed25519-dalek",
- "futures-util",
- "glob",
- "hex",
- "jsonwebtoken",
- "keyring",
- "ndarray",
- "ort",
- "rand 0.8.6",
- "regex-lite",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "sha2",
- "smgglrs-model",
- "smgglrs-protocol",
- "tempfile",
- "thiserror 2.0.18",
- "tokenizers",
- "tokio",
- "tracing",
- "ureq",
- "uuid",
- "zbus 5.15.0",
-]
-
-[[package]]
-name = "smgglrs-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "async-trait",
- "axum 0.8.9",
- "bs58",
- "clap",
- "dirs",
- "flume",
- "futures-util",
- "glob",
- "hex",
- "hmac",
- "http-body-util",
- "ksni",
- "mdns-sd",
- "notify",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "rand 0.8.6",
- "reqwest",
- "rusqlite",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "smgglrs-agent",
- "smgglrs-cognitive",
- "smgglrs-core",
- "smgglrs-flow",
- "smgglrs-memory",
- "smgglrs-modal-vision",
- "smgglrs-modal-voice",
- "smgglrs-model",
- "smgglrs-model-hub",
- "smgglrs-model-runtime",
- "smgglrs-rag",
- "smgglrs-tools-exec",
- "smgglrs-tools-file",
- "smgglrs-tools-git",
- "smgglrs-tools-github",
- "smgglrs-tools-gitlab",
- "tempfile",
- "tokio",
- "tokio-util",
- "toml 0.8.23",
- "tonic",
- "tower 0.5.3",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "urlencoding",
- "uuid",
-]
-
-[[package]]
-name = "smgglrs-tools-exec"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "smgglrs-core",
- "smgglrs-macros",
- "smgglrs-model-runtime",
- "smgglrs-protocol",
- "smgglrs-security",
- "tokio",
- "tonic",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-tools-file"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "dirs",
- "notify",
- "rusqlite",
- "serde",
- "serde_json",
- "smgglrs-core",
- "smgglrs-macros",
- "smgglrs-protocol",
- "smgglrs-security",
- "sqlite-vec",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
- "zerocopy",
-]
-
-[[package]]
-name = "smgglrs-tools-git"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "serde",
- "serde_json",
- "smgglrs-core",
- "smgglrs-macros",
- "smgglrs-protocol",
- "smgglrs-security",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-tools-github"
-version = "0.1.0"
-dependencies = [
- "glob",
- "regex",
- "serde",
- "serde_json",
- "smgglrs-core",
- "smgglrs-macros",
- "smgglrs-protocol",
- "smgglrs-security",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "smgglrs-tools-gitlab"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "smgglrs-core",
- "smgglrs-macros",
- "smgglrs-protocol",
- "smgglrs-security",
- "tokio",
- "tracing",
-]
 
 [[package]]
 name = "smol_str"

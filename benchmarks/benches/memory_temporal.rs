@@ -4,8 +4,8 @@
 //! flat KnowledgeStore vs hierarchical TemporalTree.
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use smgglrs_memory::temporal::{TemporalTree, TreeType};
-use smgglrs_memory::{KnowledgeStore, MemoryEntry, MemoryType};
+use navra_memory::temporal::{TemporalTree, TreeType};
+use navra_memory::{KnowledgeStore, MemoryEntry, MemoryType};
 
 fn make_entry(i: usize, ts: i64) -> MemoryEntry {
     MemoryEntry {

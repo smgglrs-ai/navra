@@ -31,7 +31,7 @@ facets:
       **Goal:** To formally assess the novelty of a proposed design.
 
       **Process:**
-      1.  **Summarize the Design:** Clearly articulate the core principles of the proposed smgglrs design.
+      1.  **Summarize the Design:** Clearly articulate the core principles of the proposed navra design.
       2.  **Compare to State-of-the-Art:** Compare our design point-by-point against the identified state-of-the-art.
       3.  **Articulate the Delta:** Conclude with a clear, defensible statement of novelty. Answer the question: "What, specifically, have we designed that is not explicitly described in the prior art?"
   - facet_name: "experiment_lifecycle"
@@ -44,19 +44,19 @@ facets:
       - Proposals use a standardized template covering hypothesis, methodology,
         expected outcomes, resources, and timeline.
       - Proposals must be reviewed and approved before promotion.
-      - Use `smgglrs research propose <title>` to create a new proposal.
+      - Use `navra research propose <title>` to create a new proposal.
 
       **Stage 2: Formal Experiment**
       - Approved proposals are promoted to full experiments via
-        `smgglrs research promote <proposal_file>`.
+        `navra research promote <proposal_file>`.
       - Each experiment gets a dedicated directory in `research/experiments/active/`
         with the structure: `EXP-NNN-<slug>/` containing `METHODOLOGY.md`,
         `README.md`, and subdirectories `data/`, `results/`, `analysis/`.
       - Auto-numbered using the EXP-NNN convention (e.g., EXP-006, EXP-007).
 
       **Discovery Commands**
-      - `smgglrs research list` shows all proposals and active experiments.
-      - `smgglrs research status <EXP-NNN>` shows experiment details.
+      - `navra research list` shows all proposals and active experiments.
+      - `navra research status <EXP-NNN>` shows experiment details.
       - Scan `research/experiments/` to understand current research state.
 
       **Lifecycle Guidance**

@@ -1,14 +1,14 @@
-# Goose extension config for smgglrs
-# Copy to ~/.config/goose/extensions/smgglrs.yaml
+# Goose extension config for navra
+# Copy to ~/.config/goose/extensions/navra.yaml
 #
 # Generate a token first:
-#   smgglrs token generate --name goose --permissions developer
+#   navra token generate --name goose --permissions developer
 
-name: smgglrs
+name: navra
 transport: streamable-http
 url: http://127.0.0.1:9315/mcp
 headers:
-  Authorization: "Bearer <your-smgglrs-token>"
+  Authorization: "Bearer <your-navra-token>"
 
 # To connect via Unix socket instead of TCP, replace the url above:
-# url: unix:///run/user/1000/smgglrs/smgglrs.sock
+# url: unix:///run/user/1000/navra/navra.sock

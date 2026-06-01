@@ -1,7 +1,7 @@
-# Connecting Goose to smgglrs
+# Connecting Goose to navra
 
 Goose is a desktop AI agent that connects to MCP servers as
-extensions. smgglrs speaks MCP Streamable HTTP natively, so Goose
+extensions. navra speaks MCP Streamable HTTP natively, so Goose
 can use it directly as an extension -- no adapters or plugins
 needed.
 
@@ -9,17 +9,17 @@ This guide walks through configuring both sides of the connection.
 
 ## Prerequisites
 
-- **smgglrs** running (systemd or manual). See the main README for
+- **navra** running (systemd or manual). See the main README for
   build and run instructions.
 - **Goose** desktop app installed
   ([goose.ai](https://block.github.io/goose/)).
 
-## 1. Configure smgglrs for Goose
+## 1. Configure navra for Goose
 
 ### Generate a token
 
 ```bash
-smgglrs token generate --name goose --permissions developer
+navra token generate --name goose --permissions developer
 ```
 
 This prints two values:
@@ -27,11 +27,11 @@ This prints two values:
 - **Bearer token** -- give this to Goose (the secret).
 - **BLAKE3 hash** -- store this in `config.toml` (the verifier).
 
-Keep the bearer token somewhere safe. smgglrs does not store it.
+Keep the bearer token somewhere safe. navra does not store it.
 
 ### Add the agent entry
 
-Edit `~/.config/smgglrs/config.toml` and add:
+Edit `~/.config/navra/config.toml` and add:
 
 ```toml
 [[agents]]
@@ -40,62 +40,62 @@ token_hash = "<blake3-hash-from-above>"
 permissions = "developer"
 ```
 
-See `examples/smgglrs-for-goose.toml` for a full example with
+See `examples/navra-for-goose.toml` for a full example with
 permission sets and tool rules.
 
-### Restart smgglrs
+### Restart navra
 
 If running via systemd:
 
 ```bash
-systemctl --user restart smgglrs
+systemctl --user restart navra
 ```
 
 If running manually, stop and restart the process.
 
 ## 2. Configure Goose
 
-Add smgglrs as a Goose extension. Create or edit the file
-`~/.config/goose/extensions/smgglrs.yaml`:
+Add navra as a Goose extension. Create or edit the file
+`~/.config/goose/extensions/navra.yaml`:
 
 ```yaml
-name: smgglrs
+name: navra
 transport: streamable-http
 url: http://127.0.0.1:9315/mcp
 headers:
-  Authorization: "Bearer <your-smgglrs-token>"
+  Authorization: "Bearer <your-navra-token>"
 ```
 
-If smgglrs is listening on a Unix socket instead of TCP:
+If navra is listening on a Unix socket instead of TCP:
 
 ```yaml
-name: smgglrs
+name: navra
 transport: streamable-http
-url: unix:///run/user/1000/smgglrs/smgglrs.sock
+url: unix:///run/user/1000/navra/navra.sock
 headers:
-  Authorization: "Bearer <your-smgglrs-token>"
+  Authorization: "Bearer <your-navra-token>"
 ```
 
 See `examples/goose-extension.yaml` for a ready-to-use template.
 
 ## 3. Verify the connection
 
-Open Goose and check that smgglrs tools appear. You can verify
+Open Goose and check that navra tools appear. You can verify
 from the Goose CLI as well:
 
 ```bash
 goose extensions list
 ```
 
-You should see `smgglrs` listed with its tools (e.g., `file_read`,
+You should see `navra` listed with its tools (e.g., `file_read`,
 `file_search`, `git_status`, `git_diff`).
 
 Try a simple command in Goose:
 
 > "List my git repositories under ~/Code"
 
-Goose should invoke smgglrs's tools and return results. If modules
-like git or docs are disabled in your smgglrs config, only the
+Goose should invoke navra's tools and return results. If modules
+like git or docs are disabled in your navra config, only the
 enabled modules' tools will appear.
 
 ## Security considerations
@@ -104,13 +104,13 @@ enabled modules' tools will appear.
 
 - The bearer token is a shared secret. Treat it like a password.
 - Rotate tokens periodically: generate a new one, update Goose's
-  config, update the hash in `config.toml`, restart smgglrs.
+  config, update the hash in `config.toml`, restart navra.
 - Each agent (Goose, Claude Code, etc.) should have its own token
   and permission set.
 
 ### Path ACLs
 
-smgglrs enforces deny-wins path ACLs. The permission set assigned to
+navra enforces deny-wins path ACLs. The permission set assigned to
 Goose controls which directories it can access:
 
 ```toml
@@ -151,7 +151,7 @@ policy = "approve"
 
 ### Safety filters
 
-smgglrs runs regex and ML-based safety filters on all tool inputs
+navra runs regex and ML-based safety filters on all tool inputs
 and outputs. Secrets, API keys, and PII are redacted before
 reaching Goose. Configure the safety level per permission set:
 
@@ -161,7 +161,7 @@ safety = "standard"   # all filters, redaction enabled
 
 ### Information flow control (IFC)
 
-smgglrs tracks data provenance across tool calls. If Goose reads a
+navra tracks data provenance across tool calls. If Goose reads a
 file tagged as confidential, IFC prevents that content from
 flowing to lower-trust tools or upstream servers. This works
 transparently -- no Goose-side configuration needed.
@@ -170,22 +170,22 @@ transparently -- no Goose-side configuration needed.
 
 ### Connection refused
 
-- Verify smgglrs is running: `systemctl --user status smgglrs` or
+- Verify navra is running: `systemctl --user status navra` or
   check the process manually.
 - Confirm the address matches. Default TCP is `127.0.0.1:9315`.
   Check `[server]` in your `config.toml`.
 - If using a Unix socket, verify the socket file exists:
-  `ls -la /run/user/$(id -u)/smgglrs/smgglrs.sock`
+  `ls -la /run/user/$(id -u)/navra/navra.sock`
 
 ### Authentication failure (401)
 
 - Verify the bearer token in Goose's config matches the one
-  generated by `smgglrs token generate`.
+  generated by `navra token generate`.
 - Verify the `token_hash` in `config.toml` is the BLAKE3 hash
   (not the token itself).
 - Check that the `[[agents]]` entry for `goose` exists and has
   no typos.
-- Restart smgglrs after any config change.
+- Restart navra after any config change.
 
 ### Tools not found
 
@@ -208,13 +208,13 @@ transparently -- no Goose-side configuration needed.
 ### Tool call pending approval
 
 - Operations in the `approve` list require human confirmation.
-  Check for a D-Bus notification or run `smgglrs approve <id>`.
+  Check for a D-Bus notification or run `navra approve <id>`.
 - The default approval timeout is 300 seconds (configurable
   via `[approval] timeout_secs`).
 
 ### Timeout or slow responses
 
-- smgglrs runs safety filters on every tool call. If ML filters
+- navra runs safety filters on every tool call. If ML filters
   are enabled, the first call may be slow while the ONNX model
   loads.
 - Large file reads or searches may take time depending on the

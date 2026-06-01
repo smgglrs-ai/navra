@@ -1,9 +1,9 @@
 # Agentic AI Ecosystem Tech Watch — May 2026
 
-> Research report for the **smgglrs** gateway project.
+> Research report for the **navra** gateway project.
 > 31 items analyzed across inference optimization, agent frameworks,
 > security/auth protocols, RAG patterns, memory architectures, and business models.
-> All smgglrs relevance assessments verified against code-level analysis of the 18-crate workspace.
+> All navra relevance assessments verified against code-level analysis of the 18-crate workspace.
 
 ## Summary
 
@@ -92,7 +92,7 @@
 > Breaking changes with 10-week validation window.
 > Deprecation policy: roots replaced by tool parameters/resource URIs, sampling replaced by direct LLM API integration, logging replaced by stderr/OpenTelemetry.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**:
 - protocol
@@ -105,15 +105,15 @@
 - **Impact Level**: high
 - **Relevance Rationale**:
 > Breaking protocol revision.
-> Code analysis reveals smgglrs currently implements MCP spec 2025-03-26 (constant PROTOCOL_VERSION in smgglrs-protocol/src/mcp.rs).
-> Specific impacts: (1) Session removal breaks smgglrs-core's Session struct (id, agent, client_info, context_label, created_at, last_accessed) and SessionStore/SessionBackend trait (InMemory + DashMap backends) — context_label IFC accumulation across requests must be rethought without sessions; (2) Mcp-Method/Mcp-Name headers change routing in smgglrs-core's transport layer (build_router, build_router_with_broadcaster); (3) smgglrs-protocol defines RootsCapability, PromptRole, pagination types that may change; (4) smgglrs-security's OAuthProvider already implements OAuth 2.1 with Ed25519 JWT and RFC 8693 token exchange, but OIDC alignment may require updates; (5) Tasks extension redesign affects smgglrs-core's TaskStore (in-memory HashMap) and A2A dispatch; (6) W3C Trace Context propagation — smgglrs-core has Prometheus metrics but no OTel spans, so traceparent/tracestate in _meta needs new plumbing.
+> Code analysis reveals navra currently implements MCP spec 2025-03-26 (constant PROTOCOL_VERSION in navra-protocol/src/mcp.rs).
+> Specific impacts: (1) Session removal breaks navra-core's Session struct (id, agent, client_info, context_label, created_at, last_accessed) and SessionStore/SessionBackend trait (InMemory + DashMap backends) — context_label IFC accumulation across requests must be rethought without sessions; (2) Mcp-Method/Mcp-Name headers change routing in navra-core's transport layer (build_router, build_router_with_broadcaster); (3) navra-protocol defines RootsCapability, PromptRole, pagination types that may change; (4) navra-security's OAuthProvider already implements OAuth 2.1 with Ed25519 JWT and RFC 8693 token exchange, but OIDC alignment may require updates; (5) Tasks extension redesign affects navra-core's TaskStore (in-memory HashMap) and A2A dispatch; (6) W3C Trace Context propagation — navra-core has Prometheus metrics but no OTel spans, so traceparent/tracestate in _meta needs new plumbing.
 > Most critical risk: IFC session taint accumulation depends on session identity.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Remove Mcp-Session-Id handling and session state from smgglrs-protocol and smgglrs-core
-- Add Mcp-Method and Mcp-Name header parsing for request routing in smgglrs-server
+- Remove Mcp-Session-Id handling and session state from navra-protocol and navra-core
+- Add Mcp-Method and Mcp-Name header parsing for request routing in navra-server
 - Implement ttlMs/cacheScope on tools/list and resources/list responses
 - Add W3C Trace Context propagation (traceparent/tracestate/baggage) in _meta alongside existing OTel support
 - Implement MCP Apps extension: sandboxed iframe rendering with security review pipeline
@@ -132,13 +132,13 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs currently implements MCP 2025-11-25 with ~35/39 methods.
-> The stateless redesign actually benefits smgglrs's gateway architecture — a stateless protocol makes gateway proxying simpler (no session affinity needed).
-> smgglrs's existing OTel support aligns well with the W3C Trace Context addition.
-> The MCP Apps extension is new territory that plays to smgglrs's security review capabilities.
+- **How Navra Compares**:
+> navra currently implements MCP 2025-11-25 with ~35/39 methods.
+> The stateless redesign actually benefits navra's gateway architecture — a stateless protocol makes gateway proxying simpler (no session affinity needed).
+> navra's existing OTel support aligns well with the W3C Trace Context addition.
+> The MCP Apps extension is new territory that plays to navra's security review capabilities.
 - **Gaps Exposed**:
-- smgglrs must remove its session management code and adopt stateless request handling
+- navra must remove its session management code and adopt stateless request handling
 - No MCP Apps rendering/security-review pipeline exists yet
 - Tasks implementation needs redesign from core to extension pattern
 - OAuth implementation needs alignment with 6 new hardening SEPs
@@ -198,7 +198,7 @@
 > Three-stage attack chain: (1) Infiltration — hidden instructions embedded in seemingly innocuous documents such as employee onboarding PDFs from public sources; (2) Discovery — when uploaded to an MCP-enabled AI assistant, hidden instructions prompt the agent to access connected databases, CRM systems, and file shares, surfacing private data (names, addresses, credit cards, PHI); (3) Exfiltration — hidden instructions command the agent to send entire datasets to external servers, disguised as routine analytics or performance uploads.
 > The attack exploits the trust relationship between MCP tools and the agent: the agent has authorized access to connected resources, and the hidden instructions redirect that access for data theft.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**:
 - security
@@ -210,7 +210,7 @@
 - **Relevance Category**: threat
 - **Impact Level**: high
 - **Relevance Rationale**:
-> Shadow Escape validates smgglrs core design: gateway-enforced security is exactly the defense against this attack class.
+> Shadow Escape validates navra core design: gateway-enforced security is exactly the defense against this attack class.
 > Code-level analysis confirms: (1) Per-value IFC (ValueStore with var:// resolution) tracks taint at individual tool-result granularity — data from an uploaded document gets labeled Untrusted, and TaintedWritePolicy::Deny prevents tainted sessions from writing to external destinations; (2) TaintGate temporal predicate can block specific tools after seeing taint elevation — e.g., block network tools after PII detection; (3) Statistical guardrails (CosineDriftDetector) would flag anomalous tool-use patterns (read document → immediate exfiltration is a behavioral anomaly); (4) Tool scanner's DescriptionInjection detection catches hidden instructions in tool descriptions.
 > Remaining gap: no egress filtering at the network level, and IFC tracks structural taint (explicit content transfer) but not semantic taint (paraphrased exfiltration).
 
@@ -233,8 +233,8 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs is better positioned than most MCP clients/gateways to defend against Shadow Escape because: (1) IFC tracks data provenance and can detect cross-tool exfiltration patterns; (2) the hook pipeline can intercept and analyze tool calls before execution; (3) deny-wins ACLs restrict which tools can access which resources; (4) upstream tool scanning (8 threat categories) can flag suspicious tool behavior.
+- **How Navra Compares**:
+> navra is better positioned than most MCP clients/gateways to defend against Shadow Escape because: (1) IFC tracks data provenance and can detect cross-tool exfiltration patterns; (2) the hook pipeline can intercept and analyze tool calls before execution; (3) deny-wins ACLs restrict which tools can access which resources; (4) upstream tool scanning (8 threat categories) can flag suspicious tool behavior.
 > Most competing MCP gateways lack IFC and therefore cannot detect the data flow anomaly at the core of this attack.
 - **Gaps Exposed**:
 - No explicit egress filtering or external endpoint allowlisting in current security hooks
@@ -298,50 +298,50 @@
 > Information-hiding primitives allow selective declassification for controlled data release.
 > Taxonomy of tasks evaluating security-utility tradeoffs.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: security
 - **Relevance Category**: competitor
 - **Impact Level**: high
 - **Relevance Rationale**:
-> FIDES is the most direct academic competitor to smgglrs-security's IFC module.
+> FIDES is the most direct academic competitor to navra-security's IFC module.
 > Both use lattice-based label models with dynamic taint-tracking.
-> smgglrs uses a 2x4 product lattice (Integrity: Trusted/Untrusted x Confidentiality: Public/Sensitive/PII/Secret) with Bell-LaPadula enforcement.
-> Key differences: (1) FIDES operates at the planner level (inside LLM reasoning loop), smgglrs enforces at the gateway level (deterministic, can't be bypassed by LLM); (2) FIDES has formal information-hiding primitives for selective declassification, while smgglrs has implicit declassification via PII filter pipeline (TaintTracker::declassify() exists but without cryptographic witness); (3) smgglrs already has per-value IFC via ValueStore with var:// references (FIDES-inspired) — each tool result gets its own DataLabel, and variable resolution computes effective labels as the join of all referenced values.
-> NeuroTaint reports FIDES achieves only F1=0.522, but smgglrs augments label tracking with statistical guardrails (cosine drift detection + Shannon entropy monitoring) that neither FIDES nor NeuroTaint provides.
+> navra uses a 2x4 product lattice (Integrity: Trusted/Untrusted x Confidentiality: Public/Sensitive/PII/Secret) with Bell-LaPadula enforcement.
+> Key differences: (1) FIDES operates at the planner level (inside LLM reasoning loop), navra enforces at the gateway level (deterministic, can't be bypassed by LLM); (2) FIDES has formal information-hiding primitives for selective declassification, while navra has implicit declassification via PII filter pipeline (TaintTracker::declassify() exists but without cryptographic witness); (3) navra already has per-value IFC via ValueStore with var:// references (FIDES-inspired) — each tool result gets its own DataLabel, and variable resolution computes effective labels as the join of all referenced values.
+> NeuroTaint reports FIDES achieves only F1=0.522, but navra augments label tracking with statistical guardrails (cosine drift detection + Shannon entropy monitoring) that neither FIDES nor NeuroTaint provides.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Selective declassification primitives — smgglrs-security's IFC could support controlled data release
-- FIDES's security-utility tradeoff taxonomy for evaluating smgglrs IFC configurations
-- AgentDojo benchmark for evaluating smgglrs-security effectiveness
+- Selective declassification primitives — navra-security's IFC could support controlled data release
+- FIDES's security-utility tradeoff taxonomy for evaluating navra IFC configurations
+- AgentDojo benchmark for evaluating navra-security effectiveness
 - **What To Watch**:
 - NeuroTaint vs FIDES accuracy debate — F1=0.928 vs F1=0.522 on TaintBench
 - Whether FIDES becomes the reference IFC implementation for agent security
 - Microsoft Agent Governance Toolkit integration with FIDES
 - **What To Avoid**:
-- Don't adopt FIDES's planner-level approach — smgglrs's gateway-level enforcement is more robust (doesn't depend on LLM cooperation)
+- Don't adopt FIDES's planner-level approach — navra's gateway-level enforcement is more robust (doesn't depend on LLM cooperation)
 - Don't rely on label-tracking alone — NeuroTaint shows semantic/causal analysis may be needed
 - **Implementation Difficulty**: moderate
 - **Priority Sprint**: S11 (IFC enhancement)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-security's IFC operates at the gateway level (deterministic, can't be bypassed by the LLM), while FIDES operates at the planner level (inside the reasoning loop, requires LLM cooperation).
-> smgglrs already has per-value IFC (ValueStore with var:// references, FIDES-inspired) providing finer granularity than per-session taint.
-> smgglrs adds statistical guardrails (cosine drift + entropy) and temporal behavioral contracts that FIDES lacks.
-> FIDES's advantage is formal information-hiding primitives for selective declassification — smgglrs has declassification but without cryptographic witnessing.
+- **How Navra Compares**:
+> navra-security's IFC operates at the gateway level (deterministic, can't be bypassed by the LLM), while FIDES operates at the planner level (inside the reasoning loop, requires LLM cooperation).
+> navra already has per-value IFC (ValueStore with var:// references, FIDES-inspired) providing finer granularity than per-session taint.
+> navra adds statistical guardrails (cosine drift + entropy) and temporal behavioral contracts that FIDES lacks.
+> FIDES's advantage is formal information-hiding primitives for selective declassification — navra has declassification but without cryptographic witnessing.
 - **Gaps Exposed**:
 - Declassification is implicit (PII filter trust) — no cryptographic witness or formal role check like FIDES's information-hiding primitives
 - No formal security-utility tradeoff evaluation framework
-- No AgentDojo benchmark results for smgglrs
+- No AgentDojo benchmark results for navra
 - **Advantages Confirmed**:
 - Gateway-level IFC enforcement (deterministic, can't be bypassed by LLM reasoning) is architecturally superior to planner-level
 - Per-value IFC via ValueStore with var:// resolution already provides finer granularity than FIDES's per-session model
 - Statistical behavioral guardrails (cosine drift + entropy monitoring) provide anomaly detection that FIDES lacks entirely
-- smgglrs combines IFC + ML safety filters + deny-wins ACLs + temporal contracts — FIDES uses labels only
+- navra combines IFC + ML safety filters + deny-wins ACLs + temporal contracts — FIDES uses labels only
 - Kani-proven monotonicity invariants on taint propagation match FIDES's formal guarantees
 
 **Ecosystem Context**
@@ -383,44 +383,44 @@
 - Execution firewall paradigm — assumes injection will occur, prevents privileged sink access
 - Drop-in integration (LangChain callback mentioned in web search data)
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: security
 - **Relevance Category**: competitor
 - **Impact Level**: high
 - **Relevance Rationale**:
-> MVAR is a direct competitor to smgglrs-security's IFC module.
+> MVAR is a direct competitor to navra-security's IFC module.
 > Both use lattice-based models.
-> Key differences: (1) MVAR uses dual lattices (separate confidentiality + integrity), smgglrs uses a 2x4 product lattice (2 Integrity levels x 4 Confidentiality levels) — architecturally similar but smgglrs has more confidentiality granularity (Public/Sensitive/PII/Secret vs typical binary); (2) MVAR includes cryptographic provenance — smgglrs has hash-chained blackbox audit (SHA-256 chain, tamper-detectable) but no per-data-flow cryptographic signing; (3) MVAR's execution firewall (assume injection, prevent sink access) vs smgglrs's defense-in-depth (IFC labels + statistical guardrails + temporal contracts + ML safety).
-> smgglrs's TaintedWritePolicy (Allow/Approve/Deny) with TaintGate temporal predicate provides a form of execution firewall but at the behavioral level, not the data-flow level.
+> Key differences: (1) MVAR uses dual lattices (separate confidentiality + integrity), navra uses a 2x4 product lattice (2 Integrity levels x 4 Confidentiality levels) — architecturally similar but navra has more confidentiality granularity (Public/Sensitive/PII/Secret vs typical binary); (2) MVAR includes cryptographic provenance — navra has hash-chained blackbox audit (SHA-256 chain, tamper-detectable) but no per-data-flow cryptographic signing; (3) MVAR's execution firewall (assume injection, prevent sink access) vs navra's defense-in-depth (IFC labels + statistical guardrails + temporal contracts + ML safety).
+> navra's TaintedWritePolicy (Allow/Approve/Deny) with TaintGate temporal predicate provides a form of execution firewall but at the behavioral level, not the data-flow level.
 
 **Actionable Insights**
 
 - **What To Adopt**:
 - Execution firewall paradigm — assume injection will occur, focus on preventing sink access rather than detecting injection
 - Cryptographic provenance for tamper-proof data flow audit trails
-- 100% adversarial corpus test as a security benchmark target for smgglrs
+- 100% adversarial corpus test as a security benchmark target for navra
 - **What To Watch**:
 - MVAR's actual codebase maturity and community adoption
 - Whether dual-lattice vs product-lattice provides meaningful security improvement
 - Integration with MCP-specific attack vectors (Shadow Escape)
 - **What To Avoid**:
 - Don't assume MVAR's 100% claim generalizes — 50 vectors is a small corpus
-- Don't switch to dual lattices without evaluating smgglrs's product lattice against same benchmark
+- Don't switch to dual lattices without evaluating navra's product lattice against same benchmark
 - **Implementation Difficulty**: moderate
 - **Priority Sprint**: S11 (IFC hardening)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
+- **How Navra Compares**:
 > Both use lattice-based IFC.
-> smgglrs has broader scope (gateway with ACLs, safety hooks, ML models) while MVAR is focused purely on IFC.
-> MVAR's cryptographic provenance and execution firewall paradigm are gaps in smgglrs.
-> smgglrs's advantage is gateway-level enforcement (can't be bypassed) and defense-in-depth (IFC + ML + ACLs).
+> navra has broader scope (gateway with ACLs, safety hooks, ML models) while MVAR is focused purely on IFC.
+> MVAR's cryptographic provenance and execution firewall paradigm are gaps in navra.
+> navra's advantage is gateway-level enforcement (can't be bypassed) and defense-in-depth (IFC + ML + ACLs).
 - **Gaps Exposed**:
 - No per-data-flow cryptographic provenance signing — blackbox is hash-chained but records tool calls, not individual data flows
 - No explicit execution firewall mode — TaintedWritePolicy::Deny + TaintGate achieve similar effect but require explicit configuration per tool
-- No adversarial corpus benchmark for smgglrs-security IFC
+- No adversarial corpus benchmark for navra-security IFC
 - **Advantages Confirmed**:
 - Defense-in-depth stack (IFC labels + per-value ValueStore + statistical guardrails + temporal contracts + ML safety + deny-wins ACLs + trust scoring) is far broader than MVAR's pure IFC
 - Gateway-level enforcement (deterministic, can't be bypassed) vs callback-level (MVAR, depends on agent cooperation)
@@ -477,7 +477,7 @@
 > Architecture follows a deny-by-default model: actions the kernel denies are structurally impossible, not merely unlikely.
 > Seven packages cover distinct concerns: Agent OS (policy engine), Agent Mesh (discovery/routing/trust), Agent Runtime (execution sandboxing with four privilege rings), Agent SRE (kill switch, SLO monitoring, chaos testing), Agent Compliance (OWASP verification, policy linting), Agent Marketplace (plugin governance with Ed25519 signing), Agent Lightning (RL training governance), and Agent Hypervisor (execution audit, delta engine).
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**:
 - security
@@ -489,9 +489,9 @@
 - **Relevance Category**: competitor
 - **Impact Level**: high
 - **Relevance Rationale**:
-> Microsoft AGT is the most direct competitor to smgglrs in the MCP gateway/governance space.
+> Microsoft AGT is the most direct competitor to navra in the MCP gateway/governance space.
 > It covers all 10 OWASP agentic risks with a comprehensive multi-package approach.
-> Key overlaps: policy enforcement (AGT Agent OS vs smgglrs hook pipeline + ACLs), plugin/tool scanning (AGT Agent Marketplace vs smgglrs tool_scanner), execution sandboxing (AGT Agent Runtime rings vs smgglrs OpenShell integration), and inter-agent trust (AGT Agent Mesh + IATP vs smgglrs flow mesh).
+> Key overlaps: policy enforcement (AGT Agent OS vs navra hook pipeline + ACLs), plugin/tool scanning (AGT Agent Marketplace vs navra tool_scanner), execution sandboxing (AGT Agent Runtime rings vs navra OpenShell integration), and inter-agent trust (AGT Agent Mesh + IATP vs navra flow mesh).
 > Microsoft's backing, MIT license, and multi-language support give it significant adoption advantage.
 
 **Actionable Insights**
@@ -504,32 +504,32 @@
 - **What To Watch**:
 - Agent Marketplace plugin ecosystem growth and whether it becomes a de facto standard
 - IATP (Inter-Agent Trust Protocol) specification evolution — potential interop target
-- Agent Lightning RL governance patterns if smgglrs adds RL-based agent training
+- Agent Lightning RL governance patterns if navra adds RL-based agent training
 - **What To Avoid**:
-- Do not try to replicate the full 7-package scope — smgglrs should stay focused on gateway-enforced security rather than becoming a general governance framework
-- Avoid adopting AGT's DID-based identity wholesale — smgglrs BLAKE3 tokens + capability delegation is lighter and sufficient for desktop use case
+- Do not try to replicate the full 7-package scope — navra should stay focused on gateway-enforced security rather than becoming a general governance framework
+- Avoid adopting AGT's DID-based identity wholesale — navra BLAKE3 tokens + capability delegation is lighter and sufficient for desktop use case
 - **Implementation Difficulty**: significant
 - **Priority Sprint**: S10-S11 (Cedar policy support, OWASP compliance mapping)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs covers many of the same risks but through a gateway-enforced architecture rather than AGT's SDK-based approach.
-> smgglrs has IFC (Information Flow Control) which AGT lacks — a unique differentiator for data provenance.
-> AGT has broader framework integrations (10+ frameworks) while smgglrs focuses on being the MCP gateway layer.
-> AGT is multi-language (Python/TS/Rust/Go/.NET) while smgglrs is Rust-only.
+- **How Navra Compares**:
+> navra covers many of the same risks but through a gateway-enforced architecture rather than AGT's SDK-based approach.
+> navra has IFC (Information Flow Control) which AGT lacks — a unique differentiator for data provenance.
+> AGT has broader framework integrations (10+ frameworks) while navra focuses on being the MCP gateway layer.
+> AGT is multi-language (Python/TS/Rust/Go/.NET) while navra is Rust-only.
 > AGT has more comprehensive compliance automation (EU AI Act, HIPAA, SOC2 mapping).
 - **Gaps Exposed**:
-- No structured OWASP ASI01-ASI10 compliance self-check or reporting in smgglrs
+- No structured OWASP ASI01-ASI10 compliance self-check or reporting in navra
 - No Cedar policy language support (only deny-wins ACLs)
 - No formal plugin/upstream MCP server signing verification (Ed25519 or similar)
 - No kill switch or automated agent termination mechanism in flow orchestration
 - No compliance grading or regulatory framework mapping (EU AI Act, HIPAA)
 - **Advantages Confirmed**:
-- Gateway-enforced IFC is absent from AGT — smgglrs uniquely tracks data provenance across tool calls
+- Gateway-enforced IFC is absent from AGT — navra uniquely tracks data provenance across tool calls
 - In-process ONNX safety models for ML-based content filtering (AGT uses semantic classifiers but approach differs)
 - Desktop-native integration (D-Bus, systemd, tray) vs AGT's cloud-first design
-- Causal provenance graphs in smgglrs-flow provide deeper audit trail than AGT's Agent Hypervisor
+- Causal provenance graphs in navra-flow provide deeper audit trail than AGT's Agent Hypervisor
 
 **Ecosystem Context**
 
@@ -578,52 +578,52 @@
 > Runtime class abstraction allows plugging gVisor (syscall-level) or Kata Containers (VM-level) isolation without changing the Sandbox spec.
 > SandboxWarmPool maintains pre-started pods in ready state; SandboxClaim allocates from the pool instantly.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: tools-exec, model-runtime, server
 - **Relevance Category**: opportunity
 - **Impact Level**: high
 - **Relevance Rationale**:
-> Directly relevant to smgglrs's sandbox execution model.
-> smgglrs-tools-exec already supports OpenShell sandboxes; agent-sandbox provides the Kubernetes-native equivalent.
-> smgglrs-model-runtime's pluggable isolation (direct, Podman, OpenShell) could add agent-sandbox as a fourth backend.
-> The SandboxClaim/SandboxTemplate pattern maps cleanly to smgglrs's capability-based security model — a capability token could authorize a SandboxClaim.
+> Directly relevant to navra's sandbox execution model.
+> navra-tools-exec already supports OpenShell sandboxes; agent-sandbox provides the Kubernetes-native equivalent.
+> navra-model-runtime's pluggable isolation (direct, Podman, OpenShell) could add agent-sandbox as a fourth backend.
+> The SandboxClaim/SandboxTemplate pattern maps cleanly to navra's capability-based security model — a capability token could authorize a SandboxClaim.
 > Sub-second warm pool provisioning addresses the cold-start latency problem for tool execution sandboxes.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Add agent-sandbox as a Kubernetes-native isolation backend in smgglrs-model-runtime alongside Podman and OpenShell
-- Map smgglrs capability tokens to SandboxClaim creation — capability delegation authorizes sandbox provisioning
+- Add agent-sandbox as a Kubernetes-native isolation backend in navra-model-runtime alongside Podman and OpenShell
+- Map navra capability tokens to SandboxClaim creation — capability delegation authorizes sandbox provisioning
 - Adopt the warm pool pattern (SandboxWarmPool) for pre-warming execution sandboxes to reduce tool-call latency
-- Use SandboxTemplate to define security profiles for different trust tiers (matching smgglrs risk_tier levels)
+- Use SandboxTemplate to define security profiles for different trust tiers (matching navra risk_tier levels)
 - **What To Watch**:
 - Graduation from v1alpha1 to v1beta1 — stability guarantees
 - GKE Agent Sandbox managed offering — Google Cloud integration patterns
 - Whether agent-sandbox becomes the standard K8s API for agent isolation across cloud providers
 - **What To Avoid**:
 - Tightly coupling to agent-sandbox internals — use the CRD API abstraction layer
-- Assuming agent-sandbox replaces all isolation needs — it's Kubernetes-specific, smgglrs also needs local/desktop isolation
+- Assuming agent-sandbox replaces all isolation needs — it's Kubernetes-specific, navra also needs local/desktop isolation
 - **Implementation Difficulty**: moderate
 - **Priority Sprint**: Phase 12 (Kubernetes deployment)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-tools-exec provides command execution inside OpenShell sandboxes (local/desktop focus).
+- **How Navra Compares**:
+> navra-tools-exec provides command execution inside OpenShell sandboxes (local/desktop focus).
 > agent-sandbox provides the Kubernetes-native equivalent for cloud deployments.
-> smgglrs's model-runtime already abstracts isolation backends (direct, Podman, OpenShell), making agent-sandbox a natural addition.
-> smgglrs adds security layers (IFC, capability auth, hook pipeline) on top of whatever isolation backend is used.
+> navra's model-runtime already abstracts isolation backends (direct, Podman, OpenShell), making agent-sandbox a natural addition.
+> navra adds security layers (IFC, capability auth, hook pipeline) on top of whatever isolation backend is used.
 - **Gaps Exposed**:
-- smgglrs lacks Kubernetes-native sandbox provisioning — agent-sandbox fills this for cloud deployments
-- No warm pool / pre-warming mechanism in smgglrs for reducing sandbox cold-start latency
+- navra lacks Kubernetes-native sandbox provisioning — agent-sandbox fills this for cloud deployments
+- No warm pool / pre-warming mechanism in navra for reducing sandbox cold-start latency
 - No hibernation/resume support for idle sandbox cost optimization
 - Missing SandboxTemplate equivalent — reusable isolation profiles for different security tiers
 - **Advantages Confirmed**:
-- smgglrs's pluggable isolation architecture (model-runtime) is validated — agent-sandbox confirms the abstraction pattern
-- smgglrs adds security layers (IFC, hooks, capability auth) that agent-sandbox does not provide — complementary, not competing
-- smgglrs works locally on Linux desktops without Kubernetes — broader deployment model
-- smgglrs's risk_tier system maps naturally to SandboxTemplate security profiles
+- navra's pluggable isolation architecture (model-runtime) is validated — agent-sandbox confirms the abstraction pattern
+- navra adds security layers (IFC, hooks, capability auth) that agent-sandbox does not provide — complementary, not competing
+- navra works locally on Linux desktops without Kubernetes — broader deployment model
+- navra's risk_tier system maps naturally to SandboxTemplate security profiles
 
 **Ecosystem Context**
 
@@ -681,25 +681,25 @@
 > DAG-based conversation nodes with two-level compression (Level-1: >15K token nodes, Level-2: merge middle spans at 180K+).
 > First 5 and last 5 turns pinned verbatim.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: cognitive, agent, flow
 - **Relevance Category**: opportunity
 - **Impact Level**: high
 - **Relevance Rationale**:
 > MUSE-Autoskill provides a concrete architecture for skill lifecycle management.
-> Code analysis reveals smgglrs-cognitive has: (1) Persona struct with skills: Vec<String> field, heuristics: Vec<HeuristicRef>, and MCP prompt sourcing (McpPromptRef with inject_position); (2) ForgeService loads YAML from cognitive_core/ directory with SHA-256 integrity verification; (3) Weaver assembles cacheable_prefix (stable) + dynamic_context (per-invocation) for prompt caching; (4) TraitVector with momentum-based evolution (EMA alpha) for per-user persona adaptation.
+> Code analysis reveals navra-cognitive has: (1) Persona struct with skills: Vec<String> field, heuristics: Vec<HeuristicRef>, and MCP prompt sourcing (McpPromptRef with inject_position); (2) ForgeService loads YAML from cognitive_core/ directory with SHA-256 integrity verification; (3) Weaver assembles cacheable_prefix (stable) + dynamic_context (per-invocation) for prompt caching; (4) TraitVector with momentum-based evolution (EMA alpha) for per-user persona adaptation.
 > What's missing: no skill_create tool in ReAct loop, no .memory.md per-skill experience accumulation, no unit test validation before skill registration, no cross-agent transfer mechanism.
-> MUSE's SKILL.md format would be a natural extension to smgglrs-cognitive's existing YAML persona/directive/heuristic structure.
-> The DAG-based context compression maps to smgglrs-agent's progressive output compression (embedding-based extractive selection).
+> MUSE's SKILL.md format would be a natural extension to navra-cognitive's existing YAML persona/directive/heuristic structure.
+> The DAG-based context compression maps to navra-agent's progressive output compression (embedding-based extractive selection).
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Anthropic Agent Skills format (SKILL.md) as a skill standard for smgglrs-cognitive
+- Anthropic Agent Skills format (SKILL.md) as a skill standard for navra-cognitive
 - Skill-level memory (.memory.md) as a new memory tier
 - Unit test validation before skill registration — testable skills are more reliable
-- Two-level adaptive context compression for smgglrs-agent's ReAct loop
+- Two-level adaptive context compression for navra-agent's ReAct loop
 - **What To Watch**:
 - Whether Anthropic Agent Skills format becomes an industry standard
 - MUSE code release for integration testing
@@ -710,20 +710,20 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-cognitive has persona/directive system but no formal skill lifecycle.
+- **How Navra Compares**:
+> navra-cognitive has persona/directive system but no formal skill lifecycle.
 > MUSE provides the missing architecture.
-> smgglrs could differentiate by adding IFC labels to skills (preventing skill injection attacks) and serving as the secure skill registry.
+> navra could differentiate by adding IFC labels to skills (preventing skill injection attacks) and serving as the secure skill registry.
 - **Gaps Exposed**:
 - No skill lifecycle management — Persona has skills: Vec<String> but no creation/testing/refinement pipeline
 - No skill-level memory accumulation — TraitVector tracks persona traits but not per-skill experience
 - No cross-agent skill transfer mechanism
-- No adaptive context compression — smgglrs-agent has progressive output compression but no DAG-based conversation node compression with two-level thresholds
+- No adaptive context compression — navra-agent has progressive output compression but no DAG-based conversation node compression with two-level thresholds
 - **Advantages Confirmed**:
-- smgglrs-cognitive's existing YAML structure (personas/directives/heuristics with SHA-256 integrity) is a natural base for SKILL.md packages
+- navra-cognitive's existing YAML structure (personas/directives/heuristics with SHA-256 integrity) is a natural base for SKILL.md packages
 - Weaver's cacheable_prefix/dynamic_context split already supports prompt caching, which MUSE also targets
-- smgglrs's gateway model could host shared skill libraries with IFC labels on skills (preventing skill injection attacks via taint tracking)
-- smgglrs-agent's progressive output compression (embedding-based extractive selection with cosine similarity) provides the context management MUSE needs
+- navra's gateway model could host shared skill libraries with IFC labels on skills (preventing skill injection attacks via taint tracking)
+- navra-agent's progressive output compression (embedding-based extractive selection with cosine similarity) provides the context management MUSE needs
 - ForgeService's validate() cross-reference checking could be extended to verify skill dependency graphs
 
 **Ecosystem Context**
@@ -771,22 +771,22 @@
 > MemTree organizes facts as balanced trees with lazy dirty-path refresh (coalesces updates, same-level parallel).
 > Two-phase retrieval: Forest Recall retrieves relevant trees via root summaries + fact-to-tree mapping; Tree Browse descends from interval summaries to leaf evidence (embedding-only for low latency, LLM-guided for higher accuracy).
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: memory, rag
 - **Relevance Category**: opportunity
 - **Impact Level**: high
 - **Relevance Rationale**:
-> MemForest directly addresses smgglrs-memory's architecture limitations revealed by code analysis.
-> smgglrs-memory currently uses: (1) Working memory with SQLite-backed Turn/Message tables (fork/merge supported but flat chronological ordering); (2) Knowledge store with FTS5 (BM25 ranking, hardcoded 20-result limit) and content-addressed storage (SHA-256 hash of kind+title); (3) Exponential decay with importance modulation (importance * exp(-rate/(1+importance) * age_hours) + min(0.1*access_count, 0.3)) — temporal but flat, no hierarchical summarization; (4) Scoping (entity_id, process_id, session_id) — but flat, not tree-structured.
+> MemForest directly addresses navra-memory's architecture limitations revealed by code analysis.
+> navra-memory currently uses: (1) Working memory with SQLite-backed Turn/Message tables (fork/merge supported but flat chronological ordering); (2) Knowledge store with FTS5 (BM25 ranking, hardcoded 20-result limit) and content-addressed storage (SHA-256 hash of kind+title); (3) Exponential decay with importance modulation (importance * exp(-rate/(1+importance) * age_hours) + min(0.1*access_count, 0.3)) — temporal but flat, no hierarchical summarization; (4) Scoping (entity_id, process_id, session_id) — but flat, not tree-structured.
 > MemForest's three tree types (session, entity, scene) would replace the flat scoping model.
-> The 6x write throughput is critical because smgglrs-memory's knowledge store writes are sequential (single SQLite connection with Mutex).
-> Parallel chunk extraction could integrate with smgglrs-rag's breadcrumb chunking (currently single-strategy heading injection).
+> The 6x write throughput is critical because navra-memory's knowledge store writes are sequential (single SQLite connection with Mutex).
+> Parallel chunk extraction could integrate with navra-rag's breadcrumb chunking (currently single-strategy heading injection).
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Hierarchical temporal indexing for smgglrs-memory knowledge store
+- Hierarchical temporal indexing for navra-memory knowledge store
 - Three tree types (session, entity, scene) as memory organization
 - Parallel chunk extraction to break sequential write bottleneck
 - Canonical facts with temporal anchors as write units
@@ -803,10 +803,10 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-memory currently uses flat working memory (conversation turns) + FTS5 knowledge store.
+- **How Navra Compares**:
+> navra-memory currently uses flat working memory (conversation turns) + FTS5 knowledge store.
 > MemForest offers a fundamentally better architecture with temporal indexing, O(log N) writes, and parallel extraction.
-> However, smgglrs-memory is simpler and has lower operational overhead.
+> However, navra-memory is simpler and has lower operational overhead.
 - **Gaps Exposed**:
 - No temporal indexing — knowledge store uses flat SQLite tables with FTS5, not hierarchical trees (O(N) writes vs MemForest's O(log N))
 - Sequential write path — single Mutex<Connection> bottleneck limits throughput under high interaction frequency
@@ -814,7 +814,7 @@
 - Scoping (entity_id, process_id, session_id) is flat columns, not tree-structured like MemForest's entity/scene trees
 - Decay is exponential with importance modulation but no hierarchical summarization — no way to lazily coalesce old entries like MemForest's dirty-path refresh
 - **Advantages Confirmed**:
-- smgglrs-memory's SQLite FTS5 + smgglrs-rag's hybrid search (FTS5 + sqlite-vec + RRF k=60) provides the lexical+vector retrieval MemForest lacks
+- navra-memory's SQLite FTS5 + navra-rag's hybrid search (FTS5 + sqlite-vec + RRF k=60) provides the lexical+vector retrieval MemForest lacks
 - Cross-encoder reranking (ONNX batched) + GatedReranker (0.4 confidence threshold) complements MemForest's two-phase retrieval
 - Content-addressed storage (SHA-256 hash of kind+title) with version tracking enables supersession semantics
 - Fork/merge on working memory (Append/Replace/Summarize strategies) supports conversation branching
@@ -862,23 +862,23 @@
 > Three taint propagation mechanisms: (1) semantic evidence — tracks meaning-preserving transformations (paraphrase, summarization), (2) causal reasoning — identifies how untrusted data influences agent decisions even without direct content transfer, (3) persistent context tracking — monitors cross-session memory contamination.
 > Operates post-hoc on traces rather than inline, keeping inference latency unaffected.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: security, core
 - **Relevance Category**: opportunity
 - **Impact Level**: high
 - **Relevance Rationale**:
 > NeuroTaint reveals a gap in pure label-only IFC (FIDES F1=0.522 vs NeuroTaint F1=0.928).
-> However, smgglrs's IFC is more sophisticated than FIDES: (1) per-value IFC via ValueStore with var:// resolution tracks taint at individual tool-result granularity, not just per-session; (2) statistical guardrails (CosineDriftDetector with z-score threshold + EntropyMonitor for tool-use pattern anomalies) detect behavioral shifts that label-tracking alone misses; (3) temporal behavioral contracts (TemporalPredicate: Requires, SequenceLimit, TaintGate, DenialEscalation, Cooldown) add trajectory-level enforcement.
-> Still, smgglrs lacks NeuroTaint's three core mechanisms (semantic transformation tracking, causal influence on decisions, cross-session memory contamination detection).
-> smgglrs-core's hash-chained blackbox audit log (SHA-256 chain with PII filtering) provides the execution trace input NeuroTaint-style offline analysis needs.
+> However, navra's IFC is more sophisticated than FIDES: (1) per-value IFC via ValueStore with var:// resolution tracks taint at individual tool-result granularity, not just per-session; (2) statistical guardrails (CosineDriftDetector with z-score threshold + EntropyMonitor for tool-use pattern anomalies) detect behavioral shifts that label-tracking alone misses; (3) temporal behavioral contracts (TemporalPredicate: Requires, SequenceLimit, TaintGate, DenialEscalation, Cooldown) add trajectory-level enforcement.
+> Still, navra lacks NeuroTaint's three core mechanisms (semantic transformation tracking, causal influence on decisions, cross-session memory contamination detection).
+> navra-core's hash-chained blackbox audit log (SHA-256 chain with PII filtering) provides the execution trace input NeuroTaint-style offline analysis needs.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Offline taint audit using smgglrs's OTel traces as input
-- Cross-session memory contamination detection in smgglrs-memory
-- Semantic taint analysis for smgglrs-security's safety hooks (beyond string-matching)
+- Offline taint audit using navra's OTel traces as input
+- Cross-session memory contamination detection in navra-memory
+- Semantic taint analysis for navra-security's safety hooks (beyond string-matching)
 - **What To Watch**:
 - NeuroTaint code release for integration testing
 - Whether semantic taint tracking can run inline (not just offline) with acceptable latency
@@ -891,15 +891,15 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-security's IFC uses label tracking (FIDES-class, F1~0.522).
+- **How Navra Compares**:
+> navra-security's IFC uses label tracking (FIDES-class, F1~0.522).
 > NeuroTaint achieves F1=0.928 via semantic+causal+persistent analysis.
-> smgglrs should layer NeuroTaint-style offline audit on top of its inline label tracking for defense-in-depth.
-> smgglrs's existing OTel traces provide the execution trace input NeuroTaint needs.
+> navra should layer NeuroTaint-style offline audit on top of its inline label tracking for defense-in-depth.
+> navra's existing OTel traces provide the execution trace input NeuroTaint needs.
 - **Gaps Exposed**:
 - No semantic taint tracking (meaning-preserving transformations like paraphrase/summarization)
 - No causal influence detection (how untrusted data influences agent decisions without direct content transfer)
-- No cross-session memory contamination detection in smgglrs-memory's knowledge store
+- No cross-session memory contamination detection in navra-memory's knowledge store
 - **Advantages Confirmed**:
 - Hash-chained blackbox audit log (SHA-256 chain, tamper-detectable) provides execution traces for offline NeuroTaint-style analysis
 - Per-value IFC (ValueStore with var:// resolution) tracks taint at finer granularity than FIDES's per-session model
@@ -952,46 +952,46 @@
 > Query rotated once into same domain, scored against codebook values via SIMD.
 > Supports incremental adds without index rebuilds.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: rag
 - **Relevance Category**: opportunity
 - **Impact Level**: high
 - **Relevance Rationale**:
-> TurboVec is a direct replacement candidate for smgglrs-rag's vector search backend.
-> Code analysis reveals: smgglrs-rag stores embeddings as full float32 via sqlite-vec's vec0 virtual table with L2 distance (Euclidean).
+> TurboVec is a direct replacement candidate for navra-rag's vector search backend.
+> Code analysis reveals: navra-rag stores embeddings as full float32 via sqlite-vec's vec0 virtual table with L2 distance (Euclidean).
 > Search uses MATCH operator, dimensions configurable at store creation.
-> TurboVec would provide: (1) 16x memory reduction (full float32 → 2-bit quantized); (2) SIMD-accelerated scoring (NEON/AVX-512BW/AVX2 vs sqlite-vec's generic implementation); (3) Zero-training quantization matching smgglrs-rag's append-oriented pattern (index_document() adds embeddings incrementally).
+> TurboVec would provide: (1) 16x memory reduction (full float32 → 2-bit quantized); (2) SIMD-accelerated scoring (NEON/AVX-512BW/AVX2 vs sqlite-vec's generic implementation); (3) Zero-training quantization matching navra-rag's append-oriented pattern (index_document() adds embeddings incrementally).
 > The RRF fusion layer (k=60, 3x overfetch) is vector-backend-agnostic, so swapping sqlite-vec for TurboVec only requires implementing the search interface.
 > Cache layer (cosine similarity 0.92 threshold, TTL 300s) works with either backend.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Evaluate TurboVec as alternative to sqlite-vec in smgglrs-rag
+- Evaluate TurboVec as alternative to sqlite-vec in navra-rag
 - TurboQuant's data-oblivious quantization could be used standalone for embedding compression
 - Framework integrations (LangChain, LlamaIndex, Haystack) validate the API pattern
 - **What To Watch**:
 - Maturity of Rust API (currently cargo add turbovec)
 - Performance at scale beyond 100K vectors
 - Community adoption and maintenance trajectory
-- **What To Avoid**: - Don't replace sqlite-vec without benchmarking on smgglrs-rag's actual workload (breadcrumb chunks, cross-encoder reranking)
+- **What To Avoid**: - Don't replace sqlite-vec without benchmarking on navra-rag's actual workload (breadcrumb chunks, cross-encoder reranking)
 - **Implementation Difficulty**: moderate
 - **Priority Sprint**: S11 (RAG optimization)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-rag uses sqlite-vec which is simpler but less performant.
+- **How Navra Compares**:
+> navra-rag uses sqlite-vec which is simpler but less performant.
 > TurboVec offers 12-20% speed improvement and 16x memory reduction.
-> The zero-training property aligns with smgglrs's design of minimal external dependencies.
+> The zero-training property aligns with navra's design of minimal external dependencies.
 - **Gaps Exposed**:
-- smgglrs-rag stores full float32 embeddings via sqlite-vec vec0 — no quantization, 16x more memory than necessary
+- navra-rag stores full float32 embeddings via sqlite-vec vec0 — no quantization, 16x more memory than necessary
 - No SIMD-accelerated similarity scoring — sqlite-vec uses generic implementation
 - L2 (Euclidean) distance only — no cosine similarity in vector search (cache uses cosine, search doesn't)
 - **Advantages Confirmed**:
-- Rust-native ecosystem compatibility — TurboVec integrates naturally into smgglrs workspace
-- smgglrs-rag's hybrid FTS5+vector+RRF architecture is independent of vector backend, making swap feasible
+- Rust-native ecosystem compatibility — TurboVec integrates naturally into navra workspace
+- navra-rag's hybrid FTS5+vector+RRF architecture is independent of vector backend, making swap feasible
 
 **Ecosystem Context**
 
@@ -1038,23 +1038,23 @@
 > Two flows: ID-JAG (provider mints audience-specific JWT, app verifies against provider JWKS, returns credentials synchronously) and User Claimed (POST /agent/auth/claim triggers OTP email, POST /agent/auth/claim/complete submits code).
 > User matching: delegation record > email match > JIT provision.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: security, protocol, core
 - **Relevance Category**: opportunity
 - **Impact Level**: high
 - **Relevance Rationale**:
-> auth.md addresses the exact authentication gap smgglrs faces when agents connect.
-> smgglrs currently uses BLAKE3 tokens — auth.md offers a standards-based alternative for agent registration that's interoperable with the broader ecosystem.
-> The ID-JAG flow could complement smgglrs-security's capability delegation (agents present provider-minted assertions, smgglrs issues scoped capabilities).
+> auth.md addresses the exact authentication gap navra faces when agents connect.
+> navra currently uses BLAKE3 tokens — auth.md offers a standards-based alternative for agent registration that's interoperable with the broader ecosystem.
+> The ID-JAG flow could complement navra-security's capability delegation (agents present provider-minted assertions, navra issues scoped capabilities).
 > The protocol's well-known URL discovery pattern aligns with MCP server discovery.
 
 **Actionable Insights**
 
 - **What To Adopt**:
 - Support auth.md protocol as an alternative registration flow alongside BLAKE3 tokens
-- Publish /.well-known/oauth-protected-resource for smgglrs server discovery
-- Implement ID-JAG verification against provider JWKS in smgglrs-security auth module
+- Publish /.well-known/oauth-protected-resource for navra server discovery
+- Implement ID-JAG verification against provider JWKS in navra-security auth module
 - WWW-Authenticate header on 401 responses for automatic agent bootstrap
 - **What To Watch**:
 - IETF ID-JAG draft progression — critical dependency for the Agent Verified flow
@@ -1068,15 +1068,15 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs's BLAKE3 + capability delegation is more secure for local scenarios but less interoperable than auth.md for external agent registration.
-> Adding auth.md support would give smgglrs best-of-both-worlds: secure local auth + standards-based external registration.
+- **How Navra Compares**:
+> navra's BLAKE3 + capability delegation is more secure for local scenarios but less interoperable than auth.md for external agent registration.
+> Adding auth.md support would give navra best-of-both-worlds: secure local auth + standards-based external registration.
 - **Gaps Exposed**:
-- No ID-JAG (Identity Assertion for Authorization Grant) flow in smgglrs-security's OAuthProvider
-- No well-known URL discovery (/.well-known/oauth-protected-resource) for smgglrs server
-- No agent identity verification against provider JWKS — smgglrs validates its own Ed25519-signed JWTs but not external provider assertions
+- No ID-JAG (Identity Assertion for Authorization Grant) flow in navra-security's OAuthProvider
+- No well-known URL discovery (/.well-known/oauth-protected-resource) for navra server
+- No agent identity verification against provider JWKS — navra validates its own Ed25519-signed JWTs but not external provider assertions
 - **Advantages Confirmed**:
-- smgglrs already has OAuth 2.1 with Ed25519 JWT + RFC 8693 token exchange + OBO identity — auth.md ID-JAG is complementary, not replacement
+- navra already has OAuth 2.1 with Ed25519 JWT + RFC 8693 token exchange + OBO identity — auth.md ID-JAG is complementary, not replacement
 - BLAKE3 + CBOR/Ed25519 capability delegation with attenuation chains (ring, expiry, operations, tools, credentials, sandbox) is far more granular than auth.md's scope-based model
 - deny-wins ACLs + risk-tiered approval + trust scoring provide stronger post-auth enforcement than auth.md specifies
 - Constant-time token comparison (CWE-208 mitigation) already implemented
@@ -1134,49 +1134,49 @@
 > Three presets: conservative, balanced, tokenmax.
 > Autopilot daemon runs on 5-minute tick with cost cap.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: rag, memory
 - **Relevance Category**: opportunity
 - **Impact Level**: high
 - **Relevance Rationale**:
-> gBrain validates smgglrs-rag's hybrid search architecture — identical pattern (BM25 + vector + RRF with k=60).
-> Code-level verification: smgglrs-rag uses score = sum(1/(60+rank+1)) with 3x overfetch per channel, matching gBrain's RRF formula (score = sum(1/(60+rank))).
-> The zero-LLM regex graph extraction is a pattern smgglrs could adopt — smgglrs-memory's knowledge store has content-addressed entries (SHA-256 of kind+title) and scoping (entity_id) but no automated graph extraction.
-> The compiled-truth-plus-timeline pattern maps to smgglrs-memory's DistilledEntry with supersession (store_distilled() upserts by content_key, increments version).
-> gBrain's 74 MCP tools make it a natural upstream server for smgglrs to proxy and security-filter via UpstreamModule::discover() with tool scanning.
+> gBrain validates navra-rag's hybrid search architecture — identical pattern (BM25 + vector + RRF with k=60).
+> Code-level verification: navra-rag uses score = sum(1/(60+rank+1)) with 3x overfetch per channel, matching gBrain's RRF formula (score = sum(1/(60+rank))).
+> The zero-LLM regex graph extraction is a pattern navra could adopt — navra-memory's knowledge store has content-addressed entries (SHA-256 of kind+title) and scoping (entity_id) but no automated graph extraction.
+> The compiled-truth-plus-timeline pattern maps to navra-memory's DistilledEntry with supersession (store_distilled() upserts by content_key, increments version).
+> gBrain's 74 MCP tools make it a natural upstream server for navra to proxy and security-filter via UpstreamModule::discover() with tool scanning.
 
 **Actionable Insights**
 
 - **What To Adopt**:
 - Zero-LLM regex graph extraction for building knowledge graphs from ingested documents
-- Compiled truth + timeline pattern for smgglrs-memory knowledge store
+- Compiled truth + timeline pattern for navra-memory knowledge store
 - Cost-capped autopilot pattern for background memory maintenance
 - PGLite as alternative to SQLite for environments needing Postgres compatibility
 - **What To Watch**:
-- gBrain as upstream MCP server for smgglrs to proxy
-- BrainBench evaluation results vs smgglrs-rag performance
+- gBrain as upstream MCP server for navra to proxy
+- BrainBench evaluation results vs navra-rag performance
 - ZeroEntropy reranker integration pattern
 - **What To Avoid**:
-- Don't adopt gBrain's markdown-first storage — smgglrs-memory's SQLite FTS5 is more suitable for gateway workloads
+- Don't adopt gBrain's markdown-first storage — navra-memory's SQLite FTS5 is more suitable for gateway workloads
 - Don't require full wikilink paths — too brittle for user-facing content
 - **Implementation Difficulty**: moderate
 - **Priority Sprint**: S11 (RAG + memory optimization)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-rag already implements the same hybrid search pattern (FTS5 + vector + RRF + cross-encoder reranking).
-> gBrain adds zero-LLM graph extraction and the compiled-truth pattern that smgglrs-memory lacks.
-> smgglrs has stronger security (IFC, safety hooks) but weaker knowledge organization.
+- **How Navra Compares**:
+> navra-rag already implements the same hybrid search pattern (FTS5 + vector + RRF + cross-encoder reranking).
+> gBrain adds zero-LLM graph extraction and the compiled-truth pattern that navra-memory lacks.
+> navra has stronger security (IFC, safety hooks) but weaker knowledge organization.
 - **Gaps Exposed**:
-- No knowledge graph extraction in smgglrs-rag or smgglrs-memory
+- No knowledge graph extraction in navra-rag or navra-memory
 - No compiled-truth-plus-timeline pattern for knowledge consolidation
 - No cost-capped background maintenance for memory
 - **Advantages Confirmed**:
 - Hybrid FTS5+vector+RRF architecture validated as correct pattern (gBrain uses identical approach)
-- Cross-encoder reranking (smgglrs-rag) is a step beyond gBrain's ZeroEntropy reranker
-- smgglrs's gateway security layer adds IFC/safety that gBrain lacks entirely
+- Cross-encoder reranking (navra-rag) is a step beyond gBrain's ZeroEntropy reranker
+- navra's gateway security layer adds IFC/safety that gBrain lacks entirely
 
 **Ecosystem Context**
 
@@ -1220,21 +1220,21 @@
 > Retrieval: 5 parallel channels (full-text search, exact fact-key lookup, raw message search, direct vector search, HyDE vector search) combined via RRF.
 > HyDE generates a declarative answer to the query before vector search to catch vocabulary mismatches.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: rag, memory
 - **Relevance Category**: validation
 - **Impact Level**: high
 - **Relevance Rationale**:
-> Cloudflare's 5-channel RRF architecture directly validates smgglrs-rag's hybrid FTS5+vector search with RRF fusion design.
-> The HyDE channel is a concrete technique smgglrs-rag could adopt.
-> The memory taxonomy (facts/events/instructions/tasks) and supersession semantics validate smgglrs-memory's working memory + knowledge store architecture.
+> Cloudflare's 5-channel RRF architecture directly validates navra-rag's hybrid FTS5+vector search with RRF fusion design.
+> The HyDE channel is a concrete technique navra-rag could adopt.
+> The memory taxonomy (facts/events/instructions/tasks) and supersession semantics validate navra-memory's working memory + knowledge store architecture.
 > A major cloud vendor choosing RRF fusion confirms this is the right retrieval strategy.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- HyDE (Hypothetical Document Embeddings) as a third retrieval channel in smgglrs-rag alongside FTS5 and vector search
+- HyDE (Hypothetical Document Embeddings) as a third retrieval channel in navra-rag alongside FTS5 and vector search
 - Memory taxonomy: classify stored memories into facts/events/instructions/tasks for retrieval prioritization
 - Supersession semantics: key facts by normalized topic, supersede rather than delete, preserving history
 - Content-addressed IDs (SHA-256) for idempotent memory ingestion
@@ -1247,13 +1247,13 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-rag already implements hybrid FTS5+vector with RRF fusion, which is the same core architecture.
+- **How Navra Compares**:
+> navra-rag already implements hybrid FTS5+vector with RRF fusion, which is the same core architecture.
 > Cloudflare adds 3 additional channels (exact fact-key lookup, raw message search, HyDE vector).
-> smgglrs runs in-process with ONNX models while Cloudflare uses cloud-scale models (17B/120B MoE).
+> navra runs in-process with ONNX models while Cloudflare uses cloud-scale models (17B/120B MoE).
 - **Gaps Exposed**:
-- smgglrs-rag lacks HyDE (hypothetical document embedding) channel for vocabulary mismatch handling
-- No memory taxonomy or typed memory classification in smgglrs-memory
+- navra-rag lacks HyDE (hypothetical document embedding) channel for vocabulary mismatch handling
+- No memory taxonomy or typed memory classification in navra-memory
 - No supersession semantics for fact updates
 - Missing dedicated fact-key lookup channel
 - **Advantages Confirmed**:
@@ -1316,7 +1316,7 @@
 > Supplements the OWASP LLM Top 10 by focusing on three categories of risk that LLM-only systems do not face: tool use (agents take actions in the world), multi-step reasoning (single injection compounds over many turns), and inter-agent communication (agents talking to agents via MCP/A2A).
 > Emphasizes Defense in Depth, Least Privilege, Continuous Monitoring, Isolation & Sandboxing, Human Oversight, Transparency & Explainability, and Regular Security Testing.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**:
 - security
@@ -1331,32 +1331,32 @@
 - **Relevance Category**: reference
 - **Impact Level**: high
 - **Relevance Rationale**:
-> The ASI taxonomy is the canonical framework smgglrs should map its security features against.
-> smgglrs already addresses many of these risks: ASI01 (safety hooks/IFC), ASI02 (deny-wins ACLs, tool scanning), ASI03 (BLAKE3 tokens, capability delegation), ASI05 (OpenShell sandboxing), ASI06 (cognitive file integrity), ASI07 (flow mesh authentication), ASI08 (hop limits in flow), ASI10 (trust scoring).
+> The ASI taxonomy is the canonical framework navra should map its security features against.
+> navra already addresses many of these risks: ASI01 (safety hooks/IFC), ASI02 (deny-wins ACLs, tool scanning), ASI03 (BLAKE3 tokens, capability delegation), ASI05 (OpenShell sandboxing), ASI06 (cognitive file integrity), ASI07 (flow mesh authentication), ASI08 (hop limits in flow), ASI10 (trust scoring).
 > Gaps exist in ASI04 (supply chain signing), ASI09 (human oversight workflows).
-> This taxonomy should drive smgglrs security roadmap prioritization.
+> This taxonomy should drive navra security roadmap prioritization.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Formal ASI01-ASI10 compliance mapping document for smgglrs — enumerate which crate/feature addresses each risk
+- Formal ASI01-ASI10 compliance mapping document for navra — enumerate which crate/feature addresses each risk
 - ASI04 mitigation: add Ed25519 or similar signing for upstream MCP server manifests
 - ASI09 mitigation: add configurable human-in-the-loop approval gates for high-risk tool calls
-- ASI08 mitigation: strengthen circuit breaker patterns in smgglrs-flow beyond current hop limits
+- ASI08 mitigation: strengthen circuit breaker patterns in navra-flow beyond current hop limits
 - **What To Watch**:
 - AIUC-1 Crosswalks document (May 2026) for mapping ASI risks to other frameworks
 - OWASP Agentic Skills Top 10 (separate project) for tool-specific risk guidance
 - AI Security Solutions Landscape Q2 2026 reports for competitive positioning
 - **What To Avoid**:
-- Do not treat this as a checklist to pass — focus on architectural enforcement (smgglrs gateway model) rather than point-solution mitigations
+- Do not treat this as a checklist to pass — focus on architectural enforcement (navra gateway model) rather than point-solution mitigations
 - Do not conflate with OWASP LLM Top 10 — different scope and different mitigations
 - **Implementation Difficulty**: moderate
 - **Priority Sprint**: S10 (compliance mapping document + gap analysis)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs addresses 8 of 10 ASI risks architecturally through its gateway-enforced security model.
+- **How Navra Compares**:
+> navra addresses 8 of 10 ASI risks architecturally through its gateway-enforced security model.
 > The gateway approach means mitigations are infrastructure-level rather than application-level, which is stronger than SDK-based approaches.
 > Key strength: ASI01/ASI02 are handled by the combination of IFC, deny-wins ACLs, safety hooks, and ML content filtering — multiple defense layers rather than single-point solutions.
 - **Gaps Exposed**:
@@ -1416,7 +1416,7 @@
 - Three protocols converging: MCP (agent-tools), A2A (agent-agent), AG-UI (agent-user)
 - **Methodology**: Survey of GitHub repositories with star counts, feature comparison, and ecosystem mapping. Organized by agent system layer.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**:
 - protocol
@@ -1430,29 +1430,29 @@
 - **Relevance Category**: reference
 - **Impact Level**: high
 - **Relevance Rationale**:
-> Maps the competitive landscape smgglrs operates in.
-> Key findings: (1) Composio is the closest MCP gateway competitor with dynamic tool routing, (2) E2B/Firecracker/OpenSandbox define the sandboxing standard smgglrs-tools-exec must match, (3) mem0/Zep/Graphiti show memory architecture alternatives to smgglrs-memory, (4) AI-Infra-Guard (Tencent) and garak (NVIDIA) scan MCP servers for security — direct validation of smgglrs-security's tool scanning, (5) Pipecat/LiveKit define voice agent patterns for smgglrs-modal-voice, (6) DeepEval sets agent testing standards.
+> Maps the competitive landscape navra operates in.
+> Key findings: (1) Composio is the closest MCP gateway competitor with dynamic tool routing, (2) E2B/Firecracker/OpenSandbox define the sandboxing standard navra-tools-exec must match, (3) mem0/Zep/Graphiti show memory architecture alternatives to navra-memory, (4) AI-Infra-Guard (Tencent) and garak (NVIDIA) scan MCP servers for security — direct validation of navra-security's tool scanning, (5) Pipecat/LiveKit define voice agent patterns for navra-modal-voice, (6) DeepEval sets agent testing standards.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Composio's dynamic tool routing pattern (Tool Router) — smgglrs could surface only relevant tools per request
-- DeepEval's agent-specific test metrics (task completion, tool correctness, step efficiency) for smgglrs testing
-- AI-Infra-Guard's MCP server scanning approach — validates smgglrs-security's upstream tool scanning
+- Composio's dynamic tool routing pattern (Tool Router) — navra could surface only relevant tools per request
+- DeepEval's agent-specific test metrics (task completion, tool correctness, step efficiency) for navra testing
+- AI-Infra-Guard's MCP server scanning approach — validates navra-security's upstream tool scanning
 - **What To Watch**:
-- Composio's MCP gateway evolution — closest competitor to smgglrs's gateway role
-- AG-UI protocol adoption — may need smgglrs-protocol support
+- Composio's MCP gateway evolution — closest competitor to navra's gateway role
+- AG-UI protocol adoption — may need navra-protocol support
 - Graphiti (Zep) temporal knowledge graphs — 63.8% vs mem0's 49% on LongMemEval
 - **What To Avoid**:
-- Don't try to compete with full agent frameworks (LangGraph, CrewAI) — smgglrs is infrastructure, not framework
-- Don't replicate Composio's managed auth model — smgglrs's BLAKE3+capability approach is more secure
+- Don't try to compete with full agent frameworks (LangGraph, CrewAI) — navra is infrastructure, not framework
+- Don't replicate Composio's managed auth model — navra's BLAKE3+capability approach is more secure
 - **Implementation Difficulty**: N/A
 - **Priority Sprint**: N/A (landscape reference)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs uniquely combines MCP gateway, IFC security, and in-process ML models in a single Rust binary.
+- **How Navra Compares**:
+> navra uniquely combines MCP gateway, IFC security, and in-process ML models in a single Rust binary.
 > No other tool in this landscape provides all three.
 > Composio is closest as MCP gateway but lacks IFC, safety ML models, and is a SaaS product not self-hosted infrastructure.
 > E2B/OpenSandbox handle sandboxing but not MCP routing or security.
@@ -1511,22 +1511,22 @@
 - Domain-sensitive contexts (healthcare, military) warrant vastly more careful treatment
 - **Methodology**: Practitioner experience report using Claude Code (--dangerously-skip-permissions) and Codex (YOLO mode). No formal evaluation or benchmarks. Prescriptive advice based on personal production use.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: security, tools-exec
 - **Relevance Category**: threat
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> This article represents the 'no security' approach that smgglrs exists to protect against.
-> The recommendation to skip all permissions and rely on infrastructure guardrails is exactly the threat model smgglrs addresses — agents with broad permissions need IFC, safety filters, and capability delegation to prevent data exfiltration and unauthorized actions.
+> This article represents the 'no security' approach that navra exists to protect against.
+> The recommendation to skip all permissions and rely on infrastructure guardrails is exactly the threat model navra addresses — agents with broad permissions need IFC, safety filters, and capability delegation to prevent data exfiltration and unauthorized actions.
 > The article notably ignores prompt injection, supply-chain attacks, and data leakage.
-> smgglrs's value proposition is proven by the gaps in this approach.
+> navra's value proposition is proven by the gaps in this approach.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- The reversible/irreversible distinction is valid — smgglrs-tools-exec could tag operations by reversibility
-- Agent-on-agent review pattern could be supported in smgglrs-flow as a safety check
+- The reversible/irreversible distinction is valid — navra-tools-exec could tag operations by reversibility
+- Agent-on-agent review pattern could be supported in navra-flow as a safety check
 - **What To Watch**:
 - Whether this 'YOLO mode' approach leads to publicized security incidents
 - Industry response to liberal permission granting for coding agents
@@ -1538,11 +1538,11 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: smgglrs exists precisely because this approach is dangerous. The article's gaps (no IFC, no safety filtering, no capability scoping, no prompt injection defense) are smgglrs's feature set.
+- **How Navra Compares**: navra exists precisely because this approach is dangerous. The article's gaps (no IFC, no safety filtering, no capability scoping, no prompt injection defense) are navra's feature set.
 - **Gaps Exposed**: N/A
 - **Advantages Confirmed**:
-- smgglrs's entire security model (IFC, deny-wins ACLs, safety hooks, capability delegation) addresses the risks this article ignores
-- The reversible/irreversible distinction validates smgglrs-security's risk_tier system
+- navra's entire security model (IFC, deny-wins ACLs, safety hooks, capability delegation) addresses the risks this article ignores
+- The reversible/irreversible distinction validates navra-security's risk_tier system
 
 **Ecosystem Context**
 
@@ -1589,16 +1589,16 @@
 > Evaluated on a diverse corpus spanning legal, technical, and social science domains.
 > Code available at https://github.com/ekimetrics/adaptive-chunking.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: rag
 - **Relevance Category**: opportunity
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> smgglrs-rag currently uses breadcrumb chunking as its chunking strategy.
+> navra-rag currently uses breadcrumb chunking as its chunking strategy.
 > Adaptive chunking demonstrates that document-aware strategy selection can improve RAG correctness by 10+ percentage points without any model changes.
-> The five intrinsic metrics (RC, ICC, DCC, BI, SC) could be integrated into smgglrs-rag to evaluate and select chunking strategies per document type.
-> This is particularly relevant for smgglrs because the gateway handles diverse document types from multiple tools (file_read, git tools, etc.) — different documents may benefit from different chunking strategies.
+> The five intrinsic metrics (RC, ICC, DCC, BI, SC) could be integrated into navra-rag to evaluate and select chunking strategies per document type.
+> This is particularly relevant for navra because the gateway handles diverse document types from multiple tools (file_read, git tools, etc.) — different documents may benefit from different chunking strategies.
 
 **Actionable Insights**
 
@@ -1612,24 +1612,24 @@
 - Whether the LLM-regex splitter approach can be adapted to use local ONNX models instead of large LLMs
 - Follow-up work on the five intrinsic metrics — whether the research community validates or refines them
 - **What To Avoid**:
-- Do not implement the full LLM-regex splitter if it requires large LLM inference per chunk — this conflicts with smgglrs local-first, low-latency design
+- Do not implement the full LLM-regex splitter if it requires large LLM inference per chunk — this conflicts with navra local-first, low-latency design
 - Do not replace breadcrumb chunking entirely — adaptive selection means keeping multiple strategies and choosing per document
 - **Implementation Difficulty**: moderate
 - **Priority Sprint**: S11-S12 (chunking quality metrics + document-type-aware strategy selection)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-rag uses breadcrumb chunking as a single strategy.
+- **How Navra Compares**:
+> navra-rag uses breadcrumb chunking as a single strategy.
 > Adaptive chunking demonstrates that a single strategy leaves 10+ percentage points of correctness on the table.
-> However, smgglrs-rag compensates with strong retrieval (hybrid FTS5+vector, RRF fusion, cross-encoder reranking, confidence gating) which partially offsets suboptimal chunking.
-> The breadcrumb approach is lightweight and fast, suitable for smgglrs's desktop/local-first use case.
+> However, navra-rag compensates with strong retrieval (hybrid FTS5+vector, RRF fusion, cross-encoder reranking, confidence gating) which partially offsets suboptimal chunking.
+> The breadcrumb approach is lightweight and fast, suitable for navra's desktop/local-first use case.
 - **Gaps Exposed**:
 - Single chunking strategy (breadcrumb) may underperform for structured documents (legal, tables, code)
-- No chunking quality metrics — smgglrs-rag cannot currently evaluate whether its chunks are well-formed
+- No chunking quality metrics — navra-rag cannot currently evaluate whether its chunks are well-formed
 - No document-type-aware chunking — all documents are chunked identically regardless of structure
 - **Advantages Confirmed**:
-- smgglrs-rag's strong retrieval pipeline (RRF + reranking + confidence gating) provides defense-in-depth against suboptimal chunking
+- navra-rag's strong retrieval pipeline (RRF + reranking + confidence gating) provides defense-in-depth against suboptimal chunking
 - Breadcrumb chunking is fast and predictable — important for desktop latency requirements
 - In-process execution means chunking improvements can be deployed without infrastructure changes
 
@@ -1637,7 +1637,7 @@
 
 - **Owasp Coverage**: N/A (RAG technique, not a security concern)
 - **Mcp Spec Alignment**: N/A (chunking technique, not MCP-specific)
-- **Isolation Model**: in-process (chunking runs in-process in smgglrs-rag)
+- **Isolation Model**: in-process (chunking runs in-process in navra-rag)
 - **Aaif Alignment**: N/A
 - **Regulatory Relevance**: N/A
 
@@ -1683,7 +1683,7 @@
 > Zero-shot generalization is achieved without domain-specific fine-tuning, demonstrating reliable out-of-the-box representation for specialized domains.
 > Target use cases include RAG, recommendation systems, and search.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**:
 - rag
@@ -1695,42 +1695,42 @@
 - **Impact Level**: medium
 - **Relevance Rationale**:
 > Gemini Embedding 2 represents the future direction for multimodal RAG: a single embedding model handling text, images, audio, and video in one vector space.
-> For smgglrs, this validates the architecture decision to have separate modal-voice and modal-vision crates that could converge on a unified multimodal embedding.
+> For navra, this validates the architecture decision to have separate modal-voice and modal-vision crates that could converge on a unified multimodal embedding.
 > However, as a Google proprietary model, direct integration requires API access (not local ONNX).
-> The MTEB benchmarks set a quality bar for smgglrs-rag's embedding models.
-> The multi-modal aspect is relevant for smgglrs-rag if the system needs to retrieve across document types (PDFs with images, audio transcripts, etc.).
+> The MTEB benchmarks set a quality bar for navra-rag's embedding models.
+> The multi-modal aspect is relevant for navra-rag if the system needs to retrieve across document types (PDFs with images, audio transcripts, etc.).
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Add Gemini Embedding 2 as a supported backend in smgglrs-model for cloud-tier embedding (alongside OpenAI/Anthropic)
-- Design smgglrs-rag embedding abstraction to support multimodal inputs (not just text) for future-proofing
+- Add Gemini Embedding 2 as a supported backend in navra-model for cloud-tier embedding (alongside OpenAI/Anthropic)
+- Design navra-rag embedding abstraction to support multimodal inputs (not just text) for future-proofing
 - Use MTEB benchmarks (Multilingual: 69.9, Code: 84.0) as quality targets for evaluating local embedding models
 - **What To Watch**:
 - Open-source multimodal embedding models that could replicate this capability locally (ONNX-compatible)
 - Whether Google releases distilled/smaller versions suitable for CPU/NPU inference
 - MTEB leaderboard evolution — whether competitors match these scores with open weights
 - **What To Avoid**:
-- Do not make smgglrs dependent on Google API for core RAG functionality — local-first remains the principle
+- Do not make navra dependent on Google API for core RAG functionality — local-first remains the principle
 - Do not prematurely unify modal-voice and modal-vision into a single multimodal crate without an open-weight model to back it
 - **Implementation Difficulty**: moderate
 - **Priority Sprint**: S12+ (multimodal RAG abstraction, cloud embedding backend)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-rag currently uses in-process ONNX models for text embeddings only.
+- **How Navra Compares**:
+> navra-rag currently uses in-process ONNX models for text embeddings only.
 > Gemini Embedding 2 represents a capability gap for multimodal retrieval.
-> However, smgglrs's local-first architecture (in-process ONNX) provides privacy advantages that cloud-based Gemini embeddings cannot match.
-> smgglrs-rag's hybrid FTS5+vector search with cross-encoder reranking addresses retrieval quality through architecture rather than relying solely on embedding quality.
+> However, navra's local-first architecture (in-process ONNX) provides privacy advantages that cloud-based Gemini embeddings cannot match.
+> navra-rag's hybrid FTS5+vector search with cross-encoder reranking addresses retrieval quality through architecture rather than relying solely on embedding quality.
 - **Gaps Exposed**:
-- No multimodal embedding support — smgglrs-rag only handles text embeddings
+- No multimodal embedding support — navra-rag only handles text embeddings
 - No unified vector space across modalities for cross-modal retrieval
-- No Google/Gemini model backend in smgglrs-model (only OpenAI, Anthropic, ONNX, Ollama)
+- No Google/Gemini model backend in navra-model (only OpenAI, Anthropic, ONNX, Ollama)
 - **Advantages Confirmed**:
 - Local-first ONNX embedding provides privacy that cloud-based Gemini cannot match
 - Hybrid search (FTS5+vector+RRF+reranker) compensates for lower embedding quality through architectural sophistication
-- smgglrs can add Gemini as optional cloud backend while maintaining local-first default
+- navra can add Gemini as optional cloud backend while maintaining local-first default
 
 **Ecosystem Context**
 
@@ -1781,16 +1781,16 @@
 > Fused Triton kernels for paged attention compatibility.
 > Pre-computed rotation zoo available on ModelScope.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: model-runtime, model
 - **Relevance Category**: opportunity
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> OSCAR enables serving large models (358B GLM) with 8x less KV cache memory, directly relevant to smgglrs-model-runtime's hardware tier profiles.
-> If smgglrs serves or proxies local models, OSCAR-style quantization extends context budgets dramatically.
+> OSCAR enables serving large models (358B GLM) with 8x less KV cache memory, directly relevant to navra-model-runtime's hardware tier profiles.
+> If navra serves or proxies local models, OSCAR-style quantization extends context budgets dramatically.
 > The rotation zoo pattern (pre-computed per model) could integrate with model-hub's caching.
-> Not immediately actionable since smgglrs uses ONNX for small in-process models, but important for the model-runtime isolation backends (Podman, OpenShell) serving larger models.
+> Not immediately actionable since navra uses ONNX for small in-process models, but important for the model-runtime isolation backends (Podman, OpenShell) serving larger models.
 
 **Actionable Insights**
 
@@ -1807,13 +1807,13 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs currently uses ONNX Runtime for small in-process models where KV cache quantization is irrelevant.
-> For larger model serving via model-runtime backends, OSCAR would be integrated at the serving engine level (vLLM/SGLang), not in smgglrs directly.
+- **How Navra Compares**:
+> navra currently uses ONNX Runtime for small in-process models where KV cache quantization is irrelevant.
+> For larger model serving via model-runtime backends, OSCAR would be integrated at the serving engine level (vLLM/SGLang), not in navra directly.
 - **Gaps Exposed**:
 - No KV cache management in model-runtime — relies on underlying serving engine
 - model-hub doesn't track rotation/quantization artifacts alongside model weights
-- **Advantages Confirmed**: - smgglrs's separation of model-hub (download/cache) from model-runtime (serve) allows clean integration of quantization artifacts
+- **Advantages Confirmed**: - navra's separation of model-hub (download/cache) from model-runtime (serve) allows clean integration of quantization artifacts
 
 **Ecosystem Context**
 
@@ -1862,22 +1862,22 @@
 > Agents must reason over rich contextual environments while remaining robust to noise (irrelevant events, conflicting signals).
 > Evaluates both reactive (explicit requests) and proactive (anticipatory) assistance capabilities.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: agent, flow, memory, core
 - **Relevance Category**: validation
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> Validates the always-on agent paradigm smgglrs serves as infrastructure for.
-> The benchmark's three dimensions (long-horizon history, interdependent services, multi-device) map to smgglrs capabilities: memory (history), module aggregation (services), transport (multi-device).
+> Validates the always-on agent paradigm navra serves as infrastructure for.
+> The benchmark's three dimensions (long-horizon history, interdependent services, multi-device) map to navra capabilities: memory (history), module aggregation (services), transport (multi-device).
 > The low GPT-5.5 scores (34.5%) show this is an open problem where infrastructure quality (security, memory, context management) can be a differentiator.
 > The '*Claw' naming continues the genre (ClawPatrol, ContextForge).
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Use Claw-Anything benchmark for evaluating smgglrs-agent's always-on capabilities
-- The proactive assistance evaluation dimension could inform smgglrs-flow's event-driven orchestration
+- Use Claw-Anything benchmark for evaluating navra-agent's always-on capabilities
+- The proactive assistance evaluation dimension could inform navra-flow's event-driven orchestration
 - **What To Watch**:
 - Model improvements on this benchmark — when scores pass 60%, always-on assistants become viable
 - Whether noise robustness becomes a differentiating feature for agent infrastructure
@@ -1887,14 +1887,14 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs provides the infrastructure for always-on agents but doesn't implement the agent reasoning itself.
-> The benchmark validates that smgglrs's design choices (persistent memory, multi-service aggregation, security) are the right infrastructure for this use case.
+- **How Navra Compares**:
+> navra provides the infrastructure for always-on agents but doesn't implement the agent reasoning itself.
+> The benchmark validates that navra's design choices (persistent memory, multi-service aggregation, security) are the right infrastructure for this use case.
 - **Gaps Exposed**:
-- smgglrs-memory may need longer-horizon storage and retrieval for always-on scenarios
-- No proactive assistance patterns in smgglrs-flow
+- navra-memory may need longer-horizon storage and retrieval for always-on scenarios
+- No proactive assistance patterns in navra-flow
 - **Advantages Confirmed**:
-- smgglrs's gateway model (aggregating multiple services behind unified security) is validated as essential infrastructure for always-on assistants
+- navra's gateway model (aggregating multiple services behind unified security) is validated as essential infrastructure for always-on assistants
 - Memory persistence across sessions is a key requirement this benchmark confirms
 
 **Ecosystem Context**
@@ -1940,20 +1940,20 @@
 > Industry best practice extends this with a two-stage architecture: Stage 1 uses hybrid search to retrieve broad candidate pool (top 100 with high recall), Stage 2 passes candidates through a cross-encoder for deep relevance re-scoring (top 5-10 for LLM context).
 > Key tuning parameters: rrf_k (default 60) and per-retriever top-k (start at 20).
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: rag
 - **Relevance Category**: validation
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> Directly validates smgglrs-rag's existing architecture: hybrid FTS5+vector search with RRF fusion and cross-encoder reranking.
-> The article confirms that smgglrs-rag's approach (BM25-equivalent via FTS5 + vector search + RRF + cross-encoder reranking) matches the industry-standard two-stage pattern.
-> The specific tuning recommendations (rrf_k=60, per-retriever top-k=20) can be verified against smgglrs-rag defaults.
+> Directly validates navra-rag's existing architecture: hybrid FTS5+vector search with RRF fusion and cross-encoder reranking.
+> The article confirms that navra-rag's approach (BM25-equivalent via FTS5 + vector search + RRF + cross-encoder reranking) matches the industry-standard two-stage pattern.
+> The specific tuning recommendations (rrf_k=60, per-retriever top-k=20) can be verified against navra-rag defaults.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Verify smgglrs-rag rrf_k parameter default matches the recommended 60
+- Verify navra-rag rrf_k parameter default matches the recommended 60
 - Ensure per-retriever top-k defaults start at 20 as recommended
 - Consider exposing rrf_k and per-retriever top-k as configurable parameters if not already
 - **What To Watch**:
@@ -1967,21 +1967,21 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs-rag already implements the complete recommended pipeline: FTS5 (BM25-equivalent lexical search) + sqlite-vec (vector search) + RRF fusion + batched cross-encoder reranking + confidence gating.
+- **How Navra Compares**:
+> navra-rag already implements the complete recommended pipeline: FTS5 (BM25-equivalent lexical search) + sqlite-vec (vector search) + RRF fusion + batched cross-encoder reranking + confidence gating.
 > This is the exact two-stage architecture the article describes as industry standard.
-> smgglrs-rag additionally provides breadcrumb chunking and confidence gating, which go beyond what the article covers.
-- **Gaps Exposed**: No gaps — smgglrs-rag's architecture matches or exceeds the article's recommendations
+> navra-rag additionally provides breadcrumb chunking and confidence gating, which go beyond what the article covers.
+- **Gaps Exposed**: No gaps — navra-rag's architecture matches or exceeds the article's recommendations
 - **Advantages Confirmed**:
 - Hybrid FTS5+vector with RRF fusion is validated as the industry standard approach
-- Cross-encoder reranking (already in smgglrs-rag) is confirmed as the production-grade Stage 2
-- Confidence gating in smgglrs-rag provides additional quality control not mentioned in the article
+- Cross-encoder reranking (already in navra-rag) is confirmed as the production-grade Stage 2
+- Confidence gating in navra-rag provides additional quality control not mentioned in the article
 
 **Ecosystem Context**
 
 - **Owasp Coverage**: N/A (retrieval technique, not a security concern)
 - **Mcp Spec Alignment**: N/A (RAG implementation pattern, not MCP-specific)
-- **Isolation Model**: in-process (FTS5 + sqlite-vec run in-process in smgglrs)
+- **Isolation Model**: in-process (FTS5 + sqlite-vec run in-process in navra)
 - **Aaif Alignment**: N/A
 - **Regulatory Relevance**: N/A
 
@@ -2022,15 +2022,15 @@
 > Validated first on a 35B model (<4GB) before scaling to 122B.
 > The article notes that M-series SSD bandwidth is sufficient for coherent generation.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: model-runtime, model-hub
 - **Relevance Category**: validation
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> Validates smgglrs's vision of local model serving on consumer hardware.
-> Expert streaming could enable smgglrs-model-runtime to serve large MoE models (Mixtral, Qwen) on desktop hardware that would otherwise require cloud offloading.
-> The disk-bandwidth-wall insight is directly relevant to smgglrs's hardware tier profiles in MODELS.md.
+> Validates navra's vision of local model serving on consumer hardware.
+> Expert streaming could enable navra-model-runtime to serve large MoE models (Mixtral, Qwen) on desktop hardware that would otherwise require cloud offloading.
+> The disk-bandwidth-wall insight is directly relevant to navra's hardware tier profiles in MODELS.md.
 > model-hub's OCI/HuggingFace caching could be extended to pre-download quantized + expert-streaming-ready model artifacts.
 
 **Actionable Insights**
@@ -2048,11 +2048,11 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: smgglrs currently targets small ONNX models in-process and larger models via backend engines. Expert streaming would add a new tier between in-process and full backend serving.
+- **How Navra Compares**: navra currently targets small ONNX models in-process and larger models via backend engines. Expert streaming would add a new tier between in-process and full backend serving.
 - **Gaps Exposed**:
 - No MoE-aware model serving strategy in model-runtime
 - Hardware tier profiles don't account for SSD bandwidth as a model-serving resource
-- **Advantages Confirmed**: smgglrs's tiered model architecture (CPU/GPU) anticipates exactly this kind of capability expansion
+- **Advantages Confirmed**: navra's tiered model architecture (CPU/GPU) anticipates exactly this kind of capability expansion
 
 **Ecosystem Context**
 
@@ -2099,15 +2099,15 @@
 > Build system uses RustExtension pointing to workspace member Cargo.toml.
 > Addressed reviewer concerns about nightly Rust by replacing coroutine_trait with stable asynk-strim library.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: model-runtime
 - **Relevance Category**: validation
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> Validates the Rust-for-inference-infrastructure thesis that smgglrs embodies.
+> Validates the Rust-for-inference-infrastructure thesis that navra embodies.
 > vLLM adopting Rust for its frontend confirms that the Rust ecosystem is mature enough for production inference workloads.
-> The setuptools-rust integration pattern and process manager architecture may inform smgglrs-model-runtime's vLLM backend integration.
+> The setuptools-rust integration pattern and process manager architecture may inform navra-model-runtime's vLLM backend integration.
 
 **Actionable Insights**
 
@@ -2123,11 +2123,11 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: smgglrs is already fully Rust. vLLM adopting Rust validates smgglrs's technology choice.
+- **How Navra Compares**: navra is already fully Rust. vLLM adopting Rust validates navra's technology choice.
 - **Gaps Exposed**: N/A
 - **Advantages Confirmed**:
 - Rust as the right language for inference infrastructure — validated by vLLM's largest PR
-- smgglrs's pure-Rust architecture avoids the hybrid Python/Rust complexity vLLM now faces
+- navra's pure-Rust architecture avoids the hybrid Python/Rust complexity vLLM now faces
 
 **Ecosystem Context**
 
@@ -2174,21 +2174,21 @@
 > Four quadrants: Digital Owned (software agents you build and deploy — the founder's quadrant), Physical Rented (robots/equipment-as-a-service — capex to opex shift), Physical Owned (fleets/factories with deep capital moats — Anduril, Waymo, Amazon warehouse robots), Digital Rented (agent labor marketplaces).
 > Each quadrant analyzed for moat depth, TAM, who captures upside, and strategic implications.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Relevance Category**: reference
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> Positions smgglrs in the 'Digital Owned' quadrant infrastructure layer.
-> The article's thesis that models and tools commoditize while data/workflow/distribution are the moats validates smgglrs's strategy of being infrastructure (the gateway) rather than competing on models.
-> The labor-budget framing (10-30x software budget) reframes smgglrs's value proposition: it enables enterprises to safely deploy agents that compete for labor budgets, not just software budgets.
+> Positions navra in the 'Digital Owned' quadrant infrastructure layer.
+> The article's thesis that models and tools commoditize while data/workflow/distribution are the moats validates navra's strategy of being infrastructure (the gateway) rather than competing on models.
+> The labor-budget framing (10-30x software budget) reframes navra's value proposition: it enables enterprises to safely deploy agents that compete for labor budgets, not just software budgets.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Frame smgglrs value proposition around labor automation safety, not just tool access control
-- Position smgglrs as infrastructure enabling the 'Digital Owned' quadrant — the gateway that makes owned agents safe to deploy
-- Emphasize workflow integration capabilities (MCP gateway aggregation) as a moat-builder for smgglrs users
+- Frame navra value proposition around labor automation safety, not just tool access control
+- Position navra as infrastructure enabling the 'Digital Owned' quadrant — the gateway that makes owned agents safe to deploy
+- Emphasize workflow integration capabilities (MCP gateway aggregation) as a moat-builder for navra users
 - **What To Watch**:
 - Agent-to-agent commerce protocols (discovery, trust, payments) — the 'Digital Rented' quadrant needs these
 - Whether the $4.6T labor TAM claim materializes — tracks adoption velocity
@@ -2201,12 +2201,12 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs sits in the infrastructure layer enabling the Digital Owned quadrant.
+- **How Navra Compares**:
+> navra sits in the infrastructure layer enabling the Digital Owned quadrant.
 > The article confirms that the moat is not in models or tools (which commoditize) but in data control, workflow integration, and distribution.
-> smgglrs's IFC, security layer, and MCP gateway aggregation directly serve the workflow-integration moat.
+> navra's IFC, security layer, and MCP gateway aggregation directly serve the workflow-integration moat.
 - **Gaps Exposed**:
-- smgglrs lacks agent-to-agent commerce primitives (payments, metering, SLA enforcement) needed for the Digital Rented quadrant
+- navra lacks agent-to-agent commerce primitives (payments, metering, SLA enforcement) needed for the Digital Rented quadrant
 - No built-in agent marketplace or discovery-layer monetization features
 - **Advantages Confirmed**:
 - Gateway architecture (aggregating tools behind security) is the right positioning — tools commoditize, security/integration does not
@@ -2265,21 +2265,21 @@
 > Evaluates domain-level skills that package recurring procedures into reusable artifacts.
 > Proposes meta-skill training to mitigate negative transfer.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: cognitive, agent
 - **Relevance Category**: reference
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> Directly relevant to smgglrs-cognitive's persona/directive system and potential skill packaging.
+> Directly relevant to navra-cognitive's persona/directive system and potential skill packaging.
 > The negative transfer finding warns that skills generated by one model (e.g., Claude) may hurt performance when consumed by another (e.g., local Granite).
-> smgglrs-cognitive should consider model-aware skill routing.
+> navra-cognitive should consider model-aware skill routing.
 > The meta-skill approach could be integrated into directive weaving.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Model-aware skill routing in smgglrs-cognitive — match skills to the consuming model
+- Model-aware skill routing in navra-cognitive — match skills to the consuming model
 - Meta-skill pattern for cross-model compatibility
 - **What To Watch**: How MUSE-Autoskill (2605.27366) builds on these findings, Commercial platform adoption of model-aware skill management
 - **What To Avoid**: Don't assume skills are model-agnostic — negative transfer is real and measurable
@@ -2288,12 +2288,12 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: smgglrs-cognitive has a persona/directive system but no formal skill lifecycle management. This research provides the theoretical foundation for adding skill management to cognitive.
+- **How Navra Compares**: navra-cognitive has a persona/directive system but no formal skill lifecycle management. This research provides the theoretical foundation for adding skill management to cognitive.
 - **Gaps Exposed**:
-- No skill lifecycle management in smgglrs-cognitive
+- No skill lifecycle management in navra-cognitive
 - No model-aware skill routing
 - No mechanism to detect or mitigate negative skill transfer
-- **Advantages Confirmed**: smgglrs's model-agnostic gateway design allows model-aware routing decisions at the infrastructure level
+- **Advantages Confirmed**: navra's model-agnostic gateway design allows model-aware routing decisions at the infrastructure level
 
 **Ecosystem Context**
 
@@ -2341,37 +2341,37 @@
 > Skills are auto-generated from successful task completions and stored for reuse.
 > Memory persists across sessions for continuous learning.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: agent, flow, cognitive, tools-exec
 - **Relevance Category**: reference
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> Hermes Agent is a major consumer of gateway infrastructure like smgglrs, not a direct competitor.
-> Its skill auto-generation and subagent patterns inform smgglrs-cognitive's directive system and smgglrs-flow's orchestration.
-> The 5 execution backends (Local, Docker, SSH, Singularity, Modal) map to smgglrs-model-runtime's isolation modes (direct, Podman, OpenShell).
-> Hermes using smgglrs as its MCP gateway would be a natural integration.
+> Hermes Agent is a major consumer of gateway infrastructure like navra, not a direct competitor.
+> Its skill auto-generation and subagent patterns inform navra-cognitive's directive system and navra-flow's orchestration.
+> The 5 execution backends (Local, Docker, SSH, Singularity, Modal) map to navra-model-runtime's isolation modes (direct, Podman, OpenShell).
+> Hermes using navra as its MCP gateway would be a natural integration.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Zero-context-cost subagent pattern — smgglrs-flow could support isolated context per sub-agent in DAG execution
-- Natural-language cron scheduling — smgglrs-agent could expose as a module capability
+- Zero-context-cost subagent pattern — navra-flow could support isolated context per sub-agent in DAG execution
+- Natural-language cron scheduling — navra-agent could expose as a module capability
 - **What To Watch**:
-- Hermes Agent's MCP integration path — potential first-class smgglrs consumer
+- Hermes Agent's MCP integration path — potential first-class navra consumer
 - Skill auto-generation quality and cross-agent transfer results
 - Singularity backend pattern for HPC environments
-- **What To Avoid**: Don't replicate Hermes's full agent framework — smgglrs is infrastructure, Hermes is application layer
+- **What To Avoid**: Don't replicate Hermes's full agent framework — navra is infrastructure, Hermes is application layer
 - **Implementation Difficulty**: N/A
 - **Priority Sprint**: N/A (consumer, not feature)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: Different layers: Hermes is an agent application, smgglrs is gateway infrastructure. Hermes would run on top of smgglrs, using it for secure tool access, safety filtering, and IFC enforcement.
-- **Gaps Exposed**: smgglrs-agent's skill system is less sophisticated than Hermes's auto-generated skills with cross-agent transfer
+- **How Navra Compares**: Different layers: Hermes is an agent application, navra is gateway infrastructure. Hermes would run on top of navra, using it for secure tool access, safety filtering, and IFC enforcement.
+- **Gaps Exposed**: navra-agent's skill system is less sophisticated than Hermes's auto-generated skills with cross-agent transfer
 - **Advantages Confirmed**:
-- smgglrs's gateway model is validated — Hermes needs exactly this kind of infrastructure for secure tool access
-- smgglrs's multiple isolation backends (direct, Podman, OpenShell) match Hermes's execution backends
+- navra's gateway model is validated — Hermes needs exactly this kind of infrastructure for secure tool access
+- navra's multiple isolation backends (direct, Podman, OpenShell) match Hermes's execution backends
 
 **Ecosystem Context**
 
@@ -2418,41 +2418,41 @@
 - MCP standardizes the Tool Use to Harness connection across vendors
 - **Methodology**: Definitional article establishing shared vocabulary. Draws on HuggingFace's agent framework ecosystem experience. Community-reviewed by Pedro Cuenca, Quentin Gallouedec, Shaun Smith, Adithya S Kolavi.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: protocol, agent, flow, cognitive
 - **Relevance Category**: reference
 - **Impact Level**: medium
 - **Relevance Rationale**:
-> Establishes canonical vocabulary for the agent ecosystem smgglrs serves.
-> The Agent=Model+Harness formula maps directly to smgglrs architecture: smgglrs IS the harness infrastructure (security, tool routing, context management).
-> The skill/sub-agent/orchestrator hierarchy maps to smgglrs-cognitive (skills), smgglrs-agent (sub-agents), and smgglrs-flow (orchestrator).
-> MCP positioned at Tool Use / Harness interface validates smgglrs-protocol's role.
+> Establishes canonical vocabulary for the agent ecosystem navra serves.
+> The Agent=Model+Harness formula maps directly to navra architecture: navra IS the harness infrastructure (security, tool routing, context management).
+> The skill/sub-agent/orchestrator hierarchy maps to navra-cognitive (skills), navra-agent (sub-agents), and navra-flow (orchestrator).
+> MCP positioned at Tool Use / Harness interface validates navra-protocol's role.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Adopt this vocabulary in smgglrs documentation and API naming
-- Align smgglrs-cognitive's persona/directive system with the 'scaffolding' concept
-- Validate smgglrs-flow's orchestrator role matches the glossary definition
+- Adopt this vocabulary in navra documentation and API naming
+- Align navra-cognitive's persona/directive system with the 'scaffolding' concept
+- Validate navra-flow's orchestrator role matches the glossary definition
 - **What To Watch**:
 - Whether this taxonomy becomes the industry standard (HuggingFace has significant ecosystem influence)
 - How the skill vs tool distinction evolves in MCP spec
-- **What To Avoid**: - Don't conflate smgglrs's module concept with 'tool' — smgglrs modules are harness infrastructure, not tools in this taxonomy
+- **What To Avoid**: - Don't conflate navra's module concept with 'tool' — navra modules are harness infrastructure, not tools in this taxonomy
 - **Implementation Difficulty**: trivial
 - **Priority Sprint**: N/A (documentation alignment)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**:
-> smgglrs maps cleanly to this taxonomy as harness infrastructure — the gateway that mediates between agents and tools.
-> smgglrs-flow is an orchestrator.
-> smgglrs-cognitive provides scaffolding.
-> smgglrs-agent is a sub-agent framework.
-- **Gaps Exposed**: - smgglrs doesn't have an explicit 'skill' abstraction — cognitive directives are close but not the same as portable skill packages
+- **How Navra Compares**:
+> navra maps cleanly to this taxonomy as harness infrastructure — the gateway that mediates between agents and tools.
+> navra-flow is an orchestrator.
+> navra-cognitive provides scaffolding.
+> navra-agent is a sub-agent framework.
+- **Gaps Exposed**: - navra doesn't have an explicit 'skill' abstraction — cognitive directives are close but not the same as portable skill packages
 - **Advantages Confirmed**:
-- smgglrs's architecture as gateway (harness infrastructure) is validated as the correct abstraction layer
-- MCP at the Tool/Harness interface is exactly where smgglrs-protocol operates
+- navra's architecture as gateway (harness infrastructure) is validated as the correct abstraction layer
+- MCP at the Tool/Harness interface is exactly where navra-protocol operates
 
 **Ecosystem Context**
 
@@ -2496,31 +2496,31 @@
 > Fix 1 applies normalization after each target hidden state before the FC layer.
 > Fix 2 feeds normalized hidden states into the next step, making the drafter behave like recursive invocation rather than appending layers.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: model-runtime
 - **Relevance Category**: opportunity
 - **Impact Level**: low
 - **Relevance Rationale**:
-> Eagle 3.1 improves inference throughput for large models served via vLLM, which smgglrs-model-runtime could use as a backend.
-> The attention drift fix is particularly relevant for long-context agent workloads where smgglrs would maintain extended conversations.
-> However, smgglrs doesn't directly implement speculative decoding — this is consumed transitively through serving engines.
+> Eagle 3.1 improves inference throughput for large models served via vLLM, which navra-model-runtime could use as a backend.
+> The attention drift fix is particularly relevant for long-context agent workloads where navra would maintain extended conversations.
+> However, navra doesn't directly implement speculative decoding — this is consumed transitively through serving engines.
 
 **Actionable Insights**
 
 - **What To Adopt**: Ensure model-runtime vLLM backend uses v0.22.0+ to benefit from Eagle 3.1 automatically
 - **What To Watch**:
-- TorchSpec training support for custom draft models — could enable spec decoding for smgglrs-served models
+- TorchSpec training support for custom draft models — could enable spec decoding for navra-served models
 - Eagle 3.1 support across more model architectures
-- **What To Avoid**: Don't implement speculative decoding in smgglrs — leave to serving engine
+- **What To Avoid**: Don't implement speculative decoding in navra — leave to serving engine
 - **Implementation Difficulty**: trivial
 - **Priority Sprint**: N/A (version bump only)
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: smgglrs benefits transitively — model-runtime backends using vLLM 0.22.0+ get Eagle 3.1 automatically.
+- **How Navra Compares**: navra benefits transitively — model-runtime backends using vLLM 0.22.0+ get Eagle 3.1 automatically.
 - **Gaps Exposed**: N/A
-- **Advantages Confirmed**: - smgglrs's backend-agnostic model-runtime design means inference improvements like Eagle 3.1 are absorbed without code changes
+- **Advantages Confirmed**: - navra's backend-agnostic model-runtime design means inference improvements like Eagle 3.1 are absorbed without code changes
 
 **Ecosystem Context**
 
@@ -2563,19 +2563,19 @@
 > For each all-wrong tool-using subgroup in RL training: (1) fix the thinking prefix (reasoning before tool call), (2) resample the tool call and its continuation to recover learning signal, (3) use uncertainty-based prefix selection to choose which prefixes to resample.
 > This addresses the structural asymmetry where thinking (self-contained default) dominates over tool use (high-variance auxiliary acting).
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: agent, model
 - **Relevance Category**: reference
 - **Impact Level**: low
 - **Relevance Rationale**:
-> The Thinking-Acting Gap finding explains why agents sometimes skip tool calls even when tools would help — relevant to understanding smgglrs-agent's tool-use loop behavior.
-> The fix is at the RL training level (not inference), so smgglrs can't implement it directly.
-> However, smgglrs could track tool-call skip rates as a diagnostic metric for model quality.
+> The Thinking-Acting Gap finding explains why agents sometimes skip tool calls even when tools would help — relevant to understanding navra-agent's tool-use loop behavior.
+> The fix is at the RL training level (not inference), so navra can't implement it directly.
+> However, navra could track tool-call skip rates as a diagnostic metric for model quality.
 
 **Actionable Insights**
 
-- **What To Adopt**: Track tool-call skip rates in smgglrs-agent as a model quality diagnostic
+- **What To Adopt**: Track tool-call skip rates in navra-agent as a model quality diagnostic
 - **What To Watch**:
 - Whether AXPO-trained models become available for local serving
 - Application of AXPO to text-only (non-vision) tool calling
@@ -2585,7 +2585,7 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: Not directly comparable — AXPO is a training technique, smgglrs is inference infrastructure.
+- **How Navra Compares**: Not directly comparable — AXPO is a training technique, navra is inference infrastructure.
 - **Gaps Exposed**: N/A
 - **Advantages Confirmed**: N/A
 
@@ -2632,21 +2632,21 @@
 > Single-turn parallel dispatch: main agent emits K tool calls, K sub-agents (weight-shared) each process one temporal window and return text summaries (not resampled frames).
 > PARA-GRPO addresses Tool Prior Paradox via: (1) Exploration Anchoring — selective reward at structural-token positions prone to collapse, (2) nFrames Gating — randomizes overview-frame budget per prompt to create prompts where tools yield measurable reward.
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: flow, agent
 - **Relevance Category**: reference
 - **Impact Level**: low
 - **Relevance Rationale**:
-> The parallel tool dispatch pattern is directly relevant to smgglrs-flow's DAG execution and smgglrs-agent's tool-use loop.
+> The parallel tool dispatch pattern is directly relevant to navra-flow's DAG execution and navra-agent's tool-use loop.
 > Peer-correctable evidence (sub-agent outputs voted on) maps to flow's mesh communication.
-> The Tool Prior Paradox finding is relevant to understanding why agents skip tool calls — smgglrs could expose analytics on tool call rates.
-> However, the video-specific application is outside smgglrs's scope.
+> The Tool Prior Paradox finding is relevant to understanding why agents skip tool calls — navra could expose analytics on tool call rates.
+> However, the video-specific application is outside navra's scope.
 
 **Actionable Insights**
 
 - **What To Adopt**:
-- Parallel tool dispatch pattern in smgglrs-flow DAG execution — emit multiple tool calls in single turn
+- Parallel tool dispatch pattern in navra-flow DAG execution — emit multiple tool calls in single turn
 - Peer-correctable evidence pattern for multi-agent mesh validation
 - **What To Watch**: Extension of PARA-GRPO to non-video tool calling scenarios, Adoption of parallel dispatch in mainstream agent frameworks
 - **What To Avoid**: N/A
@@ -2655,9 +2655,9 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: smgglrs-flow already supports parallel tool execution in DAG mode. ParaVT validates this pattern with RL-trained evidence of superiority over sequential dispatch.
+- **How Navra Compares**: navra-flow already supports parallel tool execution in DAG mode. ParaVT validates this pattern with RL-trained evidence of superiority over sequential dispatch.
 - **Gaps Exposed**: N/A
-- **Advantages Confirmed**: smgglrs-flow's DAG execution with parallel tool calls is the correct architecture
+- **Advantages Confirmed**: navra-flow's DAG execution with parallel tool calls is the correct architecture
 
 **Ecosystem Context**
 
@@ -2695,14 +2695,14 @@
 - Up to 5x faster than standard autoregressive decoding
 - Parallelizes the draft-verify cycle that was previously sequential
 
-**Smgglrs Relevance**
+**Navra Relevance**
 
 - **Affected Crates**: model-runtime
 - **Relevance Category**: reference
 - **Impact Level**: low
 - **Relevance Rationale**:
 > Academic advance in speculative decoding that will eventually be absorbed by serving engines (vLLM, SGLang).
-> smgglrs benefits transitively when model-runtime backends adopt SAGUARO.
+> navra benefits transitively when model-runtime backends adopt SAGUARO.
 > No direct implementation needed.
 
 **Actionable Insights**
@@ -2715,7 +2715,7 @@
 
 **Competitive Position**
 
-- **How Smgglrs Compares**: Not directly comparable — smgglrs doesn't implement decoding algorithms.
+- **How Navra Compares**: Not directly comparable — navra doesn't implement decoding algorithms.
 - **Gaps Exposed**: N/A
 - **Advantages Confirmed**: N/A
 

@@ -1,7 +1,7 @@
-# Agent & Tool Discovery — Landscape and Implications for smgglrs
+# Agent & Tool Discovery — Landscape and Implications for navra
 
 Research captured April 2026. This document surveys the emerging
-discovery mechanisms for AI agents and tools, and outlines how smgglrs
+discovery mechanisms for AI agents and tools, and outlines how navra
 could participate in (and benefit from) this layer.
 
 ## The Problem
@@ -224,7 +224,7 @@ Anthropic, AWS, Microsoft, and OpenAI shared key updates:
   authentication improvements.
 - **Gateway validation**: "Gateways, registries, sandboxing,
   interceptors must evolve alongside the protocol" (David Soria Para,
-  Anthropic). This directly validates smgglrs's gateway architecture.
+  Anthropic). This directly validates navra's gateway architecture.
 - **MCP should stay narrow**: Nick Cooper (OpenAI): "MCP should stay
   narrow — connecting AI to data sources. Identity, observability,
   and governance should come in as other projects" under AAIF.
@@ -238,14 +238,14 @@ Anthropic, AWS, Microsoft, and OpenAI shared key updates:
   just another developer. Quality differs vastly between careful
   designs and naive API wrappers.
 
-## Implications for smgglrs
+## Implications for navra
 
-smgglrs sits at the intersection of these layers — it is both an MCP
+navra sits at the intersection of these layers — it is both an MCP
 server (exposing tools to agents) and an MCP client (aggregating
 upstream servers). This makes it a natural point for discovery
 integration on both sides.
 
-### Downstream: Make smgglrs Discoverable
+### Downstream: Make navra Discoverable
 
 1. **MCP Server Card** — Serve `/.well-known/mcp.json` on the HTTP
    transport, advertising the aggregated tool set, auth requirements,
@@ -253,11 +253,11 @@ integration on both sides.
    full handshake.
 
 2. **AID DNS record** — Publish an `_agent` TXT record pointing to
-   the smgglrs endpoint with `p=mcp`. For local-only deployments, the
+   the navra endpoint with `p=mcp`. For local-only deployments, the
    `.well-known/agent` JSON fallback works over the Unix socket or
    localhost TCP.
 
-3. **A2A Agent Card** — If smgglrs evolves toward A2A support, serve
+3. **A2A Agent Card** — If navra evolves toward A2A support, serve
    `/.well-known/agent-card.json` describing the combined capabilities
    of all upstream servers as skills.
 
@@ -275,16 +275,16 @@ Discovery mechanisms could supplement this:
 
 3. **Local network discovery** — Use mDNS/DNS-SD (the `zeroconf`
    protocol token in AID) to discover MCP servers on the local
-   network. This is particularly relevant for smgglrs's desktop-first
+   network. This is particularly relevant for navra's desktop-first
    deployment model.
 
 ### Security Considerations
 
-- **AID PKA** aligns with smgglrs's security posture — Ed25519 endpoint
+- **AID PKA** aligns with navra's security posture — Ed25519 endpoint
   proof ensures discovered endpoints are legitimate.
 - **Signed A2A Agent Cards** provide cryptographic identity verification
   for agent-to-agent scenarios.
-- **MCP Server Cards** are static metadata and do not bypass smgglrs's
+- **MCP Server Cards** are static metadata and do not bypass navra's
   auth/ACL/safety layers — they describe capabilities, not grant access.
 - Auto-discovered upstream servers should still be subject to the same
   per-tool rules, path ACLs, and content safety filters as manually

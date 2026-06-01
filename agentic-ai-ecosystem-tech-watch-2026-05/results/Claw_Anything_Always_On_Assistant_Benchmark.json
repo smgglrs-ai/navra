@@ -18,16 +18,16 @@
     ],
     "methodology": "Simulates months of user activity via multi-round event injection across multiple services and devices. Agents must reason over rich contextual environments while remaining robust to noise (irrelevant events, conflicting signals). Evaluates both reactive (explicit requests) and proactive (anticipatory) assistance capabilities."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["agent", "flow", "memory", "core"],
     "relevance_category": "validation",
     "impact_level": "medium",
-    "relevance_rationale": "Validates the always-on agent paradigm smgglrs serves as infrastructure for. The benchmark's three dimensions (long-horizon history, interdependent services, multi-device) map to smgglrs capabilities: memory (history), module aggregation (services), transport (multi-device). The low GPT-5.5 scores (34.5%) show this is an open problem where infrastructure quality (security, memory, context management) can be a differentiator. The '*Claw' naming continues the genre (ClawPatrol, ContextForge)."
+    "relevance_rationale": "Validates the always-on agent paradigm navra serves as infrastructure for. The benchmark's three dimensions (long-horizon history, interdependent services, multi-device) map to navra capabilities: memory (history), module aggregation (services), transport (multi-device). The low GPT-5.5 scores (34.5%) show this is an open problem where infrastructure quality (security, memory, context management) can be a differentiator. The '*Claw' naming continues the genre (ClawPatrol, ContextForge)."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Use Claw-Anything benchmark for evaluating smgglrs-agent's always-on capabilities",
-      "The proactive assistance evaluation dimension could inform smgglrs-flow's event-driven orchestration"
+      "Use Claw-Anything benchmark for evaluating navra-agent's always-on capabilities",
+      "The proactive assistance evaluation dimension could inform navra-flow's event-driven orchestration"
     ],
     "what_to_watch": [
       "Model improvements on this benchmark — when scores pass 60%, always-on assistants become viable",
@@ -38,13 +38,13 @@
     "priority_sprint": "N/A (evaluation benchmark)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs provides the infrastructure for always-on agents but doesn't implement the agent reasoning itself. The benchmark validates that smgglrs's design choices (persistent memory, multi-service aggregation, security) are the right infrastructure for this use case.",
+    "how_navra_compares": "navra provides the infrastructure for always-on agents but doesn't implement the agent reasoning itself. The benchmark validates that navra's design choices (persistent memory, multi-service aggregation, security) are the right infrastructure for this use case.",
     "gaps_exposed": [
-      "smgglrs-memory may need longer-horizon storage and retrieval for always-on scenarios",
-      "No proactive assistance patterns in smgglrs-flow"
+      "navra-memory may need longer-horizon storage and retrieval for always-on scenarios",
+      "No proactive assistance patterns in navra-flow"
     ],
     "advantages_confirmed": [
-      "smgglrs's gateway model (aggregating multiple services behind unified security) is validated as essential infrastructure for always-on assistants",
+      "navra's gateway model (aggregating multiple services behind unified security) is validated as essential infrastructure for always-on assistants",
       "Memory persistence across sessions is a key requirement this benchmark confirms"
     ]
   },

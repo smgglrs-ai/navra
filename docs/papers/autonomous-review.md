@@ -387,7 +387,7 @@ cycle's verified fixes.
 ### 8.1 Hardcoded vs. Dynamic Persona Selection
 
 We ran both `comprehensive-review.yaml` (hardcoded) and
-`review.yaml` (dynamic) on the smgglrs codebase (18 crates,
+`review.yaml` (dynamic) on the navra codebase (18 crates,
 ~86K LoC Rust).
 
 | Metric | Hardcoded | Dynamic |
@@ -407,7 +407,7 @@ concentrating on dimensions the scout identified as relevant.
 
 The same `review.yaml` template was applied to:
 
-1. **Rust codebase** (smgglrs): scout classified as
+1. **Rust codebase** (navra): scout classified as
    `domain: "software"`, planner selected `principal_engineer`,
    `security_sentinel`, `tech_writer`, `assessor`.
 2. **Mixed project** (documentation + config): scout classified
@@ -435,7 +435,7 @@ second attempt.
 
 ### 8.4 Self-Improvement Convergence
 
-6 improvement cycles on the smgglrs codebase:
+6 improvement cycles on the navra codebase:
 
 | Cycle | Issues found | Fixed | Verified | Token cost |
 |---|---|---|---|---|
@@ -461,7 +461,7 @@ All evaluations ran on consumer hardware:
 | Planner/Synthesizer | Gemma 4 27B | 27B | Q4_K_M |
 | Specialists | Granite 4 8B | 8B | Q4_K_M |
 
-No cloud API calls. Gateway: smgglrs with IFC, ACLs, and
+No cloud API calls. Gateway: navra with IFC, ACLs, and
 safety filters active.
 
 ---

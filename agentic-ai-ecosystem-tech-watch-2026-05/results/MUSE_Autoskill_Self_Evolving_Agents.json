@@ -19,18 +19,18 @@
     ],
     "methodology": "Skills follow Anthropic's Agent Skills format (SKILL.md + .memory.md + scripts/ + tests/ + resources/). Created on-demand in ReAct loop via skill_create tool. Multi-level memory: skill-level (.memory.md), short-term (current task with adaptive compression), long-term (cross-session). DAG-based conversation nodes with two-level compression (Level-1: >15K token nodes, Level-2: merge middle spans at 180K+). First 5 and last 5 turns pinned verbatim."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["cognitive", "agent", "flow"],
     "relevance_category": "opportunity",
     "impact_level": "high",
-    "relevance_rationale": "MUSE-Autoskill provides a concrete architecture for skill lifecycle management. Code analysis reveals smgglrs-cognitive has: (1) Persona struct with skills: Vec<String> field, heuristics: Vec<HeuristicRef>, and MCP prompt sourcing (McpPromptRef with inject_position); (2) ForgeService loads YAML from cognitive_core/ directory with SHA-256 integrity verification; (3) Weaver assembles cacheable_prefix (stable) + dynamic_context (per-invocation) for prompt caching; (4) TraitVector with momentum-based evolution (EMA alpha) for per-user persona adaptation. What's missing: no skill_create tool in ReAct loop, no .memory.md per-skill experience accumulation, no unit test validation before skill registration, no cross-agent transfer mechanism. MUSE's SKILL.md format would be a natural extension to smgglrs-cognitive's existing YAML persona/directive/heuristic structure. The DAG-based context compression maps to smgglrs-agent's progressive output compression (embedding-based extractive selection)."
+    "relevance_rationale": "MUSE-Autoskill provides a concrete architecture for skill lifecycle management. Code analysis reveals navra-cognitive has: (1) Persona struct with skills: Vec<String> field, heuristics: Vec<HeuristicRef>, and MCP prompt sourcing (McpPromptRef with inject_position); (2) ForgeService loads YAML from cognitive_core/ directory with SHA-256 integrity verification; (3) Weaver assembles cacheable_prefix (stable) + dynamic_context (per-invocation) for prompt caching; (4) TraitVector with momentum-based evolution (EMA alpha) for per-user persona adaptation. What's missing: no skill_create tool in ReAct loop, no .memory.md per-skill experience accumulation, no unit test validation before skill registration, no cross-agent transfer mechanism. MUSE's SKILL.md format would be a natural extension to navra-cognitive's existing YAML persona/directive/heuristic structure. The DAG-based context compression maps to navra-agent's progressive output compression (embedding-based extractive selection)."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Anthropic Agent Skills format (SKILL.md) as a skill standard for smgglrs-cognitive",
+      "Anthropic Agent Skills format (SKILL.md) as a skill standard for navra-cognitive",
       "Skill-level memory (.memory.md) as a new memory tier",
       "Unit test validation before skill registration — testable skills are more reliable",
-      "Two-level adaptive context compression for smgglrs-agent's ReAct loop"
+      "Two-level adaptive context compression for navra-agent's ReAct loop"
     ],
     "what_to_watch": [
       "Whether Anthropic Agent Skills format becomes an industry standard",
@@ -44,18 +44,18 @@
     "priority_sprint": "S12 (cognitive skill management)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-cognitive has persona/directive system but no formal skill lifecycle. MUSE provides the missing architecture. smgglrs could differentiate by adding IFC labels to skills (preventing skill injection attacks) and serving as the secure skill registry.",
+    "how_navra_compares": "navra-cognitive has persona/directive system but no formal skill lifecycle. MUSE provides the missing architecture. navra could differentiate by adding IFC labels to skills (preventing skill injection attacks) and serving as the secure skill registry.",
     "gaps_exposed": [
       "No skill lifecycle management — Persona has skills: Vec<String> but no creation/testing/refinement pipeline",
       "No skill-level memory accumulation — TraitVector tracks persona traits but not per-skill experience",
       "No cross-agent skill transfer mechanism",
-      "No adaptive context compression — smgglrs-agent has progressive output compression but no DAG-based conversation node compression with two-level thresholds"
+      "No adaptive context compression — navra-agent has progressive output compression but no DAG-based conversation node compression with two-level thresholds"
     ],
     "advantages_confirmed": [
-      "smgglrs-cognitive's existing YAML structure (personas/directives/heuristics with SHA-256 integrity) is a natural base for SKILL.md packages",
+      "navra-cognitive's existing YAML structure (personas/directives/heuristics with SHA-256 integrity) is a natural base for SKILL.md packages",
       "Weaver's cacheable_prefix/dynamic_context split already supports prompt caching, which MUSE also targets",
-      "smgglrs's gateway model could host shared skill libraries with IFC labels on skills (preventing skill injection attacks via taint tracking)",
-      "smgglrs-agent's progressive output compression (embedding-based extractive selection with cosine similarity) provides the context management MUSE needs",
+      "navra's gateway model could host shared skill libraries with IFC labels on skills (preventing skill injection attacks via taint tracking)",
+      "navra-agent's progressive output compression (embedding-based extractive selection with cosine similarity) provides the context management MUSE needs",
       "ForgeService's validate() cross-reference checking could be extended to verify skill dependency graphs"
     ]
   },

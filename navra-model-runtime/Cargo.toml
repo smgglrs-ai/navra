@@ -1,0 +1,32 @@
+[package]
+name = "navra-model-runtime"
+description = "Serve AI models with pluggable isolation backends (llama.cpp, vLLM, Podman, OpenShell)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["podman", "direct"]
+podman = []
+direct = []
+openshell = ["tonic", "prost"]
+
+[dependencies]
+reqwest = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+libc = "0.2"
+tonic = { version = "0.12", optional = true }
+prost = { version = "0.13", optional = true }
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = "3"

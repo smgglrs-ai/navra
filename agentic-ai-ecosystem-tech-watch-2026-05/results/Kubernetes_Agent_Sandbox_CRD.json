@@ -18,18 +18,18 @@
     ],
     "methodology": "Core CRD (Sandbox) in agents.x-k8s.io/v1alpha1 provides a declarative API for a single stateful pod with stable identity, persistent storage, and network accessibility. Extension CRDs (SandboxTemplate, SandboxClaim, SandboxWarmPool) in extensions.agents.x-k8s.io/v1alpha1 add templating, user-facing claims, and warm pooling. The controller manages pod lifecycle including hibernation (pause/resume) to save compute during idle periods. Runtime class abstraction allows plugging gVisor (syscall-level) or Kata Containers (VM-level) isolation without changing the Sandbox spec. SandboxWarmPool maintains pre-started pods in ready state; SandboxClaim allocates from the pool instantly."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["tools-exec", "model-runtime", "server"],
     "relevance_category": "opportunity",
     "impact_level": "high",
-    "relevance_rationale": "Directly relevant to smgglrs's sandbox execution model. smgglrs-tools-exec already supports OpenShell sandboxes; agent-sandbox provides the Kubernetes-native equivalent. smgglrs-model-runtime's pluggable isolation (direct, Podman, OpenShell) could add agent-sandbox as a fourth backend. The SandboxClaim/SandboxTemplate pattern maps cleanly to smgglrs's capability-based security model — a capability token could authorize a SandboxClaim. Sub-second warm pool provisioning addresses the cold-start latency problem for tool execution sandboxes."
+    "relevance_rationale": "Directly relevant to navra's sandbox execution model. navra-tools-exec already supports OpenShell sandboxes; agent-sandbox provides the Kubernetes-native equivalent. navra-model-runtime's pluggable isolation (direct, Podman, OpenShell) could add agent-sandbox as a fourth backend. The SandboxClaim/SandboxTemplate pattern maps cleanly to navra's capability-based security model — a capability token could authorize a SandboxClaim. Sub-second warm pool provisioning addresses the cold-start latency problem for tool execution sandboxes."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Add agent-sandbox as a Kubernetes-native isolation backend in smgglrs-model-runtime alongside Podman and OpenShell",
-      "Map smgglrs capability tokens to SandboxClaim creation — capability delegation authorizes sandbox provisioning",
+      "Add agent-sandbox as a Kubernetes-native isolation backend in navra-model-runtime alongside Podman and OpenShell",
+      "Map navra capability tokens to SandboxClaim creation — capability delegation authorizes sandbox provisioning",
       "Adopt the warm pool pattern (SandboxWarmPool) for pre-warming execution sandboxes to reduce tool-call latency",
-      "Use SandboxTemplate to define security profiles for different trust tiers (matching smgglrs risk_tier levels)"
+      "Use SandboxTemplate to define security profiles for different trust tiers (matching navra risk_tier levels)"
     ],
     "what_to_watch": [
       "Graduation from v1alpha1 to v1beta1 — stability guarantees",
@@ -38,24 +38,24 @@
     ],
     "what_to_avoid": [
       "Tightly coupling to agent-sandbox internals — use the CRD API abstraction layer",
-      "Assuming agent-sandbox replaces all isolation needs — it's Kubernetes-specific, smgglrs also needs local/desktop isolation"
+      "Assuming agent-sandbox replaces all isolation needs — it's Kubernetes-specific, navra also needs local/desktop isolation"
     ],
     "implementation_difficulty": "moderate",
     "priority_sprint": "Phase 12 (Kubernetes deployment)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-tools-exec provides command execution inside OpenShell sandboxes (local/desktop focus). agent-sandbox provides the Kubernetes-native equivalent for cloud deployments. smgglrs's model-runtime already abstracts isolation backends (direct, Podman, OpenShell), making agent-sandbox a natural addition. smgglrs adds security layers (IFC, capability auth, hook pipeline) on top of whatever isolation backend is used.",
+    "how_navra_compares": "navra-tools-exec provides command execution inside OpenShell sandboxes (local/desktop focus). agent-sandbox provides the Kubernetes-native equivalent for cloud deployments. navra's model-runtime already abstracts isolation backends (direct, Podman, OpenShell), making agent-sandbox a natural addition. navra adds security layers (IFC, capability auth, hook pipeline) on top of whatever isolation backend is used.",
     "gaps_exposed": [
-      "smgglrs lacks Kubernetes-native sandbox provisioning — agent-sandbox fills this for cloud deployments",
-      "No warm pool / pre-warming mechanism in smgglrs for reducing sandbox cold-start latency",
+      "navra lacks Kubernetes-native sandbox provisioning — agent-sandbox fills this for cloud deployments",
+      "No warm pool / pre-warming mechanism in navra for reducing sandbox cold-start latency",
       "No hibernation/resume support for idle sandbox cost optimization",
       "Missing SandboxTemplate equivalent — reusable isolation profiles for different security tiers"
     ],
     "advantages_confirmed": [
-      "smgglrs's pluggable isolation architecture (model-runtime) is validated — agent-sandbox confirms the abstraction pattern",
-      "smgglrs adds security layers (IFC, hooks, capability auth) that agent-sandbox does not provide — complementary, not competing",
-      "smgglrs works locally on Linux desktops without Kubernetes — broader deployment model",
-      "smgglrs's risk_tier system maps naturally to SandboxTemplate security profiles"
+      "navra's pluggable isolation architecture (model-runtime) is validated — agent-sandbox confirms the abstraction pattern",
+      "navra adds security layers (IFC, hooks, capability auth) that agent-sandbox does not provide — complementary, not competing",
+      "navra works locally on Linux desktops without Kubernetes — broader deployment model",
+      "navra's risk_tier system maps naturally to SandboxTemplate security profiles"
     ]
   },
   "ecosystem_context": {

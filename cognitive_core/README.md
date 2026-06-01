@@ -1,6 +1,6 @@
 # Cognitive Core
 
-The persona system for smgglrs multi-agent orchestration. Defines
+The persona system for navra multi-agent orchestration. Defines
 agent identities, behavioral frameworks, and operational protocols.
 
 ## Structure
@@ -87,7 +87,7 @@ Every persona file lives in `personas/` and contains these fields:
 2. Reference existing heuristic modules and facets under `heuristics`. Check `heuristics/` for available modules; open each file to see its `facets` list.
 3. Set `loads_directives: true` only if this persona orchestrates other agents and needs the full directive stack.
 4. Optionally set model preferences. The Forge resolves models with: phase-specific field > `model_override` > caller default.
-5. Restart smgglrs or reload the ForgeService. The new persona is available immediately by name.
+5. Restart navra or reload the ForgeService. The new persona is available immediately by name.
 
 ### How Heuristics and Directives Are Referenced
 
@@ -126,12 +126,12 @@ directives:
 
 When loaded via `ForgeService::get_persona_specialized()`, the Forge clones the base persona and merges in the specialization: heuristic facets are appended to existing module refs (or a new ref is created), tools are deduplicated and added, and if directives are listed, `loads_directives` is set to `true`.
 
-### Integration with smgglrs-agent
+### Integration with navra-agent
 
 The agent builder wires personas into the tool-use loop:
 
 ```rust
-use smgglrs_cognitive::{ForgeService, assemble};
+use navra_cognitive::{ForgeService, assemble};
 
 let forge = ForgeService::load(Path::new("cognitive_core"))?;
 

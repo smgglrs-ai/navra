@@ -1,7 +1,7 @@
 # MCP Tunnel Compatibility
 
-smgglrs works as the private MCP server behind both Anthropic and
-OpenAI MCP tunnels. The tunnels handle transport security; smgglrs
+navra works as the private MCP server behind both Anthropic and
+OpenAI MCP tunnels. The tunnels handle transport security; navra
 handles content-level governance (IFC, ACLs, safety filters, audit).
 
 ## Architecture
@@ -15,7 +15,7 @@ Tunnel Client (on-premise)
     |
     | HTTP/SSE to localhost
     v
-smgglrs (MCP gateway)
+navra (MCP gateway)
     |-- Auth, ACLs, IFC, safety filters
     |-- Tool scanning, integrity monitoring
     v
@@ -23,7 +23,7 @@ Local resources (files, git, exec, upstream MCP servers)
 ```
 
 The tunnel client connects outbound to the cloud provider and
-forwards MCP requests to smgglrs on localhost. smgglrs processes
+forwards MCP requests to navra on localhost. navra processes
 them through its full security pipeline before executing tools.
 
 ## Anthropic MCP Tunnel
@@ -42,8 +42,8 @@ sandbox via the tunnel.
 ### Setup
 
 ```bash
-# 1. Start smgglrs
-smgglrs serve --config config.toml
+# 1. Start navra
+navra serve --config config.toml
 
 # 2. Install and configure cloudflared
 # (Anthropic provides the tunnel token)
@@ -53,7 +53,7 @@ cloudflared tunnel --url http://localhost:9315
 # (via Claude dashboard or API)
 ```
 
-### smgglrs config for tunnel mode
+### navra config for tunnel mode
 
 ```toml
 [server]
@@ -66,7 +66,7 @@ token = "your-blake3-token"
 permissions = "developer"
 ```
 
-No changes to smgglrs config are needed beyond standard agent
+No changes to navra config are needed beyond standard agent
 setup. The tunnel is transparent to the MCP protocol.
 
 ## OpenAI MCP Tunnel
@@ -78,13 +78,13 @@ locally, returns responses.
 ### Setup
 
 ```bash
-# 1. Start smgglrs
-smgglrs serve --config config.toml
+# 1. Start navra
+navra serve --config config.toml
 
 # 2. Install OpenAI tunnel client
 pip install openai-tunnel-client
 
-# 3. Run tunnel client pointing at smgglrs
+# 3. Run tunnel client pointing at navra
 openai-tunnel-client \
   --target http://localhost:9315/mcp \
   --api-key $OPENAI_API_KEY
@@ -92,7 +92,7 @@ openai-tunnel-client \
 
 ### Harpoon pattern alignment
 
-smgglrs's explicit upstream declarations in `config.toml` match
+navra's explicit upstream declarations in `config.toml` match
 the Harpoon pattern: named targets with bounded request types,
 not arbitrary open proxying. Each upstream is declared with its
 transport and credentials:
@@ -103,15 +103,15 @@ name = "local-tools"
 command = ["npx", "@modelcontextprotocol/server-filesystem", "/home"]
 ```
 
-This means smgglrs never proxies to unknown servers — the set of
+This means navra never proxies to unknown servers — the set of
 reachable backends is fixed in configuration.
 
-## What smgglrs adds beyond tunnels
+## What navra adds beyond tunnels
 
 Tunnels provide **transport security** (encrypted channel between
-cloud and on-premise). smgglrs provides **content-level governance**:
+cloud and on-premise). navra provides **content-level governance**:
 
-| Layer | Tunnel | smgglrs |
+| Layer | Tunnel | navra |
 |-------|--------|---------|
 | Transport encryption | Yes (TLS/mTLS) | N/A (localhost) |
 | Tool-level ACLs | No | Deny-wins path ACLs |
@@ -122,8 +122,8 @@ cloud and on-premise). smgglrs provides **content-level governance**:
 | Capability delegation | No | Ring-attenuated tokens |
 | Cognitive file integrity | No | SHA-256 + semantic drift |
 
-A tunnel + smgglrs combination provides both transport security
-and content-level governance. Without smgglrs, the tunnel forwards
+A tunnel + navra combination provides both transport security
+and content-level governance. Without navra, the tunnel forwards
 MCP requests directly to tools with no inspection.
 
 ## MCP method coverage

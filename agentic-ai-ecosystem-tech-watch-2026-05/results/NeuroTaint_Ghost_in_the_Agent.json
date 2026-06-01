@@ -18,17 +18,17 @@
     ],
     "methodology": "Offline audit of execution traces. Three taint propagation mechanisms: (1) semantic evidence — tracks meaning-preserving transformations (paraphrase, summarization), (2) causal reasoning — identifies how untrusted data influences agent decisions even without direct content transfer, (3) persistent context tracking — monitors cross-session memory contamination. Operates post-hoc on traces rather than inline, keeping inference latency unaffected."
   },
-  "smgglrs_relevance": {
+  "navra_relevance": {
     "affected_crates": ["security", "core"],
     "relevance_category": "opportunity",
     "impact_level": "high",
-    "relevance_rationale": "NeuroTaint reveals a gap in pure label-only IFC (FIDES F1=0.522 vs NeuroTaint F1=0.928). However, smgglrs's IFC is more sophisticated than FIDES: (1) per-value IFC via ValueStore with var:// resolution tracks taint at individual tool-result granularity, not just per-session; (2) statistical guardrails (CosineDriftDetector with z-score threshold + EntropyMonitor for tool-use pattern anomalies) detect behavioral shifts that label-tracking alone misses; (3) temporal behavioral contracts (TemporalPredicate: Requires, SequenceLimit, TaintGate, DenialEscalation, Cooldown) add trajectory-level enforcement. Still, smgglrs lacks NeuroTaint's three core mechanisms (semantic transformation tracking, causal influence on decisions, cross-session memory contamination detection). smgglrs-core's hash-chained blackbox audit log (SHA-256 chain with PII filtering) provides the execution trace input NeuroTaint-style offline analysis needs."
+    "relevance_rationale": "NeuroTaint reveals a gap in pure label-only IFC (FIDES F1=0.522 vs NeuroTaint F1=0.928). However, navra's IFC is more sophisticated than FIDES: (1) per-value IFC via ValueStore with var:// resolution tracks taint at individual tool-result granularity, not just per-session; (2) statistical guardrails (CosineDriftDetector with z-score threshold + EntropyMonitor for tool-use pattern anomalies) detect behavioral shifts that label-tracking alone misses; (3) temporal behavioral contracts (TemporalPredicate: Requires, SequenceLimit, TaintGate, DenialEscalation, Cooldown) add trajectory-level enforcement. Still, navra lacks NeuroTaint's three core mechanisms (semantic transformation tracking, causal influence on decisions, cross-session memory contamination detection). navra-core's hash-chained blackbox audit log (SHA-256 chain with PII filtering) provides the execution trace input NeuroTaint-style offline analysis needs."
   },
   "actionable_insights": {
     "what_to_adopt": [
-      "Offline taint audit using smgglrs's OTel traces as input",
-      "Cross-session memory contamination detection in smgglrs-memory",
-      "Semantic taint analysis for smgglrs-security's safety hooks (beyond string-matching)"
+      "Offline taint audit using navra's OTel traces as input",
+      "Cross-session memory contamination detection in navra-memory",
+      "Semantic taint analysis for navra-security's safety hooks (beyond string-matching)"
     ],
     "what_to_watch": [
       "NeuroTaint code release for integration testing",
@@ -43,11 +43,11 @@
     "priority_sprint": "S12 (IFC enhancement)"
   },
   "competitive_position": {
-    "how_smgglrs_compares": "smgglrs-security's IFC uses label tracking (FIDES-class, F1~0.522). NeuroTaint achieves F1=0.928 via semantic+causal+persistent analysis. smgglrs should layer NeuroTaint-style offline audit on top of its inline label tracking for defense-in-depth. smgglrs's existing OTel traces provide the execution trace input NeuroTaint needs.",
+    "how_navra_compares": "navra-security's IFC uses label tracking (FIDES-class, F1~0.522). NeuroTaint achieves F1=0.928 via semantic+causal+persistent analysis. navra should layer NeuroTaint-style offline audit on top of its inline label tracking for defense-in-depth. navra's existing OTel traces provide the execution trace input NeuroTaint needs.",
     "gaps_exposed": [
       "No semantic taint tracking (meaning-preserving transformations like paraphrase/summarization)",
       "No causal influence detection (how untrusted data influences agent decisions without direct content transfer)",
-      "No cross-session memory contamination detection in smgglrs-memory's knowledge store"
+      "No cross-session memory contamination detection in navra-memory's knowledge store"
     ],
     "advantages_confirmed": [
       "Hash-chained blackbox audit log (SHA-256 chain, tamper-detectable) provides execution traces for offline NeuroTaint-style analysis",

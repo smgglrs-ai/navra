@@ -1,8 +1,8 @@
-# smgglrs — Design Document
+# navra — Design Document
 
 ## Overview
 
-**smgglrs** is a secure MCP (Model Context Protocol) gateway designed to
+**navra** is a secure MCP (Model Context Protocol) gateway designed to
 run as a user-level systemd unit on Linux desktops. It aggregates
 multiple MCP servers — both built-in modules and upstream external
 servers — behind a unified security layer with authentication, path
@@ -12,7 +12,7 @@ system.
 
 Built-in **modules** contribute tools and prompts directly. External
 **upstream** MCP servers (e.g., cognitive personas, or
-specialized tool servers) are proxied through smgglrs, which applies the
+specialized tool servers) are proxied through navra, which applies the
 same auth, permissions, and safety policies to all traffic regardless
 of origin.
 
@@ -21,46 +21,46 @@ of origin.
 See CLAUDE.md for the full 20-crate workspace table. Summary:
 
 ```
-smgglrs/
-├── smgglrs-protocol       MCP/A2A/JSON-RPC types, upstream transports
-├── smgglrs-model          Model backend trait + ONNX/OpenAI/Anthropic impls
-├── smgglrs-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
-├── smgglrs-model-runtime  Serve models (direct, Podman, OpenShell)
-├── smgglrs-responses      Open Responses API types (spec-compliant)
-├── smgglrs-security       Auth, permissions, IFC, trusted paths, safety, hooks
-├── smgglrs-cognitive       Persona/directive/heuristic YAML loader + prompt weaver
-├── smgglrs-memory         Working memory + knowledge store (FTS5)
-├── smgglrs-agent          Client SDK: agent builder, MCP client, tool-use loop
-├── smgglrs-flow           Declarative multi-agent flows with handoff routing
-├── smgglrs-core           Server, module trait, session, transport
-├── smgglrs-tools-file     File tools (FTS5, file I/O)
-├── smgglrs-tools-git      Git tools (status, diff, log, branch, commit)
-├── smgglrs-tools-exec     Command execution inside OpenShell sandboxes
-├── smgglrs-rag            Vector search, sqlite-vec, semantic chunking
-├── smgglrs-modal-voice    Speech I/O (ASR + TTS via ONNX)
-├── smgglrs-modal-vision   Image/screen understanding (GPU tier)
-├── smgglrs-macros         #[tool] proc macro for tool definition generation
-├── smgglrs-server         Binary: CLI, config, module wiring (smgglrs)
+navra/
+├── navra-protocol       MCP/A2A/JSON-RPC types, upstream transports
+├── navra-model          Model backend trait + ONNX/OpenAI/Anthropic impls
+├── navra-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
+├── navra-model-runtime  Serve models (direct, Podman, OpenShell)
+├── navra-responses      Open Responses API types (spec-compliant)
+├── navra-security       Auth, permissions, IFC, trusted paths, safety, hooks
+├── navra-cognitive       Persona/directive/heuristic YAML loader + prompt weaver
+├── navra-memory         Working memory + knowledge store (FTS5)
+├── navra-agent          Client SDK: agent builder, MCP client, tool-use loop
+├── navra-flow           Declarative multi-agent flows with handoff routing
+├── navra-core           Server, module trait, session, transport
+├── navra-tools-file     File tools (FTS5, file I/O)
+├── navra-tools-git      Git tools (status, diff, log, branch, commit)
+├── navra-tools-exec     Command execution inside OpenShell sandboxes
+├── navra-rag            Vector search, sqlite-vec, semantic chunking
+├── navra-modal-voice    Speech I/O (ASR + TTS via ONNX)
+├── navra-modal-vision   Image/screen understanding (GPU tier)
+├── navra-macros         #[tool] proc macro for tool definition generation
+├── navra-server         Binary: CLI, config, module wiring (navra)
 └── benchmarks             Criterion performance benchmarks
 ```
 
 | Crate | Role |
 |-------|------|
-| `smgglrs-protocol` | MCP/A2A/JSON-RPC types, upstream client with stdio/HTTP/SSE + resilient transports |
-| `smgglrs-model` | Model backend trait with ONNX (in-process), OpenAI-compatible, and Anthropic (direct + Vertex AI) implementations |
-| `smgglrs-model-hub` | Pull and cache models from OCI, HuggingFace, and Ollama registries with content-addressed storage |
-| `smgglrs-model-runtime` | Serve models with pluggable isolation: direct (llama-server), Podman (rootless container), OpenShell (gRPC sandbox) |
-| `smgglrs-security` | BLAKE3 token auth, capability tokens (CBOR+Ed25519), DID:key identity, path ACLs, per-tool rules, IFC with trusted paths, safety filters, hook pipeline, approval store, D-Bus notifier, process table, rate limiting |
-| `smgglrs-agent` | Client SDK for building agents: Agent builder, McpClient (IFC taint tracking), ReAct tool-use loop |
-| `smgglrs-flow` | Declarative multi-agent flow engine: directed graph of agents, handoff-based routing, TOML config |
-| `smgglrs-core` | MCP server (JSON-RPC 2.0, Streamable HTTP + SSE), Module trait, session store, IFC value store |
-| `smgglrs-tools-file` | File tools, SQLite FTS5 index, file I/O with path security |
-| `smgglrs-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`) |
-| `smgglrs-rag` | Vector search with sqlite-vec, semantic chunking for context enrichment |
-| `smgglrs-modal-voice` | Speech I/O: ASR (Whisper) + TTS via ONNX models |
-| `smgglrs-modal-vision` | Image/screen understanding (GPU tier) |
-| `smgglrs-responses` | Open Responses API types — spec-compliant, no client, no runtime |
-| `smgglrs-server` | Binary: CLI, config, module wiring, model hub/runtime integration, systemd, system tray |
+| `navra-protocol` | MCP/A2A/JSON-RPC types, upstream client with stdio/HTTP/SSE + resilient transports |
+| `navra-model` | Model backend trait with ONNX (in-process), OpenAI-compatible, and Anthropic (direct + Vertex AI) implementations |
+| `navra-model-hub` | Pull and cache models from OCI, HuggingFace, and Ollama registries with content-addressed storage |
+| `navra-model-runtime` | Serve models with pluggable isolation: direct (llama-server), Podman (rootless container), OpenShell (gRPC sandbox) |
+| `navra-security` | BLAKE3 token auth, capability tokens (CBOR+Ed25519), DID:key identity, path ACLs, per-tool rules, IFC with trusted paths, safety filters, hook pipeline, approval store, D-Bus notifier, process table, rate limiting |
+| `navra-agent` | Client SDK for building agents: Agent builder, McpClient (IFC taint tracking), ReAct tool-use loop |
+| `navra-flow` | Declarative multi-agent flow engine: directed graph of agents, handoff-based routing, TOML config |
+| `navra-core` | MCP server (JSON-RPC 2.0, Streamable HTTP + SSE), Module trait, session store, IFC value store |
+| `navra-tools-file` | File tools, SQLite FTS5 index, file I/O with path security |
+| `navra-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`) |
+| `navra-rag` | Vector search with sqlite-vec, semantic chunking for context enrichment |
+| `navra-modal-voice` | Speech I/O: ASR (Whisper) + TTS via ONNX models |
+| `navra-modal-vision` | Image/screen understanding (GPU tier) |
+| `navra-responses` | Open Responses API types — spec-compliant, no client, no runtime |
+| `navra-server` | Binary: CLI, config, module wiring, model hub/runtime integration, systemd, system tray |
 
 ## Architecture
 
@@ -71,7 +71,7 @@ smgglrs/
                              │ MCP Streamable HTTP + SSE
                              │ (Unix socket or TCP)
 ┌────────────────────────────▼─────────────────────────────────────────┐
-│                         smgglrs-server (gateway)                      │
+│                         navra-server (gateway)                      │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐  │
 │  │ System Tray │  │    Config    │  │      Module Loader          │  │
 │  │   (ksni)    │  │    (TOML)    │  │ FileModule, GitModule       │  │
@@ -80,7 +80,7 @@ smgglrs/
 │  └──────┬──────┘  └──────────────┘  └──────────────┬──────────────┘  │
 │         │                                          │                 │
 │  ┌──────▼──────────────────────────────────────────▼──────────────┐  │
-│  │                       smgglrs-core                              │  │
+│  │                       navra-core                              │  │
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │  │
 │  │  │ JSON-RPC   │ │ MCP Proto  │ │ Streamable │ │   Auth     │   │  │
 │  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP + SSE │ │ (BLAKE3)   │   │  │
@@ -107,8 +107,8 @@ smgglrs/
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─ Built-in Modules ─────────────────────────────────────────────┐  │
-│  │  smgglrs-tools-file: file_search, file_read, file_write, ...     │  │
-│  │  smgglrs-tools-git:  git_status, git_diff, git_log, git_branch  │  │
+│  │  navra-tools-file: file_search, file_read, file_write, ...     │  │
+│  │  navra-tools-git:  git_status, git_diff, git_log, git_branch  │  │
 │  │                 git_commit (approval required)                 │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
@@ -135,15 +135,15 @@ agent sandboxes.
 
 ```
 ┌──────────────────────────────────────────────────┐
-│              Host (smgglrs-server)                │
-│  - Orchestrates flows via smgglrs-flow            │
+│              Host (navra-server)                │
+│  - Orchestrates flows via navra-flow            │
 │  - Spawns containers via Podman                   │
 │  - GPU semaphore (max_parallel)                   │
 └──────────┬──────────────┬────────────────────────┘
            │              │
     ┌──────▼──────┐  ┌────▼──────────────────┐
     │ Model Server│  │ Agent Container (N)    │
-    │ (1 per GPU) │  │ smgglrs-agent binary   │
+    │ (1 per GPU) │  │ navra-agent binary   │
     │ llama-server│  │ No GPU access          │
     │ --device    │  │ Reads tools via MCP    │
     │ nvidia.com/ │  │ Reads model via        │
@@ -153,25 +153,25 @@ agent sandboxes.
 
 - **Model server** (1 container): runs `llama-server` with GPU
   passthrough (`--device nvidia.com/gpu=all`). Shared by all agents.
-- **Agent sandboxes** (N containers): run `smgglrs-agent` binary.
+- **Agent sandboxes** (N containers): run `navra-agent` binary.
   No GPU access. Connect to the model server for inference and to
-  the smgglrs gateway for MCP tools.
+  the navra gateway for MCP tools.
 
-### smgglrs-agent Binary
+### navra-agent Binary
 
-Standalone binary at `smgglrs-agent/src/bin/agent.rs`. Configured
+Standalone binary at `navra-agent/src/bin/agent.rs`. Configured
 entirely via environment variables:
 
 | Variable | Required | Description |
 |---|---|---|
-| `SMGGLRS_ENDPOINT` | yes | Gateway MCP URL |
-| `SMGGLRS_TOKEN` | no | Scoped capability token |
-| `SMGGLRS_MODEL_ENDPOINT` | yes | Model server OpenAI-compat URL |
-| `SMGGLRS_MODEL_NAME` | yes | Model name |
-| `SMGGLRS_PERSONA` | no | Persona name |
-| `SMGGLRS_TASK` | yes | Prompt/mandate to execute |
-| `SMGGLRS_MAX_ITERATIONS` | no | Iteration cap (default 30) |
-| `SMGGLRS_COGNITIVE_CORE` | no | Path to cognitive_core directory |
+| `NAVRA_ENDPOINT` | yes | Gateway MCP URL |
+| `NAVRA_TOKEN` | no | Scoped capability token |
+| `NAVRA_MODEL_ENDPOINT` | yes | Model server OpenAI-compat URL |
+| `NAVRA_MODEL_NAME` | yes | Model name |
+| `NAVRA_PERSONA` | no | Persona name |
+| `NAVRA_TASK` | yes | Prompt/mandate to execute |
+| `NAVRA_MAX_ITERATIONS` | no | Iteration cap (default 30) |
+| `NAVRA_COGNITIVE_CORE` | no | Path to cognitive_core directory |
 
 Output: JSON with `output`, `iterations`, `tokens_in`, `tokens_out`.
 
@@ -184,7 +184,7 @@ Output: JSON with `output`, `iterations`, `tokens_in`, `tokens_out`.
 - **Runtime stage**: `registry.fedoraproject.org/fedora-minimal:latest`,
   copies binary + ONNX shared libraries. Runs as UID 1001.
 
-Build: `podman build -f Dockerfile.agent -t smgglrs-agent:latest .`
+Build: `podman build -f Dockerfile.agent -t navra-agent:latest .`
 
 ### Network
 
@@ -200,7 +200,7 @@ all agents, preventing GPU memory exhaustion with large models.
 ### Fallback
 
 When Podman is unavailable, agents run in-process within the
-smgglrs-server. The same `Agent` SDK is used in both paths.
+navra-server. The same `Agent` SDK is used in both paths.
 
 ### Configuration
 
@@ -209,7 +209,7 @@ smgglrs-server. The same `Agent` SDK is used in both paths.
 containerized = true
 max_parallel = 2
 model_server_image = "docker.io/vllm/vllm-openai:latest"
-agent_image = "smgglrs-agent:latest"
+agent_image = "navra-agent:latest"
 ```
 
 ## Module System
@@ -234,7 +234,7 @@ Compile-time composition — modules are wired in `main.rs`:
 
 ```rust
 McpServer::builder()
-    .name("smgglrs")
+    .name("navra")
     .module(FileModule::new(perm_engine, index, approvals, notifier))
     .module(GitModule::new(perm_engine, approvals, notifier))
     .authenticator(token_auth)
@@ -254,7 +254,7 @@ Modules are enabled/disabled in config:
 ```toml
 [modules.file]
 enabled = true
-db = "$XDG_DATA_HOME/smgglrs/index.db"
+db = "$XDG_DATA_HOME/navra/index.db"
 
 [modules.git]
 enabled = true
@@ -263,7 +263,7 @@ enabled = true
 ### Adding a Module
 
 1. Create crate implementing `Module` → provides `(ToolDefinition, ToolHandler)` pairs
-2. Add dependency in `smgglrs-server/Cargo.toml`
+2. Add dependency in `navra-server/Cargo.toml`
 3. Add config struct in `config.rs`
 4. Add `if cfg.xxx_enabled() { builder = builder.module(xxx); }` in `main.rs`
 
@@ -320,7 +320,7 @@ Sessions are created on `initialize` and tracked via UUID:
 
 ### Transport Bindings
 
-- **Unix domain socket** (default): `$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock`
+- **Unix domain socket** (default): `$XDG_RUNTIME_DIR/navra/navra.sock`
   with 0600 permissions. Parent directories created automatically.
 - **TCP** (optional): `127.0.0.1:9315` for development
 - Both can be active simultaneously.
@@ -358,7 +358,7 @@ token_hash = "20a8c34a..."  # BLAKE3 hex hash
 permissions = "developer"
 ```
 
-Generate tokens via CLI: `smgglrs token generate --name N --perms P`
+Generate tokens via CLI: `navra token generate --name N --perms P`
 
 ### 2. Path ACLs (deny-wins)
 
@@ -532,7 +532,7 @@ Resolution via ANY channel:
   1. Agent calls file_approve(request_id=abc-123)     ← MCP-native
   2. User clicks D-Bus notification "Approve" button  ← Desktop
   3. User clicks tray menu Approve                    ← Tray icon
-  4. CLI: smgglrs approve abc-123                        ← Terminal
+  4. CLI: navra approve abc-123                        ← Terminal
 
 Agent: file_write(path, content)  # retry
 Server: "Written 42 bytes to /path"  # grant consumed
@@ -596,7 +596,7 @@ Operations that interact with forge/platform APIs use
 
 ### Rules
 
-1. **Module prefix = crate suffix.** `smgglrs-tools-github` → `github_*`.
+1. **Module prefix = crate suffix.** `navra-tools-github` → `github_*`.
 2. **Resource = noun from the MCP resource URI.** `pr`, `issue`, `mr`, `board`.
 3. **Action = verb.** `create`, `list`, `get`, `update`, `delete`,
    `comment`, `review`, `approve`, `transition`.
@@ -609,15 +609,15 @@ Operations that interact with forge/platform APIs use
 
 | Crate | Tool prefix | Scope |
 |-------|-------------|-------|
-| `smgglrs-tools-file` | `file_` | Local filesystem |
-| `smgglrs-tools-git` | `git_` | Local + transport (push/pull/fetch) |
-| `smgglrs-tools-github` | `github_` | GitHub API (PRs, issues, repos) |
-| `smgglrs-tools-gitlab` | `gitlab_` | GitLab API (MRs, issues, projects) |
-| `smgglrs-tools-jira` | `jira_` | Jira API (issues, boards, sprints) |
+| `navra-tools-file` | `file_` | Local filesystem |
+| `navra-tools-git` | `git_` | Local + transport (push/pull/fetch) |
+| `navra-tools-github` | `github_` | GitHub API (PRs, issues, repos) |
+| `navra-tools-gitlab` | `gitlab_` | GitLab API (MRs, issues, projects) |
+| `navra-tools-jira` | `jira_` | Jira API (issues, boards, sprints) |
 
 ## MCP Tools
 
-### File Module (`smgglrs-tools-file`)
+### File Module (`navra-tools-file`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
@@ -633,7 +633,7 @@ Operations that interact with forge/platform APIs use
 
 Read-only access is also available via MCP resources with `file://` URIs.
 
-### Git Module (`smgglrs-tools-git`)
+### Git Module (`navra-tools-git`)
 
 | Tool | Permission | Description |
 |------|-----------|-------------|
@@ -666,7 +666,7 @@ Then `check_perm()`:
 
 ### Document Indexing (SQLite FTS5)
 
-Single database at `$XDG_DATA_HOME/smgglrs/index.db`:
+Single database at `$XDG_DATA_HOME/navra/index.db`:
 
 ```sql
 CREATE TABLE documents (...);
@@ -724,29 +724,29 @@ character-level tokenization otherwise.
 ### Model Management CLI
 
 ```
-smgglrs model available              Show supported models
-smgglrs model pull guardian-hap       Download safety classifier
-smgglrs model pull granite-embed      Download embedding model
-smgglrs model list                    Show installed models with sizes
+navra model available              Show supported models
+navra model pull guardian-hap       Download safety classifier
+navra model pull granite-embed      Download embedding model
+navra model list                    Show installed models with sizes
 ```
 
 Models are downloaded from HuggingFace to
-`~/.local/share/smgglrs/models/<name>/` with streaming progress.
+`~/.local/share/navra/models/<name>/` with streaming progress.
 After download, prints a ready-to-paste config snippet.
 
 ### Configuration
 
 ```toml
 [models.safety]
-model_path = "~/.local/share/smgglrs/models/guardian-hap/model.onnx"
-tokenizer_path = "~/.local/share/smgglrs/models/guardian-hap/tokenizer.json"
+model_path = "~/.local/share/navra/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/navra/models/guardian-hap/tokenizer.json"
 task = "classification"
 labels = ["safe", "hap"]
 threshold = 0.5
 
 [models.embeddings]
-model_path = "~/.local/share/smgglrs/models/granite-embed/model.onnx"
-tokenizer_path = "~/.local/share/smgglrs/models/granite-embed/tokenizer.json"
+model_path = "~/.local/share/navra/models/granite-embed/model.onnx"
+tokenizer_path = "~/.local/share/navra/models/granite-embed/tokenizer.json"
 task = "embedding"
 dimensions = 768
 ```
@@ -789,7 +789,7 @@ connection strings, Slack webhooks.
    - Multilingual XLM-RoBERTa model for non-English PII
    - Detects names, addresses, organizations, and other entities
      that regex cannot catch
-   - Download via: `smgglrs pii download [protectai|xlm-roberta]`
+   - Download via: `navra pii download [protectai|xlm-roberta]`
 
 3. **File path detection**:
    - `PathPiiFilter` detects PII in file paths (e.g., usernames
@@ -836,11 +836,11 @@ so downstream decisions account for prior PII exposure.
 **PII model management CLI**:
 
 ```
-smgglrs pii download protectai     Download English NER model
-smgglrs pii download xlm-roberta   Download multilingual NER model
+navra pii download protectai     Download English NER model
+navra pii download xlm-roberta   Download multilingual NER model
 ```
 
-Models are downloaded to `~/.local/share/smgglrs/models/pii-*/`.
+Models are downloaded to `~/.local/share/navra/models/pii-*/`.
 
 ### Custom Filters
 
@@ -892,8 +892,8 @@ Loaded automatically when a classification model is configured:
 
 ```toml
 [models.safety]
-model_path = "~/.local/share/smgglrs/models/guardian-hap/model.onnx"
-tokenizer_path = "~/.local/share/smgglrs/models/guardian-hap/tokenizer.json"
+model_path = "~/.local/share/navra/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/navra/models/guardian-hap/tokenizer.json"
 task = "classification"
 labels = ["safe", "hap"]
 threshold = 0.5
@@ -967,8 +967,8 @@ subprocess), `HttpTransportFactory`, `SseTransportFactory`.
 
 ```toml
 [[upstream]]
-name = "smgglrs"
-command = ["poetry", "run", "python", "-m", "smgglrs.memory.mcp_server"]
+name = "navra"
+command = ["poetry", "run", "python", "-m", "navra.memory.mcp_server"]
 retry_base_delay_ms = 1000
 retry_max_delay_ms = 30000
 retry_budget_secs = 600
@@ -1075,7 +1075,7 @@ Run `generate_checksums()` after any YAML modification.
 
 ### MAC + DAC: OpenShell Integration
 
-When smgglrs runs inside an OpenShell sandbox, the security model
+When navra runs inside an OpenShell sandbox, the security model
 extends from application-layer DAC to a combined MAC + DAC defense
 in depth architecture. Neither layer alone is sufficient.
 
@@ -1084,23 +1084,23 @@ in depth architecture. Neither layer alone is sufficient.
 | Layer | Type | Mechanism | Prevents |
 |-------|------|-----------|----------|
 | OpenShell | MAC (Mandatory) | Network namespace, HTTP CONNECT proxy, OPA policies, Landlock, seccomp | Network exfiltration, lateral movement between sandboxes, filesystem escape, raw socket creation |
-| smgglrs | DAC (Discretionary) | Capability tokens, deny-wins ACLs, IFC taint propagation, safety filters, hooks | Unauthorized tool calls, path traversal, data leak via tool results, PII exposure, privilege escalation within the application |
+| navra | DAC (Discretionary) | Capability tokens, deny-wins ACLs, IFC taint propagation, safety filters, hooks | Unauthorized tool calls, path traversal, data leak via tool results, PII exposure, privilege escalation within the application |
 
 **Why both are necessary:**
 
-- **OpenShell without smgglrs**: The agent can reach smgglrs over
+- **OpenShell without navra**: The agent can reach navra over
   the network, but without ACLs it could call any tool, read any
   path, and ignore IFC labels. A compromised agent process has
   unrestricted tool access.
 
-- **smgglrs without OpenShell**: The agent respects smgglrs's ACLs
+- **navra without OpenShell**: The agent respects navra's ACLs
   at the application layer, but a compromised agent process can
-  bypass smgglrs entirely: open raw sockets, exfiltrate data to the
+  bypass navra entirely: open raw sockets, exfiltrate data to the
   internet, read arbitrary files via the OS, or tamper with other
   processes.
 
 - **Both together**: OpenShell prevents reaching anything except
-  smgglrs and the model. smgglrs prevents doing anything except
+  navra and the model. navra prevents doing anything except
   what the capability token allows. Compromise of either layer alone
   is insufficient for a full breach.
 
@@ -1109,11 +1109,11 @@ in depth architecture. Neither layer alone is sufficient.
 | OS Concept | Traditional OS | Agent Platform |
 |------------|---------------|----------------|
 | Hardware | CPU rings, MMU, I/O ports | OpenShell sandbox (namespace, Landlock, seccomp) |
-| Kernel | Syscall interface, process isolation | smgglrs gateway (tool access, session isolation, IFC) |
+| Kernel | Syscall interface, process isolation | navra gateway (tool access, session isolation, IFC) |
 | Userland | Applications using syscalls | MCP servers + agents using tool calls |
 
 This maps MAC (SELinux/AppArmor) to OpenShell's mandatory network
-isolation, and DAC (Unix permissions) to smgglrs's capability-scoped
+isolation, and DAC (Unix permissions) to navra's capability-scoped
 ACLs. The combination is the same defense-in-depth pattern used in
 production operating systems.
 
@@ -1129,7 +1129,7 @@ sandbox delegation, and gRPC module architecture.
 with `0600` permissions, meaning only the owning user can connect.
 No network exposure, no port to scan. When managed by systemd socket
 activation, the socket unit enforces `SocketMode=0600` independently
-of the smgglrs process.
+of the navra process.
 
 **TCP listener** (optional): Binds to `127.0.0.1` only. Connections
 from other machines are refused at the kernel level. This transport
@@ -1160,7 +1160,7 @@ network observer can read and modify this traffic.
 
 For any upstream MCP server that is not on localhost, place a TLS-
 terminating reverse proxy in front of it. The proxy handles
-certificate management and encryption; smgglrs connects to it over
+certificate management and encryption; navra connects to it over
 localhost or Unix socket.
 
 **Example: nginx proxying a remote upstream MCP server**
@@ -1168,7 +1168,7 @@ localhost or Unix socket.
 ```nginx
 # /etc/nginx/conf.d/mcp-upstream.conf
 #
-# smgglrs connects to http://127.0.0.1:9400/mcp (plain HTTP, loopback).
+# navra connects to http://127.0.0.1:9400/mcp (plain HTTP, loopback).
 # nginx forwards to the remote upstream over TLS.
 
 server {
@@ -1191,7 +1191,7 @@ server {
 }
 ```
 
-Then configure the upstream in smgglrs to point at the local proxy:
+Then configure the upstream in navra to point at the local proxy:
 
 ```toml
 [[upstream]]
@@ -1202,7 +1202,7 @@ url = "http://127.0.0.1:9400/mcp"
 
 The same pattern works with Caddy (`reverse_proxy` with automatic
 HTTPS) or Envoy (`transport_socket` with TLS context). The key
-point: smgglrs talks plain HTTP to localhost; the proxy handles
+point: navra talks plain HTTP to localhost; the proxy handles
 TLS to the remote server.
 
 ### Future: native TLS via rustls
@@ -1215,32 +1215,32 @@ above is the recommended production pattern.
 
 ## Configuration
 
-Default path: `~/.config/smgglrs/config.toml`
+Default path: `~/.config/navra/config.toml`
 
 ```toml
 [server]
-socket = "$XDG_RUNTIME_DIR/smgglrs/smgglrs.sock"
+socket = "$XDG_RUNTIME_DIR/navra/navra.sock"
 tcp = "127.0.0.1:9315"    # optional, for development
 
 [modules.file]
 enabled = true
-# db = "$XDG_DATA_HOME/smgglrs/index.db"
+# db = "$XDG_DATA_HOME/navra/index.db"
 watch = ["~/Documents", "~/Notes"]   # auto-reindex on file changes
 
 [modules.git]
 enabled = true
 
-# --- ONNX models (install via: smgglrs model pull <name>) ---
+# --- ONNX models (install via: navra model pull <name>) ---
 [models.safety]
-model_path = "~/.local/share/smgglrs/models/guardian-hap/model.onnx"
-tokenizer_path = "~/.local/share/smgglrs/models/guardian-hap/tokenizer.json"
+model_path = "~/.local/share/navra/models/guardian-hap/model.onnx"
+tokenizer_path = "~/.local/share/navra/models/guardian-hap/tokenizer.json"
 task = "classification"
 labels = ["safe", "hap"]
 threshold = 0.5
 
 [models.embeddings]
-model_path = "~/.local/share/smgglrs/models/granite-embed/model.onnx"
-tokenizer_path = "~/.local/share/smgglrs/models/granite-embed/tokenizer.json"
+model_path = "~/.local/share/navra/models/granite-embed/model.onnx"
+tokenizer_path = "~/.local/share/navra/models/granite-embed/tokenizer.json"
 task = "embedding"
 dimensions = 768
 
@@ -1250,10 +1250,10 @@ notify = "dbus"  # "dbus" or "none"
 
 # --- Upstream MCP servers ---
 [[upstream]]
-name = "smgglrs"
+name = "navra"
 transport = "stdio"
-command = ["poetry", "run", "python", "-m", "smgglrs.memory.mcp_server"]
-cwd = "/home/user/smgglrs"
+command = ["poetry", "run", "python", "-m", "navra.memory.mcp_server"]
+cwd = "/home/user/navra"
 retry_base_delay_ms = 1000
 
 [[upstream]]
@@ -1264,7 +1264,7 @@ url = "http://localhost:8001/mcp"
 # --- Agents ---
 [[agents]]
 name = "claude-code"
-token_hash = "20a8c34a..."  # BLAKE3 hex hash from `smgglrs token generate`
+token_hash = "20a8c34a..."  # BLAKE3 hex hash from `navra token generate`
 permissions = "developer"
 
 [permissions.developer]
@@ -1295,27 +1295,27 @@ safety = "standard"
 ## CLI
 
 ```
-smgglrs serve [--config path] [--no-tray]   Start the server
-smgglrs token generate --name N --perms P   Generate agent token (prints BLAKE3 hash)
-smgglrs token list                          List registered agents from config
-smgglrs approve <request-id>                Approve a pending request (via server)
-smgglrs deny <request-id>                   Deny a pending request (via server)
-smgglrs status                              Query running server status
-smgglrs install                             Install systemd user units
-smgglrs uninstall                           Uninstall systemd user units
-smgglrs model available                     Show supported models for download
-smgglrs model pull <name>                   Download model from HuggingFace
-smgglrs model list                          Show installed models
+navra serve [--config path] [--no-tray]   Start the server
+navra token generate --name N --perms P   Generate agent token (prints BLAKE3 hash)
+navra token list                          List registered agents from config
+navra approve <request-id>                Approve a pending request (via server)
+navra deny <request-id>                   Deny a pending request (via server)
+navra status                              Query running server status
+navra install                             Install systemd user units
+navra uninstall                           Uninstall systemd user units
+navra model available                     Show supported models for download
+navra model pull <name>                   Download model from HuggingFace
+navra model list                          Show installed models
 ```
 
 ## Gateway Architecture
 
 ### Design Rationale
 
-smgglrs is an **MCP gateway** that aggregates upstream MCP servers:
+navra is an **MCP gateway** that aggregates upstream MCP servers:
 
 - **Domain separation**: Each upstream server owns its domain logic.
-  smgglrs stays domain-agnostic.
+  navra stays domain-agnostic.
 - **Unified security**: Auth, ACLs, per-tool rules, content safety,
   and approval workflows apply uniformly to all traffic.
 - **Model agnosticism**: Any MCP client can consume the aggregated
@@ -1353,22 +1353,22 @@ retry and reconnection (see Resilient Transports section).
 
 ## Systemd Integration
 
-Install via `smgglrs install`, uninstall via `smgglrs uninstall`.
+Install via `navra install`, uninstall via `navra uninstall`.
 
-Service unit (`~/.config/systemd/user/smgglrs.service`):
+Service unit (`~/.config/systemd/user/navra.service`):
 
 ```ini
 [Unit]
-Description=smgglrs — Composable MCP Server
+Description=navra — Composable MCP Server
 After=default.target
 
 [Service]
 Type=simple
-ExecStart=%h/.cargo/bin/smgglrs serve --no-tray
+ExecStart=%h/.cargo/bin/navra serve --no-tray
 Restart=on-failure
 RestartSec=5
-RuntimeDirectory=smgglrs
-ReadWritePaths=%h/.local/share/smgglrs %h/.config/smgglrs
+RuntimeDirectory=navra
+ReadWritePaths=%h/.local/share/navra %h/.config/navra
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
@@ -1377,14 +1377,14 @@ ProtectHome=read-only
 WantedBy=default.target
 ```
 
-Socket unit (`~/.config/systemd/user/smgglrs.socket`):
+Socket unit (`~/.config/systemd/user/navra.socket`):
 
 ```ini
 [Unit]
-Description=smgglrs — MCP Server Socket
+Description=navra — MCP Server Socket
 
 [Socket]
-ListenStream=%t/smgglrs/smgglrs.sock
+ListenStream=%t/navra/navra.sock
 SocketMode=0600
 
 [Install]
@@ -1409,27 +1409,27 @@ watch = ["~/Documents", "~/Notes"]
 ## Agent SDK Design Notes
 
 Design inputs from landscape research (April 2026) for the
-future `smgglrs-agent` crate.
+future `navra-agent` crate.
 
 ### Coding Agent Components (Raschka)
 
 Six core components identified for effective agent harnesses:
 
 1. **Live repository context** — Collect workspace metadata upfront
-   (git status, project structure, conventions). smgglrs already provides
-   this via smgglrs-tools-git and smgglrs-tools-file.
+   (git status, project structure, conventions). navra already provides
+   this via navra-tools-git and navra-tools-file.
 2. **Prompt cache separation** — Separate stable content (tool
    descriptions, system prompt) from dynamic state (conversation
    history). Enables prompt cache reuse across turns.
 3. **Structured tool access with validation** — Model output →
    validation → optional approval → execution → bounded result.
-   Maps to smgglrs's permission engine + hook pipeline.
+   Maps to navra's permission engine + hook pipeline.
 4. **Context bloat minimization** — Clip verbose outputs, compress
-   older history more aggressively than recent events. smgglrs-agent
+   older history more aggressively than recent events. navra-agent
    should implement transcript reduction.
 5. **Dual-layer session memory** — Full transcript (for audit/resume)
    + distilled working memory (for task continuity). Maps to
-   smgglrs-core session management.
+   navra-core session management.
 6. **Bounded subagent delegation** — Child agents inherit sufficient
    context but operate within tighter constraints. Depth limits,
    read-only modes, explicit task boundaries.
@@ -1443,18 +1443,18 @@ AG-UI's event streaming and interrupt patterns are relevant for
 the hook pipeline:
 
 - **Tool-level approval**: `approval_mode="always_require"` pauses
-  workflow, emits interrupt event for human review. Maps to smgglrs's
+  workflow, emits interrupt event for human review. Maps to navra's
   existing approval system.
 - **Information request interrupts**: Agents can pause and ask
   users for input via `HandoffAgentUserRequest`. Could extend
-  smgglrs's hook pipeline to support agent-initiated prompts.
+  navra's hook pipeline to support agent-initiated prompts.
 - **Resume mechanism**: `resume.interrupts` carries interrupt ID +
   response payload. The approval store already supports grant
   caching; extend to support arbitrary interrupt/resume.
 
 ### Flow Communication Primitives
 
-smgglrs-flow provides three execution modes (handoff flows, DAG
+navra-flow provides three execution modes (handoff flows, DAG
 execution, iterative analysis) and three IFC-gated communication
 primitives for mesh topologies:
 
@@ -1478,8 +1478,8 @@ bb_publish, bb_read, bb_keys) intercepted by the flow engine.
 
 RamaLama (containers/ramalama) established the model-as-container
 pattern: URI-addressed models, GPU auto-detection, rootless Podman
-with `--network=none`. Our `smgglrs-model-hub` and
-`smgglrs-model-runtime` reimplement this in Rust with the same URI
+with `--network=none`. Our `navra-model-hub` and
+`navra-model-runtime` reimplement this in Rust with the same URI
 scheme (`ollama://`, `hf://`, `oci://`) for compatibility.
 
 ## Future Work
@@ -1489,7 +1489,7 @@ scheme (`ollama://`, `hf://`, `oci://`) for compatibility.
   semantic similarity (embedding model infrastructure is ready)
 - **Content extraction** — PDF, HTML, CSV pipeline
 - **GLM-OCR integration** — 0.9B OCR model for document ingestion
-  via managed runtime, feeding structured markdown into smgglrs-rag
+  via managed runtime, feeding structured markdown into navra-rag
 
 ### Platform
 - **Gnome Keyring** — Token storage via `org.freedesktop.secrets`

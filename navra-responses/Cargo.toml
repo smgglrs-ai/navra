@@ -1,0 +1,16 @@
+[package]
+name = "navra-responses"
+description = "Open Responses API types for Rust — spec-compliant, no client, no runtime"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause"
+rust-version = "1.75"
+keywords = ["openresponses", "llm", "ai", "api", "types"]
+categories = ["api-bindings", "data-structures"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+serde_json = "1"
