@@ -4,9 +4,9 @@ This document tracks the evolution of the navra-* crate family from
 an MCP gateway (navra) into a complete multi-agent orchestration
 platform.
 
-## Current state (2026-05-29)
+## Current state (2026-06-01)
 
-22 crates, ~110K LoC, 2500+ tests, 0 warnings. 43 personas, 36
+22 crates, ~125K LoC, 2400+ tests, 0 warnings. 43 personas, 36
 heuristics, 8 directives. Gateway blackbox audit. 4 paper outlines.
 Fully local multi-agent demos. Full PII pipeline (regex + NER + file
 paths, pseudonymization, GDPR tools, IFC integration). Containerized
@@ -22,6 +22,14 @@ Temporal tree memory (MemForest on SQLite, 3x write / 80x query).
 ID-JAG agent registration. IFC declassification witness. Prometheus
 /metrics + OTel trace export. Agentic OS primitives. vLLM backend
 + Engine×Isolation refactor (6 backends). 138 Kani formal proofs.
+
+### Recent (2026-06-01)
+
+- **Renamed smgglrs → navra**: Full project rename across 22 crates,
+  3,600 files, all binaries/configs/URIs/metrics/docs. GitHub repo
+  renamed to smgglrs-ai/navra. Sibling repos (rendra, rendra-ag-ui,
+  rust-ai-stack) updated. Config path: `~/.config/navra/config.toml`,
+  data path: `~/.local/share/navra/`.
 
 ### Recent (2026-05-29)
 
@@ -482,7 +490,7 @@ external evaluation.
 15a and 15b are parallel P1 items. Built on rendra stack (Servo
 runtime + rendra-ui + rendra-ag-ui). Completely independent of
 navra Rust work — can be worked on anytime. Note: rendra apps
-are separate repos (navra-ai/rendra, rendra-ui, rendra-ag-ui).
+are separate repos (smgglrs-ai/rendra, rendra-ui, rendra-ag-ui).
 
 #### Chain 12: UX & tool patterns (MEDIUM)
 
@@ -597,12 +605,26 @@ WAVE 5 — Papers (terminal)
   10b  Persona paper            depends on 1k ✅
   10c  Review paper             depends on C3 (3-5d eval)
 
-NEXT ACTIONS (unblocked, priority order):
-  1. 7l  TurboVec eval         P3  2-3d  (benchmark sqlite-vec vs turbovec)
-  2. U3  GitLab module         P2  3-4d  (port of U2)
-  3. 5e  AG-UI event layer     P3  2-3d  (navra → rendra-ag-ui)
-  4. 13a Paper fixes           P1  3d    (FIDES diff, gateway positioning)
-  5. 10a Security paper        P1  5-7d  (most deps resolved)
+NEXT ACTIONS (value-driven, 2026-06-01):
+
+  The code is ahead of the evidence. Prove what's built before
+  building more. Everything not on this list is parking lot.
+
+  Tier 1 — Prove the claims (June–July):
+  1. 11n model-runtime refactor  High 1-2d (tech debt, unblocks backends)
+  2. 13a Paper critical fixes    P1   3d   (FIDES diff, gateway positioning)
+  3. C3  External eval (3+ OSS)  P1   3-5d (statistical significance)
+  4. 10a Security paper          P1   5-7d (flagship, most deps resolved)
+
+  Tier 2 — Close gaps (July–August):
+  5. 9aa MCP default flip        P0   3-5d (⏳ gated on July 28 spec)
+  6. U3  GitLab module           P2   3-4d (enterprise reach)
+  7. 15a+15b Rendra app MVP      P1   5-7d (demo-able UX, separate repos)
+
+  Tier 3 — Ecosystem (Q3–Q4):
+  8. First external deployment
+  9. Community docs + getting started guide
+  10. 10b Persona paper
 ```
 
 #### Critical paths (updated 2026-05-29)
@@ -2203,7 +2225,7 @@ navra hook pipeline → AG-UI events → rendra IPC → rendra-ag-ui
   rendra-ag-ui widget. Approval request renders as confirmation
   dialog.
 
-Reference: rendra-ag-ui (navra-ai/rendra-ag-ui), AG-UI protocol
+Reference: rendra-ag-ui (smgglrs-ai/rendra-ag-ui), AG-UI protocol
 (docs.ag-ui.com).
 
 #### 5f. Registry proxy module (NEW)
