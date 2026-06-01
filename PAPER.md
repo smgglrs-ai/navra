@@ -19,19 +19,24 @@ resource mediation. We present an AI Operating System architecture
 that applies classical OS principles — microkernel separation,
 capability-based security, graduated privilege rings, and
 cryptographic process identity — to the domain of LLM-powered
-agents. Our implementation comprises two systems: navra, a Rust
-microkernel that enforces security and mediates access to local
-resources, and navra, a Python userland that provides multi-agent
-orchestration, cognitive personas, and task planning. Agents
-communicate via the Model Context Protocol (MCP) for tool
-invocation and the Agent-to-Agent (A2A) protocol for inter-process
-communication. We show that this separation enables delegation
-chains where a leader agent issues attenuated, cryptographically
-signed capability tokens to specialist agents, each scoped to the
-tools, paths, and credentials required for its task. We evaluate
-token overhead (14 μs verification, 375--773 byte tokens),
-delegation validation cost, and the security properties targeted
-by the capability model. We discuss limitations, notably that
+agents. Our implementation, navra, is a Rust workspace of 22 crates
+where the microkernel (security, transport, session management)
+enforces mandatory access control at a single chokepoint, and
+userland modules (tools, orchestration, cognitive personas) interact
+exclusively through the kernel's mediated interface. Modules run
+in-process by default for zero-overhead composition, or as
+standalone MCP servers in separate processes for crash isolation
+and independent deployment — mirroring the L4 microkernel's
+approach to driver isolation. Agents communicate via the Model
+Context Protocol (MCP) for tool invocation and the Agent-to-Agent
+(A2A) protocol for inter-process communication. We show that this
+separation enables delegation chains where a leader agent issues
+attenuated, cryptographically signed capability tokens to
+specialist agents, each scoped to the tools, paths, and
+credentials required for its task. We evaluate token overhead
+(14 μs verification, 375--773 byte tokens), delegation validation
+cost, and the security properties verified by 138 Kani proofs and
+6 TLA+ specifications. We discuss limitations, notably that
 capability tokens constrain but do not prevent prompt injection
 attacks, and identify information flow control as a complementary
 direction.
@@ -94,9 +99,12 @@ layer rather than relying on model compliance.
    multi-agent hierarchies.
 
 3. **Microkernel/userland separation** — A clean architectural
-   boundary between security enforcement (navra, Rust) and
-   orchestration logic (navra, Python), communicating via standard
-   protocols (MCP, A2A).
+   boundary between the security kernel and tool modules, enforced
+   by Rust's crate visibility rules at compile time and by process
+   isolation at runtime. Modules implement a `Module` trait (the
+   system call interface) and can run in-process or as standalone
+   MCP servers — the kernel enforces security identically in both
+   modes.
 
 4. **Credential brokering** — Agents never access raw secrets. The
    microkernel reads credentials from the OS keyring and injects
@@ -278,10 +286,14 @@ extends zero-trust to agent-to-agent interactions.
    interact with resources exclusively through the kernel's
    mediation.
 
-2. **Microkernel separation** — The kernel (navra) provides
-   mechanism: identity, capability verification, resource mediation,
-   IPC transport. Policy decisions (which agent does what task) live
-   in userland (navra).
+2. **Microkernel separation** — The kernel provides mechanism:
+   identity, capability verification, resource mediation, IPC
+   transport. Tool modules and orchestration logic are userland —
+   they implement the `Module` trait and interact with resources
+   only through the kernel's mediated chokepoint. Modules can run
+   in-process (compiled into the kernel binary) or out-of-process
+   (standalone MCP servers connected via stdio/HTTP), mirroring
+   the L4 approach to driver isolation.
 
 3. **Deny-wins** — In all permission checks (path ACLs, tool rules,
    ring inheritance), deny rules take absolute precedence over allow
@@ -308,11 +320,10 @@ extends zero-trust to agent-to-agent interactions.
 └──────────────────────┬───────────────────────────────┘
                        │ approve / deny / inspect
 ┌──────────────────────▼───────────────────────────────┐
-│                  navra (Userland)                    │
-│                                                      │
+│                    AI Agents                          │
 │  ┌─────────┐  ┌────────────┐  ┌──────────────────┐  │
 │  │ Leader  │  │ Specialist │  │   Specialist      │  │
-│  │ Persona │──│ Persona A  │  │   Persona B       │  │
+│  │ Agent   │──│ Agent A    │  │   Agent B         │  │
 │  └────┬────┘  └─────┬──────┘  └───────┬──────────┘  │
 │       │ cap_delegate │                │              │
 │       │  (ring 1→2)  │                │              │
@@ -323,7 +334,7 @@ extends zero-trust to agent-to-agent interactions.
 └───────────────────────┤──────────────────────────────┘
                         │ MCP / A2A over HTTP+SSE
 ┌───────────────────────▼──────────────────────────────┐
-│                  navra (Microkernel)                   │
+│                navra (AI OS Kernel)                    │
 │                                                      │
 │  ┌────────────┐ ┌────────────┐ ┌──────────────────┐ │
 │  │ Capability │ │ Permission │ │   Credential     │ │
@@ -332,20 +343,26 @@ extends zero-trust to agent-to-agent interactions.
 │  └─────┬──────┘ └─────┬──────┘ └───────┬──────────┘ │
 │        │              │                │             │
 │  ┌─────▼──────────────▼────────────────▼──────────┐ │
-│  │              Hook Pipeline                      │ │
-│  │         (pre/post tool call filtering)          │ │
+│  │         IFC + Hook Pipeline + Safety            │ │
+│  │       (Bell-LaPadula, content filtering)        │ │
 │  └─────────────────────┬──────────────────────────┘ │
 │                        │                             │
 │  ┌─────────────────────▼──────────────────────────┐ │
-│  │              Module Registry                    │ │
-│  │  ┌──────┐ ┌─────┐ ┌─────┐ ┌───────┐ ┌──────┐ │ │
-│  │  │ docs │ │ git │ │ rag │ │ voice │ │vision│ │ │
-│  │  └──────┘ └─────┘ └─────┘ └───────┘ └──────┘ │ │
+│  │           Module Interface (Module trait)        │ │
+│  │                                                  │ │
+│  │  In-process modules    Out-of-process modules   │ │
+│  │  ┌──────┐ ┌─────┐     ┌──────────────────────┐ │ │
+│  │  │ file │ │ git │     │  Upstream MCP Servers │ │ │
+│  │  └──────┘ └─────┘     │  (stdio / HTTP proxy) │ │ │
+│  │  ┌─────┐ ┌───────┐   │  ┌────────┐ ┌───────┐ │ │ │
+│  │  │ rag │ │ voice │   │  │ github │ │gitlab │ │ │ │
+│  │  └─────┘ └───────┘   │  └────────┘ └───────┘ │ │ │
+│  │                       └──────────────────────┘ │ │
 │  └────────────────────────────────────────────────┘ │
 │                                                      │
 │  ┌────────────────────────────────────────────────┐ │
-│  │           Upstream MCP Server Proxy             │ │
-│  │      (safety-filtered, permission-checked)      │ │
+│  │  Orchestration: flow (DAG), agent (ReAct),      │ │
+│  │  cognitive (personas), memory (FTS5+vector)     │ │
 │  └────────────────────────────────────────────────┘ │
 │                                                      │
 │  ┌────────────────────────────────────────────────┐ │
@@ -376,143 +393,138 @@ The kernel's trusted computing base includes:
 | IPC transport | MCP (tool calls) + A2A (agent messages) |
 | Discovery | AID, mDNS/DNS-SD, Agent Cards |
 
-Everything else is userland:
+Everything else is userland — implemented as crates that depend on
+the kernel through the `Module` trait interface:
 
-| Userland responsibility | Mechanism |
-|---|---|
-| Agent orchestration | Leader/Specialist patterns |
-| Task decomposition | ReAct loops, planning |
-| Persona definition | YAML configuration |
-| Drift detection | Cognitive Immune System |
-| Plugin distribution | OCI containers + sigstore |
-| User experience | CLI, chat interface, voice |
-
-### 3.4 Userland Architecture (navra)
-
-navra is the AI OS's userland — a Python-based multi-agent
-orchestration framework providing the cognitive layer that
-the microkernel deliberately excludes.
-
-#### Cognitive Core
-
-Agent personas are defined declaratively in YAML, validated
-by JSON Schema, and compiled into an in-memory registry by
-the Forge service. Each persona specifies:
-
-- **Core mandate** — the agent's fundamental directive
-- **Heuristics** — modular cognitive knowledge bases with
-  faceted organization (e.g., `systems_thinking.system_dynamics`)
-- **Skills** — tools the agent can invoke
-- **Engine preference** — which LLM to use (Claude Opus for
-  planning, Sonnet for execution, Gemini for cost-sensitive tasks)
-- **Output schema** — structured output format for validation
-
-Over 40 personas span the cognitive spectrum: system architect,
-software developer, researcher, assessor, security sentinel,
-tech writer, and specialized judges (correctness, completeness,
-safety). Personas compose through specializations — a
-`backend_specialist` extends `software_developer` with database
-and API heuristics.
-
-#### Orchestration
-
-Three orchestration tiers mirror organizational hierarchy:
-
-1. **Specialist (Tier 1)** — executes specific tasks via ReAct
-   loops (Sense-Plan-Act). Each cycle: LLM generates a plan with
-   tool calls, tools execute (with user confirmation for writes),
-   results feed back for the next reasoning step.
-
-2. **Project Leader (Tier 2)** — decomposes tasks into specialist
-   work streams via `ProjectOrchestrator`. DAG-structured plans
-   with dependency-aware concurrent execution.
-
-3. **Portfolio Architect (Tier 3)** — orchestrates leaders across
-   strategic objectives. The `AdaptiveOrchestrator` enables
-   mid-execution replanning: after each task completes, the full
-   graph is reevaluated, and tasks can be added, removed, or
-   modified dynamically.
-
-#### Cognitive Immune System
-
-A four-tier supervisory architecture detects and recovers from
-cognitive failures:
-
-1. **Agent** — primary executor, records all actions
-2. **Watchdog** — monitors active tasks every 15 seconds for
-   anomalies (repetition, stagnation, drift, quality degradation).
-   Critical severity triggers automatic task pause.
-3. **Analyst** — performs "cognitive autopsy" on paused tasks,
-   identifies root causes, generates diagnostic reports
-4. **Replanner** — generates improved plans incorporating
-   diagnostic findings while preserving original user intent
-
-Detected cognitive diseases include context fatigue, strategic
-drift, repetitive loops, and plan deviation.
-
-#### Memory Hierarchy
-
-Four-tier memory mirrors hardware memory hierarchy:
-
-| Tier | Scope | Analogy |
+| Userland responsibility | Crate | Mechanism |
 |---|---|---|
-| Working memory | Current session context | CPU registers |
-| Session memory | Interaction history within activity | L1/L2 cache |
-| Long-term memory | Cross-activity semantic search | RAM |
-| Knowledge corpus | Domain-specific knowledge (ADRs, skills) | Disk |
+| File tools | navra-tools-file | FTS5 search, read/write/edit |
+| Git tools | navra-tools-git | status, diff, log, commit |
+| Forge tools | navra-tools-github/gitlab | PR/MR/issue management |
+| Command execution | navra-tools-exec | OpenShell sandboxed exec |
+| RAG | navra-rag | Hybrid FTS5+vector search |
+| Voice I/O | navra-modal-voice | ASR + TTS (ONNX) |
+| Vision | navra-modal-vision | Image understanding |
+| Agent orchestration | navra-flow | DAG execution, mesh IPC |
+| Agent loop | navra-agent | ReAct tool-use loop |
+| Persona definition | navra-cognitive | YAML loader, prompt weaver |
+| Memory | navra-memory | Working memory, FTS5, decay |
 
-#### Plugin Distribution
+### 3.4 Userland Architecture
 
-Cognitive artifacts (personas, heuristics, directives) are
-packaged as OCI artifacts, signed with sigstore (cosign), and
-distributed via ORAS-compatible registries. This is the AI OS's
-package manager — `navra install researcher` pulls a signed
-persona artifact from the registry.
+The userland comprises Rust crates that implement the `Module`
+trait and interact with resources exclusively through the kernel's
+mediated interface. Each module can run in two modes:
+
+- **In-process** (default) — compiled into the `navra-server`
+  binary. Zero IPC overhead. The `Module` trait boundary enforces
+  separation at the type level.
+
+- **Out-of-process** — runs as a standalone MCP server (stdio or
+  HTTP transport). The gateway connects via `UpstreamModule`,
+  enforcing the same security pipeline. Process boundary provides
+  crash isolation and independent deployment.
+
+This mirrors the L4 microkernel model: drivers (modules) *can*
+run in userland processes but *don't have to*. The `Module` trait
+is the system call interface; the operator chooses the isolation
+level per module.
+
+#### Cognitive Core (navra-cognitive)
+
+Agent personas are defined declaratively in YAML and compiled
+into structured system prompts by the Forge loader and Weaver
+assembler. 43 personas span 7 domains: engineering, analysis,
+leadership, quality assurance, security, communication, and
+specialized judges. Each persona specifies a core mandate,
+heuristic references, tool restrictions, and per-phase model
+preferences. Personas compose through heuristic references —
+shared reasoning modules (e.g., `systems_thinking.system_dynamics`)
+that multiple personas can include.
+
+#### Orchestration (navra-flow, navra-agent)
+
+Two crates handle multi-agent coordination:
+
+- **navra-agent** — ReAct tool-use loop with typed action
+  classification (16 `AgentAction` variants, 5 risk levels),
+  deterministic replay, and containerized execution.
+
+- **navra-flow** — Multi-agent flows with DAG execution, handoff
+  routing, IFC-gated mesh communication (mailbox, blackboard,
+  back-edges), mandate validation, hop limits, and provenance
+  tracking.
+
+#### Memory (navra-memory)
+
+Working memory (conversation turns) with exponential decay
+scoring and knowledge store backed by SQLite FTS5 + sqlite-vec
+for hybrid full-text and vector search. Memory supports
+conversation forking for branching explorations without
+contaminating the main thread.
+
+#### Model Management (navra-model-hub, navra-model-runtime)
+
+Three-layer composite model cards (vendor auto-populated from
+registry APIs + operator-defined agentic metadata + runtime
+statistics learned from execution) enable agent-driven model
+selection via the `models_list` MCP tool. Model serving uses
+pluggable backends (llama.cpp, vLLM) with orthogonal hardware
+targets (CPU, NVIDIA, AMD, Intel) and isolation modes (direct,
+Podman, OpenShell).
 
 ### 3.5 Microkernel Boundary in Practice
 
-The boundary between navra and navra follows one rule: **if it
-requires trust, it's kernel; if it requires intelligence, it's
-userland.**
+The boundary follows one rule: **if it requires trust, it's
+kernel; if it requires intelligence, it's userland.**
 
-| Concern | Where | Why |
-|---|---|---|
-| Token verification | navra (kernel) | Must not be bypassable |
-| Tool permission check | navra (kernel) | Agent cannot grant itself access |
-| Credential injection | navra (kernel) | Agent must never see raw secrets |
-| Content safety filtering | navra (kernel) | Mandatory access control |
-| Rate limiting | navra (kernel) | Agent cannot increase its quota |
-| Persona selection | navra (userland) | Policy, not mechanism |
-| Task decomposition | navra (userland) | Requires LLM reasoning |
-| Drift detection | navra (userland) | Domain-specific cognitive heuristics |
-| Model selection | navra (userland) | Cost/quality tradeoff |
-| Plugin signing/distribution | navra (userland) | OCI + sigstore (userland trust chain) |
+| Concern | Layer | Crate | Why |
+|---|---|---|---|
+| Token verification | Kernel | navra-security | Must not be bypassable |
+| Tool permission check | Kernel | navra-security | Agent cannot grant itself access |
+| Credential injection | Kernel | navra-security | Agent must never see raw secrets |
+| Content safety filtering | Kernel | navra-security | Mandatory access control |
+| IFC taint tracking | Kernel | navra-security | Bell-LaPadula enforcement |
+| Rate limiting | Kernel | navra-core | Agent cannot increase its quota |
+| Audit blackbox | Kernel | navra-core | Append-only, hash-chained |
+| File operations | Userland | navra-tools-file | Module trait boundary |
+| Git operations | Userland | navra-tools-git | Module trait boundary |
+| Persona selection | Userland | navra-cognitive | Policy, not mechanism |
+| Task decomposition | Userland | navra-agent | Requires LLM reasoning |
+| Flow orchestration | Userland | navra-flow | DAG execution, not security |
+| Model selection | Userland | navra-model-hub | Cost/quality tradeoff |
 
-**Overlap resolution:** navra has its own `PermissionManager`
-with read-only vs write-enabled toolbelts. This is discretionary
-access control (the orchestrator's policy). navra's path ACLs and
-tool rules are mandatory access control (the kernel's enforcement).
-Both can coexist — the orchestrator applies its policy first, and
-the kernel enforces the hard boundary underneath.
+The crate dependency graph enforces this boundary at compile
+time. Userland crates depend on `navra-core` (which re-exports
+the kernel's public API) but cannot access kernel internals
+marked `pub(crate)`. The `Module` trait is the only interface
+between userland and kernel — there is no way for a module to
+bypass the security pipeline.
 
 ### 3.6 Why Microkernel, Not Monolithic
 
 A monolithic AI OS would embed orchestration, personas, and task
-planning in the same process as security enforcement. This has
-three problems:
+planning in the same trust domain as security enforcement. The
+microkernel separation addresses three concerns:
 
-1. **Trusted computing base inflation** — Every orchestration bug
-   is a potential security bypass. The kernel should be small enough
-   to audit.
+1. **Trusted computing base isolation** — The security kernel
+   (navra-security, navra-core) is a small, auditable surface.
+   A bug in a tool module (e.g., path handling in file tools)
+   cannot bypass the kernel's security checks because the
+   `Module` trait boundary prevents direct access to kernel
+   internals.
 
-2. **Language lock-in** — navra is Rust (memory safety, performance
-   for cryptographic operations). navra is Python (LLM ecosystem,
-   rapid iteration). A monolithic design forces one language.
+2. **Process-level fault isolation** — Tool modules that run as
+   standalone MCP servers crash independently. A segfault in
+   vision processing or a hung git operation does not take down
+   the gateway. The kernel reconnects on restart.
 
-3. **Composability** — Other orchestrators (Claude Code Agent Teams,
-   Microsoft Agent Framework) can connect to navra as userland
-   processes without modification. The kernel doesn't care who the
-   orchestrator is.
+3. **Composability** — Any MCP client (Claude Code, Cursor,
+   Microsoft Agent Framework, custom agents) can connect to
+   navra as a security layer. Any MCP server (third-party tools,
+   other languages) can connect as an upstream module. The kernel
+   doesn't care who the orchestrator or tool provider is — it
+   enforces security uniformly at the protocol chokepoint.
 
 ---
 
@@ -888,45 +900,52 @@ and approval UI.
 
 ## 7. Implementation
 
-### 7.1 navra (Microkernel)
+### 7.1 Implementation
 
-- **Language:** Rust
-- **Transport:** Axum (async HTTP), SSE, Unix sockets
+- **Language:** Rust (22 workspace crates, ~126K lines of code)
+- **Transport:** Axum (async HTTP), SSE, stdio, WebSocket,
+  Unix sockets
 - **Cryptography:** `ed25519-dalek` (signing), BLAKE3 (legacy
   tokens), CBOR via `ciborium` (token encoding)
 - **Credential store:** `keyring` crate (cross-platform)
 - **Safety models:** ONNX Runtime (in-process ML inference)
 - **Discovery:** `mdns-sd` crate, custom AID implementation
-- **Lines of code:** ~24K (Rust)
+- **Formal verification:** 138 Kani proofs (property-level
+  verification of security invariants), 6 TLA+ specifications
+  (protocol-level model checking)
+- **Tests:** 2,400+ (unit, integration, security evaluation)
 
-### 7.2 navra (Userland)
+### 7.2 Crate Architecture
 
-- **Language:** Python (Poetry, Python 3.14)
-- **Orchestration:** Three-tier hierarchy:
-  `AdaptiveOrchestrator` (Tier 3, full DAG replanning) →
-  `ProjectOrchestrator` (Tier 2, specialist coordination) →
-  `ConcurrentOrchestrator` (Tier 1, parallel execution with
-  dependency awareness and resource throttling)
-- **Personas:** 40+ YAML-defined cognitive agents, JSON Schema
-  validated, compiled by ForgeService with pickle caching (~2ms
-  startup vs ~50ms from YAML). Composable via specializations.
-- **Engines:** Claude (Direct API + Vertex AI), Gemini. Per-persona
-  model selection with planning/execution phase distinction.
-- **Cognitive immune system:** Four-tier supervision (agent →
-  watchdog → analyst → replanner). Anomaly detection every 15s.
-  Detects: repetition, stagnation, drift, quality degradation.
-- **Memory:** Four-tier hierarchy (working → session → long-term →
-  knowledge corpus). SQLite-backed recorder service (event store).
-- **Validation:** Jury service (multi-judge consensus), devil's
-  advocate (adversarial testing), hierarchical validation.
-- **Distribution:** Docker Compose (recorder, cognition, prometheus,
-  grafana). OCI artifacts + sigstore for cognitive plugins.
-- **MCP integration:** `MCPConnectionManager` (SSE, streamable-HTTP,
-  stdio), `MCPToolProvider` (per-task tool tracking),
-  `MCPTaskExecutor` (context assembly from dependency results).
-- **A2A:** Agent cards generated per persona with capability
-  classification (orchestrator, specialist, analyst, synthesizer).
-- **Lines of code:** ~64K (Python)
+The 22 crates are layered by dependency:
+
+| Layer | Crates | Role |
+|---|---|---|
+| Protocol | navra-protocol, navra-responses | MCP/A2A/JSON-RPC types, transports |
+| Security | navra-security | Auth, ACLs, IFC, safety, hooks |
+| Kernel | navra-core | Server, module trait, session, metrics |
+| Models | navra-model, navra-model-hub, navra-model-runtime | Backends, registry, serving |
+| Cognitive | navra-cognitive | 43 personas, prompt weaving |
+| Agent | navra-agent | ReAct loop, typed actions, replay |
+| Orchestration | navra-flow | DAG, handoff, mesh, back-edges |
+| Memory | navra-memory | Working memory, FTS5, decay |
+| Tools | navra-tools-{file,git,exec,github,gitlab} | Module implementations |
+| Modalities | navra-modal-{voice,vision} | Speech, image understanding |
+| RAG | navra-rag | Hybrid search, chunking, reranking |
+| Binary | navra-server | CLI, config, module wiring |
+
+Tool crates (file, git, github, gitlab) include standalone
+binary targets that serve the module over MCP stdio transport.
+Operators can run them as independent processes:
+
+```bash
+navra-git        # standalone git MCP server
+navra-github     # standalone GitHub MCP server
+```
+
+The gateway connects to standalone modules via `[[upstream]]`
+configuration, applying the full security pipeline on the
+proxy layer.
 
 ### 7.3 Module Architecture
 
@@ -1164,9 +1183,14 @@ hashing provides.
 
 ### 9.1 Limitations
 
-- **No formal verification** — The capability model is tested but
-  not formally verified (unlike seL4 [15]). A Coq/Lean
-  formalization would strengthen the security argument.
+- **Property-level, not design-level verification** — The
+  implementation includes 138 Kani proofs verifying specific
+  properties (IFC lattice monotonicity, capability attenuation,
+  token roundtrip correctness) and 6 TLA+ specifications for
+  protocol-level model checking. However, unlike seL4 [15], there
+  is no end-to-end proof that the entire capability model
+  preserves its claimed security properties. A Coq/Lean
+  formalization of the full system would close this gap.
 
 - **Trust in the kernel** — navra is the TCB. A vulnerability in
   navra compromises all security properties. Rust's memory safety
@@ -1280,8 +1304,10 @@ adaptive attacks is needed for our specific implementation.
   (Ed25519 + ML-DSA-65) and the v2 token format with embedded
   composite signatures.
 
-- **Formal verification** — Formalizing the capability model's
-  security properties in a proof assistant.
+- **End-to-end formal verification** — The current 138 Kani proofs
+  verify individual properties. A Coq/Lean proof of the full
+  capability model's security guarantees would close the gap with
+  seL4-class verification.
 
 - **Distributed kernel** — Extending navra to a cluster of kernels
   with federated identity and cross-kernel capability delegation.
@@ -1303,21 +1329,22 @@ and usability remains an open question.
 ## 10. Conclusion
 
 We presented an AI Operating System architecture that applies
-classical OS principles to multi-agent AI systems. The microkernel
-(navra) provides capability-based security with DID:key identity,
-graduated privilege rings, credential brokering, and mandatory
-content filtering. The userland (navra) provides multi-agent
-orchestration, cognitive personas, and task planning. The two
-communicate via standard protocols (MCP for tool invocation, A2A
-for inter-agent messaging), enabling clean separation of mechanism
-and policy.
+classical OS principles to multi-agent AI systems. The navra
+microkernel provides capability-based security with DID:key
+identity, graduated privilege rings, credential brokering,
+Bell-LaPadula information flow control, and mandatory content
+filtering. Userland modules implement the `Module` trait and
+run in-process or as standalone MCP servers — the kernel enforces
+security identically in both modes, mirroring the L4 approach to
+driver isolation.
 
 Our capability token model targets five security properties:
 no privilege escalation, credential isolation, attenuation-only
 delegation, audit trail, and tamper evidence. These properties
-are verified by 28 security evaluation tests but have not been
-formally proven. The system is algorithm-agile, with a migration
-path to post-quantum cryptography.
+are verified by 28 security evaluation tests, 138 Kani proofs,
+and 6 TLA+ specifications — property-level verification, though
+not an end-to-end design proof. The system is algorithm-agile,
+with a migration path to post-quantum cryptography.
 
 Significant limitations remain. Prompt injection can manipulate
 agents into misusing legitimately granted permissions — a problem
@@ -1327,13 +1354,15 @@ complementary directions. Key management [28] and administrative
 scalability [10] are practical challenges that grow with agent
 populations.
 
-The implementation runs on commodity Linux desktops and
-demonstrates that classical OS security principles — capabilities,
-rings, mandatory access control, credential mediation — can be
-applied to AI agent infrastructure. Whether this architectural
-approach scales to the diversity and autonomy of future agent
-ecosystems remains to be seen, but we believe the OS analogy
-provides a productive framework for reasoning about the problem.
+The implementation — 22 Rust crates, ~126K lines of code, 2,400+
+tests — runs on commodity Linux desktops and demonstrates that
+classical OS security principles — capabilities, rings, mandatory
+access control, credential mediation — can be applied to AI agent
+infrastructure with sub-millisecond overhead. Whether this
+architectural approach scales to the diversity and autonomy of
+future agent ecosystems remains to be seen, but we believe the OS
+analogy provides a productive framework for reasoning about the
+problem.
 
 ---
 
