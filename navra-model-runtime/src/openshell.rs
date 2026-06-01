@@ -6,7 +6,7 @@
 //! The engine determines which entrypoint and args are passed to the sandbox.
 
 use crate::engine::Engine;
-use crate::{Endpoint, ModelRuntime, RuntimeBackend, RuntimeError, ServeConfig};
+use crate::{Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeError, ServeConfig};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -142,7 +142,7 @@ impl ModelRuntime for OpenShellRuntime {
             Ok(Endpoint {
                 url: resp.endpoint_url,
                 id: resp.sandbox_id,
-                backend: RuntimeBackend::from_engine_openshell(&self.engine),
+                backend: RuntimeBackend::new(self.engine, Isolation::OpenShell),
             })
         })
     }
@@ -180,7 +180,7 @@ impl ModelRuntime for OpenShellRuntime {
     }
 
     fn backend(&self) -> RuntimeBackend {
-        RuntimeBackend::from_engine_openshell(&self.engine)
+        RuntimeBackend::new(self.engine, Isolation::OpenShell)
     }
 }
 
@@ -194,13 +194,8 @@ mod tests {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/granite.gguf"),
             host: "127.0.0.1".to_string(),
-            port: 0,
-            gpus: vec![],
-            context_size: 4096,
             parallel: 2,
-            cache_type: None,
-            speculative: None,
-            extra_args: vec![],
+            ..ServeConfig::default()
         };
 
         let req = build_create_request(&Engine::LlamaCpp, &config);

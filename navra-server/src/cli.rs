@@ -407,6 +407,7 @@ pub(crate) async fn model_pull(name: &str) -> anyhow::Result<()> {
     println!("source = \"{}\"", uri);
     println!("task = \"chat\"");
     println!("runtime = \"auto\"  # auto, llama-cpp, llama-cpp-podman, vllm, vllm-podman, llama-cpp-openshell, vllm-openshell, none");
+    println!("# format = \"gguf\"  # gguf, safetensors, awq, gptq (auto-detected if omitted)");
 
     Ok(())
 }

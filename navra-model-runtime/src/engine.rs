@@ -5,7 +5,6 @@
 //! (llama.cpp or vLLM). Isolation modes ([`DirectRuntime`],
 //! [`PodmanRuntime`], [`OpenShellRuntime`]) are generic over the engine.
 
-use crate::gpu::GpuKind;
 use crate::{RuntimeError, ServeConfig};
 use tokio::process::Command;
 
@@ -44,6 +43,10 @@ impl Engine {
     }
 
     /// Whether this engine requires a GPU to function.
+    ///
+    /// Prefer checking `HardwareTarget::is_gpu()` on the `ServeConfig`
+    /// for runtime decisions. This method is kept for availability checks
+    /// where no `ServeConfig` exists yet.
     pub fn requires_gpu(&self) -> bool {
         match self {
             Self::LlamaCpp => false,
@@ -102,12 +105,11 @@ impl Engine {
         }
     }
 
-    /// Select the container image for this engine based on GPU type.
+    /// Select the container image for this engine based on hardware target.
+    ///
+    /// Delegates to `HardwareTarget::container_image()`.
     pub fn select_image(&self, config: &ServeConfig) -> Result<&'static str, RuntimeError> {
-        match self {
-            Self::LlamaCpp => Ok(Self::select_llamacpp_image(config)),
-            Self::Vllm => Self::select_vllm_image(config),
-        }
+        config.target.container_image(self)
     }
 
     // ── llama.cpp ───────────────────────────────────────────────────────
@@ -251,14 +253,6 @@ impl Engine {
         }
     }
 
-    fn select_llamacpp_image(config: &ServeConfig) -> &'static str {
-        match config.gpus.first().map(|g| &g.kind) {
-            Some(GpuKind::Nvidia) => "ghcr.io/ggml-org/llama.cpp:server-cuda",
-            Some(GpuKind::Amd) => "ghcr.io/ggml-org/llama.cpp:server-rocm",
-            _ => "ghcr.io/ggml-org/llama.cpp:server",
-        }
-    }
-
     // ── vLLM ────────────────────────────────────────────────────────────
 
     fn build_vllm_args(config: &ServeConfig, port: u16) -> Vec<String> {
@@ -304,18 +298,6 @@ impl Engine {
         args
     }
 
-    fn select_vllm_image(config: &ServeConfig) -> Result<&'static str, RuntimeError> {
-        match config.gpus.first().map(|g| &g.kind) {
-            Some(GpuKind::Nvidia) => Ok("vllm/vllm-openai:latest"),
-            Some(GpuKind::Amd) => Ok("vllm/vllm-openai:latest-rocm"),
-            Some(GpuKind::Intel) => Err(RuntimeError::Gpu(
-                "vLLM does not support Intel GPUs".to_string(),
-            )),
-            None => Err(RuntimeError::Gpu(
-                "vLLM requires a GPU — no GPU detected".to_string(),
-            )),
-        }
-    }
 }
 
 impl std::fmt::Display for Engine {
@@ -327,7 +309,7 @@ impl std::fmt::Display for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GpuDevice, GpuKind, KvCacheType, SpeculativeConfig};
+    use crate::{GpuDevice, GpuKind, HardwareTarget, KvCacheType, SpeculativeConfig};
     use std::path::PathBuf;
 
     // ── llama.cpp args ──────────────────────────────────────────────────
@@ -501,6 +483,7 @@ mod tests {
                 name: "4090".into(),
                 vram: None,
             }],
+            target: HardwareTarget::Nvidia,
             ..Default::default()
         };
         assert_eq!(
@@ -518,6 +501,7 @@ mod tests {
                 name: "A100".into(),
                 vram: None,
             }],
+            target: HardwareTarget::Nvidia,
             ..Default::default()
         };
         assert_eq!(
@@ -535,6 +519,7 @@ mod tests {
                 name: "MI300X".into(),
                 vram: None,
             }],
+            target: HardwareTarget::Amd,
             ..Default::default()
         };
         assert_eq!(
@@ -558,6 +543,7 @@ mod tests {
                 name: "Arc".into(),
                 vram: None,
             }],
+            target: HardwareTarget::Intel,
             ..Default::default()
         };
         assert!(Engine::Vllm.select_image(&config).is_err());

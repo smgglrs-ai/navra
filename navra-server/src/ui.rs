@@ -704,6 +704,7 @@ mod tests {
                 dimensions: None,
                 labels: Vec::new(),
                 threshold: None,
+                format: None,
                 runtime: None,
                 context_size: None,
                 parallel: None,
