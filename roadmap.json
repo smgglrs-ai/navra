@@ -184,7 +184,7 @@
         5,
         7
       ],
-      "status": "in_progress",
+      "status": "completed",
       "tier": 1,
       "wave": 6,
       "depends_on": [
@@ -193,7 +193,7 @@
       ],
       "feeds": [],
       "gate": null,
-      "description": "Flagship paper. Gateway-enforced IFC, safety filters, upstream tool scanning. Submit to ArtSec/USENIX workshop."
+      "description": "Flagship security paper. \u00a78 evaluation complete: 19 adversarial tests (A1-A10 full-stack, B1-B5 adaptive planner-trust, C1-C2 real-world reproductions, D1-D2 encoding evasion), AgentDojo 100%% defense across 5 models, MCPTox 82.3%% detection. Honest limitations documented. \u00a79.5 semantic leakage detection proposed. 33 references. Conclusion updated with defense-in-depth framing."
     },
     {
       "id": "9aa",
