@@ -192,6 +192,33 @@ upstream MCP servers behind a unified security layer. The gateway
 pattern ensures that security enforcement is independent of
 agent implementation.
 
+**The VFS analogy.** In a Unix system, processes access files
+exclusively through the Virtual File System — a kernel-enforced
+mediation layer that checks permissions, applies ACLs, and
+records audit events. Processes cannot bypass VFS because they
+run in userspace; the kernel enforces the boundary. navra
+provides the same architecture for AI agents: when agents run
+in isolated containers, MCP is their sole channel to external
+resources, and the gateway is the mandatory mediation layer.
+The strength of this guarantee depends on the deployment model:
+
+| Deployment | Agent isolation | MCP is sole channel? | Bypass requires |
+|---|---|---|---|
+| Host (bare metal) | None | No — agent has host access | Agent cooperation |
+| Podman (distroless, no mounts) | Namespace isolation | **Yes** | Container escape (CVE) |
+| OpenShell microVM | Hardware isolation | **Yes** | Hypervisor escape |
+
+In containerized deployment (Podman or OpenShell), the agent
+binary runs in an image with no host filesystem mounts, no
+direct network access, and no writable storage beyond tmpfs.
+The only file descriptor exposed to the container is the MCP
+socket to navra. The agent literally cannot do anything except
+send MCP requests. This is analogous to a process that can only
+access files through VFS — the kernel (navra) mediates every
+operation. All security properties (IFC, ACLs, capability
+tokens, safety filters, audit) are enforced at this mediation
+point.
+
 ### 3.2 The Chokepoint
 
 All tool invocations pass through a single function,
@@ -290,14 +317,14 @@ re-authenticate when tokens expire.
 
 ### 3.6 Containerized Agent Execution
 
-navra supports three isolation levels for model serving and
-agent execution, with automatic runtime detection:
+navra supports three isolation levels for agent execution,
+with automatic runtime detection:
 
-| Level | Backend | Isolation |
-|---|---|---|
-| `BareMetal` | Direct | Child process, no isolation |
-| `Container` | Podman | Rootless container, network-isolated |
-| `OpenShellSandbox` | OpenShell | Microvm with Landlock + seccomp |
+| Level | Backend | Isolation | MCP sole channel? |
+|---|---|---|---|
+| `BareMetal` | Direct | Child process, no isolation | No (advisory) |
+| `Container` | Podman | Rootless, no mounts, no network | **Yes** |
+| `OpenShellSandbox` | OpenShell | Microvm (Landlock + seccomp) | **Yes** |
 
 **Auto-detection** (`auto_runtime()`) selects the strongest
 available backend: OpenShell → Podman → Direct. The runtime
@@ -305,23 +332,33 @@ detects its own isolation context by checking environment
 variables (`OPENSHELL_SANDBOX_ID`), container markers
 (`/.containerenv`, `/.dockerenv`), and cgroup membership.
 
-**Podman containers** run rootless with `--network=none`
-(prevents data exfiltration from inference), `--no-new-privileges`,
-and read-only model mounts (`-v model:/model:ro`). GPU
-passthrough uses CDI for NVIDIA and device bind-mounting for
-AMD/Intel.
+**Podman containers** run the agent as a statically-linked
+binary in a minimal image (distroless or `fedora-minimal`)
+with no host filesystem mounts, `--network=none` or
+`slirp4netns` restricted to the navra gateway endpoint, and
+`--no-new-privileges`. The container's only writable storage
+is tmpfs. The only channel to the outside world is the MCP
+socket to navra. This provides the VFS-equivalent guarantee
+described in §3.1: every resource access is mediated by the
+gateway. A bypass requires a container escape vulnerability.
 
-**OpenShell sandboxes** delegate to the OpenShell compute driver
-via gRPC. The supervisor provides identity tokens (SPIFFE SVIDs
-or OIDC JWTs) that the OpenShellAuthenticator validates. Network
-egress is restricted to the model endpoint and the navra
-gateway via an HTTP CONNECT proxy with OPA policies.
+**OpenShell sandboxes** provide the same guarantee at the
+hardware level via libkrun microVMs with Landlock LSM, seccomp
+BPF, and namespace isolation. The supervisor provides identity
+tokens (SPIFFE SVIDs or OIDC JWTs) that the
+OpenShellAuthenticator validates. Network egress is restricted
+to the model endpoint and the navra gateway via an HTTP CONNECT
+proxy with OPA policies.
 
-**Defense in depth:** OpenShell provides mandatory access control
-at the OS level (namespaces, Landlock, seccomp). navra provides
-discretionary access control at the application level (ACLs,
-capability tokens, IFC). Both layers enforce independently — a
-bypass at one layer does not compromise the other.
+**Defense in depth:** OpenShell provides mandatory access
+control at the OS level (namespaces, Landlock, seccomp). navra
+provides mandatory access control at the application level
+(ACLs, capability tokens, IFC). Both layers enforce
+independently — a bypass at one layer does not compromise the
+other. In the Podman deployment, Linux namespaces provide the
+isolation boundary and navra provides the access mediation —
+together they form the complete access control stack, analogous
+to process isolation + VFS in a traditional operating system.
 
 ### 3.7 Typed Action Classification
 
@@ -811,9 +848,13 @@ taint only) rather than rejecting sessionless clients.
 - OAuth 2.0 implementation supports only `client_credentials`.
   Authorization code flow with PKCE is advertised but not
   enforced.
-- Containerized execution isolates model inference but not the
-  agent process itself — the agent's MCP client runs on the
-  host (or in its own container managed externally).
+- In bare-metal deployment, the agent runs on the host with
+  full user privileges. The gateway is advisory — the agent
+  could access resources directly, bypassing MCP. The security
+  properties require containerized deployment (Podman or
+  OpenShell) where MCP is the sole channel. This is analogous
+  to running a firewall on the same machine as the attacker:
+  correct rules, but the attacker can walk around them.
 
 ### 9.5 Toward Semantic Leakage Detection (Future Work)
 
