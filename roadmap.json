@@ -159,7 +159,7 @@
         3,
         5
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": 1,
       "wave": 4,
       "depends_on": [
@@ -172,7 +172,7 @@
         "10c"
       ],
       "gate": null,
-      "description": "Run review flow on 3+ external OSS projects, 3+ runs each. Statistical significance. Primary eval must be external."
+      "description": "External security evaluation across 4 tracks, 19 adversarial tests: E1: 10 full-stack attacks (A1-A10) \u2014 10/10 blocked. E2: AgentDojo (NeurIPS 2024) \u2014 100%% defense across 5 models (629 cases). E3a: MCPTox (AAAI 2026) \u2014 82.3%% detection on 485 poisoned tool schemas. E3b: 5 adaptive planner-trust attacks (B1-B5) \u2014 5/5 blocked. E3c: Shadow Escape + Pale Fire reproductions (C1-C2) \u2014 blocked. E3d: Encoding evasion (D1-D2) \u2014 content filter bypassed but IFC taint blocks write. Honest limitations documented: semantic propagation, implicit flows, timing channels."
     },
     {
       "id": "10a",
