@@ -41,6 +41,46 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
+/// How a model executes: loaded in-process (ONNX) or served via a
+/// runtime backend (llama.cpp, vLLM). Decouples model *purpose*
+/// (embedding, classification, chat) from *how it runs*.
+///
+/// Default: `from_task()` preserves current behavior — embedding and
+/// classification run in-process, chat/generate run served. Operators
+/// can override in config: `execution_mode = "served"` on an embedding
+/// model to serve it via vLLM instead of loading it in-process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionMode {
+    /// Load model directly into the navra process (ONNX Runtime).
+    InProcess,
+    /// Spawn a dedicated inference server (llama.cpp, vLLM).
+    Served,
+}
+
+impl ExecutionMode {
+    /// Derive execution mode from model task string.
+    ///
+    /// Preserves current defaults:
+    /// - `"embedding"` / `"classification"` → `InProcess`
+    /// - `"chat"` / `"generate"` → `Served`
+    pub fn from_task(task: &str) -> Self {
+        match task {
+            "embedding" | "classification" => Self::InProcess,
+            _ => Self::Served,
+        }
+    }
+}
+
+impl fmt::Display for ExecutionMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InProcess => f.write_str("in_process"),
+            Self::Served => f.write_str("served"),
+        }
+    }
+}
+
 /// A running model endpoint.
 #[derive(Debug, Clone)]
 pub struct Endpoint {
@@ -480,6 +520,44 @@ mod tests {
     }
 
     #[test]
+    fn execution_mode_from_task() {
+        assert_eq!(
+            ExecutionMode::from_task("embedding"),
+            ExecutionMode::InProcess
+        );
+        assert_eq!(
+            ExecutionMode::from_task("classification"),
+            ExecutionMode::InProcess
+        );
+        assert_eq!(ExecutionMode::from_task("chat"), ExecutionMode::Served);
+        assert_eq!(ExecutionMode::from_task("generate"), ExecutionMode::Served);
+        assert_eq!(ExecutionMode::from_task("unknown"), ExecutionMode::Served);
+    }
+
+    #[test]
+    fn execution_mode_display() {
+        assert_eq!(ExecutionMode::InProcess.to_string(), "in_process");
+        assert_eq!(ExecutionMode::Served.to_string(), "served");
+    }
+
+    #[test]
+    fn execution_mode_serde_roundtrip() {
+        for variant in [ExecutionMode::InProcess, ExecutionMode::Served] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: ExecutionMode = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, variant);
+        }
+    }
+
+    #[test]
+    fn execution_mode_deserialize_snake_case() {
+        let ip: ExecutionMode = serde_json::from_str(r#""in_process""#).unwrap();
+        assert_eq!(ip, ExecutionMode::InProcess);
+        let served: ExecutionMode = serde_json::from_str(r#""served""#).unwrap();
+        assert_eq!(served, ExecutionMode::Served);
+    }
+
+    #[test]
     fn isolation_level_debug() {
         assert_eq!(format!("{:?}", IsolationLevel::BareMetal), "BareMetal");
         assert_eq!(format!("{:?}", IsolationLevel::Container), "Container");
@@ -493,6 +571,29 @@ mod tests {
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;
+
+    impl kani::Arbitrary for ExecutionMode {
+        fn any_array<const N: usize>() -> [Self; N] {
+            [Self::InProcess; N]
+        }
+
+        fn any() -> Self {
+            if kani::any::<bool>() {
+                ExecutionMode::InProcess
+            } else {
+                ExecutionMode::Served
+            }
+        }
+    }
+
+    #[kani::proof]
+    fn execution_mode_from_task_is_total() {
+        let tasks = ["embedding", "classification", "chat", "generate", "other"];
+        for task in tasks {
+            let mode = ExecutionMode::from_task(task);
+            assert!(mode == ExecutionMode::InProcess || mode == ExecutionMode::Served);
+        }
+    }
 
     impl kani::Arbitrary for KvCacheType {
         fn any_array<const N: usize>() -> [Self; N] {

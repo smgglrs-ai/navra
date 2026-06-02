@@ -973,46 +973,53 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             continue;
         }
 
-        // --- Choose backend based on task ---
+        // --- Choose backend based on execution mode ---
         let device = model_cfg
             .device
             .as_deref()
             .map(navra_model::Device::parse)
             .unwrap_or_default();
 
-        let backend: Arc<dyn navra_model::ModelBackend> = match model_cfg.task.as_str() {
-            "embedding" => {
-                let dims = model_cfg.dimensions.unwrap_or(768);
-                let task = navra_model::ModelTask::Embedding { dimensions: dims };
-                let tokenizer_path = model_cfg
-                    .tokenizer_path
-                    .as_ref()
-                    .map(|p| std::path::PathBuf::from(expand_tilde(p)));
-                match navra_model::OnnxBackend::load(
-                    name,
-                    &resolved_path,
-                    tokenizer_path.as_deref(),
-                    task,
-                    device.clone(),
-                ) {
-                    Ok(model) => Arc::new(model),
-                    Err(e) => {
-                        tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
+        let execution_mode = model_cfg
+            .execution_mode
+            .unwrap_or_else(|| navra_model_runtime::ExecutionMode::from_task(&model_cfg.task));
+
+        let backend: Arc<dyn navra_model::ModelBackend> = match execution_mode {
+            navra_model_runtime::ExecutionMode::InProcess => {
+                let (task, tokenizer_path) = match model_cfg.task.as_str() {
+                    "embedding" => {
+                        let dims = model_cfg.dimensions.unwrap_or(768);
+                        (
+                            navra_model::ModelTask::Embedding { dimensions: dims },
+                            model_cfg
+                                .tokenizer_path
+                                .as_ref()
+                                .map(|p| std::path::PathBuf::from(expand_tilde(p))),
+                        )
+                    }
+                    "classification" => {
+                        let labels = if model_cfg.labels.is_empty() {
+                            vec!["safe".to_string(), "unsafe".to_string()]
+                        } else {
+                            model_cfg.labels.clone()
+                        };
+                        (
+                            navra_model::ModelTask::Classification { labels },
+                            model_cfg
+                                .tokenizer_path
+                                .as_ref()
+                                .map(|p| std::path::PathBuf::from(expand_tilde(p))),
+                        )
+                    }
+                    other => {
+                        tracing::warn!(
+                            model = %name, task = %other,
+                            "execution_mode=in_process but task is not embedding/classification, skipping"
+                        );
                         continue;
                     }
-                }
-            }
-            "classification" => {
-                let labels = if model_cfg.labels.is_empty() {
-                    vec!["safe".to_string(), "unsafe".to_string()]
-                } else {
-                    model_cfg.labels.clone()
                 };
-                let task = navra_model::ModelTask::Classification { labels };
-                let tokenizer_path = model_cfg
-                    .tokenizer_path
-                    .as_ref()
-                    .map(|p| std::path::PathBuf::from(expand_tilde(p)));
+
                 match navra_model::OnnxBackend::load(
                     name,
                     &resolved_path,
@@ -1027,7 +1034,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     }
                 }
             }
-            "chat" | "generate" => {
+            navra_model_runtime::ExecutionMode::Served => {
                 // Serve via runtime and wrap in OpenAiBackend
                 let runtime_kind = model_cfg.runtime.as_deref().unwrap_or("auto");
                 let runtime: Box<dyn navra_model_runtime::ModelRuntime> = match runtime_kind {
@@ -1119,10 +1126,6 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 running_endpoints.push((runtime, endpoint));
                 backend
             }
-            other => {
-                tracing::warn!(model = %name, task = %other, "Unknown model task, skipping");
-                continue;
-            }
         };
 
         tracing::info!(model = %name, task = %model_cfg.task, "Model loaded");
@@ -1160,6 +1163,25 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     None
                 }
             },
+        };
+
+    // Load OpenAI privacy-filter (address, date, secret detection)
+    let privacy_filter_dir = navra_core::safety::default_privacy_filter_model_dir();
+    let privacy_filter: Option<Arc<navra_core::safety::PrivacyFilterModel>> =
+        match navra_core::safety::load_privacy_filter(&privacy_filter_dir) {
+            Some(filter) => {
+                tracing::info!(
+                    dir = %privacy_filter_dir.display(),
+                    "OpenAI privacy-filter loaded (address, date, secret detection)"
+                );
+                Some(Arc::new(filter))
+            }
+            None => {
+                tracing::info!(
+                    "OpenAI privacy-filter not installed. Download from HuggingFace for address/date/secret PII detection."
+                );
+                None
+            }
         };
 
     // Build custom PII filter from global pii_patterns config (shared across all pipelines)
@@ -1264,6 +1286,20 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     tracing::info!(
                         permission_set = %name,
                         "PII NER filter added to safety profile"
+                    );
+                }
+                _ => {}
+            }
+        }
+
+        // Add privacy-filter (address, date, secret) to content-filtering profiles
+        if let Some(ref pf) = privacy_filter {
+            match pset.safety.as_str() {
+                "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
+                    pipeline.add_privacy_filter_shared(Arc::clone(pf));
+                    tracing::info!(
+                        permission_set = %name,
+                        "Privacy-filter added to safety profile"
                     );
                 }
                 _ => {}
@@ -2599,6 +2635,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 if let Some(ref ner) = pii_ner_filter {
                     pipeline.add_ner_filter_shared(Arc::clone(ner));
                 }
+                if let Some(ref pf) = privacy_filter {
+                    pipeline.add_privacy_filter_shared(Arc::clone(pf));
+                }
                 tracing::info!("PII filter enabled for model reasoning text");
                 Some(Arc::new(pipeline))
             } else {
@@ -3470,6 +3509,15 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 match pset.safety.as_str() {
                     "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
                         pipeline.add_ner_filter_shared(Arc::clone(ner));
+                    }
+                    _ => {}
+                }
+            }
+            // Re-add privacy-filter
+            if let Some(ref pf) = privacy_filter {
+                match pset.safety.as_str() {
+                    "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
+                        pipeline.add_privacy_filter_shared(Arc::clone(pf));
                     }
                     _ => {}
                 }
