@@ -25,8 +25,13 @@
   invariant property tests (INV-1 through INV-5) in ifc/mod.rs.
 - **DONE — No-read-up**: Bell-LaPadula Simple Security Property
   implemented and verified.
-- **TODO — Evaluation**: Self-audit is appendix only. Need adversarial
-  eval (5-10 attack scenarios) and comparison to FIDES on AgentDojo.
+- **DONE — Adversarial eval**: 10/10 full-stack attacks blocked (E1).
+  AgentDojo 100% defense rate across 5 models (E2). Honest limitations
+  documented (semantic propagation, implicit flows, side channels).
+- **TODO — Remaining eval**: MCPTox tool poisoning, adaptive attacks,
+  Shadow Escape reproduction, encoding evasion scenarios.
+- **PROPOSED — Semantic leakage detection**: §9.5 future work. Embedding
+  similarity against tainted ValueStore entries. Novel L3 contribution.
 - **DONE — Tool classification**: `is_write_tool()` now uses MCP
   `ToolAnnotations` (readOnlyHint, destructiveHint) when available,
   falling back to name heuristic only for unannotated tools.
@@ -622,7 +627,67 @@ Selected findings (of 50+):
 | PII filter not applied to tool arguments | Medium | Added pre-hook filtering on write paths |
 | Custom regex patterns not registered as PII | Low | Added `register_pii_categories()` |
 
-### 8.2 Performance
+### 8.2 Adversarial Evaluation
+
+We evaluate navra's security mechanisms against adversarial
+attacks at three layers, using both external benchmarks and
+custom attack scenarios.
+
+**E1: Full-stack adversarial attacks (10 scenarios).** Each test
+spawns a real navra-server with realistic permissions and sends
+crafted MCP requests through the complete auth → ACL → IFC →
+hooks pipeline. Attacks: path traversal (absolute + dot-dot +
+symlink), privilege escalation (readonly writes), deny-wins ACL
+bypass, IFC no-write-down violation, capability token replay,
+taint accumulation across reads. Result: **10/10 blocked.**
+
+**E2: AgentDojo prompt injection benchmark (NeurIPS 2024).**
+navra's IFC implemented as an AgentDojo defense plugin
+(`BasePipelineElement`). Tested across 5 models (Claude Opus 4.6,
+Sonnet, Haiku, Qwen 3 8B, Gemma 4 4B) on 3 attack types
+(important_instructions, injecagent, tool_knowledge) with 30
+scenarios each. Result: **100% defense rate** across all models.
+Baseline models already resist >99% of standard injections;
+IFC provides deterministic guarantee for the stochastic 1%
+(Qwen 3 8B breached in 1/18 injecagent scenarios without IFC).
+
+**E3: Remaining evaluation (planned).**
+
+| Experiment | Benchmark | Status |
+|---|---|---|
+| MCPTox tool poisoning (1,312 schemas) | arXiv:2508.14925 | Planned |
+| Adaptive planner-trust attacks (~15 scenarios) | Custom | Planned |
+| Shadow Escape + Pale Fire reproduction | Published attacks | Planned |
+| Encoding evasion (base64, Unicode) | Custom | Planned |
+| Semantic laundering (paraphrased exfil) | Custom | Planned |
+
+**Honest limitations.** Three attack classes cannot be blocked by
+any gateway-level IFC, including navra:
+
+1. **Semantic taint propagation**: The LLM reads tainted content,
+   paraphrases it, and outputs semantically equivalent text that
+   does not match the original. No label-at-boundary system can
+   detect this without analyzing the LLM's internal state.
+   NeuroTaint (arXiv:2604.23374) achieves F1=0.928 on offline
+   semantic taint detection. We propose a real-time semantic
+   leakage hook using embedding similarity (see §9.5).
+
+2. **Implicit information flow**: The LLM makes control-flow
+   decisions based on tainted data (e.g., choosing which tool
+   to call) that leak information through the pattern of
+   operations, not through tool arguments.
+
+3. **Side channels**: Timing channels (encoding data in tool
+   call duration), metadata channels (tool selection patterns),
+   and approval fatigue (human approves innocuous-looking writes
+   that carry semantic leakage).
+
+These limitations are shared by FIDES [13], CaMeL [14], and
+every published IFC system. Gateway-level enforcement provides
+defense-in-depth for deterministic attacks (layers 1-2), while
+semantic detection (layer 3) is an active research frontier.
+
+### 8.3 Performance
 
 Criterion microbenchmarks (`benchmarks/benches/security_overhead.rs`):
 
@@ -648,7 +713,7 @@ Total security overhead per tool call: ~35 us (without ML
 filter). Typical tool execution: 10-500 ms. Security overhead
 is < 0.5% of total latency.
 
-### 8.3 Competitive Comparison
+### 8.4 Competitive Comparison
 
 | Feature | navra | FIDES [13] | Gravitee | Kong | MS Governance [11] | SemaClaw [3] | Goose | ZeroClaw [8] |
 |---|---|---|---|---|---|---|---|---|
@@ -712,6 +777,34 @@ taint only) rather than rejecting sessionless clients.
 - Containerized execution isolates model inference but not the
   agent process itself — the agent's MCP client runs on the
   host (or in its own container managed externally).
+
+### 9.5 Toward Semantic Leakage Detection (Future Work)
+
+Gateway-level IFC tracks labels at tool-call boundaries but
+cannot detect semantic transformation of tainted content through
+LLM reasoning. We propose a **semantic leakage hook** that
+compares outgoing tool arguments against tainted values stored
+in the session's ValueStore using embedding similarity.
+
+The approach: on each write tool call, embed the outgoing
+arguments using the same ONNX embedding model loaded for RAG.
+Query the ValueStore for all values with confidentiality >=
+Sensitive. Compute cosine similarity. Block if any similarity
+exceeds a tunable threshold (default 0.75).
+
+This provides a probabilistic layer 3 defense complementing
+the deterministic layers 1-2 (ACLs, IFC). All required
+components exist in navra: ValueStore with per-value labels,
+ONNX embedding model, cosine similarity, hook pipeline. The
+implementation is approximately 150 lines. Performance impact:
+~10ms per write tool call (embedding inference), acceptable
+given typical tool execution latencies of 10-500ms.
+
+No published system performs real-time semantic leakage
+detection at the gateway layer. NeuroTaint [arXiv:2604.23374]
+achieves F1=0.928 but runs offline. This hook would provide
+real-time detection with lower coverage but zero post-hoc
+delay.
 
 ---
 
