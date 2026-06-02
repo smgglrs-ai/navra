@@ -99,7 +99,7 @@
         2,
         3
       ],
-      "status": "in_progress",
+      "status": "completed",
       "tier": 1,
       "wave": 4,
       "depends_on": [],
@@ -108,7 +108,7 @@
         "10a"
       ],
       "gate": null,
-      "description": "Pre-built Cedar policies for all 10 OWASP ASI categories. AGT ships these; navra should match. 9z (Cedar engine) already done.",
+      "description": "Pre-built Cedar policies for all 10 OWASP ASI categories. policies/owasp-asi-baseline.cedar with forbid rules for each threat and explicit permits for approved operations. 13 tests verify all paths. Load via cedar_policies config key.",
       "source": "tech-watch-2026-06-02"
     },
     {
