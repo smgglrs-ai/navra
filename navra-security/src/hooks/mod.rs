@@ -14,6 +14,7 @@ mod pipeline;
 mod routing;
 mod safety_hook;
 mod sandbox_hook;
+pub mod semantic_leakage;
 pub mod skill_hook;
 pub mod provenance_hook;
 pub mod statistical;
@@ -35,6 +36,7 @@ pub use temporal_contract::{
 };
 pub use sandbox_hook::SandboxHook;
 pub use provenance_hook::{CausalSink, ProvenanceHook};
+pub use semantic_leakage::{SemanticLeakageConfig, SemanticLeakageHook};
 pub use tool_guard::ToolGuardHook;
 
 use crate::auth::CallContext;
