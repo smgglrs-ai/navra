@@ -77,7 +77,7 @@
         3,
         3
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": 1,
       "wave": 4,
       "depends_on": [],
@@ -87,7 +87,7 @@
         "10c"
       ],
       "gate": null,
-      "description": "FIDES differentiation, gateway positioning, circular self-eval fix."
+      "description": "All 5 critical paper fixes (C1-C2, C4-C6) already applied in prior sessions. C1: FIDES differentiation expanded (12 refs). C2: 10+ MCP gateways acknowledged. C4: Compliance reframed as infrastructure. C5: Microkernel justified with AIOS cite. C6: Narrowed to 3 contributions. C3 (external eval) is separate roadmap item."
     },
     {
       "id": "TW6",
