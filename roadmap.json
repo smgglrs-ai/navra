@@ -56,7 +56,7 @@
         1,
         2
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": 1,
       "wave": 4,
       "depends_on": [],
@@ -64,7 +64,7 @@
         "C3"
       ],
       "gate": null,
-      "description": "Anthropic defending-code-reference-harness. 10 attack categories, CI-ready, Apache 2.0. Provides adversarial eval methodology for C3.",
+      "description": "Anthropic defending-code-reference-harness evaluated. Two layers: (1) Interactive Claude Code skills (/vuln-scan, /triage, /threat-model, /patch) \u2014 read-only static analysis, structured JSON output, parallel fan-out by focus area, adversarial multi-vote triage. (2) Autonomous pipeline (recon\u2192find\u2192grade\u2192judge\u2192report\u2192patch) in gVisor containers \u2014 C/C++ memory vulns via ASAN. For C3: adopt /vuln-scan + /triage skills as eval methodology. Key patterns: threat model scoping, DO NOT REPORT list (reduces FPs), structured finding format (id/file/line/category/severity/confidence/exploit_scenario), N-vote adversarial verification per finding. No code integration needed \u2014 C3 uses these as Claude Code skills against 3+ OSS projects.",
       "source": "tech-watch-2026-06-02"
     },
     {
