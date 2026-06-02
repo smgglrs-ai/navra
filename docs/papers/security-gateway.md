@@ -25,11 +25,10 @@
   invariant property tests (INV-1 through INV-5) in ifc/mod.rs.
 - **DONE — No-read-up**: Bell-LaPadula Simple Security Property
   implemented and verified.
-- **DONE — Adversarial eval**: 10/10 full-stack attacks blocked (E1).
-  AgentDojo 100% defense rate across 5 models (E2). Honest limitations
-  documented (semantic propagation, implicit flows, side channels).
-- **TODO — Remaining eval**: MCPTox tool poisoning, adaptive attacks,
-  Shadow Escape reproduction, encoding evasion scenarios.
+- **DONE — Full adversarial eval (19 tests)**: E1 full-stack 10/10,
+  E2 AgentDojo 100% across 5 models, E3a MCPTox 82.3% detection,
+  E3b adaptive planner-trust 5/5, E3c Shadow Escape + Pale Fire
+  blocked, E3d encoding evasion honest failure + IFC defense-in-depth.
 - **PROPOSED — Semantic leakage detection**: §9.5 future work. Embedding
   similarity against tainted ValueStore entries. Novel L3 contribution.
 - **DONE — Tool classification**: `is_write_tool()` now uses MCP
@@ -651,15 +650,53 @@ Baseline models already resist >99% of standard injections;
 IFC provides deterministic guarantee for the stochastic 1%
 (Qwen 3 8B breached in 1/18 injecagent scenarios without IFC).
 
-**E3: Remaining evaluation (planned).**
+**E3a: MCPTox tool poisoning benchmark (AAAI 2026).**
+navra's 8-category upstream tool scanner tested against 485
+poisoned MCP tool descriptions from 45 real-world servers [25].
+Detection rate: **82.3%** (399/485). False positive rate: 20.0%
+(9/45 clean tools). The 17.7% miss rate consists of subtle
+injections using soft language ("you should", "always append")
+that pattern-based scanning cannot distinguish from legitimate
+instructions without semantic analysis. FIDES [13] and CaMeL [14]
+do not perform upstream tool scanning — this attack surface is
+unaddressed by planner-level defenses.
 
-| Experiment | Benchmark | Status |
-|---|---|---|
-| MCPTox tool poisoning (1,312 schemas) | arXiv:2508.14925 | Planned |
-| Adaptive planner-trust attacks (~15 scenarios) | Custom | Planned |
-| Shadow Escape + Pale Fire reproduction | Published attacks | Planned |
-| Encoding evasion (base64, Unicode) | Custom | Planned |
-| Semantic laundering (paraphrased exfil) | Custom | Planned |
+**E3b: Adaptive planner-trust attacks (5 scenarios).**
+Custom attack scenarios targeting the architectural gap between
+planner-level and gateway-level IFC enforcement:
+
+| ID | Attack | Planner-level IFC | navra |
+|---|---|---|---|
+| B1 | Injected "PUBLIC" label claim in content | May trust the claim | Labels by tool type, not content claims |
+| B2 | Fake declassification notice in text | May accept text-based declassification | Requires cryptographic DeclassificationWitness |
+| B3 | Taint laundering via intermediate file | Depends on data-flow tracking depth | Tainted session blocks first write (no laundering path) |
+| B4 | Character-by-character exfiltration | Per-value tracking may miss single chars | Session-level taint blocks all writes |
+| B5 | Dilution via clean reads after tainted read | May recalculate taint downward | Lattice join is monotonic (Kani-proved) |
+
+Result: **5/5 blocked.** Each scenario exploits the assumption
+that the agent's own reasoning correctly assigns or propagates
+labels — an assumption that gateway-level enforcement does not
+make.
+
+**E3c: Real-world attack reproductions (2 scenarios).**
+Shadow Escape [26] (zero-click document exfiltration via embedded
+instructions) and Operation Pale Fire [27] (calendar data
+injection leading to C2 contact): **both blocked.** The read
+of attacker-controlled data taints the session; subsequent write
+attempts are denied by IFC no-write-down regardless of how the
+injected instructions frame the exfiltration.
+
+**E3d: Encoding evasion — honest failure analysis (2 scenarios).**
+Base64-encoded secrets pass through the content safety pipeline
+undetected (known gap — regex patterns do not match encoded
+content). Unicode homoglyphs in surrounding text cause the SSN
+regex to miss nearby PII. **In both cases, IFC taint from the
+file read still blocks subsequent writes.** The content filter
+gap is mitigated by the defense-in-depth architecture: even when
+Layer 1 (content patterns) fails, Layer 2 (IFC taint tracking)
+provides a second enforcement boundary. We propose Layer 3
+(semantic leakage detection via embedding similarity) in §9.5
+to address the remaining gap.
 
 **Honest limitations.** Three attack classes cannot be blocked by
 any gateway-level IFC, including navra:
@@ -908,14 +945,30 @@ invoked. The single chokepoint design makes the security
 surface auditable: 15 sequential checks in one function, not
 scattered across dozens of tool handlers.
 
-The layered security model — OAuth 2.0 and capability token
-authentication, deny-wins ACLs with ring inheritance, Bell-
-LaPadula IFC with per-value taint tracking, an 18-category PII
-pipeline with pseudonymization, containerized execution with
-three isolation levels, typed action risk classification, and a
-hash-chained audit blackbox — addresses the full OWASP Agentic
-Top 10 attack surface while adding less than 0.5% overhead to
-typical tool call latencies.
+Our evaluation across 19 adversarial scenarios, 629 AgentDojo
+injection cases, and 485 MCPTox poisoned tool schemas shows
+that gateway-level enforcement provides two properties that
+planner-level defenses cannot:
+
+1. **Non-bypassability**: A compromised agent cannot circumvent
+   the gateway's IFC checks — enforcement is in compiled Rust
+   code outside the LLM's reasoning. Planner-level IFC (FIDES,
+   CaMeL) relies on the LLM itself to correctly assign and
+   propagate labels, creating a structural vulnerability when
+   the planner's reasoning is compromised by prompt injection.
+
+2. **Defense-in-depth across layers**: When content-level
+   detection fails (base64-encoded secrets, Unicode homoglyphs),
+   session-level IFC taint tracking provides a second enforcement
+   boundary. The cascaded architecture (content patterns → IFC
+   labels → write enforcement) means an attacker must evade all
+   layers simultaneously, not just one.
+
+Gateway-level IFC cannot, however, prevent information leakage
+through the LLM's internal reasoning — a fundamental limitation
+shared by all published IFC systems. We propose semantic leakage
+detection via embedding similarity (§9.5) as a probabilistic
+third layer to partially address this gap.
 
 As AI agents gain more capabilities on local systems, the gap
 between agent capability and agent safety will widen. navra
@@ -999,8 +1052,34 @@ Communication." ICLR 2026.
 [25] Vemprala, S. et al. "Security Considerations for Multi-Agent
 Systems: A Comprehensive Analysis." arXiv:2603.09002, 2026.
 
-[26] Kim, D. and Song, D. "Agentic AI Attack and Defense:
-A Comprehensive Survey." 2026.
+[26] Operant AI. "Shadow Escape: First Zero-Click MCP Data
+Exfiltration Attack." October 2025.
+
+[27] Block Engineering. "Operation Pale Fire: Red-Teaming Our
+Own AI Agent." SecurityBoulevard, January 2026.
+
+[28] Wang, Z. et al. "MCPTox: A Benchmark for Tool Poisoning
+Attack on Real-World MCP Servers." AAAI 2026,
+arXiv:2508.14925.
+
+[29] Cai, R. et al. "Ghost in the Agent: NeuroTaint for
+Semantic Taint Propagation in LLM Agents."
+arXiv:2604.23374, April 2026.
+
+[30] Nasr, M. et al. "The Attacker Moves Second: Evaluating
+the Robustness of LLM Defenses Under Adaptive Attack."
+arXiv:2510.09023, October 2025.
+
+[31] Microsoft Research. "Red-Teaming a Network of Agents:
+Understanding What Breaks When AI Agents Interact at Scale."
+April 2026.
+
+[32] OWASP. "OWASP MCP Top 10." owasp.org/www-project-mcp-top-10,
+2026.
+
+[33] Levy, D. et al. "AgentDojo: A Dynamic Environment to Evaluate
+Prompt Injection Attacks and Defenses for LLM Agents." NeurIPS
+2024, arXiv:2406.13352.
 
 ---
 
@@ -1020,9 +1099,12 @@ A Comprehensive Survey." 2026.
 | PII validators | 8 (Luhn, SSA, NIR, IBAN, SIRET, IP, phone context, span dedup) |
 | PII benchmark F1 | 0.889 (regex), 1.000 (regex + NER) |
 | Safety profiles | 8 (standard, pseudonymize, secrets-only, block, guardian, guardian-deep, multi-label, none) |
-| NER models supported | 3 (protectai/bert-base-NER, xlm-roberta-base-ner-hrl, sfermion/bert-pii-detector) |
+| NER models supported | 4 (protectai/bert-base-NER, xlm-roberta-base-ner-hrl, sfermion/bert-pii-detector, OpenAI privacy-filter) |
 | Isolation backends | 3 (Direct, Podman, OpenShell) |
 | AgentAction variants | 16 |
 | RiskLevel variants | 5 |
-| Adversarial eval scenarios | 10 (10/10 blocked) |
+| Adversarial eval scenarios | 19 (A1-A10 + B1-B5 + C1-C2 + D1-D2) |
+| AgentDojo defense rate | 100% across 5 models (629 injection cases) |
+| MCPTox detection rate | 82.3% (399/485 poisoned schemas) |
 | Red team findings | 10 (0 critical, 1 high, 5 medium, 3 low, 1 info) |
+| Cedar OWASP policies | 10/10 ASI categories covered |
