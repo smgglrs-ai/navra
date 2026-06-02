@@ -243,26 +243,62 @@ See DESIGN.md for full config reference.
   autonomous agents. navra integrates as the tool access layer
   inside OpenShell sandboxes. See `OPENSHELL.md` for design.
 
-## Strategic Priorities (2026-06-01)
+## Roadmap
+
+Two files work together:
+
+- **`roadmap.json`** — Machine-readable dependency graph. Every work
+  item has an id, priority, status, dependencies, gates, and feeds.
+  Use this to determine what to work on next.
+- **`ROADMAP.md`** — Human-readable context. Phase descriptions,
+  design rationale, historical log. Read this for the *why* behind
+  an item. Never duplicate content between the two files.
+
+### Picking next work
+
+Parse `roadmap.json` to find actionable items:
+
+```python
+# Item is actionable when:
+# 1. status == "pending" (not completed, not parking_lot)
+# 2. No gate (or gate has cleared)
+# 3. All depends_on items have status == "completed"
+# Sort by: priority (P0 > P1 > P2 > P3), then effort (smallest first)
+```
+
+When starting work on an item, set its status to `"in_progress"`.
+When done, set it to `"completed"`. Commit the JSON change with
+the feature commit.
+
+### After a tech watch
+
+New items from tech watches get `TW` prefix IDs (TW1, TW2, ...).
+Add them to both files: JSON for the graph, ROADMAP.md dependency
+graph section for the chain placement and ASCII diagram.
+
+### Strategic Priorities (2026-06-02)
 
 The code is ahead of the evidence. Pivot from building features to
 proving what's built.
 
 **Tier 1 — Prove the claims (June–July)**
 1. `11n` model-runtime dimension refactor — technical debt, unblocks backends
-2. `13a` Paper fixes — FIDES differentiation, gateway positioning
-3. `C3` External eval on 3+ OSS projects — statistical significance
-4. `10a` Security paper — flagship, submit to ArtSec/USENIX workshop
+2. `TW1` Benchmark OpenAI privacy-filter on 268V NPU — S7 eval baseline
+3. `TW2` Evaluate Glasswing adversarial harness — C3 eval methodology
+4. `13a` Paper fixes — FIDES differentiation, gateway positioning
+5. `TW6` Cedar OWASP policies — 10a paper evidence
+6. `C3` External eval on 3+ OSS projects — statistical significance
+7. `10a` Security paper — flagship, submit to ArtSec/USENIX workshop
 
 **Tier 2 — Close gaps (July–August)**
-5. `9aa` MCP 2026-07-28 default flip — gated on July 28 final spec
-6. `U3` GitLab forge module — enterprise reach
-7. `15a`+`15b` Rendra app MVP — demo-able end-user experience
+8. `9aa` MCP 2026-07-28 default flip — gated on July 28 final spec
+9. `U3` GitLab forge module — enterprise reach
+10. `15a`+`15b` Rendra app MVP — demo-able end-user experience
 
 **Tier 3 — Ecosystem (Q3–Q4)**
-8. First external user deployment
-9. Community docs + getting started guide
-10. `10b` Persona orchestration paper
+11. First external user deployment
+12. Community docs + getting started guide
+13. `10b` Persona orchestration paper
 
 Everything else is parking lot unless it directly supports a tier 1–2 item.
 
@@ -270,7 +306,8 @@ Everything else is parking lot unless it directly supports a tier 1–2 item.
 
 - `DESIGN.md` — Full architecture, protocol, security model, config reference
 - `TESTING.md` — Test prerequisites, running tests, crate test counts (2400+)
-- `ROADMAP.md` — Phased development plan (15 phases, waves 1-3 complete)
+- `ROADMAP.md` — Phased development plan, dependency graph, execution waves
+- `roadmap.json` — Machine-readable dependency graph (60 items, queryable)
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)
 - `OPENSHELL.md` — OpenShell integration: identity federation, A2A mesh, gRPC modules

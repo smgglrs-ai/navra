@@ -133,7 +133,7 @@ fn test_cases() -> Vec<TestCase> {
     ]
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct CategoryMetrics {
     true_positives: usize,
     false_positives: usize,
@@ -498,5 +498,189 @@ fn pii_benchmark_regex_plus_ner() {
         "NER should not decrease F1: {:.3} < {:.3}",
         combined.f1(),
         regex_only.f1()
+    );
+}
+
+/// Unified test cases covering all three pipeline layers.
+///
+/// Each case exercises at least one category that requires a specific layer:
+/// - Regex: ssn, credit-card, email, phone, phone-eu, iban, siret, passport
+/// - NER: person, location, organization
+/// - Privacy-filter: address, date, secret
+fn unified_test_cases() -> Vec<TestCase> {
+    vec![
+        // --- Regex territory ---
+        TestCase {
+            text: "His SSN is 123-45-6789 and he lives in NYC.",
+            expected: vec![("ssn", "123-45-6789")],
+        },
+        TestCase {
+            text: "Card number: 4111111111111111 expiry 12/28",
+            expected: vec![("credit-card", "4111111111111111")],
+        },
+        TestCase {
+            text: "Contact support@company.com for details.",
+            expected: vec![("email", "support@company.com")],
+        },
+        TestCase {
+            text: "Call me at 555-123-4567 after 5pm.",
+            expected: vec![("phone", "555-123-4567")],
+        },
+        TestCase {
+            text: "Appelez le +33 612345678 pour confirmer.",
+            expected: vec![("phone-eu", "+33 612345678")],
+        },
+        // --- NER territory ---
+        TestCase {
+            text: "Jean Dupont reviewed the merge request yesterday.",
+            expected: vec![("person", "Jean Dupont")],
+        },
+        TestCase {
+            text: "Marie Curie discovered radium in Paris.",
+            expected: vec![("person", "Marie Curie"), ("location", "Paris")],
+        },
+        TestCase {
+            text: "Contact John Smith at Acme Corp for the contract.",
+            expected: vec![("person", "John Smith"), ("organization", "Acme Corp")],
+        },
+        // --- Privacy-filter territory (new categories) ---
+        TestCase {
+            text: "She lives at 123 Oak Street, Apt 4B, Springfield, IL 62704.",
+            expected: vec![("address", "123 Oak Street")],
+        },
+        TestCase {
+            text: "Born on March 15, 1990 in Chicago.",
+            expected: vec![("date", "March 15, 1990")],
+        },
+        TestCase {
+            text: "My password is hunter2 and I should change it.",
+            expected: vec![("secret", "hunter2")],
+        },
+        // --- Multi-layer: requires all three ---
+        TestCase {
+            text: "Alice Bob lives at 42 Rue de Rivoli and her email is alice@example.com.",
+            expected: vec![
+                ("person", "Alice Bob"),
+                ("address", "42 Rue de Rivoli"),
+                ("email", "alice@example.com"),
+            ],
+        },
+        TestCase {
+            text: "Dear Mr. Johnson, your account 4532015112830366 has been flagged. \
+                   Please contact us at support@bankco.com or call +1 8005550199.",
+            expected: vec![
+                ("person", "Johnson"),
+                ("credit-card", "4532015112830366"),
+                ("email", "support@bankco.com"),
+            ],
+        },
+        // --- True negatives ---
+        TestCase {
+            text: "The function returns an error code 404.",
+            expected: vec![],
+        },
+        TestCase {
+            text: "Version 1.23.456 released on 2024-01-15.",
+            expected: vec![],
+        },
+        TestCase {
+            text: "Run cargo build to compile the project.",
+            expected: vec![],
+        },
+        TestCase {
+            text: "The HashMap stores entries indexed by key.",
+            expected: vec![],
+        },
+        TestCase {
+            text: "Port 8080 is used for the development server.",
+            expected: vec![],
+        },
+    ]
+}
+
+#[test]
+fn pii_benchmark_three_layer_pipeline() {
+    let ner_dir = Path::new(&std::env::var("HOME").unwrap_or_default())
+        .join(".local/share/navra/models/pii-ner");
+    let pf_dir = Path::new(&std::env::var("HOME").unwrap_or_default())
+        .join(".local/share/navra/models/openai-privacy-filter");
+
+    let regex_filter = PiiFilter::new();
+
+    let ner_available = ner_dir.join("model.onnx").exists();
+    let pf_available = pf_dir.join("onnx/model_q4.onnx").exists();
+
+    if !ner_available {
+        eprintln!("Skipping: NER model not found at {}", ner_dir.display());
+        return;
+    }
+    if !pf_available {
+        eprintln!(
+            "Skipping: privacy-filter not found at {}",
+            pf_dir.display()
+        );
+        return;
+    }
+
+    let ner_filter = load_ner_filter(&ner_dir).expect("NER filter should load");
+
+    let pf_filter = match navra_security::safety::privacy_filter::PrivacyFilterModel::load_from_dir(&pf_dir) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Skipping: privacy-filter failed to load: {e}");
+            eprintln!("(requires ORT >= 1.26 for MoE contrib ops)");
+            return;
+        }
+    };
+
+    let cases = unified_test_cases();
+
+    // Layer 1: regex only
+    let regex_only = run_benchmark("Layer 1: Regex only", &[&regex_filter], &cases);
+
+    // Layer 2: regex + NER
+    let regex_ner = run_benchmark("Layer 2: Regex + NER", &[&regex_filter, &ner_filter], &cases);
+
+    // Layer 3: regex + NER + privacy-filter
+    let full = run_benchmark(
+        "Layer 3: Regex + NER + Privacy-filter (full pipeline)",
+        &[&regex_filter, &ner_filter, &pf_filter],
+        &cases,
+    );
+
+    println!("=== Three-layer comparison (same {} cases) ===", cases.len());
+    println!(
+        "  Regex only:           F1={:.3}, precision={:.3}, recall={:.3}",
+        regex_only.f1(),
+        regex_only.precision(),
+        regex_only.recall()
+    );
+    println!(
+        "  Regex + NER:          F1={:.3}, precision={:.3}, recall={:.3}",
+        regex_ner.f1(),
+        regex_ner.precision(),
+        regex_ner.recall()
+    );
+    println!(
+        "  Regex + NER + PF:     F1={:.3}, precision={:.3}, recall={:.3}",
+        full.f1(),
+        full.precision(),
+        full.recall()
+    );
+
+    // Full pipeline should improve recall over regex-only
+    assert!(
+        full.f1() >= regex_only.f1(),
+        "Full pipeline F1 ({:.3}) should >= regex-only F1 ({:.3})",
+        full.f1(),
+        regex_only.f1()
+    );
+
+    // Full pipeline should beat regex+NER (privacy-filter adds address/date/secret)
+    assert!(
+        full.recall() >= regex_ner.recall(),
+        "Full pipeline recall ({:.3}) should >= regex+NER recall ({:.3})",
+        full.recall(),
+        regex_ner.recall()
     );
 }

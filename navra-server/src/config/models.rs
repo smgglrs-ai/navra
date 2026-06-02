@@ -37,6 +37,13 @@ pub struct ModelConfig {
     /// Auto-detected from the model path if not specified.
     #[serde(default)]
     pub format: Option<String>,
+    /// Execution mode: "in_process" (ONNX in gateway process) or "served"
+    /// (spawn inference server). Auto-derived from `task` if not set:
+    /// embedding/classification → in_process, chat/generate → served.
+    /// Override to serve an embedding model via vLLM or load a small
+    /// chat model in-process.
+    #[serde(default)]
+    pub execution_mode: Option<navra_model_runtime::ExecutionMode>,
     /// Runtime backend: "auto", "podman", "direct", or "none" (default).
     /// Used for chat/generate tasks served via navra-model-runtime.
     #[serde(default)]

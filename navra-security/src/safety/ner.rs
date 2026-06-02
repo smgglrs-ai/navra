@@ -52,8 +52,46 @@ fn entity_type_to_category(entity_type: &str) -> Option<&'static str> {
         "IP" => Some("ip-address"),
         "DATE" | "TIME" | "BOD" => Some("temporal-pii"),
         "USERNAME" => Some("username"),
-        "PASS" => Some("password"),
+        "PASS" | "PASSWORD" => Some("secret"),
         "SEX" => Some("demographic"),
+        // Extended PII labels (gravitee, ettin, Nemotron-PII family)
+        // Uppercase variants (gravitee-io/bert-small-pii-detection)
+        "DATE_TIME" => Some("date"),
+        "EMAIL_ADDRESS" => Some("email"),
+        "PHONE_NUMBER" => Some("phone"),
+        "CREDIT_CARD" => Some("credit-card"),
+        "IP_ADDRESS" | "MAC_ADDRESS" => Some("ip-address"),
+        "IBAN_CODE" | "US_SSN" | "US_BANK_NUMBER" | "US_ITIN"
+        | "FINANCIAL" => Some("account-number"),
+        "US_DRIVER_LICENSE" | "US_PASSPORT" => Some("identity-document"),
+        "US_LICENSE_PLATE" => Some("vehicle-id"),
+        "IMEI" => Some("device-fingerprint"),
+        "COORDINATE" => Some("location"),
+        "NRP" | "AGE" => Some("demographic"),
+        "HONORIFIC" | "TITLE" => None,
+        // Lowercase variants (ettin/Nemotron-PII)
+        "first_name" | "last_name" | "middle_name" => Some("person"),
+        "street_address" | "city" | "state" | "county" | "postcode"
+        | "country" | "coordinate" => Some("address"),
+        "date" | "date_of_birth" | "date_time" | "time" => Some("date"),
+        "password" | "pin" | "api_key" | "http_cookie" => Some("secret"),
+        "email" => Some("email"),
+        "phone_number" | "fax_number" => Some("phone"),
+        "ssn" | "national_id" | "tax_id" | "account_number"
+        | "bank_routing_number" | "swift_bic" => Some("account-number"),
+        "credit_debit_card" | "cvv" => Some("credit-card"),
+        "ipv4" | "ipv6" | "mac_address" => Some("ip-address"),
+        "url" | "user_name" => Some("url"),
+        "company_name" => Some("organization"),
+        "license_plate" | "vehicle_identifier" => Some("vehicle-id"),
+        "device_identifier" => Some("device-fingerprint"),
+        "medical_record_number" | "health_plan_beneficiary_number"
+        | "certificate_license_number" => Some("identity-document"),
+        "customer_id" | "employee_id" | "unique_id" => Some("account-number"),
+        "gender" | "age" | "race_ethnicity" | "sexuality"
+        | "political_view" | "religious_belief" | "language"
+        | "blood_type" | "biometric_identifier" => Some("demographic"),
+        "occupation" | "employment_status" | "education_level" => None,
         _ => None,
     }
 }
@@ -390,8 +428,11 @@ impl NerFilter {
             })?;
 
         let label_map_path = model_dir.join("label_map.json");
+        let config_path = model_dir.join("config.json");
         let label_map = if label_map_path.exists() {
             load_label_map(&label_map_path)?
+        } else if config_path.exists() {
+            load_label_map_from_config(&config_path)?
         } else {
             // Probe the model with a dummy input to detect output label count
             let dummy_ids = ndarray::Array2::from_shape_vec((1, 1), vec![0i64]).unwrap();
@@ -933,6 +974,43 @@ fn load_label_map(path: &Path) -> Result<Vec<String>, NerError> {
     }
 }
 
+/// Load label map from a HuggingFace config.json (id2label field).
+fn load_label_map_from_config(path: &Path) -> Result<Vec<String>, NerError> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        NerError::Load(format!("failed to read config from {}: {e}", path.display()))
+    })?;
+
+    let json: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+        NerError::Load(format!("failed to parse config: {e}"))
+    })?;
+
+    let id2label = json
+        .get("id2label")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| NerError::Load("no id2label in config.json".to_string()))?;
+
+    let max_idx = id2label
+        .keys()
+        .filter_map(|k| k.parse::<usize>().ok())
+        .max()
+        .ok_or_else(|| NerError::Load("empty id2label".to_string()))?;
+
+    let mut labels = vec!["O".to_string(); max_idx + 1];
+    for (key, value) in id2label {
+        if let Ok(idx) = key.parse::<usize>() {
+            labels[idx] = value.as_str().unwrap_or("O").to_string();
+        }
+    }
+
+    tracing::info!(
+        path = %path.display(),
+        labels = labels.len(),
+        "Loaded label map from config.json id2label"
+    );
+
+    Ok(labels)
+}
+
 /// Try to load a NER filter from a model directory.
 ///
 /// Looks for `model.onnx` (or `onnx/model.onnx`) and `tokenizer.json`
@@ -1231,7 +1309,7 @@ mod tests {
         assert_eq!(entity_type_to_category("TIME"), Some("temporal-pii"));
         assert_eq!(entity_type_to_category("BOD"), Some("temporal-pii"));
         assert_eq!(entity_type_to_category("USERNAME"), Some("username"));
-        assert_eq!(entity_type_to_category("PASS"), Some("password"));
+        assert_eq!(entity_type_to_category("PASS"), Some("secret"));
         assert_eq!(entity_type_to_category("SEX"), Some("demographic"));
     }
 

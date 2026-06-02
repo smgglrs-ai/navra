@@ -1,11 +1,15 @@
 pub mod ml;
 pub mod ner;
+pub mod privacy_filter;
 pub mod pseudonym;
 mod regex;
 
 pub use self::ml::{CategoryPolicy, MlFilter, MultiLabelFilter};
 pub use self::ner::{
     default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter, NerFilter,
+};
+pub use self::privacy_filter::{
+    default_privacy_filter_model_dir, load_privacy_filter, PrivacyFilterModel,
 };
 pub use self::pseudonym::{PseudonymMap, PseudonymReverser};
 pub use self::regex::{CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, PromptInjectionFilter, SecretFilter};
@@ -35,6 +39,15 @@ const PII_CATEGORIES: &[&str] = &[
     "password",
     "demographic",
     "path-username",
+    // Extended NER / privacy-filter categories
+    "address",
+    "date",
+    "secret",
+    "url",
+    "account-number",
+    "credit-card",
+    "vehicle-id",
+    "device-fingerprint",
 ];
 
 /// Custom PII categories registered at runtime via `register_pii_categories`.
@@ -367,6 +380,14 @@ impl FilterPipeline {
         self.filters.push(Box::new(SharedNerFilter(filter)));
     }
 
+    /// Add a shared privacy-filter from an `Arc`.
+    pub fn add_privacy_filter_shared(
+        &mut self,
+        filter: std::sync::Arc<PrivacyFilterModel>,
+    ) {
+        self.filters.push(Box::new(SharedPrivacyFilter(filter)));
+    }
+
     /// Filter outbound content (tool responses → agent).
     ///
     /// Runs all sync filters, then all model filters.
@@ -662,6 +683,18 @@ fn pseudonymize(content: &str, findings: &mut [Finding], map: &PseudonymMap) -> 
 struct SharedNerFilter(std::sync::Arc<NerFilter>);
 
 impl ContentFilter for SharedNerFilter {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding> {
+        self.0.scan(content, ctx)
+    }
+}
+
+struct SharedPrivacyFilter(std::sync::Arc<PrivacyFilterModel>);
+
+impl ContentFilter for SharedPrivacyFilter {
     fn name(&self) -> &str {
         self.0.name()
     }
