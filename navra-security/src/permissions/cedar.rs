@@ -218,4 +218,168 @@ mod tests {
     fn load_from_nonexistent_file() {
         assert!(CedarEngine::from_file("/nonexistent/policy.cedar").is_err());
     }
+
+    // ── OWASP ASI baseline policy tests ──
+
+    fn load_owasp_baseline() -> CedarEngine {
+        let policy_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../policies/owasp-asi-baseline.cedar"
+        );
+        CedarEngine::from_file(policy_path)
+            .expect("OWASP ASI baseline policies should parse")
+    }
+
+    #[test]
+    fn owasp_baseline_parses() {
+        load_owasp_baseline();
+    }
+
+    #[test]
+    fn asi01_blocks_unverified_upstream() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("manifest_verified".to_string(), "false".to_string());
+        ctx.insert("trust_score".to_string(), "low".to_string());
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert!(matches!(
+            engine.is_authorized("agent", "upstream_tool_call", "mcp-server", &ctx),
+            CedarDecision::Deny(_),
+        ));
+    }
+
+    #[test]
+    fn asi02_blocks_high_risk_write_without_approval() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("risk_tier".to_string(), "high".to_string());
+        ctx.insert("approval_granted".to_string(), "false".to_string());
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert!(matches!(
+            engine.is_authorized("agent", "file_write", "/etc/passwd", &ctx),
+            CedarDecision::Deny(_),
+        ));
+    }
+
+    #[test]
+    fn asi02_allows_write_with_approval() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("risk_tier".to_string(), "high".to_string());
+        ctx.insert("approval_granted".to_string(), "true".to_string());
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert_eq!(
+            engine.is_authorized("agent", "file_write", "/tmp/output", &ctx),
+            CedarDecision::Allow,
+        );
+    }
+
+    #[test]
+    fn asi03_blocks_suspended_agent() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("trust_state".to_string(), "suspended".to_string());
+        assert!(matches!(
+            engine.is_authorized("rogue", "file_read", "/tmp/test", &ctx),
+            CedarDecision::Deny(_),
+        ));
+    }
+
+    #[test]
+    fn asi05_blocks_pii_to_external() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("ifc_confidentiality".to_string(), "pii".to_string());
+        ctx.insert("destination_trust".to_string(), "external".to_string());
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert!(matches!(
+            engine.is_authorized("agent", "http_request", "https://evil.com", &ctx),
+            CedarDecision::Deny(_),
+        ));
+    }
+
+    #[test]
+    fn asi06_read_only_agent_cannot_write() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("trust_state".to_string(), "read_only".to_string());
+        assert!(matches!(
+            engine.is_authorized("agent", "file_write", "/tmp/out", &ctx),
+            CedarDecision::Deny(_),
+        ));
+    }
+
+    #[test]
+    fn asi06_read_only_agent_can_read() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert_eq!(
+            engine.is_authorized("agent", "file_read", "/tmp/test", &ctx),
+            CedarDecision::Allow,
+        );
+    }
+
+    #[test]
+    fn asi08_blocks_when_circuit_breaker_open() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("circuit_breaker".to_string(), "open".to_string());
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert!(matches!(
+            engine.is_authorized("agent", "file_read", "/tmp/test", &ctx),
+            CedarDecision::Deny(_),
+        ));
+    }
+
+    #[test]
+    fn asi09_blocks_push_without_approval() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("approval_granted".to_string(), "false".to_string());
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert!(matches!(
+            engine.is_authorized("agent", "git_push", "origin/main", &ctx),
+            CedarDecision::Deny(_),
+        ));
+    }
+
+    #[test]
+    fn asi09_allows_push_with_approval() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("approval_granted".to_string(), "true".to_string());
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert_eq!(
+            engine.is_authorized("agent", "git_push", "origin/main", &ctx),
+            CedarDecision::Allow,
+        );
+    }
+
+    #[test]
+    fn asi10_blocks_violated_integrity() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("cognitive_integrity".to_string(), "violated".to_string());
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert!(matches!(
+            engine.is_authorized("agent", "file_read", "/tmp/test", &ctx),
+            CedarDecision::Deny(_),
+        ));
+    }
+
+    #[test]
+    fn baseline_allows_normal_read_ops() {
+        let engine = load_owasp_baseline();
+        let mut ctx = HashMap::new();
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+
+        for tool in ["file_read", "file_tree", "git_status", "git_log", "git_diff", "memory_query", "rag_search"] {
+            assert_eq!(
+                engine.is_authorized("agent", tool, "any", &ctx),
+                CedarDecision::Allow,
+                "{tool} should be allowed for normal agent"
+            );
+        }
+    }
 }
