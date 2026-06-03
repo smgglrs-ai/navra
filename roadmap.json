@@ -240,7 +240,7 @@
         3,
         4
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": 2,
       "wave": 5,
       "depends_on": [],
@@ -260,7 +260,7 @@
         2,
         3
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": 2,
       "wave": 5,
       "depends_on": [],
