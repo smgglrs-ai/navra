@@ -16,7 +16,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 
 pub use builder::McpServerBuilder;
-pub use handlers::{IFCToolFilter, ToolFilter};
+pub use handlers::{IFCToolFilter, ToolFilter, ToolUsageTracker, UsagePruningFilter};
 pub use types::ToolHandler;
 
 use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};

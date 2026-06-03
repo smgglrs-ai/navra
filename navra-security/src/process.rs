@@ -4,7 +4,7 @@
 //! connected, their privilege level, request counts, and active
 //! tool calls.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
@@ -31,6 +31,8 @@ pub struct ProcessEntry {
     pub last_active: Instant,
     /// Currently active tool calls (tool name → start time).
     pub active_calls: Vec<String>,
+    /// Distinct tools used in this session (for usage-based pruning).
+    pub tools_used: HashSet<String>,
 }
 
 /// Snapshot of a process entry for external consumption (no Instant).
@@ -96,10 +98,12 @@ impl ProcessTable {
                 connected_at: now,
                 last_active: now,
                 active_calls: Vec::new(),
+                tools_used: HashSet::new(),
             });
         entry.call_count += 1;
         entry.last_active = now;
         entry.active_calls.push(tool_name.to_string());
+        entry.tools_used.insert(tool_name.to_string());
     }
 
     /// Record a denied tool call.
@@ -137,6 +141,7 @@ impl ProcessTable {
                 connected_at: now,
                 last_active: now,
                 active_calls: Vec::new(),
+                tools_used: HashSet::new(),
             });
         entry.denied_count += 1;
         entry.last_active = now;
@@ -176,6 +181,16 @@ impl ProcessTable {
     /// Number of tracked agents.
     pub fn count(&self) -> usize {
         self.entries.read().unwrap().len()
+    }
+
+    /// Get the set of tools used by an agent (for usage-based pruning).
+    pub fn tools_used(&self, agent_name: &str) -> HashSet<String> {
+        self.entries
+            .read()
+            .unwrap()
+            .get(agent_name)
+            .map(|e| e.tools_used.clone())
+            .unwrap_or_default()
     }
 }
 
