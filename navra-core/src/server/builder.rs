@@ -70,7 +70,7 @@ impl McpServerBuilder {
             cedar_engine: None,
             tool_disclosure: HashMap::new(),
             dynamic_filters: Vec::new(),
-            mcp_version: navra_protocol::PROTOCOL_VERSION.to_string(),
+            mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
         }
     }
 
