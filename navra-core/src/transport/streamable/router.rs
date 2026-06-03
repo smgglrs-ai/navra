@@ -28,6 +28,7 @@ pub(crate) struct AppState {
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
 pub fn build_router(server: Arc<McpServer>) -> Router {
+    let metrics = server.metrics().clone();
     let state = AppState {
         server,
         broadcaster: SseBroadcaster::new(),
@@ -36,7 +37,7 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
         a2a_endpoint: None,
         root_did: None,
         oauth: None,
-        metrics: Arc::new(crate::metrics::Metrics::new()),
+        metrics,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -53,6 +54,7 @@ pub fn build_router_with_broadcaster(
     server: Arc<McpServer>,
     broadcaster: SseBroadcaster,
 ) -> Router {
+    let metrics = server.metrics().clone();
     let state = AppState {
         server,
         broadcaster,
@@ -61,7 +63,7 @@ pub fn build_router_with_broadcaster(
         a2a_endpoint: None,
         root_did: None,
         oauth: None,
-        metrics: Arc::new(crate::metrics::Metrics::new()),
+        metrics,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -94,6 +96,7 @@ pub fn build_router_with_discovery(
         None
     };
 
+    let metrics = server.metrics().clone();
     let state = AppState {
         server,
         broadcaster,
@@ -102,7 +105,7 @@ pub fn build_router_with_discovery(
         a2a_endpoint,
         root_did,
         oauth: None,
-        metrics: Arc::new(crate::metrics::Metrics::new()),
+        metrics,
     };
 
     let mut router = Router::new()
