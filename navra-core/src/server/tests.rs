@@ -256,7 +256,7 @@ async fn call_unknown_tool() {
 fn handle_initialize_creates_session() {
     let server = McpServer::builder().name("test").build();
     let params = crate::protocol::InitializeParams {
-        protocol_version: "2025-03-26".to_string(),
+        protocol_version: "2026-07-28".to_string(),
         capabilities: Default::default(),
         client_info: crate::protocol::ClientInfo {
             name: "client".to_string(),
@@ -265,7 +265,7 @@ fn handle_initialize_creates_session() {
     };
 
     let (result, session_id) = server.handle_initialize(params, test_agent()).unwrap();
-    assert_eq!(result.protocol_version, "2025-03-26");
+    assert_eq!(result.protocol_version, "2026-07-28");
     assert_eq!(result.server_info.name, "test");
     assert_eq!(server.sessions().count(), 1);
     assert!(!session_id.is_empty());
@@ -293,7 +293,7 @@ fn handle_initialize_rejects_empty_protocol_version() {
 fn handle_initialize_rejects_empty_client_name() {
     let server = McpServer::builder().name("test").build();
     let params = crate::protocol::InitializeParams {
-        protocol_version: "2025-03-26".to_string(),
+        protocol_version: "2026-07-28".to_string(),
         capabilities: Default::default(),
         client_info: crate::protocol::ClientInfo {
             name: "".to_string(),
@@ -1078,7 +1078,7 @@ async fn dispatch_request(
 fn init_test_session() -> (std::sync::Arc<super::McpServer>, String) {
     let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
     let params = crate::protocol::InitializeParams {
-        protocol_version: "2025-03-26".to_string(),
+        protocol_version: "2026-07-28".to_string(),
         capabilities: Default::default(),
         client_info: crate::protocol::ClientInfo {
             name: "test-client".to_string(),
@@ -1169,13 +1169,24 @@ async fn dispatch_unknown_method_returns_method_not_found() {
 }
 
 #[tokio::test]
-async fn dispatch_without_session_returns_error() {
-    let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
-    // Any method except "initialize" should require a session
+async fn dispatch_without_session_returns_error_legacy() {
+    let server = std::sync::Arc::new(
+        super::McpServer::builder()
+            .name("test")
+            .mcp_version("2025-03-26")
+            .build(),
+    );
     let resp = dispatch_request(&server, "tools/list", None, None).await;
     let error = resp.error.unwrap();
     assert_eq!(error.code, -32002);
     assert!(error.message.contains("Session required"));
+}
+
+#[tokio::test]
+async fn dispatch_without_session_succeeds_stateless() {
+    let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
+    let resp = dispatch_request(&server, "tools/list", None, None).await;
+    assert!(resp.error.is_none());
 }
 
 #[tokio::test]
@@ -1185,7 +1196,7 @@ async fn dispatch_initialize_does_not_require_session() {
         &server,
         "initialize",
         Some(serde_json::json!({
-            "protocolVersion": "2025-03-26",
+            "protocolVersion": "2026-07-28",
             "capabilities": {},
             "clientInfo": {"name": "test"}
         })),
@@ -1194,7 +1205,7 @@ async fn dispatch_initialize_does_not_require_session() {
     .await;
     assert!(resp.error.is_none());
     let result = resp.result.unwrap();
-    assert_eq!(result["protocolVersion"], "2025-03-26");
+    assert_eq!(result["protocolVersion"], "2026-07-28");
 }
 
 // ========================================================================
@@ -1211,7 +1222,7 @@ fn init_test_session_with_modules() -> (std::sync::Arc<super::McpServer>, String
             .build(),
     );
     let params = crate::protocol::InitializeParams {
-        protocol_version: "2025-03-26".to_string(),
+        protocol_version: "2026-07-28".to_string(),
         capabilities: Default::default(),
         client_info: crate::protocol::ClientInfo {
             name: "test-client".to_string(),

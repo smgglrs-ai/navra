@@ -654,6 +654,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     // Shared session store — created early so kernel resource handlers can capture it.
     let session_store: navra_core::session::SessionStore;
 
+    if cfg.server.mcp_version == "2025-03-26" {
+        tracing::warn!(
+            "MCP version 2025-03-26 is deprecated — stateless dispatch (2026-07-28) is now the default. \
+             Remove mcp_version from config.toml to use the new default."
+        );
+    }
+
     let mut builder = navra_core::McpServer::builder()
         .name("navra")
         .version(env!("CARGO_PKG_VERSION"))

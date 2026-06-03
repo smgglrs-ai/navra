@@ -132,7 +132,7 @@ async fn initialize_returns_capabilities() {
             "method": "initialize",
             "id": 1,
             "params": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "test"}
             }
@@ -141,7 +141,7 @@ async fn initialize_returns_capabilities() {
     .await;
 
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["result"]["protocolVersion"], "2025-03-26");
+    assert_eq!(json["result"]["protocolVersion"], "2026-07-28");
     assert_eq!(json["result"]["serverInfo"]["name"], "test-server");
 }
 
@@ -361,6 +361,8 @@ async fn resources_read_unknown_returns_error() {
 }
 
 /// Initialize a session and return the session ID.
+/// In stateless mode (2026-07-28 default), no session header is returned;
+/// a placeholder is returned since stateless dispatch ignores it.
 async fn init_session(router: &Router) -> String {
     let (_, headers, _) = post_json_full(
         router,
@@ -369,7 +371,7 @@ async fn init_session(router: &Router) -> String {
             "method": "initialize",
             "id": 1,
             "params": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "test"}
             }
@@ -379,10 +381,8 @@ async fn init_session(router: &Router) -> String {
     .await;
     headers
         .get(SESSION_HEADER)
-        .expect("missing session header")
-        .to_str()
-        .unwrap()
-        .to_string()
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_else(|| "stateless".to_string())
 }
 
 /// Post JSON and return status, headers, and body.
@@ -413,8 +413,14 @@ async fn post_json_full(
 }
 
 #[tokio::test]
-async fn initialize_returns_session_header() {
-    let router = build_router(test_server());
+async fn initialize_returns_session_header_legacy() {
+    let server = std::sync::Arc::new(
+        crate::McpServer::builder()
+            .name("test-server")
+            .mcp_version("2025-03-26")
+            .build(),
+    );
+    let router = build_router(server);
     let (status, headers, json) = post_json_full(
         &router,
         serde_json::json!({
@@ -434,12 +440,34 @@ async fn initialize_returns_session_header() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["result"]["protocolVersion"], "2025-03-26");
 
-    // Session header must be present and non-empty
-    let session_id = headers.get(SESSION_HEADER).expect("missing session header");
+    let session_id = headers.get(SESSION_HEADER).expect("missing session header in legacy mode");
     let sid = session_id.to_str().unwrap();
     assert!(!sid.is_empty());
-    // Should be a valid UUID
     assert!(uuid::Uuid::parse_str(sid).is_ok());
+}
+
+#[tokio::test]
+async fn initialize_stateless_no_session_header() {
+    let router = build_router(test_server());
+    let (status, headers, json) = post_json_full(
+        &router,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "id": 1,
+            "params": {
+                "protocolVersion": "2026-07-28",
+                "capabilities": {},
+                "clientInfo": {"name": "test"}
+            }
+        }),
+        None,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["result"]["protocolVersion"], "2026-07-28");
+    assert!(headers.get(SESSION_HEADER).is_none());
 }
 
 #[tokio::test]

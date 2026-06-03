@@ -205,12 +205,12 @@
         3,
         5
       ],
-      "status": "pending",
+      "status": "in_progress",
       "tier": 2,
       "wave": 5,
       "depends_on": [],
       "feeds": [],
-      "gate": "2026-07-28 MCP final spec"
+      "gate": "2026-07-28 flip default; implement now behind feature gate"
     },
     {
       "id": "U3",
