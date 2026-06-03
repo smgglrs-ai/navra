@@ -2362,3 +2362,87 @@ fn dynamic_filter_composes_with_static_disclosure() {
         "file_read should survive both filters"
     );
 }
+
+// ========================================================================
+// Tool usage pruning (TW16)
+// ========================================================================
+
+#[test]
+fn usage_tracker_new_agent_gets_all_tools() {
+    let tracker = std::sync::Arc::new(super::ToolUsageTracker::new(3));
+    let all = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+    let unused = tracker.unused_tools_from("new-agent", &all);
+    assert!(unused.is_empty(), "new agent should see all tools");
+}
+
+#[test]
+fn usage_tracker_prunes_after_window() {
+    let tracker = std::sync::Arc::new(super::ToolUsageTracker::new(2));
+    let all = vec![
+        "file_read".to_string(),
+        "file_write".to_string(),
+        "git_status".to_string(),
+    ];
+
+    // Session 1: agent uses file_read
+    let mut used1 = std::collections::HashSet::new();
+    used1.insert("file_read".to_string());
+    tracker.record_session_end("agent-1", used1);
+
+    // Not enough history yet (1 < window 2)
+    assert!(!tracker.has_enough_history("agent-1"));
+    let unused = tracker.unused_tools_from("agent-1", &all);
+    assert!(unused.is_empty());
+
+    // Session 2: agent uses file_read again
+    let mut used2 = std::collections::HashSet::new();
+    used2.insert("file_read".to_string());
+    tracker.record_session_end("agent-1", used2);
+
+    // Now has enough history
+    assert!(tracker.has_enough_history("agent-1"));
+    let unused = tracker.unused_tools_from("agent-1", &all);
+    assert!(
+        unused.contains("file_write"),
+        "file_write never used, should be pruned"
+    );
+    assert!(
+        unused.contains("git_status"),
+        "git_status never used, should be pruned"
+    );
+    assert!(
+        !unused.contains("file_read"),
+        "file_read was used, should not be pruned"
+    );
+}
+
+#[test]
+fn usage_tracker_sliding_window() {
+    let tracker = std::sync::Arc::new(super::ToolUsageTracker::new(2));
+    let all = vec!["a".to_string(), "b".to_string()];
+
+    // Session 1: uses tool "a"
+    let mut s1 = std::collections::HashSet::new();
+    s1.insert("a".to_string());
+    tracker.record_session_end("agent", s1);
+
+    // Session 2: uses tool "b"
+    let mut s2 = std::collections::HashSet::new();
+    s2.insert("b".to_string());
+    tracker.record_session_end("agent", s2);
+
+    // Both used in window
+    let unused = tracker.unused_tools_from("agent", &all);
+    assert!(unused.is_empty());
+
+    // Session 3: uses only "b" → "a" from session 1 slides out
+    let mut s3 = std::collections::HashSet::new();
+    s3.insert("b".to_string());
+    tracker.record_session_end("agent", s3);
+
+    let unused = tracker.unused_tools_from("agent", &all);
+    assert!(
+        unused.contains("a"),
+        "tool 'a' should be pruned after sliding out of window"
+    );
+}

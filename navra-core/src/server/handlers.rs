@@ -38,6 +38,116 @@ impl ToolFilter for IFCToolFilter {
     }
 }
 
+/// Usage-based tool pruning filter.
+///
+/// Tracks which tools each agent has called across sessions.
+/// After an agent has enough history, tools it never uses are
+/// hidden from `tools/list` to reduce context window consumption.
+pub struct UsagePruningFilter {
+    tracker: Arc<ToolUsageTracker>,
+}
+
+impl UsagePruningFilter {
+    pub fn new(tracker: Arc<ToolUsageTracker>) -> Self {
+        Self { tracker }
+    }
+}
+
+impl ToolFilter for UsagePruningFilter {
+    fn filter(&self, tools: Vec<ToolDefinition>, ctx: &CallContext) -> Vec<ToolDefinition> {
+        if !self.tracker.has_enough_history(&ctx.agent.name) {
+            return tools;
+        }
+        let all_names: Vec<String> = tools.iter().map(|t| t.name.clone()).collect();
+        let unused = self.tracker.unused_tools_from(&ctx.agent.name, &all_names);
+        if unused.is_empty() {
+            return tools;
+        }
+        tools
+            .into_iter()
+            .filter(|t| !unused.contains(&t.name))
+            .collect()
+    }
+}
+
+/// Tracks tool usage history per agent across sessions.
+///
+/// When a session ends, its tool set is pushed into a sliding window.
+/// Tools not used in any of the last N sessions are considered unused.
+pub struct ToolUsageTracker {
+    history: std::sync::Mutex<std::collections::HashMap<String, AgentToolHistory>>,
+    window_size: u32,
+}
+
+struct AgentToolHistory {
+    sessions: std::collections::VecDeque<std::collections::HashSet<String>>,
+}
+
+impl ToolUsageTracker {
+    pub fn new(window_size: u32) -> Self {
+        Self {
+            history: std::sync::Mutex::new(std::collections::HashMap::new()),
+            window_size,
+        }
+    }
+
+    pub fn record_session_end(
+        &self,
+        agent_name: &str,
+        tools_used: std::collections::HashSet<String>,
+    ) {
+        let mut history = self.history.lock().unwrap();
+        let entry = history
+            .entry(agent_name.to_string())
+            .or_insert_with(|| AgentToolHistory {
+                sessions: std::collections::VecDeque::new(),
+            });
+        entry.sessions.push_back(tools_used);
+        while entry.sessions.len() > self.window_size as usize {
+            entry.sessions.pop_front();
+        }
+    }
+
+    pub fn unused_tools(&self, agent_name: &str) -> std::collections::HashSet<String> {
+        // Empty set = no pruning (new agent or not enough history)
+        std::collections::HashSet::new()
+    }
+
+    pub fn unused_tools_from(
+        &self,
+        agent_name: &str,
+        all_tool_names: &[String],
+    ) -> std::collections::HashSet<String> {
+        let history = self.history.lock().unwrap();
+        let Some(entry) = history.get(agent_name) else {
+            return std::collections::HashSet::new();
+        };
+        if (entry.sessions.len() as u32) < self.window_size {
+            return std::collections::HashSet::new();
+        }
+
+        let mut ever_used: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for session in &entry.sessions {
+            for tool in session {
+                ever_used.insert(tool.as_str());
+            }
+        }
+
+        all_tool_names
+            .iter()
+            .filter(|name| !ever_used.contains(name.as_str()))
+            .cloned()
+            .collect()
+    }
+
+    pub fn has_enough_history(&self, agent_name: &str) -> bool {
+        let history = self.history.lock().unwrap();
+        history
+            .get(agent_name)
+            .is_some_and(|e| e.sessions.len() as u32 >= self.window_size)
+    }
+}
+
 impl McpServer {
     pub fn server_info(&self) -> crate::protocol::ServerInfo {
         crate::protocol::ServerInfo {
