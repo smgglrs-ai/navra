@@ -712,6 +712,7 @@ mod tests {
                 cache_type: None,
                 speculative: None,
                 agentic: None,
+                execution_mode: None,
             },
         );
         cfg

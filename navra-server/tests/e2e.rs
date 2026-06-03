@@ -82,6 +82,8 @@ enabled = true
 "#;
 
 /// Initialize an MCP session, return the session ID.
+/// In stateless mode (2026-07-28 default), no session header is returned;
+/// a placeholder is used since stateless dispatch ignores it.
 async fn init_session(client: &reqwest::Client, url: &str) -> String {
     let resp = client
         .post(format!("{url}/mcp"))
@@ -90,7 +92,7 @@ async fn init_session(client: &reqwest::Client, url: &str) -> String {
             "method": "initialize",
             "id": 1,
             "params": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "e2e-test"}
             }
@@ -101,10 +103,8 @@ async fn init_session(client: &reqwest::Client, url: &str) -> String {
 
     resp.headers()
         .get("mcp-session-id")
-        .expect("missing session header")
-        .to_str()
-        .unwrap()
-        .to_string()
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_else(|| "stateless".to_string())
 }
 
 /// Call an MCP tool, return the JSON-RPC response.
@@ -149,7 +149,7 @@ async fn mcp_initialize_returns_capabilities() {
             "method": "initialize",
             "id": 1,
             "params": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "e2e-test"}
             }
@@ -160,7 +160,7 @@ async fn mcp_initialize_returns_capabilities() {
 
     assert_eq!(resp.status(), 200);
     let json: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(json["result"]["protocolVersion"], "2025-03-26");
+    assert_eq!(json["result"]["protocolVersion"], "2026-07-28");
     assert!(json["result"]["capabilities"]["tools"].is_object());
 
     child.kill().await.ok();
@@ -183,8 +183,11 @@ async fn mcp_tools_list_requires_session() {
         .unwrap();
 
     let json: serde_json::Value = resp.json().await.unwrap();
-    // Should fail — no session
-    assert!(json["error"].is_object());
+    // Stateless mode (2026-07-28 default): succeeds without session
+    assert!(
+        json["result"].is_object(),
+        "stateless mode should allow tools/list without session"
+    );
 
     child.kill().await.ok();
 }
@@ -202,7 +205,7 @@ async fn mcp_full_session_list_tools() {
             "method": "initialize",
             "id": 1,
             "params": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "e2e-test"}
             }
@@ -214,10 +217,8 @@ async fn mcp_full_session_list_tools() {
     let session_id = resp
         .headers()
         .get("mcp-session-id")
-        .expect("missing session header")
-        .to_str()
-        .unwrap()
-        .to_string();
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_else(|| "stateless".to_string());
 
     // List tools with session
     let resp = client
@@ -321,7 +322,7 @@ async fn tool_call_recorded_in_blackbox() {
             "method": "initialize",
             "id": 1,
             "params": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "e2e-blackbox-test"}
             }
@@ -333,10 +334,8 @@ async fn tool_call_recorded_in_blackbox() {
     let session_id = resp
         .headers()
         .get("mcp-session-id")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_else(|| "stateless".to_string());
 
     // Call a tool
     let resp = client
