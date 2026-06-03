@@ -169,6 +169,65 @@ the existing blackbox transcript. The key differences:
 - NeuroTaint operates on a single agent. navra's blackbox
   covers multi-agent flows via navra-flow.
 
+## Policy learning from denials (`navra policy suggest`)
+
+SELinux's `audit2allow` solved the cold-start problem: instead
+of writing policies from scratch, operators deploy in permissive
+mode, collect denials, and generate allow rules from them.
+
+navra's blackbox records every denial with full context:
+```sql
+SELECT agent_permissions, tool_name, tool_args, outcome, ifc_label
+FROM blackbox_entries
+WHERE outcome LIKE 'denied_%'
+ORDER BY timestamp_ms DESC
+```
+
+`navra policy suggest` reads these denials and generates:
+
+**Cedar rules:**
+```cedar
+// 12 denials: agent "reviewer" tried file_read on /src/**
+// Outcome: denied_acl (not in allow list)
+permit(
+    principal == Agent::"reviewer",
+    action == Action::"file_read",
+    resource
+) when { context.path_prefix == "/src/" };
+```
+
+**TOML ACL entries:**
+```toml
+# 8 denials: agent "builder" tried git_commit
+# Outcome: denied_acl (operation "commit" not in operations list)
+[permissions.builder]
+operations = ["read", "write", "commit"]  # was: ["read", "write"]
+```
+
+**IFC exemptions:**
+```toml
+# 5 denials: agent "reporter" tried file_write after reading
+# tainted data. All writes were to /reports/** (approved target).
+# Suggestion: add trusted path for /reports/**
+[permissions.reporter]
+trusted_paths = ["/reports/**"]
+```
+
+The operator reviews each suggestion — like `audit2allow`,
+the tool generates candidates, not final policy. Dangerous
+suggestions (e.g., "allow exec_command for untrusted agent")
+are flagged with warnings.
+
+**Leakage policy feedback loop:** When L2/L3 blocks a write
+that the operator determines was legitimate, the operator can:
+1. Lower the similarity threshold for that agent/tool pair
+2. Add the specific (tainted_value, outgoing_text) pair to an
+   allowlist (this text pattern is known-safe despite similarity)
+3. Adjust the L3 judge prompt with org-specific context
+
+This closes the feedback loop: denials → suggestions → review
+→ refined policy → fewer false blocks.
+
 ### Novel contribution
 
 No published system combines real-time similarity detection (L2)
