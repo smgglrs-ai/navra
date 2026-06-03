@@ -216,10 +216,13 @@ impl Hook for SimilarityLeakageHook {
 //   Inline (selective): runs on write tools when session
 //     confidentiality >= Secret. ~500ms+ latency, only for
 //     high-risk writes. Complements L2 which runs on all writes.
-//   Out-of-band (audit): analyzes completed session transcripts
-//     from the blackbox. No latency impact. Flags suspicious
-//     patterns for human review. Similar to NeuroTaint's offline
-//     causal influence analysis.
+//   Continuous (async): runs outside the agent's latency chain
+//     via tokio::spawn after every write. The write proceeds
+//     immediately; L3 analyzes it in the background. If leakage
+//     is detected, the session trust score is penalized and the
+//     session taint is retroactively elevated so L1 blocks
+//     subsequent writes. Similar to NeuroTaint's causal influence
+//     analysis, but continuous rather than post-hoc.
 //
 // The judge model must NOT be the same model driving the agent
 // (to avoid self-evaluation circularity).
