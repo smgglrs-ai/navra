@@ -15,6 +15,7 @@ MODELS = {
     "MiniLM-L6-v2 (22M, 384d)": Path.home() / ".local/share/navra/models/embedding-minilm",
     "BGE-large-v1.5 (335M, 1024d)": Path.home() / ".local/share/navra/models/embedding-bge-large",
     "Stella-v5 (1.5B, 1024d)": Path.home() / ".local/share/navra/models/embedding-stella-1.5b",
+    "PPLX-embed (4B, 4096d)": Path.home() / ".local/share/navra/models/embedding-pplx-4b",
 }
 
 SCENARIOS = [
