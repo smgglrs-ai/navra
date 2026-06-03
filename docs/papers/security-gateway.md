@@ -856,33 +856,44 @@ taint only) rather than rejecting sessionless clients.
   to running a firewall on the same machine as the attacker:
   correct rules, but the attacker can walk around them.
 
-### 9.5 Toward Semantic Leakage Detection (Future Work)
+### 9.5 Leakage Detection Beyond IFC Labels
 
 Gateway-level IFC tracks labels at tool-call boundaries but
-cannot detect semantic transformation of tainted content through
-LLM reasoning. We propose a **semantic leakage hook** that
-compares outgoing tool arguments against tainted values stored
-in the session's ValueStore using embedding similarity.
+cannot detect information leakage through LLM reasoning. We
+implement two additional layers that complement label-based IFC:
 
-The approach: on each write tool call, embed the outgoing
-arguments using the same ONNX embedding model loaded for RAG.
-Query the ValueStore for all values with confidentiality >=
-Sensitive. Compute cosine similarity. Block if any similarity
-exceeds a tunable threshold (default 0.75).
+**L2 — Similarity-based detection** (`SimilarityLeakageHook`):
+On each write tool call, embed the outgoing arguments using an
+ONNX model, compute cosine similarity against tainted values in
+the session's ValueStore, and block if similarity exceeds a
+tunable threshold (default 0.75). We evaluated 4 embedding
+models from 22M to 4B parameters. Performance peaks at 335M
+(BGE-large-v1.5): 100% precision, 100% recall on paraphrased
+exfiltration, 39ms per comparison. Larger models degrade —
+they are optimized for document retrieval, not sentence-level
+paraphrase detection. L2 cannot catch derived information
+(e.g., "password starts with h" from "hunter2") because the
+texts have insufficient semantic overlap for embedding
+similarity to detect.
 
-This provides a probabilistic layer 3 defense complementing
-the deterministic layers 1-2 (ACLs, IFC). All required
-components exist in navra: ValueStore with per-value labels,
-ONNX embedding model, cosine similarity, hook pipeline. The
-implementation is approximately 150 lines. Performance impact:
-~10ms per write tool call (embedding inference), acceptable
-given typical tool execution latencies of 10-500ms.
+**L3 — Semantic analysis** (`SemanticLeakageJudge`): For
+high-risk writes (confidentiality >= Secret), ask an LLM
+judge: "Does this outgoing text reveal information from this
+tainted content?" This catches derived information that L2
+cannot detect. The judge model must not be the agent's own
+model (to avoid self-evaluation circularity). L3 runs in two
+modes: inline (~500ms, selective, real-time blocking) and
+out-of-band (post-hoc audit on blackbox transcripts, similar
+to NeuroTaint [29] but using navra's existing hash-chained
+audit trail). Operators configure which tiers are active per
+permission set: default = L1 + L2; high-security = L1 + L2 +
+L3 inline; audit-only = L1 + L2 + L3 out-of-band.
 
-No published system performs real-time semantic leakage
-detection at the gateway layer. NeuroTaint [arXiv:2604.23374]
-achieves F1=0.928 but runs offline. This hook would provide
-real-time detection with lower coverage but zero post-hoc
-delay.
+No published system combines real-time similarity detection
+with selective LLM-based semantic analysis at the gateway
+layer. NeuroTaint [29] is offline-only. FIDES [13] and
+CaMeL [14] do not address information leakage through LLM
+reasoning.
 
 ---
 
