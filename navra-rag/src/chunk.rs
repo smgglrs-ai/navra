@@ -37,6 +37,9 @@ pub struct ChunkConfig {
     pub overlap: usize,
     /// Minimum chunk size — don't create chunks smaller than this.
     pub min_size: usize,
+    /// Skip chunks with predicted value below this threshold (0.0–1.0).
+    /// `None` = index everything (default).
+    pub graphability_threshold: Option<f32>,
 }
 
 impl Default for ChunkConfig {
@@ -45,6 +48,7 @@ impl Default for ChunkConfig {
             target_size: 1024,
             overlap: 128,
             min_size: 64,
+            graphability_threshold: None,
         }
     }
 }
@@ -549,6 +553,81 @@ pub enum DocumentType {
     Structured,
 }
 
+const LOW_VALUE_HEADINGS: &[&str] = &[
+    "appendix",
+    "license",
+    "changelog",
+    "references",
+    "disclaimer",
+    "contributors",
+    "acknowledgments",
+    "acknowledgements",
+    "table of contents",
+    "legal",
+    "copyright",
+];
+
+/// Predict the indexing value of a chunk (0.0–1.0).
+///
+/// High-value chunks contain substantive prose that answers questions.
+/// Low-value chunks are boilerplate (license, changelog, appendix)
+/// that pollute retrieval results.
+pub fn predict_chunk_value(chunk: &Chunk, config: &ChunkConfig) -> f32 {
+    let mut score: f32 = 1.0;
+
+    // Breadcrumb-based signals
+    if let Some(ref bc) = chunk.breadcrumb {
+        let bc_lower = bc.to_lowercase();
+
+        // Low-value heading keywords
+        for keyword in LOW_VALUE_HEADINGS {
+            if bc_lower.contains(keyword) {
+                return 0.1;
+            }
+        }
+
+        // Depth penalty: sections deeper than 3 levels are increasingly niche
+        let depth = bc.matches(" > ").count() + 1;
+        if depth > 3 {
+            score -= 0.1 * (depth - 3) as f32;
+        }
+    }
+
+    // Size outlier penalty
+    let len = chunk.content.len();
+    if len < config.min_size {
+        score -= 0.3;
+    } else if len > config.target_size * 3 {
+        score -= 0.2;
+    }
+
+    // Code-only detection: high ratio of code indicators without prose
+    let lines: Vec<&str> = chunk.content.lines().collect();
+    let total_lines = lines.len().max(1);
+    let code_lines = lines
+        .iter()
+        .filter(|l| {
+            let t = l.trim();
+            t.starts_with("//")
+                || t.starts_with('#')
+                || t.starts_with("/*")
+                || t.ends_with(';')
+                || t.ends_with('{')
+                || t.ends_with('}')
+                || t.starts_with("fn ")
+                || t.starts_with("pub ")
+                || t.starts_with("use ")
+                || t.starts_with("impl ")
+                || t.starts_with("struct ")
+        })
+        .count();
+    if total_lines > 3 && code_lines as f32 / total_lines as f32 > 0.8 {
+        score = score.min(0.5);
+    }
+
+    score.clamp(0.0, 1.0)
+}
+
 /// Detect the document type from text content using line pattern heuristics.
 pub fn detect_document_type(text: &str) -> DocumentType {
     let lines: Vec<&str> = text.lines().take(50).collect();
@@ -664,6 +743,7 @@ mod tests {
             target_size: 1000,
             overlap: 0,
             min_size: 10,
+        graphability_threshold: None,
         };
         let chunks = chunk_text(text, &config);
         // All paragraphs should be merged into one chunk (total < target)
@@ -682,6 +762,7 @@ mod tests {
             target_size: 250,
             overlap: 0,
             min_size: 10,
+        graphability_threshold: None,
         };
         let chunks = chunk_text(&text, &config);
         assert!(
@@ -698,6 +779,7 @@ mod tests {
             target_size: 300,
             overlap: 0,
             min_size: 10,
+        graphability_threshold: None,
         };
         let chunks = chunk_text(&text, &config);
         for (i, chunk) in chunks.iter().enumerate() {
@@ -714,6 +796,7 @@ mod tests {
             target_size: 30,
             overlap: 10,
             min_size: 10,
+        graphability_threshold: None,
         };
         let chunks = chunk_text(&text, &config);
         if chunks.len() >= 2 {
@@ -735,6 +818,7 @@ mod tests {
             target_size: 1000,
             overlap: 0,
             min_size: 100,
+        graphability_threshold: None,
         };
         let chunks = chunk_text(text, &config);
         // Content is too short for min_size, but single-chunk fallback kicks in
@@ -767,6 +851,7 @@ pub fn third_function() {\n\
             target_size: 80,
             overlap: 0,
             min_size: 10,
+        graphability_threshold: None,
         };
         let chunks = chunk_text(code, &config);
         assert!(
@@ -794,6 +879,7 @@ pub fn third_function() {\n\
             target_size: 60,
             overlap: 0,
             min_size: 10,
+        graphability_threshold: None,
         };
         let chunks = chunk_text(prose, &config);
         assert!(
@@ -844,6 +930,7 @@ pub fn third_function() {\n\
             target_size: 30,
             overlap: 0,
             min_size: 5,
+        graphability_threshold: None,
         };
         let mut chunks = chunk_text(source, &config);
         inject_breadcrumbs(&mut chunks, source);
@@ -861,6 +948,7 @@ pub fn third_function() {\n\
             target_size: 1000,
             overlap: 0,
             min_size: 5,
+        graphability_threshold: None,
         };
         let mut chunks = chunk_text(source, &config);
         let original_content = chunks[0].content.clone();
@@ -925,6 +1013,7 @@ pub fn third_function() {\n\
             target_size: 100,
             overlap: 0,
             min_size: 10,
+        graphability_threshold: None,
         };
         let content = "A ".repeat(40); // 80 chars, within 50-150 range
         let chunks = vec![Chunk {
@@ -947,6 +1036,7 @@ pub fn third_function() {\n\
             target_size: 100,
             overlap: 0,
             min_size: 10,
+        graphability_threshold: None,
         };
         // A very short chunk (10 chars) is below lower bound (50)
         let chunks = vec![Chunk {
@@ -983,5 +1073,72 @@ pub fn third_function() {\n\
     fn detect_document_type_markdown() {
         let md = "# Title\n\n## Section One\n\n- Item A\n- Item B\n- Item C\n\n> A blockquote\n\n## Section Two\n\nSome text.\n";
         assert_eq!(detect_document_type(md), DocumentType::Markdown);
+    }
+
+    #[test]
+    fn graphability_scores_appendix_low() {
+        let config = ChunkConfig::default();
+        let chunk = Chunk {
+            content: "This appendix lists supplementary data.".to_string(),
+            start_byte: 0,
+            end_byte: 40,
+            index: 0,
+            breadcrumb: Some("Document > Appendix A".to_string()),
+            section_start_byte: None,
+            section_end_byte: None,
+        };
+        let score = predict_chunk_value(&chunk, &config);
+        assert!(score <= 0.2, "appendix should score low, got {score}");
+    }
+
+    #[test]
+    fn graphability_scores_license_low() {
+        let config = ChunkConfig::default();
+        let chunk = Chunk {
+            content: "MIT License. Copyright 2026.".to_string(),
+            start_byte: 0,
+            end_byte: 28,
+            index: 0,
+            breadcrumb: Some("License".to_string()),
+            section_start_byte: None,
+            section_end_byte: None,
+        };
+        let score = predict_chunk_value(&chunk, &config);
+        assert!(score <= 0.2, "license should score low, got {score}");
+    }
+
+    #[test]
+    fn graphability_scores_normal_prose_high() {
+        let config = ChunkConfig::default();
+        let chunk = Chunk {
+            content: "The authentication module validates bearer tokens against \
+                      the configured identity provider. Tokens are checked for \
+                      expiry, scope, and issuer before granting access."
+                .to_string(),
+            start_byte: 0,
+            end_byte: 180,
+            index: 0,
+            breadcrumb: Some("Architecture > Authentication".to_string()),
+            section_start_byte: None,
+            section_end_byte: None,
+        };
+        let score = predict_chunk_value(&chunk, &config);
+        assert!(score >= 0.7, "normal prose should score high, got {score}");
+    }
+
+    #[test]
+    fn graphability_no_breadcrumb_defaults_high() {
+        let config = ChunkConfig::default();
+        let chunk = Chunk {
+            content: "Regular content without section context.".to_string(),
+            start_byte: 0,
+            end_byte: 42,
+            index: 0,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
+        };
+        let score = predict_chunk_value(&chunk, &config);
+        assert!(score >= 0.7, "no breadcrumb should default high, got {score}");
     }
 }

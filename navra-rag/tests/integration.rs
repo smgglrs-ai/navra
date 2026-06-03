@@ -150,6 +150,7 @@ fn chunk_text_short_returns_single_chunk() {
         target_size: 1024,
         overlap: 128,
         min_size: 5,
+        graphability_threshold: None,
     };
     let chunks = chunk_text("Hello, world!", &config);
     assert_eq!(chunks.len(), 1);
@@ -164,6 +165,7 @@ fn chunk_text_respects_min_size() {
         target_size: 1024,
         overlap: 0,
         min_size: 100,
+        graphability_threshold: None,
     };
     let chunks = chunk_text("tiny", &config);
     assert!(chunks.is_empty());
