@@ -1,8 +1,19 @@
-//! Semantic leakage detection hook.
+//! Leakage detection hooks (L2 similarity + L3 semantic analysis).
 //!
-//! Compares outgoing tool arguments against tainted values stored in
-//! the session's ValueStore using embedding cosine similarity. Catches
-//! paraphrased exfiltration that string-based IFC cannot detect.
+//! Two layers of defense against information leakage through LLM
+//! reasoning, complementing L1 label-based IFC:
+//!
+//! **L2 — Similarity-based detection** (`SimilarityLeakageHook`):
+//! Compares outgoing tool arguments against tainted values using
+//! embedding cosine similarity. Catches paraphrased exfiltration.
+//! Fast (~40ms with BGE-large), runs inline on every write.
+//!
+//! **L3 — Semantic analysis** (`SemanticLeakageJudge`, future):
+//! Asks an LLM judge "does this outgoing text reveal information
+//! from this tainted content?" Catches derived information that
+//! similarity cannot detect. Slow (~500ms+), runs selectively
+//! on high-risk writes (confidentiality >= Secret) and out-of-band
+//! as a post-hoc audit on blackbox transcripts.
 //!
 //! Only runs on write tools (determined by `is_write_tool`). Only
 //! compares against values with confidentiality >= Sensitive.
@@ -16,13 +27,13 @@ use std::sync::Arc;
 /// Embedding function: takes text, returns vector.
 pub type EmbedFn = Arc<dyn Fn(&str) -> Option<Vec<f32>> + Send + Sync>;
 
-pub struct SemanticLeakageConfig {
+pub struct SimilarityLeakageConfig {
     pub enabled: bool,
     pub similarity_threshold: f32,
     pub min_text_length: usize,
 }
 
-impl Default for SemanticLeakageConfig {
+impl Default for SimilarityLeakageConfig {
     fn default() -> Self {
         Self {
             enabled: true,
@@ -32,17 +43,17 @@ impl Default for SemanticLeakageConfig {
     }
 }
 
-pub struct SemanticLeakageHook {
+pub struct SimilarityLeakageHook {
     value_stores: Arc<ValueStoreMap>,
     embed_fn: EmbedFn,
-    config: SemanticLeakageConfig,
+    config: SimilarityLeakageConfig,
 }
 
-impl SemanticLeakageHook {
+impl SimilarityLeakageHook {
     pub fn new(
         value_stores: Arc<ValueStoreMap>,
         embed_fn: EmbedFn,
-        config: SemanticLeakageConfig,
+        config: SimilarityLeakageConfig,
     ) -> Self {
         Self {
             value_stores,
@@ -107,9 +118,9 @@ fn content_to_text(content: &[navra_protocol::Content]) -> String {
 }
 
 #[async_trait::async_trait]
-impl Hook for SemanticLeakageHook {
+impl Hook for SimilarityLeakageHook {
     fn name(&self) -> &str {
-        "semantic-leakage"
+        "similarity-leakage"
     }
 
     async fn pre_tool_use(
@@ -177,12 +188,154 @@ impl Hook for SemanticLeakageHook {
                     tainted_var = %id,
                     source_tool = %value.source_tool,
                     confidentiality = ?value.label.confidentiality,
-                    "Semantic leakage detected: outgoing content similar to tainted value"
+                    "Similarity leakage detected: outgoing content similar to tainted value"
                 );
                 return HookDecision::Block(format!(
-                    "Semantic leakage detected: outgoing content is {:.0}% similar to \
+                    "Similarity leakage detected: outgoing content is {:.0}% similar to \
                      tainted value from '{}' (confidentiality: {:?})",
                     similarity * 100.0,
+                    value.source_tool,
+                    value.label.confidentiality,
+                ));
+            }
+        }
+
+        HookDecision::Continue
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// L3 — Semantic analysis via LLM judge.
+//
+// Asks a model: "Does this outgoing text reveal information from
+// the following tainted content?" Catches derived information that
+// embedding similarity cannot detect (e.g., "password starts with
+// h" from "hunter2").
+//
+// Two modes:
+//   Inline (selective): runs on write tools when session
+//     confidentiality >= Secret. ~500ms+ latency, only for
+//     high-risk writes. Complements L2 which runs on all writes.
+//   Out-of-band (audit): analyzes completed session transcripts
+//     from the blackbox. No latency impact. Flags suspicious
+//     patterns for human review. Similar to NeuroTaint's offline
+//     causal influence analysis.
+//
+// The judge model must NOT be the same model driving the agent
+// (to avoid self-evaluation circularity).
+// ═══════════════════════════════════════════════════════════════════
+
+/// Function that asks an LLM judge whether outgoing text reveals
+/// information from tainted content. Returns a confidence score
+/// (0.0 = no leakage, 1.0 = certain leakage).
+pub type JudgeFn =
+    Arc<dyn Fn(&str, &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<f32>> + Send>> + Send + Sync>;
+
+pub struct SemanticLeakageConfig {
+    pub enabled: bool,
+    pub confidence_threshold: f32,
+    pub min_confidentiality: Confidentiality,
+}
+
+impl Default for SemanticLeakageConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            confidence_threshold: 0.7,
+            min_confidentiality: Confidentiality::Secret,
+        }
+    }
+}
+
+pub struct SemanticLeakageJudge {
+    value_stores: Arc<ValueStoreMap>,
+    judge_fn: JudgeFn,
+    config: SemanticLeakageConfig,
+}
+
+impl SemanticLeakageJudge {
+    pub fn new(
+        value_stores: Arc<ValueStoreMap>,
+        judge_fn: JudgeFn,
+        config: SemanticLeakageConfig,
+    ) -> Self {
+        Self {
+            value_stores,
+            judge_fn,
+            config,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Hook for SemanticLeakageJudge {
+    fn name(&self) -> &str {
+        "semantic-leakage-judge"
+    }
+
+    async fn pre_tool_use(
+        &self,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+        ctx: &CallContext,
+    ) -> HookDecision {
+        if !self.config.enabled {
+            return HookDecision::Continue;
+        }
+
+        let tool_annotations = None;
+        if !crate::ifc::is_write_tool(tool_name, tool_annotations) {
+            return HookDecision::Continue;
+        }
+
+        let outgoing_text = extract_text_from_args(arguments);
+        if outgoing_text.len() < 10 {
+            return HookDecision::Continue;
+        }
+
+        let store = self.value_stores.get_or_create(&ctx.session_id);
+        let values = store.list();
+
+        let sensitive_ids: Vec<String> = values
+            .iter()
+            .filter(|v| v.label.confidentiality >= self.config.min_confidentiality)
+            .map(|v| v.id.clone())
+            .collect();
+
+        if sensitive_ids.is_empty() {
+            return HookDecision::Continue;
+        }
+
+        for id in &sensitive_ids {
+            let value = match store.get(id) {
+                Some(v) => v,
+                None => continue,
+            };
+
+            let value_text = content_to_text(&value.content);
+            if value_text.len() < 10 {
+                continue;
+            }
+
+            let confidence = match (self.judge_fn)(&outgoing_text, &value_text).await {
+                Some(c) => c,
+                None => continue,
+            };
+
+            if confidence >= self.config.confidence_threshold {
+                tracing::warn!(
+                    tool = %tool_name,
+                    session = %ctx.session_id,
+                    agent = %ctx.agent.name,
+                    confidence = %format!("{confidence:.3}"),
+                    tainted_var = %id,
+                    source_tool = %value.source_tool,
+                    "Semantic leakage: LLM judge detected information reveal"
+                );
+                return HookDecision::Block(format!(
+                    "Semantic leakage detected: LLM judge confidence {:.0}% that \
+                     outgoing text reveals information from '{}' (confidentiality: {:?})",
+                    confidence * 100.0,
                     value.source_tool,
                     value.label.confidentiality,
                 ));
@@ -228,11 +381,11 @@ mod tests {
         CallContext::new(AgentIdentity::new("tester", "dev"), session)
     }
 
-    fn make_hook(stores: Arc<ValueStoreMap>) -> SemanticLeakageHook {
-        SemanticLeakageHook::new(
+    fn make_hook(stores: Arc<ValueStoreMap>) -> SimilarityLeakageHook {
+        SimilarityLeakageHook::new(
             stores,
             Arc::new(mock_embed),
-            SemanticLeakageConfig::default(),
+            SimilarityLeakageConfig::default(),
         )
     }
 
@@ -357,10 +510,10 @@ mod tests {
         let stores = Arc::new(ValueStoreMap::new());
         store_tainted_value(&stores, "sess1", "API_KEY=sk-secret-abc123");
 
-        let hook = SemanticLeakageHook::new(
+        let hook = SimilarityLeakageHook::new(
             stores,
             Arc::new(mock_embed),
-            SemanticLeakageConfig {
+            SimilarityLeakageConfig {
                 enabled: false,
                 ..Default::default()
             },

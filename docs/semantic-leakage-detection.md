@@ -1,128 +1,171 @@
-# Semantic Leakage Detection
+# Leakage Detection: Similarity (L2) + Semantic Analysis (L3)
 
-## Problem
+## The problem
 
 Gateway-level IFC tracks data labels at tool-call boundaries.
-When an agent reads tainted content and paraphrases it in a
-subsequent tool call, the literal text is different but the
-information is the same. Label-based IFC cannot catch this —
-the outgoing text doesn't match the tainted value.
+When an agent reads tainted content and reveals information from
+it in a subsequent tool call, there are three levels of leakage
+that require different detection techniques:
 
-Example:
-1. Agent reads `file_read("/secrets.env")` → `API_KEY=sk-abc123`
-2. Safety pipeline detects secret → labels `Confidentiality::Secret`
-3. Session taint rises to Secret
-4. Agent calls `http_request(body="the key starts with sk and is 14 chars")`
-5. IFC no-write-down blocks ALL writes from tainted sessions (if policy=Deny)
-6. But with policy=Approve, human sees innocuous text → approves
+| Level | Technique | Example | Detection |
+|---|---|---|---|
+| Exact copy | "hunter2" → "hunter2" | L1 (IFC labels) or regex |
+| Paraphrase | "the DB password is hunter2" → "database credential: hunter2" | **L2 (embedding similarity)** |
+| Derived info | "hunter2" → "starts with h, 7 chars" | **L3 (LLM judge)** |
 
-This is not a navra-specific limitation. No published IFC system
-(FIDES, CaMeL, or navra) can track information flow through LLM
-reasoning. NeuroTaint (arXiv:2604.23374) achieves F1=0.928 on
-semantic taint detection but runs offline, not in real-time.
+No published IFC system addresses L2 or L3 in real-time.
 
-## Proposed Solution: SemanticLeakageHook
+## L2 — Similarity-based detection (`SimilarityLeakageHook`)
 
-A new hook in navra's pipeline that compares outgoing content
-against tainted values using embedding similarity — catching
-paraphrased exfiltration that string-based filters miss.
+Compares outgoing tool arguments against tainted values using
+embedding cosine similarity. Catches paraphrases and reformulations.
+
+### Benchmark results
+
+4 embedding models tested on 13 scenarios (threshold 0.75):
+
+| Model | Params | Precision | Recall | Latency |
+|---|---|---|---|---|
+| MiniLM-L6-v2 | 22M | 100% | 57% | 11ms |
+| **BGE-large-v1.5** | **335M** | **100%** | **100%** | **39ms** |
+| Stella-v5 | 1.5B | 100% | 100% | 128ms |
+| PPLX-embed-v1 | 4B | 100% | 43% | 323ms |
+
+Performance peaks at 335M. Larger models degrade because they
+are optimized for document retrieval, not sentence-level
+paraphrase detection. BGE-large-v1.5 is the recommended model.
+
+### What L2 catches
+
+- Exact copies (sim ~1.0)
+- Minor rephrasing (sim ~0.99)
+- Partial PII extraction (sim ~0.81-0.86)
+- Synonym substitution (sim ~0.77-0.90)
+- Reformatted data (sim ~0.73-0.89)
+- Entity reformulation (sim ~0.55-0.76)
+
+### What L2 cannot catch
+
+- Derived information ("starts with h, 7 chars") — sim ~0.35
+- Indirect descriptions with no vocabulary overlap
+- Encoded content that was decoded before paraphrasing
 
 ### Architecture
 
 ```
-Agent calls write tool (http_request, file_write, git_commit, ...)
+Write tool call
     │
-    ▼
-SemanticLeakageHook::pre_tool_use()
+    ├── L2: SimilarityLeakageHook (pre_tool_use)
+    │   ├── Embed outgoing text (ONNX, ~40ms)
+    │   ├── Compare against tainted ValueStore entries
+    │   └── Block if similarity > 0.75
     │
-    ├── 1. Extract text content from tool arguments
-    │
-    ├── 2. Query ValueStore for all values where
-    │      confidentiality >= Sensitive
-    │
-    ├── 3. Embed outgoing text using ONNX embedding model
-    │      (same model used for RAG — already loaded)
-    │
-    ├── 4. Compute cosine similarity against each
-    │      tainted value's embedding
-    │
-    ├── 5. If max_similarity > threshold → BLOCK
-    │      "Semantic leakage detected: outgoing content
-    │       similar to tainted value {var_id}"
-    │
-    └── 6. If below threshold → CONTINUE
+    └── Continue to tool execution
 ```
 
-### Components (all exist in navra today)
+Runs on every write tool call. Only compares against values
+with confidentiality >= Sensitive. ~40ms overhead per write.
 
-| Component | Location | Reuse |
-|---|---|---|
-| ValueStore with labels | `navra-security/src/ifc/value_store.rs` | Query tainted values |
-| ONNX embedding model | `navra-model::OnnxBackend` + `ModelTask::Embedding` | Embed outgoing text |
-| Cosine similarity | `navra-rag/src/cache.rs::cosine_similarity()` | Compare embeddings |
-| Hook trait | `navra-security/src/hooks/mod.rs::Hook` | Implement `pre_tool_use` |
-| Write tool detection | `navra-security/src/ifc::is_write_tool()` | Gate the check |
+## L3 — Semantic analysis (`SemanticLeakageJudge`)
 
-### New code needed
+Asks an LLM judge: "Does this outgoing text reveal any
+information that could be derived from the following
+tainted content?" Catches derived information that similarity
+cannot detect.
 
-- `navra-security/src/hooks/semantic_leakage.rs` (~150 lines)
-- Wire into hook pipeline in `navra-server/src/main.rs`
-- Config: `semantic_leakage_threshold = 0.75` in TOML
+### Two modes
 
-### What it catches
+**Inline (selective):** Runs on write tools when session
+confidentiality >= Secret. Only fires for the highest-risk
+writes — you pay ~500ms+ per call but only on a fraction of
+tool calls. Complements L2 which runs on all writes.
 
-| Attack | String-based IFC | Semantic leakage hook |
-|---|---|---|
-| Literal copy of password | Blocked (tainted session) | Blocked (similarity ~1.0) |
-| "the password starts with h" | Blocked if policy=Deny | Blocked (moderate similarity) |
-| Base64-encoded password | Not detected by content filter | Blocked (decode → embed → high similarity) |
-| "send the file content" | Blocked (tainted session) | Blocked (argument text similar to stored content) |
-| "password length is 7" | Blocked if policy=Deny | **Maybe not** (low semantic similarity) |
-| Timing channel | Not applicable | Not applicable |
+**Out-of-band (audit):** Analyzes completed session transcripts
+from the blackbox after the session ends. No latency impact.
+Flags suspicious patterns for human review. Similar to
+NeuroTaint's offline causal influence analysis, but using
+navra's existing hash-chained audit trail as the data source.
 
-### What it cannot catch
+### What L3 catches that L2 cannot
 
-- Derived information with no semantic overlap to the original
-- Timing/metadata covert channels
-- Information encoded in tool selection patterns
-- Approval fatigue (human clicks "allow" on blocked request)
+- "the password starts with h and is 7 characters"
+- "the API key prefix is sk-ant"
+- "annual compensation is approximately one hundred fifty thousand"
+- Encoded content that has been decoded and described
 
-### Performance impact
+### Architecture
 
-- Embedding inference: ~5-15ms per write tool call (same as NER)
-- Cosine similarity: <0.1ms per comparison
-- Only runs on write tools (not reads) — reduces frequency
-- Only compares against tainted values (not all values) — reduces scope
-- Acceptable for gateway use case where tool execution takes 10-500ms
+```
+Write tool call
+    │
+    ├── L2: SimilarityLeakageHook (~40ms, all writes)
+    │
+    ├── L3 inline: SemanticLeakageJudge (~500ms+, Secret writes only)
+    │   ├── Build prompt: "Does {outgoing} reveal info from {tainted}?"
+    │   ├── Call judge model (NOT the agent's model)
+    │   └── Block if confidence > 0.7
+    │
+    └── Continue to tool execution
 
-### Threshold tuning
+Session ends
+    │
+    └── L3 out-of-band: BlackboxAuditor (async, no latency)
+        ├── Read session transcript from blackbox
+        ├── For each write: ask judge model about all prior reads
+        └── Flag suspicious patterns for human review
+```
 
-- Too low (0.5): false positives on legitimate text about similar topics
-- Too high (0.9): misses paraphrased content
-- Recommended default: 0.75 (catches moderate paraphrasing)
-- Tunable per permission set in config
+### Judge model requirements
 
-### Relationship to existing defenses
+- Must NOT be the agent's own model (avoids self-evaluation
+  circularity — the agent would judge its own exfiltration
+  favorably)
+- Small model sufficient (~1-3B) — binary classification task
+- Can be the same ONNX model used for safety classification
+- Prompt: structured, not conversational:
+  ```
+  Tainted content: {tainted_text}
+  Outgoing text: {outgoing_text}
+  Question: Does the outgoing text reveal, describe, or encode
+  any information from the tainted content? Answer 0.0-1.0.
+  ```
 
-This is Layer 3 in navra's defense-in-depth:
+### Performance budget
 
-| Layer | Mechanism | What it catches | Latency |
+| Tier | Trigger | Latency | Coverage |
 |---|---|---|---|
-| L1 (Infrastructure) | ACLs, tool scanning, egress filter, manifest pinning | Tool poisoning, supply chain, unauthorized access | <1ms |
-| L2 (Data flow) | IFC taint tracking, no-write-down, capability attenuation | Cross-tool exfiltration, privilege escalation | <1us |
-| L3 (Semantic) | Embedding similarity against tainted values | Paraphrased exfiltration, encoded content | ~10ms |
+| L1 (IFC labels) | All tool calls | <1us | Exact flow control |
+| L2 (similarity) | Write tools | ~40ms | Paraphrases |
+| L3 inline (judge) | Secret writes | ~500ms+ | Derived info |
+| L3 out-of-band | Session end | 0 (async) | Everything, post-hoc |
 
-L1 and L2 are deterministic (Kani-proved). L3 is probabilistic
-(embedding similarity is not exact). The paper should present L3
-as "defense-in-depth detection" not "provable security."
+The operator configures which tiers are active per permission
+set. Default: L1 + L2. High-security: L1 + L2 + L3 inline.
+Audit-only: L1 + L2 + L3 out-of-band.
+
+### Comparison to NeuroTaint
+
+NeuroTaint (arXiv:2604.23374) achieves F1=0.928 on semantic
+taint detection using offline causal influence analysis. navra's
+L3 out-of-band mode provides similar post-hoc analysis using
+the existing blackbox transcript. The key differences:
+
+- NeuroTaint analyzes token-level causal influence (requires
+  model internals). navra analyzes tool-call-level transcripts
+  (no model access needed).
+- NeuroTaint runs post-hoc only. navra's L3 inline mode
+  provides real-time blocking on high-risk writes.
+- NeuroTaint operates on a single agent. navra's blackbox
+  covers multi-agent flows via navra-flow.
 
 ### Novel contribution
 
-No published system does gateway-level semantic leakage detection
-in real-time. NeuroTaint (F1=0.928) runs offline. FIDES and CaMeL
-don't address semantic propagation. This would be a fourth paper
-contribution alongside:
-1. Gateway-enforced IFC (L2)
-2. Capability delegation with attenuation
-3. Hash-chained audit trail
-4. **Semantic leakage detection via embedding similarity (L3)**
+No published system combines real-time similarity detection (L2)
+with selective LLM-based semantic analysis (L3) at the gateway
+layer. NeuroTaint is offline-only. FIDES and CaMeL don't address
+information leakage through LLM reasoning at all. navra provides
+a configurable three-tier defense:
+
+1. L1: deterministic (Kani-proved IFC)
+2. L2: probabilistic, fast (embedding similarity, 100% precision)
+3. L3: probabilistic, selective (LLM judge, catches derived info)
