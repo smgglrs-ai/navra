@@ -34,6 +34,13 @@ pub struct Metrics {
     pub leakage_similarity_blocks: AtomicU64,
     pub leakage_semantic_blocks: AtomicU64,
     pub leakage_semantic_async_detections: AtomicU64,
+    pub rag_queries_total: AtomicU64,
+    pub rag_vector_skips: AtomicU64,
+    pub rag_rerank_skips: AtomicU64,
+    pub rag_chunks_indexed: AtomicU64,
+    pub rag_chunks_skipped: AtomicU64,
+    pub tools_listed_total: AtomicU64,
+    pub tools_pruned_total: AtomicU64,
 }
 
 impl Metrics {
@@ -66,6 +73,13 @@ impl Metrics {
             leakage_similarity_blocks: AtomicU64::new(0),
             leakage_semantic_blocks: AtomicU64::new(0),
             leakage_semantic_async_detections: AtomicU64::new(0),
+            rag_queries_total: AtomicU64::new(0),
+            rag_vector_skips: AtomicU64::new(0),
+            rag_rerank_skips: AtomicU64::new(0),
+            rag_chunks_indexed: AtomicU64::new(0),
+            rag_chunks_skipped: AtomicU64::new(0),
+            tools_listed_total: AtomicU64::new(0),
+            tools_pruned_total: AtomicU64::new(0),
         }
     }
 
@@ -240,6 +254,49 @@ impl Metrics {
             "navra_leakage_semantic_async_detections_total",
             "L3 continuous semantic leakage detections (retroactive taint)",
             self.leakage_semantic_async_detections.load(Ordering::Relaxed),
+        );
+
+        prom_counter(
+            &mut out,
+            "navra_rag_queries_total",
+            "RAG queries processed",
+            self.rag_queries_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_rag_vector_skips_total",
+            "RAG queries where vector search was skipped (BM25 sufficient)",
+            self.rag_vector_skips.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_rag_rerank_skips_total",
+            "RAG queries where reranking was skipped (vector sufficient)",
+            self.rag_rerank_skips.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_rag_chunks_indexed_total",
+            "Chunks indexed into RAG store",
+            self.rag_chunks_indexed.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_rag_chunks_skipped_total",
+            "Chunks skipped by graphability filter",
+            self.rag_chunks_skipped.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_tools_listed_total",
+            "Tools returned in tools/list responses",
+            self.tools_listed_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_tools_pruned_total",
+            "Tools suppressed by usage-based pruning",
+            self.tools_pruned_total.load(Ordering::Relaxed),
         );
 
         out
