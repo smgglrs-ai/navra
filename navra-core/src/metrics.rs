@@ -31,6 +31,9 @@ pub struct Metrics {
     pub tool_scan_suspicious: AtomicU64,
     pub integrity_alerts_total: AtomicU64,
     pub integrity_alerts_malicious: AtomicU64,
+    pub leakage_similarity_blocks: AtomicU64,
+    pub leakage_semantic_blocks: AtomicU64,
+    pub leakage_semantic_async_detections: AtomicU64,
 }
 
 impl Metrics {
@@ -60,6 +63,9 @@ impl Metrics {
             tool_scan_suspicious: AtomicU64::new(0),
             integrity_alerts_total: AtomicU64::new(0),
             integrity_alerts_malicious: AtomicU64::new(0),
+            leakage_similarity_blocks: AtomicU64::new(0),
+            leakage_semantic_blocks: AtomicU64::new(0),
+            leakage_semantic_async_detections: AtomicU64::new(0),
         }
     }
 
@@ -217,6 +223,25 @@ impl Metrics {
             self.integrity_alerts_malicious.load(Ordering::Relaxed),
         );
 
+        prom_counter(
+            &mut out,
+            "navra_leakage_similarity_blocks_total",
+            "L2 similarity-based leakage detections (write blocked)",
+            self.leakage_similarity_blocks.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_leakage_semantic_blocks_total",
+            "L3 inline semantic leakage detections (write blocked)",
+            self.leakage_semantic_blocks.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_leakage_semantic_async_detections_total",
+            "L3 continuous semantic leakage detections (retroactive taint)",
+            self.leakage_semantic_async_detections.load(Ordering::Relaxed),
+        );
+
         out
     }
 }
@@ -282,6 +307,9 @@ mod tests {
         assert!(output.contains("navra_tool_scan_total"));
         assert!(output.contains("navra_tool_scan_blocked_total"));
         assert!(output.contains("navra_integrity_alerts_total"));
+        assert!(output.contains("navra_leakage_similarity_blocks_total"));
+        assert!(output.contains("navra_leakage_semantic_blocks_total"));
+        assert!(output.contains("navra_leakage_semantic_async_detections_total"));
     }
 
     #[test]
