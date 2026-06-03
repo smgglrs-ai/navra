@@ -68,7 +68,7 @@ async fn init_session(client: &reqwest::Client, url: &str) -> String {
             "method": "initialize",
             "id": 1,
             "params": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2026-07-28",
                 "capabilities": {},
                 "clientInfo": {"name": "adversarial-eval"}
             }
@@ -79,10 +79,8 @@ async fn init_session(client: &reqwest::Client, url: &str) -> String {
 
     resp.headers()
         .get("mcp-session-id")
-        .expect("missing session header")
-        .to_str()
-        .unwrap()
-        .to_string()
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_else(|| "stateless".to_string())
 }
 
 async fn call_tool(
