@@ -121,7 +121,7 @@
         0.5,
         1
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": null,
       "wave": 4,
       "depends_on": [],
@@ -480,7 +480,7 @@
         1,
         2
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": null,
       "wave": 7,
       "depends_on": [],
@@ -499,7 +499,7 @@
         1,
         2
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": null,
       "wave": 7,
       "depends_on": [],
