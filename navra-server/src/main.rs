@@ -337,6 +337,17 @@ async fn main() -> anyhow::Result<()> {
         } => {
             audit_command(limit, detail, agent, tool, verify)?;
         }
+        Commands::Policy { action } => match action {
+            cli::PolicyAction::Suggest {
+                hours,
+                format,
+                db,
+                agent,
+                min_count,
+            } => {
+                policy_suggest(hours, &format, db.as_deref(), agent.as_deref(), min_count)?;
+            }
+        },
         Commands::Demo {
             project,
             live,
@@ -4608,6 +4619,213 @@ fn audit_command(
 
     println!("\n{} entries shown", filtered.len());
     Ok(())
+}
+
+fn policy_suggest(
+    hours: u64,
+    format: &str,
+    db_path: Option<&str>,
+    agent_filter: Option<&str>,
+    min_count: usize,
+) -> anyhow::Result<()> {
+    let bb_path = db_path
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::data_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("navra/blackbox.db")
+        });
+    if !bb_path.exists() {
+        anyhow::bail!(
+            "No blackbox found at {}. Start the server first.",
+            bb_path.display()
+        );
+    }
+    let bb =
+        navra_core::blackbox::Blackbox::open(&bb_path).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let cutoff_ms = {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+        now - (hours as i64 * 3600 * 1000)
+    };
+
+    let entries = bb.recent(10000);
+    let denials: Vec<_> = entries
+        .iter()
+        .filter(|e| e.outcome.starts_with("denied"))
+        .filter(|e| e.timestamp_ms >= cutoff_ms)
+        .filter(|e| agent_filter.map_or(true, |a| e.agent_name == a))
+        .collect();
+
+    if denials.is_empty() {
+        println!("No denials found in the last {hours} hours.");
+        return Ok(());
+    }
+
+    // Group by (permissions, tool_name, outcome)
+    let mut groups: std::collections::HashMap<
+        (String, String, String),
+        Vec<&navra_core::blackbox::BlackboxEntry>,
+    > = std::collections::HashMap::new();
+    for e in &denials {
+        let key = (
+            e.agent_permissions.clone(),
+            e.tool_name.clone(),
+            e.outcome.clone(),
+        );
+        groups.entry(key).or_default().push(e);
+    }
+
+    // Sort by count descending
+    let mut sorted: Vec<_> = groups.iter().collect();
+    sorted.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+    println!(
+        "# navra policy suggest — {} denials in last {}h, {} groups\n",
+        denials.len(),
+        hours,
+        sorted.len()
+    );
+
+    let show_cedar = format == "cedar" || format == "both";
+    let show_toml = format == "toml" || format == "both";
+
+    for ((permissions, tool_name, outcome), entries) in &sorted {
+        if entries.len() < min_count {
+            continue;
+        }
+
+        let agents: Vec<_> = entries
+            .iter()
+            .map(|e| e.agent_name.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        let is_dangerous = tool_name.contains("exec")
+            || tool_name.contains("push")
+            || tool_name.contains("delete");
+
+        println!(
+            "# {} denials: {} → {} ({})",
+            entries.len(),
+            agents.join(", "),
+            tool_name,
+            outcome
+        );
+        if is_dangerous {
+            println!("# ⚠️  WARNING: this is a dangerous operation — review carefully");
+        }
+
+        match outcome.as_str() {
+            "denied_acl" => {
+                if show_cedar {
+                    println!(
+                        "permit(\n    principal == Agent::\"{}\",\n    action == Action::\"{}\",\n    resource\n);\n",
+                        agents.first().unwrap_or(&"*"),
+                        tool_name
+                    );
+                }
+                if show_toml {
+                    println!(
+                        "# [permissions.{}]\n# operations = [..., \"{}\"]\n",
+                        permissions,
+                        tool_name.split('_').last().unwrap_or(tool_name)
+                    );
+                }
+            }
+            "denied_ifc" => {
+                // Extract common path patterns from args
+                let paths: Vec<_> = entries
+                    .iter()
+                    .filter_map(|e| {
+                        serde_json::from_str::<serde_json::Value>(&e.tool_args)
+                            .ok()
+                            .and_then(|v| v.get("path").and_then(|p| p.as_str().map(String::from)))
+                    })
+                    .collect();
+
+                let common_prefix = if !paths.is_empty() {
+                    common_path_prefix(&paths)
+                } else {
+                    String::new()
+                };
+
+                if show_cedar {
+                    println!(
+                        "# IFC write denial — consider adding trusted path");
+                    if !common_prefix.is_empty() {
+                        println!(
+                            "# or use Cedar context:\n\
+                             permit(\n    principal == Agent::\"{}\",\n    \
+                             action == Action::\"{}\",\n    resource\n) \
+                             when {{ context.trust_state == \"normal\" && \
+                             context.approval_granted == \"true\" }};\n",
+                            agents.first().unwrap_or(&"*"),
+                            tool_name
+                        );
+                    }
+                }
+                if show_toml {
+                    if !common_prefix.is_empty() {
+                        println!(
+                            "# [permissions.{}]\n# trusted_paths = [\"{}/**\"]\n",
+                            permissions, common_prefix
+                        );
+                    } else {
+                        println!(
+                            "# [permissions.{}]\n# tainted_write_policy = \"approve\"  # was: \"deny\"\n",
+                            permissions
+                        );
+                    }
+                }
+            }
+            "denied_rate" => {
+                if show_toml {
+                    println!(
+                        "# [permissions.{}]\n# rate_limit = {{ max_calls = {}, window_secs = 60 }}\n",
+                        permissions,
+                        entries.len() * 2
+                    );
+                }
+            }
+            _ => {
+                println!("# No automatic suggestion for outcome: {outcome}\n");
+            }
+        }
+    }
+
+    let skipped = sorted.iter().filter(|(_, v)| v.len() < min_count).count();
+    if skipped > 0 {
+        println!("# {skipped} groups with <{min_count} denials omitted (use --min-count 1 to see all)");
+    }
+
+    Ok(())
+}
+
+fn common_path_prefix(paths: &[String]) -> String {
+    if paths.is_empty() {
+        return String::new();
+    }
+    let first = &paths[0];
+    let mut prefix_len = first.len();
+    for path in &paths[1..] {
+        prefix_len = first
+            .chars()
+            .zip(path.chars())
+            .take(prefix_len)
+            .take_while(|(a, b)| a == b)
+            .count();
+    }
+    // Trim to last '/'
+    let prefix = &first[..prefix_len];
+    match prefix.rfind('/') {
+        Some(pos) => prefix[..pos].to_string(),
+        None => String::new(),
+    }
 }
 
 #[cfg(test)]
