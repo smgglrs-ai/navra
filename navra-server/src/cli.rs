@@ -104,6 +104,11 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: PiiAction,
     },
+    /// Generate policy suggestions from audit denials (audit2allow pattern)
+    Policy {
+        #[command(subcommand)]
+        action: PolicyAction,
+    },
     /// Configuration utilities
     Config {
         #[command(subcommand)]
@@ -205,6 +210,28 @@ pub(crate) enum PiiAction {
     },
     /// Check if the PII NER model is installed
     Status,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum PolicyAction {
+    /// Generate policy suggestions from audit denials
+    Suggest {
+        /// Only include denials from the last N hours (default: 24)
+        #[arg(long, default_value = "24")]
+        hours: u64,
+        /// Output format: cedar, toml, or both
+        #[arg(long, default_value = "cedar")]
+        format: String,
+        /// Path to blackbox database (default: ~/.local/share/navra/blackbox.db)
+        #[arg(long)]
+        db: Option<String>,
+        /// Filter by agent name
+        #[arg(long)]
+        agent: Option<String>,
+        /// Minimum denial count to suggest a rule (default: 2)
+        #[arg(long, default_value = "3")]
+        min_count: usize,
+    },
 }
 
 #[derive(Subcommand)]
