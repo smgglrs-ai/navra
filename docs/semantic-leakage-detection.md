@@ -80,11 +80,20 @@ confidentiality >= Secret. Only fires for the highest-risk
 writes — you pay ~500ms+ per call but only on a fraction of
 tool calls. Complements L2 which runs on all writes.
 
-**Out-of-band (audit):** Analyzes completed session transcripts
-from the blackbox after the session ends. No latency impact.
-Flags suspicious patterns for human review. Similar to
-NeuroTaint's offline causal influence analysis, but using
-navra's existing hash-chained audit trail as the data source.
+**Continuous async:** Runs outside the agent's latency chain.
+After every write tool call, L3 analyzes it via `tokio::spawn`
+— the write proceeds immediately, L3 runs in the background.
+If leakage is detected:
+1. Audit log entry is written immediately
+2. Session trust score is penalized (`record_safety_trigger()`)
+3. Session taint is retroactively elevated so L1 blocks
+   subsequent writes
+4. Operator is notified via D-Bus/webhook
+
+Same pattern as navra's cognitive file integrity monitor
+(background task, 60s interval, non-blocking). Unlike
+NeuroTaint which runs post-hoc, navra's L3 continuous mode
+can intervene mid-session by escalating the taint level.
 
 ### What L3 catches that L2 cannot
 
@@ -98,21 +107,23 @@ navra's existing hash-chained audit trail as the data source.
 ```
 Write tool call
     │
-    ├── L2: SimilarityLeakageHook (~40ms, all writes)
+    ├── L2: SimilarityLeakageHook (~40ms, all writes, blocking)
     │
-    ├── L3 inline: SemanticLeakageJudge (~500ms+, Secret writes only)
+    ├── L3 inline: SemanticLeakageJudge (~500ms+, Secret writes, blocking)
     │   ├── Build prompt: "Does {outgoing} reveal info from {tainted}?"
     │   ├── Call judge model (NOT the agent's model)
     │   └── Block if confidence > 0.7
     │
-    └── Continue to tool execution
-
-Session ends
+    ├── Tool executes (L2/L3 inline passed)
     │
-    └── L3 out-of-band: BlackboxAuditor (async, no latency)
-        ├── Read session transcript from blackbox
-        ├── For each write: ask judge model about all prior reads
-        └── Flag suspicious patterns for human review
+    └── L3 continuous: tokio::spawn (async, non-blocking)
+        ├── Same judge prompt, runs in background
+        ├── If leakage detected:
+        │   ├── record_safety_trigger() → trust score drops
+        │   ├── taint.absorb(Secret) → L1 blocks future writes
+        │   ├── audit log entry written
+        │   └── operator notified (D-Bus/webhook)
+        └── Agent continues unaware — next write will be blocked by L1
 ```
 
 ### Judge model requirements
@@ -132,16 +143,16 @@ Session ends
 
 ### Performance budget
 
-| Tier | Trigger | Latency | Coverage |
+| Tier | Trigger | Latency added | Coverage |
 |---|---|---|---|
 | L1 (IFC labels) | All tool calls | <1us | Exact flow control |
 | L2 (similarity) | Write tools | ~40ms | Paraphrases |
-| L3 inline (judge) | Secret writes | ~500ms+ | Derived info |
-| L3 out-of-band | Session end | 0 (async) | Everything, post-hoc |
+| L3 inline (judge) | Secret writes only | ~500ms+ | Derived info, blocking |
+| L3 continuous (judge) | All writes, async | 0 (background) | Derived info, retroactive |
 
 The operator configures which tiers are active per permission
 set. Default: L1 + L2. High-security: L1 + L2 + L3 inline.
-Audit-only: L1 + L2 + L3 out-of-band.
+Standard: L1 + L2 + L3 continuous.
 
 ### Comparison to NeuroTaint
 

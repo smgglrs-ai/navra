@@ -882,12 +882,15 @@ judge: "Does this outgoing text reveal information from this
 tainted content?" This catches derived information that L2
 cannot detect. The judge model must not be the agent's own
 model (to avoid self-evaluation circularity). L3 runs in two
-modes: inline (~500ms, selective, real-time blocking) and
-out-of-band (post-hoc audit on blackbox transcripts, similar
-to NeuroTaint [29] but using navra's existing hash-chained
-audit trail). Operators configure which tiers are active per
-permission set: default = L1 + L2; high-security = L1 + L2 +
-L3 inline; audit-only = L1 + L2 + L3 out-of-band.
+modes: inline (~500ms, blocking, only for Secret-level writes)
+and continuous (non-blocking `tokio::spawn` after every write,
+zero latency impact — if leakage is detected, the session
+trust score is penalized and taint is retroactively elevated
+so L1 blocks subsequent writes). Unlike NeuroTaint [29] which
+runs post-hoc, navra's continuous L3 can intervene mid-session.
+Operators configure tiers per permission set: default = L1 + L2;
+standard = L1 + L2 + L3 continuous; high-security = L1 + L2 +
+L3 inline.
 
 No published system combines real-time similarity detection
 with selective LLM-based semantic analysis at the gateway
