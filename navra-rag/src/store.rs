@@ -38,6 +38,37 @@ pub struct SearchFilter {
     pub tag: Option<String>,
 }
 
+/// Configuration for cascading confidence gates.
+///
+/// Each threshold controls whether to skip a more expensive search stage
+/// when a cheaper stage already has strong results.
+#[derive(Debug, Clone)]
+pub struct CascadeConfig {
+    /// Skip vector search if top FTS5 BM25 score (negated rank, higher = better)
+    /// exceeds this threshold. `None` = always run vector search.
+    pub bm25_skip_vector_threshold: Option<f64>,
+    /// Skip cross-encoder reranking if top vector distance (lower = better)
+    /// is below this threshold. `None` = always rerank.
+    pub vector_skip_rerank_threshold: Option<f64>,
+}
+
+impl Default for CascadeConfig {
+    fn default() -> Self {
+        Self {
+            bm25_skip_vector_threshold: None,
+            vector_skip_rerank_threshold: None,
+        }
+    }
+}
+
+/// Counters for cascade gate decisions.
+#[derive(Debug, Default)]
+pub struct CascadeMetrics {
+    pub queries_total: std::sync::atomic::AtomicU64,
+    pub vector_skips: std::sync::atomic::AtomicU64,
+    pub rerank_skips: std::sync::atomic::AtomicU64,
+}
+
 /// Index statistics.
 #[derive(Debug, Clone)]
 pub struct IndexStats {
@@ -430,6 +461,75 @@ impl ChunkStore {
         fused.truncate(limit);
 
         Ok(fused)
+    }
+
+    /// Hybrid search with cascading confidence gates.
+    ///
+    /// Runs FTS5 first. If the top BM25 score exceeds the threshold,
+    /// skips vector search entirely. If vector search runs but the top
+    /// distance is below the threshold, skips cross-encoder reranking.
+    /// Returns `(results, vector_skipped, rerank_eligible)` so the caller
+    /// can decide whether to run the reranker.
+    pub fn search_hybrid_cascading(
+        &self,
+        query: &str,
+        query_embedding: &[f32],
+        limit: usize,
+        cascade: &CascadeConfig,
+    ) -> rusqlite::Result<(Vec<ChunkResult>, bool, bool)> {
+        let k = 60.0_f64;
+        let fetch_limit = limit * 3;
+
+        let fts_results = self.search_fts(query, fetch_limit)?;
+
+        let top_bm25 = fts_results.first().map(|r| r.distance).unwrap_or(0.0);
+        let skip_vector = cascade
+            .bm25_skip_vector_threshold
+            .is_some_and(|t| top_bm25 >= t && !fts_results.is_empty());
+
+        let mut scores: HashMap<String, f64> = HashMap::new();
+        let mut entries: HashMap<String, ChunkResult> = HashMap::new();
+
+        for (rank, result) in fts_results.into_iter().enumerate() {
+            let key = format!("{}:{}", result.path, result.chunk_index);
+            *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
+            entries.entry(key).or_insert(result);
+        }
+
+        let mut skip_rerank = false;
+
+        if !skip_vector {
+            let vec_results = self.search(query_embedding, fetch_limit)?;
+
+            let top_distance = vec_results.first().map(|r| r.distance).unwrap_or(f64::MAX);
+            skip_rerank = cascade
+                .vector_skip_rerank_threshold
+                .is_some_and(|t| top_distance <= t);
+
+            for (rank, result) in vec_results.into_iter().enumerate() {
+                let key = format!("{}:{}", result.path, result.chunk_index);
+                *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
+                entries.entry(key).or_insert(result);
+            }
+        }
+
+        let mut fused: Vec<ChunkResult> = scores
+            .into_iter()
+            .filter_map(|(key, score)| {
+                entries.remove(&key).map(|mut r| {
+                    r.distance = score;
+                    r
+                })
+            })
+            .collect();
+        fused.sort_by(|a, b| {
+            b.distance
+                .partial_cmp(&a.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        fused.truncate(limit);
+
+        Ok((fused, skip_vector, skip_rerank))
     }
 
     /// Hybrid search with optional semantic query caching.
@@ -1236,5 +1336,89 @@ mod tests {
                 "HyDE should boost OAuth chunk ranking"
             );
         }
+    }
+
+    #[test]
+    fn cascade_skips_vector_when_bm25_strong() {
+        let store = test_store();
+        let chunks = vec![Chunk {
+            content: "authentication OAuth bearer token".to_string(),
+            start_byte: 0,
+            end_byte: 33,
+            index: 0,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
+        }];
+        let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]];
+        store.index_document("/auth.md", &chunks, &embeddings).unwrap();
+
+        // FTS5 BM25 negated rank scores are very small (e.g. 0.000001)
+        let cascade = CascadeConfig {
+            bm25_skip_vector_threshold: Some(0.0000001),
+            vector_skip_rerank_threshold: None,
+        };
+        let query_emb = vec![0.0, 1.0, 0.0, 0.0];
+        let (results, vector_skipped, _) =
+            store.search_hybrid_cascading("authentication", &query_emb, 5, &cascade).unwrap();
+
+        assert!(!results.is_empty());
+        assert!(vector_skipped, "vector search should be skipped for exact BM25 match");
+    }
+
+    #[test]
+    fn cascade_runs_all_stages_when_weak() {
+        let store = test_store();
+        let chunks = vec![Chunk {
+            content: "generic document content here".to_string(),
+            start_byte: 0,
+            end_byte: 30,
+            index: 0,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
+        }];
+        let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]];
+        store.index_document("/doc.md", &chunks, &embeddings).unwrap();
+
+        let cascade = CascadeConfig {
+            bm25_skip_vector_threshold: Some(100.0),
+            vector_skip_rerank_threshold: Some(0.001),
+        };
+        let query_emb = vec![0.5, 0.5, 0.0, 0.0];
+        let (_, vector_skipped, rerank_skipped) =
+            store.search_hybrid_cascading("zzz_nomatch", &query_emb, 5, &cascade).unwrap();
+
+        assert!(!vector_skipped, "should not skip vector with high threshold");
+        assert!(!rerank_skipped, "should not skip rerank with tight threshold");
+    }
+
+    #[test]
+    fn cascade_skips_rerank_when_vector_close() {
+        let store = test_store();
+        let chunks = vec![Chunk {
+            content: "exact match content".to_string(),
+            start_byte: 0,
+            end_byte: 20,
+            index: 0,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
+        }];
+        let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]];
+        store.index_document("/exact.md", &chunks, &embeddings).unwrap();
+
+        let cascade = CascadeConfig {
+            bm25_skip_vector_threshold: None,
+            vector_skip_rerank_threshold: Some(10.0),
+        };
+        // Query embedding very close to indexed embedding
+        let query_emb = vec![0.99, 0.01, 0.0, 0.0];
+        let (results, vector_skipped, rerank_skipped) =
+            store.search_hybrid_cascading("nomatch", &query_emb, 5, &cascade).unwrap();
+
+        assert!(!results.is_empty());
+        assert!(!vector_skipped);
+        assert!(rerank_skipped, "should skip rerank when vector distance is small");
     }
 }
