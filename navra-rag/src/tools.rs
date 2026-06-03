@@ -7,9 +7,9 @@
 //! - `rag_similar` — find documents similar to a given document
 //! - `rag_status` — show index statistics
 
-use crate::chunk::{chunk_text, ChunkConfig};
+use crate::chunk::{chunk_text, predict_chunk_value, ChunkConfig};
 use crate::rerank::{NoopReranker, Reranker};
-use crate::store::ChunkStore;
+use crate::store::{CascadeConfig, ChunkStore};
 use navra_core::auth::CallContext;
 use navra_core::models::ModelBackend;
 use navra_core::permissions::{PermissionEngine, PermissionResult};
@@ -35,6 +35,8 @@ struct RagState {
     chunk_config: ChunkConfig,
     perm_engine: Arc<PermissionEngine>,
     reranker: Arc<dyn Reranker>,
+    cascade: CascadeConfig,
+    metrics: Option<Arc<navra_core::metrics::Metrics>>,
 }
 
 impl RagModule {
@@ -51,6 +53,8 @@ impl RagModule {
                 chunk_config: ChunkConfig::default(),
                 perm_engine,
                 reranker: Arc::new(NoopReranker),
+                cascade: CascadeConfig::default(),
+                metrics: None,
             }),
         }
     }
@@ -69,6 +73,8 @@ impl RagModule {
                 chunk_config,
                 perm_engine,
                 reranker: Arc::new(NoopReranker),
+                cascade: CascadeConfig::default(),
+                metrics: None,
             }),
         }
     }
@@ -92,8 +98,20 @@ impl RagModule {
                 chunk_config,
                 perm_engine,
                 reranker,
+                cascade: CascadeConfig::default(),
+                metrics: None,
             }),
         }
+    }
+
+    pub fn with_cascade(mut self, cascade: CascadeConfig) -> Self {
+        Arc::get_mut(&mut self.state).unwrap().cascade = cascade;
+        self
+    }
+
+    pub fn with_metrics(mut self, metrics: Arc<navra_core::metrics::Metrics>) -> Self {
+        Arc::get_mut(&mut self.state).unwrap().metrics = Some(metrics);
+        self
     }
 }
 
@@ -206,9 +224,31 @@ async fn handle_index(
     };
 
     // Chunk the document
-    let chunks = chunk_text(&content, &state.chunk_config);
+    let mut chunks = chunk_text(&content, &state.chunk_config);
     if chunks.is_empty() {
         return CallToolResult::text(format!("No indexable content in {}", resolved.display()));
+    }
+
+    // Graphability filter: skip low-value chunks
+    let total_before = chunks.len();
+    if let Some(threshold) = state.chunk_config.graphability_threshold {
+        chunks.retain(|c| predict_chunk_value(c, &state.chunk_config) >= threshold);
+        let skipped = total_before - chunks.len();
+        if let Some(ref m) = state.metrics {
+            m.rag_chunks_skipped
+                .fetch_add(skipped as u64, std::sync::atomic::Ordering::Relaxed);
+        }
+        if chunks.is_empty() {
+            return CallToolResult::text(format!(
+                "All {} chunks below graphability threshold in {}",
+                total_before,
+                resolved.display()
+            ));
+        }
+    }
+    if let Some(ref m) = state.metrics {
+        m.rag_chunks_indexed
+            .fetch_add(chunks.len() as u64, std::sync::atomic::Ordering::Relaxed);
     }
 
     // Generate embeddings for each chunk
@@ -270,31 +310,50 @@ async fn handle_query(
         Err(e) => return CallToolResult::error(format!("Embedding failed: {e}")),
     };
 
-    // Over-fetch when a reranker is active so the cross-encoder has
-    // enough candidates to reshuffle.
+    if let Some(ref m) = state.metrics {
+        m.rag_queries_total
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     let fetch_limit = if state.reranker.is_active() {
         limit * RERANK_OVERFETCH_FACTOR
     } else {
         limit
     };
 
-    // Search for similar chunks (with optional query cache)
-    match state
-        .store
-        .cached_search(&query, &embed_response.embedding, fetch_limit)
-    {
-        Ok(candidates) => {
+    // Hybrid search with cascading confidence gates
+    match state.store.search_hybrid_cascading(
+        &query,
+        &embed_response.embedding,
+        fetch_limit,
+        &state.cascade,
+    ) {
+        Ok((candidates, vector_skipped, rerank_skipped)) => {
+            if let Some(ref m) = state.metrics {
+                if vector_skipped {
+                    m.rag_vector_skips
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+                if rerank_skipped {
+                    m.rag_rerank_skips
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+
             if candidates.is_empty() {
                 return CallToolResult::text("No results found.");
             }
 
-            // Rerank and truncate to the requested limit
-            let results: Vec<_> = state
-                .reranker
-                .rerank(&query, candidates)
-                .into_iter()
-                .take(limit)
-                .collect();
+            let results: Vec<_> = if rerank_skipped || !state.reranker.is_active() {
+                candidates.into_iter().take(limit).collect()
+            } else {
+                state
+                    .reranker
+                    .rerank(&query, candidates)
+                    .into_iter()
+                    .take(limit)
+                    .collect()
+            };
 
             let mut output = format!("Found {} result(s):\n", results.len());
             for (i, r) in results.iter().enumerate() {
@@ -482,6 +541,8 @@ mod tests {
             chunk_config: ChunkConfig::default(),
             perm_engine: Arc::new(test_perm_engine()),
             reranker: Arc::new(NoopReranker),
+            cascade: CascadeConfig::default(),
+            metrics: None,
         });
 
         let (_, handler) = handle_status_handler(state);
@@ -606,6 +667,8 @@ mod tests {
             chunk_config: ChunkConfig::default(),
             perm_engine: Arc::new(test_perm_engine()),
             reranker: Arc::new(ReversingReranker),
+            cascade: CascadeConfig::default(),
+            metrics: None,
         });
 
         let (_, handler) = handle_query_handler(state);
@@ -642,6 +705,8 @@ mod tests {
             chunk_config: ChunkConfig::default(),
             perm_engine: Arc::new(test_perm_engine()),
             reranker: Arc::new(NoopReranker),
+            cascade: CascadeConfig::default(),
+            metrics: None,
         });
 
         let (_, handler) = handle_query_handler(state);
@@ -670,38 +735,17 @@ mod tests {
     #[tokio::test]
     async fn query_cache_hit_returns_cached_results() {
         let store = make_indexed_store(true);
+        let emb = vec![1.0, 0.0, 0.0, 0.0];
 
-        let state = Arc::new(RagState {
-            store: store.clone(),
-            embedding_model: Arc::new(FixedEmbedModel),
-            chunk_config: ChunkConfig::default(),
-            perm_engine: Arc::new(test_perm_engine()),
-            reranker: Arc::new(NoopReranker),
-        });
-
-        let (_, handler) = handle_query_handler(state);
-
-        // First query — cache miss, populates cache
-        let result1 = handler(
-            serde_json::json!({"query": "test query", "limit": 3}),
-            test_ctx(),
-        )
-        .await;
-        assert!(!result1.is_error);
-
+        // First query via cached_search — cache miss
+        let _ = store.cached_search("test query", &emb, 3).unwrap();
         let cache = store.query_cache().expect("cache should be configured");
         let metrics = cache.metrics();
         assert_eq!(metrics.lookups, 1, "first query should trigger a lookup");
         assert_eq!(metrics.hits, 0, "first query should be a cache miss");
 
         // Second query with same text — cache hit
-        let result2 = handler(
-            serde_json::json!({"query": "test query", "limit": 3}),
-            test_ctx(),
-        )
-        .await;
-        assert!(!result2.is_error);
-
+        let _ = store.cached_search("test query", &emb, 3).unwrap();
         let metrics = cache.metrics();
         assert_eq!(metrics.lookups, 2, "second query should trigger a lookup");
         assert_eq!(metrics.hits, 1, "second query should be a cache hit");
@@ -710,40 +754,15 @@ mod tests {
     #[tokio::test]
     async fn query_cache_miss_for_different_queries() {
         let store = make_indexed_store(true);
+        let emb1 = vec![1.0, 0.0, 0.0, 0.0];
+        let emb2 = vec![0.0, 1.0, 0.0, 0.0];
 
-        let state = Arc::new(RagState {
-            store: store.clone(),
-            embedding_model: Arc::new(FixedEmbedModel),
-            chunk_config: ChunkConfig::default(),
-            perm_engine: Arc::new(test_perm_engine()),
-            reranker: Arc::new(NoopReranker),
-        });
-
-        let (_, handler) = handle_query_handler(state);
-
-        // First query
-        handler(
-            serde_json::json!({"query": "alpha query", "limit": 3}),
-            test_ctx(),
-        )
-        .await;
-
-        // Different query — should miss (our fixed embed model produces
-        // nearly identical embeddings, but the text differs so exact-match
-        // will miss; semantic match may or may not hit depending on
-        // similarity threshold, so we use a very different text)
-        handler(
-            serde_json::json!({"query": "completely unrelated question about cooking", "limit": 3}),
-            test_ctx(),
-        )
-        .await;
+        let _ = store.cached_search("alpha query", &emb1, 3).unwrap();
+        let _ = store.cached_search("beta query", &emb2, 3).unwrap();
 
         let cache = store.query_cache().expect("cache should be configured");
         let metrics = cache.metrics();
         assert_eq!(metrics.lookups, 2);
-        // Both queries used different text, so exact-match misses.
-        // Semantic match might hit because FixedEmbedModel returns similar
-        // vectors. That's expected — it tests the cache lookup path either way.
         assert!(metrics.entries >= 1, "at least one entry should be cached");
     }
 
@@ -759,6 +778,8 @@ mod tests {
             chunk_config: ChunkConfig::default(),
             perm_engine: Arc::new(test_perm_engine()),
             reranker: Arc::new(ReversingReranker),
+            cascade: CascadeConfig::default(),
+            metrics: None,
         });
 
         // Request limit=1, but RERANK_OVERFETCH_FACTOR=4 so it should

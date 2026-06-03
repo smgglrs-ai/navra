@@ -661,12 +661,15 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         );
     }
 
+    let metrics = std::sync::Arc::new(navra_core::metrics::Metrics::new());
+
     let mut builder = navra_core::McpServer::builder()
         .name("navra")
         .version(env!("CARGO_PKG_VERSION"))
         .mcp_version(&cfg.server.mcp_version)
         .hook_timeout(std::time::Duration::from_secs(cfg.server.hook_timeout_secs))
-        .process_table(process_table.clone());
+        .process_table(process_table.clone())
+        .metrics(metrics.clone());
 
     // Persistent session store (SQLite) — sessions survive restarts
     {
@@ -1609,14 +1612,24 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         Arc::from(r)
                     };
 
+                    let chunk_config = navra_rag::ChunkConfig {
+                        graphability_threshold: Some(0.3),
+                        ..navra_rag::ChunkConfig::default()
+                    };
+                    let cascade = navra_rag::CascadeConfig {
+                        bm25_skip_vector_threshold: Some(0.0000001),
+                        vector_skip_rerank_threshold: Some(2.0),
+                    };
                     let rag = navra_rag::RagModule::with_reranker(
                         store_arc,
                         model.clone(),
-                        navra_rag::ChunkConfig::default(),
+                        chunk_config,
                         perm_engine.clone(),
                         reranker,
-                    );
-                    tracing::info!("Module 'rag' enabled (db: {rag_db_path}, dims: {dims})");
+                    )
+                    .with_cascade(cascade)
+                    .with_metrics(metrics.clone());
+                    tracing::info!("Module 'rag' enabled (db: {rag_db_path}, dims: {dims}, cascade: on, graphability: 0.3)");
                     builder = builder.module(rag);
                 }
                 Err(e) => {
@@ -3672,6 +3685,10 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             }
         }
     }
+
+    // Tool usage pruning filter (TW16)
+    let usage_tracker = std::sync::Arc::new(navra_core::ToolUsageTracker::new(5));
+    builder = builder.tool_filter(navra_core::UsagePruningFilter::new(usage_tracker.clone()));
 
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
