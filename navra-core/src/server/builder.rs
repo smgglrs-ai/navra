@@ -42,6 +42,7 @@ pub struct McpServerBuilder {
     tool_disclosure: HashMap<String, navra_security::permissions::ToolDisclosure>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     mcp_version: String,
+    metrics: Option<Arc<crate::metrics::Metrics>>,
 }
 
 impl McpServerBuilder {
@@ -71,6 +72,7 @@ impl McpServerBuilder {
             tool_disclosure: HashMap::new(),
             dynamic_filters: Vec::new(),
             mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
+            metrics: None,
         }
     }
 
@@ -320,6 +322,11 @@ impl McpServerBuilder {
     /// state such as session taint or quota.
     pub fn tool_filter(mut self, filter: impl super::ToolFilter + 'static) -> Self {
         self.dynamic_filters.push(Box::new(filter));
+        self
+    }
+
+    pub fn metrics(mut self, metrics: Arc<crate::metrics::Metrics>) -> Self {
+        self.metrics = Some(metrics);
         self
     }
 
@@ -841,7 +848,9 @@ impl McpServerBuilder {
             session_log_levels: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
-            metrics: std::sync::Arc::new(crate::metrics::Metrics::new()),
+            metrics: self
+                .metrics
+                .unwrap_or_else(|| std::sync::Arc::new(crate::metrics::Metrics::new())),
             mcp_version: self.mcp_version,
         }
     }

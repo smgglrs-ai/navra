@@ -9,5 +9,5 @@ pub use agentic::{AgenticResult, AgenticRetriever, SearchStrategy, SubQuery, dec
 pub use cache::{CacheMetrics, QueryCache, QueryCacheConfig};
 pub use chunk::ChunkConfig;
 pub use rerank::{load_reranker, ConfidenceGate, CrossEncoderReranker, GatedReranker, NoopReranker, Reranker};
-pub use store::ChunkStore;
+pub use store::{CascadeConfig, ChunkStore};
 pub use tools::RagModule;
