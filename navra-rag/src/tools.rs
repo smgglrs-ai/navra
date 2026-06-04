@@ -291,8 +291,11 @@ async fn handle_query(
     ctx: CallContext,
     #[state] state: Arc<RagState>,
 ) -> CallToolResult {
-    if let Err(e) = check_perm(&state, &ctx, "search", Path::new("/")) {
-        return e;
+    if !state.perm_engine.has_operation(&ctx.agent.permissions, "search") {
+        return CallToolResult::error(format!(
+            "Operation 'search' not permitted for agent '{}'",
+            ctx.agent.name
+        ));
     }
 
     if query.is_empty() {

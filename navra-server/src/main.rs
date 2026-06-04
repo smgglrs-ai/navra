@@ -1084,6 +1084,21 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                             navra_model_runtime::Engine::Vllm,
                         ))
                     }
+                    "ollama" => {
+                        let model_id = model_cfg.model_name.clone()
+                            .or_else(|| model_cfg.source.as_ref().and_then(|s| s.strip_prefix("ollama://").map(String::from)))
+                            .unwrap_or_else(|| name.clone());
+                        let backend: Arc<dyn navra_model::ModelBackend> =
+                            Arc::new(navra_model::OpenAiBackend::new(
+                                "http://localhost:11434/v1",
+                                &model_id,
+                                None,
+                                navra_model::Locality::Local,
+                            ));
+                        tracing::info!(model = %name, model_id = %model_id, "Model served via Ollama");
+                        models.insert(name.clone(), backend);
+                        continue;
+                    }
                     "none" => {
                         tracing::warn!(model = %name, "Task is chat/generate but runtime=none, skipping");
                         continue;
