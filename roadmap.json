@@ -1136,6 +1136,24 @@
         "10c"
       ],
       "gate": null
+    },
+    {
+      "id": "TW17",
+      "title": "navra-core crate split (navra-router + navra-mcp)",
+      "phase": 11,
+      "chain": 1,
+      "priority": "P2",
+      "effort_days": [
+        3,
+        5
+      ],
+      "status": "pending",
+      "tier": 3,
+      "wave": 6,
+      "depends_on": [],
+      "feeds": [],
+      "gate": null,
+      "description": "Split navra-core into navra-router (HTTP transport, auth middleware, metrics, axum router) and navra-mcp (MCP protocol, dispatch, tool registry). navra-rag and other standalone services depend only on navra-router. Avoids pulling in MCP protocol machinery for non-MCP services."
     }
   ]
 }
