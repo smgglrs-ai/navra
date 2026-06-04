@@ -6,7 +6,20 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "navra-rag"
+path = "src/bin/server.rs"
+required-features = ["server"]
+
+[features]
+default = []
+server = ["axum", "tokio/rt-multi-thread", "tokio/macros", "tokio/signal", "tokio/net", "clap", "tracing-subscriber", "anyhow"]
+
 [dependencies]
+axum = { workspace = true, optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+anyhow = { version = "1", optional = true }
 navra-core = { path = "../navra-core" }
 navra-macros = { path = "../navra-macros" }
 navra-protocol = { path = "../navra-protocol" }
