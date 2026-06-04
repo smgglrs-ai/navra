@@ -52,6 +52,7 @@ pub(crate) struct AgentChatState {
     pub memory: Arc<SharedMemory>,
     #[allow(dead_code)]
     pub listen_addr: String,
+    pub context_retriever: Option<Arc<dyn navra_agent::ContextRetriever>>,
 }
 
 /// POST /api/chat/agent request body.
@@ -315,6 +316,7 @@ pub(crate) async fn handle_agentic_chat(
     let server = state.server.clone();
     let model = state.model.clone();
     let shared_memory = state.memory.clone();
+    let context_retriever = state.context_retriever.clone();
     let sid = session_id.clone();
 
     // Store the user turn
@@ -369,6 +371,7 @@ pub(crate) async fn handle_agentic_chat(
             system_prompt,
             temperature: Some(0.7),
             audit_sink: Some(audit_sink),
+            context_retriever,
             ..Default::default()
         };
 
