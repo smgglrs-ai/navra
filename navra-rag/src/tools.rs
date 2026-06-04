@@ -430,10 +430,7 @@ async fn handle_similar(
     name = "rag_status",
     description = "Show RAG index statistics (document count, chunk count, dimensions)."
 )]
-async fn handle_status(ctx: CallContext, #[state] state: Arc<RagState>) -> CallToolResult {
-    if let Err(e) = check_perm(&state, &ctx, "read", Path::new("/")) {
-        return e;
-    }
+async fn handle_status(_ctx: CallContext, #[state] state: Arc<RagState>) -> CallToolResult {
 
     match state.store.stats() {
         Ok(stats) => CallToolResult::text(format!(
