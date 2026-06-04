@@ -16,6 +16,22 @@ use navra_protocol::label::DataLabel;
 use navra_protocol::{CallToolResult, Content};
 use navra_security::safety::{FilterContext, FilterPipeline};
 use std::sync::Arc;
+/// Transparent context retriever injected before each model call.
+///
+/// Implementations search a knowledge base and return relevant chunks
+/// that are prepended to the conversation. The retriever is responsible
+/// for score gating (don't return low-confidence results) and budget
+/// gating (don't return more than the available context can hold).
+pub trait ContextRetriever: Send + Sync {
+    /// Retrieve context relevant to the query, limited to `max_tokens`.
+    /// Returns empty string if nothing relevant or confidence too low.
+    fn retrieve(
+        &self,
+        query: &str,
+        max_tokens: usize,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + '_>>;
+}
+
 /// Configuration for the tool-use loop.
 pub struct ToolLoopConfig {
     /// Maximum number of model→tool round-trips (default: 10).
@@ -93,6 +109,10 @@ pub struct ToolLoopConfig {
     /// `[(0, 2, 0.1), (2, 8, 0.0), (8, 10, 0.1)]` for planning→
     /// execution→verification sandwich.
     pub reasoning_phases: Vec<(usize, usize, f32)>,
+    /// Transparent RAG context retriever. When set, relevant context
+    /// is retrieved before each model call and injected as a system
+    /// message. The retriever handles score gating and budget gating.
+    pub context_retriever: Option<Arc<dyn ContextRetriever>>,
 }
 
 impl Default for ToolLoopConfig {
@@ -118,6 +138,7 @@ impl Default for ToolLoopConfig {
             signal_rx: None,
             loop_detection_threshold: 3,
             reasoning_phases: Vec::new(),
+            context_retriever: None,
         }
     }
 }
@@ -739,6 +760,22 @@ pub async fn run_tool_loop(
                 verbosity: None,
             }
         });
+
+        // Transparent RAG: retrieve context before each model call
+        if let Some(ref retriever) = config.context_retriever {
+            let estimated_input_tokens = (total_input as usize).max(user_prompt.len() / 4);
+            let available = (config.context_window_tokens as usize)
+                .saturating_sub(estimated_input_tokens)
+                / 3;
+            if available > 100 {
+                let context = retriever.retrieve(user_prompt, available).await;
+                if !context.is_empty() {
+                    input.push(InputItem::system(&format!(
+                        "[Retrieved context]\n{context}"
+                    )));
+                }
+            }
+        }
 
         // Move input into request instead of cloning — avoids doubling
         // memory. We take it back from the request after the model call.

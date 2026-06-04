@@ -13,6 +13,7 @@ mod registry_tools;
 mod team_tools;
 mod tray;
 mod triggers;
+mod rag_retriever;
 mod ui;
 mod ui_agent;
 mod ui_events;
@@ -1580,6 +1581,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     // Keep a shared reference to the chunk store so memory tools can
     // cascade-delete embedding vectors when knowledge entries are erased.
     let mut shared_chunk_store: Option<std::sync::Arc<navra_rag::ChunkStore>> = None;
+    let mut rag_context_retriever: Option<Arc<dyn navra_agent::ContextRetriever>> = None;
 
     if cfg.rag_enabled() {
         if let Some(ref model) = embedding_model {
@@ -1635,6 +1637,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         bm25_skip_vector_threshold: Some(0.0000001),
                         vector_skip_rerank_threshold: Some(2.0),
                     };
+                    let reranker_for_retriever = reranker.clone();
+                    let cascade_for_retriever = cascade.clone();
                     let rag = navra_rag::RagModule::with_reranker(
                         store_arc,
                         model.clone(),
@@ -1644,6 +1648,15 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     )
                     .with_cascade(cascade)
                     .with_metrics(metrics.clone());
+                    rag_context_retriever = Some(Arc::new(
+                        crate::rag_retriever::RagRetriever::new(
+                            Arc::clone(shared_chunk_store.as_ref().unwrap()),
+                            model.clone(),
+                            reranker_for_retriever,
+                            cascade_for_retriever,
+                            Some(metrics.clone()),
+                        ),
+                    ));
                     tracing::info!("Module 'rag' enabled (db: {rag_db_path}, dims: {dims}, cascade: on, graphability: 0.3)");
                     builder = builder.module(rag);
                 }
@@ -3921,6 +3934,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 &models,
                 ollama_fallback.as_deref(),
                 Some(ui_broadcaster),
+                rag_context_retriever.clone(),
             );
 
             tracing::info!(

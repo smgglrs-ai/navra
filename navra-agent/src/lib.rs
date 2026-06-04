@@ -62,7 +62,9 @@ pub use client::McpClient;
 pub use error::AgentError;
 pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};
 pub use signal::{AgentSignal, SignalHandle, SignalReceiver};
-pub use tool_loop::{extract_text, run_tool_loop, ToolLoopConfig, ToolLoopResult};
+pub use tool_loop::{
+    extract_text, run_tool_loop, ContextRetriever, ToolLoopConfig, ToolLoopResult,
+};
 pub use trace::{HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, TraceExporter};
 
 // SDK facade: external consumers (e.g. agent binaries) depend only on

@@ -41,6 +41,7 @@ pub(crate) fn attach_ui_routes(
     models: &std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>>,
     ollama_fallback_model: Option<&str>,
     ui_broadcaster: Option<Arc<UiBroadcaster>>,
+    context_retriever: Option<Arc<dyn navra_agent::ContextRetriever>>,
 ) -> axum::Router {
     // Load cognitive core if configured
     let forge = if let Some(ref path) = cfg.cognitive_core {
@@ -401,6 +402,7 @@ pub(crate) fn attach_ui_routes(
             forge: forge.clone(),
             memory,
             listen_addr: cfg.server.listen_addr(),
+            context_retriever: context_retriever.clone(),
         });
         Some(
             crate::ui_agent::build_agent_routes(agent_state).route_layer(
