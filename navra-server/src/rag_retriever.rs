@@ -37,6 +37,8 @@ impl navra_agent::ContextRetriever for RagRetriever {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + '_>> {
         let query = query.to_string();
         Box::pin(async move {
+            tracing::info!(query = %query, max_tokens = max_tokens, "ContextRetriever: retrieving");
+
             if let Some(ref m) = self.metrics {
                 m.rag_queries_total
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
