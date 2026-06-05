@@ -6,10 +6,38 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Default)]
+pub struct RunMetrics {
+    pub total_runs: u64,
+    pub completed: u64,
+    pub failed: u64,
+    pub total_duration_secs: f64,
+}
+
+impl RunMetrics {
+    pub fn success_rate(&self) -> f64 {
+        if self.total_runs == 0 {
+            0.0
+        } else {
+            (self.completed as f64 / self.total_runs as f64) * 100.0
+        }
+    }
+
+    pub fn avg_run_time(&self) -> f64 {
+        let finished = self.completed + self.failed;
+        if finished == 0 {
+            0.0
+        } else {
+            self.total_duration_secs / finished as f64
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct RunStore {
     runs: Arc<RwLock<HashMap<String, Run>>>,
     events: Arc<RwLock<HashMap<String, Vec<Event>>>>,
     session_runs: Arc<RwLock<HashMap<String, Vec<String>>>>,
+    metrics: Arc<RwLock<RunMetrics>>,
 }
 
 impl RunStore {
@@ -77,9 +105,12 @@ impl RunStore {
             e.into_inner()
         });
         if let Some(run) = runs.get_mut(id) {
-            run.status = status;
-            run.finished_at = Some(finished_at);
-            Some(run.clone())
+            run.status = status.clone();
+            run.finished_at = Some(finished_at.clone());
+            let duration = compute_duration(&run.created_at, &finished_at);
+            drop(runs);
+            self.record_finish(&status, duration);
+            self.get(id)
         } else {
             None
         }
@@ -98,11 +129,29 @@ impl RunStore {
         if let Some(run) = runs.get_mut(id) {
             run.status = RunStatus::Failed;
             run.error = Some(error);
-            run.finished_at = Some(finished_at);
-            Some(run.clone())
+            run.finished_at = Some(finished_at.clone());
+            let duration = compute_duration(&run.created_at, &finished_at);
+            drop(runs);
+            self.record_finish(&RunStatus::Failed, duration);
+            self.get(id)
         } else {
             None
         }
+    }
+
+    fn record_finish(&self, status: &RunStatus, duration: f64) {
+        let mut m = self.metrics.write().unwrap_or_else(|e| e.into_inner());
+        m.total_runs += 1;
+        m.total_duration_secs += duration;
+        match status {
+            RunStatus::Completed => m.completed += 1,
+            RunStatus::Failed => m.failed += 1,
+            _ => {}
+        }
+    }
+
+    pub fn metrics(&self) -> RunMetrics {
+        self.metrics.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn add_output_message(&self, id: &str, message: Message) -> Option<Run> {
@@ -210,6 +259,13 @@ impl RunStore {
 
     pub fn count(&self) -> usize {
         self.runs.read().unwrap_or_else(|e| e.into_inner()).len()
+    }
+}
+
+fn compute_duration(created_at: &str, finished_at: &str) -> f64 {
+    match (parse_iso_epoch(created_at), parse_iso_epoch(finished_at)) {
+        (Some(start), Some(end)) => (end - start) as f64,
+        _ => 0.0,
     }
 }
 

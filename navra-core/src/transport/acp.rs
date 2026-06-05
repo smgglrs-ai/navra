@@ -112,7 +112,10 @@ async fn handle_list_agents(
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<AgentsListResponse>, (StatusCode, Json<AcpError>)> {
     authenticate(&state.server, &headers)?;
-    let all = agents::build_manifests(&state.server, &state.flows);
+    let all: Vec<AgentManifest> = agents::build_manifests(&state.server, &state.flows)
+        .into_iter()
+        .map(|m| agents::with_metrics(m, &state.runs))
+        .collect();
 
     let start = params.offset.min(all.len());
     let end = (start + params.limit).min(all.len());
@@ -131,7 +134,7 @@ async fn handle_get_agent(
     authenticate(&state.server, &headers)?;
     let manifests = agents::build_manifests(&state.server, &state.flows);
     match manifests.into_iter().find(|m| m.name == name) {
-        Some(manifest) => Ok(Json(manifest)),
+        Some(manifest) => Ok(Json(agents::with_metrics(manifest, &state.runs))),
         None => Err((
             StatusCode::NOT_FOUND,
             Json(AcpError::not_found(format!("Agent '{}' not found", name))),
