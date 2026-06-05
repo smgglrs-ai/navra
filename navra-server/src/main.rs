@@ -4020,6 +4020,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 router
             };
 
+            // /v1/chat/completions is mounted by ui.rs — agents route model calls
+            // through the gateway for safety filters, blackbox audit, and persona injection.
+
             // --- Web UI: shared state + API routes ---
             // Detect first available Ollama model for UI chat fallback
             let ollama_fallback: Option<String> = if let Ok(resp) = reqwest::Client::new()
