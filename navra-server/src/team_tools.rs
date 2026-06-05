@@ -1349,7 +1349,20 @@ pub async fn handle_team_bb_notifications(
 /// Handle models_list tool call.
 pub async fn handle_models_list(cards: Vec<ModelCard>) -> navra_core::protocol::CallToolResult {
     use navra_core::protocol::CallToolResult;
-    CallToolResult::text(serde_json::to_string_pretty(&cards).unwrap_or_default())
+    let enriched: Vec<serde_json::Value> = cards
+        .iter()
+        .map(|c| {
+            let mut v = serde_json::to_value(c).unwrap_or_default();
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert(
+                    "name".to_string(),
+                    serde_json::Value::String(c.inference_name().to_string()),
+                );
+            }
+            v
+        })
+        .collect();
+    CallToolResult::text(serde_json::to_string_pretty(&enriched).unwrap_or_default())
 }
 
 /// Handle personas_list tool call.
@@ -2342,7 +2355,7 @@ pub fn spawn_teammate_agent(
 
             // Validate model name
             if teammate_model != "auto"
-                && !reg.model_cards.iter().any(|c| c.model_uri == teammate_model)
+                && !reg.model_cards.iter().any(|c| c.model_uri == teammate_model || c.inference_name() == teammate_model)
             {
                 tracing::warn!(
                     task = %teammate_id, model = %teammate_model,
@@ -2755,7 +2768,7 @@ pub fn select_model_for_task(
 
     if let Some((best, score)) = scored.first() {
         tracing::info!(
-            model = %best.model_uri,
+            model = %best.inference_name(),
             score = score,
             needs_tools = needs_tools,
             needs_reasoning = needs_reasoning,
@@ -2763,7 +2776,7 @@ pub fn select_model_for_task(
             persona = persona.unwrap_or("none"),
             "Auto-selected model for task"
         );
-        Some(best.model_uri.clone())
+        Some(best.inference_name().to_string())
     } else {
         None
     }
