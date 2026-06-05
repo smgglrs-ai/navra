@@ -3,6 +3,7 @@
 use super::types::{Event, Message, Run, RunStatus};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Default)]
 pub struct RunStore {
@@ -159,4 +160,86 @@ impl RunStore {
             None
         }
     }
+
+    /// Remove finished runs older than `max_age`. Returns number removed.
+    pub fn expire(&self, max_age: Duration) -> usize {
+        let cutoff = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64
+            - max_age.as_secs() as i64;
+
+        let expired_ids: Vec<String> = {
+            let runs = self.runs.read().unwrap_or_else(|e| e.into_inner());
+            runs.values()
+                .filter(|r| {
+                    matches!(
+                        r.status,
+                        RunStatus::Completed | RunStatus::Failed | RunStatus::Cancelled
+                    ) && r
+                        .finished_at
+                        .as_ref()
+                        .and_then(|ts| parse_iso_epoch(ts))
+                        .map(|epoch| epoch < cutoff)
+                        .unwrap_or(false)
+                })
+                .map(|r| r.run_id.clone())
+                .collect()
+        };
+
+        if expired_ids.is_empty() {
+            return 0;
+        }
+
+        let mut runs = self.runs.write().unwrap_or_else(|e| e.into_inner());
+        let mut events = self.events.write().unwrap_or_else(|e| e.into_inner());
+        let mut sr = self.session_runs.write().unwrap_or_else(|e| e.into_inner());
+
+        for id in &expired_ids {
+            runs.remove(id);
+            events.remove(id);
+        }
+
+        for run_ids in sr.values_mut() {
+            run_ids.retain(|rid| !expired_ids.contains(rid));
+        }
+        sr.retain(|_, v| !v.is_empty());
+
+        expired_ids.len()
+    }
+
+    pub fn count(&self) -> usize {
+        self.runs.read().unwrap_or_else(|e| e.into_inner()).len()
+    }
+}
+
+fn parse_iso_epoch(ts: &str) -> Option<i64> {
+    let parts: Vec<&str> = ts.split('T').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let date_parts: Vec<i64> = parts[0].split('-').filter_map(|p| p.parse().ok()).collect();
+    if date_parts.len() != 3 {
+        return None;
+    }
+    let time_str = parts[1].trim_end_matches('Z');
+    let time_parts: Vec<i64> = time_str.split(':').filter_map(|p| p.parse().ok()).collect();
+    if time_parts.len() != 3 {
+        return None;
+    }
+    let (y, m, d) = (date_parts[0], date_parts[1] as u32, date_parts[2] as u32);
+    let (h, min, s) = (time_parts[0], time_parts[1], time_parts[2]);
+
+    let days = date_to_epoch_days(y, m, d);
+    Some(days * 86400 + h * 3600 + min * 60 + s)
+}
+
+fn date_to_epoch_days(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let m = if m <= 2 { m + 9 } else { m - 3 } as i64;
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * m + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
 }

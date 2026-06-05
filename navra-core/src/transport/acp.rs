@@ -31,7 +31,21 @@ struct AcpState {
     approval_gate: Option<Arc<crate::hooks::ApprovalGateHook>>,
 }
 
+const RUN_MAX_AGE_SECS: u64 = 3600;
+
 fn build_routes(state: AcpState) -> Router {
+    let sweep_store = state.runs.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            let expired = sweep_store.expire(std::time::Duration::from_secs(RUN_MAX_AGE_SECS));
+            if expired > 0 {
+                tracing::debug!(expired, "ACP run store sweep");
+            }
+        }
+    });
+
     Router::new()
         .route("/acp/ping", get(handle_ping))
         .route("/acp/agents", get(handle_list_agents))
