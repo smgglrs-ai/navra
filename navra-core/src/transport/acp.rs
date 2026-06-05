@@ -1,493 +1,323 @@
-//! ACP (Agent Client Protocol) HTTP transport handler.
+//! ACP v0.2.0 (Agent Communication Protocol) RESTful transport.
 //!
-//! ACP is JSON-RPC 2.0 over Streamable HTTP (single `POST /acp` endpoint).
-//! Same transport as MCP, different method set. Enables navra agents to
-//! appear in Zed and JetBrains IDEs.
+//! Implements the ACP OpenAPI spec as Axum routes under `/acp/`.
+//! Supports agent discovery, run lifecycle (sync/async/stream),
+//! session retrieval, and typed SSE events.
 //!
-//! Methods:
-//! - `acp/initialize` — returns server capabilities (tools list)
-//! - `acp/session/new` — creates a new session, returns session_id
-//! - `acp/session/load` — reconnect to an existing session
-//! - `acp/session/prompt` — streaming prompt execution via SSE
+//! Reference: <https://agentcommunicationprotocol.dev>
 
-use crate::auth::CallContext;
-use crate::protocol::{CallToolParams, JsonRpcError, JsonRpcRequest, JsonRpcResponse};
+use crate::acp::agents;
+use crate::acp::dispatch;
+use crate::acp::store::RunStore;
+use crate::acp::types::*;
 use crate::server::McpServer;
-use axum::extract::State;
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::IntoResponse;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use std::convert::Infallible;
 use std::sync::Arc;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::StreamExt;
 
-/// Session ID header used by ACP (mirrors MCP convention).
-const ACP_SESSION_HEADER: &str = "acp-session-id";
-
-/// Shared state for the ACP router.
 #[derive(Clone)]
 struct AcpState {
     server: Arc<McpServer>,
+    runs: RunStore,
 }
 
-/// Build an axum Router for the ACP transport.
-///
-/// Exposes a single `POST /acp` endpoint that dispatches JSON-RPC
-/// requests to ACP method handlers. Re-uses the server's authenticator.
+/// Build the ACP v0.2.0 router.
 pub fn build_acp_router(server: Arc<McpServer>) -> Router {
-    let state = AcpState { server };
+    let state = AcpState {
+        server,
+        runs: RunStore::new(),
+    };
     Router::new()
-        .route("/acp", post(handle_acp_post))
+        .route("/acp/ping", get(handle_ping))
+        .route("/acp/agents", get(handle_list_agents))
+        .route("/acp/agents/{name}", get(handle_get_agent))
+        .route("/acp/runs", post(handle_create_run))
+        .route("/acp/runs/{run_id}", get(handle_get_run).post(handle_resume_run))
+        .route("/acp/runs/{run_id}/cancel", post(handle_cancel_run))
+        .route("/acp/runs/{run_id}/events", get(handle_list_events))
+        .route("/acp/session/{session_id}", get(handle_get_session))
         .with_state(state)
 }
 
-/// Handle `POST /acp` — ACP JSON-RPC endpoint.
-///
-/// Most methods return a plain JSON-RPC response. `acp/session/prompt`
-/// returns `text/event-stream` (SSE) with incremental results.
-async fn handle_acp_post(
+fn authenticate(
+    server: &McpServer,
+    headers: &HeaderMap,
+) -> Result<crate::auth::AgentIdentity, (StatusCode, Json<AcpError>)> {
+    server.authenticator().authenticate(headers).map_err(|_| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(AcpError::server_error("Authentication failed")),
+        )
+    })
+}
+
+// --- Handlers ---
+
+async fn handle_ping() -> Json<serde_json::Value> {
+    Json(serde_json::json!({}))
+}
+
+async fn handle_list_agents(
     State(state): State<AcpState>,
     headers: HeaderMap,
-    Json(request): Json<JsonRpcRequest>,
-) -> impl IntoResponse {
-    let server = &state.server;
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<AgentsListResponse>, (StatusCode, Json<AcpError>)> {
+    authenticate(&state.server, &headers)?;
+    let all = agents::list_agents(&state.server);
 
-    // Authenticate using the server's authenticator
-    let agent = match server.authenticator().authenticate(&headers) {
-        Ok(agent) => agent,
-        Err(_) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(JsonRpcResponse::error(
-                    request.id,
-                    JsonRpcError::new(
-                        crate::protocol::ErrorCode::Custom(-32000),
-                        "Authentication failed",
-                    ),
-                )),
-            )
-                .into_response();
-        }
-    };
+    let start = params.offset.min(all.agents.len());
+    let end = (start + params.limit).min(all.agents.len());
+    let agents_page = all.agents[start..end].to_vec();
 
-    // Validate jsonrpc version
-    if request.jsonrpc != "2.0" {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(JsonRpcResponse::error(
-                request.id,
-                JsonRpcError::invalid_request("Expected jsonrpc: \"2.0\""),
-            )),
-        )
-            .into_response();
-    }
-
-    let id = request.id.clone();
-
-    match request.method.as_str() {
-        "acp/initialize" => {
-            let tools: Vec<serde_json::Value> = server
-                .handle_list_tools(&agent, &Default::default())
-                .tools
-                .iter()
-                .map(|t| {
-                    serde_json::json!({
-                        "name": t.name,
-                        "description": t.description,
-                    })
-                })
-                .collect();
-
-            Json(JsonRpcResponse::success(
-                id,
-                serde_json::json!({
-                    "protocolVersion": "0.1.0",
-                    "serverInfo": server.server_info(),
-                    "capabilities": {
-                        "streaming": true,
-                        "tools": tools,
-                    },
-                }),
-            ))
-            .into_response()
-        }
-
-        "acp/session/new" => {
-            let session_id = uuid::Uuid::new_v4().to_string();
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
-            let session = crate::session::Session {
-                id: session_id.clone(),
-                agent: agent.clone(),
-                client_info: crate::protocol::ClientInfo {
-                    name: "acp-client".to_string(),
-                    version: None,
-                },
-                initialized: true,
-                context_label: crate::ifc::DataLabel::TRUSTED_PUBLIC,
-                created_at: now,
-                last_accessed: now,
-            };
-            server.sessions().create(session);
-
-            let mut resp = Json(JsonRpcResponse::success(
-                id,
-                serde_json::json!({
-                    "sessionId": session_id,
-                }),
-            ))
-            .into_response();
-            if let Ok(val) = session_id.parse() {
-                resp.headers_mut().insert(ACP_SESSION_HEADER, val);
-            }
-            resp
-        }
-
-        "acp/session/load" => {
-            let session_id = request
-                .params
-                .as_ref()
-                .and_then(|p| p.get("sessionId"))
-                .and_then(|v| v.as_str())
-                .or_else(|| {
-                    headers
-                        .get(ACP_SESSION_HEADER)
-                        .and_then(|v| v.to_str().ok())
-                });
-
-            match session_id {
-                Some(sid) => match server.sessions().get(sid) {
-                    Some(session) => {
-                        if session.agent.name != agent.name {
-                            return Json(JsonRpcResponse::error(
-                                id,
-                                JsonRpcError::new(
-                                    crate::protocol::ErrorCode::Custom(-32000),
-                                    "Session does not belong to this agent",
-                                ),
-                            ))
-                            .into_response();
-                        }
-                        server.sessions().touch(sid);
-                        let mut resp = Json(JsonRpcResponse::success(
-                            id,
-                            serde_json::json!({
-                                "sessionId": sid,
-                                "resumed": true,
-                            }),
-                        ))
-                        .into_response();
-                        if let Ok(val) = sid.parse() {
-                            resp.headers_mut().insert(ACP_SESSION_HEADER, val);
-                        }
-                        resp
-                    }
-                    None => Json(JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::new(
-                            crate::protocol::ErrorCode::Custom(-32001),
-                            "Session not found — it may have expired",
-                        ),
-                    ))
-                    .into_response(),
-                },
-                None => Json(JsonRpcResponse::error(
-                    id,
-                    JsonRpcError::invalid_params(
-                        "Missing sessionId in params or acp-session-id header",
-                    ),
-                ))
-                .into_response(),
-            }
-        }
-
-        "acp/session/prompt" => {
-            handle_session_prompt(state.server.clone(), id, request.params, agent, &headers)
-                .await
-                .into_response()
-        }
-
-        _ => Json(JsonRpcResponse::error(
-            id,
-            JsonRpcError::method_not_found(&request.method),
-        ))
-        .into_response(),
-    }
+    Ok(Json(AgentsListResponse {
+        agents: agents_page,
+    }))
 }
 
-/// Parameters for `acp/session/prompt`.
-#[derive(Debug, serde::Deserialize)]
-struct PromptParams {
-    /// Session to execute the prompt in.
-    #[serde(rename = "sessionId")]
-    session_id: String,
-    /// The prompt message(s). Each entry has a `role` and `content`.
-    messages: Vec<PromptMessage>,
-    /// Optional: tools the agent is allowed to call during this prompt.
-    /// If omitted, all tools are available.
-    #[serde(default)]
-    tools: Option<Vec<String>>,
-}
-
-/// A single message in an ACP prompt request.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct PromptMessage {
-    role: String,
-    content: String,
-}
-
-/// Handle `acp/session/prompt` — streaming prompt execution.
-///
-/// Validates the session, iterates over the prompt messages, calls
-/// any referenced tools, and streams results back as SSE events.
-///
-/// SSE event types:
-/// - `acp.prompt.started` — prompt accepted, streaming begins
-/// - `acp.tool.calling` — about to call a tool
-/// - `acp.tool.result` — tool call completed with result
-/// - `acp.prompt.completed` — all processing finished, final response
-/// - `acp.prompt.failed` — an error occurred during processing
-async fn handle_session_prompt(
-    server: Arc<McpServer>,
-    id: crate::protocol::RequestId,
-    params: Option<serde_json::Value>,
-    agent: crate::auth::AgentIdentity,
-    headers: &HeaderMap,
-) -> impl IntoResponse {
-    // Parse prompt params
-    let prompt_params: PromptParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
-        Some(p) => p,
-        None => {
-            return Json(JsonRpcResponse::error(
-                id,
-                JsonRpcError::invalid_params(
-                    "Expected params: { sessionId, messages: [{ role, content }] }",
-                ),
-            ))
-            .into_response();
-        }
-    };
-
-    // Allow session ID from params or header
-    let session_id = if !prompt_params.session_id.is_empty() {
-        prompt_params.session_id.clone()
+async fn handle_get_agent(
+    State(state): State<AcpState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Json<AgentManifest>, (StatusCode, Json<AcpError>)> {
+    authenticate(&state.server, &headers)?;
+    let manifest = agents::build_manifest(&state.server);
+    if manifest.name == name {
+        Ok(Json(manifest))
     } else {
-        match headers
-            .get(ACP_SESSION_HEADER)
-            .and_then(|v| v.to_str().ok())
-        {
-            Some(s) if !s.is_empty() => s.to_string(),
-            _ => {
-                return Json(JsonRpcResponse::error(
-                    id,
-                    JsonRpcError::invalid_params("Missing sessionId"),
-                ))
-                .into_response();
-            }
-        }
-    };
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(AcpError::not_found(format!("Agent '{}' not found", name))),
+        ))
+    }
+}
 
-    // Validate session exists and belongs to this agent
-    match server.sessions().get(&session_id) {
-        Some(session) => {
-            if session.agent.name != agent.name {
-                return Json(JsonRpcResponse::error(
-                    id,
-                    JsonRpcError::new(
-                        crate::protocol::ErrorCode::Custom(-32000),
-                        "Session does not belong to this agent",
-                    ),
-                ))
-                .into_response();
-            }
-            server.sessions().touch(&session_id);
-        }
-        None => {
-            return Json(JsonRpcResponse::error(
-                id,
-                JsonRpcError::new(
-                    crate::protocol::ErrorCode::Custom(-32001),
-                    "Session not found — it may have expired",
-                ),
-            ))
-            .into_response();
-        }
+async fn handle_create_run(
+    State(state): State<AcpState>,
+    headers: HeaderMap,
+    Json(request): Json<RunCreateRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<AcpError>)> {
+    let agent = authenticate(&state.server, &headers)?;
+
+    let manifest = agents::build_manifest(&state.server);
+    if manifest.name != request.agent_name {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(AcpError::not_found(format!(
+                "Agent '{}' not found",
+                request.agent_name
+            ))),
+        ));
     }
 
-    let messages = prompt_params.messages;
-    let allowed_tools = prompt_params.tools;
-    let request_id = id;
+    if request.input.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AcpError::invalid_input("input must contain at least one message")),
+        ));
+    }
 
-    // Build the SSE stream
-    let stream = async_stream::stream! {
-        // Event: prompt started
-        let started = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "acp/session/prompt",
-            "id": request_id,
-            "type": "acp.prompt.started",
-            "sessionId": session_id,
-            "messageCount": messages.len(),
-        });
-        yield Ok::<Event, Infallible>(
-            Event::default()
-                .event("acp.prompt.started")
-                .data(serde_json::to_string(&started).unwrap_or_default())
-        );
+    let mode = request.mode.unwrap_or(RunMode::Sync);
+    let run = dispatch::create_run(&state.runs, &request.agent_name, request.session_id);
+    let run_id = run.run_id.clone();
 
-        // Process each user message. Extract tool call requests from
-        // messages that match the pattern: `/tool <tool_name> <args_json>`
-        let mut results: Vec<serde_json::Value> = Vec::new();
-        let mut error_occurred = false;
+    match mode {
+        RunMode::Sync => {
+            let completed = dispatch::execute_run(
+                &state.server,
+                &state.runs,
+                &run_id,
+                &request.input,
+                &agent,
+            )
+            .await;
+            Ok((StatusCode::OK, Json(completed)).into_response())
+        }
+        RunMode::Async => {
+            dispatch::execute_run_async(
+                state.server.clone(),
+                state.runs.clone(),
+                run_id,
+                request.input,
+                agent,
+            );
+            Ok((StatusCode::ACCEPTED, Json(run)).into_response())
+        }
+        RunMode::Stream => {
+            let rx = dispatch::execute_run_stream(
+                state.server.clone(),
+                state.runs.clone(),
+                run_id.clone(),
+                request.input,
+                agent,
+            );
 
-        for (msg_idx, message) in messages.iter().enumerate() {
-            let content = message.content.trim();
+            let created_event = Event::RunCreated { run };
+            let created_data =
+                serde_json::to_string(&created_event).unwrap_or_default();
 
-            // Check if this is a tool call request
-            if let Some(tool_call) = parse_tool_call(content) {
-                // Check if the tool is in the allowed list (if specified)
-                if let Some(ref allowed) = allowed_tools {
-                    if !allowed.iter().any(|t| t == &tool_call.tool_name) {
-                        let err_data = serde_json::json!({
-                            "type": "acp.prompt.failed",
-                            "error": format!("Tool '{}' not in allowed tools list", tool_call.tool_name),
-                            "messageIndex": msg_idx,
-                        });
-                        yield Ok(Event::default()
-                            .event("acp.prompt.failed")
-                            .data(serde_json::to_string(&err_data).unwrap_or_default()));
-                        error_occurred = true;
-                        break;
-                    }
-                }
+            let initial = futures_util::stream::once(async move {
+                Ok::<_, Infallible>(
+                    SseEvent::default()
+                        .event("run.created")
+                        .data(created_data),
+                )
+            });
 
-                // Notify: about to call tool
-                let calling = serde_json::json!({
-                    "type": "acp.tool.calling",
-                    "tool": tool_call.tool_name,
-                    "arguments": tool_call.arguments,
-                    "messageIndex": msg_idx,
-                });
-                yield Ok(Event::default()
-                    .event("acp.tool.calling")
-                    .data(serde_json::to_string(&calling).unwrap_or_default()));
-
-                // Execute the tool call
-                let ctx = CallContext::new(agent.clone(), session_id.clone());
-                let call_params = CallToolParams {
-                    name: tool_call.tool_name.clone(),
-                    arguments: tool_call.arguments.clone(),
-                    meta: None,
+            let rest = ReceiverStream::new(rx).map(|event| {
+                let event_type = match &event {
+                    Event::MessageCreated { .. } => "message.created",
+                    Event::MessagePart { .. } => "message.part",
+                    Event::MessageCompleted { .. } => "message.completed",
+                    Event::RunCreated { .. } => "run.created",
+                    Event::RunInProgress { .. } => "run.in-progress",
+                    Event::RunAwaiting { .. } => "run.awaiting",
+                    Event::RunCompleted { .. } => "run.completed",
+                    Event::RunCancelled { .. } => "run.cancelled",
+                    Event::RunFailed { .. } => "run.failed",
+                    Event::Error { .. } => "error",
+                    Event::Generic { .. } => "generic",
                 };
-                let tool_result = server.handle_call_tool(call_params, ctx).await;
-
-                // Stream the result
-                let result_content: Vec<String> = tool_result.content.iter().filter_map(|c| {
-                    match c {
-                        crate::protocol::Content::Text(t) => Some(t.text.clone()),
-                        _ => None,
-                    }
-                }).collect();
-
-                let result_data = serde_json::json!({
-                    "type": "acp.tool.result",
-                    "tool": tool_call.tool_name,
-                    "messageIndex": msg_idx,
-                    "isError": tool_result.is_error,
-                    "content": result_content,
-                });
-                yield Ok(Event::default()
-                    .event("acp.tool.result")
-                    .data(serde_json::to_string(&result_data).unwrap_or_default()));
-
-                results.push(result_data);
-            } else {
-                // Non-tool message: echo it back as an acknowledgement
-                let ack = serde_json::json!({
-                    "type": "acp.message.received",
-                    "messageIndex": msg_idx,
-                    "role": message.role,
-                    "contentLength": content.len(),
-                });
-                yield Ok(Event::default()
-                    .event("acp.message.received")
-                    .data(serde_json::to_string(&ack).unwrap_or_default()));
-
-                results.push(serde_json::json!({
-                    "type": "message",
-                    "role": message.role,
-                    "content": content,
-                }));
-            }
-        }
-
-        // Event: prompt completed (or failed)
-        if error_occurred {
-            // Already sent the failure event above
-        } else {
-            let completed = serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/prompt",
-                "id": request_id,
-                "type": "acp.prompt.completed",
-                "sessionId": session_id,
-                "results": results,
+                let data = serde_json::to_string(&event).unwrap_or_default();
+                Ok::<_, Infallible>(SseEvent::default().event(event_type).data(data))
             });
-            yield Ok(Event::default()
-                .event("acp.prompt.completed")
-                .data(serde_json::to_string(&completed).unwrap_or_default()));
-        }
-    };
 
-    Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response()
-}
-
-/// A parsed tool call from a prompt message.
-struct ToolCall {
-    tool_name: String,
-    arguments: serde_json::Value,
-}
-
-/// Parse a tool call from a message content string.
-///
-/// Supports two formats:
-/// 1. `/tool <name> <json_args>` — inline command
-/// 2. JSON object with `"tool"` and `"arguments"` fields
-fn parse_tool_call(content: &str) -> Option<ToolCall> {
-    let trimmed = content.trim();
-
-    // Format 1: /tool <name> <json>
-    if let Some(rest) = trimmed.strip_prefix("/tool ") {
-        let mut parts = rest.splitn(2, ' ');
-        let name = parts.next()?.to_string();
-        let args_str = parts.next().unwrap_or("{}");
-        let arguments = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
-        return Some(ToolCall {
-            tool_name: name,
-            arguments,
-        });
-    }
-
-    // Format 2: { "tool": "name", "arguments": { ... } }
-    if let Ok(obj) = serde_json::from_str::<serde_json::Value>(trimmed) {
-        if let Some(tool_name) = obj.get("tool").and_then(|v| v.as_str()) {
-            let arguments = obj
-                .get("arguments")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
-            return Some(ToolCall {
-                tool_name: tool_name.to_string(),
-                arguments,
-            });
+            let stream = initial.chain(rest);
+            Ok(Sse::new(stream)
+                .keep_alive(KeepAlive::default())
+                .into_response())
         }
     }
+}
 
-    None
+async fn handle_get_run(
+    State(state): State<AcpState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+) -> Result<Json<Run>, (StatusCode, Json<AcpError>)> {
+    authenticate(&state.server, &headers)?;
+    state.runs.get(&run_id).map(Json).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(AcpError::not_found(format!("Run '{}' not found", run_id))),
+        )
+    })
+}
+
+async fn handle_resume_run(
+    State(state): State<AcpState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(_request): Json<RunResumeRequest>,
+) -> Result<Json<Run>, (StatusCode, Json<AcpError>)> {
+    authenticate(&state.server, &headers)?;
+    let run = state.runs.get(&run_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(AcpError::not_found(format!("Run '{}' not found", run_id))),
+        )
+    })?;
+
+    if run.status != RunStatus::Awaiting {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AcpError::invalid_input(format!(
+                "Run '{}' is not in awaiting state (current: {:?})",
+                run_id, run.status
+            ))),
+        ));
+    }
+
+    Ok(Json(run))
+}
+
+async fn handle_cancel_run(
+    State(state): State<AcpState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+) -> Result<(StatusCode, Json<Run>), (StatusCode, Json<AcpError>)> {
+    authenticate(&state.server, &headers)?;
+    let run = state.runs.get(&run_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(AcpError::not_found(format!("Run '{}' not found", run_id))),
+        )
+    })?;
+
+    match run.status {
+        RunStatus::Completed | RunStatus::Failed | RunStatus::Cancelled => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(AcpError::invalid_input(format!(
+                    "Run '{}' already finished ({:?})",
+                    run_id, run.status
+                ))),
+            ));
+        }
+        _ => {}
+    }
+
+    let finished_at = dispatch::now_iso();
+    let cancelled = state
+        .runs
+        .set_finished(&run_id, RunStatus::Cancelled, finished_at)
+        .unwrap();
+    state.runs.add_event(
+        &run_id,
+        Event::RunCancelled {
+            run: cancelled.clone(),
+        },
+    );
+
+    Ok((StatusCode::ACCEPTED, Json(cancelled)))
+}
+
+async fn handle_list_events(
+    State(state): State<AcpState>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+) -> Result<Json<RunEventsListResponse>, (StatusCode, Json<AcpError>)> {
+    authenticate(&state.server, &headers)?;
+    if state.runs.get(&run_id).is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(AcpError::not_found(format!("Run '{}' not found", run_id))),
+        ));
+    }
+    let events = state.runs.list_events(&run_id);
+    Ok(Json(RunEventsListResponse { events }))
+}
+
+async fn handle_get_session(
+    State(state): State<AcpState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<SessionSpec>, (StatusCode, Json<AcpError>)> {
+    authenticate(&state.server, &headers)?;
+    let session = state.runs.get(&session_id);
+
+    match state.server.sessions().get(&session_id) {
+        Some(_) => Ok(Json(SessionSpec {
+            id: session_id,
+            history: session
+                .map(|r| vec![format!("/acp/runs/{}", r.run_id)])
+                .unwrap_or_default(),
+            state: None,
+        })),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(AcpError::not_found(format!(
+                "Session '{}' not found",
+                session_id
+            ))),
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -503,7 +333,7 @@ mod tests {
     fn test_server() -> Arc<McpServer> {
         Arc::new(
             McpServer::builder()
-                .name("acp-test")
+                .name("test-agent")
                 .version("0.1.0")
                 .authenticator(NoAuthenticator {
                     default_identity: AgentIdentity::new("tester", "dev"),
@@ -527,14 +357,12 @@ mod tests {
         )
     }
 
-    async fn post_acp(router: &Router, body: serde_json::Value) -> (StatusCode, serde_json::Value) {
+    async fn get_json(router: &Router, path: &str) -> (StatusCode, serde_json::Value) {
         let req = Request::builder()
-            .method("POST")
-            .uri("/acp")
-            .header("content-type", "application/json")
-            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .method("GET")
+            .uri(path)
+            .body(Body::empty())
             .unwrap();
-
         let resp = router.clone().oneshot(req).await.unwrap();
         let status = resp.status();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
@@ -542,366 +370,399 @@ mod tests {
         (status, json)
     }
 
-    async fn post_acp_raw(router: &Router, body: serde_json::Value) -> (StatusCode, String) {
+    async fn post_json(
+        router: &Router,
+        path: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
         let req = Request::builder()
             .method("POST")
-            .uri("/acp")
+            .uri(path)
             .header("content-type", "application/json")
             .body(Body::from(serde_json::to_string(&body).unwrap()))
             .unwrap();
-
         let resp = router.clone().oneshot(req).await.unwrap();
         let status = resp.status();
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-        let text = String::from_utf8_lossy(&bytes).to_string();
-        (status, text)
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        (status, json)
+    }
+
+    async fn post_raw(
+        router: &Router,
+        path: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, String) {
+        let req = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        (status, String::from_utf8_lossy(&bytes).to_string())
     }
 
     #[tokio::test]
-    async fn acp_initialize_returns_capabilities() {
+    async fn ping_returns_ok() {
         let router = build_acp_router(test_server());
-        let (status, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/initialize",
-                "id": 1
-            }),
-        )
-        .await;
-
+        let (status, json) = get_json(&router, "/acp/ping").await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(json["jsonrpc"], "2.0");
-        assert!(json["result"]["capabilities"]["tools"].is_array());
-        assert_eq!(json["result"]["capabilities"]["streaming"], true);
-        assert_eq!(json["result"]["serverInfo"]["name"], "acp-test");
+        assert!(json.is_object());
     }
 
     #[tokio::test]
-    async fn acp_session_new_returns_session_id() {
+    async fn list_agents_returns_manifests() {
         let router = build_acp_router(test_server());
-        let (status, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/new",
-                "id": 2
-            }),
-        )
-        .await;
-
+        let (status, json) = get_json(&router, "/acp/agents").await;
         assert_eq!(status, StatusCode::OK);
-        let session_id = json["result"]["sessionId"].as_str().unwrap();
-        assert!(!session_id.is_empty());
-        assert!(uuid::Uuid::parse_str(session_id).is_ok());
+        let agents = json["agents"].as_array().unwrap();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0]["name"], "test-agent");
+        assert!(agents[0]["description"].as_str().unwrap().contains("navra"));
     }
 
     #[tokio::test]
-    async fn acp_session_new_creates_real_session() {
-        let server = test_server();
-        let router = build_acp_router(server.clone());
-        let (_, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/new",
-                "id": 1
-            }),
-        )
-        .await;
-
-        let session_id = json["result"]["sessionId"].as_str().unwrap();
-        // Session should exist in the store
-        assert!(server.sessions().get(session_id).is_some());
-    }
-
-    #[tokio::test]
-    async fn acp_session_load_existing() {
-        let server = test_server();
-        let router = build_acp_router(server.clone());
-
-        // Create a session first
-        let (_, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/new",
-                "id": 1
-            }),
-        )
-        .await;
-        let session_id = json["result"]["sessionId"].as_str().unwrap().to_string();
-
-        // Load it
-        let (status, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/load",
-                "id": 2,
-                "params": { "sessionId": session_id }
-            }),
-        )
-        .await;
-
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(json["result"]["sessionId"].as_str().unwrap(), session_id);
-        assert_eq!(json["result"]["resumed"], true);
-    }
-
-    #[tokio::test]
-    async fn acp_session_load_nonexistent() {
+    async fn get_agent_returns_manifest() {
         let router = build_acp_router(test_server());
-        let (status, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/load",
-                "id": 1,
-                "params": { "sessionId": "does-not-exist" }
-            }),
-        )
-        .await;
-
+        let (status, json) = get_json(&router, "/acp/agents/test-agent").await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(json["error"]["code"], -32001);
+        assert_eq!(json["name"], "test-agent");
+        let caps = json["metadata"]["capabilities"].as_array().unwrap();
+        assert!(
+            caps.iter().any(|c| c["name"] == "ping"),
+            "Expected 'ping' in capabilities: {:?}",
+            caps
+        );
     }
 
     #[tokio::test]
-    async fn acp_session_prompt_streams_tool_result() {
-        let server = test_server();
-        let router = build_acp_router(server.clone());
+    async fn get_agent_not_found() {
+        let router = build_acp_router(test_server());
+        let (status, json) = get_json(&router, "/acp/agents/nonexistent").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(json["code"], "not_found");
+    }
 
-        // Create a session
-        let (_, json) = post_acp(
+    #[tokio::test]
+    async fn create_run_sync_mode() {
+        let router = build_acp_router(test_server());
+        let (status, json) = post_json(
             &router,
+            "/acp/runs",
             serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/new",
-                "id": 1
+                "agent_name": "test-agent",
+                "input": [{
+                    "role": "user",
+                    "parts": [{"content_type": "text/plain", "content": "/tool ping {}"}]
+                }],
+                "mode": "sync"
             }),
         )
         .await;
-        let session_id = json["result"]["sessionId"].as_str().unwrap().to_string();
-
-        // Send a prompt with a tool call
-        let (status, body) = post_acp_raw(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/prompt",
-                "id": 3,
-                "params": {
-                    "sessionId": session_id,
-                    "messages": [
-                        { "role": "user", "content": "/tool ping {}" }
-                    ]
-                }
-            }),
-        )
-        .await;
-
         assert_eq!(status, StatusCode::OK);
-        // SSE body should contain the expected event types
+        assert_eq!(json["status"], "completed");
+        assert_eq!(json["agent_name"], "test-agent");
+        let output = json["output"].as_array().unwrap();
+        assert!(!output.is_empty());
+        let text = serde_json::to_string(&output[0]["parts"]).unwrap();
+        assert!(text.contains("pong"), "Expected 'pong' in output: {}", text);
+    }
+
+    #[tokio::test]
+    async fn create_run_async_mode() {
+        let router = build_acp_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "test-agent",
+                "input": [{
+                    "role": "user",
+                    "parts": [{"content_type": "text/plain", "content": "/tool ping {}"}]
+                }],
+                "mode": "async"
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        assert_eq!(json["status"], "created");
+        assert!(json["run_id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn create_run_stream_mode() {
+        let router = build_acp_router(test_server());
+        let (status, body) = post_raw(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "test-agent",
+                "input": [{
+                    "role": "user",
+                    "parts": [{"content_type": "text/plain", "content": "/tool ping {}"}]
+                }],
+                "mode": "stream"
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
         assert!(
-            body.contains("event:acp.prompt.started") || body.contains("event: acp.prompt.started"),
-            "Expected prompt.started event in SSE body: {}",
+            body.contains("run.created"),
+            "Expected run.created event: {}",
             body
         );
-        assert!(
-            body.contains("event:acp.tool.calling") || body.contains("event: acp.tool.calling"),
-            "Expected tool.calling event in SSE body: {}",
-            body
-        );
-        assert!(
-            body.contains("event:acp.tool.result") || body.contains("event: acp.tool.result"),
-            "Expected tool.result event in SSE body: {}",
-            body
-        );
-        assert!(
-            body.contains("event:acp.prompt.completed")
-                || body.contains("event: acp.prompt.completed"),
-            "Expected prompt.completed event in SSE body: {}",
-            body
-        );
-        // The tool result should contain "pong"
         assert!(
             body.contains("pong"),
-            "Expected 'pong' in tool result: {}",
+            "Expected pong in stream: {}",
             body
         );
     }
 
     #[tokio::test]
-    async fn acp_session_prompt_streams_message_ack() {
+    async fn create_run_default_mode_is_sync() {
+        let router = build_acp_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "test-agent",
+                "input": [{
+                    "role": "user",
+                    "parts": [{"content_type": "text/plain", "content": "hello"}]
+                }]
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["status"], "completed");
+    }
+
+    #[tokio::test]
+    async fn create_run_unknown_agent() {
+        let router = build_acp_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "unknown",
+                "input": [{
+                    "role": "user",
+                    "parts": [{"content_type": "text/plain", "content": "hello"}]
+                }]
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(json["code"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn create_run_empty_input() {
+        let router = build_acp_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "test-agent",
+                "input": []
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json["code"], "invalid_input");
+    }
+
+    #[tokio::test]
+    async fn get_run_existing() {
         let server = test_server();
-        let router = build_acp_router(server.clone());
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+        };
+        let run = dispatch::create_run(&state.runs, "test-agent", None);
+        let router = build_acp_router(server);
 
-        // Create a session
-        let (_, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/new",
-                "id": 1
-            }),
-        )
-        .await;
-        let session_id = json["result"]["sessionId"].as_str().unwrap().to_string();
+        // We need to use the same state — build a custom router for this test
+        let test_router = Router::new()
+            .route("/acp/runs/{run_id}", get(handle_get_run))
+            .with_state(state);
 
-        // Send a plain text message (no tool call)
-        let (status, body) = post_acp_raw(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/prompt",
-                "id": 2,
-                "params": {
-                    "sessionId": session_id,
-                    "messages": [
-                        { "role": "user", "content": "Hello, world" }
-                    ]
-                }
-            }),
-        )
-        .await;
-
+        let (status, json) = get_json(&test_router, &format!("/acp/runs/{}", run.run_id)).await;
         assert_eq!(status, StatusCode::OK);
-        assert!(
-            body.contains("acp.message.received"),
-            "Expected message.received event: {}",
-            body
-        );
-        assert!(
-            body.contains("acp.prompt.completed"),
-            "Expected prompt.completed event: {}",
-            body
-        );
+        assert_eq!(json["run_id"], run.run_id);
     }
 
     #[tokio::test]
-    async fn acp_session_prompt_json_tool_format() {
+    async fn get_run_not_found() {
+        let router = build_acp_router(test_server());
+        let (status, json) = get_json(&router, "/acp/runs/nonexistent").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(json["code"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn cancel_run() {
         let server = test_server();
-        let router = build_acp_router(server.clone());
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+        };
+        let run = dispatch::create_run(&state.runs, "test-agent", None);
+        state
+            .runs
+            .update_status(&run.run_id, RunStatus::InProgress);
 
-        // Create a session
-        let (_, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/new",
-                "id": 1
-            }),
-        )
-        .await;
-        let session_id = json["result"]["sessionId"].as_str().unwrap().to_string();
+        let test_router = Router::new()
+            .route("/acp/runs/{run_id}/cancel", post(handle_cancel_run))
+            .with_state(state);
 
-        // Send a prompt using JSON tool call format
-        let (status, body) = post_acp_raw(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/prompt",
-                "id": 2,
-                "params": {
-                    "sessionId": session_id,
-                    "messages": [
-                        { "role": "user", "content": "{\"tool\": \"ping\", \"arguments\": {}}" }
-                    ]
-                }
-            }),
-        )
-        .await;
-
-        assert_eq!(status, StatusCode::OK);
-        assert!(
-            body.contains("pong"),
-            "Expected 'pong' in tool result: {}",
-            body
-        );
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/acp/runs/{}/cancel", run.run_id))
+            .header("content-type", "application/json")
+            .body(Body::empty())
+            .unwrap();
+        let resp = test_router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["status"], "cancelled");
     }
 
     #[tokio::test]
-    async fn acp_session_prompt_invalid_session() {
-        let router = build_acp_router(test_server());
-        let (status, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/prompt",
-                "id": 1,
-                "params": {
-                    "sessionId": "nonexistent-session",
-                    "messages": [
-                        { "role": "user", "content": "hello" }
-                    ]
-                }
-            }),
-        )
-        .await;
+    async fn cancel_completed_run_fails() {
+        let server = test_server();
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+        };
+        let run = dispatch::create_run(&state.runs, "test-agent", None);
+        state
+            .runs
+            .set_finished(&run.run_id, RunStatus::Completed, dispatch::now_iso());
 
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(json["error"]["code"], -32001);
+        let test_router = Router::new()
+            .route("/acp/runs/{run_id}/cancel", post(handle_cancel_run))
+            .with_state(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/acp/runs/{}/cancel", run.run_id))
+            .header("content-type", "application/json")
+            .body(Body::empty())
+            .unwrap();
+        let resp = test_router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
-    async fn acp_session_prompt_missing_params() {
-        let router = build_acp_router(test_server());
-        let (status, json) = post_acp(
-            &router,
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/session/prompt",
-                "id": 1
-            }),
-        )
-        .await;
+    async fn list_events_for_run() {
+        let server = test_server();
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+        };
+        let run = dispatch::create_run(&state.runs, "test-agent", None);
 
+        let test_router = Router::new()
+            .route("/acp/runs/{run_id}/events", get(handle_list_events))
+            .with_state(state);
+
+        let (status, json) =
+            get_json(&test_router, &format!("/acp/runs/{}/events", run.run_id)).await;
         assert_eq!(status, StatusCode::OK);
-        assert!(json["error"]["code"].as_i64().is_some());
+        let events = json["events"].as_array().unwrap();
+        assert!(!events.is_empty());
+        assert_eq!(events[0]["type"], "run.created");
     }
 
     #[tokio::test]
-    async fn acp_unknown_method_returns_error() {
+    async fn list_events_not_found() {
         let router = build_acp_router(test_server());
-        let (status, json) = post_acp(
+        let (status, json) = get_json(&router, "/acp/runs/nonexistent/events").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(json["code"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn create_run_json_tool_format() {
+        let router = build_acp_router(test_server());
+        let (status, json) = post_json(
             &router,
+            "/acp/runs",
             serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "acp/unknown",
-                "id": 4
+                "agent_name": "test-agent",
+                "input": [{
+                    "role": "user",
+                    "parts": [{
+                        "content_type": "application/json",
+                        "content": "{\"tool\": \"ping\", \"arguments\": {}}"
+                    }]
+                }],
+                "mode": "sync"
             }),
         )
         .await;
-
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(json["error"]["code"], -32601);
+        assert_eq!(json["status"], "completed");
+        let output_str = serde_json::to_string(&json["output"]).unwrap();
+        assert!(output_str.contains("pong"), "Expected pong: {}", output_str);
     }
 
-    #[test]
-    fn parse_tool_call_slash_format() {
-        let tc = parse_tool_call("/tool ping {}").unwrap();
-        assert_eq!(tc.tool_name, "ping");
-        assert_eq!(tc.arguments, serde_json::json!({}));
+    #[tokio::test]
+    async fn run_type_serialization() {
+        let run = Run {
+            agent_name: "test".to_string(),
+            run_id: "abc-123".to_string(),
+            status: RunStatus::InProgress,
+            output: vec![],
+            created_at: "2026-06-05T00:00:00Z".to_string(),
+            session_id: None,
+            await_request: None,
+            error: None,
+            finished_at: None,
+        };
+        let json = serde_json::to_value(&run).unwrap();
+        assert_eq!(json["status"], "in-progress");
+        assert_eq!(json["agent_name"], "test");
     }
 
-    #[test]
-    fn parse_tool_call_slash_with_args() {
-        let tc = parse_tool_call(r#"/tool file_read {"path": "/tmp/test.txt"}"#).unwrap();
-        assert_eq!(tc.tool_name, "file_read");
-        assert_eq!(tc.arguments["path"], "/tmp/test.txt");
+    #[tokio::test]
+    async fn event_type_serialization() {
+        let event = Event::RunCompleted {
+            run: Run {
+                agent_name: "test".to_string(),
+                run_id: "abc".to_string(),
+                status: RunStatus::Completed,
+                output: vec![],
+                created_at: "2026-06-05T00:00:00Z".to_string(),
+                session_id: None,
+                await_request: None,
+                error: None,
+                finished_at: Some("2026-06-05T00:00:01Z".to_string()),
+            },
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "run.completed");
+        assert_eq!(json["run"]["status"], "completed");
     }
 
-    #[test]
-    fn parse_tool_call_json_format() {
-        let tc = parse_tool_call(r#"{"tool": "ping", "arguments": {"key": "val"}}"#).unwrap();
-        assert_eq!(tc.tool_name, "ping");
-        assert_eq!(tc.arguments["key"], "val");
+    #[tokio::test]
+    async fn error_serialization() {
+        let err = AcpError::not_found("test");
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["code"], "not_found");
+        assert_eq!(json["message"], "test");
     }
 
-    #[test]
-    fn parse_tool_call_plain_text_returns_none() {
-        assert!(parse_tool_call("Hello world").is_none());
-        assert!(parse_tool_call("").is_none());
+    #[tokio::test]
+    async fn agents_pagination() {
+        let router = build_acp_router(test_server());
+        let (status, json) = get_json(&router, "/acp/agents?limit=0&offset=0").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["agents"].as_array().unwrap().len(), 0);
     }
 }
