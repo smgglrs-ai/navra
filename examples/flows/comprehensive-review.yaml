@@ -15,8 +15,10 @@ tasks:
     specialist: principal_engineer
     model: gemma4:e4b
     mandate: |
-      Use file_tree to get the project structure. Use file_read to read
-      DESIGN.md and CLAUDE.md. Return:
+      The project is at {{target_dir}}.
+      Use file_tree with path="{{target_dir}}" and depth=2 to get
+      the project structure. Use file_read to read
+      {{target_dir}}/DESIGN.md and {{target_dir}}/CLAUDE.md. Return:
       1. Complete file tree
       2. Architecture summary (crates, layering, key patterns)
       3. Project stats (file count, crate count)
