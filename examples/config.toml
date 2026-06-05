@@ -1,0 +1,192 @@
+# navra configuration example
+#
+# Copy to ~/.config/navra/config.toml and edit.
+# See CONFIG.md for the full reference.
+
+# ---------------------------------------------------------------------------
+# Server transport
+# ---------------------------------------------------------------------------
+
+[server]
+# Unix socket (default, most secure — restricted to owning user)
+socket = "~/.run/navra/navra.sock"
+
+# TCP listener (optional, localhost only)
+# tcp = "127.0.0.1:9315"
+
+# MCP protocol version
+mcp_version = "2026-07-28"
+
+# PII NER models (optional — enables ML-based PII detection)
+# pii_model_path = "~/.local/share/navra/models/pii-en"
+# pii_multilingual_model_path = "~/.local/share/navra/models/pii-multi"
+
+# ---------------------------------------------------------------------------
+# Modules
+# ---------------------------------------------------------------------------
+
+[modules.file]
+enabled = true
+db = "~/.local/share/navra/index.db"
+# watch = ["~/Projects"]    # auto-reindex these directories
+
+[modules.git]
+enabled = true
+
+[modules.github]
+enabled = true              # requires: gh auth login
+
+[modules.gitlab]
+enabled = false             # requires: glab auth login
+
+[modules.rag]
+enabled = true
+db = "~/.local/share/navra/rag.db"
+# reranker_model_path = "~/.local/share/navra/models/reranker.onnx"
+# reranker_tokenizer_path = "~/.local/share/navra/models/tokenizer.json"
+query_cache_ttl_secs = 300
+
+[modules.voice]
+enabled = false
+# asr_model = "asr"
+# tts_model = "tts"
+
+[modules.vision]
+enabled = false
+# model = "vision"
+
+[modules.memory]
+pii_filter = "standard"
+# retention_days = 90
+# pii_retention_days = 30
+# audit_retention_days = 365
+
+# ---------------------------------------------------------------------------
+# Agents
+# ---------------------------------------------------------------------------
+# Generate tokens with: navra token generate --name <name> --permissions <set>
+
+[[agents]]
+name = "claude"
+token_hash = "REPLACE_WITH_HASH_FROM_TOKEN_GENERATE"
+permissions = "dev"
+
+# [[agents]]
+# name = "goose"
+# token_hash = "..."
+# permissions = "readonly"
+
+# ---------------------------------------------------------------------------
+# Permission sets
+# ---------------------------------------------------------------------------
+
+[permissions.dev]
+ring = 1
+allow = ["file_*", "git_*", "github_*", "rag_*", "memory_*"]
+deny = ["exec_run"]
+safety = "standard"
+default_tool_policy = "allow"
+can_delegate = true
+
+# Require approval for destructive operations
+[[permissions.dev.tool_rules]]
+tool = "exec_*"
+policy = "approve"
+
+[[permissions.dev.tool_rules]]
+tool = "git_push"
+policy = "approve"
+
+[permissions.readonly]
+ring = 2
+allow = ["file_read", "file_list", "file_tree", "git_status", "git_log", "git_diff", "rag_*"]
+deny = ["file_write", "file_delete", "git_commit", "git_push", "exec_*"]
+safety = "standard"
+
+# ---------------------------------------------------------------------------
+# Upstream MCP servers
+# ---------------------------------------------------------------------------
+
+# [[upstream]]
+# name = "filesystem"
+# transport = "stdio"
+# command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+
+# [[upstream]]
+# name = "remote-tools"
+# transport = "http"
+# url = "http://localhost:8001/mcp"
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
+# Safety classifier (in-process ONNX, CPU)
+# [models.safety]
+# model_path = "~/.local/share/navra/models/safety.onnx"
+# task = "classification"
+# labels = ["safe", "unsafe"]
+# threshold = 0.5
+
+# Embeddings (via Ollama)
+# [models.embeddings]
+# source = "ollama://nomic-embed-text"
+# task = "embedding"
+# dimensions = 768
+
+# Chat model (served via llama.cpp)
+# [models.granite]
+# source = "hf://ibm-granite/granite-3.0-8b-instruct"
+# task = "chat"
+# execution_mode = "served"
+# format = "gguf"
+# context_size = 8192
+
+# ---------------------------------------------------------------------------
+# Credentials
+# ---------------------------------------------------------------------------
+
+# [credentials."github.pat"]
+# source = "env"
+# var = "GITHUB_TOKEN"
+
+# ---------------------------------------------------------------------------
+# Budget (resource limits for multi-agent flows)
+# ---------------------------------------------------------------------------
+
+[budget]
+max_agents = 50
+max_iterations = 200
+max_parallel = 2
+timeout_secs = 3600
+
+# ---------------------------------------------------------------------------
+# Approval (human-in-the-loop)
+# ---------------------------------------------------------------------------
+
+[approval]
+timeout_secs = 300
+notify = "dbus"
+
+# ---------------------------------------------------------------------------
+# Triggers (event-driven flow execution)
+# ---------------------------------------------------------------------------
+
+# [[triggers]]
+# type = "cron"
+# schedule = "0 9 * * 1-5"
+# flow_name = "daily-review"
+
+# [[triggers]]
+# type = "file_watch"
+# path = "~/Documents/inbox"
+# pattern = "*.pdf"
+# flow_name = "process-document"
+# debounce_ms = 500
+
+# ---------------------------------------------------------------------------
+# Cognitive core (personas, directives, heuristics)
+# ---------------------------------------------------------------------------
+
+# cognitive_core = "~/.config/navra/cognitive_core"
+# flow_dirs = ["~/.config/navra/flows"]
