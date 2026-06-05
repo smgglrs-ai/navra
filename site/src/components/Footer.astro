@@ -1,0 +1,72 @@
+<footer class="footer section--deep">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <div class="footer__logo-row">
+        <img src="/logo-icon.png" alt="" class="footer__icon" />
+        <span class="footer__name">smgglrs ai</span>
+      </div>
+      <p class="footer__tagline">Infrastructure for trustworthy AI agents</p>
+    </div>
+    <div class="footer__cols">
+      <div>
+        <h4>Product</h4>
+        <a href="/navra/">Navra</a>
+        <a href="/docs/papers/security-gateway.html">Research</a>
+      </div>
+      <div>
+        <h4>Resources</h4>
+        <a href="/docs/">Docs</a>
+        <a href="/docs/configuration.html">Config Reference</a>
+      </div>
+      <div>
+        <h4>Community</h4>
+        <a href="https://github.com/smgglrs-ai/navra" target="_blank">GitHub</a>
+      </div>
+    </div>
+  </div>
+  <div class="container footer__bottom">
+    <span>Apache-2.0 &middot; Built in Rust &middot; &copy; 2026 Smgglrs AI</span>
+  </div>
+</footer>
+
+<style>
+  .footer { padding: 64px 0 32px; }
+  .footer__inner {
+    display: flex;
+    justify-content: space-between;
+    gap: 64px;
+    margin-bottom: 48px;
+  }
+  .footer__logo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .footer__icon { height: 24px; width: 24px; border-radius: 4px; }
+  .footer__name { font-size: 0.9375rem; font-weight: 600; color: var(--coral); }
+  .footer__tagline { font-size: 0.8125rem; color: var(--dim); }
+  .footer__cols {
+    display: flex;
+    gap: 64px;
+  }
+  .footer__cols h4 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--slate);
+    margin-bottom: 12px;
+  }
+  .footer__cols a {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--dim);
+    margin-bottom: 8px;
+    transition: color 0.15s;
+  }
+  .footer__cols a:hover { color: var(--white); }
+  .footer__bottom {
+    border-top: 1px solid var(--border);
+    padding-top: 24px;
+    font-size: 0.75rem;
+    color: var(--dim);
+  }
+  @media (max-width: 768px) {
+    .footer__inner { flex-direction: column; gap: 32px; }
+    .footer__cols { gap: 32px; }
+  }
+</style>

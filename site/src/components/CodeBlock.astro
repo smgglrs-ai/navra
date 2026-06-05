@@ -1,0 +1,27 @@
+---
+interface Props {
+  code: string;
+}
+const { code } = Astro.props;
+---
+
+<div class="codeblock">
+  <pre><code set:text={code} /></pre>
+</div>
+
+<style>
+  .codeblock {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    overflow-x: auto;
+  }
+  pre {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.8;
+    color: #a8b2c0;
+  }
+</style>

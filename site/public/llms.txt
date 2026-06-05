@@ -1,0 +1,66 @@
+# navra
+
+> navra is a secure MCP (Model Context Protocol) gateway for AI agents on Linux. It is a Rust workspace of 22 crates that sits between AI agents and local resources, enforcing authentication (BLAKE3 tokens, capability tokens, DID:key), deny-wins path ACLs, Information Flow Control (IFC), content safety filtering (regex + ML + NER), and hash-chained audit logging on every tool call. It proxies both built-in tool modules and upstream MCP servers through a unified security layer. The project has 2400+ tests and 138 Kani formal verification proofs. Licensed under Apache-2.0.
+
+navra is not an agent framework or SDK. It is infrastructure — a gateway daemon that enforces security at the transport layer. Orchestration belongs in the agent. Modules like navra-rag can also run as standalone microservices for composability.
+
+Default config path: `~/.config/navra/config.toml`. Build requires ONNX Runtime (`onnxruntime-devel` on Fedora) and environment variables `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1`.
+
+## Docs
+
+- [WHY-NAVRA.md](https://github.com/smgglrs-ai/navra/blob/main/WHY-NAVRA.md): What navra does differently — IFC, deny-wins ACLs, formal proofs, composable architecture, competitive comparison
+- [CONFIG.md](https://github.com/smgglrs-ai/navra/blob/main/CONFIG.md): Complete configuration reference — every TOML key, type, default value, and description
+- [CHANGELOG.md](https://github.com/smgglrs-ai/navra/blob/main/CHANGELOG.md): Project history by month — features, fixes, documentation changes
+- [DESIGN.md](https://github.com/smgglrs-ai/navra/blob/main/DESIGN.md): Full architecture, MCP protocol implementation, security model, defense-in-depth layers, threat model
+- [TESTING.md](https://github.com/smgglrs-ai/navra/blob/main/TESTING.md): Test prerequisites, how to run unit/integration/e2e tests, per-crate test counts
+- [CONTRIBUTING.md](https://github.com/smgglrs-ai/navra/blob/main/CONTRIBUTING.md): Contribution guidelines, commit conventions, DCO sign-off, code style
+- [SECURITY.md](https://github.com/smgglrs-ai/navra/blob/main/SECURITY.md): Vulnerability disclosure policy, scope, response timeline
+- [MODELS.md](https://github.com/smgglrs-ai/navra/blob/main/MODELS.md): Model integration architecture, CPU/GPU tiers, hardware profiles, ONNX and served model setup
+- [ROADMAP.md](https://github.com/smgglrs-ai/navra/blob/main/ROADMAP.md): Phased development plan, dependency graph, current priorities
+
+## Architecture
+
+- [README.md](https://github.com/smgglrs-ai/navra/blob/main/README.md): Project overview, features, quickstart, workspace layout, architecture diagram
+- [DISCOVERY.md](https://github.com/smgglrs-ai/navra/blob/main/DISCOVERY.md): Agent and tool discovery landscape — AID, A2A, MCP Server Cards, DNS-SD
+- [OPENSHELL.md](https://github.com/smgglrs-ai/navra/blob/main/OPENSHELL.md): OpenShell integration for sandboxed agent execution, identity federation, A2A mesh
+
+## Crates
+
+- [navra-protocol](https://github.com/smgglrs-ai/navra/blob/main/navra-protocol/README.md): MCP/A2A/JSON-RPC types and upstream client transports
+- [navra-model](https://github.com/smgglrs-ai/navra/blob/main/navra-model/README.md): Model backend trait with ONNX, OpenAI, and Anthropic implementations
+- [navra-security](https://github.com/smgglrs-ai/navra/blob/main/navra-security/README.md): Auth, permissions, IFC, safety filters, hook pipeline, upstream tool scanning
+- [navra-core](https://github.com/smgglrs-ai/navra/blob/main/navra-core/README.md): MCP server, Module trait, session management, transport layer
+- [navra-agent](https://github.com/smgglrs-ai/navra/blob/main/navra-agent/README.md): Agent builder, MCP client, ReAct tool-use loop, standalone binary
+- [navra-flow](https://github.com/smgglrs-ai/navra/blob/main/navra-flow/README.md): Multi-agent flows — DAG execution, handoff routing, mesh communication, mandate validation
+- [navra-rag](https://github.com/smgglrs-ai/navra/blob/main/navra-rag/README.md): Hybrid FTS5+vector search, RRF fusion, cross-encoder reranking, confidence gating
+- [navra-memory](https://github.com/smgglrs-ai/navra/blob/main/navra-memory/README.md): Working memory and knowledge store with FTS5
+- [navra-cognitive](https://github.com/smgglrs-ai/navra/blob/main/navra-cognitive/README.md): Persona/directive/heuristic YAML loader and prompt weaver
+- [navra-tools-file](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-file/README.md): File tools, SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs
+- [navra-tools-git](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-git/README.md): Git tools — status, diff, log, branch, commit, push, pull, fetch
+- [navra-tools-github](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-github/README.md): GitHub forge tools — PR create/list/view, issue create/list/comment via gh CLI
+- [navra-tools-gitlab](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-gitlab/README.md): GitLab forge tools — MR create/list/view, issue create/list/comment via glab CLI
+- [navra-tools-exec](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-exec/README.md): Command execution inside OpenShell sandboxes or directly on host
+- [navra-macros](https://github.com/smgglrs-ai/navra/blob/main/navra-macros/README.md): #[tool] proc macro for generating tool definitions from async functions
+
+## Guides
+
+- [Integration Guide](https://github.com/smgglrs-ai/navra/blob/main/docs/integration-guide.md): How to connect MCP clients to navra, persona prompts, security benefits
+- [Goose Integration](https://github.com/smgglrs-ai/navra/blob/main/docs/goose-integration.md): Token generation, navra config, Goose config, verification steps
+- [MCP Tunnels](https://github.com/smgglrs-ai/navra/blob/main/docs/mcp-tunnels.md): Anthropic and OpenAI tunnel setup and config examples
+- [OWASP ASI Compliance](https://github.com/smgglrs-ai/navra/blob/main/docs/owasp-asi-compliance.md): Mapping of navra controls to OWASP ASI01-ASI10
+- [Example Config](https://github.com/smgglrs-ai/navra/blob/main/examples/config.toml): Annotated starter configuration file
+
+## Research
+
+- [Security Gateway Paper](https://github.com/smgglrs-ai/navra/blob/main/docs/papers/security-gateway.md): Gateway-enforced IFC, capability delegation, hash-chained audit — 138 Kani proofs
+- [Formal Verification](https://github.com/smgglrs-ai/navra/blob/main/formal/README.md): TLA+ and Kani harnesses, verification methodology
+- [Proof Map](https://github.com/smgglrs-ai/navra/blob/main/formal/PROOF_MAP.md): Traceability from TLA+ properties to Rust implementations and Kani harnesses
+
+## Optional
+
+- [Persona Orchestration Paper](https://github.com/smgglrs-ai/navra/blob/main/docs/papers/persona-orchestration.md): Persona-driven multi-agent orchestration framework (draft)
+- [Audit Blackbox Paper](https://github.com/smgglrs-ai/navra/blob/main/docs/papers/audit-blackbox.md): Always-on hash-chained audit for AI agent gateways (draft)
+- [Model Cards Paper](https://github.com/smgglrs-ai/navra/blob/main/docs/papers/model-cards.md): Composite model cards for agentic AI registry metadata
+- [Semantic Leakage Detection](https://github.com/smgglrs-ai/navra/blob/main/docs/semantic-leakage-detection.md): L1/L2/L3 leakage detection with embedding models and LLM judge
+- [Model Scheduling Design](https://github.com/smgglrs-ai/navra/blob/main/docs/designs/model-scheduling.md): Cost-aware model scheduling and routing design
+- [OpenShell Sandbox Design](https://github.com/smgglrs-ai/navra/blob/main/docs/designs/openshell-sandbox.md): OpenShell sandbox integration design

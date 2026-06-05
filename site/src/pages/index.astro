@@ -1,0 +1,122 @@
+---
+import Base from '../layouts/Base.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<Base title="Smgglrs AI — Infrastructure for trustworthy AI agents">
+  <Nav />
+
+  <section class="hero section--dark">
+    <div class="container">
+      <p class="label">Open Source</p>
+      <h1 class="hero__title">Infrastructure for<br/>trustworthy AI agents</h1>
+      <p class="hero__sub">Security and orchestration tools for the MCP ecosystem.<br/>Built in Rust. Proven with formal verification.</p>
+      <div class="hero__cta">
+        <a href="/navra/" class="btn btn--coral">Explore Navra &rarr;</a>
+        <a href="https://github.com/smgglrs-ai/navra" target="_blank" class="btn btn--ghost">GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="projects section--light">
+    <div class="container">
+      <div class="grid-3">
+        <a href="/navra/" class="pcard">
+          <h3 class="pcard__title">navra</h3>
+          <p class="pcard__desc">Secure MCP gateway for AI agents. 22 crates, 2400+ tests, deny-wins ACLs, IFC, in-process ML safety.</p>
+          <span class="pcard__link">Learn more &rarr;</span>
+        </a>
+        <a href="https://github.com/smgglrs-ai/navra/tree/main/docs/papers" target="_blank" class="pcard">
+          <h3 class="pcard__title">Research</h3>
+          <p class="pcard__desc">6 papers on gateway security, persona orchestration, audit trails, and model cards. 138 Kani proofs.</p>
+          <span class="pcard__link">Read papers &rarr;</span>
+        </a>
+        <div class="pcard pcard--muted">
+          <h3 class="pcard__title">More coming</h3>
+          <p class="pcard__desc">Additional tools and libraries for the trustworthy agent stack. Stay tuned.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="quote section--dark">
+    <div class="container">
+      <blockquote class="quote__text">
+        &ldquo;The code is ahead of the evidence.<br/>Time to prove it.&rdquo;
+      </blockquote>
+    </div>
+  </section>
+
+  <Footer />
+</Base>
+
+<style>
+  .hero { padding: 120px 0 100px; }
+  .hero__title {
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 20px;
+  }
+  .hero__sub {
+    font-size: 1.125rem;
+    color: var(--slate);
+    line-height: 1.7;
+    margin-bottom: 40px;
+    max-width: 520px;
+  }
+  .hero__cta { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  .pcard {
+    display: block;
+    padding: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--border-light);
+    background: var(--white);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .pcard:hover {
+    border-color: var(--coral);
+    box-shadow: 0 4px 24px rgba(248, 91, 84, 0.08);
+  }
+  .pcard--muted {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .pcard__title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 8px;
+  }
+  .pcard__desc {
+    font-size: 0.875rem;
+    color: var(--slate);
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+  .pcard__link {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--coral);
+  }
+
+  .quote { padding: 80px 0; text-align: center; }
+  .quote__text {
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--slate);
+    font-style: italic;
+    line-height: 1.6;
+    border: none;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  @media (max-width: 768px) {
+    .hero { padding: 80px 0 60px; }
+    .hero__title { font-size: 2rem; }
+    .quote__text { font-size: 1.125rem; }
+  }
+</style>
