@@ -2700,9 +2700,21 @@ pub fn select_model_for_task(
 
     let (needs_tools, needs_reasoning, needs_json) = task_requirements(persona, mandate);
 
-    let mut scored: Vec<(&ModelCard, i32)> = cards
+    // Filter out embedding-only models — they can't chat or call tools
+    let chat_cards: Vec<&ModelCard> = cards
+        .iter()
+        .filter(|c| {
+            let uri = &c.model_uri;
+            // Skip models known to be embedding-only
+            !uri.contains("embed") && !uri.contains("nomic") && !uri.contains("bge")
+        })
+        .collect();
+    let candidates = if chat_cards.is_empty() { cards.iter().collect() } else { chat_cards };
+
+    let mut scored: Vec<(&ModelCard, i32)> = candidates
         .iter()
         .map(|card| {
+            let card = *card;
             let a = &card.agentic;
             let mut score: i32 = 0;
 
