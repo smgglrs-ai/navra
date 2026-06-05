@@ -27,6 +27,29 @@ for isolation. GPU detection is provided by `detect_gpus()`.
 - `GpuDevice` / `GpuKind` -- GPU detection
 - `RuntimeBackend` -- Direct, Podman, or Libkrun
 
+## Configuration
+
+```toml
+[models.granite]
+source = "hf://ibm-granite/granite-3.0-8b-instruct"
+task = "chat"
+format = "gguf"
+execution_mode = "served"     # start a llama-server
+runtime = "podman"            # run in a container
+context_size = 8192
+parallel = 2                  # concurrent request slots
+```
+
+GPU detection:
+
+```rust
+use navra_model_runtime::detect_gpus;
+
+for gpu in detect_gpus()? {
+    println!("{}: {} ({} MB)", gpu.kind, gpu.name, gpu.memory_mb);
+}
+```
+
 ## Dependency layer
 
 ```

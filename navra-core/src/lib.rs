@@ -1,8 +1,9 @@
-// Facade: downstream module crates (tools-*, rag, modal-*, memory, server)
-// depend only on navra-core and reach security/protocol/model types
-// through these re-exports.  Crates that already have a direct dependency
-// on navra-security or navra-protocol (agent, flow, benchmarks) may
-// import from those crates directly.
+//! MCP server framework and module system for navra.
+//!
+//! This crate provides the `Module` trait, `McpServer` builder, session
+//! management, transport layer, and re-exports from `navra-security`,
+//! `navra-protocol`, and `navra-model`. Downstream module crates
+//! (tools-\*, rag, modal-\*, memory) depend only on this crate.
 pub use navra_security::auth;
 pub use navra_security::credentials;
 pub use navra_security::hooks;

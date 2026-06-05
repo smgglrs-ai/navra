@@ -1,3 +1,9 @@
+//! navra — secure MCP gateway daemon.
+//!
+//! CLI entry point, configuration loading, module wiring, systemd
+//! integration, and system tray. Composes all navra-* crates into
+//! a running gateway.
+
 mod acp_agent;
 mod build_tools;
 mod cli;

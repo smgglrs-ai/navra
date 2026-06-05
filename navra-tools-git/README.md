@@ -1,36 +1,57 @@
 # navra-tools-git
 
-Git module for the navra gateway.
+Git tools for the navra gateway.
 
 ## Overview
 
-Provides MCP tools for interacting with git repositories through
-the gateway's security layer. Destructive operations (commit)
-require approval via the permission engine.
+Provides MCP tools for Git operations on local repositories.
+All operations go through navra's permission engine — destructive
+actions like `git_push` and `git_commit` can be gated behind
+human-in-the-loop approval.
 
-## Tools provided
+## Tools
 
 | Tool | Description |
 |---|---|
-| `git_status` | Show working tree status |
-| `git_diff` | Show changes (staged, unstaged, or between refs) |
-| `git_log` | Show commit history |
-| `git_branch` | List or show current branch |
-| `git_commit` | Create a commit (requires approval) |
+| `git_status` | Working tree status (staged, modified, untracked) |
+| `git_diff` | Show changes between commits, working tree, or staged |
+| `git_log` | Commit history with optional path filter and limit |
+| `git_branch` | List, create, or delete branches |
+| `git_commit` | Create a commit with message (requires approval if configured) |
+| `git_push` | Push commits to remote (requires approval if configured) |
+| `git_pull` | Pull from remote with rebase or merge |
+| `git_fetch` | Fetch refs from remote without merging |
 
-## Key types
+## Configuration
 
-- `GitModule` -- implements `Module` trait, registers git tools
+```toml
+[modules.git]
+enabled = true
+```
 
-## Dependency layer
+Approval for destructive operations is configured in the
+permission set:
+
+```toml
+[[permissions.dev.tool_rules]]
+tool = "git_push"
+policy = "approve"
+
+[[permissions.dev.tool_rules]]
+tool = "git_commit"
+policy = "approve"
+```
+
+## Commit Signing
+
+When an agent has a `signing_key` configured in its `[[agents]]`
+block, `git_commit` uses that Ed25519 key to sign commits
+automatically.
+
+## Dependency Layer
 
 ```
 navra-core
     |
 navra-tools-git
 ```
-
-## Reference
-
-See [DESIGN.md](../DESIGN.md) for the module trait design and
-permission model for destructive operations.

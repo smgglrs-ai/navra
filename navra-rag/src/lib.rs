@@ -1,3 +1,9 @@
+//! Retrieval-augmented generation for navra.
+//!
+//! Hybrid FTS5 + sqlite-vec vector search with RRF fusion, breadcrumb
+//! chunking, cross-encoder reranking (batched), and cascading confidence
+//! gates. Can run as a standalone MCP server for composable deployment.
+
 pub mod agentic;
 pub mod cache;
 pub mod chunk;

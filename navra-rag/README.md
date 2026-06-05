@@ -58,6 +58,39 @@ relevance.
 - `NoopReranker` -- passthrough for graceful degradation when no
   model is available.
 
+## Standalone Mode
+
+navra-rag can run as an independent MCP server in its own process
+or container, enabling composable deployment. This is useful when
+RAG workload should be isolated from the main gateway:
+
+```bash
+# Run as standalone MCP server
+cargo run -p navra-rag --bin navra-rag -- --db /path/to/rag.db --port 9316
+```
+
+The standalone server exposes the same `rag_*` tools over MCP
+Streamable HTTP, and can be connected to navra as an upstream:
+
+```toml
+[[upstream]]
+name = "rag"
+transport = "http"
+url = "http://localhost:9316/mcp"
+```
+
+## Configuration
+
+```toml
+[modules.rag]
+enabled = true
+db = "~/.local/share/navra/rag.db"
+reranker_model_path = "~/.local/share/navra/models/reranker.onnx"
+reranker_tokenizer_path = "~/.local/share/navra/models/tokenizer.json"
+query_cache_ttl_secs = 300
+query_cache_max_entries = 1000
+```
+
 ## Dependency layer
 
 ```
