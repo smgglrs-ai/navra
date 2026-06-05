@@ -26,6 +26,20 @@ agentic capabilities, and runtime statistics.
 - `ModelCache` -- content-addressed local storage
 - `ModelTransport` / `PullProgress` -- registry transport trait
 
+## Model Cards
+
+Each cached model has a `ModelCard` with three layers:
+
+1. **VendorMeta** — auto-populated from registry metadata (architecture,
+   parameter count, license, quantization)
+2. **AgenticMeta** — operator-defined capabilities, configured in
+   `[models.<name>.agentic]` (strengths, weaknesses, cost/speed tier)
+3. **RuntimeMeta** — auto-populated at inference time (latency p50/p95,
+   tokens/sec, memory usage)
+
+This three-layer schema enables runtime model selection based on
+task requirements, cost, and measured performance.
+
 ## Dependency layer
 
 ```

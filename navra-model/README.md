@@ -33,6 +33,27 @@ wire format internally.
 `ClassifyResponse`, `GenerateRequest`, `GenerateResponse`,
 `Locality` (Local vs Remote), `SafeModelBackend`.
 
+## Configuration
+
+```toml
+# In-process ONNX model (CPU, no external dependencies)
+[models.safety]
+model_path = "~/.local/share/navra/models/safety.onnx"
+task = "classification"
+labels = ["safe", "unsafe"]
+threshold = 0.5
+
+# Remote model via OpenAI-compatible API (Ollama, vLLM)
+[models.granite]
+source = "ollama://granite-code:3b"
+task = "chat"
+
+# Cloud model
+[models.claude]
+task = "chat"
+# Requires ANTHROPIC_API_KEY environment variable
+```
+
 ## Dependency layer
 
 ```

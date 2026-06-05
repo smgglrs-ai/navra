@@ -1,3 +1,9 @@
+//! File system tools for navra.
+//!
+//! Provides `file_read`, `file_write`, `file_list`, `file_tree`, and
+//! `file_search` tools backed by SQLite FTS5 and sqlite-vec. Includes
+//! a file watcher for automatic reindexing.
+
 mod store;
 mod tools;
 pub mod watcher;

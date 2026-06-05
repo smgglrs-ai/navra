@@ -17,6 +17,21 @@ via `ModelBackend::generate` with image inputs.
 - `screenshot` module -- screen capture via D-Bus / XDG Desktop Portal
   - `capture_screen()` -- returns path to captured screenshot
 
+## Tools
+
+| Tool | Description |
+|---|---|
+| `vision_capture` | Capture a screenshot via XDG Desktop Portal (shows consent dialog) |
+| `vision_analyze` | Analyze an image with a vision-capable model |
+
+## Configuration
+
+```toml
+[modules.vision]
+enabled = true
+model = "vision"           # model name in [models.*]
+```
+
 ## Dependency layer
 
 ```

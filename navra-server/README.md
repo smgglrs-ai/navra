@@ -51,5 +51,5 @@ Default path: `~/.config/navra/config.toml`
 
 ## Reference
 
-See [DESIGN.md](../DESIGN.md) for the full configuration reference
-and server architecture.
+See [CONFIG.md](../CONFIG.md) for the full configuration reference
+and [DESIGN.md](../DESIGN.md) for the server architecture.
