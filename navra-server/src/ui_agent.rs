@@ -552,6 +552,7 @@ mod tests {
             forge,
             memory,
             listen_addr: "127.0.0.1:0".to_string(),
+            context_retriever: None,
         })
     }
 

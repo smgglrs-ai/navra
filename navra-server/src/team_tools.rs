@@ -1743,24 +1743,45 @@ fn spawn_containerized_agent(
                                 let _ = audit.begin_run(&run);
                             }
 
-                            reg.set_output(&team_id, &teammate_id, response);
+                            // Prefer blackboard findings over stdout
+                            let bb_key = format!("findings/{}", teammate_id);
+                            let bb_output = reg.bb_read(&team_id, &bb_key).map(|e| e.value);
+                            let final_output = if let Some(bb) = bb_output {
+                                tracing::info!(
+                                    team = %team_id, teammate = %teammate_id,
+                                    "Using blackboard output (key: {bb_key})"
+                                );
+                                bb
+                            } else {
+                                response
+                            };
+                            reg.set_output(&team_id, &teammate_id, final_output);
                         }
                         Err(e) => {
-                            // If we can't parse JSON, use raw stdout as output
-                            let raw = stdout.trim().to_string();
-                            if !raw.is_empty() {
-                                tracing::warn!(
+                            // Check blackboard before falling back to raw stdout
+                            let bb_key = format!("findings/{}", teammate_id);
+                            if let Some(bb) = reg.bb_read(&team_id, &bb_key).map(|e| e.value) {
+                                tracing::info!(
                                     team = %team_id, teammate = %teammate_id,
-                                    error = %e,
-                                    "Could not parse container JSON output, using raw text"
+                                    "Stdout not parseable but blackboard has findings"
                                 );
-                                reg.set_output(&team_id, &teammate_id, raw);
+                                reg.set_output(&team_id, &teammate_id, bb);
                             } else {
-                                reg.set_failed(
-                                    &team_id,
-                                    &teammate_id,
-                                    format!("Container produced no output. stderr: {stderr}"),
-                                );
+                                let raw = stdout.trim().to_string();
+                                if !raw.is_empty() {
+                                    tracing::warn!(
+                                        team = %team_id, teammate = %teammate_id,
+                                        error = %e,
+                                        "Could not parse container JSON output, using raw text"
+                                    );
+                                    reg.set_output(&team_id, &teammate_id, raw);
+                                } else {
+                                    reg.set_failed(
+                                        &team_id,
+                                        &teammate_id,
+                                        format!("Container produced no output. stderr: {stderr}"),
+                                    );
+                                }
                             }
                         }
                     }
