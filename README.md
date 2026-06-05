@@ -234,13 +234,20 @@ the approval workflow.
 
 ## Documentation
 
-- [DESIGN.md](DESIGN.md) — full architecture, protocol, security model, config reference
+- [WHY-NAVRA.md](WHY-NAVRA.md) — what navra does differently and why it exists
+- [CONFIG.md](CONFIG.md) — complete configuration reference (every TOML key, type, default)
+- [CHANGELOG.md](CHANGELOG.md) — project history by month
+- [DESIGN.md](DESIGN.md) — full architecture, protocol, security model
 - [TESTING.md](TESTING.md) — test prerequisites, running tests, crate test counts
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidelines, commit conventions, DCO
+- [SECURITY.md](SECURITY.md) — vulnerability disclosure policy
 - [ROADMAP.md](ROADMAP.md) — phased development plan
 - [MODELS.md](MODELS.md) — model integration architecture, CPU/GPU tiers, hardware profiles
 - [DISCOVERY.md](DISCOVERY.md) — agent/tool discovery landscape (AID, A2A, MCP Server Cards)
 - [OPENSHELL.md](OPENSHELL.md) — OpenShell integration for sandboxed agent execution
+- [examples/config.toml](examples/config.toml) — annotated starter configuration
+- [llms.txt](llms.txt) — AI-friendly documentation index ([spec](https://llmstxt.org/))
 
 ## License
 
-[BSD-3-Clause](LICENSE)
+[Apache License 2.0](LICENSE)
