@@ -1556,6 +1556,14 @@ fn spawn_containerized_agent(
                     model = "granite3.3:8b".to_string();
                 }
             }
+            if let Some(bare) = model.strip_prefix("ollama://") {
+                model = bare.to_string();
+            }
+            // Strip hub prefixes — the model name passed to Ollama/vLLM
+            // must be a bare model name, not a URI.
+            if let Some(bare) = model.strip_prefix("ollama://") {
+                model = bare.to_string();
+            }
 
             // Determine model endpoint: shared model server or host Ollama
             let model_endpoint = model_server_url
@@ -1901,6 +1909,9 @@ fn spawn_openshell_agent(
                 } else {
                     model = "granite3.3:8b".to_string();
                 }
+            }
+            if let Some(bare) = model.strip_prefix("ollama://") {
+                model = bare.to_string();
             }
 
             let model_endpoint = model_server_url
@@ -2355,6 +2366,9 @@ pub fn spawn_teammate_agent(
                 }
             }
 
+            if let Some(bare) = teammate_model.strip_prefix("ollama://") {
+                teammate_model = bare.to_string();
+            }
             reg.set_resolved_model(&team_id, &teammate_id, &teammate_model);
             eprintln!("  [teammate] {} → model: {}", teammate_id, teammate_model);
 
