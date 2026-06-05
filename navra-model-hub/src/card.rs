@@ -49,6 +49,18 @@ impl ModelCard {
         }
     }
 
+    /// The model name for inference API calls (Ollama, vLLM, OpenAI).
+    /// Strips hub URI prefixes — agents call models by name, not by
+    /// registry address.
+    pub fn inference_name(&self) -> &str {
+        for prefix in ["ollama://", "hf://", "oci://"] {
+            if let Some(bare) = self.model_uri.strip_prefix(prefix) {
+                return bare;
+            }
+        }
+        &self.model_uri
+    }
+
     /// Merge operator-defined agentic metadata into this card.
     /// Non-empty fields in `other` overwrite existing values.
     pub fn merge_agentic(&mut self, other: &AgenticMeta) {
