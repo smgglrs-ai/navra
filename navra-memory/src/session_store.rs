@@ -22,6 +22,7 @@ impl SqliteSessionBackend {
     /// Open or create a session store at the given path.
     pub fn open(path: &std::path::Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
+        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
         let store = Self { db: Mutex::new(db) };
         store.init_schema()?;
         Ok(store)

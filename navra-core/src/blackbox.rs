@@ -45,6 +45,8 @@ impl Blackbox {
     /// Open or create a blackbox at the given path.
     pub fn open(path: &std::path::Path) -> Result<Self, String> {
         let db = Connection::open(path).map_err(|e| format!("blackbox open failed: {e}"))?;
+        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+            .map_err(|e| format!("blackbox pragma failed: {e}"))?;
 
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS blackbox (

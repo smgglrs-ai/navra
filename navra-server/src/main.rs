@@ -325,17 +325,43 @@ async fn main() -> anyhow::Result<()> {
             token,
             max_iterations,
             upstream_prompts,
+            dry_run,
         } => {
-            run_agent(
-                &prompt,
-                model.as_deref(),
-                &persona,
-                &endpoint,
-                token.as_deref(),
-                max_iterations,
-                &upstream_prompts,
-            )
-            .await?;
+            if dry_run {
+                println!("--- Dry Run ---");
+                println!("Endpoint: {endpoint}");
+                println!("Model: {}", model.as_deref().unwrap_or("auto-detect"));
+                println!("Persona: {persona}");
+                println!("Max iterations: {max_iterations}");
+                if !upstream_prompts.is_empty() {
+                    println!("Upstream prompts: {}", upstream_prompts.join(", "));
+                }
+                let forge = navra_cognitive::ForgeService::empty();
+                match navra_cognitive::assemble(&forge, &persona, &prompt, None, None) {
+                    Ok(output) => {
+                        println!("\n--- System Prompt ---");
+                        println!("{}", output.system_prompt());
+                        println!("\n--- User Prompt ---");
+                        println!("{prompt}");
+                    }
+                    Err(e) => {
+                        println!("\nPersona '{persona}' not found: {e}");
+                        println!("\n--- User Prompt ---");
+                        println!("{prompt}");
+                    }
+                }
+            } else {
+                run_agent(
+                    &prompt,
+                    model.as_deref(),
+                    &persona,
+                    &endpoint,
+                    token.as_deref(),
+                    max_iterations,
+                    &upstream_prompts,
+                )
+                .await?;
+            }
         }
         Commands::Audit {
             limit,
@@ -4694,12 +4720,36 @@ async fn run_agent(
 }
 
 pub(crate) fn expand_tilde(path: &str) -> String {
-    if path.starts_with("~/") {
+    let mut result = path.to_string();
+    if result.starts_with("~/") {
         if let Some(home) = dirs::home_dir() {
-            return format!("{}{}", home.display(), &path[1..]);
+            result = format!("{}{}", home.display(), &result[1..]);
         }
     }
-    path.to_string()
+    // Expand $VAR and ${VAR} patterns
+    let mut out = String::with_capacity(result.len());
+    let mut chars = result.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '$' {
+            let braced = chars.peek() == Some(&'{');
+            if braced { chars.next(); }
+            let var_name: String = chars
+                .by_ref()
+                .take_while(|&ch| if braced { ch != '}' } else { ch.is_alphanumeric() || ch == '_' })
+                .collect();
+            if let Ok(val) = std::env::var(&var_name) {
+                out.push_str(&val);
+            } else {
+                out.push('$');
+                if braced { out.push('{'); }
+                out.push_str(&var_name);
+                if braced { out.push('}'); }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 fn audit_command(

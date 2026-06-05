@@ -81,16 +81,16 @@ pub(crate) enum Commands {
         #[arg(short, long)]
         model: Option<String>,
         /// Persona to use (default: leader)
-        #[arg(long, default_value = "leader")]
+        #[arg(short, long, default_value = "leader")]
         persona: String,
         /// navra endpoint URL
-        #[arg(long, default_value = "http://127.0.0.1:9315/mcp")]
+        #[arg(short, long, default_value = "http://127.0.0.1:9315/mcp")]
         endpoint: String,
         /// Auth token (reads from MCPD_TOKEN env if not set)
-        #[arg(long)]
+        #[arg(short, long)]
         token: Option<String>,
         /// Max iterations (default 200, set lower for quick tasks)
-        #[arg(long, default_value = "200")]
+        #[arg(short = 'n', long, default_value = "200")]
         max_iterations: usize,
         /// Inject an upstream MCP prompt into the system prompt.
         /// Format: "upstream:prompt_name" (e.g., "syllogis:legal_analysis").
@@ -98,6 +98,9 @@ pub(crate) enum Commands {
         /// Can be repeated.
         #[arg(long = "upstream-prompt")]
         upstream_prompts: Vec<String>,
+        /// Preview the constructed prompt without executing
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Manage the PII NER model
     Pii {

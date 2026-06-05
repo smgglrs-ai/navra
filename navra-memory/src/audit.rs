@@ -106,6 +106,7 @@ impl AuditLog {
     /// Open audit log from a file path.
     pub fn open(path: &Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
+        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
         let log = Self {
             db: Mutex::new(db),
             sanitizer: None,
