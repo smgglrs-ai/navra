@@ -12,22 +12,38 @@ parameters:
 
 tasks:
   - id: scout
-    specialist: principal_engineer
-    model: gemma4:e4b
+    specialist: assessor
+    model: gemma4:26b
     mandate: |
+      You are a project scout. Your job is to thoroughly explore the
+      codebase and produce a complete inventory.
+
       The project is at {{target_dir}}.
-      Use file_tree with path="{{target_dir}}" and depth=2 to get
-      the project structure. Use file_read to read
-      {{target_dir}}/DESIGN.md and {{target_dir}}/CLAUDE.md.
+
+      Step 1: Use file_tree with path="{{target_dir}}" and depth=2
+              to discover the project structure.
+      Step 2: Identify the project type from what you find (Rust workspace,
+              Python package, Node.js, Go module, etc.).
+      Step 3: Read the main documentation files you discover (README,
+              DESIGN docs, CONTRIBUTING, etc.) using file_read with
+              absolute paths starting with {{target_dir}}/.
+      Step 4: For each module/package/crate directory you find, read its
+              manifest (Cargo.toml, package.json, go.mod, pyproject.toml)
+              and entry point (lib.rs, __init__.py, main.go, index.ts).
+      Step 5: Use file_grep to find test files and count them.
+
+      Be thorough. Explore every top-level directory. Read as many files
+      as you need to understand the full project. Do not stop after 2 files.
 
       When done, publish your findings to the team blackboard:
-        team_bb_publish(key="scout/report", value=<your full report>)
+        team_bb_publish(key="findings/scout", value=<your full report>)
 
       Your report must contain:
-      1. Complete file tree
-      2. Architecture summary (crates, layering, key patterns)
-      3. Project stats (file count, crate count)
-    expected_output: File tree, architecture summary, project stats
+      1. Complete file tree with line counts
+      2. Per-module summary (purpose, dependencies, public API surface)
+      3. Architecture overview (layering, data flow, key patterns)
+      4. Project stats (module count, test count, LoC estimate)
+    expected_output: Comprehensive project inventory
 
   - id: planner
     specialist: analyst
@@ -51,8 +67,11 @@ tasks:
       Produce a JSON array of tasks. CRITICAL CONSTRAINTS:
 
       1. Each mandate MUST include these two instructions at the end:
-         - "The project is at {{target_dir}}. Use file_read with absolute paths."
-         - "When done, publish your findings: team_bb_publish(key=\"findings/<your_task_id>\", value=<your report>)"
+         - "The project is at {{target_dir}}. Use file_read with absolute
+           paths starting with {{target_dir}}/. Read multiple files to
+           build a thorough understanding. Do not stop after one file."
+         - "When done, publish your findings:
+           team_bb_publish(key=\"findings/<your_task_id>\", value=<report>)"
 
       2. Each task: id, specialist, model ("auto"), mandate.
 
@@ -61,13 +80,10 @@ tasks:
          "tech_writer", "assessor". Do NOT invent specialist names.
 
       4. Scale: 5-10 tasks. One task per concern area.
-         GOOD mandate: "Read navra-rag/src/ with file_read.
-         Check chunking logic, vector store operations, and cache
-         TTL handling. Report issues with file:line references.
-         The project is at {{target_dir}}. Use file_read with absolute paths.
-         When done, publish: team_bb_publish(key=\"findings/rag_review\", value=<report>)"
+         Each mandate should name 3-5 specific files or directories
+         to read, not just one.
 
-      5. The model field MUST be "auto" (not a URI or model name).
+      5. The model field MUST be "gemma4:26b" for all tasks.
 
       Output ONLY the JSON array.
     depends_on: [scout]

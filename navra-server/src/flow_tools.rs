@@ -1027,7 +1027,6 @@ async fn spawn_and_track_tasks(
         } else {
             (ctx.budget_cfg.max_iterations / ready.len().max(1))
                 .max(10)
-                .min(30)
         };
         let handle = crate::team_tools::spawn_teammate_agent(
             &spawn_ctx,
