@@ -347,6 +347,60 @@ for human-in-the-loop approval of high-risk operations.
 Flow nodes appear as separate ACP agent manifests, discoverable
 via `GET /acp/agents`. See `docs/acp.md` for full reference.
 
+### OpenAI-Compatible Model Proxy
+
+navra exposes an OpenAI-compatible endpoint at `/v1/chat/completions`
+that proxies to the upstream model server (Ollama by default). All
+agent model calls route through this endpoint so every interaction
+passes through the gateway's security stack:
+
+- **Safety filters** — PII NER, regex, and ML-based filters run on
+  both inbound (user/system messages) and outbound (assistant
+  responses). Blocked content returns a `safety_error`.
+- **Blackbox audit** — every model call is recorded with agent name,
+  model, truncated response, and duration.
+- **Persona injection** — `X-Persona` header or `persona:` prefix in
+  the first system message triggers cognitive persona assembly.
+- **Prometheus metrics** — `navra_model_proxy_requests_total` counter.
+
+The proxy forwards raw OpenAI JSON to the upstream, preserving
+`tool_calls`, `tool_choice`, and the requested model name. This means
+agents can request any model available in Ollama (e.g., `gemma4:26b`)
+without it being configured in `[models.*]`.
+
+Container agents (Podman/OpenShell) reach the proxy at
+`http://10.0.2.2:{port}/v1` via slirp4netns. In-process agents use
+`http://localhost:{port}/v1`.
+
+A `/v1/models` endpoint is also available, proxied to Ollama's
+model listing.
+
+```
+Agent (in container or in-process)
+    │
+    │ POST /v1/chat/completions (OpenAI format)
+    ▼
+navra gateway (:9315)
+    ├── Auth (Bearer token / capability token)
+    ├── Safety filter: inbound messages
+    ├── Persona injection (optional)
+    │
+    │ POST /v1/chat/completions (forwarded)
+    ▼
+Ollama (:11434)
+    │
+    │ Response
+    ▼
+navra gateway
+    ├── Safety filter: outbound response
+    ├── Blackbox audit record
+    ├── Prometheus counter
+    │
+    │ Response (filtered)
+    ▼
+Agent
+```
+
 ### Auth
 
 Pluggable via `Authenticator` trait. BLAKE3 token-based implementation:
