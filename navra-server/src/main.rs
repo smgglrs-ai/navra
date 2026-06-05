@@ -1,8 +1,10 @@
+mod acp_agent;
 mod build_tools;
 mod cli;
 mod config;
 mod config_watcher;
 mod demo;
+mod direct_transport;
 mod discover;
 mod flow_tools;
 mod grpc_manager;
@@ -3899,9 +3901,77 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             };
 
             // --- ACP (Agent Client Protocol) transport ---
-            let acp_router = navra_core::transport::build_acp_router(server.clone());
+            let acp_chat_model: Option<Arc<dyn navra_model::ModelBackend>> = cfg
+                .models
+                .iter()
+                .find(|(_, m)| m.task == "chat" || m.task == "generate")
+                .map(|(name, _)| name.clone())
+                .and_then(|name| models.get(&name))
+                .cloned();
+
+            let acp_flow_summaries: Vec<navra_core::acp::types::FlowSummary> = {
+                let mut summaries = Vec::new();
+                for dir in &resolved_flow_dirs {
+                    let expanded = if dir.starts_with('~') {
+                        dirs::home_dir()
+                            .map(|h| dir.replacen('~', &h.display().to_string(), 1))
+                            .unwrap_or_else(|| dir.clone())
+                    } else {
+                        dir.clone()
+                    };
+                    if let Ok(entries) = std::fs::read_dir(&expanded) {
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            let ext = p.extension().and_then(|e| e.to_str());
+                            if !matches!(ext, Some("yml" | "yaml")) {
+                                continue;
+                            }
+                            if let Ok(content) = std::fs::read_to_string(&p) {
+                                if let Ok(flow) =
+                                    serde_yaml::from_str::<navra_flow::yaml_loader::FlowFile>(
+                                        &content,
+                                    )
+                                {
+                                    summaries.push(navra_core::acp::types::FlowSummary {
+                                        name: flow.name.clone(),
+                                        description: flow
+                                            .description
+                                            .unwrap_or_else(|| flow.name.clone()),
+                                        nodes: flow
+                                            .tasks
+                                            .iter()
+                                            .map(|t| navra_core::acp::types::FlowNodeSummary {
+                                                id: t.id.clone(),
+                                                description: t.mandate.clone(),
+                                            })
+                                            .collect(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                summaries
+            };
+
+            let acp_router = if let Some(model) = acp_chat_model {
+                let dispatcher = Arc::new(crate::acp_agent::AgentDispatcher::new(model));
+                tracing::info!(
+                    flows = acp_flow_summaries.len(),
+                    "ACP agent-driven dispatcher active"
+                );
+                navra_core::transport::build_acp_router_with_dispatcher(
+                    server.clone(),
+                    dispatcher,
+                    acp_flow_summaries,
+                    None,
+                )
+            } else {
+                tracing::info!("ACP tool-only dispatcher (no chat model configured)");
+                navra_core::transport::build_acp_router(server.clone())
+            };
             let router = router.merge(acp_router);
-            tracing::info!("ACP endpoint at POST /acp");
+            tracing::info!("ACP v0.2.0 endpoints at /acp/*");
 
             // --- Webhook triggers ---
             let router = if let Some(webhook_router) = trigger_webhook_router.take() {
