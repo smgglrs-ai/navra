@@ -1,8 +1,10 @@
+mod acp_agent;
 mod build_tools;
 mod cli;
 mod config;
 mod config_watcher;
 mod demo;
+mod direct_transport;
 mod discover;
 mod flow_tools;
 mod grpc_manager;

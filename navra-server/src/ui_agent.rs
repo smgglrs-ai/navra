@@ -16,8 +16,6 @@ use navra_core::McpServer;
 use navra_memory::{Message, Role, Turn, WorkingMemory};
 use navra_model::ModelBackend;
 
-// Re-exports from navra-core for the in-process transport
-use navra_core::upstream::Transport;
 use navra_core::Upstream;
 
 /// Thread-safe wrapper around WorkingMemory.
@@ -98,104 +96,7 @@ struct MessageInfo {
 // In-process MCP transport
 // ---------------------------------------------------------------------------
 
-/// A transport that dispatches JSON-RPC directly to an in-process McpServer.
-///
-/// Avoids a network loopback by calling the server's handler methods directly
-/// through the dispatch module's routing logic, reconstructed here for the
-/// subset of methods the agent needs (initialize, tools/list, tools/call).
-struct DirectTransport {
-    server: Arc<McpServer>,
-    session_id: std::sync::Mutex<Option<String>>,
-}
-
-impl DirectTransport {
-    fn new(server: Arc<McpServer>) -> Self {
-        Self {
-            server,
-            session_id: std::sync::Mutex::new(None),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl Transport for DirectTransport {
-    async fn request(
-        &mut self,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value, navra_core::upstream::UpstreamError> {
-        let method = body["method"].as_str().unwrap_or("");
-        let params = body.get("params").cloned();
-        let id = body.get("id").cloned().unwrap_or(serde_json::json!(1));
-
-        let agent = navra_core::auth::AgentIdentity::new("ui-agent", "dev");
-
-        match method {
-            "initialize" => {
-                let init_params = navra_core::protocol::InitializeParams {
-                    protocol_version: navra_core::protocol::PROTOCOL_VERSION.to_string(),
-                    capabilities: Default::default(),
-                    client_info: navra_core::protocol::ClientInfo {
-                        name: "navra-ui-agent".to_string(),
-                        version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                    },
-                };
-                match self.server.handle_initialize(init_params, agent) {
-                    Ok((result, sid)) => {
-                        *self.session_id.lock().unwrap() = Some(sid);
-                        let value = serde_json::to_value(&result).unwrap_or_default();
-                        Ok(serde_json::json!({"jsonrpc": "2.0", "result": value, "id": id}))
-                    }
-                    Err(msg) => Ok(serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "error": {"code": -32600, "message": msg},
-                        "id": id
-                    })),
-                }
-            }
-
-            "notifications/initialized" => {
-                Ok(serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": id}))
-            }
-
-            "tools/list" => {
-                let pagination: navra_core::protocol::PaginatedRequest = params
-                    .and_then(|p| serde_json::from_value(p).ok())
-                    .unwrap_or_default();
-                let result = self.server.handle_list_tools(&agent, &pagination);
-                let value = serde_json::to_value(&result).unwrap_or_default();
-                Ok(serde_json::json!({"jsonrpc": "2.0", "result": value, "id": id}))
-            }
-
-            "tools/call" => {
-                let call_params: navra_core::protocol::CallToolParams =
-                    match params.and_then(|p| serde_json::from_value(p).ok()) {
-                        Some(p) => p,
-                        None => {
-                            return Ok(serde_json::json!({
-                                "jsonrpc": "2.0",
-                                "error": {"code": -32602, "message": "invalid params"},
-                                "id": id
-                            }));
-                        }
-                    };
-
-                let sid = self.session_id.lock().unwrap().clone().unwrap_or_default();
-                let ctx = navra_core::auth::CallContext::new(agent, sid);
-                let result = self.server.handle_call_tool(call_params, ctx).await;
-                let value = serde_json::to_value(&result).unwrap_or_default();
-                Ok(serde_json::json!({"jsonrpc": "2.0", "result": value, "id": id}))
-            }
-
-            _ => Ok(serde_json::json!({
-                "jsonrpc": "2.0",
-                "error": {"code": -32601, "message": format!("method not found: {method}")},
-                "id": id
-            })),
-        }
-    }
-
-    fn shutdown(&mut self) {}
-}
+use crate::direct_transport::DirectTransport;
 
 // ---------------------------------------------------------------------------
 // Streaming audit sink
@@ -352,7 +253,10 @@ pub(crate) async fn handle_agentic_chat(
 
     tokio::spawn(async move {
         // Create in-process transport and connect
-        let transport = DirectTransport::new(server);
+        let transport = DirectTransport::new(
+            server,
+            navra_core::auth::AgentIdentity::new("ui-agent", "dev"),
+        );
         let upstream = match Upstream::connect("ui-agent", transport).await {
             Ok(u) => u,
             Err(e) => {
