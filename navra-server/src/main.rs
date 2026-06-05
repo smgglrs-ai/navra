@@ -2467,19 +2467,23 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             );
         }
 
-        // Build composite model cards from config + vendor metadata + operator agentic metadata.
-        // If no [models.*] configured, auto-discover from Ollama.
-        let model_keys: Vec<(String, Option<&config::ModelConfig>)> = if cfg.models.is_empty() {
-            ollama_meta
-                .keys()
-                .map(|name| (name.clone(), None))
-                .collect()
-        } else {
-            cfg.models
-                .iter()
-                .map(|(k, v)| (k.clone(), Some(v)))
-                .collect()
-        };
+        // Build composite model cards from config + discovered Ollama models.
+        // Config entries take precedence; Ollama models not in config are added automatically.
+        let mut model_keys: Vec<(String, Option<&config::ModelConfig>)> = cfg.models
+            .iter()
+            .map(|(k, v)| (k.clone(), Some(v)))
+            .collect();
+        let configured_sources: std::collections::HashSet<String> = cfg.models
+            .values()
+            .filter_map(|m| m.source.as_ref())
+            .filter_map(|s| s.strip_prefix("ollama://"))
+            .map(|s| s.to_string())
+            .collect();
+        for name in ollama_meta.keys() {
+            if !configured_sources.contains(name) {
+                model_keys.push((name.clone(), None));
+            }
+        }
 
         let model_cards: Vec<team_tools::ModelCard> = model_keys
             .iter()
