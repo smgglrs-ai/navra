@@ -311,4 +311,5 @@ Everything else is parking lot unless it directly supports a tier 1–2 item.
 - `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
 - `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)
 - `OPENSHELL.md` — OpenShell integration: identity federation, A2A mesh, gRPC modules
+- `docs/acp.md` — ACP v0.2.0 implementation: endpoints, security model, differentiators
 - `docs/mcp-tunnels.md` — MCP tunnel compatibility (Anthropic + OpenAI)

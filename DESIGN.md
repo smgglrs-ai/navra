@@ -325,6 +325,28 @@ Sessions are created on `initialize` and tracked via UUID:
 - **TCP** (optional): `127.0.0.1:9315` for development
 - Both can be active simultaneously.
 
+### ACP v0.2.0 Transport
+
+navra exposes an ACP-compliant REST API at `/acp/*` alongside
+MCP. ACP enables agent discovery and orchestration from IDEs
+(Zed, JetBrains) and agent platforms (BeeAI).
+
+Key design decision: ACP runs go through the same security
+stack as MCP calls — auth, ACLs, hooks, IFC, safety filters.
+This is enforced at the gateway layer via `McpServer.handle_call_tool()`,
+not at the agent layer. Agents don't need to be trusted.
+
+The `RunDispatcher` trait makes execution pluggable:
+- `ToolDispatcher` (default): parses tool calls from message text
+- `AgentDispatcher` (navra-server): ReAct loop via `run_tool_loop`
+
+Runs support `sync`, `async`, and `stream` (SSE) modes. The
+`Awaiting` state integrates with the hook pipeline's `ApprovalGateHook`
+for human-in-the-loop approval of high-risk operations.
+
+Flow nodes appear as separate ACP agent manifests, discoverable
+via `GET /acp/agents`. See `docs/acp.md` for full reference.
+
 ### Auth
 
 Pluggable via `Authenticator` trait. BLAKE3 token-based implementation:
