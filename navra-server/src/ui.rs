@@ -499,11 +499,14 @@ pub(crate) fn attach_ui_routes(
                         // Proxy to Ollama, preserving full OpenAI format (tools, tool_choice, etc.)
                         let mut proxy_body = body.0.clone();
                         proxy_body["messages"] = serde_json::Value::Array(messages);
-                        // Force stream=false for non-streaming proxy
-                        proxy_body["stream"] = serde_json::Value::Bool(false);
+                        let is_streaming = proxy_body["stream"].as_bool().unwrap_or(false);
 
                         let upstream_url = "http://localhost:11434/v1/chat/completions";
-                        let resp = match reqwest::Client::new()
+                        let client = reqwest::Client::builder()
+                            .timeout(std::time::Duration::from_secs(600))
+                            .build()
+                            .unwrap_or_else(|_| reqwest::Client::new());
+                        let resp = match client
                             .post(upstream_url)
                             .json(&proxy_body)
                             .send()
@@ -518,6 +521,14 @@ pub(crate) fn attach_ui_routes(
                         };
 
                         let status = resp.status();
+
+                        // Streaming: pass through SSE chunks directly (safety filter on final text is skipped)
+                        if is_streaming {
+                            let stream = resp.bytes_stream();
+                            srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            return axum::body::Body::from_stream(stream).into_response();
+                        }
+
                         let resp_bytes = resp.bytes().await.unwrap_or_default();
                         if !status.is_success() {
                             return (
