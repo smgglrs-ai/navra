@@ -1,0 +1,44 @@
+---
+interface Props {
+  stats: { value: string; label: string }[];
+}
+const { stats } = Astro.props;
+---
+
+<div class="pills">
+  {stats.map(s => (
+    <div class="pill">
+      <span class="pill__value">{s.value}</span>
+      <span class="pill__label">{s.label}</span>
+    </div>
+  ))}
+</div>
+
+<style>
+  .pills {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .pill {
+    background: var(--navy-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 24px;
+    min-width: 120px;
+    text-align: center;
+  }
+  .pill__value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--coral);
+    line-height: 1.2;
+  }
+  .pill__label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+</style>

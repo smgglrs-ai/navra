@@ -1,0 +1,27 @@
+[book]
+title = "navra"
+description = "Secure MCP gateway for AI agents"
+authors = ["Smgglrs AI"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/smgglrs-ai/navra"
+edit-url-template = "https://github.com/smgglrs-ai/navra/edit/main/docs-site/{path}"
+additional-css = ["theme/custom.css"]
+no-section-label = true
+
+[output.html.search]
+enable = true
+limit-results = 20
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html.playground]
+editable = false

@@ -1,0 +1,63 @@
+:root {
+    --coral: #f85b54;
+    --coral-light: #fa7d77;
+}
+
+.sidebar .sidebar-scrollbox {
+    background-color: #141827;
+}
+
+.sidebar .sidebar-scrollbox a {
+    color: #8b8f98;
+}
+
+.sidebar .sidebar-scrollbox a:hover,
+.sidebar .sidebar-scrollbox a.active {
+    color: #ffffff;
+}
+
+.nav-chapters {
+    color: var(--coral) !important;
+}
+
+.nav-chapters:hover {
+    color: var(--coral-light) !important;
+}
+
+a {
+    color: var(--coral);
+}
+
+a:hover {
+    color: var(--coral-light);
+}
+
+.content main h1 {
+    border-bottom: 2px solid var(--coral);
+    padding-bottom: 8px;
+}
+
+.content main h2 {
+    border-bottom: 1px solid #2a2f45;
+    padding-bottom: 4px;
+}
+
+code {
+    border-radius: 3px;
+}
+
+table {
+    width: 100%;
+}
+
+table th {
+    background-color: rgba(248, 91, 84, 0.08);
+}
+
+.navy {
+    --bg: #1b2135;
+    --sidebar-bg: #141827;
+    --sidebar-fg: #8b8f98;
+    --sidebar-active: #ffffff;
+    --links: #f85b54;
+}

@@ -1,0 +1,1345 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Security Gateway Paper - navra</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Secure MCP gateway for AI agents">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-0392ca55.css">
+        <link rel="stylesheet" href="../css/chrome-fc474251.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="../theme/custom-b0091339.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "navy";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-04df98ae.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-166ae9d0.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">navra</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/smgglrs-ai/navra" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/smgglrs-ai/navra/edit/main/docs-site/src/papers/security-gateway.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="navra-a-security-microkernel-for-ai-agent-infrastructure"><a class="header" href="#navra-a-security-microkernel-for-ai-agent-infrastructure">navra: A Security Microkernel for AI Agent Infrastructure</a></h1>
+<p><strong>Authors</strong>: Fabien Dupont et al.</p>
+<p><strong>Target venue</strong>: USENIX Security / IEEE S&amp;P workshop track (ArtSec 2026 realistic)</p>
+<h3 id="review-notes-2026-05-07-updated-after-formal-verification"><a class="header" href="#review-notes-2026-05-07-updated-after-formal-verification">Review notes (2026-05-07, updated after formal verification)</a></h3>
+<ul>
+<li><strong>DONE — Microkernel framing</strong>: Keep “security microkernel.” Cite
+AIOS as prior art, differentiate on enforcement boundaries (MCP
+protocol boundary = isolation, IFC on IPC channels, 138 Kani proofs).
+navra has process table, IPC (mailbox + blackboard), memory
+management, scheduler, MAC — a real microkernel, not just analogy.
+Anderson’s reference monitor conditions satisfied as a subset.</li>
+<li><strong>DONE — Narrow to 3 contributions</strong>: (1) gateway-enforced IFC, (2)
+capability delegation with attenuation, (3) hash-chained audit.</li>
+<li><strong>DONE — FIDES differentiation</strong>: Expanded in §10, gateway-enforced
+vs planner-enforced. Formal verification comparison included.</li>
+<li><strong>DONE — MCP gateway landscape</strong>: §10 acknowledges 10+ gateways,
+positions on IFC + capability tokens.</li>
+<li><strong>DONE — Compliance reframing</strong>: “compliance infrastructure” in
+§7.4, EU AI Act Art 12+14 language corrected.</li>
+<li><strong>DONE — Formal verification</strong>: 138 Kani proofs + 6 TLA+ specs
+added (formal/ directory + PROOF_MAP.md). 5 Bell-LaPadula
+invariant property tests (INV-1 through INV-5) in ifc/mod.rs.</li>
+<li><strong>DONE — No-read-up</strong>: Bell-LaPadula Simple Security Property
+implemented and verified.</li>
+<li><strong>DONE — Full adversarial eval (19 tests)</strong>: E1 full-stack 10/10,
+E2 AgentDojo 100% across 5 models, E3a MCPTox 82.3% detection,
+E3b adaptive planner-trust 5/5, E3c Shadow Escape + Pale Fire
+blocked, E3d encoding evasion honest failure + IFC defense-in-depth.</li>
+<li><strong>PROPOSED — Semantic leakage detection</strong>: §9.5 future work. Embedding
+similarity against tainted ValueStore entries. Novel L3 contribution.</li>
+<li><strong>DONE — Tool classification</strong>: <code>is_write_tool()</code> now uses MCP
+<code>ToolAnnotations</code> (readOnlyHint, destructiveHint) when available,
+falling back to name heuristic only for unannotated tools.</li>
+</ul>
+<hr>
+<h2 id="abstract-150-words"><a class="header" href="#abstract-150-words">Abstract (~150 words)</a></h2>
+<p>AI agents increasingly access local resources – files, git
+repositories, shell commands, credentials – via the Model Context
+Protocol (MCP). Current agent runtimes provide no security
+infrastructure: any tool call from any agent executes with the
+full privileges of the host user. We present navra, a security
+gateway daemon that interposes between AI agents and local
+resources. navra enforces a layered authentication chain (OAuth
+2.0 with Ed25519 JWTs, capability tokens with delegation, BLAKE3
+legacy tokens), deny-wins path ACLs with ring inheritance,
+Bell-LaPadula information flow control with per-value taint
+tracking, a content safety pipeline (13 secret patterns, 20 PII
+categories with regex + NER + ML, pseudonymization with IFC label
+elevation), containerized agent execution (Podman, OpenShell
+microVMs), typed action risk classification, and a SHA-256
+hash-chained audit blackbox. All enforcement occurs at a single
+chokepoint (<code>handle_call_tool</code>) through which every tool
+invocation must pass. Microbenchmarks show IFC taint propagation
+at ~0.4ns, capability token verification at ~13us, and the full
+safety pipeline at ~18us per tool call – negligible relative to
+typical tool execution latencies of 10-500ms.</p>
+<hr>
+<h2 id="1-introduction"><a class="header" href="#1-introduction">1. Introduction</a></h2>
+<p>AI agents are acquiring the ability to read files, write code,
+execute commands, and manage credentials on behalf of users. The
+Model Context Protocol (MCP) standardizes the interface between
+agents and tools, but provides no security primitives. The
+resulting gap is severe: a compromised or misaligned agent
+operates with full user privileges.</p>
+<p>Current agent runtimes (Goose, Claude Code, Codex) delegate
+security to the user via ad-hoc confirmation dialogs. No runtime
+enforces mandatory access control, tracks information flow, or
+produces tamper-evident audit trails. The OWASP Top 10 for LLM
+Applications identifies tool misuse (LLM01), data exfiltration
+(LLM06), and privilege escalation (LLM08) as critical risks.
+The EU AI Act mandates human oversight and decision traceability
+for high-risk AI systems (Article 14) and logging of automated
+decisions (Article 12). Agent infrastructure must provide the
+compliance primitives that deployers need to meet these
+obligations.</p>
+<p>This paper presents navra, a gateway daemon that treats agent
+security as an infrastructure concern rather than an application
+concern. navra sits between agents and resources, enforcing
+security policies at the protocol layer regardless of which
+agent connects.</p>
+<p>The architecture implements a security microkernel for the AI
+agent stack: the gateway provides process tracking (per-agent
+entries with privilege rings and call accounting), IPC mediation
+(mailbox with Bell-LaPadula no-write-down, blackboard with
+taint-on-read), memory management (working memory with
+exponential decay, context budget allocation, knowledge
+distillation), a DAG-based task scheduler with GPU semaphore
+resource limits, and mandatory access control through a single
+verified chokepoint. Agents connect via the MCP protocol
+boundary — the equivalent of a syscall interface — which
+provides the isolation boundary: agents are separate processes
+that cannot bypass the gateway. Tool modules run in-process as
+trusted kernel code (analogous to kernel modules), with an
+optional gRPC interface for out-of-process isolation.</p>
+<p>Prior work has applied the OS abstraction to agent systems
+(AIOS [18]) but without enforcement boundaries: AIOS agents
+share the kernel process address space with no IFC on
+communication channels. navra enforces security properties
+on its IPC channels (23 Kani-verified proofs, 6 TLC-verified
+specifications) and satisfies Anderson’s reference monitor
+conditions [2]: complete mediation (single chokepoint),
+tamperproof from the agent side (protocol boundary), and
+verifiable (formally verified lattice and taint properties).</p>
+<p><strong>Contributions</strong>:</p>
+<ol>
+<li>A gateway architecture for MCP security enforcement with
+infrastructure-level information flow control — Bell-LaPadula
+no-write-down with per-value taint tracking, enforced at a
+single chokepoint that agents cannot bypass. Unlike
+planner-level IFC (FIDES [13]), gateway enforcement is
+mandatory: a compromised agent cannot disable or circumvent
+the security layer (Section 5).</li>
+<li>Capability token delegation with cryptographic privilege
+attenuation: Ed25519-signed CBOR tokens where child tokens
+can only narrow parent permissions (ring level, operations,
+tools, credentials, expiry). Combined with IFC labels, this
+enables least-privilege multi-agent delegation where data
+sensitivity constrains which teammates receive which
+capabilities (Section 4).</li>
+<li>A SHA-256 hash-chained audit blackbox providing
+tamper-detectable compliance infrastructure for EU AI Act
+Article 12 logging and SOC2 CC6.1 audit trail requirements
+(Section 7).</li>
+</ol>
+<p>The gateway also provides a content safety pipeline (12 secret
+patterns, 18 PII categories with IFC label elevation), layered
+authentication (OAuth 2.0, capability tokens, BLAKE3 legacy),
+containerized agent execution (Podman, OpenShell), and typed
+action risk classification — described in Sections 3, 6, and
+3.6-3.7 respectively.</p>
+<hr>
+<h2 id="2-threat-model"><a class="header" href="#2-threat-model">2. Threat Model</a></h2>
+<p>We consider five classes of attack against AI agent
+infrastructure:</p>
+<p><strong>T1. Malicious tool calls.</strong> A prompt-injected or misaligned
+agent calls tools with adversarial arguments: path traversal
+(<code>../../etc/passwd</code>), unauthorized file writes, credential
+access. Mitigated by path canonicalization before ACL check,
+deny-wins glob rules, per-tool allow/deny/approve policies.</p>
+<p><strong>T2. Privilege escalation via delegation.</strong> Agent A delegates
+a capability token to Agent B, which mints a more privileged
+token. Mitigated by delegation validation: ring attenuation
+(child ring &gt;= parent ring), operation/tool/credential subset
+enforcement, expiry attenuation (child cannot outlive parent),
+parent nonce binding.</p>
+<p><strong>T3. Data exfiltration via model backends.</strong> An agent reads
+sensitive local data, then passes it to an external model API.
+Mitigated by IFC taint tracking: external reads auto-label data
+as Untrusted; tainted sessions are denied write access (including
+network-facing tool calls) under Deny policy.</p>
+<p><strong>T4. Prompt injection through tool results.</strong> A document read
+by an agent contains adversarial instructions that alter agent
+behavior. Mitigated by IFC labeling all external read outputs
+as Untrusted, safety hook pipeline scanning tool results for
+secrets (11 regex patterns), PII (4 validated patterns), and
+contextual threats (ML classifier, Granite Guardian HAP 38M).</p>
+<p><strong>T5. Replay attacks.</strong> An attacker captures and replays a
+capability token. Mitigated by 128-bit random nonces with a
+server-side seen-nonce map, pruned after 2-hour TTL.</p>
+<hr>
+<h2 id="3-architecture"><a class="header" href="#3-architecture">3. Architecture</a></h2>
+<h3 id="31-gateway-pattern"><a class="header" href="#31-gateway-pattern">3.1 Gateway Pattern</a></h3>
+<p>navra is a gateway, not a framework. Agents (Claude Code, Goose,
+custom) connect via MCP Streamable HTTP over Unix socket (0600
+permissions) or TCP. navra aggregates built-in tool modules and
+upstream MCP servers behind a unified security layer. The gateway
+pattern ensures that security enforcement is independent of
+agent implementation.</p>
+<p><strong>The VFS analogy.</strong> In a Unix system, processes access files
+exclusively through the Virtual File System — a kernel-enforced
+mediation layer that checks permissions, applies ACLs, and
+records audit events. Processes cannot bypass VFS because they
+run in userspace; the kernel enforces the boundary. navra
+provides the same architecture for AI agents: when agents run
+in isolated containers, MCP is their sole channel to external
+resources, and the gateway is the mandatory mediation layer.
+The strength of this guarantee depends on the deployment model:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Deployment</th><th>Agent isolation</th><th>MCP is sole channel?</th><th>Bypass requires</th></tr>
+</thead>
+<tbody>
+<tr><td>Host (bare metal)</td><td>None</td><td>No — agent has host access</td><td>Agent cooperation</td></tr>
+<tr><td>Podman (distroless, no mounts)</td><td>Namespace isolation</td><td><strong>Yes</strong></td><td>Container escape (CVE)</td></tr>
+<tr><td>OpenShell microVM</td><td>Hardware isolation</td><td><strong>Yes</strong></td><td>Hypervisor escape</td></tr>
+</tbody>
+</table>
+</div>
+<p>In containerized deployment (Podman or OpenShell), the agent
+binary runs in an image with no host filesystem mounts, no
+direct network access, and no writable storage beyond tmpfs.
+The only file descriptor exposed to the container is the MCP
+socket to navra. The agent literally cannot do anything except
+send MCP requests. This is analogous to a process that can only
+access files through VFS — the kernel (navra) mediates every
+operation. All security properties (IFC, ACLs, capability
+tokens, safety filters, audit) are enforced at this mediation
+point.</p>
+<h3 id="32-the-chokepoint"><a class="header" href="#32-the-chokepoint">3.2 The Chokepoint</a></h3>
+<p>All tool invocations pass through a single function,
+<code>handle_call_tool</code>, which executes the following sequence:</p>
+<ol>
+<li>Pause check (global kill switch via <code>AtomicBool</code>)</li>
+<li>Rate limit check (per-agent, per-permission-set quotas)</li>
+<li>Capability token tool glob verification (if cap token present)</li>
+<li>Legacy per-tool permission rules (allow/deny/approve globs)</li>
+<li>IFC variable reference resolution (<code>var://</code> URIs)</li>
+<li>IFC pre-check: Bell-LaPadula no-write-down enforcement</li>
+<li>Process table recording</li>
+<li>Pre-hook pipeline (may modify args or block, fail-closed on
+timeout)</li>
+<li>Tool handler execution</li>
+<li>IFC auto-labeling (external reads marked Untrusted unless
+trusted path match)</li>
+<li>Session taint absorption (lattice join, taint only rises)</li>
+<li>Per-value variable storage (labeled, source-tagged)</li>
+<li>Blackbox recording (SHA-256 hash-chained)</li>
+<li>Post-hook pipeline (safety filtering, result modification)</li>
+<li>Legacy safety filter fallback (when no hooks configured)</li>
+</ol>
+<h3 id="33-authentication-chain"><a class="header" href="#33-authentication-chain">3.3 Authentication Chain</a></h3>
+<p>The <code>ChainAuthenticator</code> tries backends in priority order:</p>
+<ol>
+<li><strong>OAuthAuthenticator</strong>: Ed25519-signed JWTs issued via an
+RFC 6749 <code>client_credentials</code> grant (Section 3.5).</li>
+<li><strong>CapabilityAuthenticator</strong>: Ed25519-signed CBOR tokens
+(<code>navra_cap_v1.*</code>), with nonce replay protection.</li>
+<li><strong>TokenAuthenticator</strong>: BLAKE3-hashed bearer tokens for
+legacy agents.</li>
+<li><strong>OpenShellAuthenticator</strong>: Trusts identity assertions from
+the OpenShell sandbox supervisor (SPIFFE SVIDs, OIDC JWTs,
+or static RBAC labels). Used when navra runs inside an
+OpenShell sandbox (Section 3.6).</li>
+<li><strong>NoAuthenticator</strong>: Development-only fallback. Requires
+explicit <code>allow_anonymous()</code> opt-in; logs an error-level
+warning when used implicitly.</li>
+</ol>
+<h3 id="34-acl-engine"><a class="header" href="#34-acl-engine">3.4 ACL Engine</a></h3>
+<p>Path ACLs use glob patterns with deny-wins semantics:</p>
+<ul>
+<li>Deny rules checked before allow rules.</li>
+<li>Paths canonicalized (symlinks resolved, <code>..</code> eliminated)
+before matching. Defense-in-depth warnings for non-absolute
+or traversal-containing paths.</li>
+<li><code>dir/**</code> also matches <code>dir</code> itself (for listing).</li>
+<li>Ring inheritance: ring N inherits all deny rules and approval
+requirements from rings 0..N-1. Operations are intersected
+(higher rings can only narrow, never widen).</li>
+<li>String-based, module-namespaced operations (<code>read</code>, <code>write</code>,
+<code>git.status</code>, <code>shell.exec</code>) avoid a central enum.</li>
+</ul>
+<h3 id="35-oauth-20-authorization"><a class="header" href="#35-oauth-20-authorization">3.5 OAuth 2.0 Authorization</a></h3>
+<p>navra implements an OAuth 2.0 authorization server following
+RFC 6749 and RFC 8414. This provides a standards-compliant
+authentication path for agents that cannot manage capability
+tokens directly (e.g., third-party MCP clients).</p>
+<p><strong>Endpoints:</strong></p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Endpoint</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>GET /.well-known/oauth-authorization-server</code></td><td>RFC 8414 metadata discovery</td></tr>
+<tr><td><code>POST /oauth/token</code></td><td>Token issuance (<code>client_credentials</code> grant)</td></tr>
+<tr><td><code>POST /oauth/register</code></td><td>Dynamic client registration</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Token format:</strong> Ed25519-signed JWTs (EdDSA algorithm). The
+signing key is the same CapSigner used for capability tokens,
+providing a single trust root. Claims include issuer, subject,
+scope, issued-at, expiry, and a UUID <code>jti</code> for replay
+detection.</p>
+<p><strong>Scope-to-permission mapping:</strong> OAuth scopes map to navra
+permission sets. <code>tools:read</code> maps to <code>readonly</code> (ring 2),
+<code>tools:write</code> maps to <code>developer</code> (ring 1). This bridges the
+OAuth authorization model to navra’s ring-based ACL engine
+without requiring clients to understand capability tokens.</p>
+<p><strong>Security properties:</strong></p>
+<ul>
+<li>Constant-time secret comparison (CWE-208 mitigation)</li>
+<li>Capability tokens (<code>navra_cap_v1.*</code>) bypass OAuth processing
+entirely, avoiding double-verification</li>
+<li>Pre-registered and dynamically registered clients supported</li>
+<li>In-memory client registry (no persistent state beyond config)</li>
+</ul>
+<p><strong>Limitation:</strong> Only the <code>client_credentials</code> grant type is
+implemented. PKCE (S256) is advertised in metadata for forward
+compatibility but not yet enforced. No refresh tokens — agents
+re-authenticate when tokens expire.</p>
+<h3 id="36-containerized-agent-execution"><a class="header" href="#36-containerized-agent-execution">3.6 Containerized Agent Execution</a></h3>
+<p>navra supports three isolation levels for agent execution,
+with automatic runtime detection:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Level</th><th>Backend</th><th>Isolation</th><th>MCP sole channel?</th></tr>
+</thead>
+<tbody>
+<tr><td><code>BareMetal</code></td><td>Direct</td><td>Child process, no isolation</td><td>No (advisory)</td></tr>
+<tr><td><code>Container</code></td><td>Podman</td><td>Rootless, no mounts, no network</td><td><strong>Yes</strong></td></tr>
+<tr><td><code>OpenShellSandbox</code></td><td>OpenShell</td><td>Microvm (Landlock + seccomp)</td><td><strong>Yes</strong></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Auto-detection</strong> (<code>auto_runtime()</code>) selects the strongest
+available backend: OpenShell → Podman → Direct. The runtime
+detects its own isolation context by checking environment
+variables (<code>OPENSHELL_SANDBOX_ID</code>), container markers
+(<code>/.containerenv</code>, <code>/.dockerenv</code>), and cgroup membership.</p>
+<p><strong>Podman containers</strong> run the agent as a statically-linked
+binary in a minimal image (distroless or <code>fedora-minimal</code>)
+with no host filesystem mounts, <code>--network=none</code> or
+<code>slirp4netns</code> restricted to the navra gateway endpoint, and
+<code>--no-new-privileges</code>. The container’s only writable storage
+is tmpfs. The only channel to the outside world is the MCP
+socket to navra. This provides the VFS-equivalent guarantee
+described in §3.1: every resource access is mediated by the
+gateway. A bypass requires a container escape vulnerability.</p>
+<p><strong>OpenShell sandboxes</strong> provide the same guarantee at the
+hardware level via libkrun microVMs with Landlock LSM, seccomp
+BPF, and namespace isolation. The supervisor provides identity
+tokens (SPIFFE SVIDs or OIDC JWTs) that the
+OpenShellAuthenticator validates. Network egress is restricted
+to the model endpoint and the navra gateway via an HTTP CONNECT
+proxy with OPA policies.</p>
+<p><strong>Defense in depth:</strong> OpenShell provides mandatory access
+control at the OS level (namespaces, Landlock, seccomp). navra
+provides mandatory access control at the application level
+(ACLs, capability tokens, IFC). Both layers enforce
+independently — a bypass at one layer does not compromise the
+other. In the Podman deployment, Linux namespaces provide the
+isolation boundary and navra provides the access mediation —
+together they form the complete access control stack, analogous
+to process isolation + VFS in a traditional operating system.</p>
+<h3 id="37-typed-action-classification"><a class="header" href="#37-typed-action-classification">3.7 Typed Action Classification</a></h3>
+<p>Every tool call is classified into one of 16 <code>AgentAction</code>
+variants with an associated <code>RiskLevel</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Risk</th><th>Actions</th><th>Auto-approval</th></tr>
+</thead>
+<tbody>
+<tr><td>None</td><td>FileRead, GitStatus, GitDiff, RagSearch, MemoryQuery</td><td>Yes</td></tr>
+<tr><td>Low</td><td>FileSearch</td><td>Yes</td></tr>
+<tr><td>Medium</td><td>FileWrite, FileEdit, MemoryStore</td><td>Configurable</td></tr>
+<tr><td>High</td><td>FileDelete, GitCommit</td><td>Requires approval</td></tr>
+<tr><td>Critical</td><td>FlowStart, TeamCreate, TeamMessage</td><td>Always requires approval</td></tr>
+</tbody>
+</table>
+</div>
+<p>The classification is deterministic: <code>AgentAction::classify()</code>
+parses the tool name and arguments to produce a typed action.
+Tool handlers that accept an <code>AgentAction</code> can make approval
+decisions based on the risk level without parsing tool names
+as strings. Unknown tools default to <code>Medium</code> risk.</p>
+<hr>
+<h2 id="4-capability-token-system"><a class="header" href="#4-capability-token-system">4. Capability Token System</a></h2>
+<h3 id="41-token-format"><a class="header" href="#41-token-format">4.1 Token Format</a></h3>
+<p>Wire format: <code>navra_cap_v1.&lt;base64url(cbor)&gt;.&lt;base64url(sig)&gt;</code></p>
+<p>Payload fields: version (<code>v: 1</code>), issuer DID (<code>iss</code>), subject
+DID (<code>sub</code>), capability set (path globs, operations, tool globs,
+credential labels), ring level, issued-at, expiry, 128-bit
+nonce, optional parent nonce.</p>
+<h3 id="42-cryptographic-properties"><a class="header" href="#42-cryptographic-properties">4.2 Cryptographic Properties</a></h3>
+<ul>
+<li><strong>Signing</strong>: Ed25519 over raw CBOR bytes.</li>
+<li><strong>Encoding</strong>: CBOR for compact binary representation (typical
+token &lt; 500 bytes).</li>
+<li><strong>Replay protection</strong>: Server-side nonce map with 2-hour TTL
+and periodic pruning. <code>TokenRevocationList</code> enables explicit
+revocation by nonce.</li>
+<li><strong>Identity</strong>: DID:key URIs (<code>did:key:z6Mk...</code>) for
+decentralized identity without PKI infrastructure.</li>
+</ul>
+<h3 id="43-delegation-validation"><a class="header" href="#43-delegation-validation">4.3 Delegation Validation</a></h3>
+<p><code>validate_delegation(parent, child, max_depth)</code> enforces:</p>
+<ul>
+<li>Parent nonce binding (child.parent == parent.nonce)</li>
+<li>Ring attenuation (child.ring &gt;= parent.ring)</li>
+<li>Expiry attenuation (child.exp &lt;= parent.exp)</li>
+<li>Operation subset (child.operations is a subset of parent.operations)</li>
+<li>Credential subset (child.credentials is a subset of parent.credentials)</li>
+<li>Depth limit (configurable max_depth)</li>
+</ul>
+<p>Violations produce typed error messages (e.g., “ring escalation:
+child ring 0 &lt; parent ring 1”).</p>
+<hr>
+<h2 id="5-information-flow-control"><a class="header" href="#5-information-flow-control">5. Information Flow Control</a></h2>
+<h3 id="51-label-lattice"><a class="header" href="#51-label-lattice">5.1 Label Lattice</a></h3>
+<p>Two-dimensional labels: <code>(Integrity, Confidentiality)</code> where
+<code>Integrity in {Trusted, Untrusted}</code> and <code>Confidentiality in {Public, Sensitive, Secret}</code>. Lattice join: <code>max(integrity), max(confidentiality)</code>. Taint only rises, never drops.</p>
+<h3 id="52-automatic-labeling"><a class="header" href="#52-automatic-labeling">5.2 Automatic Labeling</a></h3>
+<p>External read tools (<code>file_read</code>, <code>file_search</code>, <code>git_diff</code>,
+<code>git_log</code>) auto-label outputs as Untrusted. Exception: files
+matching trusted path patterns (<code>~/Code/**</code>) retain Trusted
+integrity. Trusted path matching uses canonicalization and
+glob patterns with tilde expansion.</p>
+<p>Gateway tools (<code>navra_var_*</code>) are excluded from auto-labeling –
+they return kernel-managed metadata, not external data.</p>
+<h3 id="53-write-enforcement"><a class="header" href="#53-write-enforcement">5.3 Write Enforcement</a></h3>
+<p>On write tool calls (<code>file_write</code>, <code>git_commit</code>, <code>file_edit</code>,
+<code>file_delete</code>), the gateway checks the session’s accumulated
+taint label. Three configurable policies per permission set:</p>
+<ul>
+<li><strong>Allow</strong>: No IFC enforcement (backward compatible).</li>
+<li><strong>Approve</strong>: Tainted writes require human approval.</li>
+<li><strong>Deny</strong>: Tainted writes rejected with IFC error.</li>
+</ul>
+<h3 id="54-per-value-variable-tracking"><a class="header" href="#54-per-value-variable-tracking">5.4 Per-Value Variable Tracking</a></h3>
+<p>Every tool result is stored as a labeled variable (<code>var://</code>
+URI). When arguments reference variables, the gateway computes
+the effective label via lattice join of all referenced variables.
+Write checks use per-value labels when <code>var://</code> references are
+present, falling back to session-level taint otherwise. This
+enables fine-grained flow tracking beyond session-level taint.</p>
+<hr>
+<h2 id="6-content-safety-pipeline"><a class="header" href="#6-content-safety-pipeline">6. Content Safety Pipeline</a></h2>
+<p>The gateway enforces mandatory content filtering through a
+multi-layer pipeline that runs as hooks in the chokepoint
+(steps 8 and 14 in Section 3.2). Agents cannot disable
+filtering — it is mandatory access control.</p>
+<h3 id="61-pipeline-architecture"><a class="header" href="#61-pipeline-architecture">6.1 Pipeline Architecture</a></h3>
+<p>The <code>FilterPipeline</code> chains three filter types in sequence:</p>
+<ol>
+<li><strong>Regex filters</strong> (synchronous, deterministic): Pattern
+matching for secrets and PII with validation functions.</li>
+<li><strong>NER filters</strong> (synchronous, ML): ONNX token classification
+models for semantic entity detection.</li>
+<li><strong>Model filters</strong> (asynchronous, ML): Safety classifiers
+(Granite Guardian HAP 38M) for content policy violations.</li>
+</ol>
+<p>Each filter produces <code>Finding</code> records (byte offset, category,
+confidence). Findings are deduplicated by merging overlapping
+spans (longest match wins).</p>
+<h3 id="62-secret-detection"><a class="header" href="#62-secret-detection">6.2 Secret Detection</a></h3>
+<p>12 patterns detect leaked credentials:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Category</th><th>Pattern</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td>AWS access key</td><td><code>AKIA[0-9A-Z]{16}</code></td><td>AKIAIOSFODNN7EXAMPLE</td></tr>
+<tr><td>GitHub PAT</td><td><code>ghp_[A-Za-z0-9]{36}</code></td><td>ghp_abc123…</td></tr>
+<tr><td>GitHub fine-grained</td><td><code>github_pat_[A-Za-z0-9_]{82}</code></td><td>github_pat_…</td></tr>
+<tr><td>GitLab PAT</td><td><code>glpat-[A-Za-z0-9\-_]{20,}</code></td><td>glpat-abc123…</td></tr>
+<tr><td>OpenAI API key</td><td><code>sk-proj-[A-Za-z0-9_-]{32,}</code></td><td>sk-proj-…</td></tr>
+<tr><td>Anthropic API key</td><td><code>sk-ant-[A-Za-z0-9_-]{32,}</code></td><td>sk-ant-…</td></tr>
+<tr><td>PEM private key</td><td><code>-----BEGIN.*PRIVATE KEY-----</code></td><td>RSA/EC keys</td></tr>
+<tr><td>Connection string</td><td><code>mysql|postgres|redis://</code></td><td>DB credentials</td></tr>
+<tr><td>Bearer token</td><td><code>Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+</code></td><td>JWT tokens</td></tr>
+<tr><td>Slack webhook</td><td><code>hooks.slack.com/services/</code></td><td>Webhook URLs</td></tr>
+<tr><td>Password assignment</td><td><code>password|passwd|pwd\s*[=:]</code></td><td>Inline passwords</td></tr>
+<tr><td>AWS secret key</td><td>40-char base64 near “aws” context</td><td>Secret keys</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="63-pii-detection-18-categories"><a class="header" href="#63-pii-detection-18-categories">6.3 PII Detection (18 Categories)</a></h3>
+<p>PII detection combines regex patterns with validation functions
+to reduce false positives:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Category</th><th>Method</th><th>Validation</th></tr>
+</thead>
+<tbody>
+<tr><td>SSN</td><td>Regex</td><td>SSA rules (no 000, 666, 9xx prefixes)</td></tr>
+<tr><td>Credit card</td><td>Regex</td><td>Luhn checksum + context validation</td></tr>
+<tr><td>US phone</td><td>Regex</td><td>Excludes UUID/timestamp overlaps</td></tr>
+<tr><td>Email</td><td>Regex</td><td>Domain structure check</td></tr>
+<tr><td>French NIR</td><td>Regex</td><td>Modulo-97 key validation</td></tr>
+<tr><td>EU IBAN</td><td>Regex</td><td>Modulo-97 checksum (ISO 13616)</td></tr>
+<tr><td>EU phone</td><td>Regex</td><td>Country code prefix (33, 49, 44, …)</td></tr>
+<tr><td>French SIRET</td><td>Regex</td><td>Luhn checksum (French convention)</td></tr>
+<tr><td>Passport</td><td>Regex</td><td>Country-specific format patterns</td></tr>
+<tr><td>Public IPv4</td><td>Regex</td><td>Excludes loopback/private ranges</td></tr>
+<tr><td>Path username</td><td>Regex</td><td>Excludes system accounts</td></tr>
+<tr><td>Identity document</td><td>Regex</td><td>Passport/ID/driver license patterns</td></tr>
+<tr><td>Temporal PII</td><td>Regex</td><td>Birth date patterns</td></tr>
+<tr><td>Demographic</td><td>Regex</td><td>Age, sex indicators</td></tr>
+<tr><td>Person</td><td>NER</td><td>BERT-based entity recognition</td></tr>
+<tr><td>Location</td><td>NER</td><td>Geographic entity recognition</td></tr>
+<tr><td>Organization</td><td>NER</td><td>Organization entity recognition</td></tr>
+<tr><td>Username</td><td>NER</td><td>Username entity recognition</td></tr>
+<tr><td>Password</td><td>NER</td><td>Password entity recognition</td></tr>
+<tr><td>Misc entity</td><td>NER</td><td>Catch-all NER category</td></tr>
+</tbody>
+</table>
+</div>
+<p>The NER filter loads ONNX models (protectai/bert-base-NER or
+multilingual xlm-roberta-base-ner-hrl) with sliding-window
+tokenization (512 tokens, 64-token overlap) and BIO tag
+grouping. Confidence threshold defaults to 0.7.</p>
+<h3 id="64-filter-actions"><a class="header" href="#64-filter-actions">6.4 Filter Actions</a></h3>
+<p>Four actions determine how findings are handled:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td>Pass</td><td>Return content unmodified</td></tr>
+<tr><td>Redact</td><td>Replace with <code>[REDACTED:category]</code></td></tr>
+<tr><td>Pseudonymize</td><td>Replace with consistent pseudonyms</td></tr>
+<tr><td>Block</td><td>Reject entire response with error</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Pseudonymization</strong> uses a per-session <code>PseudonymMap</code> that
+maintains deterministic mappings: the same real value always
+maps to the same pseudonym within a session
+(<code>Person_A</code>, <code>Location_B</code>, <code>Email_C</code>). This preserves
+referential integrity in agent outputs while removing PII.
+De-pseudonymization is separated into a <code>PseudonymReverser</code>
+held in a distinct security context (GDPR Article 32 key
+separation). The agent process holds only the forward map.</p>
+<h3 id="65-safety-profiles"><a class="header" href="#65-safety-profiles">6.5 Safety Profiles</a></h3>
+<p>Operators select a profile per permission set:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Profile</th><th>Filters</th><th>Action</th></tr>
+</thead>
+<tbody>
+<tr><td><code>standard</code></td><td>Regex (secrets + PII + path)</td><td>Redact</td></tr>
+<tr><td><code>pseudonymize</code></td><td>Regex (secrets + PII + path)</td><td>Pseudonymize</td></tr>
+<tr><td><code>secrets-only</code></td><td>Secret filter only</td><td>Redact</td></tr>
+<tr><td><code>block</code></td><td>Regex (all)</td><td>Block</td></tr>
+<tr><td><code>guardian</code></td><td>Regex + Guardian HAP 38M</td><td>Redact</td></tr>
+<tr><td><code>guardian-deep</code></td><td>Regex + HAP 38M + Guardian 3.3 8B</td><td>Redact</td></tr>
+<tr><td><code>none</code></td><td>No filters</td><td>Pass</td></tr>
+</tbody>
+</table>
+</div>
+<p>Custom PII patterns can be added globally (<code>[[pii_patterns]]</code>
+in config) or per permission set (<code>[[permissions.X.safety_patterns]]</code>).
+Custom patterns registered as PII categories participate in
+IFC label elevation.</p>
+<h3 id="66-ifc-integration"><a class="header" href="#66-ifc-integration">6.6 IFC Integration</a></h3>
+<p>When the safety pipeline detects PII in a tool result, it
+elevates the IFC confidentiality label to <code>Pii</code> — a level
+above <code>Sensitive</code>. This elevation occurs even when the content
+is redacted, because the session has been exposed to PII
+regardless of whether the agent sees the raw values. Subsequent
+write operations are subject to the permission set’s IFC policy
+(Allow/Approve/Deny), preventing PII leakage through tainted
+tool chains.</p>
+<h3 id="67-gdpr-metrics"><a class="header" href="#67-gdpr-metrics">6.7 GDPR Metrics</a></h3>
+<p>The pipeline maintains thread-safe counters for GDPR Article 35
+Data Protection Impact Assessment reporting: total scans,
+PII detected, PII redacted, PII blocked, and per-category
+breakdowns. These metrics are available via the <code>/sys/status</code>
+endpoint.</p>
+<hr>
+<h2 id="7-gateway-level-audit"><a class="header" href="#7-gateway-level-audit">7. Gateway-Level Audit</a></h2>
+<h3 id="71-blackbox-design"><a class="header" href="#71-blackbox-design">7.1 Blackbox Design</a></h3>
+<p>The blackbox is a flight recorder embedded in <code>McpServer</code>. It
+records every tool call at the gateway chokepoint:</p>
+<ul>
+<li><strong>Always on</strong>: No opt-in, no configuration. If navra runs, it
+records.</li>
+<li><strong>Append-only</strong>: <code>INSERT</code> only. No <code>UPDATE</code> or <code>DELETE</code>.</li>
+<li><strong>Hash-chained</strong>: Each entry stores SHA-256 of the previous
+entry. Chain formula:
+<code>hash = SHA-256(seq | prev_hash | agent | tool | args | result | outcome)</code>.</li>
+<li><strong>Resumable</strong>: On restart, resumes from the last entry’s
+sequence number and hash.</li>
+</ul>
+<h3 id="72-recorded-fields"><a class="header" href="#72-recorded-fields">7.2 Recorded Fields</a></h3>
+<p>Per entry: sequence number, timestamp, agent name, permission
+set, session ID, tool name, arguments (truncated to 4KB), result
+(truncated to 4KB), outcome (<code>allowed</code>, <code>denied_acl</code>,
+<code>denied_ifc</code>, <code>denied_rate</code>, <code>error</code>), duration (microseconds),
+IFC label, previous hash, current hash.</p>
+<h3 id="73-tamper-detection"><a class="header" href="#73-tamper-detection">7.3 Tamper Detection</a></h3>
+<p><code>verify_chain()</code> replays the entire chain, recomputing hashes
+and comparing. Returns <code>(valid_count, first_broken_seq)</code>.
+Exposed via <code>navra audit verify</code> CLI.</p>
+<h3 id="74-compliance-infrastructure"><a class="header" href="#74-compliance-infrastructure">7.4 Compliance Infrastructure</a></h3>
+<p>The blackbox provides infrastructure that supports deployers
+meeting regulatory requirements. navra itself is not a
+regulated AI system — it is infrastructure that high-risk AI
+systems can build on.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Requirement</th><th>What navra provides</th></tr>
+</thead>
+<tbody>
+<tr><td>EU AI Act Art. 12 (logging)</td><td>Append-only, hash-chained records of every tool call with agent identity, IFC label, and outcome</td></tr>
+<tr><td>EU AI Act Art. 14 (human oversight)</td><td>Approval workflow (4 channels), pause/resume, decision traceability via outcome + IFC label</td></tr>
+<tr><td>SOC2 CC6.1 (audit trails)</td><td>Hash-chained, timestamped, tamper-detectable entries with agent identity and session tracking</td></tr>
+<tr><td>ISO 42001 (AI decision records)</td><td>Agent identity, tool call, arguments, result, duration, IFC label per invocation</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="8-evaluation"><a class="header" href="#8-evaluation">8. Evaluation</a></h2>
+<h3 id="81-security-audit"><a class="header" href="#81-security-audit">8.1 Security Audit</a></h3>
+<p>Six audit rounds used navra’s own multi-agent flow engine to
+audit the gateway codebase through the gateway itself. Agents
+connected via MCP, subject to the same ACLs, IFC, and safety
+filters they were auditing. Findings were recorded in the
+blackbox alongside normal tool calls.</p>
+<p>Selected findings (of 50+):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Finding</th><th>Severity</th><th>Resolution</th></tr>
+</thead>
+<tbody>
+<tr><td>Path ACL checked before canonicalization</td><td>High</td><td>Moved <code>canonicalize()</code> before ACL check</td></tr>
+<tr><td>Symlinks not resolved in path matching</td><td>High</td><td>Added <code>fs::canonicalize()</code> with fallback</td></tr>
+<tr><td>Hook timeout defaults to continue</td><td>High</td><td>Changed to fail-closed (block on timeout)</td></tr>
+<tr><td>NoAuthenticator silent fallback</td><td>Medium</td><td>Require explicit <code>allow_anonymous()</code> opt-in</td></tr>
+<tr><td>Session ID not enforced for IFC</td><td>Medium</td><td>Graceful degradation (per-request taint)</td></tr>
+<tr><td><code>var://</code> references bypass IFC write check</td><td>Medium</td><td>Added per-value label resolution</td></tr>
+<tr><td>PII filter not applied to tool arguments</td><td>Medium</td><td>Added pre-hook filtering on write paths</td></tr>
+<tr><td>Custom regex patterns not registered as PII</td><td>Low</td><td>Added <code>register_pii_categories()</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="82-adversarial-evaluation"><a class="header" href="#82-adversarial-evaluation">8.2 Adversarial Evaluation</a></h3>
+<p>We evaluate navra’s security mechanisms against adversarial
+attacks at three layers, using both external benchmarks and
+custom attack scenarios.</p>
+<p><strong>E1: Full-stack adversarial attacks (10 scenarios).</strong> Each test
+spawns a real navra-server with realistic permissions and sends
+crafted MCP requests through the complete auth → ACL → IFC →
+hooks pipeline. Attacks: path traversal (absolute + dot-dot +
+symlink), privilege escalation (readonly writes), deny-wins ACL
+bypass, IFC no-write-down violation, capability token replay,
+taint accumulation across reads. Result: <strong>10/10 blocked.</strong></p>
+<p><strong>E2: AgentDojo prompt injection benchmark (NeurIPS 2024).</strong>
+navra’s IFC implemented as an AgentDojo defense plugin
+(<code>BasePipelineElement</code>). Tested across 5 models (Claude Opus 4.6,
+Sonnet, Haiku, Qwen 3 8B, Gemma 4 4B) on 3 attack types
+(important_instructions, injecagent, tool_knowledge) with 30
+scenarios each. Result: <strong>100% defense rate</strong> across all models.
+Baseline models already resist &gt;99% of standard injections;
+IFC provides deterministic guarantee for the stochastic 1%
+(Qwen 3 8B breached in 1/18 injecagent scenarios without IFC).</p>
+<p><strong>E3a: MCPTox tool poisoning benchmark (AAAI 2026).</strong>
+navra’s 8-category upstream tool scanner tested against 485
+poisoned MCP tool descriptions from 45 real-world servers [25].
+Detection rate: <strong>82.3%</strong> (399/485). False positive rate: 20.0%
+(9/45 clean tools). The 17.7% miss rate consists of subtle
+injections using soft language (“you should”, “always append”)
+that pattern-based scanning cannot distinguish from legitimate
+instructions without semantic analysis. FIDES [13] and CaMeL [14]
+do not perform upstream tool scanning — this attack surface is
+unaddressed by planner-level defenses.</p>
+<p><strong>E3b: Adaptive planner-trust attacks (5 scenarios).</strong>
+Custom attack scenarios targeting the architectural gap between
+planner-level and gateway-level IFC enforcement:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>ID</th><th>Attack</th><th>Planner-level IFC</th><th>navra</th></tr>
+</thead>
+<tbody>
+<tr><td>B1</td><td>Injected “PUBLIC” label claim in content</td><td>May trust the claim</td><td>Labels by tool type, not content claims</td></tr>
+<tr><td>B2</td><td>Fake declassification notice in text</td><td>May accept text-based declassification</td><td>Requires cryptographic DeclassificationWitness</td></tr>
+<tr><td>B3</td><td>Taint laundering via intermediate file</td><td>Depends on data-flow tracking depth</td><td>Tainted session blocks first write (no laundering path)</td></tr>
+<tr><td>B4</td><td>Character-by-character exfiltration</td><td>Per-value tracking may miss single chars</td><td>Session-level taint blocks all writes</td></tr>
+<tr><td>B5</td><td>Dilution via clean reads after tainted read</td><td>May recalculate taint downward</td><td>Lattice join is monotonic (Kani-proved)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Result: <strong>5/5 blocked.</strong> Each scenario exploits the assumption
+that the agent’s own reasoning correctly assigns or propagates
+labels — an assumption that gateway-level enforcement does not
+make.</p>
+<p><strong>E3c: Real-world attack reproductions (2 scenarios).</strong>
+Shadow Escape [26] (zero-click document exfiltration via embedded
+instructions) and Operation Pale Fire [27] (calendar data
+injection leading to C2 contact): <strong>both blocked.</strong> The read
+of attacker-controlled data taints the session; subsequent write
+attempts are denied by IFC no-write-down regardless of how the
+injected instructions frame the exfiltration.</p>
+<p><strong>E3d: Encoding evasion — honest failure analysis (2 scenarios).</strong>
+Base64-encoded secrets pass through the content safety pipeline
+undetected (known gap — regex patterns do not match encoded
+content). Unicode homoglyphs in surrounding text cause the SSN
+regex to miss nearby PII. <strong>In both cases, IFC taint from the
+file read still blocks subsequent writes.</strong> The content filter
+gap is mitigated by the defense-in-depth architecture: even when
+Layer 1 (content patterns) fails, Layer 2 (IFC taint tracking)
+provides a second enforcement boundary. We propose Layer 3
+(semantic leakage detection via embedding similarity) in §9.5
+to address the remaining gap.</p>
+<p><strong>Honest limitations.</strong> Three attack classes cannot be blocked by
+any gateway-level IFC, including navra:</p>
+<ol>
+<li>
+<p><strong>Semantic taint propagation</strong>: The LLM reads tainted content,
+paraphrases it, and outputs semantically equivalent text that
+does not match the original. No label-at-boundary system can
+detect this without analyzing the LLM’s internal state.
+NeuroTaint (arXiv:2604.23374) achieves F1=0.928 on offline
+semantic taint detection. We propose a real-time semantic
+leakage hook using embedding similarity (see §9.5).</p>
+</li>
+<li>
+<p><strong>Implicit information flow</strong>: The LLM makes control-flow
+decisions based on tainted data (e.g., choosing which tool
+to call) that leak information through the pattern of
+operations, not through tool arguments.</p>
+</li>
+<li>
+<p><strong>Side channels</strong>: Timing channels (encoding data in tool
+call duration), metadata channels (tool selection patterns),
+and approval fatigue (human approves innocuous-looking writes
+that carry semantic leakage).</p>
+</li>
+</ol>
+<p>These limitations are shared by FIDES [13], CaMeL [14], and
+every published IFC system. Gateway-level enforcement provides
+defense-in-depth for deterministic attacks (layers 1-2), while
+semantic detection (layer 3) is an active research frontier.</p>
+<h3 id="83-performance"><a class="header" href="#83-performance">8.3 Performance</a></h3>
+<p>Criterion microbenchmarks (<code>benchmarks/benches/security_overhead.rs</code>):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Component</th><th>Latency</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>IFC taint absorb</td><td>~0.4 ns</td><td>Lattice join of two labels</td></tr>
+<tr><td>IFC trusted path check</td><td>~0.5 us</td><td>2 glob patterns</td></tr>
+<tr><td>BLAKE3 token hash</td><td>~0.2 us</td><td>40-character token</td></tr>
+<tr><td>Capability token encode</td><td>~10 us</td><td>CBOR + Ed25519 sign</td></tr>
+<tr><td>Capability token decode+verify</td><td>~13 us</td><td>Ed25519 verify + CBOR decode + expiry check</td></tr>
+<tr><td>Permission check (allowed)</td><td>~1.7 us</td><td>2 allow + 3 deny globs</td></tr>
+<tr><td>Permission check (denied)</td><td>~0.8 us</td><td>Early exit on deny match</td></tr>
+<tr><td>Safety pipeline (clean)</td><td>~18 us</td><td>15 regex patterns (13 secret + 10 PII)</td></tr>
+<tr><td>Safety pipeline (with finding)</td><td>~20 us</td><td>Regex match + redaction</td></tr>
+<tr><td>Safety pipeline (pseudonymize)</td><td>~22 us</td><td>Regex match + pseudonym lookup</td></tr>
+<tr><td>NER filter (BERT-base)</td><td>~5-15 ms</td><td>Token classification, 512-token window</td></tr>
+<tr><td>Luhn validation</td><td>~0.1 us</td><td>Credit card checksum</td></tr>
+<tr><td>IBAN mod-97 validation</td><td>~0.2 us</td><td>Bank account checksum</td></tr>
+<tr><td>Tool rule check (exact)</td><td>~0.3 us</td><td>5 rules</td></tr>
+<tr><td>Tool rule check (glob)</td><td>~0.5 us</td><td>Glob pattern matching</td></tr>
+</tbody>
+</table>
+</div>
+<p>Total security overhead per tool call: ~35 us (without ML
+filter). Typical tool execution: 10-500 ms. Security overhead
+is &lt; 0.5% of total latency.</p>
+<h3 id="84-competitive-comparison"><a class="header" href="#84-competitive-comparison">8.4 Competitive Comparison</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>navra</th><th>FIDES [13]</th><th>Gravitee</th><th>Kong</th><th>MS Governance [11]</th><th>SemaClaw [3]</th><th>Goose</th><th>ZeroClaw [8]</th></tr>
+</thead>
+<tbody>
+<tr><td>Auth</td><td>OAuth 2.0 + Ed25519 cap + BLAKE3</td><td>N/A (planner)</td><td>MCP auth spec</td><td>OAuth 2.0</td><td>DID-based identity</td><td>None</td><td>None</td><td>None</td></tr>
+<tr><td>Path ACLs</td><td>Deny-wins, ring inheritance</td><td>N/A</td><td>Per-method</td><td>Default-deny</td><td>OPA/Cedar policies</td><td>None</td><td>None</td><td>3-tier autonomy</td></tr>
+<tr><td>IFC</td><td>Bell-LaPadula, per-value</td><td><strong>Per-value labels</strong></td><td>None</td><td>None</td><td>None</td><td>None</td><td>None</td><td>None</td></tr>
+<tr><td>Delegation</td><td>Ed25519 chain, attenuation</td><td>N/A</td><td>None</td><td>None</td><td>None</td><td>None</td><td>None</td><td>None</td></tr>
+<tr><td>Content safety</td><td>13 secret + PII + Guardian ML</td><td>N/A</td><td>None</td><td>None</td><td>Policy engine</td><td>None</td><td>None</td><td>None</td></tr>
+<tr><td>Audit trail</td><td>SHA-256 hash-chained blackbox</td><td>N/A</td><td>Logs</td><td>Logs</td><td>Policy logs</td><td>None</td><td>None</td><td>None</td></tr>
+<tr><td>Enforcement</td><td>Gateway (mandatory)</td><td>Planner (inside agent)</td><td>Gateway</td><td>Gateway</td><td>Middleware</td><td>Harness</td><td>Runtime</td><td>Runtime</td></tr>
+<tr><td>Formal proofs</td><td>No (unit tests)</td><td><strong>Yes</strong></td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="9-discussion"><a class="header" href="#9-discussion">9. Discussion</a></h2>
+<h3 id="91-fail-closed-vs-fail-open"><a class="header" href="#91-fail-closed-vs-fail-open">9.1 Fail-Closed vs Fail-Open</a></h3>
+<p>The hook pipeline uses fail-closed semantics: if a hook times
+out, the tool call is blocked. This is a deliberate deviation
+from common middleware practice (fail-open on timeout). In
+agent infrastructure, a timed-out security check is more
+dangerous than a blocked tool call – the agent can retry,
+but a bypassed check cannot be retroactively enforced.</p>
+<h3 id="92-the-noauthenticator-fallback"><a class="header" href="#92-the-noauthenticator-fallback">9.2 The NoAuthenticator Fallback</a></h3>
+<p>When no authenticator is configured, navra falls back to
+<code>NoAuthenticator</code> with an error-level warning. This is a
+conscious tradeoff: blocking startup would break development
+workflows; silent open access would create false security
+assumptions. The current design makes the fallback loud but
+not fatal, and requires explicit <code>allow_anonymous()</code> for
+intentional open access.</p>
+<h3 id="93-session-enforcement-and-backward-compatibility"><a class="header" href="#93-session-enforcement-and-backward-compatibility">9.3 Session Enforcement and Backward Compatibility</a></h3>
+<p>IFC taint tracking requires session persistence across HTTP
+requests. Agents that do not maintain <code>mcp-session-id</code> headers
+lose cross-request taint accumulation. This is a backward
+compatibility concern: older MCP clients may not send session
+headers. The current design degrades gracefully (per-request
+taint only) rather than rejecting sessionless clients.</p>
+<h3 id="94-limitations"><a class="header" href="#94-limitations">9.4 Limitations</a></h3>
+<ul>
+<li>IFC labels are not propagated through model backends. An
+agent can launder tainted data by passing it through a
+model call and reading the response as “new” data.</li>
+<li>The blackbox is not cryptographically signed (hash-chained
+but not attested). A root-privileged attacker could
+reconstruct a valid chain after tampering.</li>
+<li>Safety regex patterns are English-centric. Non-English
+secret formats may not be detected.</li>
+<li>NER models add latency (~5-15 ms per scan) and are
+English/European-language-centric. CJK PII requires
+different models not yet integrated.</li>
+<li>OAuth 2.0 implementation supports only <code>client_credentials</code>.
+Authorization code flow with PKCE is advertised but not
+enforced.</li>
+<li>In bare-metal deployment, the agent runs on the host with
+full user privileges. The gateway is advisory — the agent
+could access resources directly, bypassing MCP. The security
+properties require containerized deployment (Podman or
+OpenShell) where MCP is the sole channel. This is analogous
+to running a firewall on the same machine as the attacker:
+correct rules, but the attacker can walk around them.</li>
+</ul>
+<h3 id="95-leakage-detection-beyond-ifc-labels"><a class="header" href="#95-leakage-detection-beyond-ifc-labels">9.5 Leakage Detection Beyond IFC Labels</a></h3>
+<p>Gateway-level IFC tracks labels at tool-call boundaries but
+cannot detect information leakage through LLM reasoning. We
+implement two additional layers that complement label-based IFC:</p>
+<p><strong>L2 — Similarity-based detection</strong> (<code>SimilarityLeakageHook</code>):
+On each write tool call, embed the outgoing arguments using an
+ONNX model, compute cosine similarity against tainted values in
+the session’s ValueStore, and block if similarity exceeds a
+tunable threshold (default 0.75). We evaluated 4 embedding
+models from 22M to 4B parameters. Performance peaks at 335M
+(BGE-large-v1.5): 100% precision, 100% recall on paraphrased
+exfiltration, 39ms per comparison. Larger models degrade —
+they are optimized for document retrieval, not sentence-level
+paraphrase detection. L2 cannot catch derived information
+(e.g., “password starts with h” from “hunter2”) because the
+texts have insufficient semantic overlap for embedding
+similarity to detect.</p>
+<p><strong>L3 — Semantic analysis</strong> (<code>SemanticLeakageJudge</code>): For
+high-risk writes (confidentiality &gt;= Secret), ask an LLM
+judge: “Does this outgoing text reveal information from this
+tainted content?” This catches derived information that L2
+cannot detect. The judge model must not be the agent’s own
+model (to avoid self-evaluation circularity). L3 runs in two
+modes: inline (~500ms, blocking, only for Secret-level writes)
+and continuous (non-blocking <code>tokio::spawn</code> after every write,
+zero latency impact — if leakage is detected, the session
+trust score is penalized and taint is retroactively elevated
+so L1 blocks subsequent writes). Unlike NeuroTaint [29] which
+runs post-hoc, navra’s continuous L3 can intervene mid-session.
+Operators configure tiers per permission set: default = L1 + L2;
+standard = L1 + L2 + L3 continuous; high-security = L1 + L2 +
+L3 inline.</p>
+<p>No published system combines real-time similarity detection
+with selective LLM-based semantic analysis at the gateway
+layer. NeuroTaint [29] is offline-only. FIDES [13] and
+CaMeL [14] do not address information leakage through LLM
+reasoning.</p>
+<hr>
+<h2 id="10-related-work"><a class="header" href="#10-related-work">10. Related Work</a></h2>
+<ul>
+<li><strong>OWASP Top 10 for LLM Applications</strong> [1]: Catalogs agent
+security risks. navra addresses LLM01 (tool misuse), LLM06
+(data exfiltration), LLM08 (privilege escalation).</li>
+<li><strong>Bell-LaPadula model</strong> [2]: Foundational MAC model. navra
+adapts no-write-down to agent tool chains.</li>
+<li><strong>SemaClaw</strong> [3]: Two-layer agent harness with binary
+permissions (PermissionBridge). Operates at the harness layer
+vs navra’s gateway layer. arXiv 2604.11548.</li>
+<li><strong>AWS Agent Registry</strong> [4]: Governance-layer complement
+(discovery + ownership) to navra’s runtime-security layer.</li>
+<li><strong>Agent Tier pattern</strong> [5]: Two-lane architecture
+(deterministic enforcement + contextual reasoning) that maps
+1:1 to navra’s ACL/hook pipeline + governed tool catalogs.</li>
+<li><strong>EU AI Act</strong> [6]: Article 12 (logging) and Article 14
+(human oversight) requirements for high-risk AI systems.
+navra provides compliance infrastructure that deployers
+can use to meet these obligations — the gateway itself is
+not a regulated AI system.</li>
+<li><strong>SOC2 CC6.1</strong> [7]: Audit trail requirements. navra’s
+hash-chained blackbox provides the technical primitives.</li>
+<li><strong>ZeroClaw</strong> [8]: Rust agent runtime with 3-tier autonomy
+model. Flat runtime vs navra’s security gateway.</li>
+<li><strong>OpenShell</strong> [9]: Red Hat/NVIDIA secure sandbox platform
+providing mandatory access control (Landlock, seccomp,
+namespaces, microVMs) at the OS level. navra integrates as
+the application-level security layer inside OpenShell
+sandboxes, providing defense in depth: OpenShell enforces
+network and filesystem isolation, navra enforces tool-level
+ACLs, IFC, and credential brokering.</li>
+<li><strong>Kaiden</strong> [10]: Agent sandboxing platform with container
+isolation. Similar defense-in-depth model but without
+application-level IFC or capability delegation.</li>
+<li><strong>Microsoft Agent Governance Toolkit</strong> [11]: DID-based identity,
+execution rings, OPA/Cedar policies. Middleware approach vs
+navra’s kernel approach. No capability delegation or
+credential brokering.</li>
+<li><strong>Claude Code Review</strong> [12]: Multi-agent cross-validation
+achieving &lt;1% false positive rate. Validates the pattern of
+parallel verifier agents for high-stakes outputs. navra’s
+flow engine supports this pattern via back-edges and
+conditional routing.</li>
+<li><strong>FIDES</strong> [13]: Microsoft Research IFC for LLM agents
+(arXiv:2505.23643, May 2025). Tracks confidentiality and
+integrity labels on tool results with per-value granularity.
+A deterministic planner enforces policies before consequential
+actions. Zero policy-violating injections on AgentDojo.
+<strong>Key distinction</strong>: FIDES operates at the <em>planner level</em>
+inside the agent loop — the agent’s own planner decides
+whether to honor labels. navra operates at the <em>gateway
+level</em> outside the agent — enforcement is mandatory regardless
+of agent implementation. This is analogous to kernel-enforced
+vs userspace-enforced access control: a compromised FIDES
+planner can bypass its own labels; a compromised agent behind
+navra cannot bypass the gateway’s IFC checks. The tradeoff
+is granularity: FIDES tracks labels on every value; navra
+tracks per-session with per-value <code>var://</code> variable tracking
+as an intermediate. navra also enforces both BLP properties
+(no-write-down and no-read-up with configurable clearance),
+verified exhaustively via Kani bounded model checking and
+TLA+ model checking (see <code>formal/PROOF_MAP.md</code>). FIDES’s
+formal non-interference proofs set the bar that gateway-level
+IFC should aspire to — navra provides 138 Kani proofs and
+6 TLC-verified specifications as a first step.</li>
+<li><strong>CaMeL</strong> [14]: Google DeepMind capability metadata on every
+value (arXiv:2503.18813, March 2025). Provable security on
+77% of AgentDojo tasks via data-flow graph construction.
+Inspires navra’s per-value <code>var://</code> tracking as a step
+toward full data-flow labeling. Like FIDES, CaMeL operates
+inside the agent; navra enforces at the infrastructure
+boundary.</li>
+<li><strong>AIOS</strong> [18]: LLM Agent Operating System (arXiv:2403.16971,
+COLM 2025). Formalizes the OS abstraction for agent systems
+with process scheduling and resource management. navra
+shares the OS analogy but focuses narrowly on the security
+reference monitor role (access control, IFC, audit) rather
+than full OS functionality.</li>
+<li><strong>MCP gateway landscape</strong> [22][23]: As of May 2026, 10+
+products provide MCP gateway functionality (Gravitee 4.10,
+Microsoft MCP Gateway, Kong AI Gateway 3.13, Traefik Hub,
+MintMCP, Lunar.dev, Composio, Intercept). These provide
+authentication and per-method ACLs but none implement
+information flow control or capability-scoped delegation.
+navra’s differentiator is IFC + capability tokens, not
+the gateway pattern itself.</li>
+</ul>
+<hr>
+<h2 id="11-conclusion"><a class="header" href="#11-conclusion">11. Conclusion</a></h2>
+<p>navra demonstrates that AI agent security is an infrastructure
+concern that belongs in a dedicated gateway layer, not in each
+agent’s application code. The gateway pattern ensures that
+security policies are enforced uniformly regardless of which
+agent connects, which model backend is used, or which tools are
+invoked. The single chokepoint design makes the security
+surface auditable: 15 sequential checks in one function, not
+scattered across dozens of tool handlers.</p>
+<p>Our evaluation across 19 adversarial scenarios, 629 AgentDojo
+injection cases, and 485 MCPTox poisoned tool schemas shows
+that gateway-level enforcement provides two properties that
+planner-level defenses cannot:</p>
+<ol>
+<li>
+<p><strong>Non-bypassability</strong>: A compromised agent cannot circumvent
+the gateway’s IFC checks — enforcement is in compiled Rust
+code outside the LLM’s reasoning. Planner-level IFC (FIDES,
+CaMeL) relies on the LLM itself to correctly assign and
+propagate labels, creating a structural vulnerability when
+the planner’s reasoning is compromised by prompt injection.</p>
+</li>
+<li>
+<p><strong>Defense-in-depth across layers</strong>: When content-level
+detection fails (base64-encoded secrets, Unicode homoglyphs),
+session-level IFC taint tracking provides a second enforcement
+boundary. The cascaded architecture (content patterns → IFC
+labels → write enforcement) means an attacker must evade all
+layers simultaneously, not just one.</p>
+</li>
+</ol>
+<p>Gateway-level IFC cannot, however, prevent information leakage
+through the LLM’s internal reasoning — a fundamental limitation
+shared by all published IFC systems. We propose semantic leakage
+detection via embedding similarity (§9.5) as a probabilistic
+third layer to partially address this gap.</p>
+<p>As AI agents gain more capabilities on local systems, the gap
+between agent capability and agent safety will widen. navra
+provides one answer: treat the agent-resource boundary as a
+security perimeter, enforce mandatory access control at that
+perimeter, and record every crossing for auditability.</p>
+<hr>
+<h2 id="references"><a class="header" href="#references">References</a></h2>
+<p>[1] OWASP. “OWASP Top 10 for LLM Applications.” 2025.</p>
+<p>[2] Bell, D.E. and LaPadula, L.J. “Secure Computer Systems:
+Mathematical Foundations.” MITRE Technical Report, 1973.</p>
+<p>[3] SemaClaw. “SemaClaw: Open-Source Agent Framework.”
+arXiv:2604.11548, 2026.</p>
+<p>[4] AWS. “Amazon Bedrock AgentCore Agent Registry.” 2026.</p>
+<p>[5] Varma, N. “The Agent Tier.” InfoWorld, 2026.</p>
+<p>[6] European Parliament. “Regulation (EU) 2024/1689
+(AI Act).” Article 14: Human Oversight. 2024.</p>
+<p>[7] AICPA. “SOC 2 Trust Services Criteria.” CC6.1:
+Logical and Physical Access Controls. 2022.</p>
+<p>[8] ZeroClaw. Rust agent runtime with trait-based
+architecture. 2026.</p>
+<p>[9] Red Hat / NVIDIA. “OpenShell: Secure Sandbox Platform for
+Autonomous Agents.” 2026.</p>
+<p>[10] Kaiden. Agent sandboxing platform. 2026.</p>
+<p>[11] Microsoft. “Agent Governance Toolkit: Open-Source Runtime
+Security for AI Agents.” April 2026.</p>
+<p>[12] Anthropic. “Claude Code Review: Multi-Agent Architecture.”
+2026.</p>
+<p>[13] Costa, M., Kopf, B., Kolluri, A., et al. “Securing AI
+Agents with Information-Flow Control (FIDES).” Microsoft
+Research, arXiv:2505.23643, May 2025.</p>
+<p>[14] Debenedetti, E., Shumailov, I., Fan, T., et al. “Defeating
+Prompt Injections by Design (CaMeL).” Google DeepMind/ETH,
+arXiv:2503.18813, March 2025.</p>
+<p>[15] Hardt, D., Ed. “The OAuth 2.0 Authorization Framework.”
+RFC 6749, October 2012.</p>
+<p>[16] Jones, M. and Sakimura, N. “OAuth 2.0 Authorization Server
+Metadata.” RFC 8414, June 2018.</p>
+<p>[17] European Parliament. “Regulation (EU) 2016/679 (GDPR).”
+Article 35: Data Protection Impact Assessment. 2016.</p>
+<p>[18] Dong, Y. et al. “AIOS: LLM Agent Operating System.”
+arXiv:2403.16971, COLM 2025.</p>
+<p>[19] OWASP. “OWASP Top 10 for Agentic Applications for 2026.”
+December 2025.</p>
+<p>[20] CoSAI OASIS. “Model Context Protocol Security.”
+github.com/cosai-oasis/ws4-secure-design-agentic-systems, 2026.</p>
+<p>[21] Block Engineering. “How We Red-Teamed Our Own AI Agent
+(Operation Pale Fire).” 2026.</p>
+<p>[22] Gravitee. “MCP Proxy: Unified Governance for Agents &amp; Tools.”
+v4.10, 2026.</p>
+<p>[23] Kong. “MCP Tool ACLs in Kong AI Gateway 3.13.” 2026.</p>
+<p>[24] A2ASECBENCH. “Security Benchmark for Agent-to-Agent
+Communication.” ICLR 2026.</p>
+<p>[25] Vemprala, S. et al. “Security Considerations for Multi-Agent
+Systems: A Comprehensive Analysis.” arXiv:2603.09002, 2026.</p>
+<p>[26] Operant AI. “Shadow Escape: First Zero-Click MCP Data
+Exfiltration Attack.” October 2025.</p>
+<p>[27] Block Engineering. “Operation Pale Fire: Red-Teaming Our
+Own AI Agent.” SecurityBoulevard, January 2026.</p>
+<p>[28] Wang, Z. et al. “MCPTox: A Benchmark for Tool Poisoning
+Attack on Real-World MCP Servers.” AAAI 2026,
+arXiv:2508.14925.</p>
+<p>[29] Cai, R. et al. “Ghost in the Agent: NeuroTaint for
+Semantic Taint Propagation in LLM Agents.”
+arXiv:2604.23374, April 2026.</p>
+<p>[30] Nasr, M. et al. “The Attacker Moves Second: Evaluating
+the Robustness of LLM Defenses Under Adaptive Attack.”
+arXiv:2510.09023, October 2025.</p>
+<p>[31] Microsoft Research. “Red-Teaming a Network of Agents:
+Understanding What Breaks When AI Agents Interact at Scale.”
+April 2026.</p>
+<p>[32] OWASP. “OWASP MCP Top 10.” owasp.org/www-project-mcp-top-10,
+2026.</p>
+<p>[33] Levy, D. et al. “AgentDojo: A Dynamic Environment to Evaluate
+Prompt Injection Attacks and Defenses for LLM Agents.” NeurIPS
+2024, arXiv:2406.13352.</p>
+<hr>
+<h2 id="appendix-a-codebase-statistics"><a class="header" href="#appendix-a-codebase-statistics">Appendix A: Codebase Statistics</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Metric</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>Workspace crates</td><td>22</td></tr>
+<tr><td>Rust source files</td><td>290</td></tr>
+<tr><td>Total LoC (Rust)</td><td>~126,000</td></tr>
+<tr><td>Test count</td><td>2,400+</td></tr>
+<tr><td>Kani proofs</td><td>138</td></tr>
+<tr><td>TLA+ specifications</td><td>6</td></tr>
+<tr><td>Benchmark suite</td><td>7 groups, ~30 individual benchmarks</td></tr>
+<tr><td>Secret detection patterns</td><td>13</td></tr>
+<tr><td>PII detection categories</td><td>20 (12 regex + 8 NER)</td></tr>
+<tr><td>PII validators</td><td>8 (Luhn, SSA, NIR, IBAN, SIRET, IP, phone context, span dedup)</td></tr>
+<tr><td>PII benchmark F1</td><td>0.889 (regex), 1.000 (regex + NER)</td></tr>
+<tr><td>Safety profiles</td><td>8 (standard, pseudonymize, secrets-only, block, guardian, guardian-deep, multi-label, none)</td></tr>
+<tr><td>NER models supported</td><td>4 (protectai/bert-base-NER, xlm-roberta-base-ner-hrl, sfermion/bert-pii-detector, OpenAI privacy-filter)</td></tr>
+<tr><td>Isolation backends</td><td>3 (Direct, Podman, OpenShell)</td></tr>
+<tr><td>AgentAction variants</td><td>16</td></tr>
+<tr><td>RiskLevel variants</td><td>5</td></tr>
+<tr><td>Adversarial eval scenarios</td><td>19 (A1-A10 + B1-B5 + C1-C2 + D1-D2)</td></tr>
+<tr><td>AgentDojo defense rate</td><td>100% across 5 models (629 injection cases)</td></tr>
+<tr><td>MCPTox detection rate</td><td>82.3% (399/485 poisoned schemas)</td></tr>
+<tr><td>Red team findings</td><td>10 (0 critical, 1 high, 5 medium, 3 low, 1 info)</td></tr>
+<tr><td>Cedar OWASP policies</td><td>10/10 ASI categories covered</td></tr>
+</tbody>
+</table>
+</div>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../code-of-conduct.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../papers/formal.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../code-of-conduct.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../papers/formal.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+        <!-- Livereload script (if served using the cli tool) -->
+        <script>
+            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
+            const socket = new WebSocket(wsAddress);
+            socket.onmessage = function (event) {
+                if (event.data === "reload") {
+                    socket.close();
+                    location.reload();
+                }
+            };
+
+            window.onbeforeunload = function() {
+                socket.close();
+            }
+        </script>
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-c22b7243.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

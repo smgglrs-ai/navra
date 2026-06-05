@@ -1,0 +1,84 @@
+name: Deploy Site + Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs-site/**'
+      - 'CONFIG.md'
+      - 'WHY-NAVRA.md'
+      - 'CONTRIBUTING.md'
+      - 'TESTING.md'
+      - 'SECURITY.md'
+      - 'CODE_OF_CONDUCT.md'
+      - 'examples/config.toml'
+      - 'docs/**'
+      - 'navra-*/README.md'
+      - 'formal/**'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mdBook
+        run: cargo install mdbook mdbook-mermaid
+
+      # Build Astro marketing site
+      - name: Build marketing site
+        working-directory: site
+        run: npm ci && npm run build
+
+      # Build mdBook docs
+      - name: Build documentation
+        working-directory: docs-site
+        run: mdbook build
+
+      # Merge: marketing site at / , docs at /docs/
+      - name: Merge outputs
+        run: |
+          mkdir -p _site
+          cp -r site/dist/* _site/
+          cp -r docs-site/book _site/docs
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

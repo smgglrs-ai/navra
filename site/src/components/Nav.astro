@@ -1,0 +1,70 @@
+---
+interface Props {
+  active?: string;
+}
+const { active } = Astro.props;
+---
+
+<nav class="nav">
+  <div class="container nav__inner">
+    <a href="/" class="nav__brand">
+      <img src="/logo-icon.png" alt="" class="nav__icon" />
+      <span class="nav__name">smgglrs</span>
+    </a>
+    <div class="nav__links">
+      <a href="/navra/" class:list={[{ active: active === 'navra' }]}>Navra</a>
+      <a href="/docs/">Docs</a>
+      <a href="/docs/papers/security-gateway.html">Research</a>
+      <a href="https://github.com/smgglrs-ai/navra" target="_blank">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--navy-deep);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+  }
+  .nav__brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .nav__icon {
+    height: 28px;
+    width: 28px;
+    border-radius: 4px;
+  }
+  .nav__name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--coral);
+    letter-spacing: -0.01em;
+  }
+  .nav__links {
+    display: flex;
+    gap: 32px;
+  }
+  .nav__links a {
+    font-size: 0.875rem;
+    color: var(--slate);
+    transition: color 0.15s;
+  }
+  .nav__links a:hover,
+  .nav__links a.active {
+    color: var(--white);
+  }
+  @media (max-width: 480px) {
+    .nav__links { gap: 16px; }
+    .nav__links a { font-size: 0.8125rem; }
+  }
+</style>

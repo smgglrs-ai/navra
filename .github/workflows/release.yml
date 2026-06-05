@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  ORT_VERSION: "1.24.2"
+  ORT_LIB_PATH: /opt/onnxruntime/lib
+  ORT_PREFER_DYNAMIC_LINK: "1"
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create.outputs.upload_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        run: cargo install git-cliff
+
+      - name: Generate release notes
+        run: git-cliff --latest --strip header > RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        id: create
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+
+  build-linux:
+    name: Build Linux x86_64
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
+
+      - name: Install ONNX Runtime
+        run: |
+          curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
+            | sudo tar xz -C /opt
+          sudo ln -sf /opt/onnxruntime-linux-x64-${ORT_VERSION} /opt/onnxruntime
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release --bin navra
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/release/navra dist/
+          cp LICENSE README.md CONFIG.md dist/
+          cp examples/config.toml dist/config.example.toml
+          tar czf navra-${{ github.ref_name }}-linux-x86_64.tar.gz -C dist .
+
+      - name: Upload artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          files: navra-${{ github.ref_name }}-linux-x86_64.tar.gz
+
+  update-changelog:
+    name: Update Changelog
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Install git-cliff
+        run: cargo install git-cliff
+
+      - name: Regenerate CHANGELOG.md
+        run: git-cliff --output CHANGELOG.md
+
+      - name: Commit changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "docs: update CHANGELOG.md for ${{ github.ref_name }}"
+          git push
