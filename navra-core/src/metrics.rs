@@ -41,6 +41,7 @@ pub struct Metrics {
     pub rag_chunks_skipped: AtomicU64,
     pub tools_listed_total: AtomicU64,
     pub tools_pruned_total: AtomicU64,
+    pub model_proxy_requests: AtomicU64,
 }
 
 impl Metrics {
@@ -80,6 +81,7 @@ impl Metrics {
             rag_chunks_skipped: AtomicU64::new(0),
             tools_listed_total: AtomicU64::new(0),
             tools_pruned_total: AtomicU64::new(0),
+            model_proxy_requests: AtomicU64::new(0),
         }
     }
 
@@ -297,6 +299,12 @@ impl Metrics {
             "navra_tools_pruned_total",
             "Tools suppressed by usage-based pruning",
             self.tools_pruned_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_model_proxy_requests_total",
+            "Chat completion requests proxied through the gateway",
+            self.model_proxy_requests.load(Ordering::Relaxed),
         );
 
         out

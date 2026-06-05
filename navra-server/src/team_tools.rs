@@ -1578,19 +1578,15 @@ fn spawn_containerized_agent(
                 model = bare.to_string();
             }
 
-            // Determine model endpoint: shared model server or host Ollama
-            let model_endpoint = model_server_url
-                .clone()
-                .unwrap_or_else(|| "http://10.0.2.2:11434/v1".to_string());
-
             // Parse the gateway port from navra_addr (e.g. "127.0.0.1:9315")
             let gateway_port = navra_addr.rsplit(':').next().unwrap_or("9315");
             let gateway_url = format!("http://10.0.2.2:{gateway_port}/mcp");
 
-            // Replace host addresses with container-visible 10.0.2.2
-            let container_model_ep = model_endpoint
-                .replace("127.0.0.1", "10.0.2.2")
-                .replace("localhost", "10.0.2.2");
+            // Route model calls through navra gateway for safety filters, IFC, audit
+            let container_model_ep = model_server_url
+                .as_ref()
+                .map(|u| u.replace("127.0.0.1", "10.0.2.2").replace("localhost", "10.0.2.2"))
+                .unwrap_or_else(|| format!("http://10.0.2.2:{gateway_port}/v1"));
 
             let container_name = format!("navra-agent-{}-{}", team_id, teammate_id);
 
@@ -1948,12 +1944,13 @@ fn spawn_openshell_agent(
                 model = bare.to_string();
             }
 
-            let model_endpoint = model_server_url
-                .clone()
-                .unwrap_or_else(|| "http://10.0.2.2:11434/v1".to_string());
-
             let gateway_port = navra_addr.rsplit(':').next().unwrap_or("9315");
             let mcp_url = format!("http://10.0.2.2:{gateway_port}/mcp");
+
+            // Route model calls through navra gateway for safety filters, IFC, audit
+            let model_endpoint = model_server_url
+                .clone()
+                .unwrap_or_else(|| format!("http://10.0.2.2:{gateway_port}/v1"));
 
             reg.set_resolved_model(&team_id, &teammate_id, &model);
             eprintln!(
@@ -2493,8 +2490,9 @@ pub fn spawn_teammate_agent(
                     ))
                 }
             } else {
+                let gateway_ep = format!("http://localhost:{}/v1", navra_addr.rsplit(':').next().unwrap_or("9315"));
                 run_teammate!(navra_model::OpenAiBackend::new(
-                    "http://localhost:11434/v1", &teammate_model, None, navra_model::Locality::Local,
+                    &gateway_ep, &teammate_model, None, navra_model::Locality::Local,
                 ))
             };
 

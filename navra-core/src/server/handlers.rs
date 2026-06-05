@@ -1155,6 +1155,10 @@ impl McpServer {
         self.blackbox.as_deref()
     }
 
+    pub fn safety_pipeline(&self, permission_set: &str) -> Option<&navra_security::safety::FilterPipeline> {
+        self.safety_pipelines.get(permission_set)
+    }
+
     pub fn tool_count(&self) -> usize {
         self.tools.len()
     }

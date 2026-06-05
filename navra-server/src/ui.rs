@@ -414,10 +414,11 @@ pub(crate) fn attach_ui_routes(
     };
 
     // --- OpenAI-compatible model proxy ---
-    // Goose (or any OpenAI client) can use http://localhost:9315/v1
-    // as its model endpoint. the original prototype injects persona, runs safety
-    // filters, records in blackbox, and forwards to the real model.
+    // Agents and external clients (Goose, etc.) use http://localhost:9315/v1
+    // as their model endpoint. All requests go through safety filters, blackbox
+    // audit, and persona injection.
     let proxy_backend = ui_chat_backend.clone();
+    let proxy_server = Arc::clone(server);
     let proxy_forge = ui_forge.clone();
     let v1_router = axum::Router::new()
         .route(
@@ -426,7 +427,9 @@ pub(crate) fn attach_ui_routes(
                 move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
                     let backend = proxy_backend.clone();
                     let forge = proxy_forge.clone();
+                    let srv = proxy_server.clone();
                     async move {
+                        let start = std::time::Instant::now();
                         let Some(backend) = backend else {
                             return axum::Json(serde_json::json!({
                                 "error": {"message": "no model configured", "type": "server_error"}
@@ -434,17 +437,47 @@ pub(crate) fn attach_ui_routes(
                             .into_response();
                         };
 
+                        // Identify the caller for safety/audit
+                        let agent = srv.authenticator().authenticate(&headers).ok();
+                        let agent_name = agent.as_ref().map(|a| a.name.as_str()).unwrap_or("anonymous");
+                        let permissions = agent.as_ref().map(|a| a.permissions.as_str()).unwrap_or("dev");
+
                         // Extract OpenAI-format messages
-                        let messages = body["messages"].as_array().cloned().unwrap_or_default();
+                        let mut messages = body["messages"].as_array().cloned().unwrap_or_default();
                         let model_name = body["model"].as_str().unwrap_or("default");
 
-                        // Find persona from system message or X-Persona header
+                        // Safety filter: scan inbound user/system messages
+                        if let Some(pipeline) = srv.safety_pipeline(permissions) {
+                            let filter_ctx = navra_core::safety::FilterContext {
+                                agent_name,
+                                operation: "model_proxy",
+                                path: None,
+                            };
+                            for msg in &mut messages {
+                                let role = msg["role"].as_str().unwrap_or("");
+                                if role == "user" || role == "system" {
+                                    if let Some(text) = msg["content"].as_str() {
+                                        match pipeline.process_inbound(text, &filter_ctx).await {
+                                            Ok(filtered) => {
+                                                msg["content"] = serde_json::Value::String(filtered);
+                                            }
+                                            Err(reason) => {
+                                                return axum::Json(serde_json::json!({
+                                                    "error": {"message": format!("Content blocked: {reason}"), "type": "safety_error"}
+                                                })).into_response();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Inject persona system prompt if requested
                         let persona_name = headers
                             .get("x-persona")
                             .and_then(|v| v.to_str().ok())
                             .map(String::from)
                             .or_else(|| {
-                                // Check first system message for persona directive
                                 messages
                                     .first()
                                     .filter(|m| m["role"].as_str() == Some("system"))
@@ -452,86 +485,100 @@ pub(crate) fn attach_ui_routes(
                                     .and_then(|c| c.strip_prefix("persona:"))
                                     .map(|p| p.trim().to_string())
                             });
-
-                        // Build input items from messages
-                        let mut input: Vec<navra_model::InputItem> = Vec::new();
-
-                        // Inject persona system prompt if specified
                         if let Some(ref pname) = persona_name {
                             if let Ok(output) =
                                 navra_cognitive::assemble(&forge, pname, "", None, None)
                             {
-                                input.push(navra_model::InputItem::system(
-                                    &output.system_prompt(),
-                                ));
+                                messages.insert(0, serde_json::json!({
+                                    "role": "system",
+                                    "content": output.system_prompt(),
+                                }));
                             }
                         }
 
-                        // Convert OpenAI messages to our format
-                        for msg in &messages {
-                            match msg["role"].as_str() {
-                                Some("system") => {
-                                    // Skip if we already injected persona
-                                    if persona_name.is_none() {
-                                        if let Some(content) = msg["content"].as_str() {
-                                            input.push(navra_model::InputItem::system(content));
+                        // Proxy to Ollama, preserving full OpenAI format (tools, tool_choice, etc.)
+                        let mut proxy_body = body.0.clone();
+                        proxy_body["messages"] = serde_json::Value::Array(messages);
+                        // Force stream=false for non-streaming proxy
+                        proxy_body["stream"] = serde_json::Value::Bool(false);
+
+                        let upstream_url = "http://localhost:11434/v1/chat/completions";
+                        let resp = match reqwest::Client::new()
+                            .post(upstream_url)
+                            .json(&proxy_body)
+                            .send()
+                            .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => {
+                                return axum::Json(serde_json::json!({
+                                    "error": {"message": format!("Upstream error: {e}"), "type": "upstream_error"}
+                                })).into_response();
+                            }
+                        };
+
+                        let status = resp.status();
+                        let resp_bytes = resp.bytes().await.unwrap_or_default();
+                        if !status.is_success() {
+                            return (
+                                axum::http::StatusCode::from_u16(status.as_u16())
+                                    .unwrap_or(axum::http::StatusCode::BAD_GATEWAY),
+                                axum::body::Body::from(resp_bytes),
+                            ).into_response();
+                        }
+
+                        let mut resp_json: serde_json::Value = match serde_json::from_slice(&resp_bytes) {
+                            Ok(v) => v,
+                            Err(_) => {
+                                return (axum::http::StatusCode::OK, axum::body::Body::from(resp_bytes)).into_response();
+                            }
+                        };
+
+                        // Safety filter: scan outbound assistant content
+                        if let Some(pipeline) = srv.safety_pipeline(permissions) {
+                            let filter_ctx = navra_core::safety::FilterContext {
+                                agent_name,
+                                operation: "model_proxy",
+                                path: None,
+                            };
+                            if let Some(choices) = resp_json["choices"].as_array_mut() {
+                                for choice in choices {
+                                    if let Some(content) = choice["message"]["content"].as_str() {
+                                        match pipeline.process_outbound(content, &filter_ctx).await {
+                                            Ok(filtered) => {
+                                                choice["message"]["content"] = serde_json::Value::String(filtered);
+                                            }
+                                            Err(reason) => {
+                                                choice["message"]["content"] = serde_json::Value::String(
+                                                    format!("[FILTERED: {reason}]"),
+                                                );
+                                            }
                                         }
                                     }
                                 }
-                                Some("user") => {
-                                    if let Some(content) = msg["content"].as_str() {
-                                        input.push(navra_model::InputItem::user(content));
-                                    }
-                                }
-                                Some("assistant") => {
-                                    if let Some(content) = msg["content"].as_str() {
-                                        input.push(navra_model::InputItem::Message(
-                                            navra_model::MessageItem::assistant(content),
-                                        ));
-                                    }
-                                }
-                                _ => {}
                             }
                         }
 
-                        let temperature = body["temperature"].as_f64().map(|t| t as f32);
-                        let max_tokens = body["max_tokens"].as_u64().map(|t| t as u32);
-
-                        let mut request =
-                            navra_model::CreateResponseRequest::new(String::new(), input);
-                        request.temperature = temperature;
-                        request.max_output_tokens = max_tokens;
-
-                        match backend.respond(&request).await {
-                            Ok(response) => {
-                                let text = response.text().unwrap_or_default();
-                                let usage = response.usage.as_ref();
-
-                                // Return OpenAI-compatible response
-                                axum::Json(serde_json::json!({
-                            "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
-                            "object": "chat.completion",
-                            "model": model_name,
-                            "choices": [{
-                                "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": text,
-                                },
-                                "finish_reason": "stop",
-                            }],
-                            "usage": {
-                                "prompt_tokens": usage.map(|u| u.input_tokens).unwrap_or(0),
-                                "completion_tokens": usage.map(|u| u.output_tokens).unwrap_or(0),
-                                "total_tokens": usage.map(|u| u.total_tokens).unwrap_or(0),
-                            }
-                        })).into_response()
-                            }
-                            Err(e) => axum::Json(serde_json::json!({
-                                "error": {"message": format!("{e}"), "type": "model_error"}
-                            }))
-                            .into_response(),
+                        // Blackbox audit
+                        let duration_us = start.elapsed().as_micros() as u64;
+                        if let Some(bb) = srv.blackbox() {
+                            let output_summary = resp_json["choices"]
+                                .as_array()
+                                .and_then(|c| c.first())
+                                .and_then(|c| c["message"]["content"].as_str())
+                                .unwrap_or("")
+                                .chars().take(500).collect::<String>();
+                            bb.record(
+                                agent_name, permissions, "",
+                                "model_proxy",
+                                &format!("model={model_name}"),
+                                &output_summary,
+                                "ok", duration_us, "Trusted",
+                            );
                         }
+                        srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                        axum::Json(resp_json).into_response()
                     }
                 },
             ),
