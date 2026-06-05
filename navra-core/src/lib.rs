@@ -21,6 +21,7 @@ pub use navra_model as models;
 
 // Core modules (owned by this crate)
 pub mod a2a;
+pub mod acp;
 pub mod blackbox;
 pub mod metrics;
 pub mod transport;
