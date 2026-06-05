@@ -1,7 +1,8 @@
 //! Map navra McpServer capabilities to ACP AgentManifest.
 
+use super::store::RunStore;
 use super::types::{
-    AgentCapability, AgentManifest, AgentMetadata, FlowSummary,
+    AgentCapability, AgentManifest, AgentMetadata, AgentStatus, FlowSummary,
 };
 use crate::server::McpServer;
 
@@ -92,6 +93,19 @@ pub fn build_manifest(server: &McpServer) -> AgentManifest {
         }),
         status: None,
     }
+}
+
+/// Attach run metrics to a manifest as AgentStatus.
+pub fn with_metrics(mut manifest: AgentManifest, store: &RunStore) -> AgentManifest {
+    let m = store.metrics();
+    if m.total_runs > 0 {
+        manifest.status = Some(AgentStatus {
+            avg_run_time_seconds: Some(m.avg_run_time()),
+            avg_run_tokens: None,
+            success_rate: Some(m.success_rate()),
+        });
+    }
+    manifest
 }
 
 /// Convert a server name to an RFC 1123 DNS label (ACP requirement).
