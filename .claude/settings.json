@@ -8,24 +8,56 @@
       "Bash(cargo fmt:*)",
       "Bash(cargo search:*)",
       "Bash(cargo run:*)",
+      "Bash(cargo doc:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo bench:*)",
+      "Bash(cargo metadata:*)",
+      "Bash(cargo expand:*)",
       "Bash(rustfmt *)",
+      "Bash(rustup *)",
       "Bash(just *)",
       "Bash(ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo *)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
+      "Bash(git show:*)",
       "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git describe:*)",
+      "Bash(git shortlog:*)",
+      "Bash(git stash list:*)",
+      "Bash(git remote:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git merge:*)",
       "Bash(git worktree:*)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
       "Bash(find *)",
       "Bash(grep *)",
+      "Bash(rg *)",
       "Bash(ls *)",
       "Bash(wc *)",
       "Bash(head *)",
       "Bash(tail *)",
-      "WebSearch"
+      "Bash(cat *)",
+      "Bash(file *)",
+      "Bash(du *)",
+      "Bash(diff *)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(tokei *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(jq *)",
+      "Bash(python3 -c *)",
+      "Bash(ollama list:*)",
+      "Bash(ollama ps:*)",
+      "Bash(ollama show:*)",
+      "WebSearch",
+      "mcp__excalidraw__*"
     ]
   },
   "hooks": {
@@ -35,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "filepath=\"$TOOL_INPUT_FILE_PATH\"; if echo \"$filepath\" | grep -qE '(Cargo\\.lock|\\.env|secrets)'; then echo 'BLOCKED: This file should not be edited directly by Claude.'; exit 1; fi"
+            "command": "filepath=\"$TOOL_INPUT_FILE_PATH\"; if echo \"$filepath\" | grep -qE '(Cargo\\.lock|\\.env|secrets|\\.pem|\\.key)'; then echo 'BLOCKED: This file should not be edited directly by Claude.'; exit 1; fi"
           }
         ]
       }
