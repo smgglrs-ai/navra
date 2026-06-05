@@ -94,6 +94,7 @@ navra-server / navra (gateway)
     |-- Safety filters (regex + ML + NER)
     |-- Upstream tool scanning (8 threat categories)
     |-- Cognitive file integrity monitoring
+    |-- Model proxy (/v1/chat/completions → Ollama, safety-filtered)
     |-- Built-in modules (file, git, exec, rag, voice, vision, github)
     |-- Upstream MCP servers (proxied, safety-filtered, scanned)
     |-- Prometheus /metrics + OTel traces
