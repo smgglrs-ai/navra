@@ -151,7 +151,13 @@ async fn handle_create_run(
     }
 
     let mode = request.mode.unwrap_or(RunMode::Sync);
-    let run = dispatch::create_run(&state.runs, &request.agent_name, request.session_id);
+    let run = dispatch::create_run(
+        &state.runs,
+        &state.server,
+        &request.agent_name,
+        request.session_id,
+        &agent,
+    );
     let run_id = run.run_id.clone();
 
     match mode {
@@ -428,16 +434,20 @@ async fn handle_get_session(
     Path(session_id): Path<String>,
 ) -> Result<Json<SessionSpec>, (StatusCode, Json<AcpError>)> {
     authenticate(&state.server, &headers)?;
-    let session = state.runs.get(&session_id);
 
     match state.server.sessions().get(&session_id) {
-        Some(_) => Ok(Json(SessionSpec {
-            id: session_id,
-            history: session
-                .map(|r| vec![format!("/acp/runs/{}", r.run_id)])
-                .unwrap_or_default(),
-            state: None,
-        })),
+        Some(_) => {
+            let run_ids = state.runs.runs_for_session(&session_id);
+            let history = run_ids
+                .iter()
+                .map(|rid| format!("/acp/runs/{}", rid))
+                .collect();
+            Ok(Json(SessionSpec {
+                id: session_id,
+                history,
+                state: None,
+            }))
+        }
         None => Err((
             StatusCode::NOT_FOUND,
             Json(AcpError::not_found(format!(
@@ -713,7 +723,8 @@ mod tests {
             flows: vec![],
             approval_gate: None,
         };
-        let run = dispatch::create_run(&state.runs, "test-agent", None);
+        let agent = AgentIdentity::new("tester", "dev");
+        let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
         let router = build_acp_router(server);
 
         // We need to use the same state — build a custom router for this test
@@ -744,7 +755,8 @@ mod tests {
             flows: vec![],
             approval_gate: None,
         };
-        let run = dispatch::create_run(&state.runs, "test-agent", None);
+        let agent = AgentIdentity::new("tester", "dev");
+        let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
         state
             .runs
             .update_status(&run.run_id, RunStatus::InProgress);
@@ -776,7 +788,8 @@ mod tests {
             flows: vec![],
             approval_gate: None,
         };
-        let run = dispatch::create_run(&state.runs, "test-agent", None);
+        let agent = AgentIdentity::new("tester", "dev");
+        let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
         state
             .runs
             .set_finished(&run.run_id, RunStatus::Completed, dispatch::now_iso());
@@ -805,7 +818,8 @@ mod tests {
             flows: vec![],
             approval_gate: None,
         };
-        let run = dispatch::create_run(&state.runs, "test-agent", None);
+        let agent = AgentIdentity::new("tester", "dev");
+        let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
 
         let test_router = Router::new()
             .route("/acp/runs/{run_id}/events", get(handle_list_events))
