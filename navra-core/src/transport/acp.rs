@@ -936,4 +936,298 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["agents"].as_array().unwrap().len(), 0);
     }
+
+    #[tokio::test]
+    async fn create_run_creates_session() {
+        let server = test_server();
+        let router = build_acp_router(server.clone());
+        let (status, json) = post_json(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "test-agent",
+                "session_id": "my-session-1",
+                "input": [{
+                    "role": "user",
+                    "parts": [{"content_type": "text/plain", "content": "hello"}]
+                }]
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["session_id"], "my-session-1");
+        assert!(
+            server.sessions().get("my-session-1").is_some(),
+            "Session should have been created"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_run_auto_generates_session() {
+        let router = build_acp_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "test-agent",
+                "input": [{
+                    "role": "user",
+                    "parts": [{"content_type": "text/plain", "content": "hello"}]
+                }]
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(json["session_id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn resume_run_not_awaiting() {
+        let server = test_server();
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![],
+            approval_gate: None,
+        };
+        let agent = AgentIdentity::new("tester", "dev");
+        let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
+        state.runs.update_status(&run.run_id, RunStatus::InProgress);
+
+        let test_router = Router::new()
+            .route("/acp/runs/{run_id}", get(handle_get_run).post(handle_resume_run))
+            .with_state(state);
+
+        let (status, json) = post_json(
+            &test_router,
+            &format!("/acp/runs/{}", run.run_id),
+            serde_json::json!({
+                "run_id": run.run_id,
+                "await_resume": {"approved": true},
+                "mode": "sync"
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(json["code"], "invalid_input");
+    }
+
+    #[tokio::test]
+    async fn resume_run_approved() {
+        let server = test_server();
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![],
+            approval_gate: None,
+        };
+        let agent = AgentIdentity::new("tester", "dev");
+        let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
+        state.runs.set_awaiting(
+            &run.run_id,
+            serde_json::json!({
+                "request_id": "a-1",
+                "tool_name": "ping",
+                "arguments": {}
+            }),
+        );
+
+        let test_router = Router::new()
+            .route("/acp/runs/{run_id}", get(handle_get_run).post(handle_resume_run))
+            .with_state(state);
+
+        let (status, json) = post_json(
+            &test_router,
+            &format!("/acp/runs/{}", run.run_id),
+            serde_json::json!({
+                "run_id": run.run_id,
+                "await_resume": {"approved": true},
+                "mode": "sync"
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["status"], "completed");
+        let output_str = serde_json::to_string(&json["output"]).unwrap();
+        assert!(output_str.contains("pong"), "Expected pong: {}", output_str);
+    }
+
+    #[tokio::test]
+    async fn resume_run_denied() {
+        let server = test_server();
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![],
+            approval_gate: None,
+        };
+        let agent = AgentIdentity::new("tester", "dev");
+        let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
+        state.runs.set_awaiting(
+            &run.run_id,
+            serde_json::json!({"request_id": "a-1", "tool_name": "ping"}),
+        );
+
+        let test_router = Router::new()
+            .route("/acp/runs/{run_id}", get(handle_get_run).post(handle_resume_run))
+            .with_state(state);
+
+        let (status, json) = post_json(
+            &test_router,
+            &format!("/acp/runs/{}", run.run_id),
+            serde_json::json!({
+                "run_id": run.run_id,
+                "await_resume": {"approved": false, "reason": "too risky"},
+                "mode": "sync"
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["status"], "failed");
+    }
+
+    #[tokio::test]
+    async fn multiple_messages_in_run() {
+        let router = build_acp_router(test_server());
+        let (status, json) = post_json(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "test-agent",
+                "input": [
+                    {
+                        "role": "user",
+                        "parts": [{"content_type": "text/plain", "content": "/tool ping {}"}]
+                    },
+                    {
+                        "role": "user",
+                        "parts": [{"content_type": "text/plain", "content": "just text"}]
+                    }
+                ],
+                "mode": "sync"
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["status"], "completed");
+        let output_str = serde_json::to_string(&json["output"]).unwrap();
+        assert!(output_str.contains("pong"));
+        assert!(output_str.contains("Received"));
+    }
+
+    #[tokio::test]
+    async fn agents_with_flows() {
+        let server = test_server();
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![FlowSummary {
+                name: "audit".to_string(),
+                description: "Security audit".to_string(),
+                nodes: vec![
+                    FlowNodeSummary {
+                        id: "scan".to_string(),
+                        description: "Scan for issues".to_string(),
+                    },
+                    FlowNodeSummary {
+                        id: "fix".to_string(),
+                        description: "Fix issues".to_string(),
+                    },
+                ],
+            }],
+            approval_gate: None,
+        };
+
+        let test_router = Router::new()
+            .route("/acp/agents", get(handle_list_agents))
+            .route("/acp/agents/{name}", get(handle_get_agent))
+            .with_state(state);
+
+        let (status, json) = get_json(&test_router, "/acp/agents").await;
+        assert_eq!(status, StatusCode::OK);
+        let agents = json["agents"].as_array().unwrap();
+        assert_eq!(agents.len(), 3);
+        let names: Vec<&str> = agents.iter().filter_map(|a| a["name"].as_str()).collect();
+        assert!(names.contains(&"test-agent"));
+        assert!(names.contains(&"audit-scan"));
+        assert!(names.contains(&"audit-fix"));
+
+        let (status, json) = get_json(&test_router, "/acp/agents/audit-scan").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["description"], "Scan for issues");
+
+        let (status, _) = get_json(&test_router, "/acp/agents/audit-unknown").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn agents_include_metrics_after_runs() {
+        let server = test_server();
+        let state = AcpState {
+            server: server.clone(),
+            runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![],
+            approval_gate: None,
+        };
+
+        let agent = AgentIdentity::new("tester", "dev");
+        let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
+        state.runs.set_finished(
+            &run.run_id,
+            RunStatus::Completed,
+            "2026-06-05T10:00:05Z".to_string(),
+        );
+
+        let test_router = Router::new()
+            .route("/acp/agents/{name}", get(handle_get_agent))
+            .with_state(state);
+
+        let (status, json) = get_json(&test_router, "/acp/agents/test-agent").await;
+        assert_eq!(status, StatusCode::OK);
+        let status_obj = &json["status"];
+        assert!(status_obj.is_object(), "Expected status metrics");
+        assert_eq!(status_obj["success_rate"], 100.0);
+        assert!(status_obj["avg_run_time_seconds"].as_f64().unwrap() > 0.0);
+    }
+
+    #[tokio::test]
+    async fn session_shows_run_history() {
+        let server = test_server();
+        let router = build_acp_router(server.clone());
+
+        let (_, json) = post_json(
+            &router,
+            "/acp/runs",
+            serde_json::json!({
+                "agent_name": "test-agent",
+                "session_id": "hist-session",
+                "input": [{
+                    "role": "user",
+                    "parts": [{"content_type": "text/plain", "content": "hello"}]
+                }]
+            }),
+        )
+        .await;
+        let run_id = json["run_id"].as_str().unwrap().to_string();
+
+        let (status, json) = get_json(&router, "/acp/session/hist-session").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["id"], "hist-session");
+        let history = json["history"].as_array().unwrap();
+        assert_eq!(history.len(), 1);
+        assert!(history[0].as_str().unwrap().contains(&run_id));
+    }
+
+    #[tokio::test]
+    async fn session_not_found() {
+        let router = build_acp_router(test_server());
+        let (status, json) = get_json(&router, "/acp/session/nonexistent").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(json["code"], "not_found");
+    }
 }

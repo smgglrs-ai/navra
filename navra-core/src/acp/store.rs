@@ -299,3 +299,229 @@ fn date_to_epoch_days(y: i64, m: u32, d: u32) -> i64 {
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146_097 + doe - 719_468
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::types::AcpError;
+
+    fn make_run(id: &str, session: Option<&str>) -> Run {
+        Run {
+            agent_name: "test-agent".to_string(),
+            run_id: id.to_string(),
+            status: RunStatus::Created,
+            output: vec![],
+            created_at: "2026-06-05T10:00:00Z".to_string(),
+            session_id: session.map(String::from),
+            await_request: None,
+            error: None,
+            finished_at: None,
+        }
+    }
+
+    #[test]
+    fn create_and_get() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+        assert!(store.get("r1").is_some());
+        assert!(store.get("r2").is_none());
+        assert_eq!(store.count(), 1);
+    }
+
+    #[test]
+    fn update_status() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+        let run = store.update_status("r1", RunStatus::InProgress).unwrap();
+        assert_eq!(run.status, RunStatus::InProgress);
+    }
+
+    #[test]
+    fn set_finished_records_metrics() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+        store.set_finished("r1", RunStatus::Completed, "2026-06-05T10:00:05Z".to_string());
+
+        let m = store.metrics();
+        assert_eq!(m.total_runs, 1);
+        assert_eq!(m.completed, 1);
+        assert_eq!(m.failed, 0);
+        assert_eq!(m.success_rate(), 100.0);
+        assert!(m.avg_run_time() > 0.0);
+    }
+
+    #[test]
+    fn set_error_records_failure() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+        store.set_error(
+            "r1",
+            AcpError::server_error("boom"),
+            "2026-06-05T10:00:03Z".to_string(),
+        );
+
+        let run = store.get("r1").unwrap();
+        assert_eq!(run.status, RunStatus::Failed);
+        assert!(run.error.is_some());
+
+        let m = store.metrics();
+        assert_eq!(m.failed, 1);
+        assert_eq!(m.success_rate(), 0.0);
+    }
+
+    #[test]
+    fn metrics_accumulate() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+        store.create(make_run("r2", None));
+        store.create(make_run("r3", None));
+
+        store.set_finished("r1", RunStatus::Completed, "2026-06-05T10:00:02Z".to_string());
+        store.set_finished("r2", RunStatus::Completed, "2026-06-05T10:00:04Z".to_string());
+        store.set_error("r3", AcpError::server_error("err"), "2026-06-05T10:00:01Z".to_string());
+
+        let m = store.metrics();
+        assert_eq!(m.total_runs, 3);
+        assert_eq!(m.completed, 2);
+        assert_eq!(m.failed, 1);
+        let rate = m.success_rate();
+        assert!(rate > 66.0 && rate < 67.0, "expected ~66.7%, got {}", rate);
+    }
+
+    #[test]
+    fn set_awaiting_and_clear() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+
+        let run = store
+            .set_awaiting("r1", serde_json::json!({"request_id": "a-1"}))
+            .unwrap();
+        assert_eq!(run.status, RunStatus::Awaiting);
+        assert!(run.await_request.is_some());
+
+        let run = store.clear_await("r1").unwrap();
+        assert!(run.await_request.is_none());
+    }
+
+    #[test]
+    fn set_awaiting_nonexistent() {
+        let store = RunStore::new();
+        assert!(store.set_awaiting("nope", serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn session_run_tracking() {
+        let store = RunStore::new();
+        store.create(make_run("r1", Some("s1")));
+        store.create(make_run("r2", Some("s1")));
+        store.create(make_run("r3", Some("s2")));
+        store.create(make_run("r4", None));
+
+        let s1_runs = store.runs_for_session("s1");
+        assert_eq!(s1_runs, vec!["r1", "r2"]);
+
+        let s2_runs = store.runs_for_session("s2");
+        assert_eq!(s2_runs, vec!["r3"]);
+
+        assert!(store.runs_for_session("s3").is_empty());
+    }
+
+    #[test]
+    fn expire_removes_old_finished_runs() {
+        let store = RunStore::new();
+        store.create(make_run("r1", Some("s1")));
+        store.set_finished("r1", RunStatus::Completed, "2020-01-01T00:00:00Z".to_string());
+
+        store.create(make_run("r2", Some("s1")));
+        store.update_status("r2", RunStatus::InProgress);
+
+        let expired = store.expire(Duration::from_secs(60));
+        assert_eq!(expired, 1);
+        assert!(store.get("r1").is_none());
+        assert!(store.get("r2").is_some());
+
+        let s1_runs = store.runs_for_session("s1");
+        assert_eq!(s1_runs, vec!["r2"]);
+    }
+
+    #[test]
+    fn expire_keeps_recent_runs() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+        store.set_finished(
+            "r1",
+            RunStatus::Completed,
+            super::super::dispatch::now_iso(),
+        );
+
+        let expired = store.expire(Duration::from_secs(3600));
+        assert_eq!(expired, 0);
+        assert!(store.get("r1").is_some());
+    }
+
+    #[test]
+    fn expire_cleans_session_mappings() {
+        let store = RunStore::new();
+        store.create(make_run("r1", Some("s1")));
+        store.set_finished("r1", RunStatus::Completed, "2020-01-01T00:00:00Z".to_string());
+
+        store.expire(Duration::from_secs(60));
+        assert!(store.runs_for_session("s1").is_empty());
+    }
+
+    #[test]
+    fn add_output_message() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+
+        let msg = Message {
+            role: "agent".to_string(),
+            parts: vec![super::super::types::MessagePart::text("hello")],
+            created_at: None,
+            completed_at: None,
+        };
+        let run = store.add_output_message("r1", msg).unwrap();
+        assert_eq!(run.output.len(), 1);
+    }
+
+    #[test]
+    fn events_lifecycle() {
+        let store = RunStore::new();
+        store.create(make_run("r1", None));
+
+        store.add_event("r1", Event::RunCreated {
+            run: store.get("r1").unwrap(),
+        });
+        store.add_event("r1", Event::RunInProgress {
+            run: store.get("r1").unwrap(),
+        });
+
+        let events = store.list_events("r1");
+        assert_eq!(events.len(), 2);
+        assert!(store.list_events("r2").is_empty());
+    }
+
+    #[test]
+    fn parse_iso_epoch_valid() {
+        let epoch = parse_iso_epoch("2026-06-05T10:30:00Z").unwrap();
+        assert!(epoch > 0);
+    }
+
+    #[test]
+    fn parse_iso_epoch_invalid() {
+        assert!(parse_iso_epoch("not-a-date").is_none());
+        assert!(parse_iso_epoch("").is_none());
+        assert!(parse_iso_epoch("2026-06-05").is_none());
+    }
+
+    #[test]
+    fn compute_duration_works() {
+        let d = compute_duration("2026-06-05T10:00:00Z", "2026-06-05T10:00:05Z");
+        assert_eq!(d, 5.0);
+    }
+
+    #[test]
+    fn compute_duration_invalid_returns_zero() {
+        assert_eq!(compute_duration("bad", "bad"), 0.0);
+    }
+}
