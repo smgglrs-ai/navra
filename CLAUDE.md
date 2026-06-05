@@ -153,6 +153,53 @@ creates merge conflicts with other agents.
 Merge or discard each worktree as soon as the agent completes.
 Stale worktrees with uncommitted changes will be lost on cleanup.
 
+## Parallel Development
+
+See `AGENTS.md` for the full agent rules. This section covers
+when and how to use parallel workflows.
+
+### When to use parallel agents
+
+- **Yes**: independent crate work (e.g., add tests to navra-rag
+  while documenting navra-security)
+- **Yes**: cross-cutting work with clear file ownership (frontend
+  agent + backend agent, each in their own crate)
+- **No**: sequential changes where step 2 depends on step 1
+- **No**: changes to the same files (will conflict)
+
+### Decomposition by crate boundary
+
+The 22-crate workspace is designed for parallel work. Each crate
+has clear file ownership. Decompose tasks along crate boundaries:
+
+```
+Task: "Add embedding support to RAG and voice modules"
+  Agent 1 (worktree): navra-rag — embedding integration
+  Agent 2 (worktree): navra-modal-voice — embedding integration
+  Lead (main): Cargo.toml workspace changes, merge results
+```
+
+### Plan on main, implement in worktrees
+
+1. Design the approach in the main session
+2. Decompose into crate-scoped work packages
+3. Spawn agents with `isolation: worktree`, one per crate
+4. Each agent implements, tests, and commits in its worktree
+5. Lead merges each branch: `git merge --no-ff <branch>`
+6. Lead runs full workspace tests after all merges
+
+### Team coordination
+
+For complex features spanning 3+ crates, use Claude Code teams:
+
+1. Lead creates a task list with one task per crate
+2. Lead spawns teammates, each assigned to specific crates
+3. Teammates work in worktrees, message the lead on completion
+4. Lead merges, resolves conflicts, runs integration tests
+
+Keep teams to 3-5 agents. More than that creates merge overhead
+that outweighs the parallelism gains.
+
 ## Conventions
 
 ### Naming
