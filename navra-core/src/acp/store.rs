@@ -8,6 +8,7 @@ use std::sync::{Arc, RwLock};
 pub struct RunStore {
     runs: Arc<RwLock<HashMap<String, Run>>>,
     events: Arc<RwLock<HashMap<String, Vec<Event>>>>,
+    session_runs: Arc<RwLock<HashMap<String, Vec<String>>>>,
 }
 
 impl RunStore {
@@ -17,6 +18,8 @@ impl RunStore {
 
     pub fn create(&self, run: Run) {
         let id = run.run_id.clone();
+        let session_id = run.session_id.clone();
+
         let mut runs = self.runs.write().unwrap_or_else(|e| {
             tracing::warn!("RunStore RwLock poisoned (write), recovering");
             e.into_inner()
@@ -27,7 +30,23 @@ impl RunStore {
             tracing::warn!("RunStore events RwLock poisoned (write), recovering");
             e.into_inner()
         });
-        events.entry(id).or_default();
+        events.entry(id.clone()).or_default();
+
+        if let Some(sid) = session_id {
+            let mut sr = self.session_runs.write().unwrap_or_else(|e| {
+                tracing::warn!("RunStore session_runs poisoned (write), recovering");
+                e.into_inner()
+            });
+            sr.entry(sid).or_default().push(id);
+        }
+    }
+
+    pub fn runs_for_session(&self, session_id: &str) -> Vec<String> {
+        let sr = self.session_runs.read().unwrap_or_else(|e| {
+            tracing::warn!("RunStore session_runs poisoned (read), recovering");
+            e.into_inner()
+        });
+        sr.get(session_id).cloned().unwrap_or_default()
     }
 
     pub fn get(&self, id: &str) -> Option<Run> {

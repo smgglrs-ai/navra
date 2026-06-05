@@ -98,11 +98,42 @@ fn epoch_days_to_date(mut days: i64) -> (i64, u32, u32) {
 }
 
 /// Create a new `Run` in `created` state.
+///
+/// If a `session_id` is provided and doesn't exist in the server's
+/// session store, a new session is created automatically.
 pub fn create_run(
     store: &RunStore,
+    server: &McpServer,
     agent_name: &str,
     session_id: Option<String>,
+    agent: &AgentIdentity,
 ) -> Run {
+    let session_id = session_id.or_else(|| Some(uuid::Uuid::new_v4().to_string()));
+
+    if let Some(ref sid) = session_id {
+        if server.sessions().get(sid).is_none() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            let session = crate::session::Session {
+                id: sid.clone(),
+                agent: agent.clone(),
+                client_info: crate::protocol::ClientInfo {
+                    name: format!("acp-{}", agent_name),
+                    version: None,
+                },
+                initialized: true,
+                context_label: crate::ifc::DataLabel::TRUSTED_PUBLIC,
+                created_at: now,
+                last_accessed: now,
+            };
+            server.sessions().create(session);
+        } else {
+            server.sessions().touch(sid);
+        }
+    }
+
     let run = Run {
         agent_name: agent_name.to_string(),
         run_id: uuid::Uuid::new_v4().to_string(),
