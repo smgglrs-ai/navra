@@ -63,6 +63,17 @@ pub struct ModelConfig {
     /// Speculative decoding configuration.
     #[serde(default)]
     pub speculative: Option<SpeculativeModelConfig>,
+    /// Base URL for remote model servers (e.g., OGX, custom OpenAI-compatible).
+    /// Overrides the default URL for the chosen runtime.
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// API key for authenticated model servers.
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// Data locality: "local" (default) or "remote".
+    /// Remote models require content filtering before sending.
+    #[serde(default)]
+    pub locality: Option<String>,
     /// Operator-defined agentic capabilities for model selection.
     #[serde(default)]
     pub agentic: Option<AgenticConfig>,
