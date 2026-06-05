@@ -18,7 +18,12 @@ tasks:
       The project is at {{target_dir}}.
       Use file_tree with path="{{target_dir}}" and depth=2 to get
       the project structure. Use file_read to read
-      {{target_dir}}/DESIGN.md and {{target_dir}}/CLAUDE.md. Return:
+      {{target_dir}}/DESIGN.md and {{target_dir}}/CLAUDE.md.
+
+      When done, publish your findings to the team blackboard:
+        team_bb_publish(key="scout/report", value=<your full report>)
+
+      Your report must contain:
       1. Complete file tree
       2. Architecture summary (crates, layering, key patterns)
       3. Project stats (file count, crate count)
@@ -45,36 +50,39 @@ tasks:
 
       Produce a JSON array of tasks. CRITICAL CONSTRAINTS:
 
-      1. Each mandate MUST be under 300 words. Be specific: name the
-         crate/directory and what to check. Do NOT list file paths.
+      1. Each mandate MUST include these two instructions at the end:
+         - "The project is at {{target_dir}}. Use file_read with absolute paths."
+         - "When done, publish your findings: team_bb_publish(key=\"findings/<your_task_id>\", value=<your report>)"
 
       2. Each task: id, specialist, model ("auto"), mandate.
 
       3. The "specialist" field MUST be one of these EXACT strings:
          "principal_engineer", "software_developer", "security_sentinel",
          "tech_writer", "assessor". Do NOT invent specialist names.
-         Any other value will cause a fatal error.
 
-      4. Scale: 15-25 tasks. One task per crate or concern.
+      4. Scale: 5-10 tasks. One task per concern area.
          GOOD mandate: "Read navra-rag/src/ with file_read.
          Check chunking logic, vector store operations, and cache
-         TTL handling. Report issues with file:line references."
+         TTL handling. Report issues with file:line references.
+         The project is at {{target_dir}}. Use file_read with absolute paths.
+         When done, publish: team_bb_publish(key=\"findings/rag_review\", value=<report>)"
 
-      5. Every crate must appear in at least one task.
+      5. The model field MUST be "auto" (not a URI or model name).
 
       Output ONLY the JSON array.
     depends_on: [scout]
-    expected_output: JSON array of 15-25 tasks covering all crates
+    expected_output: JSON array of 5-10 tasks covering all dimensions
 
   - id: synthesize
     specialist: summarizer
     model: gemma4:26b
     mandate: |
-      You are a report synthesizer. The specialist outputs are available
-      as MCP resources. The task list below shows which tasks completed.
+      You are a report synthesizer. Specialist agents have published
+      their findings to the team blackboard under keys starting with
+      "findings/".
 
-      Step 1: For each completed task listed below, read its output
-      using the flow:// MCP resource URI shown.
+      Step 1: Use team_bb_notifications to see what keys are available.
+      Then use team_bb_read to read each findings/* entry.
 
       Step 2: Write a comprehensive report covering:
 
@@ -88,6 +96,9 @@ tasks:
       ## Action Items
       Top 10 most important items, prioritized by severity.
 
-      Be thorough. Read EVERY specialist output before writing.
+      Step 3: Publish the final report:
+        team_bb_publish(key="report/final", value=<your full report>)
+
+      Be thorough. Read EVERY findings/* entry before writing.
     depends_on: [planner]
     expected_output: Comprehensive report synthesized from all specialist findings
