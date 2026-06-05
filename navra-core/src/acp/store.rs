@@ -113,4 +113,31 @@ impl RunStore {
         });
         events.get(run_id).cloned().unwrap_or_default()
     }
+
+    pub fn set_awaiting(&self, id: &str, request: serde_json::Value) -> Option<Run> {
+        let mut runs = self.runs.write().unwrap_or_else(|e| {
+            tracing::warn!("RunStore RwLock poisoned (write), recovering");
+            e.into_inner()
+        });
+        if let Some(run) = runs.get_mut(id) {
+            run.status = RunStatus::Awaiting;
+            run.await_request = Some(request);
+            Some(run.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn clear_await(&self, id: &str) -> Option<Run> {
+        let mut runs = self.runs.write().unwrap_or_else(|e| {
+            tracing::warn!("RunStore RwLock poisoned (write), recovering");
+            e.into_inner()
+        });
+        if let Some(run) = runs.get_mut(id) {
+            run.await_request = None;
+            Some(run.clone())
+        } else {
+            None
+        }
+    }
 }

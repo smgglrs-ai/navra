@@ -8,3 +8,5 @@ pub mod agents;
 pub mod dispatch;
 pub mod store;
 pub mod types;
+
+pub use dispatch::{RunDispatcher, ToolDispatcher};

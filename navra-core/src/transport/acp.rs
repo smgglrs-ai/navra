@@ -7,7 +7,7 @@
 //! Reference: <https://agentcommunicationprotocol.dev>
 
 use crate::acp::agents;
-use crate::acp::dispatch;
+use crate::acp::dispatch::{self, RunDispatcher, ToolDispatcher};
 use crate::acp::store::RunStore;
 use crate::acp::types::*;
 use crate::server::McpServer;
@@ -26,14 +26,12 @@ use tokio_stream::StreamExt;
 struct AcpState {
     server: Arc<McpServer>,
     runs: RunStore,
+    dispatcher: Arc<dyn RunDispatcher>,
+    flows: Vec<FlowSummary>,
+    approval_gate: Option<Arc<crate::hooks::ApprovalGateHook>>,
 }
 
-/// Build the ACP v0.2.0 router.
-pub fn build_acp_router(server: Arc<McpServer>) -> Router {
-    let state = AcpState {
-        server,
-        runs: RunStore::new(),
-    };
+fn build_routes(state: AcpState) -> Router {
     Router::new()
         .route("/acp/ping", get(handle_ping))
         .route("/acp/agents", get(handle_list_agents))
@@ -44,6 +42,36 @@ pub fn build_acp_router(server: Arc<McpServer>) -> Router {
         .route("/acp/runs/{run_id}/events", get(handle_list_events))
         .route("/acp/session/{session_id}", get(handle_get_session))
         .with_state(state)
+}
+
+/// Build the ACP v0.2.0 router with the default tool-only dispatcher.
+pub fn build_acp_router(server: Arc<McpServer>) -> Router {
+    let state = AcpState {
+        server,
+        runs: RunStore::new(),
+        dispatcher: Arc::new(ToolDispatcher),
+        flows: vec![],
+        approval_gate: None,
+    };
+    build_routes(state)
+}
+
+/// Build the ACP v0.2.0 router with a custom dispatcher, flows, and
+/// optional approval gate for await/resume.
+pub fn build_acp_router_with_dispatcher(
+    server: Arc<McpServer>,
+    dispatcher: Arc<dyn RunDispatcher>,
+    flows: Vec<FlowSummary>,
+    approval_gate: Option<Arc<crate::hooks::ApprovalGateHook>>,
+) -> Router {
+    let state = AcpState {
+        server,
+        runs: RunStore::new(),
+        dispatcher,
+        flows,
+        approval_gate,
+    };
+    build_routes(state)
 }
 
 fn authenticate(
@@ -70,11 +98,11 @@ async fn handle_list_agents(
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<AgentsListResponse>, (StatusCode, Json<AcpError>)> {
     authenticate(&state.server, &headers)?;
-    let all = agents::list_agents(&state.server);
+    let all = agents::build_manifests(&state.server, &state.flows);
 
-    let start = params.offset.min(all.agents.len());
-    let end = (start + params.limit).min(all.agents.len());
-    let agents_page = all.agents[start..end].to_vec();
+    let start = params.offset.min(all.len());
+    let end = (start + params.limit).min(all.len());
+    let agents_page = all[start..end].to_vec();
 
     Ok(Json(AgentsListResponse {
         agents: agents_page,
@@ -87,14 +115,13 @@ async fn handle_get_agent(
     Path(name): Path<String>,
 ) -> Result<Json<AgentManifest>, (StatusCode, Json<AcpError>)> {
     authenticate(&state.server, &headers)?;
-    let manifest = agents::build_manifest(&state.server);
-    if manifest.name == name {
-        Ok(Json(manifest))
-    } else {
-        Err((
+    let manifests = agents::build_manifests(&state.server, &state.flows);
+    match manifests.into_iter().find(|m| m.name == name) {
+        Some(manifest) => Ok(Json(manifest)),
+        None => Err((
             StatusCode::NOT_FOUND,
             Json(AcpError::not_found(format!("Agent '{}' not found", name))),
-        ))
+        )),
     }
 }
 
@@ -105,8 +132,8 @@ async fn handle_create_run(
 ) -> Result<impl IntoResponse, (StatusCode, Json<AcpError>)> {
     let agent = authenticate(&state.server, &headers)?;
 
-    let manifest = agents::build_manifest(&state.server);
-    if manifest.name != request.agent_name {
+    let manifests = agents::build_manifests(&state.server, &state.flows);
+    if !manifests.iter().any(|m| m.name == request.agent_name) {
         return Err((
             StatusCode::NOT_FOUND,
             Json(AcpError::not_found(format!(
@@ -129,28 +156,30 @@ async fn handle_create_run(
 
     match mode {
         RunMode::Sync => {
-            let completed = dispatch::execute_run(
-                &state.server,
-                &state.runs,
-                &run_id,
-                &request.input,
-                &agent,
-            )
-            .await;
+            let completed = state
+                .dispatcher
+                .execute(
+                    state.server.clone(),
+                    state.runs.clone(),
+                    run_id,
+                    request.input,
+                    agent,
+                )
+                .await;
             Ok((StatusCode::OK, Json(completed)).into_response())
         }
         RunMode::Async => {
-            dispatch::execute_run_async(
-                state.server.clone(),
-                state.runs.clone(),
-                run_id,
-                request.input,
-                agent,
-            );
+            let dispatcher = state.dispatcher.clone();
+            let server = state.server.clone();
+            let runs = state.runs.clone();
+            let input = request.input;
+            tokio::spawn(async move {
+                dispatcher.execute(server, runs, run_id, input, agent).await;
+            });
             Ok((StatusCode::ACCEPTED, Json(run)).into_response())
         }
         RunMode::Stream => {
-            let rx = dispatch::execute_run_stream(
+            let rx = state.dispatcher.execute_stream(
                 state.server.clone(),
                 state.runs.clone(),
                 run_id.clone(),
@@ -214,9 +243,9 @@ async fn handle_resume_run(
     State(state): State<AcpState>,
     headers: HeaderMap,
     Path(run_id): Path<String>,
-    Json(_request): Json<RunResumeRequest>,
+    Json(request): Json<RunResumeRequest>,
 ) -> Result<Json<Run>, (StatusCode, Json<AcpError>)> {
-    authenticate(&state.server, &headers)?;
+    let agent = authenticate(&state.server, &headers)?;
     let run = state.runs.get(&run_id).ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
@@ -234,7 +263,106 @@ async fn handle_resume_run(
         ));
     }
 
-    Ok(Json(run))
+    let approved = request
+        .await_resume
+        .get("approved")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let reason = request
+        .await_resume
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let request_id = run
+        .await_request
+        .as_ref()
+        .and_then(|r| r.get("request_id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if let Some(gate) = state.approval_gate.as_ref() {
+        if approved {
+            gate.approve(&request_id);
+        } else {
+            gate.deny(&request_id, reason);
+        }
+    }
+
+    state.runs.clear_await(&run_id);
+
+    if approved {
+        let pending_tool = run
+            .await_request
+            .as_ref()
+            .and_then(|r| r.get("tool_name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let pending_args = run
+            .await_request
+            .as_ref()
+            .and_then(|r| r.get("arguments"))
+            .cloned()
+            .unwrap_or(serde_json::json!({}));
+
+        state
+            .runs
+            .update_status(&run_id, RunStatus::InProgress);
+
+        if !pending_tool.is_empty() {
+            let ctx = crate::auth::CallContext::new(agent, run_id.clone());
+            let call_params = crate::protocol::CallToolParams {
+                name: pending_tool,
+                arguments: pending_args,
+                meta: None,
+            };
+            let result = state.server.handle_call_tool(call_params, ctx).await;
+            let result_text: String = result
+                .content
+                .iter()
+                .filter_map(|c| match c {
+                    crate::protocol::Content::Text(t) => Some(t.text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let msg = Message {
+                role: "agent".to_string(),
+                parts: vec![MessagePart::text(result_text)],
+                created_at: Some(dispatch::now_iso()),
+                completed_at: Some(dispatch::now_iso()),
+            };
+            state.runs.add_output_message(&run_id, msg);
+        }
+
+        let finished = state
+            .runs
+            .set_finished(&run_id, RunStatus::Completed, dispatch::now_iso())
+            .unwrap();
+        state.runs.add_event(
+            &run_id,
+            Event::RunCompleted {
+                run: finished.clone(),
+            },
+        );
+        Ok(Json(finished))
+    } else {
+        let finished = state
+            .runs
+            .set_finished(&run_id, RunStatus::Failed, dispatch::now_iso())
+            .unwrap();
+        state.runs.add_event(
+            &run_id,
+            Event::RunFailed {
+                run: finished.clone(),
+            },
+        );
+        Ok(Json(finished))
+    }
 }
 
 async fn handle_cancel_run(
@@ -581,6 +709,9 @@ mod tests {
         let state = AcpState {
             server: server.clone(),
             runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![],
+            approval_gate: None,
         };
         let run = dispatch::create_run(&state.runs, "test-agent", None);
         let router = build_acp_router(server);
@@ -609,6 +740,9 @@ mod tests {
         let state = AcpState {
             server: server.clone(),
             runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![],
+            approval_gate: None,
         };
         let run = dispatch::create_run(&state.runs, "test-agent", None);
         state
@@ -638,6 +772,9 @@ mod tests {
         let state = AcpState {
             server: server.clone(),
             runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![],
+            approval_gate: None,
         };
         let run = dispatch::create_run(&state.runs, "test-agent", None);
         state
@@ -664,6 +801,9 @@ mod tests {
         let state = AcpState {
             server: server.clone(),
             runs: RunStore::new(),
+            dispatcher: Arc::new(ToolDispatcher),
+            flows: vec![],
+            approval_gate: None,
         };
         let run = dispatch::create_run(&state.runs, "test-agent", None);
 

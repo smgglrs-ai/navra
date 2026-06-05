@@ -1,14 +1,69 @@
 //! ACP run execution logic.
 //!
-//! Processes input messages, executes tool calls, produces output
-//! messages and events. Supports sync, async, and stream modes.
+//! Provides the default `ToolDispatcher` which parses tool calls from
+//! message text. The `RunDispatcher` trait allows navra-server to plug
+//! in an `AgentDispatcher` that uses `run_tool_loop` for model-driven
+//! execution.
 
 use super::store::RunStore;
 use super::types::*;
 use crate::auth::{AgentIdentity, CallContext};
 use crate::protocol::{CallToolParams, Content};
 use crate::server::McpServer;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+
+/// Pluggable run executor.
+///
+/// `ToolDispatcher` (default) parses tool calls from message text.
+/// `AgentDispatcher` (navra-server) uses the ReAct tool-use loop.
+pub trait RunDispatcher: Send + Sync {
+    fn execute(
+        &self,
+        server: Arc<McpServer>,
+        store: RunStore,
+        run_id: String,
+        input: Vec<Message>,
+        agent: AgentIdentity,
+    ) -> Pin<Box<dyn Future<Output = Run> + Send>>;
+
+    fn execute_stream(
+        &self,
+        server: Arc<McpServer>,
+        store: RunStore,
+        run_id: String,
+        input: Vec<Message>,
+        agent: AgentIdentity,
+    ) -> tokio::sync::mpsc::Receiver<Event>;
+}
+
+/// Default dispatcher that parses tool calls from message text.
+pub struct ToolDispatcher;
+
+impl RunDispatcher for ToolDispatcher {
+    fn execute(
+        &self,
+        server: Arc<McpServer>,
+        store: RunStore,
+        run_id: String,
+        input: Vec<Message>,
+        agent: AgentIdentity,
+    ) -> Pin<Box<dyn Future<Output = Run> + Send>> {
+        Box::pin(async move { execute_run(&server, &store, &run_id, &input, &agent).await })
+    }
+
+    fn execute_stream(
+        &self,
+        server: Arc<McpServer>,
+        store: RunStore,
+        run_id: String,
+        input: Vec<Message>,
+        agent: AgentIdentity,
+    ) -> tokio::sync::mpsc::Receiver<Event> {
+        execute_run_stream(server, store, run_id, input, agent)
+    }
+}
 
 pub fn now_iso() -> String {
     let d = std::time::SystemTime::now()

@@ -332,3 +332,18 @@ pub struct PaginationParams {
 fn default_limit() -> usize {
     10
 }
+
+// --- Flow summary (lightweight, avoids pulling navra-flow types) ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowSummary {
+    pub name: String,
+    pub description: String,
+    pub nodes: Vec<FlowNodeSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowNodeSummary {
+    pub id: String,
+    pub description: String,
+}
