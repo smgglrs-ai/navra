@@ -22,6 +22,7 @@ impl KnowledgeStore {
     /// Open knowledge store from a file path.
     pub fn open(path: &Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
+        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
         let store = Self { db };
         store.init_schema()?;
         Ok(store)

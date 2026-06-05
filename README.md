@@ -65,34 +65,46 @@ navra (gateway)
 
 ## Quickstart
 
+**First 5 minutes** — get navra running and connect Claude Code:
+
+```bash
+# 1. Install prerequisites (Fedora)
+sudo dnf install onnxruntime-devel
+
+# 2. Build
+git clone https://github.com/smgglrs-ai/navra.git && cd navra
+export ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1
+cargo build
+
+# 3. Start the gateway
+cargo run -- serve
+# Listening on unix:/run/user/$UID/navra/navra.sock
+# Listening on tcp:127.0.0.1:9315
+# Web UI at http://localhost:9315
+
+# 4. Generate a token for your agent
+cargo run -- token generate --name claude --permissions dev
+# Prints an [[agents]] block — paste it into ~/.config/navra/config.toml
+
+# 5. Add a permission set (if not already present)
+cat >> ~/.config/navra/config.toml << 'EOF'
+[permissions.dev]
+allow = ["$HOME/Code/**"]
+deny = ["**/.env", "**/.git/config"]
+safety = "standard"
+EOF
+
+# 6. Restart navra, then point Claude Code at it
+```
+
+That's it. navra is now filtering tool calls through auth, path ACLs,
+safety filters, and audit logging.
+
 ### Prerequisites
 
 - Rust stable (1.75+)
-- ONNX Runtime (Fedora: `sudo dnf install onnxruntime-devel`)
+- ONNX Runtime (Fedora: `onnxruntime-devel`, Ubuntu: `libonnxruntime-dev`)
 - Linux (systemd + D-Bus for notifications/tray)
-
-### Build and run
-
-```bash
-git clone https://github.com/smgglrs-ai/navra.git
-cd navra
-
-# ONNX Runtime is linked dynamically from the system package
-export ORT_LIB_PATH=/usr/lib64
-export ORT_PREFER_DYNAMIC_LINK=1
-
-cargo build
-cargo run -- serve
-```
-
-### Generate an agent token
-
-```bash
-cargo run -- token generate --name claude --permissions readwrite
-```
-
-Add the printed `[[agents]]` block to `~/.config/navra/config.toml`,
-then configure your agent to use the token in MCP requests.
 
 ## Architecture
 
@@ -147,8 +159,7 @@ Default config path: `~/.config/navra/config.toml`
 
 ```toml
 [server]
-transport = "unix"       # "unix" or "tcp"
-socket = "/run/user/1000/navra.sock"
+tcp = "127.0.0.1:9315"   # Unix socket is the default transport
 
 [modules.file]
 enabled = true
@@ -158,8 +169,13 @@ enabled = true
 
 [[agents]]
 name = "claude"
-token_hash = "..."
-permissions = "readwrite"
+token_hash = "..."       # navra token --name claude
+permissions = "dev"       # references [permissions.dev] below
+
+[permissions.dev]
+allow = ["/home/user/projects/**"]
+deny = ["/home/user/projects/.env"]
+safety = "standard"
 
 [[upstream]]
 name = "filesystem"
@@ -225,6 +241,8 @@ the approval workflow.
 | `navra-tools-file` | File tools, SQLite FTS5 + sqlite-vec, MCP resources |
 | `navra-tools-git` | Git tools (status, diff, log, branch, commit) |
 | `navra-tools-exec` | Command execution inside OpenShell sandboxes |
+| `navra-tools-github` | GitHub forge tools (PR, issues) via `gh` CLI |
+| `navra-tools-gitlab` | GitLab forge tools (MR, issues) via `glab` CLI |
 | `navra-rag` | Vector search, sqlite-vec, semantic chunking, reranking |
 | `navra-modal-voice` | Speech I/O (ASR + TTS via ONNX models) |
 | `navra-modal-vision` | Image/screen understanding (GPU tier) |
