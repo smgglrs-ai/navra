@@ -2,7 +2,7 @@
 
 All notable changes to navra are documented here.
 
-## [Unreleased]
+## [0.1.0] - 2026-06-05
 
 ### Added
 
@@ -52,6 +52,7 @@ All notable changes to navra are documented here.
 - **acp**: Populate AgentStatus with live run metrics
 - **model**: Add OGX backend with Llama Guard classification (TW7)
 - **flow**: Blackboard-based result delivery for containerized agents
+- Add marketing site, docs site, and CI workflows
 
 ### Changed
 
@@ -73,6 +74,9 @@ All notable changes to navra are documented here.
 - **paper**: L3 continuous mode — async leakage detection mid-session
 - Policy learning from denials (audit2allow pattern)
 - **acp**: Protocol reference, security model, differentiators
+- Add governance files and fix license to Apache-2.0
+- Add config reference, positioning, AI-friendly docs, and changelog
+- Expand crate READMEs and add rustdoc comments
 
 ### Evaluation
 
@@ -115,6 +119,7 @@ All notable changes to navra are documented here.
 - **roadmap**: Mark TW3 + TW12 + TW16 completed
 - **roadmap**: Add TW17 navra-core crate split
 - **claude**: AI-assisted development setup
+- Add .gitignore for site and docs-site build artifacts
 
 ### Merge
 
