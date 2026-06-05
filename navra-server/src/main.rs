@@ -1102,6 +1102,35 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         models.insert(name.clone(), backend);
                         continue;
                     }
+                    "ogx" => {
+                        let model_id = model_cfg.model_name.clone()
+                            .unwrap_or_else(|| name.clone());
+                        let base_url = model_cfg.base_url.as_deref()
+                            .unwrap_or(navra_model::DEFAULT_OGX_URL);
+                        let locality = if model_cfg.locality.as_deref() == Some("remote") {
+                            navra_model::Locality::Remote
+                        } else {
+                            navra_model::Locality::Local
+                        };
+                        let backend: Arc<dyn navra_model::ModelBackend> = if model_cfg.task == "classification" {
+                            Arc::new(navra_model::OgxBackend::new(
+                                base_url,
+                                &model_id,
+                                model_cfg.api_key.clone(),
+                                locality,
+                            ))
+                        } else {
+                            Arc::new(navra_model::OpenAiBackend::new(
+                                base_url,
+                                &model_id,
+                                model_cfg.api_key.clone(),
+                                locality,
+                            ))
+                        };
+                        tracing::info!(model = %name, model_id = %model_id, base_url = %base_url, task = %model_cfg.task, "Model served via OGX");
+                        models.insert(name.clone(), backend);
+                        continue;
+                    }
                     "none" => {
                         tracing::warn!(model = %name, "Task is chat/generate but runtime=none, skipping");
                         continue;

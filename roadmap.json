@@ -1,6 +1,6 @@
 {
   "$schema": "roadmap-v1",
-  "updated": "2026-06-02",
+  "updated": "2026-06-05",
   "strategy": "Prove what's built before building more. Code is ahead of evidence.",
   "items": [
     {
@@ -322,7 +322,7 @@
         2,
         3
       ],
-      "status": "pending",
+      "status": "completed",
       "tier": 3,
       "wave": 5,
       "depends_on": [
@@ -1154,6 +1154,181 @@
       "feeds": [],
       "gate": null,
       "description": "Split navra-core into navra-router (HTTP transport, auth middleware, metrics, axum router) and navra-mcp (MCP protocol, dispatch, tool registry). navra-rag and other standalone services depend only on navra-router. Avoids pulling in MCP protocol machinery for non-MCP services."
+    },
+    {
+      "id": "TW18",
+      "title": "ACS YAML policy ingestion",
+      "phase": 9,
+      "chain": 2,
+      "priority": "P1",
+      "effort_days": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": 5,
+      "depends_on": [],
+      "feeds": [
+        "TW14"
+      ],
+      "gate": null,
+      "description": "PolicyYamlHook in navra-security that parses Microsoft ACS YAML policies and maps pre_tool_call/post_tool_call rules into navra's HookPipeline. Enables teams with existing ACS policies to deploy them with gateway enforcement. HookDecision already covers ACS's 5 verdicts (Continue=allow, Block=deny, Pending=escalate, ModifyArgs/ModifyResult=transform). No architectural changes needed \u2014 just another Hook implementation.",
+      "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW19",
+      "title": "Negation-aware FTS5 queries",
+      "phase": 7,
+      "chain": 4,
+      "priority": "P1",
+      "effort_days": [
+        0.5,
+        1
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": 5,
+      "depends_on": [],
+      "feeds": [],
+      "gate": null,
+      "description": "FTS5 supports NOT in query syntax but navra-rag's agentic retriever doesn't use it. Add negation detection in decompose_query (scan for 'not', 'without', 'except') and translate to FTS5 NOT operators on the lexical channel. Vector search still can't handle negation but RRF fusion with correct FTS5 results will boost overall recall. Addresses a verified failure mode from 'Embeddings Aren't Magic' (Angela Shi, 2026).",
+      "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW20",
+      "title": "Query router for temporal/numeric predicates",
+      "phase": 7,
+      "chain": 4,
+      "priority": "P1",
+      "effort_days": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": 5,
+      "depends_on": [],
+      "feeds": [],
+      "gate": null,
+      "description": "Extend classify_strategy in agentic.rs to detect temporal patterns (regex for dates, 'before/after/since') and numeric patterns ('greater than', 'more than N'), returning a new SearchStrategy::Filtered variant that populates SearchFilter fields. Infrastructure already exists: SearchFilter has min_updated_at, search_filtered() is implemented. The gap is only the query parser that extracts predicates and routes them.",
+      "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW21",
+      "title": "Model-call hook point in navra-agent",
+      "phase": 8,
+      "chain": 12,
+      "priority": "P1",
+      "effort_days": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": 5,
+      "depends_on": [],
+      "feeds": [],
+      "gate": null,
+      "description": "Add pre_model_call/post_model_call hook phases around LLM inference in navra-agent's ReAct loop. Currently navra's hook pipeline only intercepts tool calls (gateway-side). This extends hooks to the agent side, enabling: (1) PromptCachingHook to inject cache-control headers, (2) ModelFallbackHook to retry with a stronger model on failure, (3) BudgetHook to enforce token limits before inference. Maps to ACS checkpoints 3-4 (pre/post-model) which navra currently lacks. Does not change the gateway \u2014 this is agent-side only.",
+      "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW22",
+      "title": "VerifierHook with false-pass-rate tracking",
+      "phase": 9,
+      "chain": 2,
+      "priority": "P2",
+      "effort_days": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": 5,
+      "depends_on": [],
+      "feeds": [],
+      "gate": null,
+      "description": "Post-tool-use hook that scores tool outputs against configurable rubrics using a cheap model (or existing ONNX safety model). Tracks false-pass rate as a Prometheus metric \u2014 the critical metric for safety-sensitive domains per Harvey's legal verifier research. StatisticalGuardrailHook already has metric infrastructure. False-pass rate (tool output that passes verification but shouldn't) is more dangerous than false-fail for legal/financial/medical domains.",
+      "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW23",
+      "title": "SQLite entity-relationship table for navra-memory",
+      "phase": 3,
+      "chain": 5,
+      "priority": "P2",
+      "effort_days": [
+        2,
+        3
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": 7,
+      "depends_on": [],
+      "feeds": [],
+      "gate": null,
+      "description": "Add a lightweight entity-relationship table in SQLite (entity1, relation, entity2, valid_from, valid_until) with 1-2 hop traversal queries. Closes the entity-relationship gap vs Graphiti/temporal KGs without requiring Neo4j. MemForest is a hierarchical tree \u2014 good for temporal fact storage but has no entity resolution, relationship tracking, or multi-hop reasoning. This adds the minimum graph capability while preserving navra's embedded single-file architecture. Supersedes parking-lot item 3k (KG triples).",
+      "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW24",
+      "title": "Incremental mailbox messages in navra-flow",
+      "phase": 2,
+      "chain": 7,
+      "priority": "P2",
+      "effort_days": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": 7,
+      "depends_on": [],
+      "feeds": [],
+      "gate": null,
+      "description": "Architectural preparation for StreamMA-style streaming communication. Add MessageBody::Step { index: u32, content: String, is_final: bool } to mailbox messages. The mpsc channels already support incremental delivery. Does not change the engine loop (agents still run to completion) \u2014 this just makes the transport ready for future streaming. StreamMA showed +7.3pp accuracy and 26.9x speedup by streaming reasoning steps, but gains are mainly for reasoning chains, not tool-use agents.",
+      "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW25",
+      "title": "Gemma 4 12B multimodal backend",
+      "phase": 11,
+      "chain": 9,
+      "priority": "P3",
+      "effort_days": [
+        2,
+        3
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": null,
+      "depends_on": [],
+      "feeds": [],
+      "gate": "onnxruntime-genai #2062 (ONNX path); Ollama path works now",
+      "description": "Add Gemma 4 12B as optional GPU-tier multimodal backend via Ollama/vLLM in navra-model-runtime. Encoder-free architecture (35M vision embedder vs 550M encoder), unified text+vision+audio, Apache 2.0. Can replace ASR + vision input paths with single model but NOT TTS (understanding only). 12B too large for CPU tier. Complementary to Granite (text/tools). ONNX blocked until onnxruntime-genai supports Gemma 4 architecture.",
+      "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW26",
+      "title": "ASSERT integration for C3 eval",
+      "phase": 13,
+      "chain": 10,
+      "priority": "P3",
+      "effort_days": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "tier": null,
+      "wave": null,
+      "depends_on": [],
+      "feeds": [
+        "10c"
+      ],
+      "gate": null,
+      "description": "Evaluate Microsoft ASSERT (spec-driven evaluation framework) as complement to Glasswing for C3. ASSERT converts natural-language policies into test suites with LLM-as-judge scoring grounded in OTel traces. Supports 100+ model endpoints via LiteLLM, 33+ frameworks via OpenInference. Could provide structured, reproducible evaluation alongside Glasswing's adversarial testing. MIT license.",
+      "source": "tech-watch-2026-06-05"
     }
   ]
 }

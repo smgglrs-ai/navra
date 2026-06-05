@@ -19,12 +19,14 @@ mod anthropic;
 pub mod chat;
 pub mod cli;
 pub(crate) mod http_common;
+mod ogx;
 mod onnx;
 mod openai;
 pub mod safe_backend;
 
 pub use anthropic::AnthropicBackend;
 pub use cli::CliBackend;
+pub use ogx::{OgxBackend, DEFAULT_OGX_URL};
 pub use onnx::{Device, ModelTask, OnnxBackend, OpenVinoDevice};
 pub use openai::OpenAiBackend;
 pub use safe_backend::{ModelSafetyFilter, SafeModelBackend};
