@@ -23,6 +23,10 @@ pub struct CapabilityAuthenticator {
     seen_nonces: Mutex<HashMap<[u8; 16], Instant>>,
     /// TTL for nonce cache entries (default: 7200s = 2 hours).
     nonce_cache_ttl: std::time::Duration,
+    /// Permission set assigned to capability-authenticated agents.
+    /// The token's `cap` field provides additional scoping (operations,
+    /// tools); this is the base permission set for path ACLs.
+    default_permission_set: String,
 }
 
 impl CapabilityAuthenticator {
@@ -40,7 +44,13 @@ impl CapabilityAuthenticator {
             agent_verifiers: HashMap::new(),
             seen_nonces: Mutex::new(HashMap::new()),
             nonce_cache_ttl,
+            default_permission_set: "dev".to_string(),
         }
+    }
+
+    pub fn with_permission_set(mut self, perm_set: impl Into<String>) -> Self {
+        self.default_permission_set = perm_set.into();
+        self
     }
 
     /// Register an agent's public key for delegation verification.
@@ -86,7 +96,7 @@ impl Authenticator for CapabilityAuthenticator {
 
         Ok(AgentIdentity {
             name: payload.sub.clone(),
-            permissions: format!("cap:ring{}", payload.ring),
+            permissions: self.default_permission_set.clone(),
             signing_key: None,
             did: Some(payload.sub),
             capabilities: Some(resolved),
