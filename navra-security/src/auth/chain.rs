@@ -285,7 +285,7 @@ mod tests {
         headers.insert("authorization", format!("Bearer {token}").parse().unwrap());
 
         let identity = auth.authenticate(&headers).unwrap();
-        // Permission set name is derived from ring
-        assert_eq!(identity.permissions, "cap:ring1");
+        // Default permission set for capability tokens
+        assert_eq!(identity.permissions, "dev");
     }
 }

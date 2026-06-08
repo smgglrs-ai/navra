@@ -10,6 +10,24 @@ use std::path::Path;
 /// Multicodec prefix for Ed25519 public keys.
 const ED25519_MULTICODEC: [u8; 2] = [0xed, 0x01];
 
+#[derive(Debug, thiserror::Error)]
+pub enum IdentityError {
+    #[error("invalid DID format: {0}")]
+    InvalidDid(String),
+    #[error("invalid key length: expected {expected}, got {actual}")]
+    InvalidKeyLength { expected: usize, actual: usize },
+    #[error("unsupported multicodec: 0x{0:02x}{1:02x} (expected Ed25519 0xed01)")]
+    UnsupportedCodec(u8, u8),
+    #[error(transparent)]
+    Crypto(#[from] ed25519_dalek::SignatureError),
+    #[error(transparent)]
+    Bs58(#[from] bs58::decode::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Keyring(#[from] keyring::Error),
+}
+
 /// Algorithm-agile signer/verifier for capability tokens.
 ///
 /// Implementations hide the specific key type (Ed25519 today,
@@ -103,7 +121,7 @@ pub struct Ed25519Verifier {
 
 impl Ed25519Verifier {
     /// Create from a DID:key string.
-    pub fn from_did(did: &str) -> anyhow::Result<Self> {
+    pub fn from_did(did: &str) -> Result<Self, IdentityError> {
         let verifying_key = pubkey_from_did(did)?;
         Ok(Self {
             verifying_key,
@@ -112,7 +130,7 @@ impl Ed25519Verifier {
     }
 
     /// Create from raw 32-byte public key.
-    pub fn from_bytes(bytes: &[u8; 32]) -> anyhow::Result<Self> {
+    pub fn from_bytes(bytes: &[u8; 32]) -> Result<Self, IdentityError> {
         let verifying_key = VerifyingKey::from_bytes(bytes)?;
         let did = did_from_pubkey(&verifying_key);
         Ok(Self { verifying_key, did })
@@ -166,41 +184,36 @@ pub fn did_from_pubkey(pubkey: &VerifyingKey) -> String {
 }
 
 /// Extract an Ed25519 public key from a `did:key:z6Mk...` string.
-pub fn pubkey_from_did(did: &str) -> anyhow::Result<VerifyingKey> {
+pub fn pubkey_from_did(did: &str) -> Result<VerifyingKey, IdentityError> {
     let multibase = did
         .strip_prefix("did:key:z")
-        .ok_or_else(|| anyhow::anyhow!("invalid did:key format: {did}"))?;
+        .ok_or_else(|| IdentityError::InvalidDid(did.to_string()))?;
 
     let decoded = bs58::decode(multibase).into_vec()?;
 
     if decoded.len() != 34 {
-        anyhow::bail!("invalid did:key length: expected 34, got {}", decoded.len());
+        return Err(IdentityError::InvalidKeyLength { expected: 34, actual: decoded.len() });
     }
     if decoded[0] != ED25519_MULTICODEC[0] || decoded[1] != ED25519_MULTICODEC[1] {
-        anyhow::bail!(
-            "unsupported multicodec: 0x{:02x}{:02x} (expected Ed25519 0xed01)",
-            decoded[0],
-            decoded[1]
-        );
+        return Err(IdentityError::UnsupportedCodec(decoded[0], decoded[1]));
     }
 
-    let key_bytes: [u8; 32] = decoded[2..34].try_into()?;
+    let key_bytes: [u8; 32] = decoded[2..34]
+        .try_into()
+        .map_err(|_| IdentityError::InvalidKeyLength { expected: 32, actual: decoded.len() - 2 })?;
     Ok(VerifyingKey::from_bytes(&key_bytes)?)
 }
 
 /// Load identity seed from a file, or generate and save if absent.
-pub fn load_or_create_file_identity(path: &Path) -> anyhow::Result<Ed25519Signer> {
+pub fn load_or_create_file_identity(path: &Path) -> Result<Ed25519Signer, IdentityError> {
     if path.exists() {
         let seed_bytes = std::fs::read(path)?;
         if seed_bytes.len() != 32 {
-            anyhow::bail!(
-                "identity file has invalid length: expected 32 bytes, got {}",
-                seed_bytes.len()
-            );
+            return Err(IdentityError::InvalidKeyLength { expected: 32, actual: seed_bytes.len() });
         }
         let seed: [u8; 32] = seed_bytes
             .try_into()
-            .map_err(|_| anyhow::anyhow!("seed must be exactly 32 bytes"))?;
+            .map_err(|_| IdentityError::InvalidKeyLength { expected: 32, actual: 0 })?;
         Ok(Ed25519Signer::from_seed(&seed))
     } else {
         let signer = Ed25519Signer::generate();
@@ -219,20 +232,17 @@ pub fn load_or_create_file_identity(path: &Path) -> anyhow::Result<Ed25519Signer
 }
 
 /// Load identity seed from OS keyring, or generate and store if absent.
-pub fn load_or_create_keyring_identity() -> anyhow::Result<Ed25519Signer> {
+pub fn load_or_create_keyring_identity() -> Result<Ed25519Signer, IdentityError> {
     let entry = keyring::Entry::new("navra", "root-identity")?;
 
     match entry.get_secret() {
         Ok(seed_bytes) => {
             if seed_bytes.len() != 32 {
-                anyhow::bail!(
-                    "keyring identity has invalid length: expected 32 bytes, got {}",
-                    seed_bytes.len()
-                );
+                return Err(IdentityError::InvalidKeyLength { expected: 32, actual: seed_bytes.len() });
             }
             let seed: [u8; 32] = seed_bytes
                 .try_into()
-                .map_err(|_| anyhow::anyhow!("seed must be exactly 32 bytes"))?;
+                .map_err(|_| IdentityError::InvalidKeyLength { expected: 32, actual: 0 })?;
             Ok(Ed25519Signer::from_seed(&seed))
         }
         Err(keyring::Error::NoEntry) => {

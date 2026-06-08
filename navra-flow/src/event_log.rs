@@ -4,10 +4,13 @@
 //! ordered event log in SQLite. Events are sequence-numbered for
 //! connection recovery with backfill.
 
+use crate::error::FlowError;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Mutex;
+
+type Result<T> = std::result::Result<T, FlowError>;
 
 /// A typed event in the DAG execution log.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,7 +73,7 @@ pub struct EventLog {
 }
 
 impl EventLog {
-    pub fn open(path: &Path) -> anyhow::Result<Self> {
+    pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -95,7 +98,7 @@ impl EventLog {
         })
     }
 
-    pub fn open_memory() -> anyhow::Result<Self> {
+    pub fn open_memory() -> Result<Self> {
         let db = Connection::open_in_memory()?;
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS flow_events (
@@ -121,7 +124,7 @@ impl EventLog {
         event: &FlowEvent,
         model_version: Option<&str>,
         prompt_hash: Option<&str>,
-    ) -> anyhow::Result<i64> {
+    ) -> Result<i64> {
         let json = serde_json::to_string(event)?;
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -145,7 +148,7 @@ impl EventLog {
         &self,
         flow_id: &str,
         after_seq: i64,
-    ) -> anyhow::Result<Vec<StoredEvent>> {
+    ) -> Result<Vec<StoredEvent>> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = db.prepare(
             "SELECT seq, flow_id, event_json, timestamp_ms, model_version, prompt_hash
@@ -179,12 +182,12 @@ impl EventLog {
     }
 
     /// Get all events for a flow.
-    pub fn all_events(&self, flow_id: &str) -> anyhow::Result<Vec<StoredEvent>> {
+    pub fn all_events(&self, flow_id: &str) -> Result<Vec<StoredEvent>> {
         self.events_since(flow_id, 0)
     }
 
     /// Get the latest sequence number for a flow.
-    pub fn latest_seq(&self, flow_id: &str) -> anyhow::Result<i64> {
+    pub fn latest_seq(&self, flow_id: &str) -> Result<i64> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let seq: i64 = db
             .query_row(
@@ -203,7 +206,7 @@ impl EventLog {
         flow_id: &str,
         after_seq: i64,
         expected_model: &str,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> Result<Option<String>> {
         let events = self.events_since(flow_id, after_seq)?;
         for event in &events {
             if let Some(ref model) = event.model_version {
@@ -219,7 +222,7 @@ impl EventLog {
     }
 
     /// Count events for a flow.
-    pub fn event_count(&self, flow_id: &str) -> anyhow::Result<i64> {
+    pub fn event_count(&self, flow_id: &str) -> Result<i64> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let count: i64 = db.query_row(
             "SELECT COUNT(*) FROM flow_events WHERE flow_id = ?1",

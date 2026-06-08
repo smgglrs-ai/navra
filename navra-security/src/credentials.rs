@@ -9,6 +9,24 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
+#[derive(Debug, thiserror::Error)]
+pub enum CredentialError {
+    #[error("unknown credential label: {0}")]
+    UnknownLabel(String),
+    #[error("missing credential field '{field}' for label '{label}'")]
+    MissingField { label: String, field: String },
+    #[error("invalid credential path format: {0}")]
+    InvalidPath(String),
+    #[error("unsupported credential source: {0}")]
+    UnsupportedSource(String),
+    #[error("environment variable {0} not set")]
+    EnvNotSet(String),
+    #[error("cannot {0} environment variable credential")]
+    EnvReadOnly(String),
+    #[error(transparent)]
+    Keyring(#[from] keyring::Error),
+}
+
 /// A resolved secret value. Zeroized on drop where possible.
 pub struct Secret(Vec<u8>);
 
@@ -42,13 +60,13 @@ impl Drop for Secret {
 /// cannot discover or enumerate OS keyring entries.
 pub trait CredentialStore: Send + Sync {
     /// Resolve a credential label to its secret value.
-    fn resolve(&self, label: &str) -> anyhow::Result<Secret>;
+    fn resolve(&self, label: &str) -> Result<Secret, CredentialError>;
 
     /// Store a credential under a label (navra-managed only).
-    fn store(&self, label: &str, secret: &[u8]) -> anyhow::Result<()>;
+    fn store(&self, label: &str, secret: &[u8]) -> Result<(), CredentialError>;
 
     /// Delete a credential (navra-managed only).
-    fn delete(&self, label: &str) -> anyhow::Result<()>;
+    fn delete(&self, label: &str) -> Result<(), CredentialError>;
 
     /// List available credential labels.
     fn labels(&self) -> Vec<String>;
@@ -87,22 +105,20 @@ impl MappedCredentialStore {
 }
 
 impl CredentialStore for MappedCredentialStore {
-    fn resolve(&self, label: &str) -> anyhow::Result<Secret> {
+    fn resolve(&self, label: &str) -> Result<Secret, CredentialError> {
         let mapping = self
             .mappings
             .get(label)
-            .ok_or_else(|| anyhow::anyhow!("unknown credential label: {label}"))?;
+            .ok_or_else(|| CredentialError::UnknownLabel(label.to_string()))?;
 
         match mapping.source.as_str() {
             "keyring" => {
                 let path = mapping
                     .path
                     .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("keyring credential {label} missing 'path'"))?;
-                // Split path into service/user for the keyring crate.
-                // Format: "service/user" e.g. "navra/github-pat"
+                    .ok_or_else(|| CredentialError::MissingField { label: label.to_string(), field: "path".to_string() })?;
                 let (service, user) = path.split_once('/').ok_or_else(|| {
-                    anyhow::anyhow!("keyring path must be 'service/user': {path}")
+                    CredentialError::InvalidPath(path.to_string())
                 })?;
                 let entry = keyring::Entry::new(service, user)?;
                 let secret = entry.get_secret()?;
@@ -112,60 +128,60 @@ impl CredentialStore for MappedCredentialStore {
                 let var = mapping
                     .var
                     .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("env credential {label} missing 'var'"))?;
+                    .ok_or_else(|| CredentialError::MissingField { label: label.to_string(), field: "var".to_string() })?;
                 let value = std::env::var(var)
-                    .map_err(|_| anyhow::anyhow!("environment variable {var} not set"))?;
+                    .map_err(|_| CredentialError::EnvNotSet(var.to_string()))?;
                 Ok(Secret::new(value.into_bytes()))
             }
-            other => anyhow::bail!("unsupported credential source: {other}"),
+            other => Err(CredentialError::UnsupportedSource(other.to_string())),
         }
     }
 
-    fn store(&self, label: &str, secret: &[u8]) -> anyhow::Result<()> {
+    fn store(&self, label: &str, secret: &[u8]) -> Result<(), CredentialError> {
         let mapping = self
             .mappings
             .get(label)
-            .ok_or_else(|| anyhow::anyhow!("unknown credential label: {label}"))?;
+            .ok_or_else(|| CredentialError::UnknownLabel(label.to_string()))?;
 
         match mapping.source.as_str() {
             "keyring" => {
                 let path = mapping
                     .path
                     .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("keyring credential {label} missing 'path'"))?;
+                    .ok_or_else(|| CredentialError::MissingField { label: label.to_string(), field: "path".to_string() })?;
                 let (service, user) = path.split_once('/').ok_or_else(|| {
-                    anyhow::anyhow!("keyring path must be 'service/user': {path}")
+                    CredentialError::InvalidPath(path.to_string())
                 })?;
                 let entry = keyring::Entry::new(service, user)?;
                 entry.set_secret(secret)?;
                 Ok(())
             }
-            "env" => anyhow::bail!("cannot store to environment variable credential"),
-            other => anyhow::bail!("unsupported credential source: {other}"),
+            "env" => Err(CredentialError::EnvReadOnly("store to".to_string())),
+            other => Err(CredentialError::UnsupportedSource(other.to_string())),
         }
     }
 
-    fn delete(&self, label: &str) -> anyhow::Result<()> {
+    fn delete(&self, label: &str) -> Result<(), CredentialError> {
         let mapping = self
             .mappings
             .get(label)
-            .ok_or_else(|| anyhow::anyhow!("unknown credential label: {label}"))?;
+            .ok_or_else(|| CredentialError::UnknownLabel(label.to_string()))?;
 
         match mapping.source.as_str() {
             "keyring" => {
                 let path = mapping
                     .path
                     .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("keyring credential {label} missing 'path'"))?;
+                    .ok_or_else(|| CredentialError::MissingField { label: label.to_string(), field: "path".to_string() })?;
                 let (service, user) = path.split_once('/').ok_or_else(|| {
-                    anyhow::anyhow!("keyring path must be 'service/user': {path}")
+                    CredentialError::InvalidPath(path.to_string())
                 })?;
                 let entry = keyring::Entry::new(service, user)?;
                 entry.delete_credential()?;
                 Ok(())
             }
-            "env" => anyhow::bail!("cannot delete environment variable credential"),
-            other => anyhow::bail!("unsupported credential source: {other}"),
+            "env" => Err(CredentialError::EnvReadOnly("delete".to_string())),
+            other => Err(CredentialError::UnsupportedSource(other.to_string())),
         }
     }
 
