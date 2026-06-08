@@ -266,12 +266,13 @@ ID-JAG agent registration. IFC declassification witness. Prometheus
   dedup, git_diff ref fix, vision size limit, memory pagination, SSE
   RwLock, audience validation warnings
 
-### Dependency graph & execution plan (2026-06-02)
+### Dependency graph & execution plan (2026-06-05)
 
 All pending roadmap items organized by dependency chains, priority,
 and parallelism. Items at the same depth in a chain can run in
 parallel with items from other chains. Items prefixed with TW are
-from the 2026-06-02 tech watch.
+from tech watch sessions (TW1-TW16: 2026-06-02, TW17: crate split,
+TW18-TW26: 2026-06-05).
 
 #### Legend
 
@@ -300,14 +301,24 @@ Only the default flip remains, gated on the final spec release.
 
 11k ✅ ─⇢ 11l ─→ 11m                    IFC competitive chain
 
-9z ✅ ──→ TW6. Cedar OWASP policies     OWASP pre-built policies
-          P1, 2-3d                       ↓
+9z ✅ ──→ TW6 ✅ Cedar OWASP policies    OWASP pre-built policies
           ──⇢ TW14 (compliance mapping)  Feeds 10a paper
           ──⇢ 10a (security paper)
+
+TW18. ACS YAML policy ingestion ──── (independent, P1, 1-2d)
+      PolicyYamlHook: parse MS ACS YAML, map to HookPipeline.
+      HookDecision covers ACS's 5 verdicts. Interop with
+      Microsoft ecosystem. Feeds TW14 (compliance evidence).
+
+TW22. VerifierHook with false-pass-rate ──── (independent, P2, 1-2d)
+      Post-tool-use rubric scoring with cheap model.
+      Track false-pass rate in Prometheus (Harvey pattern).
+      Source: Harvey legal verifier research.
 ```
 
-TW6 slots after 9z (Cedar, already done). P1 because it directly
-strengthens 10a with concrete OWASP Agentic Top 10 policy coverage.
+TW18 is the highest-value security item — interop with ACS
+ecosystem via a single Hook implementation. TW22 adds the
+false-pass-rate metric from Harvey's legal verification work.
 
 #### Chain 3: Auth & policy (MEDIUM-HIGH)
 
@@ -330,28 +341,36 @@ U3 is the main remaining item.
 7m ✅    Adaptive chunking
 7c ✅    Agentic RAG L2
 7b ✅    Semantic caching
+TW3 ✅   Cascading confidence gates
+TW12 ✅  Graphability Indexing
 
-TW3. Cascading confidence gates ──── (independent, P2, 0.5-1d)
-     FTS5 BM25 → skip vector when confident;
-     vector score → skip reranker when confident.
-     Components exist, cascade logic missing.
+TW19. Negation-aware FTS5 queries ──── (independent, P1, 0.5-1d)
+      FTS5 supports NOT in query syntax. Add negation
+      detection in decompose_query ('not', 'without', 'except')
+      → FTS5 NOT operators. Vector can't handle negation
+      but RRF fusion with correct FTS5 results helps.
+      Source: "Embeddings Aren't Magic" failure mode #3.
+
+TW20. Query router for temporal/numeric predicates ──── (independent, P1, 1-2d)
+      Extend classify_strategy in agentic.rs to detect
+      temporal ('before/after/since') and numeric ('greater
+      than N') patterns → SearchStrategy::Filtered variant
+      → populate SearchFilter. Infrastructure exists
+      (min_updated_at, search_filtered). Gap is query parser.
+      Source: "Embeddings Aren't Magic" failure modes #4, #7.
 
 TW8. Context compression post-hook ──── (independent, P2, 3-4d)
      Response-side compression (SmartCrusher JSON,
      kompress-small ONNX for text). Complements query-side
      cache in cache.rs. Source: Headroom project.
 
-TW12. Graphability Indexing ──── (independent, P2, 1-2d)
-      Predict section relational yield before indexing,
-      skip low-value sections. 16-38% token reduction.
-      Source: Proxy-Pointer RAG.
-
 7l. TurboVec eval ──── (independent, P3, 2-3d)
 7d. Nomic Embed eval ──── (independent, P2, 2d)
 ```
 
-TW3 is the highest-value RAG item — 0.5-1d effort for
-latency reduction by skipping unnecessary pipeline stages.
+TW19 is the highest-value RAG item — 0.5-1d effort for
+a verified failure mode (negation queries). TW20 addresses
+temporal/numeric gaps with existing infrastructure.
 
 #### Chain 5: Memory architecture (MEDIUM — expanded)
 
@@ -359,12 +378,23 @@ latency reduction by skipping unnecessary pipeline stages.
 3l ✅    MemForest temporal memory
 
 TW10. Cross-session fact extraction ──── (independent, P2, 2-3d)
-      On session_end, distill durable facts from conversation
-      to KnowledgeStore via MemForest. Tree exists but no
-      auto-extraction trigger.
+      DistillationPipeline exists (pipeline.rs) but no
+      auto-trigger on session_end. Wire it.
+
+TW23. SQLite entity-relationship table ──── (independent, P2, 2-3d)
+      Lightweight (entity1, relation, entity2, valid_from,
+      valid_until) with 1-2 hop traversal queries. Closes
+      entity-relationship gap vs Graphiti/temporal KGs
+      without Neo4j dependency. Preserves embedded single-
+      file architecture. Supersedes parking-lot item 3k.
+      Source: Graphiti analysis (tech-watch-2026-06-05).
 
 3b. Memory type classification ──── (independent, design complete)
 ```
+
+TW23 is the pragmatic middle ground between navra-memory's
+tree-only model and a full graph database. 1-2 hop traversal
+covers most multi-hop queries without Neo4j.
 
 #### Chain 6: Cognitive & skills (MEDIUM)
 
@@ -377,16 +407,26 @@ TW10. Cross-session fact extraction ──── (independent, P2, 2-3d)
 
 No new items. Chain mostly complete.
 
-#### Chain 7: Flow orchestration (MEDIUM)
+#### Chain 7: Flow orchestration (MEDIUM — expanded)
 
 ```
 2m ✅    Kill switch + circuit breaker
+
+TW24. Incremental mailbox messages ──── (independent, P2, 1-2d)
+      MessageBody::Step { index, content, is_final } for
+      streaming between agents. Architectural prep for
+      StreamMA-style communication. mpsc channels already
+      support incremental delivery. Does not change engine
+      loop (agents still run to completion).
+      Source: StreamMA (arXiv 2606.05158).
 
 2l. Operator libraries ──── (independent, P3, 0.5-1d)
 2a. YAML flow definitions ──── (design complete, needs impl)
 ```
 
-No new items. All independent.
+TW24 is architectural preparation — cheap to add now,
+enables future streaming when navra-flow supports
+reasoning-heavy agent chains.
 
 #### Chain 8: Isolation & deployment (MEDIUM — expanded)
 
@@ -436,10 +476,19 @@ TW7. OGX backend in navra-model ──── (independent, P1, 2-3d)
 11i. delta-mem OSAM eval ──── (independent, P3, ⏳ ONNX)
 11j. Harness-aligned training ──── (independent, P3, research)
 11c. Adversarial safety eval ──── (independent, P3, 3-5d)
+
+TW25. Gemma 4 12B multimodal backend ──── (P3, 2-3d)
+      Encoder-free (35M embedder), unified text+vision+audio,
+      Apache 2.0. GPU-tier only (12B too large for CPU).
+      Via Ollama/vLLM. Can replace ASR + vision input but
+      NOT TTS (understanding only). Complementary to Granite.
+      ⏳ ONNX path blocked on onnxruntime-genai #2062.
+      Source: Google Gemma 4 12B (tech-watch-2026-06-05).
 ```
 
 TW1 is P0 because it feeds both C3 and 10a. TW7 and TW4 are
-independent P1 research items.
+independent P1 research items. TW25 is P3 — useful but not
+on the critical path.
 
 #### Chain 10: Papers (blocks on code + eval — expanded)
 
@@ -462,7 +511,7 @@ independent P1 research items.
                         ├── C3 (external eval, 3-5d)
                         └── TW2 ⇢ (Glasswing adversarial harness)
 
-TW2. Glasswing adversarial harness eval ──── P0, 1-2d
+TW2 ✅ Glasswing adversarial harness eval
      Anthropic defending-code-reference-harness.
      10 attack categories, CI-ready, Apache 2.0.
      Provides adversarial eval methodology for C3.
@@ -470,13 +519,22 @@ TW2. Glasswing adversarial harness eval ──── P0, 1-2d
 TW14. Compliance mapping ──⇢ 10a (paper, not code)
       P2, 2-3d. EU AI Act (Aug 2026) + OWASP Agentic Top 10.
       Depends on: TW6 (Cedar policies provide evidence).
+      TW18 (ACS interop) strengthens compliance evidence.
+
+TW26. ASSERT integration for C3 eval ──── (independent, P3, 1-2d)
+      Microsoft ASSERT: spec-driven eval with OTel trace
+      grounding. Complement to Glasswing (adversarial) with
+      structured policy-to-test-suite pipeline. MIT license.
+      Feeds 10c (review paper).
+      Source: MS Build 2026 (tech-watch-2026-06-05).
 
 13b. Significant fixes ──⇢ all papers (weakens if skipped)
 13c. Missing related work ──⇢ all papers (bibliography)
 13d. Restructuring decisions ──⇢ all papers (scope)
 ```
 
-TW2 is P0 because it provides the adversarial harness for C3.
+TW26 complements TW2: Glasswing for adversarial testing,
+ASSERT for structured policy evaluation.
 
 #### Chain 11: Rendra desktop app (MEDIUM — independent track)
 
@@ -496,12 +554,15 @@ No changes. Separate repos (rendra, rendra-ui, rendra-ag-ui).
 
 ```
 8l ✅    Dynamic tool routing
+TW16 ✅  Tool schema pruning
 
-TW16. Tool schema pruning ──── (independent, P2, 1-2d)
-      Track tool usage per session, suppress unused tools
-      after N sessions. GitHub achieved 37-62% token reduction
-      via similar technique. Complements 8l (routing) and
-      8i ✅ (progressive disclosure).
+TW21. Model-call hook point in navra-agent ──── (independent, P1, 1-2d)
+      Add pre/post-model-call hook phases around LLM inference
+      in navra-agent's ReAct loop. Enables PromptCachingHook,
+      ModelFallbackHook, and pre-inference BudgetHook. Maps
+      to ACS checkpoints 3-4 that navra currently lacks.
+      Agent-side only, does not change the gateway.
+      Source: LangChain middleware + ACS (tech-watch-2026-06-05).
 
 8c. Config schema gen (P3, 1d)
 8d. Computer use Actor (P2, 2d)
@@ -600,16 +661,22 @@ U3 (GitLab) ──── P2, 3-4d
                           │     INDEPENDENT HIGH-VALUE              │
                           └────────────────────────────────────────┘
 
-TW3 (cascade gates) ──── P2, 0.5-1d   (RAG latency)
-TW4 (LFM2.5 Audio) ──── P1, 2-3d      (voice modal)
-TW5 (DNS-AID) ──── P1, 0.5d+2-3d      (discovery)
-TW7 (OGX backend) ──── P1, 2-3d       (model serving)
-TW8 (response compress) ──── P2, 3-4d  (token reduction)
-TW9 (exec rings) ──── P2, 1-2d        (isolation model)
-TW10 (fact extract) ──── P2, 2-3d      (memory quality)
-TW12 (graphability) ──── P2, 1-2d      (indexing quality)
-TW15 (ET metric) ──── P3, 0.5d        (observability)
-TW16 (tool pruning) ──── P2, 1-2d     (tool optimization)
+TW18 (ACS policy) ──── P1, 1-2d       (security interop)
+TW19 (negation FTS5) ──── P1, 0.5-1d  (RAG accuracy)
+TW20 (query router) ──── P1, 1-2d     (RAG accuracy)
+TW21 (model hooks) ──── P1, 1-2d      (agent architecture)
+TW22 (verifier hook) ──── P2, 1-2d    (safety metric)
+TW4 (LFM2.5 Audio) ──── P1, 2-3d     (voice modal)
+TW5 (DNS-AID) ──── P1, 0.5d+2-3d     (discovery)
+TW7 (OGX backend) ──── P1, 2-3d      (model serving)
+TW8 (response compress) ──── P2, 3-4d (token reduction)
+TW9 (exec rings) ──── P2, 1-2d       (isolation model)
+TW10 (fact extract) ──── P2, 2-3d     (memory quality)
+TW23 (entity-rel table) ──── P2, 2-3d (memory graph)
+TW24 (incr mailbox) ──── P2, 1-2d    (flow streaming)
+TW15 (ET metric) ──── P3, 0.5d       (observability)
+TW25 (Gemma 4 12B) ──── P3, 2-3d     (multimodal, ⏳ ONNX)
+TW26 (ASSERT eval) ──── P3, 1-2d     (eval framework)
 ```
 
 #### Execution plan: priority-sorted waves
@@ -643,8 +710,13 @@ WAVE 4 — Prove the claims (June 2026, Tier 1)
   C3   External eval (3+ OSS)   P1  3-5d  (statistical significance)
   10a  Security paper           P1  5-7d  (flagship, most deps resolved)
 
-WAVE 5 — Gated + high-value independent (July–August)
+WAVE 5 — High-value independent + gated (June–August)
 ═════════════════════════════════════════════════════
+  TW19 Negation-aware FTS5   P1   0.5-1d (RAG, verified gap)
+  TW18 ACS YAML policy       P1   1-2d (security interop)
+  TW20 Query router           P1   1-2d (RAG, verified gap)
+  TW21 Model-call hooks       P1   1-2d (agent architecture)
+  TW22 VerifierHook           P2   1-2d (safety, false-pass-rate)
   9aa  MCP default flip      P0   ⏳ July 28 spec (3-5d)
   TW14 Compliance mapping    P2   2-3d (after TW6, feeds 10a)
   U3   GitLab module         P2   3-4d
@@ -664,37 +736,38 @@ WAVE 7 — Research + optimization (Q3–Q4)
 ════════════════════════════════════════
   TW10 Cross-session fact extraction  P2  2-3d
   TW11 X-Token Projection KD         P2  research + 3-5d (after TW1)
-  TW12 Graphability Indexing          P2  1-2d
-  TW16 Tool schema pruning           P2  1-2d
+  TW23 SQLite entity-relationship    P2  2-3d (memory graph)
+  TW24 Incremental mailbox messages  P2  1-2d (flow streaming prep)
   11a  ONNX/ort deepening            P3  ⏳ ONNX spec
   11b  KAME voice                     P3  ⏳ Moshi ONNX
   11i  delta-mem OSAM                 P3  ⏳ ONNX integration
+  TW25 Gemma 4 12B multimodal        P3  2-3d (⏳ ONNX, Ollama works)
+  TW26 ASSERT eval integration       P3  1-2d (complement TW2)
 
-NEXT ACTIONS (value-driven, 2026-06-02):
+NEXT ACTIONS (value-driven, 2026-06-05):
 
-  The code is ahead of the evidence. Prove what's built before
-  building more. Everything not on this list is parking lot.
+  Tier 1 ✅ — COMPLETE (11n, TW1, TW2, 13a, TW6, C3, 10a all done).
+  Now: close Tier 2 gaps + high-value Wave 5 independents.
 
-  Tier 1 — Prove the claims (June–July):
-  1. 11n model-runtime refactor  P0   1-2d (tech debt, unblocks backends)
-  2. TW1 NPU privacy-filter     P0   1-2d (S7 eval baseline, feeds C3+10a)
-  3. TW2 Glasswing harness      P0   1-2d (adversarial eval method for C3)
-  4. 13a Paper critical fixes    P1   3d   (FIDES diff, gateway positioning)
-  5. TW6 Cedar OWASP policies   P1   2-3d (10a paper — OWASP evidence)
-  6. C3  External eval (3+ OSS) P1   3-5d (statistical significance)
-  7. 10a Security paper          P1   5-7d (flagship, most deps resolved)
+  Immediate (June — small, high-impact):
+  1. TW19 Negation-aware FTS5   P1   0.5-1d (verified RAG gap, tiny change)
+  2. TW18 ACS YAML policy       P1   1-2d  (MS ecosystem interop)
+  3. TW20 Query router           P1   1-2d  (verified RAG gap, infra exists)
+  4. TW21 Model-call hooks       P1   1-2d  (agent architecture, enables caching)
+  5. TW22 VerifierHook           P2   1-2d  (false-pass-rate metric)
 
   Tier 2 — Close gaps (July–August):
-  8. 9aa MCP default flip        P0   3-5d (⏳ gated on July 28 spec)
-  9. U3  GitLab module           P2   3-4d (enterprise reach)
-  10. 15a+15b Rendra app MVP     P1   5-7d (demo-able UX, separate repos)
+  6. 9aa MCP default flip        P0   3-5d (⏳ gated on July 28 spec)
+  7. U3  GitLab module           P2   3-4d (enterprise reach)
+  8. 15a+15b Rendra app MVP     P1   ✅ (done, separate repos)
 
   Tier 3 — Ecosystem (Q3–Q4):
-  11. First external deployment
-  12. Community docs + getting started guide
-  13. 10b Persona paper
-  14. TW4 LFM2.5-Audio eval     P1   2-3d (voice modal, ONNX end-to-end)
-  15. TW7 OGX backend            P1   2-3d (Red Hat contributing to OGX)
+  9. First external deployment
+  10. Community docs + getting started guide
+  11. 10b Persona paper
+  12. TW4 LFM2.5-Audio eval     P1   2-3d (voice modal, ONNX end-to-end)
+  13. TW7 OGX backend            P1   2-3d (Red Hat contributing to OGX)
+  14. TW25 Gemma 4 12B           P3   2-3d (multimodal, ⏳ ONNX)
 ```
 
 #### Critical paths (updated 2026-06-02)
@@ -754,9 +827,11 @@ NEXT ACTIONS (value-driven, 2026-06-02):
 | 11j | Harness-aligned training | Med | research |
 | TW10 | Cross-session fact extraction | Med | 2-3d |
 | TW11 | X-Token Projection KD | Med | research+3-5d |
-| TW12 | Graphability Indexing | Med | 1-2d |
 | TW13 | DNS-AID doc update | Low | 0.5d |
-| TW16 | Tool schema pruning | Med | 1-2d |
+| TW23 | SQLite entity-relationship table | Med | 2-3d |
+| TW24 | Incremental mailbox messages | Med | 1-2d |
+| TW25 | Gemma 4 12B multimodal | Med | 2-3d ⏳ |
+| TW26 | ASSERT eval integration | Med | 1-2d |
 | 15d | Branding | Low | 1-2d |
 | 15e | Embeddable widget | Low-Med | 2-3d |
 

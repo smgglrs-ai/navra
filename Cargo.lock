@@ -3009,6 +3009,9 @@ dependencies = [
 name = "navra-rag"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "axum 0.8.9",
+ "clap",
  "dirs",
  "navra-core",
  "navra-macros",
@@ -3026,6 +3029,7 @@ dependencies = [
  "tokenizers",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "uuid",
  "zerocopy",
 ]
