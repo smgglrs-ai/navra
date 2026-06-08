@@ -425,22 +425,22 @@ impl ChunkStore {
 
         for (rank, result) in fts_results.into_iter().enumerate() {
             let key = format!("{}:{}", result.path, result.chunk_index);
-            *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
-            entries.entry(key).or_insert(result);
+            entries.entry(key.clone()).or_insert(result);
+            *scores.entry(key).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
         }
 
         for (rank, result) in vec_results.into_iter().enumerate() {
             let key = format!("{}:{}", result.path, result.chunk_index);
-            *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
-            entries.entry(key).or_insert(result);
+            entries.entry(key.clone()).or_insert(result);
+            *scores.entry(key).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
         }
 
         if let Some(hyde_emb) = hyde_embedding {
             let hyde_results = self.search(hyde_emb, fetch_limit)?;
             for (rank, result) in hyde_results.into_iter().enumerate() {
                 let key = format!("{}:{}", result.path, result.chunk_index);
-                *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
-                entries.entry(key).or_insert(result);
+                entries.entry(key.clone()).or_insert(result);
+                *scores.entry(key).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
             }
         }
 
@@ -492,8 +492,8 @@ impl ChunkStore {
 
         for (rank, result) in fts_results.into_iter().enumerate() {
             let key = format!("{}:{}", result.path, result.chunk_index);
-            *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
-            entries.entry(key).or_insert(result);
+            entries.entry(key.clone()).or_insert(result);
+            *scores.entry(key).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
         }
 
         let mut skip_rerank = false;
@@ -508,8 +508,8 @@ impl ChunkStore {
 
             for (rank, result) in vec_results.into_iter().enumerate() {
                 let key = format!("{}:{}", result.path, result.chunk_index);
-                *scores.entry(key.clone()).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
-                entries.entry(key).or_insert(result);
+                entries.entry(key.clone()).or_insert(result);
+                *scores.entry(key).or_insert(0.0) += 1.0 / (k + rank as f64 + 1.0);
             }
         }
 
