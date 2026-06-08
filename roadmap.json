@@ -1329,6 +1329,17 @@
       "gate": null,
       "description": "Evaluate Microsoft ASSERT (spec-driven evaluation framework) as complement to Glasswing for C3. ASSERT converts natural-language policies into test suites with LLM-as-judge scoring grounded in OTel traces. Supports 100+ model endpoints via LiteLLM, 33+ frameworks via OpenInference. Could provide structured, reproducible evaluation alongside Glasswing's adversarial testing. MIT license.",
       "source": "tech-watch-2026-06-05"
+    },
+    {
+      "id": "TW27",
+      "title": "Split navra-security: auth primitives vs ML safety",
+      "priority": "P2",
+      "status": "pending",
+      "effort": "L",
+      "description": "Separate navra-security into navra-auth (auth, permissions, capability tokens, identity) and navra-safety (ML filters, NER, PII). Consumers needing only auth don't pull ort/tokenizers.",
+      "depends_on": [],
+      "gates": [],
+      "feeds": []
     }
   ]
 }
