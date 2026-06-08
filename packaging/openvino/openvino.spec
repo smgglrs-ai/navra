@@ -395,7 +395,7 @@ mkdir -p "$TMPDIR"
     -DLibEdit_LIBRARIES=%{_libdir}/libedit.so \
     -DLibEdit_INCLUDE_DIRS=%{_includedir}/histedit.h \
 
-%cmake_build -- -j4
+%cmake_build -- -j8
 
 # =====================================================================
 # Install
