@@ -17,6 +17,38 @@ use crate::identity::CapSigner;
 /// Token version prefix.
 const TOKEN_PREFIX: &str = "navra_cap_v1";
 
+#[derive(Debug, thiserror::Error)]
+pub enum CapabilityError {
+    #[error("invalid token format: {0}")]
+    InvalidFormat(String),
+    #[error("invalid token signature")]
+    InvalidSignature,
+    #[error("token expired at {expired}, current time {now}")]
+    Expired { expired: u64, now: u64 },
+    #[error("unsupported token version: {0}")]
+    UnsupportedVersion(u8),
+    #[error("token has been revoked")]
+    Revoked,
+    #[error("delegation violation: {0}")]
+    DelegationViolation(String),
+    #[error("CBOR error: {0}")]
+    Cbor(String),
+    #[error("base64 decode error: {0}")]
+    Base64(#[from] base64::DecodeError),
+}
+
+impl<T: std::fmt::Debug> From<ciborium::ser::Error<T>> for CapabilityError {
+    fn from(e: ciborium::ser::Error<T>) -> Self {
+        CapabilityError::Cbor(format!("{e:?}"))
+    }
+}
+
+impl<T: std::fmt::Debug> From<ciborium::de::Error<T>> for CapabilityError {
+    fn from(e: ciborium::de::Error<T>) -> Self {
+        CapabilityError::Cbor(format!("{e:?}"))
+    }
+}
+
 /// On-behalf-of identity: the human this agent acts for.
 ///
 /// Carries the human's identity from the root token through the
@@ -135,7 +167,7 @@ impl TokenRevocationList {
 /// Encode and sign a capability token.
 ///
 /// Returns the wire-format string: `navra_cap_v1.<cbor>.<sig>`
-pub fn encode_token(payload: &CapabilityPayload, signer: &dyn CapSigner) -> anyhow::Result<String> {
+pub fn encode_token(payload: &CapabilityPayload, signer: &dyn CapSigner) -> Result<String, CapabilityError> {
     let cbor_bytes = cbor_encode(payload)?;
     let sig = signer.sign(&cbor_bytes);
 
@@ -149,7 +181,7 @@ pub fn encode_token(payload: &CapabilityPayload, signer: &dyn CapSigner) -> anyh
 ///
 /// Verifies the signature, checks expiry, and optionally checks the
 /// revocation list. Returns the payload if all checks pass.
-pub fn decode_token(token: &str, verifier: &dyn CapSigner) -> anyhow::Result<CapabilityPayload> {
+pub fn decode_token(token: &str, verifier: &dyn CapSigner) -> Result<CapabilityPayload, CapabilityError> {
     decode_token_with_revocation(token, verifier, None)
 }
 
@@ -158,20 +190,20 @@ pub fn decode_token_with_revocation(
     token: &str,
     verifier: &dyn CapSigner,
     revocation_list: Option<&TokenRevocationList>,
-) -> anyhow::Result<CapabilityPayload> {
+) -> Result<CapabilityPayload, CapabilityError> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 {
-        anyhow::bail!("invalid token format: expected 3 dot-separated parts");
+        return Err(CapabilityError::InvalidFormat("expected 3 dot-separated parts".to_string()));
     }
     if parts[0] != TOKEN_PREFIX {
-        anyhow::bail!("invalid token prefix: expected {TOKEN_PREFIX}");
+        return Err(CapabilityError::InvalidFormat(format!("expected prefix {TOKEN_PREFIX}")));
     }
 
     let cbor_bytes = URL_SAFE_NO_PAD.decode(parts[1])?;
     let sig_bytes = URL_SAFE_NO_PAD.decode(parts[2])?;
 
     if !verifier.verify(&cbor_bytes, &sig_bytes) {
-        anyhow::bail!("invalid token signature");
+        return Err(CapabilityError::InvalidSignature);
     }
 
     let payload: CapabilityPayload = cbor_decode(&cbor_bytes)?;
@@ -182,16 +214,16 @@ pub fn decode_token_with_revocation(
         .unwrap()
         .as_secs();
     if payload.exp < now {
-        anyhow::bail!("token expired at {}, current time {}", payload.exp, now);
+        return Err(CapabilityError::Expired { expired: payload.exp, now });
     }
 
     if payload.v != 1 {
-        anyhow::bail!("unsupported token version: {}", payload.v);
+        return Err(CapabilityError::UnsupportedVersion(payload.v));
     }
 
     if let Some(rl) = revocation_list {
         if rl.is_revoked(&payload.nonce) {
-            anyhow::bail!("token has been revoked");
+            return Err(CapabilityError::Revoked);
         }
     }
 
@@ -209,10 +241,10 @@ pub fn decode_token_with_revocation(
 /// **Do not use for authentication** — skips signature verification.
 /// Intended for testing, token inspection, and delegation validation.
 #[cfg_attr(not(test), doc(hidden))]
-pub fn decode_token_unchecked(token: &str) -> anyhow::Result<CapabilityPayload> {
+pub fn decode_token_unchecked(token: &str) -> Result<CapabilityPayload, CapabilityError> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 || parts[0] != TOKEN_PREFIX {
-        anyhow::bail!("invalid token format");
+        return Err(CapabilityError::InvalidFormat("malformed token".to_string()));
     }
     let cbor_bytes = URL_SAFE_NO_PAD.decode(parts[1])?;
     cbor_decode(&cbor_bytes)
@@ -293,72 +325,57 @@ pub fn validate_delegation(
     parent: &CapabilityPayload,
     child: &CapabilityPayload,
     max_depth: u8,
-) -> anyhow::Result<()> {
+) -> Result<(), CapabilityError> {
     // Child must reference parent
     match child.parent {
         Some(parent_nonce) if parent_nonce == parent.nonce => {}
-        _ => anyhow::bail!("child token does not reference parent nonce"),
+        _ => return Err(CapabilityError::DelegationViolation("child token does not reference parent nonce".to_string())),
     }
 
-    // Ring and expiry attenuation
     check_attenuation(parent.ring, child.ring, parent.exp, child.exp).map_err(|e| {
-        anyhow::anyhow!(
-            "{}: child ring={} exp={}, parent ring={} exp={}",
-            e,
-            child.ring,
-            child.exp,
-            parent.ring,
-            parent.exp
-        )
+        CapabilityError::DelegationViolation(format!(
+            "{e}: child ring={} exp={}, parent ring={} exp={}",
+            child.ring, child.exp, parent.ring, parent.exp
+        ))
     })?;
 
-    // Operations subset
     let parent_ops: HashSet<&str> = parent.cap.operations.iter().map(|s| s.as_str()).collect();
     for op in &child.cap.operations {
         if !parent_ops.contains(op.as_str()) {
-            anyhow::bail!("operation escalation: child has '{}' not in parent", op);
+            return Err(CapabilityError::DelegationViolation(format!("operation escalation: child has '{op}' not in parent")));
         }
     }
 
-    // Credentials subset
     let parent_creds: HashSet<&str> = parent.cap.credentials.iter().map(|s| s.as_str()).collect();
     for cred in &child.cap.credentials {
         if !parent_creds.contains(cred.as_str()) {
-            anyhow::bail!("credential escalation: child has '{}' not in parent", cred);
+            return Err(CapabilityError::DelegationViolation(format!("credential escalation: child has '{cred}' not in parent")));
         }
     }
 
-    // OBO identity: must be inherited, never added during attenuation.
-    // If the parent has no obo, the child must not introduce one.
-    // If the parent has obo, the child must carry the same identity.
     match (&parent.obo, &child.obo) {
         (None, Some(_)) => {
-            anyhow::bail!("obo escalation: child introduces obo identity not present in parent");
+            return Err(CapabilityError::DelegationViolation("obo escalation: child introduces obo identity not present in parent".to_string()));
         }
         (Some(parent_obo), Some(child_obo)) => {
             if parent_obo.sub != child_obo.sub || parent_obo.iss != child_obo.iss {
-                anyhow::bail!(
+                return Err(CapabilityError::DelegationViolation(format!(
                     "obo mismatch: child obo (sub={}, iss={}) differs from parent (sub={}, iss={})",
-                    child_obo.sub,
-                    child_obo.iss,
-                    parent_obo.sub,
-                    parent_obo.iss
-                );
+                    child_obo.sub, child_obo.iss, parent_obo.sub, parent_obo.iss
+                )));
             }
         }
-        _ => {} // (Some, None) is allowed (child drops obo — unusual but not an escalation)
-                // (None, None) is the common case
+        _ => {}
     }
 
-    // Sandbox attenuation: child can only add/tighten sandbox rules, never remove/weaken.
     match (&parent.sandbox, &child.sandbox) {
         (Some(parent_sandbox), Some(child_sandbox)) => {
             parent_sandbox
                 .validate_attenuation(child_sandbox)
-                .map_err(|e| anyhow::anyhow!(e))?;
+                .map_err(|e| CapabilityError::DelegationViolation(e.to_string()))?;
         }
         (Some(_), None) => {
-            anyhow::bail!("sandbox escalation: child removes sandbox profile present in parent");
+            return Err(CapabilityError::DelegationViolation("sandbox escalation: child removes sandbox profile present in parent".to_string()));
         }
         _ => {} // (None, Some) is fine (child adds sandbox), (None, None) is common
     }
@@ -366,7 +383,7 @@ pub fn validate_delegation(
     // Depth check: max_depth indicates how many more delegations are allowed.
     // 0 = no further delegation, 1 = one more level, etc.
     if child.parent.is_some() && max_depth == 0 {
-        anyhow::bail!("delegation chain depth exceeded (max_depth=0)");
+        return Err(CapabilityError::DelegationViolation("chain depth exceeded (max_depth=0)".to_string()));
     }
     // The child's effective max_depth must be strictly less than the parent's
     // to prevent unlimited re-delegation at the same depth.
@@ -376,13 +393,13 @@ pub fn validate_delegation(
 
 // --- CBOR helpers ---
 
-fn cbor_encode(payload: &CapabilityPayload) -> anyhow::Result<Vec<u8>> {
+fn cbor_encode(payload: &CapabilityPayload) -> Result<Vec<u8>, CapabilityError> {
     let mut buf = Vec::new();
     ciborium::into_writer(payload, &mut buf)?;
     Ok(buf)
 }
 
-fn cbor_decode(bytes: &[u8]) -> anyhow::Result<CapabilityPayload> {
+fn cbor_decode(bytes: &[u8]) -> Result<CapabilityPayload, CapabilityError> {
     Ok(ciborium::from_reader(bytes)?)
 }
 
@@ -442,33 +459,26 @@ pub fn build_delegated_payload(
     requested_tools: Vec<String>,
     ring: u8,
     ttl_secs: u64,
-) -> anyhow::Result<CapabilityPayload> {
+) -> Result<CapabilityPayload, CapabilityError> {
     // Ring attenuation: child must be same or less privileged
     if ring < parent.ring {
-        anyhow::bail!(
-            "ring escalation: requested ring {} < parent ring {}",
-            ring,
-            parent.ring
-        );
+        return Err(CapabilityError::DelegationViolation(format!(
+            "ring escalation: requested ring {ring} < parent ring {}", parent.ring
+        )));
     }
 
-    // Intersect operations with parent's
     let parent_ops: HashSet<&str> = parent.cap.operations.iter().map(|s| s.as_str()).collect();
     let mut effective_ops = Vec::new();
     for op in &requested_ops {
         if parent_ops.contains(op.as_str()) {
             effective_ops.push(op.clone());
         } else {
-            anyhow::bail!(
-                "operation escalation: '{}' not in parent's grants {:?}",
-                op,
-                parent.cap.operations
-            );
+            return Err(CapabilityError::DelegationViolation(format!(
+                "operation escalation: '{op}' not in parent's grants {:?}", parent.cap.operations
+            )));
         }
     }
 
-    // Intersect tools with parent's using glob matching.
-    // Each requested tool must match at least one parent tool glob.
     let mut effective_tools = Vec::new();
     for tool in &requested_tools {
         let covered = parent.cap.tools.iter().any(|parent_glob| {
@@ -478,11 +488,9 @@ pub fn build_delegated_payload(
                 || parent_glob == tool
         });
         if !covered {
-            anyhow::bail!(
-                "tool escalation: '{}' not covered by parent's tool grants {:?}",
-                tool,
-                parent.cap.tools
-            );
+            return Err(CapabilityError::DelegationViolation(format!(
+                "tool escalation: '{tool}' not covered by parent's tool grants {:?}", parent.cap.tools
+            )));
         }
         effective_tools.push(tool.clone());
     }

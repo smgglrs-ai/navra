@@ -65,6 +65,15 @@ pub enum FlowError {
     #[error("TOML parse error: {0}")]
     Toml(#[from] toml::de::Error),
 
+    #[error("database error: {0}")]
+    Db(#[from] rusqlite::Error),
+
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("serialization error: {0}")]
+    Serde(#[from] serde_json::Error),
+
     #[error("{0}")]
     Other(#[from] anyhow::Error),
 }
