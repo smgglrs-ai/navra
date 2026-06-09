@@ -438,7 +438,7 @@ fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
     if let Some(ref identity_cfg) = cfg.server.identity {
         if let Some(ref key_path) = identity_cfg.key_path {
             let path = std::path::Path::new(key_path);
-            return identity::load_or_create_file_identity(path);
+            return Ok(identity::load_or_create_file_identity(path)?);
         }
     }
     // Default: try OS keyring, fall back to file
@@ -454,7 +454,7 @@ fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
                     anyhow::anyhow!("Cannot determine config directory for identity key")
                 })?
                 .join("navra/identity.key");
-            identity::load_or_create_file_identity(&default_path)
+            Ok(identity::load_or_create_file_identity(&default_path)?)
         }
     }
 }
