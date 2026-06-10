@@ -19,6 +19,7 @@ pub mod skill_hook;
 pub mod provenance_hook;
 pub mod statistical;
 pub mod temporal_contract;
+mod policy_yaml;
 mod tool_guard;
 
 pub use approval_gate::{ApprovalGateConfig, ApprovalGateHook, ApprovalStatus, PendingApproval};
@@ -39,6 +40,7 @@ pub use provenance_hook::{CausalSink, ProvenanceHook};
 pub use leakage::{
     SemanticLeakageConfig, SemanticLeakageJudge, SimilarityLeakageConfig, SimilarityLeakageHook,
 };
+pub use policy_yaml::PolicyYamlHook;
 pub use tool_guard::ToolGuardHook;
 
 use navra_auth::auth::CallContext;
