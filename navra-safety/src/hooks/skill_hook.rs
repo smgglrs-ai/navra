@@ -5,7 +5,7 @@
 //! intervention action (modify arguments, inject context, or no-op).
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -131,7 +131,7 @@ mod tests {
 
     fn test_ctx() -> CallContext {
         CallContext {
-            agent: crate::auth::AgentIdentity {
+            agent: navra_auth::auth::AgentIdentity {
                 name: "test".to_string(),
                 permissions: "full".to_string(),
                 signing_key: None,
@@ -139,7 +139,7 @@ mod tests {
                 capabilities: None,
             },
             session_id: "sess-1".to_string(),
-            taint: crate::ifc::TaintTracker::new(),
+            taint: navra_auth::ifc::TaintTracker::new(),
             remaining_tokens: None,
             sandbox: None,
         }

@@ -6,7 +6,7 @@
 //! first" or "3+ destructive tools require human check-in."
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use navra_protocol::label::DataLabel;
 use navra_protocol::CallToolResult;
 
@@ -362,7 +362,7 @@ impl Hook for TemporalContractHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
 
     #[test]
     fn session_action_log_records_and_retrieves() {

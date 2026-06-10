@@ -4,7 +4,7 @@
 //! tool call and its result. Never modifies results.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use navra_protocol::CallToolResult;
 use std::sync::Arc;
 
@@ -71,7 +71,7 @@ impl Hook for ProvenanceHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
     use std::sync::Mutex;
 
     struct TestSink {

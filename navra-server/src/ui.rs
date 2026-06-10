@@ -799,7 +799,7 @@ mod tests {
         let models = test_models();
         let cfg = test_config();
         let base = axum::Router::new();
-        attach_ui_routes(base, &cfg, &server, &models, Some("stub"), None)
+        attach_ui_routes(base, &cfg, &server, &models, Some("stub"), None, None)
     }
 
     async fn post_json(
@@ -844,8 +844,8 @@ mod tests {
             &router,
             "/v1/chat/completions",
             serde_json::json!({
-                "model": "test",
-                "messages": [{"role": "user", "content": "hi"}],
+                "model": "qwen3:8b",
+                "messages": [{"role": "user", "content": "say hello in one word"}],
                 "max_tokens": 5
             }),
         )

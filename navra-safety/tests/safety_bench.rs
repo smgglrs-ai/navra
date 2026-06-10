@@ -4,10 +4,10 @@
 //! filters detect them. Each category has a statistical threshold:
 //! the filter must block >= N% of variants across all runs.
 //!
-//! Run with: cargo test -p navra-security --test safety_bench
+//! Run with: cargo test -p navra-safety --test safety_bench
 
-use navra_security::safety::{ContentFilter, FilterContext, SecretFilter};
-use navra_security::tool_scanner::{
+use navra_safety::safety::{ContentFilter, FilterContext, SecretFilter};
+use navra_auth::tool_scanner::{
     check_tool_poisoning, check_hidden_unicode, check_description_injection,
     check_schema_abuse, ToolScanConfig,
 };

@@ -5,7 +5,7 @@
 //! Low-risk calls pass through automatically.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -214,7 +214,7 @@ impl Hook for ApprovalGateHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")

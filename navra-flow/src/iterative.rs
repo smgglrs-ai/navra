@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use navra_agent::Agent;
 use navra_model::{CreateResponseRequest, InputItem, ModelBackend, ModelResponse};
 use navra_protocol::label::DataLabel;
-use navra_security::ifc::TaintTracker;
+use navra_auth::ifc::TaintTracker;
 use std::collections::HashMap;
 
 /// How the scout phase selects files to analyze.

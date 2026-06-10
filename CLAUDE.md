@@ -27,7 +27,9 @@ package only provides shared libraries.
 | `navra-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
 | `navra-model-runtime` | Infrastructure | Serve models with pluggable isolation (direct, Podman, OpenShell) |
 | `navra-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
-| `navra-security` | Infrastructure | Auth, permissions, IFC, safety filters, hooks, upstream tool scanning, cognitive file integrity monitoring |
+| `navra-auth` | Infrastructure | Auth, permissions, identity, IFC, upstream tool scanning (no ML deps) |
+| `navra-safety` | Infrastructure | ML safety filters (NER, PII), hooks pipeline, integrity monitoring |
+| `navra-security` | Infrastructure | Facade re-exporting navra-auth + navra-safety |
 | `navra-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
 | `navra-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
 | `navra-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, deterministic replay, standalone binary (`Dockerfile.agent`) |
@@ -57,21 +59,25 @@ navra-macros            (no navra deps, proc-macro)
     ↓
 navra-model             (responses)
     ↓
-navra-security          (protocol + model)
+navra-auth              (protocol, NO ML deps)
     ↓
-navra-core              (protocol + model + security)  SERVER
+navra-safety            (auth + protocol + model, HAS ort/tokenizers)
+navra-security          (facade: auth + safety)
+    ↓
+navra-core              (protocol + model + auth       SERVER
+                           + safety)
     ↓
 navra-memory            (core + model, opt: rag)       PERSISTENCE
-navra-agent             (protocol + model + security   CLIENT
-                           + cognitive)
+navra-agent             (protocol + model + auth       CLIENT
+                           + safety + cognitive)
 navra-tools-file ───┐
 navra-tools-git  ───┤
 navra-tools-exec ───┼── (core, exec also: model-runtime)
 navra-rag        ───┤
-navra-modal-*    ───┘── (core only)
+navra-modal-*    ───┘── (core or core + auth)
     ↓
 navra-flow              (agent + cognitive + protocol  ORCHESTRATION
-                           + model + security)
+                           + model + auth + safety)
     ↓
 navra-server            (all + hub + runtime)
 ```
@@ -186,7 +192,7 @@ Task: "Add embedding support to RAG and voice modules"
 2. Decompose into crate-scoped work packages
 3. Spawn agents with `isolation: worktree`, one per crate
 4. Each agent implements, tests, and commits in its worktree
-5. Lead merges each branch: `git merge --no-ff <branch>`
+5. Lead merges each branch (prefer fast-forward when linear)
 6. Lead runs full workspace tests after all merges
 
 ### Team coordination
@@ -219,6 +225,12 @@ that outweighs the parallelism gains.
 
 2400+ tests. See TESTING.md for per-crate unit/integration/e2e
 breakdown.
+
+Tests that spawn `navra serve` (adversarial_eval, e2e) will OOM
+if run in parallel. Use `--test-threads=1` for those tests.
+
+Doc-test convention: use `no_run` for examples needing cross-crate
+types, `text` for illustrative examples. Never use `ignore`.
 
 Prerequisites:
 - ONNX Runtime (`onnxruntime-devel` on Fedora)

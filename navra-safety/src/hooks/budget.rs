@@ -5,7 +5,7 @@
 //! context window.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use navra_protocol::{CallToolResult, Content};
 
 /// Strategy for reducing oversized tool outputs.
@@ -251,7 +251,7 @@ impl Hook for BudgetHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")

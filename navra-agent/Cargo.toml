@@ -13,7 +13,8 @@ path = "src/bin/agent.rs"
 [dependencies]
 navra-protocol = { path = "../navra-protocol" }
 navra-model = { path = "../navra-model" }
-navra-security = { path = "../navra-security" }
+navra-auth = { path = "../navra-auth" }
+navra-safety = { path = "../navra-safety" }
 navra-cognitive = { path = "../navra-cognitive" }
 chrono = "0.4"
 regex-lite = "0.1"

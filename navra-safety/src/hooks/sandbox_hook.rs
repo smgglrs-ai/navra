@@ -7,8 +7,8 @@
 //! - RateLimit: enforce per-tool call rate limits
 //! - PathRewrite: rewrite path arguments before execution
 
-use crate::auth::sandbox_profile::{SandboxAction, SandboxProfile};
-use crate::auth::CallContext;
+use navra_auth::auth::sandbox_profile::{SandboxAction, SandboxProfile};
+use navra_auth::auth::CallContext;
 use crate::hooks::{Hook, HookDecision};
 use navra_protocol::CallToolResult;
 use std::collections::HashMap;
@@ -192,8 +192,8 @@ impl Hook for SandboxHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::sandbox_profile::ToolSandboxRule;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::sandbox_profile::ToolSandboxRule;
+    use navra_auth::auth::AgentIdentity;
 
     fn test_ctx_with_sandbox(profile: SandboxProfile) -> CallContext {
         let mut ctx = CallContext::new(AgentIdentity::new("test-agent", "dev"), "test-session");

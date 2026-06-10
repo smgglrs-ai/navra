@@ -7,8 +7,8 @@ use crate::tool_loop::{run_tool_loop, ToolLoopConfig, ToolLoopResult};
 use navra_model::ModelBackend;
 use navra_protocol::label::DataLabel;
 use navra_protocol::Upstream;
-use navra_security::identity::CapSigner;
-use navra_security::safety::FilterPipeline;
+use navra_auth::identity::CapSigner;
+use navra_safety::safety::FilterPipeline;
 use std::sync::Arc;
 
 /// An AI agent connected to an MCP server with a model backend.

@@ -70,6 +70,7 @@ pub fn now_iso() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     let secs = d.as_secs();
+    let millis = d.subsec_millis();
     let days = secs / 86400;
     let time_secs = secs % 86400;
     let hours = time_secs / 3600;
@@ -78,8 +79,8 @@ pub fn now_iso() -> String {
 
     let (year, month, day) = epoch_days_to_date(days as i64);
     format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        year, month, day, hours, mins, s
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        year, month, day, hours, mins, s, millis
     )
 }
 

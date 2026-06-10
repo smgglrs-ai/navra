@@ -11,7 +11,8 @@ navra-agent = { path = "../navra-agent" }
 navra-cognitive = { path = "../navra-cognitive" }
 navra-protocol = { path = "../navra-protocol" }
 navra-model = { path = "../navra-model" }
-navra-security = { path = "../navra-security" }
+navra-auth = { path = "../navra-auth" }
+navra-safety = { path = "../navra-safety" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

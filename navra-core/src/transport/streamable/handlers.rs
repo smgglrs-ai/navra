@@ -295,7 +295,7 @@ pub(super) async fn handle_oauth_metadata(
 
 pub(super) async fn handle_oauth_token(
     State(state): State<AppState>,
-    axum::Json(request): axum::Json<navra_security::auth::oauth::TokenRequest>,
+    axum::Json(request): axum::Json<navra_auth::auth::oauth::TokenRequest>,
 ) -> axum::response::Response {
     let provider = match &state.oauth {
         Some(p) => p,
@@ -309,7 +309,7 @@ pub(super) async fn handle_oauth_token(
 
 pub(super) async fn handle_oauth_register(
     State(state): State<AppState>,
-    axum::Json(request): axum::Json<navra_security::auth::oauth::ClientRegistrationRequest>,
+    axum::Json(request): axum::Json<navra_auth::auth::oauth::ClientRegistrationRequest>,
 ) -> axum::response::Response {
     let provider = match &state.oauth {
         Some(p) => p,

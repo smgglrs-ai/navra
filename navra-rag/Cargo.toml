@@ -23,7 +23,6 @@ anyhow = { version = "1", optional = true }
 navra-core = { path = "../navra-core" }
 navra-macros = { path = "../navra-macros" }
 navra-protocol = { path = "../navra-protocol" }
-navra-security = { path = "../navra-security" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

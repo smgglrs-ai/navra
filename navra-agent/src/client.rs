@@ -6,7 +6,7 @@ use navra_protocol::{
     CallToolParams, CallToolResult, GetPromptParams, GetPromptResult, PromptDefinition,
     ReadResourceParams, ReadResourceResult, ResourceDefinition, ToolDefinition, Upstream,
 };
-use navra_security::ifc::{is_external_read_tool, TaintTracker};
+use navra_auth::ifc::{is_external_read_tool, TaintTracker};
 use std::collections::HashMap;
 
 /// MCP client wrapping [`Upstream`] with authentication and IFC taint tracking.

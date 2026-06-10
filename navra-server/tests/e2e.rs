@@ -32,7 +32,7 @@ async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
         .unwrap()
         .join("navra");
 
-    let child = Command::new(&navra_bin)
+    let mut child = Command::new(&navra_bin)
         .args(["serve", "--config", &config_path, "--no-tray"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -43,6 +43,15 @@ async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
         .env("ORT_PREFER_DYNAMIC_LINK", "1")
         .spawn()
         .expect("failed to spawn navra");
+
+    // Drain stderr in background so the pipe buffer never blocks the child
+    let stderr = child.stderr.take().unwrap();
+    tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut buf = vec![0u8; 8192];
+        let mut reader = stderr;
+        while reader.read(&mut buf).await.unwrap_or(0) > 0 {}
+    });
 
     let url = format!("http://127.0.0.1:{port}");
 
@@ -254,8 +263,8 @@ async fn v1_chat_completions_returns_openai_format() {
     let resp = client
         .post(format!("{url}/v1/chat/completions"))
         .json(&serde_json::json!({
-            "model": "test",
-            "messages": [{"role": "user", "content": "hi"}],
+            "model": "qwen3:8b",
+            "messages": [{"role": "user", "content": "say hello in one word"}],
             "max_tokens": 5
         }))
         .send()

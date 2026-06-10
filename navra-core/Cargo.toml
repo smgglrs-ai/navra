@@ -8,7 +8,8 @@ rust-version.workspace = true
 
 [dependencies]
 navra-protocol = { path = "../navra-protocol" }
-navra-security = { path = "../navra-security" }
+navra-auth = { path = "../navra-auth" }
+navra-safety = { path = "../navra-safety" }
 navra-model = { path = "../navra-model" }
 async-trait = { workspace = true }
 axum = { workspace = true }
@@ -33,7 +34,7 @@ prost = { workspace = true }
 tokio-stream = "0.1"
 
 [features]
-cedar = ["navra-security/cedar"]
+cedar = ["navra-auth/cedar"]
 
 [build-dependencies]
 tonic-build = "0.12"

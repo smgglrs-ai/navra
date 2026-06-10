@@ -9,7 +9,7 @@ use navra_flow::{
     TaskResult, TaskStatus,
 };
 use navra_protocol::label::{Confidentiality, DataLabel};
-use navra_security::ifc::TaintTracker;
+use navra_auth::ifc::TaintTracker;
 
 // ── TOML deserialization of mesh config ──
 

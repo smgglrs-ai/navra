@@ -41,7 +41,7 @@ pub use leakage::{
 };
 pub use tool_guard::ToolGuardHook;
 
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use async_trait::async_trait;
 use navra_protocol::CallToolResult;
 

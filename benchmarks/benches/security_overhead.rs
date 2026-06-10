@@ -6,7 +6,7 @@ use std::path::Path;
 // --- IFC ---
 
 fn bench_ifc_taint_propagation(c: &mut Criterion) {
-    use navra_security::ifc::{Confidentiality, DataLabel, Integrity, TaintTracker};
+    use navra_auth::ifc::{Confidentiality, DataLabel, Integrity, TaintTracker};
 
     let mut group = c.benchmark_group("ifc");
 
@@ -70,7 +70,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
     group.bench_function("is_trusted_path_match", |b| {
         let patterns = vec!["~/Code/**".to_string(), "~/Documents/**".to_string()];
         b.iter(|| {
-            navra_security::ifc::is_trusted_path(
+            navra_auth::ifc::is_trusted_path(
                 black_box("/home/user/Code/project/src/main.rs"),
                 &patterns,
             )
@@ -80,7 +80,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
     group.bench_function("is_trusted_path_no_match", |b| {
         let patterns = vec!["~/Code/**".to_string()];
         b.iter(|| {
-            navra_security::ifc::is_trusted_path(black_box("/tmp/random/file.txt"), &patterns)
+            navra_auth::ifc::is_trusted_path(black_box("/tmp/random/file.txt"), &patterns)
         });
     });
 
@@ -90,10 +90,10 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
 // --- Capability tokens ---
 
 fn bench_capability_tokens(c: &mut Criterion) {
-    use navra_security::auth::capability::{
+    use navra_auth::auth::capability::{
         build_payload, decode_token, encode_token, CapabilitySet,
     };
-    use navra_security::identity::{load_or_create_file_identity, CapSigner};
+    use navra_auth::identity::{load_or_create_file_identity, CapSigner};
 
     let tmp = tempfile::tempdir().unwrap();
     let signer = load_or_create_file_identity(&tmp.path().join("bench.key")).unwrap();
@@ -128,7 +128,7 @@ fn bench_capability_tokens(c: &mut Criterion) {
 // --- BLAKE3 token auth ---
 
 fn bench_blake3_auth(c: &mut Criterion) {
-    use navra_security::auth::TokenAuthenticator;
+    use navra_auth::auth::TokenAuthenticator;
 
     let mut group = c.benchmark_group("blake3_auth");
 
@@ -144,7 +144,7 @@ fn bench_blake3_auth(c: &mut Criterion) {
 // --- Safety pipeline ---
 
 fn bench_safety_pipeline(c: &mut Criterion) {
-    use navra_security::safety::{build_pipeline, FilterContext};
+    use navra_safety::safety::{build_pipeline, FilterContext};
 
     let mut group = c.benchmark_group("safety_pipeline");
 
@@ -187,7 +187,7 @@ fn bench_safety_pipeline(c: &mut Criterion) {
 // --- Permission checks ---
 
 fn bench_permissions(c: &mut Criterion) {
-    use navra_security::permissions::{PathAcl, PermissionEngine};
+    use navra_auth::permissions::{PathAcl, PermissionEngine};
 
     let mut engine = PermissionEngine::new();
     engine.add_permission_set(
@@ -239,7 +239,7 @@ fn bench_permissions(c: &mut Criterion) {
 // --- Tool permission rules ---
 
 fn bench_tool_rules(c: &mut Criterion) {
-    use navra_security::permissions::{ToolPermissions, ToolPolicy, ToolRule};
+    use navra_auth::permissions::{ToolPermissions, ToolPolicy, ToolRule};
 
     let rules = vec![
         ToolRule {

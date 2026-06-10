@@ -38,8 +38,8 @@ pub struct McpServerBuilder {
     blackbox: Option<Arc<crate::blackbox::Blackbox>>,
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
     #[cfg(feature = "cedar")]
-    cedar_engine: Option<navra_security::permissions::CedarEngine>,
-    tool_disclosure: HashMap<String, navra_security::permissions::ToolDisclosure>,
+    cedar_engine: Option<navra_auth::permissions::CedarEngine>,
+    tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     mcp_version: String,
     metrics: Option<Arc<crate::metrics::Metrics>>,
@@ -308,7 +308,7 @@ impl McpServerBuilder {
     pub fn tool_disclosure(
         mut self,
         permission_set: impl Into<String>,
-        disclosure: navra_security::permissions::ToolDisclosure,
+        disclosure: navra_auth::permissions::ToolDisclosure,
     ) -> Self {
         self.tool_disclosure
             .insert(permission_set.into(), disclosure);
@@ -332,7 +332,7 @@ impl McpServerBuilder {
 
     /// Set the Cedar policy engine for conditional access control.
     #[cfg(feature = "cedar")]
-    pub fn cedar_engine(mut self, engine: navra_security::permissions::CedarEngine) -> Self {
+    pub fn cedar_engine(mut self, engine: navra_auth::permissions::CedarEngine) -> Self {
         self.cedar_engine = Some(engine);
         self
     }

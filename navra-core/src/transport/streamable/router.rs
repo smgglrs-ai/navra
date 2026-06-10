@@ -21,7 +21,7 @@ pub(crate) struct AppState {
     /// Root DID for Agent Card identity.
     pub root_did: Option<String>,
     /// OAuth 2.0 provider (None = OAuth disabled).
-    pub oauth: Option<Arc<navra_security::auth::oauth::OAuthProvider>>,
+    pub oauth: Option<Arc<navra_auth::auth::oauth::OAuthProvider>>,
     /// Prometheus metrics registry.
     pub metrics: Arc<crate::metrics::Metrics>,
 }
@@ -152,7 +152,7 @@ pub fn build_router_with_discovery(
 /// Set the OAuth provider on an existing router's state.
 pub fn set_oauth(
     state: &mut AppState,
-    provider: Arc<navra_security::auth::oauth::OAuthProvider>,
+    provider: Arc<navra_auth::auth::oauth::OAuthProvider>,
 ) {
     state.oauth = Some(provider);
 }

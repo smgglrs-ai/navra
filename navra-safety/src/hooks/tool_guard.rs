@@ -9,7 +9,7 @@
 //! - `file_delete`: adds user-friendly path context
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 
 /// A pre-hook that validates tool call arguments before execution.
 ///
@@ -89,7 +89,7 @@ impl Hook for ToolGuardHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")

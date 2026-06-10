@@ -4,10 +4,10 @@
 //!   navra pii download
 //!
 //! Run with:
-//!   ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-security -- --ignored
+//!   ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety -- --ignored
 
-use navra_security::safety::ContentFilter;
-use navra_security::safety::{default_pii_ner_model_dir, FilterContext, NerFilter};
+use navra_safety::safety::ContentFilter;
+use navra_safety::safety::{default_pii_ner_model_dir, FilterContext, NerFilter};
 
 fn model_dir() -> std::path::PathBuf {
     default_pii_ner_model_dir()
