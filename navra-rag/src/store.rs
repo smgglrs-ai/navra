@@ -31,7 +31,7 @@ pub struct ChunkResult {
 }
 
 /// Filter constraints for scoped search.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SearchFilter {
     pub doc_type: Option<String>,
     pub min_updated_at: Option<i64>,
