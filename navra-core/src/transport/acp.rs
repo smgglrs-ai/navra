@@ -1177,10 +1177,11 @@ mod tests {
 
         let agent = AgentIdentity::new("tester", "dev");
         let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         state.runs.set_finished(
             &run.run_id,
             RunStatus::Completed,
-            "2026-06-05T10:00:05Z".to_string(),
+            dispatch::now_iso(),
         );
 
         let test_router = Router::new()

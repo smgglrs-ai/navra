@@ -2168,7 +2168,7 @@ fn uri_template_matching() {
 
 #[test]
 fn resource_list_filtered_by_capability_token_globs() {
-    use navra_security::auth::capability::ResolvedCapabilities;
+    use navra_auth::auth::capability::ResolvedCapabilities;
 
     let mut agent = AgentIdentity::new("cap-agent", "dev");
     agent.capabilities = Some(ResolvedCapabilities {
@@ -2321,7 +2321,7 @@ fn ifc_tool_filter_shows_all_when_clean() {
 #[test]
 fn dynamic_filter_composes_with_static_disclosure() {
     use super::IFCToolFilter;
-    use navra_security::permissions::ToolDisclosure;
+    use navra_auth::permissions::ToolDisclosure;
 
     let server = McpServer::builder()
         .tool(read_tool_def(), |_args, _ctx| {

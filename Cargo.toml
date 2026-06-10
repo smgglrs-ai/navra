@@ -5,6 +5,8 @@ members = [
     "navra-model",
     "navra-model-hub",
     "navra-model-runtime",
+    "navra-auth",
+    "navra-safety",
     "navra-security",
     "navra-cognitive",
     "navra-memory",

@@ -15,7 +15,7 @@ use navra_core::permissions::{PermissionEngine, PermissionResult};
 use navra_core::protocol::CallToolResult;
 use navra_core::{Module, ToolHandler};
 use navra_macros::tool;
-use navra_security::auth::CallContext;
+use navra_auth::auth::CallContext;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -347,7 +347,7 @@ mod tests {
     use super::*;
     use navra_core::models::{GenerateResponse, ModelBackend, ModelError};
     use navra_core::permissions::{PathAcl, PermissionEngine};
-    use navra_security::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
     use std::collections::HashSet;
     use std::io::Write;
 

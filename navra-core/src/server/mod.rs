@@ -68,14 +68,14 @@ pub struct McpServer {
     /// Per-session log level filter (MCP logging/setLevel).
     session_log_levels: Arc<RwLock<HashMap<String, navra_protocol::LoggingLevel>>>,
     /// Tool disclosure rules per permission set (progressive tool disclosure).
-    tool_disclosure: HashMap<String, navra_security::permissions::ToolDisclosure>,
+    tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
     /// Dynamic tool filters applied during `tools/list` (runtime context-aware).
     dynamic_filters: Vec<Box<dyn ToolFilter>>,
     /// Prometheus metrics counters.
     pub(crate) metrics: Arc<crate::metrics::Metrics>,
     /// Optional Cedar policy engine for conditional access control.
     #[cfg(feature = "cedar")]
-    cedar_engine: Option<navra_security::permissions::CedarEngine>,
+    cedar_engine: Option<navra_auth::permissions::CedarEngine>,
     /// MCP protocol version — "2025-03-26" (default) or "2026-07-28" (stateless).
     mcp_version: String,
 }

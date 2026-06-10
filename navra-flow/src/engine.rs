@@ -17,7 +17,7 @@ use navra_model::{
     ResponseToolChoice,
 };
 use navra_protocol::label::DataLabel;
-use navra_security::ifc::TaintTracker;
+use navra_auth::ifc::TaintTracker;
 use std::collections::HashMap;
 
 /// A node in the flow graph, wrapping an agent.

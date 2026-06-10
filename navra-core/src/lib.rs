@@ -1,19 +1,20 @@
 //! MCP server framework and module system for navra.
 //!
 //! This crate provides the `Module` trait, `McpServer` builder, session
-//! management, transport layer, and re-exports from `navra-security`,
-//! `navra-protocol`, and `navra-model`. Downstream module crates
-//! (tools-\*, rag, modal-\*, memory) depend only on this crate.
-pub use navra_security::auth;
-pub use navra_security::credentials;
-pub use navra_security::hooks;
-pub use navra_security::identity;
-pub use navra_security::ifc;
-pub use navra_security::notify;
-pub use navra_security::permissions;
-pub use navra_security::process;
-pub use navra_security::quota;
-pub use navra_security::safety;
+//! management, transport layer, and re-exports from `navra-auth`,
+//! `navra-safety`, `navra-protocol`, and `navra-model`. Downstream
+//! module crates (tools-\*, rag, modal-\*, memory) depend only on
+//! this crate.
+pub use navra_auth::auth;
+pub use navra_auth::credentials;
+pub use navra_auth::identity;
+pub use navra_auth::ifc;
+pub use navra_auth::notify;
+pub use navra_auth::permissions;
+pub use navra_auth::process;
+pub use navra_auth::quota;
+pub use navra_safety::hooks;
+pub use navra_safety::safety;
 
 pub use navra_protocol as protocol;
 pub use navra_protocol::upstream;

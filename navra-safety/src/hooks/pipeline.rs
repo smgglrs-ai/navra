@@ -1,7 +1,7 @@
 //! Hook pipeline: ordered execution of hooks with timeout enforcement.
 
 use super::{Hook, HookDecision, PreHookOutcome};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use navra_protocol::CallToolResult;
 use std::time::Duration;
 
@@ -191,7 +191,7 @@ impl HookPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::{AgentIdentity, CallContext};
+    use navra_auth::auth::{AgentIdentity, CallContext};
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")

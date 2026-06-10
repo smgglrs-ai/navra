@@ -84,6 +84,6 @@ pub use navra_protocol::{
     CallToolParams, CallToolResult, Content, PromptDefinition, ResourceDefinition, ToolDefinition,
     Upstream,
 };
-pub use navra_security::identity::{load_or_create_file_identity, CapSigner, Ed25519Signer};
-pub use navra_security::ifc::TaintTracker;
-pub use navra_security::safety::FilterPipeline;
+pub use navra_auth::identity::{load_or_create_file_identity, CapSigner, Ed25519Signer};
+pub use navra_auth::ifc::TaintTracker;
+pub use navra_safety::safety::FilterPipeline;

@@ -15,7 +15,7 @@
 //! pipeline as a post-hook on tool call results.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use navra_protocol::CallToolResult;
 
 use std::collections::{HashMap, VecDeque};
@@ -641,7 +641,7 @@ impl Hook for StatisticalGuardrailHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")

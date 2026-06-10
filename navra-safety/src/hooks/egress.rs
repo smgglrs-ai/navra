@@ -6,7 +6,7 @@
 //! in arguments that reach external services.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 
 /// Configuration for the egress endpoint allowlist.
 #[derive(Debug, Clone)]
@@ -219,8 +219,8 @@ pub fn matches_pattern(domain: &str, pattern: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
-    use crate::ifc::DataLabel;
+    use navra_auth::auth::AgentIdentity;
+    use navra_auth::ifc::DataLabel;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")

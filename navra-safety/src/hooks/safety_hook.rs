@@ -9,13 +9,13 @@
 //! regex secret detection is irrelevant for content an agent is writing.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use crate::safety::{is_pii_category, FilterContext, FilterPipeline};
 use navra_protocol::label::Confidentiality;
 use navra_protocol::{CallToolResult, Content};
 use std::collections::HashMap;
 
-use crate::ifc::is_write_tool;
+use navra_auth::ifc::is_write_tool;
 
 /// A hook that applies content safety filtering to tool calls.
 ///
@@ -181,7 +181,7 @@ impl Hook for SafetyHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
     use navra_protocol::label::Confidentiality;
 
     fn test_ctx() -> CallContext {

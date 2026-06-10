@@ -14,7 +14,7 @@ use navra_model::{
 };
 use navra_protocol::label::DataLabel;
 use navra_protocol::{CallToolResult, Content};
-use navra_security::safety::{FilterContext, FilterPipeline};
+use navra_safety::safety::{FilterContext, FilterPipeline};
 use std::sync::Arc;
 /// Transparent context retriever injected before each model call.
 ///
@@ -1536,7 +1536,7 @@ mod tests {
 
     #[tokio::test]
     async fn pii_filter_redacts_model_response() {
-        let pipeline = Arc::new(navra_security::safety::build_pipeline("standard"));
+        let pipeline = Arc::new(navra_safety::safety::build_pipeline("standard"));
         let model = MockModel::new(vec![stop_response(
             "The patient's SSN is 123-45-6789 and email is john@example.com",
         )]);
@@ -1591,7 +1591,7 @@ mod tests {
     #[tokio::test]
     async fn pii_filter_does_not_affect_tool_calls() {
         // PII filter only filters model text, not tool call arguments
-        let pipeline = Arc::new(navra_security::safety::build_pipeline("standard"));
+        let pipeline = Arc::new(navra_safety::safety::build_pipeline("standard"));
         let model = MockModel::new(vec![
             tool_call_response("git_status", r#"{"ssn": "123-45-6789"}"#),
             stop_response("Status is clean."),

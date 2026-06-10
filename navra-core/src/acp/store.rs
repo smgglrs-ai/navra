@@ -215,8 +215,8 @@ impl RunStore {
         let cutoff = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_secs() as i64
-            - max_age.as_secs() as i64;
+            .as_millis() as i64
+            - max_age.as_millis() as i64;
 
         let expired_ids: Vec<String> = {
             let runs = self.runs.read().unwrap_or_else(|e| e.into_inner());
@@ -228,7 +228,7 @@ impl RunStore {
                     ) && r
                         .finished_at
                         .as_ref()
-                        .and_then(|ts| parse_iso_epoch(ts))
+                        .and_then(|ts| parse_iso_epoch_ms(ts))
                         .map(|epoch| epoch < cutoff)
                         .unwrap_or(false)
                 })
@@ -263,13 +263,13 @@ impl RunStore {
 }
 
 fn compute_duration(created_at: &str, finished_at: &str) -> f64 {
-    match (parse_iso_epoch(created_at), parse_iso_epoch(finished_at)) {
-        (Some(start), Some(end)) => (end - start) as f64,
+    match (parse_iso_epoch_ms(created_at), parse_iso_epoch_ms(finished_at)) {
+        (Some(start), Some(end)) => (end - start) as f64 / 1000.0,
         _ => 0.0,
     }
 }
 
-fn parse_iso_epoch(ts: &str) -> Option<i64> {
+fn parse_iso_epoch_ms(ts: &str) -> Option<i64> {
     let parts: Vec<&str> = ts.split('T').collect();
     if parts.len() != 2 {
         return None;
@@ -279,15 +279,29 @@ fn parse_iso_epoch(ts: &str) -> Option<i64> {
         return None;
     }
     let time_str = parts[1].trim_end_matches('Z');
-    let time_parts: Vec<i64> = time_str.split(':').filter_map(|p| p.parse().ok()).collect();
+    let time_parts: Vec<&str> = time_str.split(':').collect();
     if time_parts.len() != 3 {
         return None;
     }
+    let h: i64 = time_parts[0].parse().ok()?;
+    let min: i64 = time_parts[1].parse().ok()?;
+    let (s, ms) = if let Some((sec_str, frac_str)) = time_parts[2].split_once('.') {
+        let s: i64 = sec_str.parse().ok()?;
+        let frac: i64 = frac_str.parse().ok()?;
+        let ms = match frac_str.len() {
+            1 => frac * 100,
+            2 => frac * 10,
+            3 => frac,
+            _ => frac / 10_i64.pow(frac_str.len() as u32 - 3),
+        };
+        (s, ms)
+    } else {
+        (time_parts[2].parse().ok()?, 0)
+    };
     let (y, m, d) = (date_parts[0], date_parts[1] as u32, date_parts[2] as u32);
-    let (h, min, s) = (time_parts[0], time_parts[1], time_parts[2]);
 
     let days = date_to_epoch_days(y, m, d);
-    Some(days * 86400 + h * 3600 + min * 60 + s)
+    Some((days * 86400 + h * 3600 + min * 60 + s) * 1000 + ms)
 }
 
 fn date_to_epoch_days(y: i64, m: u32, d: u32) -> i64 {
@@ -503,15 +517,15 @@ mod tests {
 
     #[test]
     fn parse_iso_epoch_valid() {
-        let epoch = parse_iso_epoch("2026-06-05T10:30:00Z").unwrap();
+        let epoch = parse_iso_epoch_ms("2026-06-05T10:30:00Z").unwrap();
         assert!(epoch > 0);
     }
 
     #[test]
     fn parse_iso_epoch_invalid() {
-        assert!(parse_iso_epoch("not-a-date").is_none());
-        assert!(parse_iso_epoch("").is_none());
-        assert!(parse_iso_epoch("2026-06-05").is_none());
+        assert!(parse_iso_epoch_ms("not-a-date").is_none());
+        assert!(parse_iso_epoch_ms("").is_none());
+        assert!(parse_iso_epoch_ms("2026-06-05").is_none());
     }
 
     #[test]

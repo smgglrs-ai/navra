@@ -7,7 +7,7 @@
 //! and stores it via a pluggable storage backend.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 use navra_protocol::{CallToolResult, Content};
 use std::sync::Arc;
 
@@ -221,7 +221,7 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
     use std::sync::Mutex;
 
     /// A test store that records extractions.

@@ -1,29 +1,19 @@
-//! navra-security: Security layer for the MCP gateway.
+//! navra-security: Facade re-exporting navra-auth and navra-safety.
 //!
-//! Enforces authentication, authorization, and content safety between
-//! AI agents and local resources. Key subsystems:
-//!
-//! - **auth** — BLAKE3 token authentication
-//! - **permissions** — Deny-wins path ACLs and tool-level rules
-//! - **hooks** — Pre/post tool-call pipeline (`HookPipeline`)
-//! - **safety** — Regex and ML content filters (`MlFilter`, `Finding`)
-//! - **ifc** — Information flow control with `DataLabel` taint tracking
-//! - **identity** — Ed25519 `did:key` signing (`CapSigner`, `Ed25519Signer`)
-//! - **credentials** — Secret storage with `CredentialStore` trait
-//! - **quota** — Per-agent rate limiting (`QuotaEngine`)
-//! - **process** — Live call tracking (`ProcessTable`)
+//! New code should depend on `navra-auth` or `navra-safety` directly.
 
-pub mod auth;
-pub mod credentials;
-pub mod hooks;
-pub mod identity;
-pub mod ifc;
-pub mod manifest;
-pub mod integrity_monitor;
-pub mod notify;
-pub mod permissions;
-pub mod process;
-pub mod quota;
-pub mod safety;
-pub mod tool_scanner;
-pub mod trust_score;
+pub use navra_auth::auth;
+pub use navra_auth::credentials;
+pub use navra_auth::identity;
+pub use navra_auth::ifc;
+pub use navra_auth::manifest;
+pub use navra_auth::notify;
+pub use navra_auth::permissions;
+pub use navra_auth::process;
+pub use navra_auth::quota;
+pub use navra_auth::tool_scanner;
+pub use navra_auth::trust_score;
+
+pub use navra_safety::hooks;
+pub use navra_safety::integrity_monitor;
+pub use navra_safety::safety;

@@ -34,7 +34,7 @@ impl UpstreamModule {
     /// corresponding capability will simply be empty.
     pub async fn discover(
         upstream: Upstream,
-        scanner: Option<&mut navra_security::tool_scanner::ToolScanner>,
+        scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
     ) -> Result<Self, UpstreamError> {
         let name = upstream.name().to_string();
         let upstream = Arc::new(Mutex::new(upstream));
@@ -48,7 +48,7 @@ impl UpstreamModule {
         };
 
         let tools = if let Some(scanner) = scanner {
-            use navra_security::tool_scanner::ScanVerdict;
+            use navra_auth::tool_scanner::ScanVerdict;
             let results = scanner.scan_tools(&name, &tools);
             let mut filtered = Vec::new();
             for (tool, result) in tools.into_iter().zip(results.iter()) {

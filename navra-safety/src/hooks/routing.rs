@@ -8,7 +8,7 @@
 //! `_routing_tier` and `_routing_model` so the model backend can read it.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
+use navra_auth::auth::CallContext;
 
 /// A model tier for cost-aware routing.
 #[derive(Debug, Clone)]
@@ -146,7 +146,7 @@ fn estimate_tokens(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
+    use navra_auth::auth::AgentIdentity;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")

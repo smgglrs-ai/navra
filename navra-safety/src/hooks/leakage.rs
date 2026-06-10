@@ -19,8 +19,8 @@
 //! compares against values with confidentiality >= Sensitive.
 
 use super::{Hook, HookDecision};
-use crate::auth::CallContext;
-use crate::ifc::value_store::ValueStoreMap;
+use navra_auth::auth::CallContext;
+use navra_auth::ifc::value_store::ValueStoreMap;
 use navra_protocol::label::Confidentiality;
 use std::sync::Arc;
 
@@ -134,7 +134,7 @@ impl Hook for SimilarityLeakageHook {
         }
 
         let tool_annotations = None; // TODO: pass annotations when available
-        if !crate::ifc::is_write_tool(tool_name, tool_annotations) {
+        if !navra_auth::ifc::is_write_tool(tool_name, tool_annotations) {
             return HookDecision::Continue;
         }
 
@@ -287,7 +287,7 @@ impl Hook for SemanticLeakageJudge {
         }
 
         let tool_annotations = None;
-        if !crate::ifc::is_write_tool(tool_name, tool_annotations) {
+        if !navra_auth::ifc::is_write_tool(tool_name, tool_annotations) {
             return HookDecision::Continue;
         }
 
@@ -352,8 +352,8 @@ impl Hook for SemanticLeakageJudge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AgentIdentity;
-    use crate::ifc::value_store::{StoredValue, ValueStoreMap};
+    use navra_auth::auth::AgentIdentity;
+    use navra_auth::ifc::value_store::{StoredValue, ValueStoreMap};
     use navra_protocol::label::{Confidentiality, DataLabel, Integrity};
     use serde_json::json;
 

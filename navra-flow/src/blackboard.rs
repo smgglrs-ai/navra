@@ -8,7 +8,7 @@
 use crate::error::FlowError;
 use serde_json::Value;
 use navra_protocol::label::DataLabel;
-use navra_security::ifc::TaintTracker;
+use navra_auth::ifc::TaintTracker;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
