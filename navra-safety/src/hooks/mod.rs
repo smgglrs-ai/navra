@@ -45,6 +45,7 @@ pub use tool_guard::ToolGuardHook;
 
 use navra_auth::auth::CallContext;
 use async_trait::async_trait;
+use navra_model::{CreateResponseRequest, ModelResponse};
 use navra_protocol::CallToolResult;
 
 /// Decision returned by a hook after processing an event.
@@ -62,6 +63,50 @@ pub enum HookDecision {
     Simulate(CallToolResult),
     /// Suspend execution pending human approval (pre-hook only).
     Pending(String),
+}
+
+/// Context available during model-call hook phases.
+///
+/// Unlike `CallContext` (gateway-side, authenticated), this carries
+/// agent-side metadata available in the tool loop.
+#[derive(Debug, Clone)]
+pub struct ModelCallContext {
+    pub run_id: String,
+    pub iteration: usize,
+    pub tokens_consumed: u64,
+    pub token_budget: u64,
+}
+
+/// Decision returned by a hook in the pre-model-call phase.
+#[derive(Debug)]
+pub enum PreModelDecision {
+    Continue,
+    ModifyRequest(CreateResponseRequest),
+    Block(String),
+}
+
+/// Decision returned by a hook in the post-model-call phase.
+#[derive(Debug)]
+pub enum PostModelDecision {
+    Continue,
+    ModifyResponse(ModelResponse),
+    Retry(CreateResponseRequest),
+    Block(String),
+}
+
+/// Outcome of running pre-model-call hooks through the pipeline.
+#[derive(Debug)]
+pub enum PreModelOutcome {
+    Proceed(CreateResponseRequest),
+    Blocked(String),
+}
+
+/// Outcome of running post-model-call hooks through the pipeline.
+#[derive(Debug)]
+pub enum PostModelOutcome {
+    Accept(ModelResponse),
+    Retry(CreateResponseRequest),
+    Blocked(String),
 }
 
 /// Outcome of running pre-hooks through the pipeline.
@@ -116,5 +161,24 @@ pub trait Hook: Send + Sync + 'static {
         _ctx: &CallContext,
     ) -> HookDecision {
         HookDecision::Continue
+    }
+
+    /// Called before a model call in the agent tool loop.
+    async fn pre_model_call(
+        &self,
+        _request: &CreateResponseRequest,
+        _ctx: &ModelCallContext,
+    ) -> PreModelDecision {
+        PreModelDecision::Continue
+    }
+
+    /// Called after a model call returns in the agent tool loop.
+    async fn post_model_call(
+        &self,
+        _request: &CreateResponseRequest,
+        _response: &ModelResponse,
+        _ctx: &ModelCallContext,
+    ) -> PostModelDecision {
+        PostModelDecision::Continue
     }
 }
