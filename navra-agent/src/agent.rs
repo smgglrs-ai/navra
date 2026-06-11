@@ -247,6 +247,12 @@ impl AgentBuilder {
         self
     }
 
+    /// Set a hook pipeline for model-call interception.
+    pub fn hook_pipeline(mut self, pipeline: Arc<navra_safety::hooks::HookPipeline>) -> Self {
+        self.config.hook_pipeline = Some(pipeline);
+        self
+    }
+
     /// Enable cooperative signal delivery for this agent.
     ///
     /// Returns the modified builder and a [`SignalHandle`] that the

@@ -14,6 +14,7 @@ use navra_model::{
 };
 use navra_protocol::label::DataLabel;
 use navra_protocol::{CallToolResult, Content};
+use navra_safety::hooks::{HookPipeline, ModelCallContext, PostModelOutcome, PreModelOutcome};
 use navra_safety::safety::{FilterContext, FilterPipeline};
 use std::sync::Arc;
 /// Transparent context retriever injected before each model call.
@@ -113,6 +114,10 @@ pub struct ToolLoopConfig {
     /// is retrieved before each model call and injected as a system
     /// message. The retriever handles score gating and budget gating.
     pub context_retriever: Option<Arc<dyn ContextRetriever>>,
+    /// Optional hook pipeline for intercepting model calls.
+    /// When set, pre_model_call/post_model_call hooks run around
+    /// each model.respond() invocation.
+    pub hook_pipeline: Option<Arc<HookPipeline>>,
 }
 
 impl Default for ToolLoopConfig {
@@ -139,6 +144,7 @@ impl Default for ToolLoopConfig {
             loop_detection_threshold: 3,
             reasoning_phases: Vec::new(),
             context_retriever: None,
+            hook_pipeline: None,
         }
     }
 }
@@ -805,7 +811,54 @@ pub async fn run_tool_loop(
             ..CreateResponseRequest::new(String::new(), vec![])
         };
 
+        // Pre-model hook: allow hooks to modify the request or block.
+        let mut request = if let Some(ref pipeline) = config.hook_pipeline {
+            let model_ctx = ModelCallContext {
+                run_id: run_id.clone(),
+                iteration,
+                tokens_consumed: total_tokens_consumed,
+                token_budget: config.max_tokens_per_run,
+            };
+            match pipeline.run_pre_model(request, &model_ctx).await {
+                PreModelOutcome::Proceed(req) => req,
+                PreModelOutcome::Blocked(reason) => {
+                    return Err(AgentError::Other(anyhow::anyhow!(
+                        "Model call blocked by hook: {reason}"
+                    )));
+                }
+            }
+        } else {
+            request
+        };
+
         let response: ModelResponse = model.respond(&request).await?;
+
+        // Post-model hook: allow hooks to modify, retry, or block the response.
+        let response = if let Some(ref pipeline) = config.hook_pipeline {
+            let model_ctx = ModelCallContext {
+                run_id: run_id.clone(),
+                iteration,
+                tokens_consumed: total_tokens_consumed,
+                token_budget: config.max_tokens_per_run,
+            };
+            match pipeline
+                .run_post_model(&request, response, &model_ctx)
+                .await
+            {
+                PostModelOutcome::Accept(resp) => resp,
+                PostModelOutcome::Retry(new_req) => {
+                    tracing::info!("Post-model hook requested retry");
+                    model.respond(&new_req).await?
+                }
+                PostModelOutcome::Blocked(reason) => {
+                    return Err(AgentError::Other(anyhow::anyhow!(
+                        "Model response blocked by hook: {reason}"
+                    )));
+                }
+            }
+        } else {
+            response
+        };
 
         // Take input back from the request (avoids reallocation)
         input = std::mem::take(&mut request.input);
