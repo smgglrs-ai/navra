@@ -1449,6 +1449,12 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             builder = builder.tool_permissions(name.clone(), ToolPermissions::new(rules, default));
         }
 
+        if !pset.operations.is_empty() {
+            let ops: std::collections::HashSet<String> =
+                pset.operations.iter().cloned().collect();
+            builder = builder.agent_operations(name.clone(), ops);
+        }
+
         if !pset.tool_disclosure_include.is_empty() || !pset.tool_disclosure_exclude.is_empty() {
             let disclosure = navra_core::permissions::ToolDisclosure::new(
                 pset.tool_disclosure_include.clone(),
@@ -1827,7 +1833,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             );
             match navra_core::Upstream::http(&endpoint.domain, &endpoint.url).await {
                 Ok(upstream) => {
-                    match navra_core::UpstreamModule::discover(upstream, None).await {
+                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default()).await {
                         Ok(module) => {
                             tracing::info!(
                                 domain = %endpoint.domain,
@@ -1895,7 +1901,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             let url = server.url();
             match navra_core::Upstream::http(&server.name, &url).await {
                 Ok(upstream) => {
-                    match navra_core::UpstreamModule::discover(upstream, None).await {
+                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default()).await {
                         Ok(module) => {
                             tracing::info!(
                                 name = %server.name,
@@ -2021,40 +2027,46 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         };
 
         match connect_result {
-            Ok(upstream) => match navra_core::UpstreamModule::discover(upstream, None).await {
-                Ok(module) => {
-                    tracing::info!(
-                        upstream = %upstream_cfg.name,
-                        transport = %upstream_cfg.transport,
-                        "Connected upstream"
-                    );
+            Ok(upstream) => {
+                match navra_core::UpstreamModule::discover(
+                    upstream,
+                    None,
+                    &upstream_cfg.tool_overrides,
+                )
+                .await
+                {
+                    Ok(module) => {
+                        tracing::info!(
+                            upstream = %upstream_cfg.name,
+                            transport = %upstream_cfg.transport,
+                            "Connected upstream"
+                        );
 
-                    // Auto-discover persona prompts from this upstream.
-                    // Prompts named "persona:<name>" are registered as
-                    // personas in the ForgeService. Local YAML personas
-                    // take precedence over auto-discovered ones.
-                    for prompt_def in module.discovered_prompts() {
-                        if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
-                            let description = prompt_def.description.as_deref().unwrap_or("");
-                            forge.register_upstream_persona(
-                                persona_name,
-                                module.upstream_name(),
-                                &prompt_def.name,
-                                description,
-                            );
+                        for prompt_def in module.discovered_prompts() {
+                            if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                                let description = prompt_def.description.as_deref().unwrap_or("");
+                                forge.register_upstream_persona(
+                                    persona_name,
+                                    module.upstream_name(),
+                                    &prompt_def.name,
+                                    description,
+                                );
+                            }
                         }
-                    }
 
-                    builder = builder.module(module);
+                        builder =
+                            builder.merge_tool_operations(module.tool_operations().clone());
+                        builder = builder.module(module);
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            upstream = %upstream_cfg.name,
+                            error = %e,
+                            "Failed to discover upstream capabilities, skipping"
+                        );
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(
-                        upstream = %upstream_cfg.name,
-                        error = %e,
-                        "Failed to discover upstream capabilities, skipping"
-                    );
-                }
-            },
+            }
             Err(e) => {
                 tracing::error!(
                     upstream = %upstream_cfg.name,

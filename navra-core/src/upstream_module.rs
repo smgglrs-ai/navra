@@ -16,11 +16,35 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Classified operation type for an upstream tool.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolOperation {
+    Read,
+    Write,
+    Deny,
+}
+
+fn classify_tool(def: &ToolDefinition) -> ToolOperation {
+    if let Some(ref ann) = def.annotations {
+        if ann.read_only_hint == Some(true) {
+            return ToolOperation::Read;
+        }
+        if ann.destructive_hint == Some(true) {
+            return ToolOperation::Write;
+        }
+    }
+    if navra_auth::ifc::is_write_tool(&def.name, def.annotations.as_ref()) {
+        return ToolOperation::Write;
+    }
+    ToolOperation::Read
+}
+
 /// A module backed by an upstream MCP server.
 pub struct UpstreamModule {
     name: String,
     upstream: Arc<Mutex<Upstream>>,
     tools: Vec<ToolDefinition>,
+    tool_operations: HashMap<String, ToolOperation>,
     prompts: Vec<PromptDefinition>,
     resources: Vec<ResourceDefinition>,
 }
@@ -35,6 +59,7 @@ impl UpstreamModule {
     pub async fn discover(
         upstream: Upstream,
         scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
+        tool_overrides: &HashMap<String, String>,
     ) -> Result<Self, UpstreamError> {
         let name = upstream.name().to_string();
         let upstream = Arc::new(Mutex::new(upstream));
@@ -80,6 +105,47 @@ impl UpstreamModule {
             tools
         };
 
+        let mut tool_operations = HashMap::new();
+        let mut accepted_tools = Vec::new();
+        for def in tools {
+            let op = if let Some(override_str) = tool_overrides.get(&def.name) {
+                match override_str.as_str() {
+                    "read" => ToolOperation::Read,
+                    "write" => ToolOperation::Write,
+                    "deny" => ToolOperation::Deny,
+                    other => {
+                        tracing::warn!(
+                            upstream = %name,
+                            tool = %def.name,
+                            override_value = %other,
+                            "Unknown tool_override value, using auto-classification"
+                        );
+                        classify_tool(&def)
+                    }
+                }
+            } else {
+                classify_tool(&def)
+            };
+
+            if op == ToolOperation::Deny {
+                tracing::info!(
+                    upstream = %name,
+                    tool = %def.name,
+                    "Denied upstream tool by policy"
+                );
+                continue;
+            }
+
+            tracing::debug!(
+                upstream = %name,
+                tool = %def.name,
+                operation = ?op,
+                "Classified upstream tool"
+            );
+            tool_operations.insert(def.name.clone(), op);
+            accepted_tools.push(def);
+        }
+
         let prompts = {
             let mut u = upstream.lock().await;
             u.list_prompts().await.unwrap_or_else(|e| {
@@ -98,7 +164,7 @@ impl UpstreamModule {
 
         tracing::info!(
             upstream = %name,
-            tools = tools.len(),
+            tools = accepted_tools.len(),
             prompts = prompts.len(),
             resources = resources.len(),
             "Discovered upstream capabilities"
@@ -107,7 +173,8 @@ impl UpstreamModule {
         Ok(Self {
             name,
             upstream,
-            tools,
+            tools: accepted_tools,
+            tool_operations,
             prompts,
             resources,
         })
@@ -124,6 +191,11 @@ impl UpstreamModule {
     /// Return the upstream name.
     pub fn upstream_name(&self) -> &str {
         &self.name
+    }
+
+    /// Return the tool operation classifications.
+    pub fn tool_operations(&self) -> &HashMap<String, ToolOperation> {
+        &self.tool_operations
     }
 }
 

@@ -5,7 +5,7 @@ use crate::protocol::CallToolResult;
 use crate::quota::QuotaEngine;
 use crate::safety::FilterPipeline;
 use crate::session::SessionStore;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
@@ -27,6 +27,8 @@ pub struct McpServerBuilder {
     authenticator: Option<Arc<dyn crate::auth::Authenticator>>,
     safety_pipelines: HashMap<String, FilterPipeline>,
     tool_permissions: HashMap<String, ToolPermissions>,
+    agent_operations: HashMap<String, HashSet<String>>,
+    tool_operations: HashMap<String, crate::upstream_module::ToolOperation>,
     hooks: Vec<Box<dyn crate::hooks::Hook>>,
     hook_timeout: std::time::Duration,
     quota_engine: Option<QuotaEngine>,
@@ -57,6 +59,8 @@ impl McpServerBuilder {
             authenticator: None,
             safety_pipelines: HashMap::new(),
             tool_permissions: HashMap::new(),
+            agent_operations: HashMap::new(),
+            tool_operations: HashMap::new(),
             hooks: Vec::new(),
             hook_timeout: std::time::Duration::from_secs(10),
             quota_engine: None,
@@ -254,6 +258,26 @@ impl McpServerBuilder {
     ) -> Self {
         self.tool_permissions
             .insert(permission_set.into(), permissions);
+        self
+    }
+
+    /// Set allowed operations for a permission set (e.g., "read", "write").
+    pub fn agent_operations(
+        mut self,
+        permission_set: impl Into<String>,
+        operations: HashSet<String>,
+    ) -> Self {
+        self.agent_operations
+            .insert(permission_set.into(), operations);
+        self
+    }
+
+    /// Merge upstream tool operation classifications into the server.
+    pub fn merge_tool_operations(
+        mut self,
+        ops: HashMap<String, crate::upstream_module::ToolOperation>,
+    ) -> Self {
+        self.tool_operations.extend(ops);
         self
     }
 
@@ -823,6 +847,8 @@ impl McpServerBuilder {
             authenticator,
             safety_pipelines: self.safety_pipelines,
             tool_permissions: self.tool_permissions,
+            agent_operations: self.agent_operations,
+            tool_operations: self.tool_operations,
             hooks,
             paused: Arc::new(AtomicBool::new(false)),
             task_store: crate::a2a::TaskStore::new(),

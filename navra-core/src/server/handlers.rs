@@ -389,6 +389,38 @@ impl McpServer {
             }
         }
 
+        // Operations-based enforcement for upstream tools.
+        // If a tool is classified as "write" and the agent's permission
+        // set only allows "read", block it.
+        if let Some(ops) = self.agent_operations.get(&ctx.agent.permissions) {
+            if let Some(tool_op) = self.tool_operations.get(&params.name) {
+                match tool_op {
+                    crate::upstream_module::ToolOperation::Write
+                        if !ops.contains("write") =>
+                    {
+                        self.process_table.record_denied(
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
+                        );
+                        return CallToolResult::error(format!(
+                            "Permission denied: '{}' is classified as a write operation \
+                             but permission set '{}' does not allow write",
+                            params.name, ctx.agent.permissions
+                        ));
+                    }
+                    crate::upstream_module::ToolOperation::Deny => {
+                        return CallToolResult::error(format!(
+                            "Permission denied: '{}' is blocked by upstream policy",
+                            params.name
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         // Cedar policy check (second gate — can only further restrict)
         #[cfg(feature = "cedar")]
         if let Some(ref cedar) = self.cedar_engine {

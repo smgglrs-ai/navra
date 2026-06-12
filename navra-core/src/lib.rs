@@ -41,7 +41,7 @@ pub use server::{
 };
 pub use session::Session;
 pub use navra_protocol::{RetryConfig, Upstream};
-pub use upstream_module::UpstreamModule;
+pub use upstream_module::{ToolOperation, UpstreamModule};
 
 /// Re-export dispatch for unit tests (not part of public API).
 #[cfg(test)]
