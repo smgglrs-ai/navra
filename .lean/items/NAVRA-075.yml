@@ -1,6 +1,6 @@
 id: "NAVRA-075"
 title: "Distroless container deployment for navra-agent"
-status: in_progress
+status: done
 priority: high
 effort: 2-3d
 depends_on: []
