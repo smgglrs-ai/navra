@@ -139,33 +139,31 @@ the OS's job to handle.
 
 ### 6. Container deployment pattern
 
-**Recommended: sidecar process, not separate container.**
+**Recommended: separate process managed by the gateway, NOT inside the
+agent container.**
 
-rust-mcp-filesystem connects via stdio. In a distroless container, the
-navra-agent binary spawns it as a child process. Both binaries live in
-the same container image.
+rust-mcp-filesystem must run outside the agent's trust boundary.
+Placing it inside the agent container defeats the security model:
+the agent would have direct filesystem access bypassing the gateway's
+permission/IFC/safety pipeline, and could tamper with the MCP server's
+configuration.
 
-```dockerfile
-FROM rust:alpine AS build
-# ... build navra-agent and rust-mcp-filesystem ...
+Correct architecture:
+- **Agent container** (`FROM scratch`): navra-agent only, connects to
+  gateway via `NAVRA_ENDPOINT`
+- **Gateway** (host or container): navra, spawns rust-mcp-filesystem
+  as an upstream MCP server via stdio, enforces all policy
+- **Filesystem MCP** (host process or sidecar container):
+  rust-mcp-filesystem with directory mounts scoped by the orchestrator
 
-FROM gcr.io/distroless/static:nonroot
-COPY --from=build /app/navra-agent /usr/local/bin/
-COPY --from=build /app/rust-mcp-filesystem /usr/local/bin/
-USER nonroot
-ENTRYPOINT ["/usr/local/bin/navra-agent"]
-```
-
-navra-agent's upstream config spawns it:
+Gateway configuration:
 ```toml
 [[upstream]]
 name = "filesystem"
 transport = "stdio"
-command = ["/usr/local/bin/rust-mcp-filesystem", "-w", "/workspace"]
+command = ["rust-mcp-filesystem", "/workspace"]
+# no -w flag → read-only by default
 ```
-
-**Image size impact:** rust-mcp-filesystem is a single static binary.
-With musl + LTO, expect ~5-8MB additional. Total image stays under 20MB.
 
 ## Risks and mitigations
 
@@ -181,9 +179,8 @@ This evaluation confirms rust-mcp-filesystem is suitable for the
 distroless container deployment (NAVRA-075). Key decisions for that
 work item:
 
-1. **Sidecar process** in same container, not separate container
+1. **Separate process** managed by the gateway, not inside the agent container
 2. **Two upstream configs**: `filesystem-ro` (default) and
    `filesystem-rw` (opt-in per agent)
 3. **Disable zip tools** in production unless explicitly needed
 4. **Never enable `--enable-roots`** in containerized deployments
-5. **Build from source** with musl target for static linking

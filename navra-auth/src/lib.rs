@@ -15,10 +15,12 @@
 //! - **trust_score** — Trust scoring
 
 pub mod auth;
+#[cfg(feature = "desktop")]
 pub mod credentials;
 pub mod identity;
 pub mod ifc;
 pub mod manifest;
+#[cfg(feature = "desktop")]
 pub mod notify;
 pub mod permissions;
 pub mod process;

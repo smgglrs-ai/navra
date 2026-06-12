@@ -24,6 +24,7 @@ pub enum IdentityError {
     Bs58(#[from] bs58::decode::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[cfg(feature = "desktop")]
     #[error(transparent)]
     Keyring(#[from] keyring::Error),
 }
@@ -231,6 +232,7 @@ pub fn load_or_create_file_identity(path: &Path) -> Result<Ed25519Signer, Identi
     }
 }
 
+#[cfg(feature = "desktop")]
 /// Load identity seed from OS keyring, or generate and store if absent.
 pub fn load_or_create_keyring_identity() -> Result<Ed25519Signer, IdentityError> {
     let entry = keyring::Entry::new("navra", "root-identity")?;

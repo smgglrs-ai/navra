@@ -68,11 +68,18 @@ impl TlsConfig {
                 message: format!("failed to read client key '{}': {}", key_path, e),
             })?;
 
-            let identity = reqwest::Identity::from_pkcs8_pem(&cert_pem, &key_pem).map_err(|e| {
-                UpstreamError::Protocol {
-                    name: upstream_name.to_string(),
-                    message: format!("invalid client identity: {}", e),
-                }
+            #[cfg(feature = "rustls")]
+            let identity = {
+                let mut combined_pem = cert_pem;
+                combined_pem.push(b'\n');
+                combined_pem.extend_from_slice(&key_pem);
+                reqwest::Identity::from_pem(&combined_pem)
+            };
+            #[cfg(not(feature = "rustls"))]
+            let identity = reqwest::Identity::from_pkcs8_pem(&cert_pem, &key_pem);
+            let identity = identity.map_err(|e| UpstreamError::Protocol {
+                name: upstream_name.to_string(),
+                message: format!("invalid client identity: {}", e),
             })?;
             builder = builder.identity(identity);
         }
