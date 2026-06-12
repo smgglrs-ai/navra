@@ -1,6 +1,6 @@
 id: "NAVRA-077"
 title: "Upstream tool ACL enforcement"
-status: planned
+status: done
 priority: critical
 effort: 2-3d
 depends_on: []
