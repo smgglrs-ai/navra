@@ -1,0 +1,36 @@
+id: "NAVRA-077"
+title: "Upstream tool ACL enforcement"
+status: planned
+priority: critical
+effort: 2-3d
+depends_on: []
+feeds: ['NAVRA-075']
+source: eval-NAVRA-076-integration-test
+description: |
+  navra's permission system does not apply to upstream MCP tool calls.
+  An agent with readonly permissions can call upstream write_file and
+  the write lands on disk. Discovered during NAVRA-076 integration
+  testing with rust-mcp-filesystem.
+
+  Root cause: UpstreamModule proxies tool calls directly without
+  checking the agent's permission set against the tool's semantic
+  operation type.
+
+  Required:
+  1. Per-upstream tool allowlist/blocklist in upstream config:
+     blocked_tools = ["write_file", "edit_file", ...]
+  2. Operation mapping so existing permission system applies:
+     [upstream.operation_map]
+     write_file = "write"
+     read_text_file = "read"
+  3. Default-deny: if no operation mapping exists for an upstream tool,
+     block it unless the agent has a wildcard permission.
+
+  Until fixed, upstream MCP servers MUST use their own access controls
+  (e.g. rust-mcp-filesystem --disable-tools) and container-level
+  read-only mounts as defense in depth.
+
+  Acceptance criteria:
+  - Agent with readonly permissions cannot call upstream write tools
+  - Upstream tool ACL config is documented
+  - Integration test covering the policy enforcement
