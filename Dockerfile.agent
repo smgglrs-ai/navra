@@ -19,18 +19,10 @@
 #
 # For the full image with ONNX Runtime, see Dockerfile.agent-full.
 
-# Stage 1: Build navra-agent (static musl, no ONNX, rustls TLS, no dbus)
 FROM registry.access.redhat.com/ubi10/ubi:latest AS builder
 
-RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm && \
-    dnf install -y gcc make perl-interpreter musl-gcc musl-libc-static musl-devel && \
+RUN dnf install -y gcc make rust cargo glibc-static && \
     dnf clean all
-
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --default-toolchain stable --target x86_64-unknown-linux-musl
 
 WORKDIR /src
 
@@ -58,20 +50,20 @@ RUN for dir in benchmarks navra-core navra-server navra-rag \
       echo '' > "$dir/src/lib.rs"; \
     done
 
+ENV RUSTFLAGS="-C target-feature=+crt-static"
 RUN cargo build \
     --profile container \
     --bin navra-agent \
-    --target x86_64-unknown-linux-musl \
+    --target x86_64-unknown-linux-gnu \
     --no-default-features \
     --features container
 
-# Stage 2: Runtime (FROM scratch — zero base CVEs, no shell)
 FROM scratch
 
 COPY --from=builder /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=builder \
-    /src/target/x86_64-unknown-linux-musl/container/navra-agent \
+    /src/target/x86_64-unknown-linux-gnu/container/navra-agent \
     /usr/local/bin/navra-agent
 
 USER 65534
