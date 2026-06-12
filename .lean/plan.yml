@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 57 active items
+# 56 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -11,13 +11,6 @@ items:
     priority: critical
     effort: M
     gate: "2026-07-28 flip default; implement now behind feature gate"
-
-  - id: "NAVRA-077"
-    title: "Upstream tool ACL enforcement"
-    status: planned
-    priority: critical
-    effort: 2-3d
-    feeds: ['NAVRA-075']
 
   - id: "NAVRA-024"
     title: "IFC adversarial corpus benchmark"
