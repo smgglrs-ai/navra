@@ -5,9 +5,18 @@ export ORT_PREFER_DYNAMIC_LINK := "1"
 build:
     cargo build
 
-# Run all tests
+# Run all tests (serialized to prevent OOM from concurrent server instances)
 test:
-    cargo test
+    cargo test --workspace --exclude navra-server
+    cargo test -p navra-server -- --test-threads=1
+
+# Run tests for a single crate
+test-crate crate:
+    cargo test -p {{crate}}
+
+# Run navra-server tests only (serialized)
+test-server:
+    cargo test -p navra-server -- --test-threads=1
 
 # Run clippy with warnings as errors
 clippy:

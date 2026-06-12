@@ -6,11 +6,16 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["onnx"]
+onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers"]
+rustls = ["reqwest/rustls-tls"]
+
 [dependencies]
 navra-responses = { path = "../navra-responses" }
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"] }
-ndarray = "0.17"
-tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
+ndarray = { version = "0.17", optional = true }
+tokenizers = { version = "0.22", default-features = false, features = ["onig"], optional = true }
 reqwest = { workspace = true, features = ["stream"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

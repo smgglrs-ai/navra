@@ -2007,6 +2007,7 @@ mod tests {
 
     /// Test extractive compression with the Granite embedding model.
     /// Skipped if the model files are not present.
+    #[cfg(feature = "onnx")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn compress_extractive_keeps_relevant_content() {
         let home = std::env::var("HOME").unwrap_or_default();
@@ -2081,6 +2082,7 @@ Memory usage is sampled every 30 seconds.";
 
     /// Compare truncation vs extractive compression on realistic content.
     /// Measures: output size, relevance (keyword hits), and latency.
+    #[cfg(feature = "onnx")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn compression_ab_comparison() {
         let home = std::env::var("HOME").unwrap_or_default();

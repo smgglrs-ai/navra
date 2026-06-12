@@ -57,3 +57,10 @@ keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 tonic = "0.12"
 prost = "0.13"
 schemars = "0.8"
+
+[profile.container]
+inherits = "release"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

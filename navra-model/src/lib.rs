@@ -7,7 +7,7 @@
 //!
 //! - [`OpenAiBackend`] — Chat Completions API (Ollama, vLLM)
 //! - [`AnthropicBackend`] — Messages API (Claude)
-//! - [`OnnxBackend`] — In-process ONNX Runtime (embeddings, safety)
+//! - `OnnxBackend` — In-process ONNX Runtime (embeddings, safety; requires `onnx` feature)
 //!
 //! `ModelBackend` methods:
 //! - `respond()` / `respond_stream()` — multi-turn completion with tools
@@ -20,6 +20,7 @@ pub mod chat;
 pub mod cli;
 pub(crate) mod http_common;
 mod ogx;
+#[cfg(feature = "onnx")]
 mod onnx;
 mod openai;
 pub mod safe_backend;
@@ -27,6 +28,7 @@ pub mod safe_backend;
 pub use anthropic::AnthropicBackend;
 pub use cli::CliBackend;
 pub use ogx::{OgxBackend, DEFAULT_OGX_URL};
+#[cfg(feature = "onnx")]
 pub use onnx::{Device, ModelTask, OnnxBackend, OpenVinoDevice};
 pub use openai::OpenAiBackend;
 pub use safe_backend::{ModelSafetyFilter, SafeModelBackend};

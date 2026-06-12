@@ -10,11 +10,17 @@ rust-version.workspace = true
 name = "navra-agent"
 path = "src/bin/agent.rs"
 
+[features]
+default = ["onnx"]
+onnx = ["navra-model/onnx", "navra-safety/onnx"]
+rustls = ["navra-model/rustls", "navra-protocol/rustls"]
+container = ["rustls"]
+
 [dependencies]
 navra-protocol = { path = "../navra-protocol" }
-navra-model = { path = "../navra-model" }
+navra-model = { path = "../navra-model", default-features = false }
 navra-auth = { path = "../navra-auth" }
-navra-safety = { path = "../navra-safety" }
+navra-safety = { path = "../navra-safety", default-features = false }
 navra-cognitive = { path = "../navra-cognitive" }
 chrono = "0.4"
 regex-lite = "0.1"
