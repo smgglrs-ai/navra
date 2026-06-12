@@ -1,0 +1,95 @@
+name: Container
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'navra-agent/**'
+      - 'navra-model/**'
+      - 'navra-safety/**'
+      - 'navra-protocol/**'
+      - 'navra-auth/**'
+      - 'navra-cognitive/**'
+      - 'navra-responses/**'
+      - 'navra-macros/**'
+      - 'Dockerfile.agent'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'navra-agent/**'
+      - 'navra-model/**'
+      - 'navra-safety/**'
+      - 'navra-protocol/**'
+      - 'navra-auth/**'
+      - 'navra-cognitive/**'
+      - 'navra-responses/**'
+      - 'navra-macros/**'
+      - 'Dockerfile.agent'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+jobs:
+  build-image:
+    name: Build and verify container image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build container image
+        run: |
+          podman build -f Dockerfile.agent \
+            -t navra-agent:${{ github.sha }} .
+
+      - name: Verify image size
+        run: |
+          SIZE=$(podman image inspect navra-agent:${{ github.sha }} \
+            --format '{{ .Size }}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Image size: ${SIZE_MB}MB"
+          if [ "$SIZE" -gt 20971520 ]; then
+            echo "::error::Image exceeds 20MB limit (${SIZE_MB}MB)"
+            exit 1
+          fi
+
+      - name: Verify no shell in image
+        run: |
+          if podman run --rm --entrypoint /bin/sh \
+            navra-agent:${{ github.sha }} -c "echo pwned" 2>/dev/null; then
+            echo "::error::Shell found in image!"
+            exit 1
+          fi
+          echo "No shell found — image is shell-less"
+
+      - name: Verify static binary
+        run: |
+          podman create --name verify navra-agent:${{ github.sha }}
+          podman cp verify:/usr/local/bin/navra-agent /tmp/navra-agent
+          podman rm verify
+          file /tmp/navra-agent
+          if ldd /tmp/navra-agent 2>&1 | grep -q "not a dynamic"; then
+            echo "Binary is statically linked"
+          else
+            echo "::error::Binary is dynamically linked"
+            exit 1
+          fi
+
+      - name: Smoke test
+        run: |
+          OUTPUT=$(podman run --rm navra-agent:${{ github.sha }} 2>&1 || true)
+          if echo "$OUTPUT" | grep -q "NAVRA_ENDPOINT"; then
+            echo "Smoke test passed — agent reports missing env var"
+          else
+            echo "::error::Unexpected output: $OUTPUT"
+            exit 1
+          fi
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: navra-agent:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
