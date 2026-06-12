@@ -1,0 +1,26 @@
+id: "NAVRA-076"
+title: "Evaluate rust-mcp-filesystem as upstream MCP server"
+status: done
+priority: medium
+effort: 1-2d
+depends_on: []
+feeds: ['NAVRA-075']
+source: tech-watch-2026-06-12
+description: |
+  Evaluate rust-mcp-filesystem as the standard filesystem MCP server for
+  navra agent deployments. Consistent with the prefer-existing-MCPs
+  decision and the Rust AI Stack narrative.
+
+  rust-mcp-filesystem features: read-only by default, directory
+  sandboxing, async, available in Docker MCP catalog. Single static
+  binary, distroless-compatible.
+
+  Evaluation criteria:
+  - MCP protocol version compatibility (2025-11-25 / 2026-07-28)
+  - Tool coverage (read, write, search, tree, metadata)
+  - Security model (directory scoping, symlink prevention)
+  - Policy integration (can navra layer additional ACLs on top?)
+  - Performance under concurrent agent access
+  - Container deployment pattern (sidecar vs embedded)
+
+  Reference: https://github.com/rust-mcp-stack/rust-mcp-filesystem

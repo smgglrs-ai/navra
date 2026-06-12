@@ -1,0 +1,134 @@
+# GENERATED — do not edit. Source of truth: .lean/items/*.yml
+# 19 completed items
+# Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
+
+version: 1
+
+items:
+  - id: "NAVRA-001"
+    title: "Security paper"
+    status: done
+    priority: high
+    effort: 5-7d
+    depends_on: ['NAVRA-003', 'NAVRA-006']
+
+  - id: "NAVRA-002"
+    title: "model-runtime dimension refactor"
+    status: done
+    priority: critical
+    effort: 1-2d
+    feeds: ['NAVRA-017']
+
+  - id: "NAVRA-003"
+    title: "Paper critical fixes"
+    status: done
+    priority: high
+    effort: 3-3d
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-004"
+    title: "Rendra agentic chat"
+    status: done
+    priority: high
+    effort: 3-4d
+    feeds: ['NAVRA-056']
+
+  - id: "NAVRA-005"
+    title: "Rendra live dashboard"
+    status: done
+    priority: high
+    effort: 2-3d
+    feeds: ['NAVRA-054']
+
+  - id: "NAVRA-006"
+    title: "External eval on 3+ OSS projects"
+    status: done
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-007', 'NAVRA-012', 'NAVRA-003']
+    feeds: ['NAVRA-001', 'NAVRA-020']
+
+  - id: "NAVRA-007"
+    title: "Benchmark OpenAI privacy-filter on 268V NPU"
+    status: done
+    priority: critical
+    effort: 1-2d
+    feeds: ['NAVRA-006', 'NAVRA-001', 'NAVRA-030']
+
+  - id: "NAVRA-008"
+    title: "Graphability Indexing for navra-rag"
+    status: done
+    priority: medium
+    effort: 1-2d
+
+  - id: "NAVRA-009"
+    title: "Tool schema pruning"
+    status: done
+    priority: medium
+    effort: 1-2d
+
+  - id: "NAVRA-010"
+    title: "ACS YAML policy ingestion"
+    status: done
+    priority: high
+    effort: 1-2d
+    feeds: ['NAVRA-032']
+
+  - id: "NAVRA-011"
+    title: "Negation-aware FTS5 queries"
+    status: done
+    priority: high
+    effort: 0.5-1d
+
+  - id: "NAVRA-012"
+    title: "Evaluate Glasswing adversarial harness for C3"
+    status: done
+    priority: critical
+    effort: 1-2d
+    feeds: ['NAVRA-006']
+
+  - id: "NAVRA-013"
+    title: "Query router for temporal/numeric predicates"
+    status: done
+    priority: high
+    effort: 1-2d
+
+  - id: "NAVRA-014"
+    title: "Split navra-security: auth primitives vs ML safety"
+    status: done
+    priority: medium
+    effort: L
+
+  - id: "NAVRA-015"
+    title: "Cascading confidence gates in navra-rag"
+    status: done
+    priority: medium
+    effort: 0.5-1d
+
+  - id: "NAVRA-016"
+    title: "Cedar policies for OWASP Agentic Top 10"
+    status: done
+    priority: high
+    effort: 2-3d
+    feeds: ['NAVRA-032', 'NAVRA-001']
+
+  - id: "NAVRA-017"
+    title: "OGX backend in navra-model"
+    status: done
+    priority: high
+    effort: 2-3d
+    depends_on: ['NAVRA-002']
+
+  - id: "NAVRA-035"
+    title: "Model-call hook point in navra-agent"
+    status: done
+    priority: high
+    effort: S
+
+  - id: "NAVRA-076"
+    title: "Evaluate rust-mcp-filesystem as upstream MCP server"
+    status: done
+    priority: medium
+    effort: 1-2d
+    feeds: ['NAVRA-075']
+
