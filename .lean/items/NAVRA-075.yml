@@ -1,0 +1,31 @@
+id: "NAVRA-075"
+title: "Distroless container deployment for navra-agent"
+status: in_progress
+priority: high
+effort: 2-3d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-12
+description: |
+  Deploy navra agents in distroless container images
+  (gcr.io/distroless/static:nonroot) with no shell, no coreutils, no
+  package manager. Filesystem access via rust-mcp-filesystem MCP server
+  (containerized alongside or as sidecar), not via shell tools.
+
+  Security by construction: with no Python/shell/coreutils in the image,
+  the model's ONLY interface to the outside world is MCP tool calls —
+  every one passes through navra's permission/IFC/safety pipeline. This
+  is stronger than any sandbox because code execution is impossible, not
+  just restricted.
+
+  Rust static binary + distroless = ~11MB image, zero base CVEs.
+
+  Steps:
+  - Multi-stage Dockerfile: build stage (rust:alpine) → runtime
+    (distroless/static:nonroot)
+  - Static linking (musl target, rustls instead of OpenSSL)
+  - rust-mcp-filesystem as upstream MCP server for file operations
+  - Container-scoped directory mounts for filesystem access policy
+  - CI pipeline for image build and Trivy scan
+
+  Reference: https://github.com/rust-mcp-stack/rust-mcp-filesystem

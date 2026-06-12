@@ -7,10 +7,12 @@ use navra_model::responses::response::Usage;
 use navra_model::{
     safe_backend::{ModelSafetyFilter, SafeModelBackend},
     AnthropicBackend, ClassifyLabel, ClassifyRequest, ClassifyResponse, CliBackend,
-    CreateResponseRequest, Device, EmbedRequest, GenerateRequest, InputItem, Locality, MessageItem,
-    ModelBackend, ModelError, ModelResponse, ModelTask, OnnxBackend, OpenAiBackend, OutputItem,
+    CreateResponseRequest, EmbedRequest, GenerateRequest, InputItem, Locality, MessageItem,
+    ModelBackend, ModelError, ModelResponse, OpenAiBackend, OutputItem,
     ResponseStatus,
 };
+#[cfg(feature = "onnx")]
+use navra_model::{Device, ModelTask, OnnxBackend};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -385,6 +387,10 @@ async fn cli_backend_nonzero_exit() {
 // =====================================================================
 // Real ONNX model tests (skip if model files not present)
 // =====================================================================
+#[cfg(feature = "onnx")]
+mod onnx_tests {
+    use super::*;
+    use navra_model::{Device, ModelTask, OnnxBackend};
 
 fn guardian_hap_paths() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
     let home = std::env::var("HOME").ok()?;
@@ -642,3 +648,4 @@ async fn embedding_r2_device_benchmark() {
         println!("{label:16} {per_call:>8.2?}/call ({elapsed:.2?} total)");
     }
 }
+} // mod onnx_tests

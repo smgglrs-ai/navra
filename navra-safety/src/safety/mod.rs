@@ -1,13 +1,17 @@
 pub mod ml;
+#[cfg(feature = "onnx")]
 pub mod ner;
+#[cfg(feature = "onnx")]
 pub mod privacy_filter;
 pub mod pseudonym;
 mod regex;
 
 pub use self::ml::{CategoryPolicy, MlFilter, MultiLabelFilter};
+#[cfg(feature = "onnx")]
 pub use self::ner::{
     default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter, NerFilter,
 };
+#[cfg(feature = "onnx")]
 pub use self::privacy_filter::{
     default_privacy_filter_model_dir, load_privacy_filter, PrivacyFilterModel,
 };
@@ -363,23 +367,19 @@ impl FilterPipeline {
         self.model_filters.push(Box::new(filter));
     }
 
+    #[cfg(feature = "onnx")]
     /// Add a NER-based entity detection filter.
-    ///
-    /// The NER filter runs as a sync `ContentFilter` after regex filters.
-    /// It detects named entities (PERSON, LOCATION, ORGANIZATION) that
-    /// regex patterns cannot catch.
     pub fn add_ner_filter(&mut self, filter: NerFilter) {
         self.filters.push(Box::new(filter));
     }
 
+    #[cfg(feature = "onnx")]
     /// Add a shared NER filter from an `Arc`.
-    ///
-    /// Allows reusing the same loaded model across multiple safety
-    /// pipelines without loading it multiple times.
     pub fn add_ner_filter_shared(&mut self, filter: std::sync::Arc<NerFilter>) {
         self.filters.push(Box::new(SharedNerFilter(filter)));
     }
 
+    #[cfg(feature = "onnx")]
     /// Add a shared privacy-filter from an `Arc`.
     pub fn add_privacy_filter_shared(
         &mut self,
@@ -677,32 +677,36 @@ fn pseudonymize(content: &str, findings: &mut [Finding], map: &PseudonymMap) -> 
     result
 }
 
-/// Wrapper around `Arc<NerFilter>` that implements `ContentFilter`.
-///
-/// Allows sharing a single loaded NER model across multiple pipelines.
-struct SharedNerFilter(std::sync::Arc<NerFilter>);
+#[cfg(feature = "onnx")]
+mod onnx_wrappers {
+    use super::*;
 
-impl ContentFilter for SharedNerFilter {
-    fn name(&self) -> &str {
-        self.0.name()
+    pub(super) struct SharedNerFilter(pub std::sync::Arc<NerFilter>);
+
+    impl ContentFilter for SharedNerFilter {
+        fn name(&self) -> &str {
+            self.0.name()
+        }
+
+        fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding> {
+            self.0.scan(content, ctx)
+        }
     }
 
-    fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding> {
-        self.0.scan(content, ctx)
+    pub(super) struct SharedPrivacyFilter(pub std::sync::Arc<PrivacyFilterModel>);
+
+    impl ContentFilter for SharedPrivacyFilter {
+        fn name(&self) -> &str {
+            self.0.name()
+        }
+
+        fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding> {
+            self.0.scan(content, ctx)
+        }
     }
 }
-
-struct SharedPrivacyFilter(std::sync::Arc<PrivacyFilterModel>);
-
-impl ContentFilter for SharedPrivacyFilter {
-    fn name(&self) -> &str {
-        self.0.name()
-    }
-
-    fn scan(&self, content: &str, ctx: &FilterContext) -> Vec<Finding> {
-        self.0.scan(content, ctx)
-    }
-}
+#[cfg(feature = "onnx")]
+use onnx_wrappers::{SharedNerFilter, SharedPrivacyFilter};
 
 /// Build a filter pipeline from a safety profile name.
 ///

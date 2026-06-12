@@ -57,7 +57,11 @@
       "Bash(ollama ps:*)",
       "Bash(ollama show:*)",
       "WebSearch",
-      "mcp__excalidraw__*"
+      "mcp__excalidraw__*",
+      "Bash(python3 .claude/hooks/*)"
+    ],
+    "additionalDirectories": [
+      "/home/fdupont/.claude/projects/-home-fdupont-Code-github-com-smgglrs-ai-navra"
     ]
   },
   "hooks": {
@@ -68,6 +72,15 @@
           {
             "type": "command",
             "command": "filepath=\"$TOOL_INPUT_FILE_PATH\"; if echo \"$filepath\" | grep -qE '(Cargo\\.lock|\\.env|secrets|\\.pem|\\.key)'; then echo 'BLOCKED: This file should not be edited directly by Claude.'; exit 1; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/hooks/guard-cargo-test.py"
           }
         ]
       }
