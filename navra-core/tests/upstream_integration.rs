@@ -27,7 +27,7 @@ async fn upstream_spawn_and_discover_tools() {
     .await
     .expect("Failed to spawn upstream");
 
-    let module = UpstreamModule::discover(upstream, None)
+    let module = UpstreamModule::discover(upstream, None, &Default::default())
         .await
         .expect("Failed to discover");
 
@@ -49,7 +49,7 @@ async fn upstream_spawn_and_discover_prompts() {
     .await
     .expect("Failed to spawn upstream");
 
-    let module = UpstreamModule::discover(upstream, None)
+    let module = UpstreamModule::discover(upstream, None, &Default::default())
         .await
         .expect("Failed to discover");
 
@@ -71,7 +71,7 @@ async fn upstream_call_tool_through_module() {
     .await
     .expect("Failed to spawn upstream");
 
-    let module = UpstreamModule::discover(upstream, None)
+    let module = UpstreamModule::discover(upstream, None, &Default::default())
         .await
         .expect("Failed to discover");
 
@@ -105,7 +105,7 @@ async fn upstream_get_prompt_through_module() {
     .await
     .expect("Failed to spawn upstream");
 
-    let module = UpstreamModule::discover(upstream, None)
+    let module = UpstreamModule::discover(upstream, None, &Default::default())
         .await
         .expect("Failed to discover");
 
@@ -136,7 +136,7 @@ async fn upstream_registers_in_server() {
     .await
     .expect("Failed to spawn upstream");
 
-    let module = UpstreamModule::discover(upstream, None)
+    let module = UpstreamModule::discover(upstream, None, &Default::default())
         .await
         .expect("Failed to discover");
 

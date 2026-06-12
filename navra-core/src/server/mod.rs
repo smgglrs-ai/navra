@@ -35,6 +35,10 @@ pub struct McpServer {
     safety_pipelines: HashMap<String, FilterPipeline>,
     /// Per-tool permission rules keyed by permission set name.
     tool_permissions: HashMap<String, ToolPermissions>,
+    /// Allowed operations per permission set (from config).
+    agent_operations: HashMap<String, HashSet<String>>,
+    /// Operation classification per tool (from upstream auto-classify + overrides).
+    tool_operations: HashMap<String, crate::upstream_module::ToolOperation>,
     /// Hook pipeline for pre/post tool-call interception.
     hooks: HookPipeline,
     /// Shared pause flag — when true, tool calls are rejected.

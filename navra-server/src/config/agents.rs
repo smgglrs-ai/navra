@@ -52,6 +52,11 @@ pub struct UpstreamConfig {
     /// Request timeout in seconds (default: 45)
     #[serde(default)]
     pub request_timeout_secs: Option<u64>,
+    /// Per-tool operation overrides: "read", "write", or "deny".
+    /// Overrides the auto-classification from MCP annotations and
+    /// name heuristics. Tools set to "deny" are never registered.
+    #[serde(default)]
+    pub tool_overrides: std::collections::HashMap<String, String>,
 }
 
 impl UpstreamConfig {
