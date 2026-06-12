@@ -50,7 +50,7 @@ RUN for dir in benchmarks navra-core navra-server navra-rag \
       echo '' > "$dir/src/lib.rs"; \
     done
 
-ENV RUSTFLAGS="-C target-feature=+crt-static"
+ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
 RUN cargo build \
     --profile container \
     --bin navra-agent \

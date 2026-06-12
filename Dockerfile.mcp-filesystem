@@ -16,7 +16,10 @@ WORKDIR /build
 RUN git clone --depth 1 --branch v0.4.2 \
     https://github.com/rust-mcp-stack/rust-mcp-filesystem.git .
 
-ENV RUSTFLAGS="-C target-feature=+crt-static"
+ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
+ENV CARGO_PROFILE_RELEASE_LTO=true \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+    CARGO_PROFILE_RELEASE_PANIC=abort
 RUN cargo build --release --target x86_64-unknown-linux-gnu
 
 FROM scratch
