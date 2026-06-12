@@ -11,15 +11,16 @@ name = "navra-agent"
 path = "src/bin/agent.rs"
 
 [features]
-default = ["onnx"]
+default = ["onnx", "native-tls"]
 onnx = ["navra-model/onnx", "navra-safety/onnx"]
-rustls = ["navra-model/rustls", "navra-protocol/rustls"]
+native-tls = ["navra-protocol/native-tls", "navra-model/native-tls"]
+rustls = ["navra-protocol/rustls", "navra-model/rustls"]
 container = ["rustls"]
 
 [dependencies]
-navra-protocol = { path = "../navra-protocol" }
+navra-protocol = { path = "../navra-protocol", default-features = false }
 navra-model = { path = "../navra-model", default-features = false }
-navra-auth = { path = "../navra-auth" }
+navra-auth = { path = "../navra-auth", default-features = false }
 navra-safety = { path = "../navra-safety", default-features = false }
 navra-cognitive = { path = "../navra-cognitive" }
 chrono = "0.4"

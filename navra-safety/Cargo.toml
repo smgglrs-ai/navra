@@ -11,7 +11,7 @@ default = ["onnx"]
 onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers", "navra-model/onnx"]
 
 [dependencies]
-navra-auth = { path = "../navra-auth" }
+navra-auth = { path = "../navra-auth", default-features = false }
 navra-protocol = { path = "../navra-protocol" }
 navra-model = { path = "../navra-model", default-features = false }
 anyhow = { workspace = true }

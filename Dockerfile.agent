@@ -1,4 +1,13 @@
-# navra-agent container image
+# navra-agent distroless container image
+#
+# Security by construction: no shell, no coreutils, no package manager.
+# The model's ONLY interface to the outside world is MCP tool calls
+# through navra's permission/IFC/safety pipeline.
+#
+# The agent connects to a navra gateway (NAVRA_ENDPOINT) which enforces
+# permissions, IFC labels, and safety filters. Filesystem access is
+# provided by rust-mcp-filesystem running as a separate upstream MCP
+# server managed by the gateway — never inside this container.
 #
 # Build:   podman build -f Dockerfile.agent -t navra-agent:latest .
 # Run:     podman run --rm --network=slirp4netns:allow_host_loopback=true \
@@ -7,43 +16,63 @@
 #            -e NAVRA_MODEL_NAME=nemotron-omni \
 #            -e NAVRA_TASK="Review the project" \
 #            navra-agent:latest
+#
+# For the full image with ONNX Runtime, see Dockerfile.agent-full.
 
-# Stage 1: Build
-FROM quay.io/hummingbird/rust:latest-builder AS builder
+# Stage 1: Build navra-agent (static musl, no ONNX, rustls TLS, no dbus)
+FROM registry.access.redhat.com/ubi10/ubi:latest AS builder
 
-RUN dnf5 install -y dbus-devel tar gzip && dnf5 clean all
+RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm && \
+    dnf install -y gcc make perl-interpreter musl-gcc musl-libc-static musl-devel && \
+    dnf clean all
 
-# ONNX Runtime (curl is at /usr/sbin in hummingbird)
-ARG ORT_VERSION=1.25.1
-RUN /usr/sbin/curl -sfL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz \
-    | tar xz -C /opt && \
-    cp /opt/onnxruntime-linux-x64-${ORT_VERSION}/lib/*.so* /usr/lib64/
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain stable --target x86_64-unknown-linux-musl
 
 WORKDIR /src
-COPY . .
 
-RUN for dir in benchmarks; do \
-      if [ ! -f "$dir/Cargo.toml" ]; then \
-        mkdir -p "$dir/src" && \
-        printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"' "$dir" > "$dir/Cargo.toml" && \
-        echo 'fn main() {}' > "$dir/src/main.rs"; \
-      fi; \
+# Copy only the crates navra-agent needs
+COPY Cargo.toml Cargo.lock ./
+COPY navra-agent/ navra-agent/
+COPY navra-protocol/ navra-protocol/
+COPY navra-model/ navra-model/
+COPY navra-auth/ navra-auth/
+COPY navra-safety/ navra-safety/
+COPY navra-cognitive/ navra-cognitive/
+COPY navra-responses/ navra-responses/
+COPY navra-macros/ navra-macros/
+
+# Stub out workspace members we didn't copy
+RUN for dir in benchmarks navra-core navra-server navra-rag \
+              navra-modal-voice navra-modal-vision navra-flow \
+              navra-tools-exec navra-tools-file navra-tools-git \
+              navra-tools-github navra-tools-gitlab \
+              navra-model-hub navra-model-runtime navra-security \
+              navra-memory; do \
+      mkdir -p "$dir/src" && \
+      printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2021"\n' \
+        "$(basename $dir)" > "$dir/Cargo.toml" && \
+      echo '' > "$dir/src/lib.rs"; \
     done
 
-ENV ORT_LIB_PATH=/usr/lib64
-ENV ORT_PREFER_DYNAMIC_LINK=1
-RUN cargo build --release --bin navra-agent
+RUN cargo build \
+    --profile container \
+    --bin navra-agent \
+    --target x86_64-unknown-linux-musl \
+    --no-default-features \
+    --features container
 
-# Stage 2: Runtime
-FROM registry.fedoraproject.org/fedora-minimal:latest
+# Stage 2: Runtime (FROM scratch — zero base CVEs, no shell)
+FROM scratch
 
-RUN microdnf install -y openssl-libs dbus-libs && microdnf clean all
+COPY --from=builder /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt
 
-ARG ORT_VERSION=1.25.1
-COPY --from=builder /opt/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/lib64/
-COPY --from=builder /src/target/release/navra-agent /usr/bin/navra-agent
+COPY --from=builder \
+    /src/target/x86_64-unknown-linux-musl/container/navra-agent \
+    /usr/local/bin/navra-agent
 
-RUN ldconfig
-
-USER 1001
-ENTRYPOINT ["navra-agent"]
+USER 65534
+ENTRYPOINT ["/usr/local/bin/navra-agent"]

@@ -7,10 +7,10 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-navra-protocol = { path = "../navra-protocol" }
-navra-auth = { path = "../navra-auth" }
+navra-protocol = { path = "../navra-protocol", features = ["native-tls"] }
+navra-auth = { path = "../navra-auth", features = ["desktop"] }
 navra-safety = { path = "../navra-safety" }
-navra-model = { path = "../navra-model" }
+navra-model = { path = "../navra-model", features = ["native-tls"] }
 async-trait = { workspace = true }
 axum = { workspace = true }
 hyper = { workspace = true }

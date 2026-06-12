@@ -1,0 +1,49 @@
+# navra-agent container image
+#
+# Build:   podman build -f Dockerfile.agent -t navra-agent:latest .
+# Run:     podman run --rm --network=slirp4netns:allow_host_loopback=true \
+#            -e NAVRA_ENDPOINT=http://10.0.2.2:9400/mcp \
+#            -e NAVRA_MODEL_ENDPOINT=http://10.0.2.2:8091/v1 \
+#            -e NAVRA_MODEL_NAME=nemotron-omni \
+#            -e NAVRA_TASK="Review the project" \
+#            navra-agent:latest
+
+# Stage 1: Build
+FROM quay.io/hummingbird/rust:latest-builder AS builder
+
+RUN dnf5 install -y dbus-devel tar gzip && dnf5 clean all
+
+# ONNX Runtime (curl is at /usr/sbin in hummingbird)
+ARG ORT_VERSION=1.25.1
+RUN /usr/sbin/curl -sfL https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz \
+    | tar xz -C /opt && \
+    cp /opt/onnxruntime-linux-x64-${ORT_VERSION}/lib/*.so* /usr/lib64/
+
+WORKDIR /src
+COPY . .
+
+RUN for dir in benchmarks; do \
+      if [ ! -f "$dir/Cargo.toml" ]; then \
+        mkdir -p "$dir/src" && \
+        printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"' "$dir" > "$dir/Cargo.toml" && \
+        echo 'fn main() {}' > "$dir/src/main.rs"; \
+      fi; \
+    done
+
+ENV ORT_LIB_PATH=/usr/lib64
+ENV ORT_PREFER_DYNAMIC_LINK=1
+RUN cargo build --release --bin navra-agent
+
+# Stage 2: Runtime
+FROM registry.fedoraproject.org/fedora-minimal:latest
+
+RUN microdnf install -y openssl-libs dbus-libs && microdnf clean all
+
+ARG ORT_VERSION=1.25.1
+COPY --from=builder /opt/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so* /usr/lib64/
+COPY --from=builder /src/target/release/navra-agent /usr/bin/navra-agent
+
+RUN ldconfig
+
+USER 1001
+ENTRYPOINT ["navra-agent"]
