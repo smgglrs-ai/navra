@@ -1,0 +1,374 @@
+# GENERATED — do not edit. Source of truth: .lean/items/*.yml
+# 57 active items
+# Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
+
+version: 1
+
+items:
+  - id: "NAVRA-018"
+    title: "MCP 2026-07-28 default flip"
+    status: in_progress
+    priority: critical
+    effort: M
+    gate: "2026-07-28 flip default; implement now behind feature gate"
+
+  - id: "NAVRA-041"
+    title: "Evaluate LFM2.5-Audio-1.5B-ONNX"
+    status: planned
+    priority: high
+    effort: 2-3d
+
+  - id: "NAVRA-042"
+    title: "DNS-AID discovery support"
+    status: planned
+    priority: high
+    effort: 2.5-3.5d
+
+  - id: "NAVRA-075"
+    title: "Distroless container deployment for navra-agent"
+    status: planned
+    priority: high
+    effort: 2-3d
+
+  - id: "NAVRA-019"
+    title: "Persona paper"
+    status: planned
+    priority: medium
+    effort: 5-7d
+    depends_on: ['NAVRA-003']
+
+  - id: "NAVRA-020"
+    title: "Review paper"
+    status: planned
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-006']
+
+  - id: "NAVRA-029"
+    title: "Cross-session fact extraction"
+    status: planned
+    priority: medium
+    effort: 2-3d
+
+  - id: "NAVRA-030"
+    title: "X-Token Projection for safety model KD"
+    status: planned
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-007']
+
+  - id: "NAVRA-032"
+    title: "Compliance mapping (EU AI Act + OWASP)"
+    status: planned
+    priority: medium
+    effort: 2-3d
+    depends_on: ['NAVRA-016']
+    feeds: ['NAVRA-001']
+
+  - id: "NAVRA-034"
+    title: "navra-core crate split (navra-router + navra-mcp)"
+    status: planned
+    priority: medium
+    effort: 3-5d
+
+  - id: "NAVRA-036"
+    title: "VerifierHook with false-pass-rate tracking"
+    status: planned
+    priority: medium
+    effort: 1-2d
+
+  - id: "NAVRA-037"
+    title: "SQLite entity-relationship table for navra-memory"
+    status: planned
+    priority: medium
+    effort: 2-3d
+
+  - id: "NAVRA-038"
+    title: "Incremental mailbox messages in navra-flow"
+    status: planned
+    priority: medium
+    effort: 1-2d
+
+  - id: "NAVRA-043"
+    title: "Context compression post-hook"
+    status: planned
+    priority: medium
+    effort: 3-4d
+
+  - id: "NAVRA-044"
+    title: "Execution ring refinement"
+    status: planned
+    priority: medium
+    effort: 1-2d
+
+  - id: "NAVRA-072"
+    title: "Remove navra-tools-github crate"
+    status: planned
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-073"
+    title: "Model refusal detection and gateway-level fallback routing"
+    status: planned
+    priority: medium
+    effort: 2-3d
+
+  - id: "NAVRA-074"
+    title: "Capability/architecture disclosure prevention"
+    status: planned
+    priority: medium
+    effort: 1-2d
+
+  - id: "NAVRA-021"
+    title: "ONNX/ort deepening"
+    status: planned
+    priority: low
+    effort: 2-3d
+    feeds: ['NAVRA-022']
+    gate: "ONNX spec"
+
+  - id: "NAVRA-022"
+    title: "KAME tandem voice"
+    status: planned
+    priority: low
+    effort: 2-3d
+    depends_on: ['NAVRA-021']
+    gate: "Moshi ONNX export"
+
+  - id: "NAVRA-023"
+    title: "delta-mem OSAM evaluation"
+    status: planned
+    priority: low
+    effort: 2-2d
+    gate: "ONNX integration"
+
+  - id: "NAVRA-024"
+    title: "IFC adversarial corpus benchmark"
+    status: planned
+    priority: low
+    effort: 3-5d
+    feeds: ['NAVRA-025', 'NAVRA-001']
+    gate: "MVAR/TaintBench corpus availability"
+
+  - id: "NAVRA-025"
+    title: "NeuroTaint offline taint audit"
+    status: planned
+    priority: low
+    effort: 5-7d
+    depends_on: ['NAVRA-024']
+    feeds: ['NAVRA-001']
+
+  - id: "NAVRA-026"
+    title: "AG-UI via rendra-ag-ui"
+    status: planned
+    priority: low
+    effort: 2-3d
+    depends_on: ['NAVRA-004']
+
+  - id: "NAVRA-027"
+    title: "Kubernetes Agent Sandbox backend"
+    status: planned
+    priority: low
+    effort: 3-5d
+    gate: "K8s CRD v1alpha1 stability"
+
+  - id: "NAVRA-028"
+    title: "TurboVec evaluation"
+    status: planned
+    priority: low
+    effort: 2-3d
+
+  - id: "NAVRA-031"
+    title: "DNS-AID doc update in DISCOVERY.md"
+    status: planned
+    priority: low
+    effort: 0.5-0.5d
+
+  - id: "NAVRA-033"
+    title: "ET metric in Prometheus"
+    status: planned
+    priority: low
+    effort: 0.5-0.5d
+
+  - id: "NAVRA-039"
+    title: "Gemma 4 12B multimodal backend"
+    status: planned
+    priority: low
+    effort: 2-3d
+    gate: "onnxruntime-genai #2062 (ONNX path); Ollama path works now"
+
+  - id: "NAVRA-040"
+    title: "ASSERT integration for C3 eval"
+    status: planned
+    priority: low
+    effort: 1-2d
+    feeds: ['NAVRA-020']
+
+  - id: "NAVRA-051"
+    title: "Paper significant fixes"
+    status: backlog
+    priority: medium
+    effort: M
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-052"
+    title: "Missing related work"
+    status: backlog
+    priority: medium
+    effort: M
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-053"
+    title: "Paper restructuring decisions"
+    status: backlog
+    priority: medium
+    effort: S
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-057"
+    title: "Lazy-loading tool and persona metadata"
+    status: backlog
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-064"
+    title: "Nomic Embed v1.5 evaluation"
+    status: backlog
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-066"
+    title: "Computer use Actor trait"
+    status: backlog
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-067"
+    title: "ToolBlock structured output"
+    status: backlog
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-068"
+    title: "Intent-based tool grouping"
+    status: backlog
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-070"
+    title: "WebSocket agentic loops"
+    status: backlog
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-048"
+    title: "Adversarial safety evaluation"
+    status: backlog
+    priority: low
+    effort: L
+
+  - id: "NAVRA-049"
+    title: "PII ONNX classifier"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-050"
+    title: "Harness-aligned training data generation"
+    status: backlog
+    priority: low
+    effort: L
+
+  - id: "NAVRA-054"
+    title: "Interactive flow DAG visualization"
+    status: backlog
+    priority: low
+    effort: M
+    depends_on: ['NAVRA-005']
+
+  - id: "NAVRA-055"
+    title: "Branding and polish"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-056"
+    title: "Embeddable rendra-ag-ui widget"
+    status: backlog
+    priority: low
+    effort: M
+    depends_on: ['NAVRA-004']
+
+  - id: "NAVRA-058"
+    title: "Negative constraints in persona schema"
+    status: backlog
+    priority: low
+    effort: S
+
+  - id: "NAVRA-059"
+    title: "YAML flow definitions"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-060"
+    title: "Operator libraries"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-061"
+    title: "Memory type classification"
+    status: backlog
+    priority: low
+    effort: S
+
+  - id: "NAVRA-062"
+    title: "NemoClaw MCP bridge"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-063"
+    title: "Privacy Router coordination"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-065"
+    title: "Config schema generation"
+    status: backlog
+    priority: low
+    effort: S
+
+  - id: "NAVRA-069"
+    title: "Multi-hypothesis tool routing"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-071"
+    title: "HTML-to-markdown conversion"
+    status: backlog
+    priority: low
+    effort: S
+
+  - id: "NAVRA-047"
+    title: "GraphQL scope escape prevention"
+    status: wont_do
+    priority: high
+    effort: 1-2d
+
+  - id: "NAVRA-045"
+    title: "GitLab module"
+    status: wont_do
+    priority: medium
+    effort: 3-4d
+
+  - id: "NAVRA-046"
+    title: "Jira module"
+    status: wont_do
+    priority: low
+    effort: 2-3d
+    depends_on: ['NAVRA-045']
+
