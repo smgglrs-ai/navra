@@ -170,6 +170,8 @@ command = ["rust-mcp-filesystem", "/workspace"]
 Tested with navra gateway proxying to rust-mcp-filesystem v0.4.2 via
 stdio transport. Agent configured with `permissions = "readonly"`.
 
+### Initial test (pre-NAVRA-077)
+
 | Test | Expected | Result |
 |---|---|---|
 | Read file in allowed dir | Content returned with IFC label | **PASS** |
@@ -178,64 +180,36 @@ stdio transport. Agent configured with `permissions = "readonly"`.
 | Symlink escape | Blocked | **PASS** (mcp-filesystem blocked) |
 | Read secrets dir | Blocked | **PASS** (mcp-filesystem blocked) |
 
-### Critical finding: upstream tool calls bypass navra permissions
+This revealed a critical gap: upstream tool calls bypassed navra's
+permission system. Filed and fixed as NAVRA-077.
 
-navra's permission system checks `operations` (read, write, list, etc.)
-against its own built-in tools (file_read, file_write), but upstream
-tool names (`write_file` from rust-mcp-filesystem) are **not mapped** to
-navra operations. An agent with readonly permissions can call upstream
-`write_file` and the write lands on disk.
+### Re-test (post-NAVRA-077 — upstream tool ACL enforcement)
 
-**Root cause:** `UpstreamModule` proxies tool calls directly without
-checking the agent's permission set against the tool's semantic
-operation type. navra has no way to know that upstream tool `write_file`
-is a write operation.
+| Test | Expected | Result |
+|---|---|---|
+| Read file (readonly agent) | Allowed | **PASS** |
+| Write file (readonly agent) | Blocked | **PASS** — auto-classified as write |
+| Edit file (readonly agent) | Blocked | **PASS** — auto-classified as write |
+| search_files_content | Allowed | **PASS** — classified as read |
+| zip_files (denied by policy) | Not registered | **PASS** — "Unknown tool" |
+| No pwned.txt on disk | No file created | **PASS** |
 
-**Mitigation (required before production use):**
-
-1. **Upstream tool ACL** — add a per-upstream tool allowlist/blocklist
-   in the upstream config:
-   ```toml
-   [[upstream]]
-   name = "filesystem"
-   transport = "stdio"
-   command = ["rust-mcp-filesystem", "-w", "/workspace"]
-   blocked_tools = ["write_file", "edit_file", "create_directory",
-                    "move_file", "zip_files", "unzip_file", "zip_directory"]
-   ```
-2. **Operation mapping** — map upstream tool names to navra operations
-   so the existing permission system applies:
-   ```toml
-   [upstream.operation_map]
-   write_file = "write"
-   edit_file = "write"
-   read_text_file = "read"
-   ```
-3. **Defense in depth** — use mcp-filesystem's own `--disable-tools`
-   flag to remove write tools at the MCP server level, and mount
-   volumes read-only at the container level.
-
-Until option 1 or 2 is implemented, **always use `--disable-tools` on
-rust-mcp-filesystem** to remove write tools for read-only agents, and
-**never rely solely on navra permissions** for upstream tool governance.
+navra now auto-classifies upstream tools using MCP ToolAnnotations,
+name heuristics, and operator overrides. Write-classified tools are
+blocked for agents whose permission set lacks the "write" operation.
+Tools with `tool_overrides = "deny"` are dropped at discovery time.
 
 ## Risks and mitigations
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| **Upstream tools bypass navra permissions** | **Critical** | Use `--disable-tools` on mcp-filesystem; implement upstream tool ACL in navra |
 | Protocol version drift after NAVRA-018 | Low | Monitor upstream releases; project tracks MCP spec |
 | `--enable-roots` allows directory escape | Medium | Never enable roots in agent deployments |
-| zip operations could exhaust disk | Low | Container volume limits; disable zip tools for untrusted agents |
+| zip operations could exhaust disk | Low | Use `tool_overrides` to deny zip tools |
 
-## Dependencies for NAVRA-075
-
-This evaluation confirms rust-mcp-filesystem is suitable for the
-distroless container deployment (NAVRA-075) **with caveats**:
+## Deployment checklist
 
 1. **Separate process** managed by the gateway, not inside the agent container
-2. **Use `--disable-tools`** to remove write tools for read-only agents
-   until navra implements upstream tool ACLs
-3. **Disable zip tools** in production unless explicitly needed
-4. **Never enable `--enable-roots`** in containerized deployments
-5. **Mount volumes read-only** at the container level as defense in depth
+2. **Use `tool_overrides`** to deny zip/unzip tools unless explicitly needed
+3. **Never enable `--enable-roots`** in containerized deployments
+4. **Mount volumes read-only** at the container level as defense in depth
