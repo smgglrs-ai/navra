@@ -1,0 +1,52 @@
+name: navra
+version: "0.1.0"
+description: Secure MCP gateway daemon for Linux desktops
+repository: git@github.com:smgglrs-ai/navra.git
+type: monorepo
+license: Apache-2.0
+item_prefix: NAVRA
+next_item_id: 78
+
+stack:
+  language: rust
+  edition: "2021"
+  msrv: "1.75"
+  build_system: cargo
+  workspace_members: 22
+  test_framework: cargo-test
+  lint: clippy
+  formatter: rustfmt
+  ci: github-actions
+
+autonomy:
+  # Tier 1: read anything, write with constraints
+  read: unrestricted
+  write: source-code-with-plan
+  execute: build-test-lint
+  git: commit-with-signoff
+
+  # Tier 2: what requires confirmation
+  confirm_before:
+    - git push
+    - git reset
+    - git rebase
+    - destructive file operations
+    - modifying CI/CD
+
+  # Tier 3: never do autonomously
+  never:
+    - git push --force
+    - rm -rf
+    - modify .env or credentials
+    - skip pre-commit hooks
+
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace"
+  full: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo fmt -- --check && cargo clippy -- -D warnings && cargo test --workspace"
+  single_crate: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p {crate}"
+  build: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build"
+  e2e: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test e2e"
+
+env:
+  ORT_LIB_PATH: /usr/lib64
+  ORT_PREFER_DYNAMIC_LINK: "1"
