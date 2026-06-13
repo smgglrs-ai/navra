@@ -1,0 +1,37 @@
+id: NAVRA-063
+title: Privacy Router coordination
+status: backlog
+priority: low
+effort: M
+depends_on: []
+feeds: []
+description: Introduce a PrivacyRouter that coordinates the five independent privacy detection components (regex PiiFilter,
+  PathPiiFilter, NER filter, OpenAI PrivacyFilterModel, custom PII patterns) behind a unified decision layer. Currently, main.rs
+  wires each component individually into every FilterPipeline with ~170 lines of repetitive procedural code, and all detectors
+  always run regardless of content characteristics. The PrivacyRouter would centralize pipeline assembly, enable content-aware
+  detector selection (skip NER on short strings, skip PrivacyFilterModel when regex already found PII, route non-English text
+  to XLM-RoBERTa), and expose a single PrivacyRouterConfig replacing the scattered loading logic in navra-server.
+acceptance:
+- PrivacyRouter struct in navra-safety that accepts all five detector components (PiiFilter, PathPiiFilter, NerFilter, PrivacyFilterModel,
+  CustomPiiFilter) and implements ContentFilter, routing content to the appropriate subset of detectors based on text length,
+  language heuristic, and prior findings
+- PrivacyRouterConfig in navra-safety with serde Deserialize that replaces the ad-hoc loading of pii_ner_filter, privacy_filter,
+  and custom_pii_filter in navra-server main.rs -- a single config section controls which detectors are enabled and their
+  thresholds
+- navra-server main.rs pipeline assembly refactored to use PrivacyRouter instead of individually adding each PII component
+  per permission set (the repeated match on safety profile names for NER, privacy-filter, and custom PII is consolidated into
+  PrivacyRouter::build)
+- 'Short-circuit optimization: when regex PiiFilter already detected N or more PII findings in a text block, NER and PrivacyFilterModel
+  are skipped (configurable threshold, default 5) to reduce ONNX inference overhead on already-flagged content'
+- All existing PII-related tests in navra-safety and navra-server continue to pass, plus new unit tests in navra-safety for
+  the routing logic (detector selection, short-circuit, language routing)
+- Prometheus counter navra_privacy_router_skipped_total tracks how often expensive detectors (NER, PrivacyFilterModel) are
+  skipped by the short-circuit optimization
+scope:
+- navra-safety/src/safety/mod.rs
+- navra-safety/src/safety/privacy_router.rs
+- navra-server/src/main.rs
+- navra-server/src/config.rs
+- navra-core/src/metrics.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety -p navra-server -- --test-threads=4

@@ -51,7 +51,10 @@ fn build_routes(state: AcpState) -> Router {
         .route("/acp/agents", get(handle_list_agents))
         .route("/acp/agents/{name}", get(handle_get_agent))
         .route("/acp/runs", post(handle_create_run))
-        .route("/acp/runs/{run_id}", get(handle_get_run).post(handle_resume_run))
+        .route(
+            "/acp/runs/{run_id}",
+            get(handle_get_run).post(handle_resume_run),
+        )
         .route("/acp/runs/{run_id}/cancel", post(handle_cancel_run))
         .route("/acp/runs/{run_id}/events", get(handle_list_events))
         .route("/acp/session/{session_id}", get(handle_get_session))
@@ -163,7 +166,9 @@ async fn handle_create_run(
     if request.input.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(AcpError::invalid_input("input must contain at least one message")),
+            Json(AcpError::invalid_input(
+                "input must contain at least one message",
+            )),
         ));
     }
 
@@ -211,15 +216,10 @@ async fn handle_create_run(
             );
 
             let created_event = Event::RunCreated { run };
-            let created_data =
-                serde_json::to_string(&created_event).unwrap_or_default();
+            let created_data = serde_json::to_string(&created_event).unwrap_or_default();
 
             let initial = futures_util::stream::once(async move {
-                Ok::<_, Infallible>(
-                    SseEvent::default()
-                        .event("run.created")
-                        .data(created_data),
-                )
+                Ok::<_, Infallible>(SseEvent::default().event("run.created").data(created_data))
             });
 
             let rest = ReceiverStream::new(rx).map(|event| {
@@ -331,9 +331,7 @@ async fn handle_resume_run(
             .cloned()
             .unwrap_or(serde_json::json!({}));
 
-        state
-            .runs
-            .update_status(&run_id, RunStatus::InProgress);
+        state.runs.update_status(&run_id, RunStatus::InProgress);
 
         if !pending_tool.is_empty() {
             let ctx = crate::auth::CallContext::new(agent, run_id.clone());
@@ -669,11 +667,7 @@ mod tests {
             "Expected run.created event: {}",
             body
         );
-        assert!(
-            body.contains("pong"),
-            "Expected pong in stream: {}",
-            body
-        );
+        assert!(body.contains("pong"), "Expected pong in stream: {}", body);
     }
 
     #[tokio::test]
@@ -774,9 +768,7 @@ mod tests {
         };
         let agent = AgentIdentity::new("tester", "dev");
         let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
-        state
-            .runs
-            .update_status(&run.run_id, RunStatus::InProgress);
+        state.runs.update_status(&run.run_id, RunStatus::InProgress);
 
         let test_router = Router::new()
             .route("/acp/runs/{run_id}/cancel", post(handle_cancel_run))
@@ -996,7 +988,10 @@ mod tests {
         state.runs.update_status(&run.run_id, RunStatus::InProgress);
 
         let test_router = Router::new()
-            .route("/acp/runs/{run_id}", get(handle_get_run).post(handle_resume_run))
+            .route(
+                "/acp/runs/{run_id}",
+                get(handle_get_run).post(handle_resume_run),
+            )
             .with_state(state);
 
         let (status, json) = post_json(
@@ -1035,7 +1030,10 @@ mod tests {
         );
 
         let test_router = Router::new()
-            .route("/acp/runs/{run_id}", get(handle_get_run).post(handle_resume_run))
+            .route(
+                "/acp/runs/{run_id}",
+                get(handle_get_run).post(handle_resume_run),
+            )
             .with_state(state);
 
         let (status, json) = post_json(
@@ -1072,7 +1070,10 @@ mod tests {
         );
 
         let test_router = Router::new()
-            .route("/acp/runs/{run_id}", get(handle_get_run).post(handle_resume_run))
+            .route(
+                "/acp/runs/{run_id}",
+                get(handle_get_run).post(handle_resume_run),
+            )
             .with_state(state);
 
         let (status, json) = post_json(
@@ -1178,11 +1179,9 @@ mod tests {
         let agent = AgentIdentity::new("tester", "dev");
         let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        state.runs.set_finished(
-            &run.run_id,
-            RunStatus::Completed,
-            dispatch::now_iso(),
-        );
+        state
+            .runs
+            .set_finished(&run.run_id, RunStatus::Completed, dispatch::now_iso());
 
         let test_router = Router::new()
             .route("/acp/agents/{name}", get(handle_get_agent))

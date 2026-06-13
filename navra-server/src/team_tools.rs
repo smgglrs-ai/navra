@@ -1516,16 +1516,16 @@ fn spawn_containerized_agent(
                     2,
                     timeout_secs,
                 ) {
-                    Ok(payload) => match navra_core::auth::capability::encode_token(
-                        &payload,
-                        signer.as_ref(),
-                    ) {
-                        Ok(t) => t,
-                        Err(e) => {
-                            reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                            return;
+                    Ok(payload) => {
+                        match navra_core::auth::capability::encode_token(&payload, signer.as_ref())
+                        {
+                            Ok(t) => t,
+                            Err(e) => {
+                                reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                                return;
+                            }
                         }
-                    },
+                    }
                     Err(e) => {
                         reg.set_failed(
                             &team_id,
@@ -1585,7 +1585,10 @@ fn spawn_containerized_agent(
             // Route model calls through navra gateway for safety filters, IFC, audit
             let container_model_ep = model_server_url
                 .as_ref()
-                .map(|u| u.replace("127.0.0.1", "10.0.2.2").replace("localhost", "10.0.2.2"))
+                .map(|u| {
+                    u.replace("127.0.0.1", "10.0.2.2")
+                        .replace("localhost", "10.0.2.2")
+                })
                 .unwrap_or_else(|| format!("http://10.0.2.2:{gateway_port}/v1"));
 
             let container_name = format!("navra-agent-{}-{}", team_id, teammate_id);
@@ -1887,16 +1890,16 @@ fn spawn_openshell_agent(
                     2,
                     timeout_secs,
                 ) {
-                    Ok(payload) => match navra_core::auth::capability::encode_token(
-                        &payload,
-                        signer.as_ref(),
-                    ) {
-                        Ok(t) => t,
-                        Err(e) => {
-                            reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                            return;
+                    Ok(payload) => {
+                        match navra_core::auth::capability::encode_token(&payload, signer.as_ref())
+                        {
+                            Ok(t) => t,
+                            Err(e) => {
+                                reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                                return;
+                            }
                         }
-                    },
+                    }
                     Err(e) => {
                         reg.set_failed(
                             &team_id,
@@ -2153,8 +2156,7 @@ fn spawn_openshell_agent(
                     Ok(status) => {
                         let state = status.into_inner().state;
                         if state == navra_model_runtime::openshell::SandboxState::Stopped as i32
-                            || state
-                                == navra_model_runtime::openshell::SandboxState::Failed as i32
+                            || state == navra_model_runtime::openshell::SandboxState::Failed as i32
                         {
                             break;
                         }
@@ -2707,7 +2709,11 @@ pub fn select_model_for_task(
             !uri.contains("embed") && !uri.contains("nomic") && !uri.contains("bge")
         })
         .collect();
-    let candidates = if chat_cards.is_empty() { cards.iter().collect() } else { chat_cards };
+    let candidates = if chat_cards.is_empty() {
+        cards.iter().collect()
+    } else {
+        chat_cards
+    };
 
     let mut scored: Vec<(&ModelCard, i32)> = candidates
         .iter()

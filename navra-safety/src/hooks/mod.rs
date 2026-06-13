@@ -9,42 +9,42 @@ pub mod approval_gate;
 mod budget;
 pub mod egress;
 pub mod field_filter;
+pub mod leakage;
 mod memory_extraction;
 mod pipeline;
+mod policy_yaml;
+pub mod provenance_hook;
 mod routing;
 mod safety_hook;
 mod sandbox_hook;
-pub mod leakage;
 pub mod skill_hook;
-pub mod provenance_hook;
 pub mod statistical;
 pub mod temporal_contract;
-mod policy_yaml;
 mod tool_guard;
 
 pub use approval_gate::{ApprovalGateConfig, ApprovalGateHook, ApprovalStatus, PendingApproval};
 pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
 pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
+pub use leakage::{
+    SemanticLeakageConfig, SemanticLeakageJudge, SimilarityLeakageConfig, SimilarityLeakageHook,
+};
 pub use memory_extraction::{ExtractionStore, MemoryExtractionConfig, MemoryExtractionHook};
 pub use pipeline::HookPipeline;
+pub use policy_yaml::PolicyYamlHook;
+pub use provenance_hook::{CausalSink, ProvenanceHook};
 pub use routing::{ModelTier, ModelTierConfig, RoutingConfig, RoutingHook};
 pub use safety_hook::SafetyHook;
+pub use sandbox_hook::SandboxHook;
 pub use skill_hook::{Intervention, SkillHook, SkillRule};
 pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
 pub use temporal_contract::{
     ContractAction, SessionActionLog, TemporalContract, TemporalContractHook, TemporalPredicate,
 };
-pub use sandbox_hook::SandboxHook;
-pub use provenance_hook::{CausalSink, ProvenanceHook};
-pub use leakage::{
-    SemanticLeakageConfig, SemanticLeakageJudge, SimilarityLeakageConfig, SimilarityLeakageHook,
-};
-pub use policy_yaml::PolicyYamlHook;
 pub use tool_guard::ToolGuardHook;
 
-use navra_auth::auth::CallContext;
 use async_trait::async_trait;
+use navra_auth::auth::CallContext;
 use navra_model::{CreateResponseRequest, ModelResponse};
 use navra_protocol::CallToolResult;
 
@@ -123,10 +123,7 @@ pub enum PreHookOutcome {
     /// Block execution and return this error message.
     Blocked(String),
     /// Awaiting human approval before proceeding.
-    Pending {
-        request_id: String,
-        reason: String,
-    },
+    Pending { request_id: String, reason: String },
 }
 
 /// Trait for hook implementations.

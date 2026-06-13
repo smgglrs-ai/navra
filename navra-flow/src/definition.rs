@@ -398,7 +398,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 verification: None,
                 tools: None,
                 operations: None,
-            temperature: None,
+                temperature: None,
             },
             TaskDefinition {
                 id: "planner".to_string(),
@@ -418,7 +418,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 verification: None,
                 tools: None,
                 operations: None,
-            temperature: None,
+                temperature: None,
             },
             TaskDefinition {
                 id: "worker".to_string(),
@@ -437,7 +437,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 verification: None,
                 tools: None,
                 operations: None,
-            temperature: None,
+                temperature: None,
             },
             TaskDefinition {
                 id: "synthesize".to_string(),
@@ -456,7 +456,7 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 verification: None,
                 tools: None,
                 operations: None,
-            temperature: None,
+                temperature: None,
             },
         ],
         blackboard_capacity: None,

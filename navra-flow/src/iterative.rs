@@ -7,11 +7,11 @@
 //! go deeper. Each round produces diminishing returns until the cost
 //! of another round exceeds the expected value.
 
-use serde::{Deserialize, Serialize};
 use navra_agent::Agent;
+use navra_auth::ifc::TaintTracker;
 use navra_model::{CreateResponseRequest, InputItem, ModelBackend, ModelResponse};
 use navra_protocol::label::DataLabel;
-use navra_auth::ifc::TaintTracker;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// How the scout phase selects files to analyze.

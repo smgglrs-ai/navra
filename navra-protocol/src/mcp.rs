@@ -1846,11 +1846,7 @@ mod kani_proofs {
 
     /// Pure pagination logic for Kani: given item count, offset, page_size,
     /// return (page_len, has_next).
-    fn paginate_pure(
-        item_count: usize,
-        offset: usize,
-        page_size: usize,
-    ) -> (usize, bool) {
+    fn paginate_pure(item_count: usize, offset: usize, page_size: usize) -> (usize, bool) {
         if offset >= item_count {
             return (0, false);
         }
@@ -1868,7 +1864,8 @@ mod kani_proofs {
         kani::assume(count <= 20);
         kani::assume(page_size >= 1 && page_size <= 10);
         kani::assume(offset >= count);
-        let (page_len, has_next) = paginate_pure(count as usize, offset as usize, page_size as usize);
+        let (page_len, has_next) =
+            paginate_pure(count as usize, offset as usize, page_size as usize);
         assert_eq!(page_len, 0);
         assert!(!has_next);
     }

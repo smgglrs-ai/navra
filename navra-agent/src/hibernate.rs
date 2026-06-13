@@ -8,9 +8,9 @@
 //! - A saved cache is consumed on load (no double-restore)
 //! - Cache validity is tied to model identity + quantization
 
-use serde::{Deserialize, Serialize};
 use navra_model::InputItem;
 use navra_protocol::label::DataLabel;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Serializable snapshot of agent conversation state.

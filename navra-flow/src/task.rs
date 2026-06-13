@@ -2,8 +2,8 @@
 
 use crate::definition::{BackEdgeDefinition, TaskDefinition};
 use crate::verification::VerificationConfig;
-use serde::Deserialize;
 use navra_protocol::label::DataLabel;
+use serde::Deserialize;
 use std::collections::HashMap;
 
 /// A task in a DAG execution plan.

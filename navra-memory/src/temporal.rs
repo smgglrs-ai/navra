@@ -539,11 +539,7 @@ impl TemporalTree {
     }
 
     /// Get the maximum depth in a tree (0 = root only).
-    pub fn max_depth(
-        &self,
-        tree_type: TreeType,
-        tree_name: &str,
-    ) -> Result<i32, MemoryError> {
+    pub fn max_depth(&self, tree_type: TreeType, tree_name: &str) -> Result<i32, MemoryError> {
         let tt = tree_type.to_string();
         let depth: i32 = self.db.query_row(
             "SELECT COALESCE(MAX(depth), 0) FROM memory_tree WHERE tree_type = ?1 AND tree_name = ?2",
@@ -780,14 +776,25 @@ mod tests {
     fn intermediate_levels_created_when_full() {
         let tree = TemporalTree::open_memory().unwrap().with_max_children(4);
         for i in 0..10 {
-            tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100)
-                .unwrap();
+            tree.insert_fact(
+                TreeType::Session,
+                "s1",
+                &format!("fact {i}"),
+                1000 + i * 100,
+            )
+            .unwrap();
         }
         let depth = tree.max_depth(TreeType::Session, "s1").unwrap();
-        assert!(depth >= 2, "expected depth >= 2 with 10 facts and max_children=4, got {depth}");
+        assert!(
+            depth >= 2,
+            "expected depth >= 2 with 10 facts and max_children=4, got {depth}"
+        );
 
         let nodes = tree.browse_tree(TreeType::Session, "s1").unwrap();
-        let intermediates: Vec<_> = nodes.iter().filter(|n| n.depth > 0 && n.depth < depth).collect();
+        let intermediates: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.depth > 0 && n.depth < depth)
+            .collect();
         assert!(!intermediates.is_empty(), "expected intermediate nodes");
     }
 
@@ -795,8 +802,13 @@ mod tests {
     fn dirty_path_marks_all_ancestors() {
         let tree = TemporalTree::open_memory().unwrap().with_max_children(3);
         for i in 0..9 {
-            tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100)
-                .unwrap();
+            tree.insert_fact(
+                TreeType::Session,
+                "s1",
+                &format!("fact {i}"),
+                1000 + i * 100,
+            )
+            .unwrap();
         }
         let dirty = tree.dirty_nodes(TreeType::Session, "s1").unwrap();
         let dirty_depths: Vec<i32> = dirty.iter().map(|n| n.depth).collect();
@@ -807,10 +819,17 @@ mod tests {
     fn leaves_in_range_works_with_deep_tree() {
         let tree = TemporalTree::open_memory().unwrap().with_max_children(3);
         for i in 0..12 {
-            tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100)
-                .unwrap();
+            tree.insert_fact(
+                TreeType::Session,
+                "s1",
+                &format!("fact {i}"),
+                1000 + i * 100,
+            )
+            .unwrap();
         }
-        let leaves = tree.leaves_in_range(TreeType::Session, "s1", 1500, 1800).unwrap();
+        let leaves = tree
+            .leaves_in_range(TreeType::Session, "s1", 1500, 1800)
+            .unwrap();
         assert!(!leaves.is_empty());
         for leaf in &leaves {
             assert!(leaf.time_start >= 1500 && leaf.time_end <= 1800);
@@ -822,11 +841,18 @@ mod tests {
         let tree = TemporalTree::open_memory().unwrap().with_max_children(4);
         assert_eq!(tree.max_depth(TreeType::Session, "s1").unwrap(), 0);
 
-        tree.insert_fact(TreeType::Session, "s1", "first", 1000).unwrap();
+        tree.insert_fact(TreeType::Session, "s1", "first", 1000)
+            .unwrap();
         assert_eq!(tree.max_depth(TreeType::Session, "s1").unwrap(), 1);
 
         for i in 1..20 {
-            tree.insert_fact(TreeType::Session, "s1", &format!("fact {i}"), 1000 + i * 100).unwrap();
+            tree.insert_fact(
+                TreeType::Session,
+                "s1",
+                &format!("fact {i}"),
+                1000 + i * 100,
+            )
+            .unwrap();
         }
         assert!(tree.max_depth(TreeType::Session, "s1").unwrap() >= 2);
     }
@@ -836,9 +862,7 @@ mod tests {
         let tree1 = TemporalTree::open_memory().unwrap().with_max_children(4);
         let tree2 = TemporalTree::open_memory().unwrap().with_max_children(4);
 
-        let fact_strings: Vec<String> = (0..20)
-            .map(|i| format!("fact {i}"))
-            .collect();
+        let fact_strings: Vec<String> = (0..20).map(|i| format!("fact {i}")).collect();
         let facts: Vec<(&str, i64)> = fact_strings
             .iter()
             .enumerate()
@@ -847,7 +871,9 @@ mod tests {
 
         // Individual inserts
         for &(content, ts) in &facts {
-            tree1.insert_fact(TreeType::Session, "s1", content, ts).unwrap();
+            tree1
+                .insert_fact(TreeType::Session, "s1", content, ts)
+                .unwrap();
         }
 
         // Batch insert
@@ -855,8 +881,12 @@ mod tests {
         assert_eq!(ids.len(), 20);
 
         // Both should have the same leaf count
-        let leaves1 = tree1.leaves_in_range(TreeType::Session, "s1", 0, i64::MAX).unwrap();
-        let leaves2 = tree2.leaves_in_range(TreeType::Session, "s1", 0, i64::MAX).unwrap();
+        let leaves1 = tree1
+            .leaves_in_range(TreeType::Session, "s1", 0, i64::MAX)
+            .unwrap();
+        let leaves2 = tree2
+            .leaves_in_range(TreeType::Session, "s1", 0, i64::MAX)
+            .unwrap();
         assert_eq!(leaves1.len(), leaves2.len());
     }
 

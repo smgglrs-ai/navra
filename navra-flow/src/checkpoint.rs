@@ -121,18 +121,12 @@ impl DagCheckpoint {
     }
 
     /// Save a per-node checkpoint atomically: mark a task as completed.
-    pub fn save_node(
-        &self,
-        flow_id: &str,
-        task_id: &str,
-        output: &str,
-    ) -> anyhow::Result<()> {
+    pub fn save_node(&self, flow_id: &str, task_id: &str, output: &str) -> anyhow::Result<()> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let tx = db.unchecked_transaction()?;
 
         let mut state = {
-            let mut stmt =
-                tx.prepare("SELECT state FROM dag_checkpoints WHERE flow_id = ?1")?;
+            let mut stmt = tx.prepare("SELECT state FROM dag_checkpoints WHERE flow_id = ?1")?;
             match stmt.query_row(params![flow_id], |row| {
                 let blob: Vec<u8> = row.get(0)?;
                 Ok(blob)

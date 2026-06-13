@@ -37,9 +37,7 @@ impl RunDispatcher for AgentDispatcher {
         agent: AgentIdentity,
     ) -> Pin<Box<dyn Future<Output = Run> + Send>> {
         let model = self.model.clone();
-        Box::pin(async move {
-            execute_agent_run(server, model, store, run_id, input, agent).await
-        })
+        Box::pin(async move { execute_agent_run(server, model, store, run_id, input, agent).await })
     }
 
     fn execute_stream(
@@ -115,9 +113,14 @@ async fn execute_agent_run(
     };
 
     let loop_run_id = uuid::Uuid::new_v4().to_string();
-    let result =
-        navra_agent::run_tool_loop(model.as_ref(), &mut client, &prompt, &mut config, loop_run_id)
-            .await;
+    let result = navra_agent::run_tool_loop(
+        model.as_ref(),
+        &mut client,
+        &prompt,
+        &mut config,
+        loop_run_id,
+    )
+    .await;
 
     match result {
         Ok(tool_result) => {

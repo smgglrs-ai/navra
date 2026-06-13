@@ -1,0 +1,10 @@
+id: "NAVRA-010"
+title: "ACS YAML policy ingestion"
+status: done
+priority: high
+effort: 1-2d
+depends_on: []
+feeds: ['NAVRA-032']
+source: tech-watch-2026-06-05
+description: |
+  PolicyYamlHook in navra-security that parses Microsoft ACS YAML policies and maps pre_tool_call/post_tool_call rules into navra's HookPipeline. Enables teams with existing ACS policies to deploy them with gateway enforcement. HookDecision already covers ACS's 5 verdicts (Continue=allow, Block=deny, Pending=escalate, ModifyArgs/ModifyResult=transform). No architectural changes needed — just another Hook implementation.

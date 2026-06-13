@@ -1,0 +1,35 @@
+id: NAVRA-053
+title: Paper restructuring decisions
+status: backlog
+priority: medium
+effort: S
+depends_on: []
+feeds:
+- NAVRA-001
+- NAVRA-019
+- NAVRA-020
+description: 'Resolve the open restructuring decisions across the five paper drafts in docs/papers/. The review notes (2026-05-07)
+  flag concrete questions: whether to fold the persona paper (persona-orchestration.md) into the flagship security paper or
+  keep it standalone; whether to drop contributions 3-4 from the review paper (autonomous-review.md); whether the audit-blackbox
+  and model-cards papers stand alone or become sections of the flagship. This item produces a written decision record in docs/papers/
+  documenting the final paper structure, venue targets, and dependency ordering, so that NAVRA-019 (persona paper) and NAVRA-020
+  (review paper) can proceed with clear scope.'
+acceptance:
+- A decision document exists at docs/papers/restructuring-decisions.md covering all five paper drafts (security-gateway, persona-orchestration,
+  autonomous-review, audit-blackbox, model-cards)
+- 'Each paper has a verdict: standalone, fold into flagship, or drop -- with rationale'
+- Venue targets and submission ordering are specified for each paper that survives
+- The persona paper fold-or-standalone question is resolved with explicit scope boundaries
+- The review paper contribution list is finalized (which contributions to keep, which to drop)
+- NAVRA-019 and NAVRA-020 item descriptions can be updated based on the decisions made
+scope:
+- docs/papers/restructuring-decisions.md (new file)
+- docs/papers/security-gateway.md (review notes section update)
+- docs/papers/persona-orchestration.md (review notes section update)
+- docs/papers/autonomous-review.md (review notes section update)
+- docs/papers/audit-blackbox.md (review notes section update)
+- docs/papers/model-cards.md (review notes section update)
+- .lean/items/NAVRA-019.yml (description update after decisions)
+- .lean/items/NAVRA-020.yml (description update after decisions)
+verification:
+  quick: test -f docs/papers/restructuring-decisions.md && grep -c 'verdict\|Verdict\|standalone\|fold' docs/papers/restructuring-decisions.md

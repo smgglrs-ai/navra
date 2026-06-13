@@ -1,0 +1,35 @@
+id: NAVRA-056
+title: Embeddable rendra-ag-ui widget
+status: backlog
+priority: low
+effort: M
+depends_on:
+- NAVRA-004
+feeds: []
+description: Embed the rendra-ag-ui Web Component (`<rendra-agent>`) into navra-server's built-in web UI, replacing or augmenting
+  the current vanilla JS chat with the AG-UI widget. This requires building a NavraAdapter (implementing the AgentAdapter
+  interface) that bridges navra's NDJSON streaming endpoint (`/api/chat/agent`) and WebSocket (`/ws/ui`) to AG-UI protocol
+  events (RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_START, etc.), bundling the rendra-ag-ui dist artifact into navra-server's
+  ui-dist assets, and wiring the widget into the existing HTML shell with authentication token passthrough.
+acceptance:
+- rendra-ag-ui widget renders inside navra's web UI at the / route, showing agent chat with tool-call visibility and message
+  streaming
+- 'A NavraAdapter (TypeScript or JS) translates navra NDJSON events (type: text, tool_call, tool_result, thinking, done, error)
+  to AG-UI EventType enums and is included in the built UI bundle'
+- Outgoing user_message actions from the widget POST to /api/chat/agent with the active session_id and auth token
+- Widget receives real-time process_update and tool_call_end events from the /ws/ui WebSocket and maps them to AG-UI TOOL_CALL_START/TOOL_CALL_END
+  events
+- ui_assets_gen.rs build script bundles rendra-ag-ui.js alongside existing assets and the generated code compiles with cargo
+  build
+- Existing navra-server UI tests (api_status_returns_server_info, static_assets_no_auth, agent_chat_returns_ndjson_events)
+  continue to pass
+scope:
+- navra-server/ui/
+- navra-server/ui-dist/
+- navra-server/src/ui_assets_gen.rs
+- navra-server/src/ui.rs
+- navra-server/src/ui_events.rs
+- navra-server/build.rs or build script
+- sibling repo smgglrs-ai/rendra-ag-ui
+verification:
+  quick: 'ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server -- ui:: --nocapture'

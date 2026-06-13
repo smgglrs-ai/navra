@@ -3,12 +3,12 @@
 //! Implements `SessionBackend` from navra-core, persisting sessions
 //! to a SQLite database so they survive server restarts.
 
-use rusqlite::Connection;
 use navra_core::auth::AgentIdentity;
 use navra_core::ifc::DataLabel;
 use navra_core::protocol::label::{Confidentiality, Integrity};
 use navra_core::protocol::ClientInfo;
 use navra_core::session::{Session, SessionBackend};
+use rusqlite::Connection;
 use std::sync::Mutex;
 
 use crate::error::MemoryError;

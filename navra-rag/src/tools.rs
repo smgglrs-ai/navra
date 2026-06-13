@@ -291,7 +291,10 @@ async fn handle_query(
     ctx: CallContext,
     #[state] state: Arc<RagState>,
 ) -> CallToolResult {
-    if !state.perm_engine.has_operation(&ctx.agent.permissions, "search") {
+    if !state
+        .perm_engine
+        .has_operation(&ctx.agent.permissions, "search")
+    {
         return CallToolResult::error(format!(
             "Operation 'search' not permitted for agent '{}'",
             ctx.agent.name
@@ -431,7 +434,6 @@ async fn handle_similar(
     description = "Show RAG index statistics (document count, chunk count, dimensions)."
 )]
 async fn handle_status(_ctx: CallContext, #[state] state: Arc<RagState>) -> CallToolResult {
-
     match state.store.stats() {
         Ok(stats) => CallToolResult::text(format!(
             "RAG Index Status:\n\

@@ -1,0 +1,34 @@
+id: "NAVRA-079"
+title: "Evaluate ADR-Bench as navra security benchmark"
+status: planned
+priority: medium
+effort: 2-3d
+depends_on: []
+feeds: ["NAVRA-048"]
+source: tech-watch-2026-06-13
+description: |
+  Uber's ADR framework (arxiv 2605.17380, MLSys 2026 Industry Track)
+  published ADR-Bench: 302 tasks, 17 attack techniques, 133 MCP servers.
+  This is the first peer-reviewed, production-validated MCP security
+  benchmark at scale (7,200 hosts, 10K sessions/day, 10 months).
+
+  Evaluate ADR-Bench as a benchmark for navra's security posture:
+  1. Download and review the benchmark dataset and attack taxonomy
+  2. Map the 17 attack techniques to navra's defense layers (IFC,
+     ACLs, safety hooks, upstream tool ACL)
+  3. Run navra against a representative subset of ADR-Bench tasks
+  4. Compare results with ADR's published numbers (67% detection,
+     0% false positive) and with GuardAgent/LlamaFirewall baselines
+  5. Identify gaps — attack techniques that navra cannot currently
+     detect or prevent
+
+  ADR's regex-based prevention layer (97.2% precision, 206 credential
+  exposures found in production) is architecturally similar to navra's
+  pattern-based safety hooks — direct comparison is meaningful.
+
+  Reference: https://arxiv.org/abs/2605.17380
+acceptance:
+  - "ADR-Bench dataset downloaded and attack taxonomy documented"
+  - "Mapping of 17 attack techniques to navra defense layers"
+  - "Benchmark results for navra on representative ADR-Bench subset"
+  - "Gap analysis identifying undetected attack techniques"

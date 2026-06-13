@@ -1,0 +1,30 @@
+id: NAVRA-067
+title: ToolBlock structured output
+status: backlog
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: 'Wire ToolBlock into the agent tool loop so every tool call produces a structured, addressable block with timing,
+  status, and result preview. Currently ToolBlock exists in navra-agent/src/block.rs as an isolated data structure (defined,
+  tested, exported) but is never instantiated by run_tool_loop or included in ToolLoopResult. The tool loop tracks execution
+  only through flat ActionRecord entries and loose text strings. This item integrates ToolBlock into the execution path: create
+  a ToolBlock at each tool call site, complete/fail/cancel it alongside the existing ActionRecord, collect blocks into ToolLoopResult,
+  and expose them for downstream consumers (flow executor, audit sink, SSE streaming).'
+acceptance:
+- ToolLoopResult includes a Vec<ToolBlock> field populated with one block per tool call executed during the run, each with
+  correct status (Completed/Failed/Cancelled), duration_ms, and result_preview
+- ToolBlock is created before client.call_tool() and completed after, so duration_ms accurately reflects wall-clock tool execution
+  time (not model inference time)
+- Interrupted/terminated runs mark in-flight ToolBlocks as Cancelled with partial duration
+- ToolBlock data is serializable to JSON and round-trips correctly (Serialize + Deserialize on ToolBlock and BlockStatus)
+- Existing tests in navra-agent continue to pass; new tests verify block collection across success, error, and interruption
+  scenarios
+- Hallucinated tool calls (unknown tool name) produce a ToolBlock with Failed status and an error result_preview
+scope:
+- navra-agent/src/block.rs
+- navra-agent/src/tool_loop.rs
+- navra-agent/src/lib.rs
+- navra-agent/src/agent.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-agent

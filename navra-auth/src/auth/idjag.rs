@@ -243,9 +243,7 @@ impl ProtectedResourceMetadata {
 // --- JWT parsing helpers ---
 
 /// Decode a JWT into its constituent parts without verifying the signature.
-fn decode_jwt_parts(
-    token: &str,
-) -> Result<(JwtHeader, IdJagClaims, String, Vec<u8>), AuthError> {
+fn decode_jwt_parts(token: &str) -> Result<(JwtHeader, IdJagClaims, String, Vec<u8>), AuthError> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 {
         return Err(AuthError::InvalidToken);
@@ -285,9 +283,7 @@ fn verify_eddsa_signature(
     let verifying_key =
         VerifyingKey::from_bytes(&key_bytes).map_err(|_| AuthError::InvalidToken)?;
 
-    let sig_array: [u8; 64] = sig_bytes
-        .try_into()
-        .map_err(|_| AuthError::InvalidToken)?;
+    let sig_array: [u8; 64] = sig_bytes.try_into().map_err(|_| AuthError::InvalidToken)?;
     let signature = Signature::from_bytes(&sig_array);
 
     verifying_key
@@ -327,10 +323,7 @@ mod tests {
     fn test_config() -> IdJagConfig {
         IdJagConfig {
             enabled: true,
-            trusted_providers: vec![test_provider_config(
-                "https://test.provider",
-                "navra",
-            )],
+            trusted_providers: vec![test_provider_config("https://test.provider", "navra")],
         }
     }
 
@@ -445,16 +438,11 @@ mod tests {
         let mut blake3_auth = TokenAuthenticator::new();
         blake3_auth.register("plain-token-abc", AgentIdentity::new("legacy-agent", "dev"));
 
-        let chain = ChainAuthenticator::new()
-            .add(idjag_auth)
-            .add(blake3_auth);
+        let chain = ChainAuthenticator::new().add(idjag_auth).add(blake3_auth);
 
         // Plain BLAKE3 token should fall through ID-JAG to TokenAuthenticator
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "authorization",
-            "Bearer plain-token-abc".parse().unwrap(),
-        );
+        headers.insert("authorization", "Bearer plain-token-abc".parse().unwrap());
         let identity = chain.authenticate(&headers).unwrap();
         assert_eq!(identity.name, "legacy-agent");
         assert_eq!(identity.permissions, "dev");
@@ -498,10 +486,7 @@ mod tests {
         let token = build_test_jwt(header, &claims, &signer);
 
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "authorization",
-            format!("Bearer {token}").parse().unwrap(),
-        );
+        headers.insert("authorization", format!("Bearer {token}").parse().unwrap());
 
         let identity = auth.authenticate(&headers).unwrap();
         assert_eq!(identity.name, "test-provider:agent-3");
@@ -514,10 +499,7 @@ mod tests {
         let meta = ProtectedResourceMetadata::from_config("https://my-gateway.local", &config);
 
         assert_eq!(meta.resource, "https://my-gateway.local");
-        assert_eq!(
-            meta.authorization_servers,
-            vec!["https://test.provider"]
-        );
+        assert_eq!(meta.authorization_servers, vec!["https://test.provider"]);
         assert_eq!(meta.bearer_methods_supported, vec!["header"]);
 
         // Verify it serializes to valid JSON
@@ -613,7 +595,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "authorization",
-            "Bearer eyJhbGciOiJFZERTQSJ9.eyJ0ZXN0Ijp0cnVlfQ.AAAA".parse().unwrap(),
+            "Bearer eyJhbGciOiJFZERTQSJ9.eyJ0ZXN0Ijp0cnVlfQ.AAAA"
+                .parse()
+                .unwrap(),
         );
 
         let err = auth.authenticate(&headers).unwrap_err();

@@ -1,0 +1,9 @@
+id: "NAVRA-019"
+title: "Persona paper"
+status: planned
+priority: medium
+effort: 5-7d
+depends_on: ['NAVRA-003']
+feeds: []
+description: |
+  Persona-driven orchestration paper. 1k (skill lifecycle) already done.

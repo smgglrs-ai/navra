@@ -11,13 +11,13 @@ use crate::mesh_tools::{
 };
 use navra_agent::signal::{AgentSignal, SignalHandle};
 use navra_agent::{extract_text, Agent};
+use navra_auth::ifc::TaintTracker;
 use navra_model::{
     CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent, FunctionCallOutputItem,
     InputItem, ItemStatus, Locality, ModelResponse, OpenAiBackend, OutputItem, ResponseTool,
     ResponseToolChoice,
 };
 use navra_protocol::label::DataLabel;
-use navra_auth::ifc::TaintTracker;
 use std::collections::HashMap;
 
 /// A node in the flow graph, wrapping an agent.

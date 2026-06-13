@@ -1,0 +1,9 @@
+id: "NAVRA-006"
+title: "External eval on 3+ OSS projects"
+status: done
+priority: high
+effort: 3-5d
+depends_on: ['NAVRA-007', 'NAVRA-012', 'NAVRA-003']
+feeds: ['NAVRA-001', 'NAVRA-020']
+description: |
+  External security evaluation across 4 tracks, 19 adversarial tests: E1: 10 full-stack attacks (A1-A10) — 10/10 blocked. E2: AgentDojo (NeurIPS 2024) — 100%% defense across 5 models (629 cases). E3a: MCPTox (AAAI 2026) — 82.3%% detection on 485 poisoned tool schemas. E3b: 5 adaptive planner-trust attacks (B1-B5) — 5/5 blocked. E3c: Shadow Escape + Pale Fire reproductions (C1-C2) — blocked. E3d: Encoding evasion (D1-D2) — content filter bypassed but IFC taint blocks write. Honest limitations documented: semantic propagation, implicit flows, timing channels.

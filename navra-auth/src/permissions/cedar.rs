@@ -226,8 +226,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../policies/owasp-asi-baseline.cedar"
         );
-        CedarEngine::from_file(policy_path)
-            .expect("OWASP ASI baseline policies should parse")
+        CedarEngine::from_file(policy_path).expect("OWASP ASI baseline policies should parse")
     }
 
     #[test]
@@ -374,7 +373,15 @@ mod tests {
         let mut ctx = HashMap::new();
         ctx.insert("trust_state".to_string(), "normal".to_string());
 
-        for tool in ["file_read", "file_tree", "git_status", "git_log", "git_diff", "memory_query", "rag_search"] {
+        for tool in [
+            "file_read",
+            "file_tree",
+            "git_status",
+            "git_log",
+            "git_diff",
+            "memory_query",
+            "rag_search",
+        ] {
             assert_eq!(
                 engine.is_authorized("agent", tool, "any", &ctx),
                 CedarDecision::Allow,

@@ -1,0 +1,36 @@
+id: "NAVRA-078"
+title: "MCP authorization SEPs (iss validation, credential binding)"
+status: planned
+priority: high
+effort: 2-3d
+depends_on: ["NAVRA-018"]
+feeds: []
+source: tech-watch-2026-06-13
+description: |
+  Implement the 6 MCP authorization SEPs from the 2026-07-28 RC to
+  ensure navra's upstream proxy is spec-compliant for the July flip.
+
+  Required changes:
+  - SEP-2468: Mandatory iss parameter validation per RFC 9207 on all
+    OAuth responses. Mitigates mix-up attacks.
+  - SEP-837: application_type declaration during Dynamic Client
+    Registration. navra must declare "native" or "web" appropriately.
+  - SEP-2352: Credential binding to the issuing server. Credentials
+    cannot be reused across servers; re-registration required on migration.
+  - SEP-2207, SEP-2350, SEP-2351: Additional authorization hardening
+    (exact scope TBD — read the merged PRs).
+
+  navra currently proxies upstream MCP servers but does not perform
+  OAuth on their behalf. If upstream servers require OAuth (e.g.,
+  remote MCP servers over Streamable HTTP), navra needs to implement
+  these as a compliant client.
+
+  Reference: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+acceptance:
+  - "iss parameter validated on all OAuth authorization responses per RFC 9207"
+  - "application_type correctly declared during Dynamic Client Registration"
+  - "Credentials bound to issuing server; re-registration on server migration"
+  - "Tests covering mix-up attack rejection (wrong iss) and credential reuse rejection"
+scope:
+  - navra-core/src/upstream/
+  - navra-server/src/config/

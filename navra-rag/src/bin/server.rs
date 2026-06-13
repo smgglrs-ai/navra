@@ -242,8 +242,7 @@ async fn handle_status(State(state): State<Arc<AppState>>) -> Json<serde_json::V
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -280,8 +279,7 @@ async fn main() -> anyhow::Result<()> {
         .with_state(state);
 
     let listen = args.listen.unwrap_or_else(|| {
-        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-            .unwrap_or_else(|_| "/tmp".to_string());
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
         format!("unix:{runtime_dir}/navra/rag.sock")
     });
 
@@ -299,12 +297,9 @@ async fn main() -> anyhow::Result<()> {
         std::fs::remove_file(path).ok();
         let listener = tokio::net::UnixListener::bind(path)?;
         tracing::info!(socket = %path.display(), "navra-rag retrieval service ready (Unix socket)");
-        axum::serve(
-            listener,
-            router.into_make_service(),
-        )
-        .with_graceful_shutdown(shutdown)
-        .await?;
+        axum::serve(listener, router.into_make_service())
+            .with_graceful_shutdown(shutdown)
+            .await?;
     } else {
         let listener = tokio::net::TcpListener::bind(&listen).await?;
         tracing::info!(listen = %listen, "navra-rag retrieval service ready (TCP)");

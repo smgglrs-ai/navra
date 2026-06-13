@@ -476,12 +476,7 @@ mod kani_proofs {
     /// Pure dominator-set intersection for Kani verification.
     /// Models: Dom(n) = {n} ∪ ∩{Dom(p) | p ∈ preds(n)}.
     /// Uses bitmask representation: bit i set means node i is in the set.
-    fn dom_intersect_step(
-        node_mask: u8,
-        pred1_dom: u8,
-        pred2_dom: u8,
-        has_pred2: bool,
-    ) -> u8 {
+    fn dom_intersect_step(node_mask: u8, pred1_dom: u8, pred2_dom: u8, has_pred2: bool) -> u8 {
         let intersection = if has_pred2 {
             pred1_dom & pred2_dom
         } else {

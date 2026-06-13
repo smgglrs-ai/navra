@@ -1,0 +1,12 @@
+id: "NAVRA-047"
+title: "GraphQL scope escape prevention"
+status: wont_do
+priority: high
+effort: 1-2d
+depends_on: []
+feeds: []
+reason: |
+  Prefer existing MCPs decision: GitHub access should go through an MCP
+  server (official or custom) that enforces scope via token permissions
+  and policy, not through navra parsing GraphQL queries. The navra-tools-github
+  crate is flagged for deprecation/removal.

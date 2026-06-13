@@ -247,8 +247,9 @@ mod tests {
 
     #[test]
     fn test_parse_all_categories() {
-        let resp =
-            parse_llama_guard_response("unsafe\nS1\nS2\nS3\nS4\nS5\nS6\nS7\nS8\nS9\nS10\nS11\nS12\nS13\nS14");
+        let resp = parse_llama_guard_response(
+            "unsafe\nS1\nS2\nS3\nS4\nS5\nS6\nS7\nS8\nS9\nS10\nS11\nS12\nS13\nS14",
+        );
         assert_eq!(resp.labels.len(), 14);
     }
 

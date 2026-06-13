@@ -1,0 +1,9 @@
+id: "NAVRA-004"
+title: "Rendra agentic chat"
+status: done
+priority: high
+effort: 3-4d
+depends_on: []
+feeds: ['NAVRA-056']
+description: |
+  Servo-based desktop chat app. Separate repo (smgglrs-ai/rendra).

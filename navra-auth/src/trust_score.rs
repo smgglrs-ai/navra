@@ -103,13 +103,7 @@ impl TrustScore {
 
     pub fn current_score(&self) -> i64 {
         let raw = self.score.load(Ordering::Relaxed);
-        let elapsed = self
-            .last_activity
-            .lock()
-            .unwrap()
-            .elapsed()
-            .as_secs() as i64
-            / 60;
+        let elapsed = self.last_activity.lock().unwrap().elapsed().as_secs() as i64 / 60;
         let decay = elapsed * self.config.decay_per_minute;
         (raw - decay).max(0)
     }
@@ -222,12 +216,7 @@ mod kani_proofs {
     /// Pure trust score transition logic for Kani verification.
     /// Models record_success / record_denial / record_safety_trigger
     /// without atomics or clocks.
-    fn trust_transition(
-        score: i64,
-        max_score: i64,
-        delta: i64,
-        is_penalty: bool,
-    ) -> i64 {
+    fn trust_transition(score: i64, max_score: i64, delta: i64, is_penalty: bool) -> i64 {
         if is_penalty {
             score.saturating_sub(delta).max(0)
         } else {

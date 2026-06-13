@@ -255,7 +255,8 @@ impl Metrics {
             &mut out,
             "navra_leakage_semantic_async_detections_total",
             "L3 continuous semantic leakage detections (retroactive taint)",
-            self.leakage_semantic_async_detections.load(Ordering::Relaxed),
+            self.leakage_semantic_async_detections
+                .load(Ordering::Relaxed),
         );
 
         prom_counter(

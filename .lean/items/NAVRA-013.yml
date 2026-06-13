@@ -1,0 +1,10 @@
+id: "NAVRA-013"
+title: "Query router for temporal/numeric predicates"
+status: done
+priority: high
+effort: 1-2d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-05
+description: |
+  Extend classify_strategy in agentic.rs to detect temporal patterns (regex for dates, 'before/after/since') and numeric patterns ('greater than', 'more than N'), returning a new SearchStrategy::Filtered variant that populates SearchFilter fields. Infrastructure already exists: SearchFilter has min_updated_at, search_filtered() is implemented. The gap is only the query parser that extracts predicates and routes them.

@@ -1,0 +1,10 @@
+id: "NAVRA-012"
+title: "Evaluate Glasswing adversarial harness for C3"
+status: done
+priority: critical
+effort: 1-2d
+depends_on: []
+feeds: ['NAVRA-006']
+source: tech-watch-2026-06-02
+description: |
+  Anthropic defending-code-reference-harness evaluated. Two layers: (1) Interactive Claude Code skills (/vuln-scan, /triage, /threat-model, /patch) — read-only static analysis, structured JSON output, parallel fan-out by focus area, adversarial multi-vote triage. (2) Autonomous pipeline (recon→find→grade→judge→report→patch) in gVisor containers — C/C++ memory vulns via ASAN. For C3: adopt /vuln-scan + /triage skills as eval methodology. Key patterns: threat model scoping, DO NOT REPORT list (reduces FPs), structured finding format (id/file/line/category/severity/confidence/exploit_scenario), N-vote adversarial verification per finding. No code integration needed — C3 uses these as Claude Code skills against 3+ OSS projects.

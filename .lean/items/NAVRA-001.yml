@@ -1,0 +1,9 @@
+id: "NAVRA-001"
+title: "Security paper"
+status: done
+priority: high
+effort: 5-7d
+depends_on: ['NAVRA-003', 'NAVRA-006']
+feeds: []
+description: |
+  Flagship security paper. §8 evaluation complete: 19 adversarial tests (A1-A10 full-stack, B1-B5 adaptive planner-trust, C1-C2 real-world reproductions, D1-D2 encoding evasion), AgentDojo 100%% defense across 5 models, MCPTox 82.3%% detection. Honest limitations documented. §9.5 semantic leakage detection proposed. 33 references. Conclusion updated with defense-in-depth framing.

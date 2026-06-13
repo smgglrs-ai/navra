@@ -7,9 +7,9 @@
 //! - RateLimit: enforce per-tool call rate limits
 //! - PathRewrite: rewrite path arguments before execution
 
+use crate::hooks::{Hook, HookDecision};
 use navra_auth::auth::sandbox_profile::{SandboxAction, SandboxProfile};
 use navra_auth::auth::CallContext;
-use crate::hooks::{Hook, HookDecision};
 use navra_protocol::CallToolResult;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -244,14 +244,12 @@ mod tests {
             )
             .await;
         match decision {
-            HookDecision::Simulate(result) => {
-                match &result.content[0] {
-                    navra_protocol::Content::Text(t) => {
-                        assert_eq!(t.text, "write simulated OK");
-                    }
-                    _ => panic!("expected text"),
+            HookDecision::Simulate(result) => match &result.content[0] {
+                navra_protocol::Content::Text(t) => {
+                    assert_eq!(t.text, "write simulated OK");
                 }
-            }
+                _ => panic!("expected text"),
+            },
             other => panic!("expected Simulate, got {:?}", other),
         }
     }
@@ -361,15 +359,13 @@ mod tests {
             .await;
 
         match decision {
-            HookDecision::ModifyResult(new_result) => {
-                match &new_result.content[0] {
-                    navra_protocol::Content::Text(t) => {
-                        assert_eq!(t.text, "SSN: [SSN] is sensitive");
-                        assert!(!t.text.contains("123-45-6789"));
-                    }
-                    _ => panic!("expected text"),
+            HookDecision::ModifyResult(new_result) => match &new_result.content[0] {
+                navra_protocol::Content::Text(t) => {
+                    assert_eq!(t.text, "SSN: [SSN] is sensitive");
+                    assert!(!t.text.contains("123-45-6789"));
                 }
-            }
+                _ => panic!("expected text"),
+            },
             other => panic!("expected ModifyResult, got {:?}", other),
         }
     }

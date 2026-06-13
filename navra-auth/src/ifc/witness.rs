@@ -6,8 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ifc::DataLabel;
 use crate::identity::CapSigner;
+use crate::ifc::DataLabel;
 
 /// Immutable record of a declassification event.
 ///

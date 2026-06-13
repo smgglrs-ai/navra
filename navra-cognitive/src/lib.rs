@@ -36,15 +36,15 @@ pub use evolution::{TraitStore, TraitVector};
 pub use forge::{
     generate_checksums, ForgeService, Severity, SpecializationMeta, ValidationFinding,
 };
-pub use types::{
-    Directive, Example, Facet, HeuristicModule, HeuristicRef, InjectPosition, McpPersonaSource,
-    McpPromptRef, Persona, Reference, ResolvedPrompt, Scope, SkillCard, Specialization,
-};
 pub use skill_lifecycle::{
     validate_skill, Skill, SkillError, SkillMemoryEntry, SkillOutcome, SkillRegistry, SkillTest,
     TestStatus,
 };
 pub use skill_pipeline::{DirectorySource, SkillPipeline, SkillSource};
+pub use types::{
+    Directive, Example, Facet, HeuristicModule, HeuristicRef, InjectPosition, McpPersonaSource,
+    McpPromptRef, Persona, Reference, ResolvedPrompt, Scope, SkillCard, Specialization,
+};
 pub use weaver::{
     assemble, assemble_full, assemble_with_phase, format_skill_cards, load_skill_cards,
     select_skill_cards, WeaverOutput,

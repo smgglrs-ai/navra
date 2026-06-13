@@ -1,0 +1,9 @@
+id: "NAVRA-014"
+title: "Split navra-security: auth primitives vs ML safety"
+status: done
+priority: medium
+effort: L
+depends_on: []
+feeds: []
+description: |
+  Separate navra-security into navra-auth (auth, permissions, capability tokens, identity) and navra-safety (ML filters, NER, PII). Consumers needing only auth don't pull ort/tokenizers.

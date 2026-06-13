@@ -93,9 +93,7 @@ impl EventLog {
              CREATE INDEX IF NOT EXISTS idx_flow_events_flow_seq
                  ON flow_events(flow_id, seq);",
         )?;
-        Ok(Self {
-            db: Mutex::new(db),
-        })
+        Ok(Self { db: Mutex::new(db) })
     }
 
     pub fn open_memory() -> Result<Self> {
@@ -112,9 +110,7 @@ impl EventLog {
              CREATE INDEX IF NOT EXISTS idx_flow_events_flow_seq
                  ON flow_events(flow_id, seq);",
         )?;
-        Ok(Self {
-            db: Mutex::new(db),
-        })
+        Ok(Self { db: Mutex::new(db) })
     }
 
     /// Append an event and return its sequence number.
@@ -144,11 +140,7 @@ impl EventLog {
     ///
     /// Used for SSE connection recovery: client sends its last-seen
     /// sequence, server backfills all events since.
-    pub fn events_since(
-        &self,
-        flow_id: &str,
-        after_seq: i64,
-    ) -> Result<Vec<StoredEvent>> {
+    pub fn events_since(&self, flow_id: &str, after_seq: i64) -> Result<Vec<StoredEvent>> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = db.prepare(
             "SELECT seq, flow_id, event_json, timestamp_ms, model_version, prompt_hash
@@ -189,12 +181,11 @@ impl EventLog {
     /// Get the latest sequence number for a flow.
     pub fn latest_seq(&self, flow_id: &str) -> Result<i64> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        let seq: i64 = db
-            .query_row(
-                "SELECT COALESCE(MAX(seq), 0) FROM flow_events WHERE flow_id = ?1",
-                params![flow_id],
-                |row| row.get(0),
-            )?;
+        let seq: i64 = db.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM flow_events WHERE flow_id = ?1",
+            params![flow_id],
+            |row| row.get(0),
+        )?;
         Ok(seq)
     }
 
@@ -264,13 +255,39 @@ mod tests {
         let log = EventLog::open_memory().unwrap();
 
         let s1 = log
-            .append("f", &FlowEvent::NodeStarted { task_id: "a".into(), specialist: "dev".into() }, None, None)
+            .append(
+                "f",
+                &FlowEvent::NodeStarted {
+                    task_id: "a".into(),
+                    specialist: "dev".into(),
+                },
+                None,
+                None,
+            )
             .unwrap();
         let _s2 = log
-            .append("f", &FlowEvent::NodeCompleted { task_id: "a".into(), output_preview: "ok".into(), prompt_tokens: 100, completion_tokens: 50 }, None, None)
+            .append(
+                "f",
+                &FlowEvent::NodeCompleted {
+                    task_id: "a".into(),
+                    output_preview: "ok".into(),
+                    prompt_tokens: 100,
+                    completion_tokens: 50,
+                },
+                None,
+                None,
+            )
             .unwrap();
         let _s3 = log
-            .append("f", &FlowEvent::NodeStarted { task_id: "b".into(), specialist: "qa".into() }, None, None)
+            .append(
+                "f",
+                &FlowEvent::NodeStarted {
+                    task_id: "b".into(),
+                    specialist: "qa".into(),
+                },
+                None,
+                None,
+            )
             .unwrap();
 
         let since = log.events_since("f", s1).unwrap();
@@ -289,7 +306,16 @@ mod tests {
         let log = EventLog::open_memory().unwrap();
         assert_eq!(log.latest_seq("f").unwrap(), 0);
 
-        log.append("f", &FlowEvent::NodeStarted { task_id: "a".into(), specialist: "dev".into() }, None, None).unwrap();
+        log.append(
+            "f",
+            &FlowEvent::NodeStarted {
+                task_id: "a".into(),
+                specialist: "dev".into(),
+            },
+            None,
+            None,
+        )
+        .unwrap();
         assert!(log.latest_seq("f").unwrap() > 0);
     }
 
@@ -323,7 +349,16 @@ mod tests {
         assert_eq!(log.event_count("f").unwrap(), 0);
 
         for i in 0..5 {
-            log.append("f", &FlowEvent::NodeStarted { task_id: format!("t{i}"), specialist: "dev".into() }, None, None).unwrap();
+            log.append(
+                "f",
+                &FlowEvent::NodeStarted {
+                    task_id: format!("t{i}"),
+                    specialist: "dev".into(),
+                },
+                None,
+                None,
+            )
+            .unwrap();
         }
         assert_eq!(log.event_count("f").unwrap(), 5);
     }
@@ -331,9 +366,36 @@ mod tests {
     #[test]
     fn multiple_flows_isolated() {
         let log = EventLog::open_memory().unwrap();
-        log.append("f1", &FlowEvent::NodeStarted { task_id: "a".into(), specialist: "dev".into() }, None, None).unwrap();
-        log.append("f2", &FlowEvent::NodeStarted { task_id: "b".into(), specialist: "qa".into() }, None, None).unwrap();
-        log.append("f2", &FlowEvent::NodeStarted { task_id: "c".into(), specialist: "qa".into() }, None, None).unwrap();
+        log.append(
+            "f1",
+            &FlowEvent::NodeStarted {
+                task_id: "a".into(),
+                specialist: "dev".into(),
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        log.append(
+            "f2",
+            &FlowEvent::NodeStarted {
+                task_id: "b".into(),
+                specialist: "qa".into(),
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        log.append(
+            "f2",
+            &FlowEvent::NodeStarted {
+                task_id: "c".into(),
+                specialist: "qa".into(),
+            },
+            None,
+            None,
+        )
+        .unwrap();
 
         assert_eq!(log.event_count("f1").unwrap(), 1);
         assert_eq!(log.event_count("f2").unwrap(), 2);
@@ -349,7 +411,11 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         let back: FlowEvent = serde_json::from_str(&json).unwrap();
         match back {
-            FlowEvent::BackEdgeActivated { from, to, iteration } => {
+            FlowEvent::BackEdgeActivated {
+                from,
+                to,
+                iteration,
+            } => {
                 assert_eq!(from, "review");
                 assert_eq!(to, "fix");
                 assert_eq!(iteration, 2);

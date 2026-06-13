@@ -243,7 +243,11 @@ mod tests {
     async fn high_risk_creates_pending() {
         let hook = ApprovalGateHook::new(test_config(vec!["delete", "exec"]));
         let decision = hook
-            .pre_tool_use("file_delete", &serde_json::json!({"path": "/tmp/x"}), &test_ctx())
+            .pre_tool_use(
+                "file_delete",
+                &serde_json::json!({"path": "/tmp/x"}),
+                &test_ctx(),
+            )
             .await;
         match decision {
             HookDecision::Pending(id) => {
@@ -274,7 +278,11 @@ mod tests {
     async fn deny_resolves() {
         let hook = ApprovalGateHook::new(test_config(vec!["exec"]));
         let decision = hook
-            .pre_tool_use("shell_exec", &serde_json::json!({"cmd": "rm -rf /"}), &test_ctx())
+            .pre_tool_use(
+                "shell_exec",
+                &serde_json::json!({"cmd": "rm -rf /"}),
+                &test_ctx(),
+            )
             .await;
         let id = match decision {
             HookDecision::Pending(id) => id,

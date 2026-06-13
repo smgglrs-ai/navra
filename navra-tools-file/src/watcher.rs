@@ -5,8 +5,8 @@
 //! are created, modified, or deleted.
 
 use crate::store::IndexStore;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use navra_core::models::ModelBackend;
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

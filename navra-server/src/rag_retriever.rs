@@ -1,6 +1,6 @@
 use navra_model::ModelBackend;
-use navra_rag::{CascadeConfig, ChunkStore};
 use navra_rag::Reranker;
+use navra_rag::{CascadeConfig, ChunkStore};
 use std::sync::Arc;
 
 pub struct RagRetriever {

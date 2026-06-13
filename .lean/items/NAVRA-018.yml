@@ -1,0 +1,47 @@
+id: "NAVRA-018"
+title: "MCP 2026-07-28 default flip"
+status: in_progress
+priority: critical
+effort: M
+depends_on: []
+feeds: []
+gate: "2026-07-28 flip default; implement now behind feature gate"
+description: |
+  Implement Streamable HTTP as the default MCP transport behind a
+  feature gate, enabling seamless migration from stdio when the MCP
+  spec finalizes on 2026-07-28. HTTP transport is already fully
+  implemented; this task gates the default selection and provides a
+  compile-time mechanism to flip defaults on the target date.
+  Downstream clients and servers can opt-in early while maintaining
+  backward compatibility via explicit stdio selection.
+acceptance:
+  - "Feature gate mcp-2026-07-28-default can be enabled at compile-time via Cargo feature, defaulting to disabled (stdio)"
+  - "UpstreamConfig.transport defaults to stdio when feature is disabled, http when enabled"
+  - "When feature is enabled, default protocol version switches from PROTOCOL_VERSION to PROTOCOL_VERSION_2026"
+  - "Explicit transport= in config overrides the feature default"
+  - "No breaking changes to existing configurations without the feature enabled"
+  - "Integration test verifies default transport switches correctly based on feature flag"
+scope:
+  - navra-server/Cargo.toml
+  - navra-server/src/config/agents.rs
+  - navra-server/src/main.rs
+  - navra-server/src/config/tests.rs
+notes:
+  - date: "2026-06-13"
+    source: tech-watch
+    detail: |
+      MCP 2026-07-28 RC locked (May 21). Three merged SEPs define the breaking changes:
+      - SEP-2567: Sessions removed entirely. Explicit application-level state handles replace
+        Mcp-Session-Id. Any request can land on any server instance (stateless).
+      - SEP-2575: Initialize/initialized handshake removed. Per-request _meta fields replace it.
+        New server/discover method enables on-demand capability fetching.
+      - SEP-2577: Roots, Sampling, and Logging formally deprecated with 12-month removal window.
+        Roots replaced by tool parameters/resource URIs. Sampling replaced by direct LLM provider
+        APIs. Logging replaced by stderr/OpenTelemetry.
+      Additionally, 6 authorization SEPs harden OAuth: mandatory iss validation per RFC 9207
+      (SEP-2468), application_type declaration during DCR (SEP-837), credential binding to
+      issuing server with re-registration on migration (SEP-2352), plus SEP-2207/2350/2351.
+      navra's upstream proxy must implement iss validation and credential binding for compliance.
+      Reference: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --lib config::tests"

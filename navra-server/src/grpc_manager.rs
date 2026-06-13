@@ -5,8 +5,8 @@
 
 #![allow(dead_code)]
 
-use serde::Deserialize;
 use navra_core::grpc_module::{GrpcModule, GrpcModuleError};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Child;
@@ -396,10 +396,7 @@ max_restarts = 3
 
         let cfg: GrpcModuleConfig = toml::from_str(toml).unwrap();
         assert_eq!(cfg.name, "custom_tool");
-        assert_eq!(
-            cfg.command,
-            vec!["/usr/libexec/navra/modules/custom-tool"]
-        );
+        assert_eq!(cfg.command, vec!["/usr/libexec/navra/modules/custom-tool"]);
         assert_eq!(
             cfg.socket,
             Some(PathBuf::from("/run/navra/modules/custom-tool.sock"))

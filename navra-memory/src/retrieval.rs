@@ -309,8 +309,8 @@ mod tests {
             end_byte: 22,
             index: 0,
             breadcrumb: None,
-                section_start_byte: None,
-                section_end_byte: None,
+            section_start_byte: None,
+            section_end_byte: None,
         }];
         let embeddings = vec![vec![1.0_f32, 0.0, 0.0, 0.0]];
         chunk_store
@@ -354,13 +354,19 @@ mod tests {
         let chunks = vec![
             navra_rag::chunk::Chunk {
                 content: "BLAKE3 token validation with deny-wins ACLs".to_string(),
-                start_byte: 0, end_byte: 44, index: 0, breadcrumb: None,
+                start_byte: 0,
+                end_byte: 44,
+                index: 0,
+                breadcrumb: None,
                 section_start_byte: None,
                 section_end_byte: None,
             },
             navra_rag::chunk::Chunk {
                 content: "Structured JSON logging to stderr".to_string(),
-                start_byte: 45, end_byte: 77, index: 1, breadcrumb: None,
+                start_byte: 45,
+                end_byte: 77,
+                index: 1,
+                breadcrumb: None,
                 section_start_byte: None,
                 section_end_byte: None,
             },

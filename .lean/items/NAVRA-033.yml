@@ -1,0 +1,10 @@
+id: "NAVRA-033"
+title: "ET metric in Prometheus"
+status: planned
+priority: low
+effort: 0.5-0.5d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  GitHub effective tokens formula: output 4x, cache 0.1x, model multiplier. Prometheus /metrics already exists.

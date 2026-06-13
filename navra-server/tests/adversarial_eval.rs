@@ -411,7 +411,10 @@ async fn a6_tool_outside_operations_denied() {
         is_error_result(&resp),
         "file_delete should be denied for read-only agent, got: {resp}"
     );
-    assert!(target.exists(), "File should still exist after denied delete");
+    assert!(
+        target.exists(),
+        "File should still exist after denied delete"
+    );
 
     child.kill().await.ok();
 }
@@ -511,8 +514,7 @@ async fn a8_expired_token_rejected() {
         // Server accepted anonymous — that's OK with NoAuthenticator,
         // but the token should not have granted any capability elevation
         assert!(
-            json.to_string().contains("capabilities")
-                || json["error"].is_object(),
+            json.to_string().contains("capabilities") || json["error"].is_object(),
             "Forged token should not elevate privileges"
         );
     }
@@ -986,7 +988,11 @@ async fn c1_shadow_escape_document_exfiltration() {
 
     // Sensitive data the attacker wants
     let ssh_key = dir.path().join("ssh_key.txt");
-    std::fs::write(&ssh_key, "-----BEGIN OPENSSH PRIVATE KEY-----\nFAKEKEY\n-----END OPENSSH PRIVATE KEY-----").unwrap();
+    std::fs::write(
+        &ssh_key,
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nFAKEKEY\n-----END OPENSSH PRIVATE KEY-----",
+    )
+    .unwrap();
 
     let config = config_with_project_dir(IFC_CONFIG, &dir.path().to_string_lossy());
     let (mut child, _port, url) = spawn_navra(&config).await;

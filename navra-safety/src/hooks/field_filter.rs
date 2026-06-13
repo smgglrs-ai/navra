@@ -4,8 +4,8 @@
 //! to agents, reducing token consumption.
 
 use super::{Hook, HookDecision};
-use navra_auth::auth::CallContext;
 use async_trait::async_trait;
+use navra_auth::auth::CallContext;
 use navra_protocol::CallToolResult;
 use std::collections::HashMap;
 
@@ -155,10 +155,7 @@ mod tests {
     #[tokio::test]
     async fn filters_array_responses() {
         let config = FieldFilterConfig {
-            tool_fields: HashMap::from([(
-                "list_users".into(),
-                vec!["id".into(), "name".into()],
-            )]),
+            tool_fields: HashMap::from([("list_users".into(), vec!["id".into(), "name".into()])]),
         };
         let hook = FieldFilterHook::new(config);
 

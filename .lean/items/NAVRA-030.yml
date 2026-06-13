@@ -1,0 +1,10 @@
+id: "NAVRA-030"
+title: "X-Token Projection for safety model KD"
+status: planned
+priority: medium
+effort: 3-5d
+depends_on: ['NAVRA-007']
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  NVIDIA cross-tokenizer KD via sparse projection matrix. Enables distilling from GPT-4/Claude into navra ONNX safety models. TW1 baseline first.

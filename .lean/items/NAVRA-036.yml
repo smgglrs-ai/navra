@@ -1,0 +1,10 @@
+id: "NAVRA-036"
+title: "VerifierHook with false-pass-rate tracking"
+status: planned
+priority: medium
+effort: 1-2d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-05
+description: |
+  Post-tool-use hook that scores tool outputs against configurable rubrics using a cheap model (or existing ONNX safety model). Tracks false-pass rate as a Prometheus metric — the critical metric for safety-sensitive domains per Harvey's legal verifier research. StatisticalGuardrailHook already has metric infrastructure. False-pass rate (tool output that passes verification but shouldn't) is more dangerous than false-fail for legal/financial/medical domains.

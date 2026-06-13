@@ -4,7 +4,10 @@
 //! (llama-server for LlamaCpp, vllm for Vllm).
 
 use crate::engine::Engine;
-use crate::{Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
+use crate::{
+    Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError,
+    ServeConfig,
+};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -97,10 +100,9 @@ impl ModelRuntime for DirectRuntime {
         Box::pin(async move {
             let child = self.children.lock().unwrap().remove(&id);
             if let Some(mut child) = child {
-                child
-                    .kill()
-                    .await
-                    .map_err(|e| RuntimeError::Stop(format!("failed to kill {engine_name}: {e}")))?;
+                child.kill().await.map_err(|e| {
+                    RuntimeError::Stop(format!("failed to kill {engine_name}: {e}"))
+                })?;
                 let _ = child.wait().await;
                 tracing::info!(id = %id, "Stopped {engine_name}");
             }

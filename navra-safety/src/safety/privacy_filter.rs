@@ -226,7 +226,7 @@ impl PrivacyFilterModel {
         let session = ort::session::Session::builder()
             .map_err(|e| PrivacyFilterError::Load(format!("session builder: {e}")))?
             .with_execution_providers([
-                ort::execution_providers::CPUExecutionProvider::default().build(),
+                ort::execution_providers::CPUExecutionProvider::default().build()
             ])
             .map_err(|e| PrivacyFilterError::Load(format!("execution provider: {e}")))?
             .commit_from_file(&model_path)
@@ -237,13 +237,12 @@ impl PrivacyFilterModel {
                 ))
             })?;
 
-        let tokenizer =
-            tokenizers::Tokenizer::from_file(&tokenizer_path).map_err(|e| {
-                PrivacyFilterError::Load(format!(
-                    "failed to load tokenizer from {}: {e}",
-                    tokenizer_path.display()
-                ))
-            })?;
+        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path).map_err(|e| {
+            PrivacyFilterError::Load(format!(
+                "failed to load tokenizer from {}: {e}",
+                tokenizer_path.display()
+            ))
+        })?;
 
         tracing::info!(
             path = %model_path.display(),
@@ -304,9 +303,7 @@ impl PrivacyFilterModel {
         }
 
         all_spans.sort_by_key(|s| (s.start, s.end));
-        all_spans.dedup_by(|b, a| {
-            a.start == b.start && a.end == b.end && a.category == b.category
-        });
+        all_spans.dedup_by(|b, a| a.start == b.start && a.end == b.end && a.category == b.category);
 
         Ok(all_spans)
     }
@@ -436,9 +433,8 @@ fn load_id2label(config_path: &Path) -> Result<Vec<String>, PrivacyFilterError> 
         ))
     })?;
 
-    let json: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-        PrivacyFilterError::Load(format!("failed to parse config: {e}"))
-    })?;
+    let json: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| PrivacyFilterError::Load(format!("failed to parse config: {e}")))?;
 
     let id2label = json
         .get("id2label")
@@ -508,9 +504,7 @@ mod tests {
 
     #[test]
     fn bioes_single_entity() {
-        let tokens = vec![
-            ("S-private_person".to_string(), 0.99, Some((10, 14))),
-        ];
+        let tokens = vec![("S-private_person".to_string(), 0.99, Some((10, 14)))];
         let spans = group_bioes_tags(&tokens);
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].category, "private_person");
@@ -607,10 +601,19 @@ mod tests {
     #[test]
     fn bioes_tag_parsing() {
         assert_eq!(bioes_tag_type("O"), None);
-        assert_eq!(bioes_tag_type("B-private_person"), Some(("B", "private_person")));
+        assert_eq!(
+            bioes_tag_type("B-private_person"),
+            Some(("B", "private_person"))
+        );
         assert_eq!(bioes_tag_type("I-secret"), Some(("I", "secret")));
-        assert_eq!(bioes_tag_type("E-private_email"), Some(("E", "private_email")));
-        assert_eq!(bioes_tag_type("S-private_phone"), Some(("S", "private_phone")));
+        assert_eq!(
+            bioes_tag_type("E-private_email"),
+            Some(("E", "private_email"))
+        );
+        assert_eq!(
+            bioes_tag_type("S-private_phone"),
+            Some(("S", "private_phone"))
+        );
     }
 
     #[test]

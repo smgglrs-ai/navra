@@ -1,0 +1,21 @@
+id: "NAVRA-043"
+title: "Context compression post-hook"
+status: planned
+priority: medium
+effort: 3-4d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  Headroom-style response-side compression. SmartCrusher for JSON, kompress-small ONNX for text. Complements query-side cache.
+notes: |
+  [2026-06-12] LCLMs (Latent Context Language Models) achieve production-
+  grade context compression: 0.6B encoder + 4B decoder. At 4x compression:
+  91.76% accuracy on RULER (vs 94.41% uncompressed). At 16x: 75.06% but
+  8.8x faster inference. Compresses BEFORE decoder prefill (unlike KV
+  cache eviction). The 0.6B encoder could run on ONNX Runtime alongside
+  navra's existing safety models. "Swap out for any existing LLM" — navra
+  could compress retrieved context before injecting into agent prompts.
+  Limitation: reasoning trace compression unsolved — helps with document/
+  retrieval context but not agent-internal state accumulation.
+  Models: huggingface.co/latent-context | Code: github.com/LeonLixyz/LCLM

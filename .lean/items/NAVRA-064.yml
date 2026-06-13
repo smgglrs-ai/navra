@@ -1,0 +1,35 @@
+id: NAVRA-064
+title: Nomic Embed v1.5 evaluation
+status: backlog
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: Evaluate Nomic Embed v1.5 as an alternative or complement to Granite Embedding R2 for the RAG pipeline. Nomic
+  v1.5 offers Matryoshka dimensionality (64-768), task-specific prefixes (search_document, search_query, clustering, classification),
+  and a permissive Apache 2.0 license. This evaluation needs to (a) convert or obtain an ONNX export of the model, (b) add
+  task-prefix support to EmbedRequest and the OnnxBackend embedding path, (c) benchmark latency and retrieval quality against
+  Granite R2 on the same test corpus, and (d) document findings to inform whether navra should support Nomic as a first-class
+  embedding option or stay with Granite R2.
+acceptance:
+- Nomic Embed v1.5 ONNX model loads successfully via OnnxBackend with proper tokenizer on CPU, OpenVINO, and CUDA devices
+- EmbedRequest gains an optional task_prefix field (e.g. search_document, search_query) and OnnxBackend prepends it to input
+  text before tokenization when set
+- 'Integration tests in navra-model/tests/integration.rs cover Nomic v1.5: vector production, L2 normalization, similar-texts-closer
+  cosine similarity, and Matryoshka dimension truncation at 128, 256, 384, and 768'
+- Latency benchmark comparing Granite R2 768-dim vs Nomic v1.5 at 768-dim and 384-dim across CPU and available accelerators,
+  with results printed in the same format as existing device benchmarks
+- A registry entry for nomic-embed-v1.5 is added to models/registry.toml with correct repo, model_file, tokenizer, and config
+  snippet
+- 'Retrieval quality comparison: at least 5 query-document pairs tested through navra-rag ChunkStore round-trip (index + hybrid
+  search) with both models, results documented in test output'
+scope:
+- navra-model/src/lib.rs
+- navra-model/src/onnx.rs
+- navra-model/tests/integration.rs
+- models/registry.toml
+- navra-rag/src/store.rs
+- navra-server/src/rag_retriever.rs
+- benchmarks/
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-model -- nomic --nocapture

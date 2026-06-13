@@ -1,0 +1,10 @@
+id: "NAVRA-037"
+title: "SQLite entity-relationship table for navra-memory"
+status: planned
+priority: medium
+effort: 2-3d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-05
+description: |
+  Add a lightweight entity-relationship table in SQLite (entity1, relation, entity2, valid_from, valid_until) with 1-2 hop traversal queries. Closes the entity-relationship gap vs Graphiti/temporal KGs without requiring Neo4j. MemForest is a hierarchical tree — good for temporal fact storage but has no entity resolution, relationship tracking, or multi-hop reasoning. This adds the minimum graph capability while preserving navra's embedded single-file architecture. Supersedes parking-lot item 3k (KG triples).

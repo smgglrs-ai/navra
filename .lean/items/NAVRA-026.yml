@@ -1,0 +1,7 @@
+id: "NAVRA-026"
+title: "AG-UI via rendra-ag-ui"
+status: planned
+priority: low
+effort: 2-3d
+depends_on: ['NAVRA-004']
+feeds: []

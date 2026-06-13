@@ -1,0 +1,10 @@
+id: "NAVRA-044"
+title: "Execution ring refinement"
+status: planned
+priority: medium
+effort: 1-2d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  Map to 4 rings: Ring 3 (direct), Ring 2 (Podman), Ring 1 (OpenShell), Ring 0 (SRE-witnessed). trust_score.rs and risk_tier.rs already exist.

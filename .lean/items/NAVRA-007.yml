@@ -1,0 +1,10 @@
+id: "NAVRA-007"
+title: "Benchmark OpenAI privacy-filter on 268V NPU"
+status: done
+priority: critical
+effort: 1-2d
+depends_on: []
+feeds: ['NAVRA-006', 'NAVRA-001', 'NAVRA-030']
+source: tech-watch-2026-06-02
+description: |
+  50M active MoE, 8 PII categories, tunable Viterbi decoder. ONNX export. S7 eval comparison target. May replace regex+ML+NER pipeline.

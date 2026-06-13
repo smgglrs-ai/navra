@@ -389,9 +389,7 @@ policies:
     async fn escalates_dangerous_tool() {
         let h = hook();
         let args = serde_json::json!({});
-        let decision = h
-            .pre_tool_use("dangerous_tool", &args, &test_ctx())
-            .await;
+        let decision = h.pre_tool_use("dangerous_tool", &args, &test_ctx()).await;
         match decision {
             HookDecision::Pending(msg) => assert_eq!(msg, "Requires human approval"),
             other => panic!("Expected Pending, got {other:?}"),

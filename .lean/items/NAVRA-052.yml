@@ -1,0 +1,38 @@
+id: NAVRA-052
+title: Missing related work
+status: backlog
+priority: medium
+effort: M
+depends_on: []
+feeds:
+- NAVRA-001
+- NAVRA-019
+- NAVRA-020
+description: 'Survey the academic and industry literature for references missing from the paper suite (PAPER.md and the 5
+  drafts in docs/papers/) and add them with proper citations. The main paper (PAPER.md) has 85 references but several gaps
+  were already identified in review notes (MorphAgent, c-CRAB, FadeMem, Mem0). The workshop papers have informal or absent
+  reference sections: audit-blackbox.md has zero references, autonomous-review.md and persona-orchestration.md use informal
+  inline citations without numbered entries, and model-cards.md has only 8. Newer competitors documented in docs/ecosystem-positioning.md
+  (IBM ContextForge, A2ASECBENCH, Envoy AI Gateway, ClawPatrol, DefenseClaw, NeuroTaint, MVAR) are also not cited in the relevant
+  papers.'
+acceptance:
+- All 5 workshop/paper drafts in docs/papers/ have a numbered References section with at least 10 entries each
+- Review notes in persona-orchestration.md mentioning missing related work (MorphAgent, c-CRAB, FadeMem, Mem0, FIDES) are
+  resolved by adding those citations to the paper body and references
+- PAPER.md Related Work section (Section 2) cites at least 3 new systems from the May-June 2026 landscape (e.g., IBM ContextForge,
+  NeuroTaint, MVAR, A2ASECBENCH) with differentiation analysis
+- audit-blackbox.md includes a Related Work section citing prior work on tamper-evident logging, flight recorder patterns,
+  and AI audit/compliance frameworks
+- All references use consistent formatting (numbered bracket style matching PAPER.md convention) across all 6 files
+- No broken or placeholder citations remain (grep for TODO, TBD, FIXME, [?] in reference sections returns zero matches)
+scope:
+- PAPER.md (Section 2 Related Work + References section)
+- docs/papers/security-gateway.md (Section 10 Related Work + References)
+- docs/papers/persona-orchestration.md (Section 2 Related Work + References)
+- docs/papers/autonomous-review.md (Section 2 Related Work + References)
+- docs/papers/audit-blackbox.md (new Related Work section + new References section)
+- docs/papers/model-cards.md (Section 2 + References)
+- docs/ecosystem-positioning.md (read-only, source for competitive landscape citations)
+verification:
+  quick: 'grep -rcn ''TODO\|TBD\|FIXME\|\[\?\]'' PAPER.md docs/papers/*.md | grep -i ''ref\|cite\|related'' ; for f in PAPER.md
+    docs/papers/*.md; do echo "$f: $(grep -c ''^\['' "$f") refs"; done'

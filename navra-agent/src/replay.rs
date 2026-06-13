@@ -32,10 +32,7 @@ pub struct RecipeStep {
 /// Only succeeds if all actions were successful and the loop completed
 /// normally (not interrupted). Returns `None` if the trace contains
 /// failures or is empty.
-pub fn compile_recipe(
-    task_description: &str,
-    actions: &[ActionRecord],
-) -> Option<Recipe> {
+pub fn compile_recipe(task_description: &str, actions: &[ActionRecord]) -> Option<Recipe> {
     if actions.is_empty() || actions.iter().any(|a| !a.success) {
         return None;
     }
@@ -124,11 +121,7 @@ impl RecipeStore {
         };
         entries
             .flatten()
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .is_some_and(|ext| ext == "json")
-            })
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
             .filter_map(|e| {
                 let json = std::fs::read_to_string(e.path()).ok()?;
                 serde_json::from_str(&json).ok()
@@ -142,11 +135,7 @@ impl RecipeStore {
     /// threshold (0.0-1.0, default 0.6 = 60% word overlap).
     /// Callers should confirm with the user before replaying if
     /// `needs_confirmation()` returns true.
-    pub fn find_match(
-        &self,
-        task_description: &str,
-        threshold: f64,
-    ) -> Option<ReplayMatch> {
+    pub fn find_match(&self, task_description: &str, threshold: f64) -> Option<ReplayMatch> {
         let query_words = tokenize_words(task_description);
         if query_words.is_empty() {
             return None;
@@ -178,10 +167,7 @@ impl RecipeStore {
 ///
 /// Replaces template values in arguments with values from the
 /// substitution map. Template syntax: `{{key}}`.
-pub fn substitute_variables(
-    recipe: &Recipe,
-    vars: &HashMap<String, String>,
-) -> Vec<RecipeStep> {
+pub fn substitute_variables(recipe: &Recipe, vars: &HashMap<String, String>) -> Vec<RecipeStep> {
     recipe
         .steps
         .iter()
@@ -226,14 +212,11 @@ fn word_overlap(a: &[String], b: &[String]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{AgentAction, ActionRecord};
+    use crate::action::{ActionRecord, AgentAction};
 
     fn make_action(tool: &str, path: &str, success: bool) -> ActionRecord {
         ActionRecord {
-            action: AgentAction::classify(
-                tool,
-                &serde_json::json!({"path": path}),
-            ),
+            action: AgentAction::classify(tool, &serde_json::json!({"path": path})),
             success,
             duration_ms: 100,
             output_preview: "ok".to_string(),
@@ -379,10 +362,7 @@ mod tests {
         vars.insert("project_dir".to_string(), "/home/user/project".to_string());
 
         let steps = substitute_variables(&recipe, &vars);
-        assert_eq!(
-            steps[0].arguments["path"],
-            "/home/user/project/main.rs"
-        );
+        assert_eq!(steps[0].arguments["path"], "/home/user/project/main.rs");
     }
 
     #[test]

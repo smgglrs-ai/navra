@@ -87,11 +87,26 @@ mod tests {
     #[test]
     fn default_config_tiers() {
         let config = RiskTierConfig::default();
-        assert_eq!(config.classify(RiskLevelThreshold::None), RiskTier::AutoApprove);
-        assert_eq!(config.classify(RiskLevelThreshold::Low), RiskTier::AutoApprove);
-        assert_eq!(config.classify(RiskLevelThreshold::Medium), RiskTier::RequireApproval);
-        assert_eq!(config.classify(RiskLevelThreshold::High), RiskTier::HardGate);
-        assert_eq!(config.classify(RiskLevelThreshold::Critical), RiskTier::HardGate);
+        assert_eq!(
+            config.classify(RiskLevelThreshold::None),
+            RiskTier::AutoApprove
+        );
+        assert_eq!(
+            config.classify(RiskLevelThreshold::Low),
+            RiskTier::AutoApprove
+        );
+        assert_eq!(
+            config.classify(RiskLevelThreshold::Medium),
+            RiskTier::RequireApproval
+        );
+        assert_eq!(
+            config.classify(RiskLevelThreshold::High),
+            RiskTier::HardGate
+        );
+        assert_eq!(
+            config.classify(RiskLevelThreshold::Critical),
+            RiskTier::HardGate
+        );
     }
 
     #[test]
@@ -100,9 +115,18 @@ mod tests {
             auto_approve_max: RiskLevelThreshold::Medium,
             require_approval_max: RiskLevelThreshold::High,
         };
-        assert_eq!(config.classify(RiskLevelThreshold::Medium), RiskTier::AutoApprove);
-        assert_eq!(config.classify(RiskLevelThreshold::High), RiskTier::RequireApproval);
-        assert_eq!(config.classify(RiskLevelThreshold::Critical), RiskTier::HardGate);
+        assert_eq!(
+            config.classify(RiskLevelThreshold::Medium),
+            RiskTier::AutoApprove
+        );
+        assert_eq!(
+            config.classify(RiskLevelThreshold::High),
+            RiskTier::RequireApproval
+        );
+        assert_eq!(
+            config.classify(RiskLevelThreshold::Critical),
+            RiskTier::HardGate
+        );
     }
 
     #[test]

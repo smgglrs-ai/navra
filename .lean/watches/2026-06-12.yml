@@ -1,0 +1,180 @@
+date: "2026-06-12"
+
+sources:
+  - url: "https://towardsdatascience.com/kv-cache-reuse-for-multi-agent-llm-inference-i-built-a-c-orchestrator-so-my-gpu-would-stop-reading-the-same-document-twice/"
+    title: "SwarmKV: KV Cache Reuse for Multi-Agent LLM Inference"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://www.kdnuggets.com/local-agentic-programming-on-the-cheap-claude-code-ollama-gemma4"
+    title: "Local Agentic Programming: Claude Code + Ollama + Gemma4"
+    impact: MEDIUM
+    relationship: validates
+
+  - url: "https://code.claude.com/docs/en/advisor"
+    title: "Claude Code Advisor Tool"
+    impact: LOW
+    relationship: irrelevant
+
+  - url: "https://www.infoworld.com/article/4182631/build-an-agent-sell-an-agent.html"
+    title: "Build an Agent, Sell an Agent (Microsoft Marketplace)"
+    impact: LOW
+    relationship: contextual
+
+  - url: "https://towardsdatascience.com/bayesian-networks-and-markov-networks-an-intuitive-guide-to-structured-uncertainty/"
+    title: "Bayesian Networks and Markov Networks"
+    impact: LOW
+    relationship: irrelevant
+
+  - url: "https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback"
+    title: "Claude Fable 5 Refusals and Fallback"
+    impact: MEDIUM
+    relationship: complements
+
+  - url: "https://www.microsoft.com/en-us/security/blog/2026/06/04/updating-taxonomy-failure-modes-agentic-ai-systems-year-red-teaming-taught-us/"
+    title: "Microsoft Taxonomy of Failure Modes in Agentic AI v2.0"
+    impact: HIGH
+    relationship: validates
+
+  - url: "https://techcommunity.microsoft.com/blog/azuredevcommunityblog/harness-driven-agents-secure-podcast-pipeline-in-hyperlight-microvm-sandbox/4525512"
+    title: "Harness-Driven Agents + Hyperlight MicroVM Sandbox"
+    impact: MEDIUM
+    relationship: complements
+
+  - url: "https://www.microsoft.com/en-us/power-platform/blog/2026/06/04/advanced-connector-policies-are-generally-available/"
+    title: "Microsoft Advanced Connector Policies (ACP)"
+    impact: MEDIUM
+    relationship: validates
+
+  - url: "https://www.marktechpost.com/2026/06/11/nous-research-ships-hermes-agent-profile-builder-identity-model-skills-and-mcp-servers-in-one-dashboard-flow/"
+    title: "Hermes Agent Profile Builder"
+    impact: MEDIUM
+    relationship: complements
+
+  - url: "https://venturebeat.com/data/context-compression-finally-works-in-production-new-research-cuts-llm-input-16x-without-the-accuracy-hit"
+    title: "Context Compression: LCLMs Cut LLM Input 16x"
+    impact: HIGH
+    relationship: complements
+
+  - url: "research: MCP filesystem access in distroless containers"
+    title: "MCP Filesystem Access + Distroless Deployment"
+    impact: HIGH
+    relationship: complements
+
+findings:
+  - source: "platform.claude.com (refusals)"
+    title: "Model refusal detection and gateway-level fallback routing"
+    action: plan
+    item_id: "NAVRA-073"
+    detail: "Detect stop_reason:refusal from upstream models, implement gateway-level fallback routing"
+
+  - source: "microsoft.com (taxonomy v2.0)"
+    title: "Capability/architecture disclosure prevention"
+    action: plan
+    item_id: "NAVRA-074"
+    detail: "Prevent leaking internal architecture to downstream agents (failure mode #7)"
+
+  - source: "research: distroless + MCP filesystem"
+    title: "Distroless container deployment for navra-agent"
+    action: plan
+    item_id: "NAVRA-075"
+    detail: "Distroless images + rust-mcp-filesystem = security by construction (no code execution possible)"
+
+  - source: "research: rust-mcp-filesystem"
+    title: "Evaluate rust-mcp-filesystem as upstream MCP server"
+    action: plan
+    item_id: "NAVRA-076"
+    detail: "Rust AI Stack filesystem MCP server for distroless agent deployments"
+
+  - source: "kdnuggets.com (Gemma 4)"
+    title: "Gemma 4 Modelfile configuration for agentic use"
+    action: enrich
+    item_id: "NAVRA-039"
+    detail: "Added recommended Ollama Modelfile config (64K context, temp 0.2, repeat_penalty 1.15)"
+
+  - source: "microsoft.com (taxonomy v2.0)"
+    title: "MS taxonomy v2.0 failure modes as compliance targets"
+    action: enrich
+    item_id: "NAVRA-032"
+    detail: "Added 7 new failure modes alongside OWASP mapping targets"
+
+  - source: "venturebeat.com (LCLMs)"
+    title: "LCLM context compression as candidate approach"
+    action: enrich
+    item_id: "NAVRA-043"
+    detail: "0.6B encoder + 4B decoder, 4x compression at 91.76% accuracy, could run on ONNX Runtime"
+
+  - source: "marktechpost.com (Hermes)"
+    title: "Generalize lazy-loading from personas to all tools"
+    action: enrich
+    item_id: "NAVRA-057"
+    detail: "Broadened from persona-only to general tool/persona lazy-loading pattern"
+
+  - source: "microsoft.com (taxonomy v2.0)"
+    title: "OpenClaw CVE-2026-25253 and security crisis"
+    action: update-positioning
+    detail: "Added OpenClaw CVE data, MS taxonomy v2.0, distroless model, ACP validation, Hyperlight"
+
+  - source: "towardsdatascience.com (SwarmKV)"
+    title: "KV cache reuse for multi-agent Ollama orchestration"
+    action: investigate
+    detail: "Could navra coordinate KV cache sharing when routing agents to same Ollama backend?"
+
+  - source: "techcommunity.microsoft.com (Hyperlight)"
+    title: "Hyperlight as OpenShell compute driver"
+    action: investigate
+    detail: "CNCF sandbox project, no_std Rust guests, millisecond boot — natural OpenShell backend"
+
+  - source: "towardsdatascience.com (SwarmKV)"
+    title: "SwarmKV Part 2: GPU time-slicing for 50+ agents"
+    action: watch
+    detail: "Upcoming work on replacing global mutex with measured scheduling"
+
+  - source: "kdnuggets.com (Gemma 4)"
+    title: "Ollama KV cache quantization (q8_0)"
+    action: watch
+    detail: "Relevant for memory pressure on constrained hardware (268V laptop)"
+
+  - source: "marktechpost.com (Hermes)"
+    title: "Hermes Agent UX patterns for agent configuration"
+    action: watch
+    detail: "Profile isolation model, skill catalogs — relevant for navra web UI (Phase 15)"
+
+  - source: "venturebeat.com (LCLMs)"
+    title: "LCLM reasoning trace compression"
+    action: watch
+    detail: "Unsolved — helps with retrieval context but not agent-internal state. Monitor progress."
+
+  - source: "infoworld.com"
+    title: "MCP-based tool/agent discovery in marketplaces"
+    action: watch
+    detail: "Could influence navra registry design but too early to act"
+
+  - source: "code.claude.com (advisor)"
+    title: "Claude Code Advisor Tool"
+    action: dismiss
+    detail: "CC-specific infrastructure. navra's equivalent is multi-model routing in navra-agent."
+
+  - source: "infoworld.com"
+    title: "Agent marketplace business models"
+    action: dismiss
+    detail: "Business model dynamics not directly relevant to open-source gateway"
+
+  - source: "towardsdatascience.com (Bayesian nets)"
+    title: "Bayesian/Markov networks tutorial"
+    action: dismiss
+    detail: "Academic review, no concrete opportunity for navra right now"
+
+summary: |
+  12 sources analyzed (10 URLs + 1 research topic + 1 additional URL).
+  4 new plan items (NAVRA-073 through NAVRA-076).
+  4 existing items enriched (NAVRA-032, NAVRA-039, NAVRA-043, NAVRA-057).
+  Ecosystem positioning updated (OpenClaw crisis, distroless model, ACP, Hyperlight).
+  2 items to investigate (KV cache reuse, Hyperlight as OpenShell driver).
+  5 items to watch (SwarmKV Part 2, KV quant, Hermes UX, LCLM traces, MCP marketplace).
+  3 items dismissed (Claude Advisor, marketplace dynamics, Bayesian nets).
+
+  Key insight: distroless + MCP tool calls = security by construction.
+  No shell/Python in the image means the model's only interface is MCP,
+  and every call goes through navra's permission/IFC/safety pipeline.
+  This is architecturally stronger than any runtime sandbox.

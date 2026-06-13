@@ -799,9 +799,7 @@ mod kani_proofs {
         let result = "result";
         let outcome = "allowed";
 
-        let preimage = chain_preimage(
-            seq as u64, prev, agent, tool, args, result, outcome,
-        );
+        let preimage = chain_preimage(seq as u64, prev, agent, tool, args, result, outcome);
         let hash = sha256_hex(&preimage);
 
         // Correct link verifies

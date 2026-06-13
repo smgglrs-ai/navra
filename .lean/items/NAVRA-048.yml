@@ -1,0 +1,49 @@
+id: NAVRA-048
+title: Adversarial safety evaluation
+status: backlog
+priority: low
+effort: L
+depends_on: []
+feeds: []
+description: 'Expand the adversarial safety evaluation suite into a comprehensive, CI-gated harness that covers attack surfaces
+  not yet tested. The existing suite (19 full-stack tests in adversarial_eval.rs, 6 RAMPART variant tests in safety_bench.rs,
+  3 PII benchmarks, 9 IFC tests) covers path traversal, privilege escalation, IFC taint, encoding evasion, and credential
+  leakage. Missing coverage includes: model proxy (/v1/chat/completions) inbound/outbound safety filtering under adversarial
+  input, hook pipeline timeout/bypass attacks, PolicyYamlHook policy evasion, approval workflow abuse (grant replay, race
+  conditions), cross-session taint isolation, ACP endpoint adversarial scenarios, and structured scoring with aggregate pass-rate
+  reporting for CI gates.'
+acceptance:
+- All existing adversarial tests (adversarial_eval.rs, safety_bench.rs, pii_benchmark.rs, ifc_integration.rs) continue to
+  pass unchanged
+- 'New test category E: model proxy adversarial tests (>=5 tests) covering safety filter bypass via /v1/chat/completions with
+  crafted inbound messages and outbound response interception'
+- 'New test category F: hook pipeline adversarial tests (>=4 tests) covering hook timeout behavior under slow hooks, PolicyYamlHook
+  evasion via crafted tool names/arguments, and hook ordering attacks'
+- 'New test category G: approval workflow abuse tests (>=3 tests) covering grant replay across sessions, concurrent approval
+  race conditions, and forged request IDs'
+- 'New test category H: cross-session taint isolation (>=2 tests) verifying that taint from session A does not leak into session
+  B on the same server'
+- Aggregate scoring report printed to stderr at end of test run showing per-category detection rates and overall pass rate,
+  with a CI-friendly exit code (fail if any category drops below its threshold)
+notes:
+  - date: "2026-06-13"
+    source: tech-watch
+    detail: |
+      Uber ADR-Bench (arxiv 2605.17380, MLSys 2026 Industry Track) is a strong candidate
+      benchmark: 302 tasks, 17 attack techniques, 133 MCP servers. Production-proven at
+      Uber (7,200 hosts, 10K sessions/day, 10 months). ADR outperforms GuardAgent and
+      LlamaFirewall by 2-4x F1. Their regex-based prevention layer (97.2% precision) is
+      architecturally similar to navra's pattern-based safety hooks. Consider using ADR-Bench
+      alongside MVAR/TaintBench for navra's adversarial evaluation suite.
+      Reference: https://arxiv.org/abs/2605.17380
+scope:
+- navra-server/tests/adversarial_eval.rs
+- navra-safety/tests/safety_bench.rs
+- navra-safety/tests/pii_benchmark.rs
+- navra-server/tests/e2e.rs
+- navra-core/src/server/mod.rs
+- navra-safety/src/hooks/policy_yaml.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety --test safety_bench -- --nocapture 2>&1
+    | tail -20 && ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test adversarial_eval --test-threads=1
+    -- --nocapture 2>&1 | tail -20

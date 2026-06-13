@@ -1,0 +1,30 @@
+id: NAVRA-062
+title: NemoClaw MCP bridge
+status: backlog
+priority: low
+effort: M
+depends_on: []
+feeds: []
+description: Add a NemoClaw-aware upstream profile so navra can connect to a running NemoClaw (NVIDIA's OpenClaw + OpenShell
+  gateway) instance as an MCP upstream, applying navra's own security stack on top. NemoClaw exposes standard MCP over HTTP/SSE,
+  so the transport works today via generic `[[upstream]]`, but a dedicated bridge adds tool namespace prefixing (to avoid
+  collisions with navra's own tools), NemoClaw API key auth header injection, and optional YAML policy import so NemoClaw's
+  declared policies can seed navra permission rules. This enables hybrid deployments where NemoClaw handles sandbox lifecycle
+  and navra enforces IFC, deny-wins ACLs, and ML safety on top.
+acceptance:
+- Connecting to a NemoClaw instance via `[[upstream]] transport = "nemoclaw"` discovers and proxies its tools, prompts, and
+  resources through navra's security stack
+- Tool names from NemoClaw are auto-prefixed with a configurable namespace (default `nemoclaw_`) to prevent collisions with
+  navra's built-in tools
+- An `api_key` field on the upstream config injects the NemoClaw bearer token into HTTP requests sent to the NemoClaw endpoint
+- An optional `import_policies = true` flag parses NemoClaw's YAML policy responses and maps them to navra `tool_rules` entries
+  in the active permission set, logged but not auto-applied without explicit config
+- Integration test verifies tool discovery, namespace prefixing, and call forwarding against a mock NemoClaw HTTP endpoint
+scope:
+- navra-server/src/config/agents.rs
+- navra-core/src/upstream_module.rs
+- navra-protocol/src/upstream/http.rs
+- navra-server/src/main.rs
+- navra-core/tests/
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core --test upstream_integration

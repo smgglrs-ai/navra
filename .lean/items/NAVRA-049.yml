@@ -1,0 +1,36 @@
+id: NAVRA-049
+title: PII ONNX classifier
+status: backlog
+priority: low
+effort: M
+depends_on: []
+feeds: []
+description: 'Add a dedicated PII ONNX sequence classifier to navra-safety that classifies entire text inputs as containing
+  PII or not (binary or multi-label: person, email, phone, address, etc.) using in-process ONNX inference. This complements
+  the existing token-level NER filters (ner.rs, privacy_filter.rs) by acting as a fast pre-filter: when the classifier scores
+  text below the PII threshold, expensive token-level NER inference can be skipped entirely. The classifier implements the
+  existing ContentFilter trait with a new PiiClassifier struct that loads a sequence classification ONNX model (e.g., iiiorg/piiranha-v1-detect-personal-information
+  or similar), tokenizes input, runs softmax over output logits, and returns a whole-text Finding when PII probability exceeds
+  a configurable threshold.'
+acceptance:
+- PiiClassifier struct in navra-safety/src/safety/ loads a sequence classification ONNX model from a directory (model.onnx
+  + tokenizer.json + config.json with id2label), implements ContentFilter, and returns a whole-text Finding with PII category
+  and confidence score when the classifier detects PII above the configured threshold
+- 'FilterPipeline gains an add_pii_classifier() method and an optional short-circuit path: when the classifier is present
+  and returns no PII finding, the pipeline skips subsequent NER/privacy-filter ContentFilters (regex filters still run unconditionally)'
+- load_pii_classifier(model_dir) convenience function with graceful degradation (returns None if model files are missing,
+  logs warning on load failure) and default_pii_classifier_model_dir() returning ~/.local/share/navra/models/pii-classifier/
+- 'Unit tests cover: model loading graceful degradation (missing files), softmax correctness, label map parsing from config.json
+  id2label, short-circuit logic (classifier says no-PII skips NER, classifier says PII runs NER), and multi-label output mapping
+  to PII categories'
+- 'Config integration: pii_classifier_model field in safety config section, wired in navra-server main.rs alongside existing
+  NER model loading, with navra pii download --classifier CLI subcommand to fetch the model'
+scope:
+- navra-safety/src/safety/pii_classifier.rs
+- navra-safety/src/safety/mod.rs
+- navra-server/src/config.rs
+- navra-server/src/main.rs
+- navra-server/src/cli/pii.rs
+- navra-safety/Cargo.toml
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety pii_classifier

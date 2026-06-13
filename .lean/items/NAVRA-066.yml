@@ -1,0 +1,37 @@
+id: NAVRA-066
+title: Computer use Actor trait
+status: backlog
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: Promote the skeleton `Actor` trait in `navra-modal-vision/src/actor.rs` into a fully functional computer-use
+  abstraction with at least one platform implementation (Wayland via XDG Desktop Portal + wtype/ydotool, or X11 via xdotool)
+  and wire it into the VisionModule as MCP tools (`vision_click`, `vision_type`, `vision_key`, `vision_move`). The current
+  `actor.rs` defines the trait signature, `Action` enum, `MouseButton`, `ActionResult`, `ScreenshotParams`, and `detect_platform()`,
+  but has zero implementations and is unused by any tool handler. The `vision_screen` tool bypasses the Actor entirely and
+  calls `screenshot::capture_screen()` directly. This item closes the gap so that agents can perform GUI automation actions
+  through the gateway's security stack (permissions, approval, hooks, IFC).
+acceptance:
+- At least one concrete Actor implementation exists (e.g., WaylandActor using wtype/ydotool for input and XDG Desktop Portal
+  for screenshots) and passes unit tests with a mock/stub for the subprocess calls
+- 'The VisionModule exposes new MCP tools for computer-use actions (at minimum: vision_click, vision_type, vision_key, vision_move)
+  that delegate to the Actor trait, with each tool gated by permission checks and compatible with the approval workflow'
+- The existing vision_screen tool is refactored to use Actor::perform_actions with Action::Screenshot instead of calling screenshot::capture_screen()
+  directly, preserving backward compatibility
+- A HeadlessActor (or NoopActor) implementation exists that returns ActionResult with success=false and a descriptive error,
+  used when detect_platform() returns 'headless' so the server starts gracefully without a display
+- 'All new tools follow the naming convention (vision_ prefix) and tool permission rules (approve policy for write-like actions:
+  click, type, key; allow policy for read-like actions: screenshot, move)'
+- 'Tests cover: action serialization roundtrip, permission denial for restricted agents, headless fallback behavior, and at
+  least one happy-path integration test per new tool using a FakeActor'
+scope:
+- navra-modal-vision/src/actor.rs
+- navra-modal-vision/src/tools.rs
+- navra-modal-vision/src/screenshot.rs
+- navra-modal-vision/src/lib.rs
+- navra-modal-vision/Cargo.toml
+- navra-server/src/main.rs
+- navra-server/src/config.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-modal-vision

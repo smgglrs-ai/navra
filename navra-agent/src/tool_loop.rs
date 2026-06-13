@@ -770,9 +770,8 @@ pub async fn run_tool_loop(
         // Transparent RAG: retrieve context before each model call
         if let Some(ref retriever) = config.context_retriever {
             let estimated_input_tokens = (total_input as usize).max(user_prompt.len() / 4);
-            let available = (config.context_window_tokens as usize)
-                .saturating_sub(estimated_input_tokens)
-                / 3;
+            let available =
+                (config.context_window_tokens as usize).saturating_sub(estimated_input_tokens) / 3;
             if available > 100 {
                 let context = retriever.retrieve(user_prompt, available).await;
                 if !context.is_empty() {

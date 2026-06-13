@@ -423,7 +423,10 @@ mod kani_proofs {
         if a != b {
             let a_disc = (a.integrity as u8, a.confidentiality as u8);
             let b_disc = (b.integrity as u8, b.confidentiality as u8);
-            assert_ne!(a_disc, b_disc, "distinct labels must have distinct discriminant pairs");
+            assert_ne!(
+                a_disc, b_disc,
+                "distinct labels must have distinct discriminant pairs"
+            );
         }
     }
 

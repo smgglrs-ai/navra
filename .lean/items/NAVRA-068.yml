@@ -1,0 +1,42 @@
+id: NAVRA-068
+title: Intent-based tool grouping
+status: backlog
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: Add intent-based tool grouping so that `tools/list` responses can organize tools by semantic intent (e.g., "read",
+  "write", "search", "version-control", "code-review") rather than returning a flat list. This reduces context window consumption
+  for agents with many tools by letting clients request or filter by group, and aligns with the existing `ToolAnnotations`
+  and `ToolDisclosure` infrastructure. Implementation adds an optional `group` field to `ToolAnnotations` in navra-protocol,
+  extends the `#[tool]` proc macro to accept a `group` attribute, and provides a `ToolGroupFilter` in navra-core that lets
+  agents request only specific groups via a `group` query parameter on `tools/list`.
+acceptance:
+- 'ToolAnnotations in navra-protocol includes an optional `group: Option<String>` field (serde camelCase), serialized in tools/list
+  responses and round-trip tested'
+- 'The #[tool] proc macro in navra-macros accepts an optional `group = "..."` attribute and populates the annotations field
+  on the generated ToolDefinition'
+- All built-in tool modules (navra-tools-file, navra-tools-git, navra-tools-github, navra-tools-gitlab, navra-tools-exec)
+  have group annotations assigned to their tools (e.g., file tools -> "filesystem", git tools -> "version-control", forge
+  tools -> "code-review")
+- handle_list_tools and handle_list_tools_dynamic in navra-core accept an optional group filter parameter and return only
+  tools matching the requested group when specified
+- A new ToolGroupFilter implementing the ToolFilter trait in navra-core/src/server/handlers.rs filters tools by group from
+  the CallContext or request parameters
+- 'Unit tests verify group filtering: listing all groups returns all tools, listing a specific group returns only matching
+  tools, tools without a group annotation are always included when no group filter is active'
+scope:
+- navra-protocol/src/mcp.rs (ToolAnnotations struct, add group field + tests)
+- navra-macros/src/lib.rs (ToolAttrs parsing, expand_tool codegen for group)
+- navra-core/src/server/handlers.rs (ToolGroupFilter, handle_list_tools group param)
+- navra-core/src/server/mod.rs (wire group filter support)
+- navra-core/src/server/builder.rs (builder API for group filter)
+- navra-core/src/server/tests.rs (group filtering tests)
+- 'navra-tools-file/src/tools/handlers.rs (add group annotations to all #[tool] attrs)'
+- navra-tools-git/src/tools.rs (add group annotations)
+- navra-tools-github/src/tools.rs (add group annotations)
+- navra-tools-gitlab/src/tools.rs (add group annotations)
+- navra-tools-exec/src/tools.rs (add group annotations)
+- navra-server/src/build_tools.rs (add group annotations to server-defined tools if any)
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace -q 2>&1 | tail -5

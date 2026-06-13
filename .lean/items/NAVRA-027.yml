@@ -1,0 +1,8 @@
+id: "NAVRA-027"
+title: "Kubernetes Agent Sandbox backend"
+status: planned
+priority: low
+effort: 3-5d
+depends_on: []
+feeds: []
+gate: "K8s CRD v1alpha1 stability"

@@ -1,0 +1,36 @@
+id: NAVRA-058
+title: Negative constraints in persona schema
+status: backlog
+priority: low
+effort: S
+depends_on: []
+feeds: []
+description: Add structured negative constraints to the Persona schema in navra-cognitive. Currently, personas can only express
+  positive constraints (allowed tools, heuristics, skills) while negative constraints like "never use tool X" or "never discuss
+  topic Y" are buried in free-text core_mandate strings where they are easy for models to ignore. This adds first-class `forbidden_tools`,
+  `forbidden_topics`, and `negative_constraints` fields to the Persona struct, renders them as a dedicated "Constraints" section
+  in the Weaver output, and enforces `forbidden_tools` at the ToolLoopConfig level so forbidden tools are filtered out before
+  the model sees them (hard enforcement, not just prompt-level).
+acceptance:
+- Persona struct in navra-cognitive/src/types.rs has forbidden_tools (Vec<String>), forbidden_topics (Vec<String>), and negative_constraints
+  (Vec<String>) fields, all with serde(default) so existing YAML remains backward-compatible
+- Weaver in navra-cognitive/src/weaver.rs renders non-empty negative constraint fields as a '## Constraints (Never Do)' section
+  in the cacheable prefix, placed between the core mandate and heuristics sections
+- Agent builder in navra-agent propagates forbidden_tools from the resolved persona into ToolLoopConfig as a denied_tools
+  filter that removes matching tools from the discovered tool list before model invocation
+- FastPath struct in navra-cognitive/src/fast_path.rs gains an optional excluded_tools field that is merged with persona-level
+  forbidden_tools
+- All existing persona YAML files continue to deserialize without modification (backward compatibility)
+- 'Unit tests cover: deserialization of personas with negative constraints, weaver output contains the constraints section,
+  forbidden_tools are excluded from tool discovery in the tool loop'
+scope:
+- navra-cognitive/src/types.rs
+- navra-cognitive/src/weaver.rs
+- navra-cognitive/src/fast_path.rs
+- navra-agent/src/tool_loop.rs
+- navra-agent/src/agent.rs
+- navra-agent/src/resolve.rs
+- cognitive_core/personas/
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-cognitive -p navra-agent -- --nocapture 2>&1
+    | tail -20

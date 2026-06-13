@@ -1,0 +1,32 @@
+id: NAVRA-060
+title: Operator libraries
+status: backlog
+priority: low
+effort: M
+depends_on: []
+feeds: []
+description: Add a config composition layer that lets operators install and reference reusable TOML config fragments ("libraries")
+  from a conf.d-style directory (e.g., `~/.config/navra/libraries/`). Each library file provides named permission sets, safety
+  patterns, upstream definitions, tool rules, or PII patterns that the main config.toml can reference by name or that merge
+  automatically at load time. This enables sharing curated security profiles (e.g., "hipaa-strict", "developer-readonly")
+  across teams and machines without duplicating config blocks, following the systemd drop-in pattern already familiar to the
+  target Linux desktop audience.
+acceptance:
+- Config::load scans `~/.config/navra/libraries/*.toml` (or a configurable `library_dirs` list) and deep-merges their contents
+  into the main Config before validation, with main config winning on key conflicts
+- A library TOML file can define any top-level config section (permissions, pii_patterns, upstream, models, agents) and its
+  entries are merged into the corresponding main config map/vec
+- Duplicate key conflicts (e.g., two libraries defining `permissions.hipaa`) produce a startup error with both file paths
+  in the message, unless the main config explicitly overrides the key
+- CLI subcommand `navra config list-libraries` shows installed library files with their provided keys (permission set names,
+  upstream names, pattern counts)
+- 'Unit tests cover: library discovery and merge, conflict detection, main-config-wins override, empty library dir, and invalid
+  library TOML producing a clear error'
+scope:
+- navra-server/src/config/mod.rs
+- navra-server/src/config/libraries.rs
+- navra-server/src/cli.rs
+- navra-server/src/main.rs
+- navra-server/src/config/tests.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server -- config::tests::librar

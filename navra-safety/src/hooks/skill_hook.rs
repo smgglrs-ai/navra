@@ -5,8 +5,8 @@
 //! intervention action (modify arguments, inject context, or no-op).
 
 use super::{Hook, HookDecision};
-use navra_auth::auth::CallContext;
 use async_trait::async_trait;
+use navra_auth::auth::CallContext;
 use serde::{Deserialize, Serialize};
 
 /// A single skill rule: activation predicate + intervention.
@@ -22,9 +22,16 @@ pub struct SkillRule {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Intervention {
-    InjectContext { message: String },
-    ModifyArg { key: String, value: serde_json::Value },
-    Block { reason: String },
+    InjectContext {
+        message: String,
+    },
+    ModifyArg {
+        key: String,
+        value: serde_json::Value,
+    },
+    Block {
+        reason: String,
+    },
     Noop,
 }
 
@@ -53,10 +60,7 @@ impl SkillHook {
         let Some(pattern) = pattern else {
             return true;
         };
-        let path = args
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
         if pattern.ends_with('*') {
             path.starts_with(&pattern[..pattern.len() - 1])
         } else {
@@ -93,10 +97,7 @@ impl Hook for SkillHook {
 
             match &rule.intervention {
                 Intervention::Block { reason } => {
-                    return HookDecision::Block(format!(
-                        "SkillHook '{}': {}",
-                        rule.name, reason
-                    ));
+                    return HookDecision::Block(format!("SkillHook '{}': {}", rule.name, reason));
                 }
                 Intervention::ModifyArg { key, value } => {
                     let mut modified = arguments.clone();
@@ -175,7 +176,11 @@ mod tests {
         }]);
 
         let decision = hook
-            .pre_tool_use("file_write", &json!({"path": "/home/user/file.txt"}), &test_ctx())
+            .pre_tool_use(
+                "file_write",
+                &json!({"path": "/home/user/file.txt"}),
+                &test_ctx(),
+            )
             .await;
 
         assert!(matches!(decision, HookDecision::Continue));
@@ -241,9 +246,7 @@ mod tests {
             intervention: Intervention::Noop,
         }]);
 
-        let decision = hook
-            .pre_tool_use("anything", &json!({}), &test_ctx())
-            .await;
+        let decision = hook.pre_tool_use("anything", &json!({}), &test_ctx()).await;
 
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -259,8 +262,12 @@ mod tests {
             },
         }]);
 
-        let d1 = hook.pre_tool_use("file_read", &json!({}), &test_ctx()).await;
-        let d2 = hook.pre_tool_use("git_commit", &json!({}), &test_ctx()).await;
+        let d1 = hook
+            .pre_tool_use("file_read", &json!({}), &test_ctx())
+            .await;
+        let d2 = hook
+            .pre_tool_use("git_commit", &json!({}), &test_ctx())
+            .await;
 
         assert!(matches!(d1, HookDecision::Block(_)));
         assert!(matches!(d2, HookDecision::Block(_)));

@@ -1,0 +1,41 @@
+id: NAVRA-055
+title: Branding and polish
+status: backlog
+priority: low
+effort: M
+depends_on: []
+feeds: []
+description: 'Unify branding across all surfaces: CLI startup banner, system tray identity, web UI (navra-ui), marketing site
+  (site/), docs-site (mdBook), and repo metadata (Cargo.toml descriptions, llms.txt, README). Currently the CLI prints a plain
+  "Starting navra" tracing line with no version/build info, the system tray uses generic freedesktop icon names ("security-medium")
+  instead of navra''s own logo, the site package.json still says "smgglrs-site", the site Nav/Footer show "smgglrs" rather
+  than "navra", and the web UI and marketing site use independent color token systems with no shared design language. This
+  item brings visual and textual identity into alignment and adds the small quality-of-life polish expected before a public
+  release.'
+acceptance:
+- CLI `navra serve` prints a branded startup banner showing name, version, build profile (debug/release), and listen address
+  before the first tracing line
+- System tray uses navra's own logo (assets/logo/) as its icon instead of generic freedesktop icon names, with fallback to
+  freedesktop icons when the custom icon is unavailable
+- site/ package.json name, Nav component, and Footer component reference 'navra' instead of 'smgglrs' (org name smgglrs-ai
+  in GitHub URLs is correct and stays)
+- navra-ui and site/ share a common design-token file (colors, radii, fonts) or at minimum document the intentional divergence
+  if the palettes are meant to differ
+- All 24 workspace crate Cargo.toml files have a consistent, accurate `description` field and homepage/repository metadata
+  pointing to github.com/smgglrs-ai/navra
+- docs-site book.toml authors field, README quickstart block, and llms.txt preamble are consistent with the current crate
+  count (24) and test count (2400+)
+scope:
+- navra-server/src/main.rs (startup banner, server_info)
+- navra-server/src/tray.rs (icon_name, attention_icon_name)
+- navra-server/src/cli.rs (clap about/long_about)
+- site/package.json, site/src/components/Nav.astro, site/src/components/Footer.astro, site/src/pages/index.astro
+- site/src/styles/global.css, navra-ui/src/styles/tokens.css (token alignment)
+- navra-ui/src/components/layout/AppShell.tsx (logo, title)
+- docs-site/book.toml
+- All 24 crate Cargo.toml files (description, homepage, repository)
+- Cargo.toml workspace metadata
+- llms.txt, README.md, CONTRIBUTING.md
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build -p navra-server 2>&1 | tail -1 && grep -r 'smgglrs-site'
+    site/package.json; grep -c 'description' navra-*/Cargo.toml | grep ':0$' || echo 'all crates have descriptions'

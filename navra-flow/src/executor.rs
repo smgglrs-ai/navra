@@ -11,8 +11,8 @@ use crate::validation::validate_mandate;
 use crate::verification;
 use navra_agent::signal::{AgentSignal, SignalHandle};
 use navra_agent::Agent;
-use navra_protocol::label::DataLabel;
 use navra_auth::ifc::TaintTracker;
+use navra_protocol::label::DataLabel;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -468,11 +468,9 @@ impl DagExecutor {
 
                                 // Per-node checkpoint
                                 if let Some((ref cp, ref flow_id)) = self.checkpoint {
-                                    if let Err(e) = cp.save_node(
-                                        flow_id,
-                                        &task.id,
-                                        &task_result.output,
-                                    ) {
+                                    if let Err(e) =
+                                        cp.save_node(flow_id, &task.id, &task_result.output)
+                                    {
                                         tracing::warn!(
                                             task = %task.id,
                                             error = %e,
@@ -849,8 +847,8 @@ mod tests {
 
     #[test]
     fn circuit_breaker_trips_after_threshold() {
-        let mut executor = DagExecutor::new()
-            .with_circuit_breaker(3, std::time::Duration::from_secs(60));
+        let mut executor =
+            DagExecutor::new().with_circuit_breaker(3, std::time::Duration::from_secs(60));
 
         assert!(!executor.is_circuit_open("tool_a"));
 
@@ -864,8 +862,8 @@ mod tests {
 
     #[test]
     fn circuit_breaker_resets_on_success() {
-        let mut executor = DagExecutor::new()
-            .with_circuit_breaker(2, std::time::Duration::from_secs(60));
+        let mut executor =
+            DagExecutor::new().with_circuit_breaker(2, std::time::Duration::from_secs(60));
 
         executor.record_failure("tool_b");
         executor.record_failure("tool_b");
@@ -877,8 +875,8 @@ mod tests {
 
     #[test]
     fn circuit_breaker_cooldown_expires() {
-        let mut executor = DagExecutor::new()
-            .with_circuit_breaker(2, std::time::Duration::from_millis(1));
+        let mut executor =
+            DagExecutor::new().with_circuit_breaker(2, std::time::Duration::from_millis(1));
 
         executor.record_failure("tool_c");
         executor.record_failure("tool_c");

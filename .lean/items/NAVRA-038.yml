@@ -1,0 +1,10 @@
+id: "NAVRA-038"
+title: "Incremental mailbox messages in navra-flow"
+status: planned
+priority: medium
+effort: 1-2d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-05
+description: |
+  Architectural preparation for StreamMA-style streaming communication. Add MessageBody::Step { index: u32, content: String, is_final: bool } to mailbox messages. The mpsc channels already support incremental delivery. Does not change the engine loop (agents still run to completion) — this just makes the transport ready for future streaming. StreamMA showed +7.3pp accuracy and 26.9x speedup by streaming reasoning steps, but gains are mainly for reasoning chains, not tool-use agents.

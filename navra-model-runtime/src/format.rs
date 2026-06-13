@@ -126,14 +126,20 @@ mod tests {
 
     #[test]
     fn detect_unknown() {
-        assert_eq!(ModelFormat::detect(&PathBuf::from("/models/unknown.bin")), None);
+        assert_eq!(
+            ModelFormat::detect(&PathBuf::from("/models/unknown.bin")),
+            None
+        );
     }
 
     #[test]
     fn detect_safetensors_dir() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("model-00001.safetensors"), b"").unwrap();
-        assert_eq!(ModelFormat::detect(dir.path()), Some(ModelFormat::Safetensors));
+        assert_eq!(
+            ModelFormat::detect(dir.path()),
+            Some(ModelFormat::Safetensors)
+        );
     }
 
     #[test]

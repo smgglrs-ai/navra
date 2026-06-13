@@ -1,0 +1,37 @@
+id: NAVRA-050
+title: Harness-aligned training data generation
+status: backlog
+priority: low
+effort: L
+depends_on: []
+feeds: []
+description: 'Add a training data generation pipeline that automatically converts completed agent tool-loop runs into fine-tuning
+  datasets reflecting the full navra harness context. The existing TraceExporter in navra-agent produces Hermes-format JSONL
+  but is not wired into the tool loop and lacks harness-specific metadata (persona assembly, active safety profile, permission
+  set, tool definitions available to the agent). This item bridges that gap: after each successful tool-loop run, optionally
+  emit a JSONL record that captures the assembled system prompt (persona + directives + heuristics), the available tool schema,
+  every tool call/response pair with think blocks, safety filter decisions, and approval outcomes -- producing a corpus suitable
+  for fine-tuning smaller models (Granite, Gemma) to behave as if they were operating inside the navra gateway.'
+acceptance:
+- TraceExporter.build_from_result() accepts a ToolLoopResult plus harness context (assembled system prompt, tool definitions,
+  safety profile name, permission set name) and produces a HermesTrace with all harness metadata embedded in the system message
+- 'Tool loop emits a JSONL trace file to a configurable output directory (default: $XDG_DATA_HOME/navra/traces/) when the
+  config flag trace_export is enabled, with one line per completed run'
+- PII sanitizer from the distillation pipeline is applied to all trace content before writing -- tool arguments, tool responses,
+  and assistant text are filtered through the same ContentSanitizer used by DistillationPipeline
+- 'Each trace record includes metadata fields: run_id, agent_name, persona, safety_profile, model_name, iteration_count, token_counts,
+  timestamp, and a success boolean'
+- CLI subcommand navra trace export --session <id> regenerates JSONL from stored working memory turns for a past session,
+  and navra trace stats prints corpus statistics (total traces, token distribution, tool coverage)
+- Unit tests verify roundtrip serialization, PII redaction in exported traces, and correct Hermes tag structure for multi-turn
+  tool-call sequences with think blocks
+scope:
+- navra-agent/src/trace.rs
+- navra-agent/src/tool_loop.rs
+- navra-agent/src/lib.rs
+- navra-server/src/main.rs
+- navra-server/src/config.rs
+- navra-server/src/cli.rs
+- navra-memory/src/pipeline.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-agent -- trace

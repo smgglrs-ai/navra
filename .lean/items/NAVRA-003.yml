@@ -1,0 +1,9 @@
+id: "NAVRA-003"
+title: "Paper critical fixes"
+status: done
+priority: high
+effort: 3-3d
+depends_on: []
+feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+description: |
+  All 5 critical paper fixes (C1-C2, C4-C6) already applied in prior sessions. C1: FIDES differentiation expanded (12 refs). C2: 10+ MCP gateways acknowledged. C4: Compliance reframed as infrastructure. C5: Microkernel justified with AIOS cite. C6: Narrowed to 3 contributions. C3 (external eval) is separate roadmap item.

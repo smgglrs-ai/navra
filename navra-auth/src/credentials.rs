@@ -113,13 +113,17 @@ impl CredentialStore for MappedCredentialStore {
 
         match mapping.source.as_str() {
             "keyring" => {
-                let path = mapping
-                    .path
-                    .as_deref()
-                    .ok_or_else(|| CredentialError::MissingField { label: label.to_string(), field: "path".to_string() })?;
-                let (service, user) = path.split_once('/').ok_or_else(|| {
-                    CredentialError::InvalidPath(path.to_string())
-                })?;
+                let path =
+                    mapping
+                        .path
+                        .as_deref()
+                        .ok_or_else(|| CredentialError::MissingField {
+                            label: label.to_string(),
+                            field: "path".to_string(),
+                        })?;
+                let (service, user) = path
+                    .split_once('/')
+                    .ok_or_else(|| CredentialError::InvalidPath(path.to_string()))?;
                 let entry = keyring::Entry::new(service, user)?;
                 let secret = entry.get_secret()?;
                 Ok(Secret::new(secret))
@@ -128,9 +132,12 @@ impl CredentialStore for MappedCredentialStore {
                 let var = mapping
                     .var
                     .as_deref()
-                    .ok_or_else(|| CredentialError::MissingField { label: label.to_string(), field: "var".to_string() })?;
-                let value = std::env::var(var)
-                    .map_err(|_| CredentialError::EnvNotSet(var.to_string()))?;
+                    .ok_or_else(|| CredentialError::MissingField {
+                        label: label.to_string(),
+                        field: "var".to_string(),
+                    })?;
+                let value =
+                    std::env::var(var).map_err(|_| CredentialError::EnvNotSet(var.to_string()))?;
                 Ok(Secret::new(value.into_bytes()))
             }
             other => Err(CredentialError::UnsupportedSource(other.to_string())),
@@ -145,13 +152,17 @@ impl CredentialStore for MappedCredentialStore {
 
         match mapping.source.as_str() {
             "keyring" => {
-                let path = mapping
-                    .path
-                    .as_deref()
-                    .ok_or_else(|| CredentialError::MissingField { label: label.to_string(), field: "path".to_string() })?;
-                let (service, user) = path.split_once('/').ok_or_else(|| {
-                    CredentialError::InvalidPath(path.to_string())
-                })?;
+                let path =
+                    mapping
+                        .path
+                        .as_deref()
+                        .ok_or_else(|| CredentialError::MissingField {
+                            label: label.to_string(),
+                            field: "path".to_string(),
+                        })?;
+                let (service, user) = path
+                    .split_once('/')
+                    .ok_or_else(|| CredentialError::InvalidPath(path.to_string()))?;
                 let entry = keyring::Entry::new(service, user)?;
                 entry.set_secret(secret)?;
                 Ok(())
@@ -169,13 +180,17 @@ impl CredentialStore for MappedCredentialStore {
 
         match mapping.source.as_str() {
             "keyring" => {
-                let path = mapping
-                    .path
-                    .as_deref()
-                    .ok_or_else(|| CredentialError::MissingField { label: label.to_string(), field: "path".to_string() })?;
-                let (service, user) = path.split_once('/').ok_or_else(|| {
-                    CredentialError::InvalidPath(path.to_string())
-                })?;
+                let path =
+                    mapping
+                        .path
+                        .as_deref()
+                        .ok_or_else(|| CredentialError::MissingField {
+                            label: label.to_string(),
+                            field: "path".to_string(),
+                        })?;
+                let (service, user) = path
+                    .split_once('/')
+                    .ok_or_else(|| CredentialError::InvalidPath(path.to_string()))?;
                 let entry = keyring::Entry::new(service, user)?;
                 entry.delete_credential()?;
                 Ok(())

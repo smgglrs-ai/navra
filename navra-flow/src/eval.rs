@@ -439,9 +439,13 @@ mod kani_proofs {
         let s1 = std1.powi(2) / n1.max(1) as f64;
         let s2 = std2.powi(2) / n2.max(1) as f64;
         let num = (s1 + s2).powi(2);
-        let den = s1.powi(2) / (n1.max(1) - 1).max(1) as f64
-            + s2.powi(2) / (n2.max(1) - 1).max(1) as f64;
-        if den == 0.0 { 1.0 } else { num / den }
+        let den =
+            s1.powi(2) / (n1.max(1) - 1).max(1) as f64 + s2.powi(2) / (n2.max(1) - 1).max(1) as f64;
+        if den == 0.0 {
+            1.0
+        } else {
+            num / den
+        }
     }
 
     #[kani::proof]

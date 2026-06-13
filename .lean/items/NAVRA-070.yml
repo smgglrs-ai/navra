@@ -1,0 +1,35 @@
+id: NAVRA-070
+title: WebSocket agentic loops
+status: backlog
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: Add a WebSocket-based agentic chat endpoint that runs the navra-agent ReAct tool-use loop over a persistent bidirectional
+  connection, streaming iteration events (tool_call, tool_result, thinking, text, done, error) back to the client while accepting
+  mid-loop signals (interrupt, pause, resume, follow-up prompts, approval responses) from the client. The current `/api/chat/agent`
+  endpoint uses HTTP NDJSON streaming which is unidirectional -- the client cannot send interrupts or approvals without a
+  separate HTTP call. A WebSocket endpoint consolidates the agentic loop, signal delivery, and approval resolution into a
+  single connection, enabling true interactive agent sessions from the web UI and external clients.
+acceptance:
+- A new WebSocket endpoint (e.g. /ws/agent) accepts a JSON message with prompt, session_id, persona, and max_iterations, spawns
+  a ReAct tool-use loop, and streams NDJSON events (tool_call, tool_result, thinking, text, done, error) back over the WebSocket
+  connection
+- The client can send an interrupt or terminate signal as a JSON message on the same WebSocket connection, which is delivered
+  to the running agent via SignalHandle and causes the loop to stop with an interrupted result
+- Approval requests generated during the agentic loop are forwarded to the client as WebSocket messages, and the client can
+  resolve them by sending approve/deny messages on the same connection without using a separate HTTP endpoint
+- Multi-turn conversation state is persisted via WorkingMemory (navra-memory) across messages on the same WebSocket session,
+  matching the existing /api/chat/agent behavior
+- Session authentication uses the same Bearer token check as the existing /ws MCP endpoint (handle_ws_upgrade pattern)
+- 'Unit tests verify: connection setup, event streaming for a single tool call loop, interrupt signal delivery, and approval
+  round-trip over WebSocket'
+scope:
+- navra-core/src/transport/websocket.rs
+- navra-core/src/transport/streamable/router.rs
+- navra-server/src/ui_agent.rs
+- navra-agent/src/signal.rs
+- navra-core/src/transport/mod.rs
+- navra-server/src/main.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core websocket -- --nocapture

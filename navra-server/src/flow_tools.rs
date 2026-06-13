@@ -1025,8 +1025,7 @@ async fn spawn_and_track_tasks(
             // via flow:// MCP resources (one read per specialist)
             dep_count.min(30)
         } else {
-            (ctx.budget_cfg.max_iterations / ready.len().max(1))
-                .max(10)
+            (ctx.budget_cfg.max_iterations / ready.len().max(1)).max(10)
         };
         let handle = crate::team_tools::spawn_teammate_agent(
             &spawn_ctx,

@@ -5,9 +5,9 @@
 //! `UpstreamModule::discover()`.
 
 use crate::identity::CapSigner;
-use crate::manifest::{ManifestKeyStore, ManifestSignature, ToolManifest, verify_manifest_option};
-use sha2::{Digest, Sha256};
+use crate::manifest::{verify_manifest_option, ManifestKeyStore, ManifestSignature, ToolManifest};
 use navra_protocol::ToolDefinition;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,7 +154,11 @@ impl ToolScanner {
         let mut findings = Vec::new();
         if let Some(prev) = self.previous_hashes.get(&key) {
             let changed = prev.len() != hash.len()
-                || prev.bytes().zip(hash.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) != 0;
+                || prev
+                    .bytes()
+                    .zip(hash.bytes())
+                    .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                    != 0;
             if changed {
                 findings.push(ToolFinding {
                     category: ToolThreatCategory::RugPull,
@@ -239,12 +243,15 @@ fn check_typosquatting(name: &str, known_names: &[String], threshold: usize) -> 
 
 fn normalize_confusables(s: &str) -> String {
     s.chars()
-        .filter(|c| !c.is_ascii_control() && !matches!(c,
-            '\u{0300}'..='\u{036F}' | // combining diacriticals
-            '\u{200B}'..='\u{200F}' | // zero-width chars
-            '\u{2060}'..='\u{2064}' | // invisible formatters
-            '\u{FEFF}'                // BOM
-        ))
+        .filter(|c| {
+            !c.is_ascii_control()
+                && !matches!(c,
+                    '\u{0300}'..='\u{036F}' | // combining diacriticals
+                    '\u{200B}'..='\u{200F}' | // zero-width chars
+                    '\u{2060}'..='\u{2064}' | // invisible formatters
+                    '\u{FEFF}'                // BOM
+                )
+        })
         .map(|c| match c {
             // Cyrillic → Latin homoglyphs
             '\u{0430}' => 'a', // а → a
