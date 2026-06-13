@@ -20,108 +20,8 @@ package only provides shared libraries.
 
 ## Workspace
 
-| Crate | Category | Role |
-|---|---|---|
-| `navra-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports |
-| `navra-model` | Infrastructure | Model backend trait + ONNX/OpenAI/Anthropic implementations |
-| `navra-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
-| `navra-model-runtime` | Infrastructure | Serve models with pluggable isolation (direct, Podman, OpenShell) |
-| `navra-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
-| `navra-auth` | Infrastructure | Auth, permissions, identity, IFC, upstream tool scanning (no ML deps) |
-| `navra-safety` | Infrastructure | ML safety filters (NER, PII), hooks pipeline, integrity monitoring |
-| `navra-security` | Infrastructure | Facade re-exporting navra-auth + navra-safety |
-| `navra-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
-| `navra-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
-| `navra-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, deterministic replay, standalone binary (`Dockerfile.agent`) |
-| `navra-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation, hop limits, provenance tracking |
-| `navra-core` | Infrastructure | Server, module trait, session, transport, Prometheus metrics, OTel traces, re-exports |
-| `navra-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
-| `navra-tools-git` | Tool | Git tools (status, diff, log, branch, commit, push, pull, fetch) |
-| `navra-tools-exec` | Tool | Command execution inside OpenShell sandboxes |
-| `navra-rag` | Context enrichment | Hybrid FTS5+vector search (RRF fusion), breadcrumb chunking, cross-encoder reranking (batched), confidence gating |
-| `navra-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
-| `navra-modal-vision` | Modality | Image/screen understanding (GPU tier) |
-| `navra-macros` | Dev tooling | `#[tool]` proc macro for generating tool definitions from functions |
-| `navra-tools-github` | Tool | GitHub forge tools (PR create/list/view, issue create/list/comment) via `gh` CLI |
-| `navra-tools-gitlab` | Tool | GitLab forge tools (MR, issues) via `glab` CLI |
-| `navra-server` | Binary | CLI, config, module wiring, systemd, tray, Prometheus /metrics (binary: `navra`) |
-| `benchmarks` | Dev tooling | Criterion performance benchmarks |
-
-### Dependency layering
-
-```
-navra-protocol          (no navra deps)
-navra-model-hub         (no navra deps)
-navra-model-runtime     (no navra deps)
-navra-responses         (no navra deps)
-navra-cognitive         (no navra deps)
-navra-macros            (no navra deps, proc-macro)
-    ↓
-navra-model             (responses)
-    ↓
-navra-auth              (protocol, NO ML deps)
-    ↓
-navra-safety            (auth + protocol + model, HAS ort/tokenizers)
-navra-security          (facade: auth + safety)
-    ↓
-navra-core              (protocol + model + auth       SERVER
-                           + safety)
-    ↓
-navra-memory            (core + model, opt: rag)       PERSISTENCE
-navra-agent             (protocol + model + auth       CLIENT
-                           + safety + cognitive)
-navra-tools-file ───┐
-navra-tools-git  ───┤
-navra-tools-exec ───┼── (core, exec also: model-runtime)
-navra-rag        ───┤
-navra-modal-*    ───┘── (core or core + auth)
-    ↓
-navra-flow              (agent + cognitive + protocol  ORCHESTRATION
-                           + model + auth + safety)
-    ↓
-navra-server            (all + hub + runtime)
-```
-
-## Architecture
-
-navra is an MCP gateway that sits between AI agents and local
-resources. It aggregates built-in modules and upstream MCP servers
-behind a unified security layer.
-
-```
-AI Agent (Claude Code, etc.)
-    |
-    | MCP Streamable HTTP + SSE (Unix socket or TCP)
-    v
-navra-server / navra (gateway)
-    |-- Auth (BLAKE3 tokens, OAuth 2.0, capability delegation)
-    |-- Permission engine (path ACLs, tool rules, Cedar)
-    |-- Hook pipeline (pre/post tool-call)
-    |-- Safety filters (regex + ML + NER)
-    |-- Upstream tool scanning (8 threat categories)
-    |-- Cognitive file integrity monitoring
-    |-- Model proxy (/v1/chat/completions → Ollama, safety-filtered)
-    |-- Built-in modules (file, git, exec, rag, voice, vision, github)
-    |-- Upstream MCP servers (proxied, safety-filtered, scanned)
-    |-- Prometheus /metrics + OTel traces
-    |-- Discovery (AID, mDNS, MCP registry)
-    v
-Desktop (D-Bus notifications, system tray, systemd)
-```
-
-## Key Design Decisions
-
-- **Gateway, not framework**: navra enforces security at the
-  infrastructure layer. Orchestration belongs in the agent.
-- **Module trait**: All capabilities are modules implementing
-  `Module` trait. Upstream MCP servers are wrapped in `UpstreamModule`.
-- **Deny-wins ACLs**: Path deny rules always beat allow rules.
-  Canonicalization before ACL check prevents traversal.
-- **Safety is a hook**: Content filtering runs as `SafetyHook` in
-  the hook pipeline, not hardcoded in the request path.
-- **In-process models**: Small ONNX models (safety, embeddings)
-  load directly into the navra process. No external dependencies
-  for CPU tier.
+24-crate Rust workspace. See `DESIGN.md` for the full crate table,
+dependency layering, architecture diagrams, and design decisions.
 
 ## Agent Workflow (MANDATORY)
 
@@ -295,81 +195,38 @@ Key sections: `[server]`, `[modules.*]`, `[models.*]`, `[[agents]]`,
 
 See DESIGN.md for full config reference.
 
-## Related Projects
-
-- **Voice-first local assistant**: Combining navra (secure tools)
-  + navra-flow (orchestration) + local models.
-- **OpenShell** (Red Hat/NVIDIA): Secure sandbox platform for
-  autonomous agents. navra integrates as the tool access layer
-  inside OpenShell sandboxes. See `OPENSHELL.md` for design.
-
 ## Roadmap
-
-Two files work together:
 
 - **`roadmap.json`** — Machine-readable dependency graph. Every work
   item has an id, priority, status, dependencies, gates, and feeds.
-  Use this to determine what to work on next.
-- **`ROADMAP.md`** — Human-readable context. Phase descriptions,
-  design rationale, historical log. Read this for the *why* behind
-  an item. Never duplicate content between the two files.
+- **`ROADMAP.md`** — Human-readable context, design rationale.
+  Never duplicate content between the two files.
 
 ### Picking next work
 
-Parse `roadmap.json` to find actionable items:
+Parse `roadmap.json`: status == "pending", no uncleared gate,
+all depends_on completed. Sort by priority then effort.
 
-```python
-# Item is actionable when:
-# 1. status == "pending" (not completed, not parking_lot)
-# 2. No gate (or gate has cleared)
-# 3. All depends_on items have status == "completed"
-# Sort by: priority (P0 > P1 > P2 > P3), then effort (smallest first)
-```
-
-When starting work on an item, set its status to `"in_progress"`.
-When done, set it to `"completed"`. Commit the JSON change with
-the feature commit.
+Set status to `"in_progress"` when starting, `"completed"` when
+done. Commit the JSON change with the feature commit.
 
 ### After a tech watch
 
-New items from tech watches get `TW` prefix IDs (TW1, TW2, ...).
-Add them to both files: JSON for the graph, ROADMAP.md dependency
-graph section for the chain placement and ASCII diagram.
-
-### Strategic Priorities (2026-06-02)
-
-The code is ahead of the evidence. Pivot from building features to
-proving what's built.
-
-**Tier 1 — Prove the claims (June–July)**
-1. `11n` model-runtime dimension refactor — technical debt, unblocks backends
-2. `TW1` Benchmark OpenAI privacy-filter on 268V NPU — S7 eval baseline
-3. `TW2` Evaluate Glasswing adversarial harness — C3 eval methodology
-4. `13a` Paper fixes — FIDES differentiation, gateway positioning
-5. `TW6` Cedar OWASP policies — 10a paper evidence
-6. `C3` External eval on 3+ OSS projects — statistical significance
-7. `10a` Security paper — flagship, submit to ArtSec/USENIX workshop
-
-**Tier 2 — Close gaps (July–August)**
-8. `9aa` MCP 2026-07-28 default flip — gated on July 28 final spec
-9. `U3` GitLab forge module — enterprise reach
-10. `15a`+`15b` Rendra app MVP — demo-able end-user experience
-
-**Tier 3 — Ecosystem (Q3–Q4)**
-11. First external user deployment
-12. Community docs + getting started guide
-13. `10b` Persona orchestration paper
-
-Everything else is parking lot unless it directly supports a tier 1–2 item.
+New items get `TW` prefix IDs. Add to both roadmap.json and
+ROADMAP.md dependency graph section.
 
 ## Reference Documents
 
-- `DESIGN.md` — Full architecture, protocol, security model, config reference
-- `TESTING.md` — Test prerequisites, running tests, crate test counts (2400+)
-- `ROADMAP.md` — Phased development plan, dependency graph, execution waves
-- `roadmap.json` — Machine-readable dependency graph (60 items, queryable)
-- `MODELS.md` — Model integration architecture, CPU/GPU tiers, hardware profiles
-- `DISCOVERY.md` — Agent/tool discovery landscape (AID, A2A, MCP Server Cards)
-- `OPENSHELL.md` — OpenShell integration: identity federation, A2A mesh, gRPC modules
-- `docs/acp.md` — ACP v0.2.0 implementation: endpoints, security model, differentiators
-- `docs/mcp-tunnels.md` — MCP tunnel compatibility (Anthropic + OpenAI)
+- `DESIGN.md` — Crate table, dependency layering, architecture,
+  security model, config reference
+- `TESTING.md` — Test prerequisites, running tests, crate counts (2400+)
+- `.lean/items/*.yml` — Work items (source of truth, 71 items)
+- `.lean/plan.yml` — Generated index (do not edit, regenerate with `bash ~/.claude/lean/scripts/generate-plan.sh`)
+- `MODELS.md` — Model tiers, hardware profiles
+- `DISCOVERY.md` — AID, A2A, MCP Server Cards
+- `OPENSHELL.md` — OpenShell integration
+- `docs/acp.md` — ACP v0.2.0 implementation
+- `docs/mcp-tunnels.md` — MCP tunnel compatibility
+- `docs/ecosystem-positioning.md` — Competitive landscape, *Claw analysis
+- `docs/review-flows.md` — DAG-based review and improvement flows
+- `docs/pii-handling.md` — PII pipeline design (regex, NER, pseudonymization, GDPR)

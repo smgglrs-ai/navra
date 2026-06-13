@@ -18,49 +18,64 @@ of origin.
 
 ## Crate Structure
 
-See CLAUDE.md for the full 20-crate workspace table. Summary:
+24-crate workspace (23 navra-* + benchmarks).
+
+| Crate | Category | Role |
+|---|---|---|
+| `navra-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports (stdio/HTTP/SSE) |
+| `navra-model` | Infrastructure | Model backend trait + ONNX/OpenAI/Anthropic implementations |
+| `navra-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
+| `navra-model-runtime` | Infrastructure | Serve models with pluggable isolation (direct, Podman, OpenShell) |
+| `navra-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
+| `navra-auth` | Infrastructure | Auth, permissions, identity, IFC, upstream tool scanning (no ML deps) |
+| `navra-safety` | Infrastructure | ML safety filters (NER, PII), hooks pipeline, integrity monitoring |
+| `navra-security` | Infrastructure | Facade re-exporting navra-auth + navra-safety |
+| `navra-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
+| `navra-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
+| `navra-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, deterministic replay, standalone binary (`Dockerfile.agent`) |
+| `navra-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation, hop limits, provenance tracking |
+| `navra-core` | Infrastructure | Server, module trait, session, transport, Prometheus metrics, OTel traces, re-exports |
+| `navra-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
+| `navra-tools-git` | Tool | Git tools (status, diff, log, branch, commit, push, pull, fetch) |
+| `navra-tools-exec` | Tool | Command execution inside OpenShell sandboxes |
+| `navra-tools-github` | Tool | GitHub forge tools (PR create/list/view, issue create/list/comment) via `gh` CLI |
+| `navra-tools-gitlab` | Tool | GitLab forge tools (MR, issues) via `glab` CLI |
+| `navra-rag` | Context enrichment | Hybrid FTS5+vector search (RRF fusion), breadcrumb chunking, cross-encoder reranking (batched), confidence gating |
+| `navra-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
+| `navra-modal-vision` | Modality | Image/screen understanding (GPU tier) |
+| `navra-macros` | Dev tooling | `#[tool]` proc macro for generating tool definitions from functions |
+| `navra-server` | Binary | CLI, config, module wiring, systemd, tray, Prometheus /metrics (binary: `navra`) |
+| `benchmarks` | Dev tooling | Criterion performance benchmarks |
+
+### Dependency layering
 
 ```
-navra/
-├── navra-protocol       MCP/A2A/JSON-RPC types, upstream transports
-├── navra-model          Model backend trait + ONNX/OpenAI/Anthropic impls
-├── navra-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
-├── navra-model-runtime  Serve models (direct, Podman, OpenShell)
-├── navra-responses      Open Responses API types (spec-compliant)
-├── navra-security       Auth, permissions, IFC, trusted paths, safety, hooks
-├── navra-cognitive       Persona/directive/heuristic YAML loader + prompt weaver
-├── navra-memory         Working memory + knowledge store (FTS5)
-├── navra-agent          Client SDK: agent builder, MCP client, tool-use loop
-├── navra-flow           Declarative multi-agent flows with handoff routing
-├── navra-core           Server, module trait, session, transport
-├── navra-tools-file     File tools (FTS5, file I/O)
-├── navra-tools-git      Git tools (status, diff, log, branch, commit)
-├── navra-tools-exec     Command execution inside OpenShell sandboxes
-├── navra-rag            Vector search, sqlite-vec, semantic chunking
-├── navra-modal-voice    Speech I/O (ASR + TTS via ONNX)
-├── navra-modal-vision   Image/screen understanding (GPU tier)
-├── navra-macros         #[tool] proc macro for tool definition generation
-├── navra-server         Binary: CLI, config, module wiring (navra)
-└── benchmarks             Criterion performance benchmarks
+navra-protocol          (no navra deps)
+navra-model-hub         (no navra deps)
+navra-model-runtime     (no navra deps)
+navra-responses         (no navra deps)
+navra-cognitive         (no navra deps)
+navra-macros            (no navra deps, proc-macro)
+    ↓
+navra-model             (responses)
+    ↓
+navra-auth              (protocol, NO ML deps)
+    ↓
+navra-safety            (auth + protocol + model, HAS ort/tokenizers)
+navra-security          (facade: auth + safety)
+    ↓
+navra-core              (protocol + model + auth + safety)
+    ↓
+navra-memory            (core + model, opt: rag)
+navra-agent             (protocol + model + auth + safety + cognitive)
+navra-tools-*           (core, exec also: model-runtime)
+navra-rag               (core)
+navra-modal-*           (core or core + auth)
+    ↓
+navra-flow              (agent + cognitive + protocol + model + auth + safety)
+    ↓
+navra-server            (all + hub + runtime)
 ```
-
-| Crate | Role |
-|-------|------|
-| `navra-protocol` | MCP/A2A/JSON-RPC types, upstream client with stdio/HTTP/SSE + resilient transports |
-| `navra-model` | Model backend trait with ONNX (in-process), OpenAI-compatible, and Anthropic (direct + Vertex AI) implementations |
-| `navra-model-hub` | Pull and cache models from OCI, HuggingFace, and Ollama registries with content-addressed storage |
-| `navra-model-runtime` | Serve models with pluggable isolation: direct (llama-server), Podman (rootless container), OpenShell (gRPC sandbox) |
-| `navra-security` | BLAKE3 token auth, capability tokens (CBOR+Ed25519), DID:key identity, path ACLs, per-tool rules, IFC with trusted paths, safety filters, hook pipeline, approval store, D-Bus notifier, process table, rate limiting |
-| `navra-agent` | Client SDK for building agents: Agent builder, McpClient (IFC taint tracking), ReAct tool-use loop |
-| `navra-flow` | Declarative multi-agent flow engine: directed graph of agents, handoff-based routing, TOML config |
-| `navra-core` | MCP server (JSON-RPC 2.0, Streamable HTTP + SSE), Module trait, session store, IFC value store |
-| `navra-tools-file` | File tools, SQLite FTS5 index, file I/O with path security |
-| `navra-tools-git` | Git tools (`git_status`, `git_diff`, `git_log`, `git_branch`, `git_commit`) |
-| `navra-rag` | Vector search with sqlite-vec, semantic chunking for context enrichment |
-| `navra-modal-voice` | Speech I/O: ASR (Whisper) + TTS via ONNX models |
-| `navra-modal-vision` | Image/screen understanding (GPU tier) |
-| `navra-responses` | Open Responses API types — spec-compliant, no client, no runtime |
-| `navra-server` | Binary: CLI, config, module wiring, model hub/runtime integration, systemd, system tray |
 
 ## Architecture
 
