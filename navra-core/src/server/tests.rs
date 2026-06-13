@@ -29,6 +29,10 @@ fn test_ctx() -> CallContext {
     CallContext::new(test_agent(), "test-session")
 }
 
+fn test_builder() -> McpServerBuilder {
+    McpServer::builder().allow_anonymous()
+}
+
 // A test module providing one tool.
 struct TestModule;
 
@@ -61,7 +65,7 @@ const GATEWAY_TOOLS: usize = 3;
 
 #[test]
 fn builder_defaults() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     assert_eq!(server.name, "navra");
     // Only gateway tools (navra_var_list, navra_var_inspect, navra_var_drop)
     assert_eq!(server.tool_count(), GATEWAY_TOOLS);
@@ -69,10 +73,7 @@ fn builder_defaults() {
 
 #[test]
 fn builder_with_name_and_version() {
-    let server = McpServer::builder()
-        .name("my-server")
-        .version("2.0.0")
-        .build();
+    let server = test_builder().name("my-server").version("2.0.0").build();
     let info = server.server_info();
     assert_eq!(info.name, "my-server");
     assert_eq!(info.version.unwrap(), "2.0.0");
@@ -80,7 +81,7 @@ fn builder_with_name_and_version() {
 
 #[test]
 fn register_tool_and_list() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |args, _ctx| {
             Box::pin(async move { CallToolResult::text(format!("echo: {args}")) })
         })
@@ -93,7 +94,7 @@ fn register_tool_and_list() {
 
 #[test]
 fn register_module() {
-    let server = McpServer::builder().module(TestModule).build();
+    let server = test_builder().module(TestModule).build();
 
     let result = server.handle_list_tools(&test_agent(), &Default::default());
     assert_eq!(result.tools.len(), 1 + GATEWAY_TOOLS);
@@ -126,7 +127,7 @@ fn register_multiple_modules() {
         }
     }
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .module(TestModule)
         .module(AnotherModule)
         .build();
@@ -162,7 +163,7 @@ fn duplicate_tool_name_panics() {
         }
     }
 
-    McpServer::builder()
+    test_builder()
         .module(TestModule)
         .module(DuplicateModule)
         .build();
@@ -170,7 +171,7 @@ fn duplicate_tool_name_panics() {
 
 #[tokio::test]
 async fn call_module_tool() {
-    let server = McpServer::builder().module(TestModule).build();
+    let server = test_builder().module(TestModule).build();
 
     let result = server
         .handle_call_tool(
@@ -193,10 +194,10 @@ async fn call_module_tool() {
 #[test]
 fn capabilities_reflect_tools() {
     // Gateway tools are always registered, so tools capability is always present
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     assert!(server.capabilities().tools.is_some());
 
-    let with_tool = McpServer::builder()
+    let with_tool = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("ok") })
         })
@@ -206,7 +207,7 @@ fn capabilities_reflect_tools() {
 
 #[tokio::test]
 async fn call_registered_tool() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |args, _ctx| {
             Box::pin(async move {
                 let msg = args
@@ -238,7 +239,7 @@ async fn call_registered_tool() {
 
 #[tokio::test]
 async fn call_unknown_tool() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server
         .handle_call_tool(
             CallToolParams {
@@ -254,7 +255,7 @@ async fn call_unknown_tool() {
 
 #[test]
 fn handle_initialize_creates_session() {
-    let server = McpServer::builder().name("test").build();
+    let server = test_builder().name("test").build();
     let params = crate::protocol::InitializeParams {
         protocol_version: "2026-07-28".to_string(),
         capabilities: Default::default(),
@@ -274,7 +275,7 @@ fn handle_initialize_creates_session() {
 
 #[test]
 fn handle_initialize_rejects_empty_protocol_version() {
-    let server = McpServer::builder().name("test").build();
+    let server = test_builder().name("test").build();
     let params = crate::protocol::InitializeParams {
         protocol_version: "".to_string(),
         capabilities: Default::default(),
@@ -291,7 +292,7 @@ fn handle_initialize_rejects_empty_protocol_version() {
 
 #[test]
 fn handle_initialize_rejects_empty_client_name() {
-    let server = McpServer::builder().name("test").build();
+    let server = test_builder().name("test").build();
     let params = crate::protocol::InitializeParams {
         protocol_version: "2026-07-28".to_string(),
         capabilities: Default::default(),
@@ -308,7 +309,7 @@ fn handle_initialize_rejects_empty_client_name() {
 
 #[tokio::test]
 async fn safety_filter_redacts_secrets() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |args, _ctx| {
             Box::pin(async move {
                 let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
@@ -341,7 +342,7 @@ async fn safety_filter_redacts_secrets() {
 
 #[tokio::test]
 async fn safety_filter_blocks_when_configured() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |args, _ctx| {
             Box::pin(async move {
                 let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
@@ -367,7 +368,7 @@ async fn safety_filter_blocks_when_configured() {
 
 #[tokio::test]
 async fn no_safety_profile_passes_through() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("AKIAIOSFODNN7EXAMPLE") })
         })
@@ -408,7 +409,7 @@ fn greeting_prompt_def() -> crate::protocol::PromptDefinition {
 }
 
 fn greeting_prompt_handler() -> PromptHandler {
-    Arc::new(|args: HashMap<String, String>| {
+    Arc::new(|args: HashMap<String, String>, _ctx| {
         Box::pin(async move {
             let name = args
                 .get("name")
@@ -444,7 +445,7 @@ impl Module for PromptModule {
 
 #[test]
 fn register_module_with_prompts() {
-    let server = McpServer::builder().module(PromptModule).build();
+    let server = test_builder().module(PromptModule).build();
 
     assert_eq!(server.prompt_count(), 1);
     let result = server.handle_list_prompts(&test_agent(), &Default::default());
@@ -454,7 +455,7 @@ fn register_module_with_prompts() {
 
 #[tokio::test]
 async fn call_registered_prompt() {
-    let server = McpServer::builder().module(PromptModule).build();
+    let server = test_builder().module(PromptModule).build();
 
     let result = server
         .handle_get_prompt(
@@ -463,6 +464,7 @@ async fn call_registered_prompt() {
                 arguments: HashMap::from([("name".to_string(), "Alice".to_string())]),
             },
             &test_agent(),
+            "test-session",
         )
         .await;
 
@@ -476,7 +478,7 @@ async fn call_registered_prompt() {
 
 #[tokio::test]
 async fn call_unknown_prompt() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server
         .handle_get_prompt(
             crate::protocol::GetPromptParams {
@@ -484,6 +486,7 @@ async fn call_unknown_prompt() {
                 arguments: HashMap::new(),
             },
             &test_agent(),
+            "test-session",
         )
         .await;
 
@@ -493,10 +496,10 @@ async fn call_unknown_prompt() {
 
 #[test]
 fn capabilities_reflect_prompts() {
-    let empty = McpServer::builder().build();
+    let empty = test_builder().build();
     assert!(empty.capabilities().prompts.is_none());
 
-    let with_prompt = McpServer::builder().module(PromptModule).build();
+    let with_prompt = test_builder().module(PromptModule).build();
     assert!(with_prompt.capabilities().prompts.is_some());
 }
 
@@ -516,7 +519,7 @@ fn duplicate_prompt_name_panics() {
         }
     }
 
-    McpServer::builder()
+    test_builder()
         .module(PromptModule)
         .module(DuplicatePromptModule)
         .build();
@@ -535,7 +538,7 @@ fn info_resource_def() -> crate::protocol::ResourceDefinition {
 }
 
 fn info_resource_handler() -> ResourceHandler {
-    Arc::new(|uri: String| {
+    Arc::new(|uri: String, _ctx| {
         Box::pin(async move {
             crate::protocol::ReadResourceResult {
                 contents: vec![crate::protocol::ResourceContent {
@@ -565,9 +568,9 @@ impl Module for ResourceModule {
 
 #[test]
 fn register_module_with_resources() {
-    let server = McpServer::builder().module(ResourceModule).build();
+    let server = test_builder().module(ResourceModule).build();
 
-    let base_count = McpServer::builder().build().resource_count();
+    let base_count = test_builder().build().resource_count();
     assert_eq!(server.resource_count(), base_count + 1);
     let result = server.handle_list_resources(&test_agent(), &Default::default());
     assert!(result
@@ -578,7 +581,7 @@ fn register_module_with_resources() {
 
 #[tokio::test]
 async fn read_registered_resource() {
-    let server = McpServer::builder().module(ResourceModule).build();
+    let server = test_builder().module(ResourceModule).build();
 
     let result = server
         .handle_read_resource(
@@ -586,6 +589,7 @@ async fn read_registered_resource() {
                 uri: "info://server/status".to_string(),
             },
             &test_agent(),
+            "test-session",
         )
         .await;
 
@@ -595,13 +599,14 @@ async fn read_registered_resource() {
 
 #[tokio::test]
 async fn read_unknown_resource() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server
         .handle_read_resource(
             crate::protocol::ReadResourceParams {
                 uri: "info://nonexistent".to_string(),
             },
             &test_agent(),
+            "test-session",
         )
         .await;
 
@@ -612,10 +617,10 @@ async fn read_unknown_resource() {
 #[test]
 fn capabilities_reflect_resources() {
     // Kernel resources are always registered, so resources capability is always present
-    let empty = McpServer::builder().build();
+    let empty = test_builder().build();
     assert!(empty.capabilities().resources.is_some());
 
-    let with_resource = McpServer::builder().module(ResourceModule).build();
+    let with_resource = test_builder().module(ResourceModule).build();
     assert!(with_resource.capabilities().resources.is_some());
 }
 
@@ -635,7 +640,7 @@ fn duplicate_resource_uri_panics() {
         }
     }
 
-    McpServer::builder()
+    test_builder()
         .module(ResourceModule)
         .module(DuplicateResourceModule)
         .build();
@@ -645,7 +650,7 @@ fn duplicate_resource_uri_panics() {
 
 #[test]
 fn kernel_resources_always_registered() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server.handle_list_resources(&test_agent(), &Default::default());
     let uris: Vec<&str> = result.resources.iter().map(|r| r.uri.as_str()).collect();
     assert!(uris.contains(&"navra://proc"));
@@ -656,13 +661,14 @@ fn kernel_resources_always_registered() {
 
 #[tokio::test]
 async fn kernel_resource_proc_returns_json() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server
         .handle_read_resource(
             crate::protocol::ReadResourceParams {
                 uri: "navra://proc".to_string(),
             },
             &test_agent(),
+            "test-session",
         )
         .await
         .unwrap();
@@ -677,7 +683,7 @@ async fn kernel_resource_proc_returns_json() {
 
 #[tokio::test]
 async fn kernel_resource_proc_shows_active_agents() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     server
         .process_table()
         .record_call("test-agent", "dev", None, Some(1), "file_read");
@@ -688,6 +694,7 @@ async fn kernel_resource_proc_shows_active_agents() {
                 uri: "navra://proc".to_string(),
             },
             &test_agent(),
+            "test-session",
         )
         .await
         .unwrap();
@@ -700,13 +707,14 @@ async fn kernel_resource_proc_shows_active_agents() {
 
 #[tokio::test]
 async fn kernel_resource_ifc_labels_returns_json() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server
         .handle_read_resource(
             crate::protocol::ReadResourceParams {
                 uri: "navra://ifc/labels".to_string(),
             },
             &test_agent(),
+            "test-session",
         )
         .await
         .unwrap();
@@ -716,13 +724,14 @@ async fn kernel_resource_ifc_labels_returns_json() {
 
 #[tokio::test]
 async fn kernel_resource_audit_recent_returns_json() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server
         .handle_read_resource(
             crate::protocol::ReadResourceParams {
                 uri: "navra://audit/recent".to_string(),
             },
             &test_agent(),
+            "test-session",
         )
         .await
         .unwrap();
@@ -732,7 +741,7 @@ async fn kernel_resource_audit_recent_returns_json() {
 
 #[test]
 fn kernel_resource_templates_registered() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server.handle_list_resource_templates(&test_agent(), &Default::default());
     let templates: Vec<&str> = result
         .resource_templates
@@ -745,13 +754,14 @@ fn kernel_resource_templates_registered() {
 
 #[tokio::test]
 async fn kernel_resource_template_taint_matches() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server
         .handle_read_resource(
             crate::protocol::ReadResourceParams {
                 uri: "navra://proc/test-agent/taint".to_string(),
             },
             &test_agent(),
+            "test-session",
         )
         .await;
     assert!(result.is_ok());
@@ -765,13 +775,14 @@ async fn kernel_resource_template_taint_matches() {
 
 #[tokio::test]
 async fn kernel_resource_template_capabilities_matches() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server
         .handle_read_resource(
             crate::protocol::ReadResourceParams {
                 uri: "navra://proc/my-agent/capabilities".to_string(),
             },
             &test_agent(),
+            "test-session",
         )
         .await;
     assert!(result.is_ok());
@@ -783,7 +794,7 @@ async fn kernel_resource_template_capabilities_matches() {
 async fn tool_permissions_deny_blocks_tool() {
     use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("should not reach") })
         })
@@ -823,7 +834,7 @@ async fn tool_permissions_deny_blocks_tool() {
 async fn tool_permissions_allow_passes_through() {
     use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("reached") })
         })
@@ -861,7 +872,7 @@ async fn tool_permissions_allow_passes_through() {
 async fn tool_permissions_approve_returns_approval_required() {
     use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("should not reach") })
         })
@@ -900,7 +911,7 @@ async fn tool_permissions_approve_returns_approval_required() {
 #[tokio::test]
 async fn no_tool_permissions_allows_all() {
     // No tool_permissions registered at all — everything should pass
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("ok") })
         })
@@ -949,7 +960,7 @@ fn cap_ctx(tools: Vec<&str>) -> CallContext {
 
 #[tokio::test]
 async fn cap_token_allows_matching_tool() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("ok") })
         })
@@ -971,7 +982,7 @@ async fn cap_token_allows_matching_tool() {
 
 #[tokio::test]
 async fn cap_token_allows_glob_matching_tool() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("ok") })
         })
@@ -993,7 +1004,7 @@ async fn cap_token_allows_glob_matching_tool() {
 
 #[tokio::test]
 async fn cap_token_denies_unmatched_tool() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("should not reach") })
         })
@@ -1025,7 +1036,7 @@ async fn cap_token_bypasses_tool_permissions() {
     // tool glob should allow it (cap path takes priority).
     use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("ok") })
         })
@@ -1076,7 +1087,12 @@ async fn dispatch_request(
 
 /// Helper to initialize a session and return (server, session_id).
 fn init_test_session() -> (std::sync::Arc<super::McpServer>, String) {
-    let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
+    let server = std::sync::Arc::new(
+        super::McpServer::builder()
+            .allow_anonymous()
+            .name("test")
+            .build(),
+    );
     let params = crate::protocol::InitializeParams {
         protocol_version: "2026-07-28".to_string(),
         capabilities: Default::default(),
@@ -1172,6 +1188,7 @@ async fn dispatch_unknown_method_returns_method_not_found() {
 async fn dispatch_without_session_returns_error_legacy() {
     let server = std::sync::Arc::new(
         super::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .mcp_version("2025-03-26")
             .build(),
@@ -1184,14 +1201,24 @@ async fn dispatch_without_session_returns_error_legacy() {
 
 #[tokio::test]
 async fn dispatch_without_session_succeeds_stateless() {
-    let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
+    let server = std::sync::Arc::new(
+        super::McpServer::builder()
+            .allow_anonymous()
+            .name("test")
+            .build(),
+    );
     let resp = dispatch_request(&server, "tools/list", None, None).await;
     assert!(resp.error.is_none());
 }
 
 #[tokio::test]
 async fn dispatch_initialize_does_not_require_session() {
-    let server = std::sync::Arc::new(super::McpServer::builder().name("test").build());
+    let server = std::sync::Arc::new(
+        super::McpServer::builder()
+            .allow_anonymous()
+            .name("test")
+            .build(),
+    );
     let resp = dispatch_request(
         &server,
         "initialize",
@@ -1215,6 +1242,7 @@ async fn dispatch_initialize_does_not_require_session() {
 fn init_test_session_with_modules() -> (std::sync::Arc<super::McpServer>, String) {
     let server = std::sync::Arc::new(
         super::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .module(TestModule)
             .module(PromptModule)
@@ -1458,7 +1486,7 @@ fn write_tool_def() -> ToolDefinition {
 #[tokio::test]
 async fn ifc_deny_write_after_untrusted_read() {
     // Build server with IFC deny policy and both read + write tools
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async {
                 // Simulate reading external file — handler returns trusted,
@@ -1513,7 +1541,7 @@ async fn ifc_deny_write_after_untrusted_read() {
 #[tokio::test]
 async fn ifc_allow_write_without_taint() {
     // No prior read — session is clean, write should succeed
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(write_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("written") })
         })
@@ -1536,7 +1564,7 @@ async fn ifc_allow_write_without_taint() {
 #[tokio::test]
 async fn ifc_no_policy_allows_tainted_write() {
     // No IFC policy configured — tainted writes pass through
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(write_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("written") })
         })
@@ -1561,7 +1589,7 @@ async fn ifc_no_policy_allows_tainted_write() {
 #[tokio::test]
 async fn ifc_read_tool_auto_labels_untrusted() {
     // file_read output should be auto-labeled as Untrusted
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("file data") })
         })
@@ -1589,7 +1617,7 @@ async fn ifc_read_tool_auto_labels_untrusted() {
 #[tokio::test]
 async fn ifc_trusted_path_keeps_trusted_label() {
     // file_read of a trusted path should stay Trusted
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("my code") })
         })
@@ -1613,7 +1641,7 @@ async fn ifc_trusted_path_keeps_trusted_label() {
 #[tokio::test]
 async fn ifc_untrusted_path_still_labeled_untrusted() {
     // file_read of a non-trusted path should be Untrusted
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("external data") })
         })
@@ -1637,7 +1665,7 @@ async fn ifc_untrusted_path_still_labeled_untrusted() {
 #[tokio::test]
 async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
     // file_read without a path argument should default to Untrusted
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("data") })
         })
@@ -1661,7 +1689,7 @@ async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
 #[tokio::test]
 async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
     // Full flow: read trusted path → session stays clean → write succeeds
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("my code") })
         })
@@ -1710,7 +1738,7 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
 async fn hook_safety_filter_via_pipeline() {
     use crate::hooks::SafetyHook;
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |args, _ctx| {
             Box::pin(async move {
                 let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
@@ -1763,7 +1791,7 @@ async fn hook_blocks_tool_call() {
         }
     }
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("should not reach") })
         })
@@ -1793,7 +1821,7 @@ async fn hook_blocks_tool_call() {
 #[tokio::test]
 async fn legacy_safety_filter_still_works_without_hooks() {
     // When no hooks are registered, safety_profile() still works via legacy path
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |args, _ctx| {
             Box::pin(async move {
                 let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
@@ -1827,7 +1855,7 @@ async fn legacy_safety_filter_still_works_without_hooks() {
 
 #[tokio::test]
 async fn paused_server_rejects_tool_calls() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("should not reach") })
         })
@@ -1858,7 +1886,7 @@ async fn paused_server_rejects_tool_calls() {
 
 #[tokio::test]
 async fn resumed_server_accepts_tool_calls() {
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("ok") })
         })
@@ -1884,7 +1912,7 @@ async fn resumed_server_accepts_tool_calls() {
 
 #[test]
 fn pause_flag_is_shared() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let flag = server.pause_flag();
 
     assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
@@ -1898,7 +1926,7 @@ fn pause_flag_is_shared() {
 
 #[test]
 fn permission_request_registers_pending() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let params = navra_protocol::permissions::PermissionRequestParams {
         id: "req-1".to_string(),
         scope: navra_protocol::permissions::PermissionScope::ToolAccess {
@@ -1915,7 +1943,7 @@ fn permission_request_registers_pending() {
 
 #[test]
 fn permission_grant_creates_dynamic_grant() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let req_params = navra_protocol::permissions::PermissionRequestParams {
         id: "req-grant".to_string(),
         scope: navra_protocol::permissions::PermissionScope::ToolAccess {
@@ -1944,7 +1972,7 @@ fn permission_grant_creates_dynamic_grant() {
 
 #[test]
 fn permission_grant_with_duration() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let req_params = navra_protocol::permissions::PermissionRequestParams {
         id: "req-timed".to_string(),
         scope: navra_protocol::permissions::PermissionScope::PathAccess {
@@ -1973,7 +2001,7 @@ fn permission_grant_with_duration() {
 
 #[test]
 fn permission_deny_removes_pending() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let req_params = navra_protocol::permissions::PermissionRequestParams {
         id: "req-deny".to_string(),
         scope: navra_protocol::permissions::PermissionScope::ToolAccess {
@@ -1999,7 +2027,7 @@ fn permission_deny_removes_pending() {
 
 #[test]
 fn permission_grant_unknown_request_fails() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let grant_params = navra_protocol::permissions::PermissionGrantParams {
         request_id: "nonexistent".to_string(),
     };
@@ -2010,7 +2038,7 @@ fn permission_grant_unknown_request_fails() {
 
 #[test]
 fn permission_deny_unknown_request_fails() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let deny_params = navra_protocol::permissions::PermissionDenyParams {
         request_id: "nonexistent".to_string(),
         reason: None,
@@ -2021,7 +2049,7 @@ fn permission_deny_unknown_request_fails() {
 
 #[test]
 fn permission_list_returns_grants() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
 
     // Initially empty
     let list = server.handle_permission_list("s4");
@@ -2052,7 +2080,7 @@ fn permission_list_returns_grants() {
 
 #[test]
 fn capabilities_include_permissions() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     assert!(server.capabilities().permissions.is_some());
 }
 
@@ -2060,7 +2088,7 @@ fn capabilities_include_permissions() {
 async fn dynamic_grant_overrides_tool_deny() {
     use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("reached") })
         })
@@ -2184,7 +2212,7 @@ fn resource_list_filtered_by_capability_token_globs() {
         sandbox: None,
     });
 
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let result = server.handle_list_resources(&agent, &Default::default());
 
     // Only navra://proc should be visible (matches glob)
@@ -2207,7 +2235,7 @@ fn resource_list_filtered_by_capability_token_globs() {
 fn resource_list_filtered_by_read_clearance() {
     use crate::ifc::{Confidentiality, ReadClearance, TaintedWritePolicy};
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .ifc_read_clearance(
             "readonly",
             ReadClearance::new(Confidentiality::Public, TaintedWritePolicy::Deny),
@@ -2234,7 +2262,7 @@ fn resource_list_filtered_by_read_clearance() {
 fn resource_templates_filtered_by_read_clearance() {
     use crate::ifc::{Confidentiality, ReadClearance, TaintedWritePolicy};
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .ifc_read_clearance(
             "readonly",
             ReadClearance::new(Confidentiality::Public, TaintedWritePolicy::Deny),
@@ -2250,7 +2278,7 @@ fn resource_templates_filtered_by_read_clearance() {
 
 #[test]
 fn resource_list_no_filtering_without_caps_or_clearance() {
-    let server = McpServer::builder().build();
+    let server = test_builder().build();
     let agent = AgentIdentity::new("normal", "dev");
     let result = server.handle_list_resources(&agent, &Default::default());
 
@@ -2264,7 +2292,7 @@ fn resource_list_no_filtering_without_caps_or_clearance() {
 fn ifc_tool_filter_hides_write_tools_when_tainted() {
     use super::IFCToolFilter;
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("data") })
         })
@@ -2294,7 +2322,7 @@ fn ifc_tool_filter_hides_write_tools_when_tainted() {
 fn ifc_tool_filter_shows_all_when_clean() {
     use super::IFCToolFilter;
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("data") })
         })
@@ -2323,7 +2351,7 @@ fn dynamic_filter_composes_with_static_disclosure() {
     use super::IFCToolFilter;
     use navra_auth::permissions::ToolDisclosure;
 
-    let server = McpServer::builder()
+    let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("data") })
         })
@@ -2334,7 +2362,10 @@ fn dynamic_filter_composes_with_static_disclosure() {
             Box::pin(async { CallToolResult::text("echo") })
         })
         // Static disclosure: only show file_* tools for "dev"
-        .tool_disclosure("dev", ToolDisclosure::new(vec!["file_*".to_string()], vec![]))
+        .tool_disclosure(
+            "dev",
+            ToolDisclosure::new(vec!["file_*".to_string()], vec![]),
+        )
         // Dynamic filter: hide write tools when tainted
         .tool_filter(IFCToolFilter)
         .build();

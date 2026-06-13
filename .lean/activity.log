@@ -1,0 +1,118 @@
+- timestamp: "2026-06-13T14:00:00+02:00"
+  actor: claude
+  action: tech-watch
+  summary: "9 sources, 2 new items (NAVRA-078, NAVRA-079), 3 enriched (018/048/074), positioning updated (DefenseClaw/Envoy/STDIO RCE/Uber ADR)"
+
+- timestamp: "2026-06-10T00:00:00+02:00"
+  actor: claude
+  action: learn
+  summary: "lean-init: extracted 28 findings (3 CLAUDE.md rules, 25 feedback → 5 consolidated files) from 30 sessions"
+
+- timestamp: "2026-06-09T17:50:02+02:00"
+  actor: "Fabien Dupont"
+  action: commit
+  summary: "feat(packaging): ONNX 1.21 + ORT 1.26 RPM specs for Fedora 44"
+
+- timestamp: "2026-06-09T17:41:46+02:00"
+  actor: "Fabien Dupont"
+  action: commit
+  summary: "fix: adapt bootstrap_identity for IdentityError return type"
+
+- timestamp: "2026-06-08T17:38:33+02:00"
+  actor: "Fabien Dupont"
+  action: commit
+  summary: "chore: update lockfile, roadmap graph, openvino build parallelism"
+
+- timestamp: "2026-06-08T17:07:43+02:00"
+  actor: "Fabien Dupont"
+  action: commit
+  summary: "chore: add TW27 navra-security split to roadmap"
+
+- timestamp: "2026-06-08T17:06:39+02:00"
+  actor: "Fabien Dupont"
+  action: commit
+  summary: "perf(rag): reduce key cloning in RRF fusion loops"
+
+- timestamp: "2026-06-10T16:00:00+02:00"
+  actor: claude
+  action: implement
+  summary: "TW18+TW19+TW20: ACS YAML policy hook (navra-safety), negation-aware FTS5 queries + temporal/numeric query router (navra-rag). 3 parallel agents, manual merge for TW19/TW20 due to origin/main rename lag."
+
+- timestamp: "2026-06-12T14:30:00Z"
+  actor: claude
+  action: tech-watch
+  summary: "12 sources, 4 new items (NAVRA-073 through NAVRA-076), 4 enriched (032, 039, 043, 057), ecosystem positioning updated. Key insight: distroless + MCP = security by construction."
+
+- timestamp: "2026-06-12T14:00:00Z"
+  actor: claude
+  action: plan-cleanup
+  summary: "Closed NAVRA-045/046/047 as wont_do (prefer existing MCPs), created NAVRA-072 (remove navra-tools-github), flagged crate for deprecation"
+
+- timestamp: "2026-06-12T23:30:00+02:00"
+  actor: claude
+  action: implement
+  items: ["NAVRA-076", "NAVRA-075", "NAVRA-077"]
+  summary: |
+    NAVRA-076: Evaluated rust-mcp-filesystem v0.4.2 — ADOPT. Built 6.0MB
+    scratch container image (Dockerfile.mcp-filesystem). Key finding:
+    filesystem MCP must run as separate process managed by gateway, not
+    inside agent container.
+
+    NAVRA-075: Distroless container for navra-agent — 5.6MB FROM scratch.
+    UBI 10 builder with Red Hat rust-toolset + glibc-static. Feature-gated
+    ONNX (navra-model, navra-safety), keyring/zbus (navra-auth), TLS
+    backend (native-tls vs rustls). CI workflow with size/shell/CVE checks.
+    Added PreToolUse hook guard-cargo-test.py to prevent OOM from parallel
+    workspace tests.
+
+    NAVRA-077: Critical fix — upstream MCP tool calls bypassed navra
+    permissions. Implemented auto-classification of upstream tools into
+    read/write/deny using MCP ToolAnnotations + name heuristics + operator
+    overrides (tool_overrides config). Runtime enforcement blocks write
+    tools for readonly agents. Integration tested and verified.
+
+    Key artifacts:
+    - Dockerfile.agent, Dockerfile.agent-full, Dockerfile.mcp-filesystem
+    - .claude/hooks/guard-cargo-test.py (test serialization guardrail)
+    - docs/eval-rust-mcp-filesystem.md
+    - navra-core/src/upstream_module.rs (ToolOperation, classify_tool)
+    - navra-core/src/server/handlers.rs (operations enforcement)
+    - navra-server/src/config/agents.rs (tool_overrides on UpstreamConfig)
+
+    Decisions:
+    - Container images use UBI 10 builder + glibc-static (not musl)
+    - TLS: native-tls for server builds, rustls for container builds
+    - Upstream tool policy: auto-classify + operator overrides, not
+      explicit-only mapping
+
+    Verification: 2361 tests passed, zero failures.
+
+## 2026-06-13 — NAVRA-081: Unified semantic permissions (pending_approval)
+
+### What was done
+- Audited NAVRA-077 fix, found 5 remaining security flaws in permission system
+- Researched 10+ competing MCP gateways/agent frameworks — none does semantic permissions
+- Discovered Cedar emerging as standard (AWS Bedrock AgentCore, ToolHive, TrueFoundry, MuleSoft)
+- Discovered Microsoft ACS (Agent Control Specification) — OPA/Rego-based alternative
+- Designed and implemented domain:operation semantic classification system
+- Fixed all 5 security flaws: prompt checks, resource template bypass, CallContext propagation, fail-closed auth, semantic enforcement
+
+### Key artifacts
+- NEW: navra-auth/src/permissions/resource_class.rs — Domain/Operation enums, ResourceClass, heuristic classifier, domain exemplars
+- NEW: navra-auth/src/permissions/domain_rules.rs — DomainRules evaluation engine
+- MOD: navra-core/src/module.rs — PromptHandler/ResourceHandler now receive CallContext (BREAKING)
+- MOD: navra-core/src/server/handlers.rs — domain check in handle_call_tool, permission checks for prompts/resources
+- MOD: navra-core/src/server/builder.rs — fail-closed auth, auto-classify tools, domain_rules builder methods
+- MOD: navra-core/src/upstream_module.rs — embedding-based classifier, tool_classifications accessor
+- MOD: navra-server/src/config/permissions.rs — domain_rules, tool_class config fields
+- MOD: navra-server/src/main.rs — config wiring, default rule synthesis from operations field
+
+### Decisions
+- Domain taxonomy is fixed (enum, not freeform strings) — operators assign, don't invent
+- 4-tier classification: operator override > ToolAnnotations > AI embedding > name heuristic
+- AI tier uses existing ModelBackend::embed() — graceful degradation when no model loaded
+- Default synthesis from operations field — no config = still enforced (fail-closed)
+- PromptHandler/ResourceHandler breaking change accepted — defense-in-depth requirement
+
+### Status: PENDING_APPROVAL
+Breaking API changes + security architecture change require human review before merge.

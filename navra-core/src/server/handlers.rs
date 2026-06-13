@@ -395,9 +395,7 @@ impl McpServer {
         if let Some(ops) = self.agent_operations.get(&ctx.agent.permissions) {
             if let Some(tool_op) = self.tool_operations.get(&params.name) {
                 match tool_op {
-                    crate::upstream_module::ToolOperation::Write
-                        if !ops.contains("write") =>
-                    {
+                    crate::upstream_module::ToolOperation::Write if !ops.contains("write") => {
                         self.process_table.record_denied(
                             &ctx.agent.name,
                             &ctx.agent.permissions,
@@ -417,6 +415,30 @@ impl McpServer {
                         ));
                     }
                     _ => {}
+                }
+            }
+        }
+
+        // Domain-based enforcement (semantic classification gate).
+        // If domain_rules are configured for this permission set, check
+        // the tool's classified domain:operation against allowed pairs.
+        if let Some(rules) = self.domain_rules.get(&ctx.agent.permissions) {
+            if let Some(class) = self.tool_classifications.get(&params.name) {
+                if rules.check(class) == crate::permissions::DomainPolicy::Deny {
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
+                    );
+                    self.metrics
+                        .tool_calls_denied
+                        .fetch_add(1, Ordering::Relaxed);
+                    return CallToolResult::error(format!(
+                        "Permission denied: '{}' classified as {} \
+                         but permission set '{}' does not allow it",
+                        params.name, class, ctx.agent.permissions
+                    ));
                 }
             }
         }
@@ -795,7 +817,7 @@ impl McpServer {
 
     pub fn handle_list_prompts(
         &self,
-        _agent: &crate::auth::AgentIdentity,
+        agent: &crate::auth::AgentIdentity,
         pagination: &PaginatedRequest,
     ) -> ListPromptsResult {
         let all_prompts: Vec<_> = self
@@ -803,9 +825,22 @@ impl McpServer {
             .values()
             .map(|p| p.definition.clone())
             .collect();
+
+        // Filter prompts by domain rules (if configured).
+        let visible = if let Some(rules) = self.domain_rules.get(&agent.permissions) {
+            let class = crate::permissions::resource_class::classify_prompt();
+            if rules.check(&class) == crate::permissions::DomainPolicy::Deny {
+                Vec::new()
+            } else {
+                all_prompts
+            }
+        } else {
+            all_prompts
+        };
+
         let offset = pagination.decode_offset().unwrap_or(0);
         let (prompts, next_cursor) =
-            crate::protocol::paginate(&all_prompts, offset, crate::protocol::DEFAULT_PAGE_SIZE);
+            crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
         ListPromptsResult {
             prompts,
             next_cursor,
@@ -815,10 +850,25 @@ impl McpServer {
     pub async fn handle_get_prompt(
         &self,
         params: GetPromptParams,
-        _agent: &crate::auth::AgentIdentity,
+        agent: &crate::auth::AgentIdentity,
+        session_id: &str,
     ) -> Result<GetPromptResult, String> {
+        // Domain-based permission check for prompts.
+        if let Some(rules) = self.domain_rules.get(&agent.permissions) {
+            let class = crate::permissions::resource_class::classify_prompt();
+            if rules.check(&class) == crate::permissions::DomainPolicy::Deny {
+                return Err(format!(
+                    "Permission denied: prompt '{}' blocked by domain rules for '{}'",
+                    params.name, agent.permissions
+                ));
+            }
+        }
+
         match self.prompts.get(&params.name) {
-            Some(prompt) => Ok((prompt.handler)(params.arguments).await),
+            Some(prompt) => {
+                let ctx = CallContext::new(agent.clone(), session_id);
+                Ok((prompt.handler)(params.arguments, ctx).await)
+            }
             None => Err(format!("Unknown prompt: {}", params.name)),
         }
     }
@@ -851,16 +901,21 @@ impl McpServer {
         &self,
         params: ReadResourceParams,
         agent: &crate::auth::AgentIdentity,
+        session_id: &str,
     ) -> Result<ReadResourceResult, String> {
+        let ctx = CallContext::new(agent.clone(), session_id);
         if let Some(resource) = self.resources.get(&params.uri) {
             if !self.agent_can_see_resource(agent, &resource.definition.uri) {
                 return Err("Permission denied".to_string());
             }
-            return Ok((resource.handler)(params.uri).await);
+            return Ok((resource.handler)(params.uri, ctx).await);
         }
         for rt in &self.resource_templates {
             if matches_uri_template(&rt.template.uri_template, &params.uri) {
-                return Ok((rt.handler)(params.uri).await);
+                if !self.agent_can_see_resource(agent, &rt.template.uri_template) {
+                    return Err("Permission denied".to_string());
+                }
+                return Ok((rt.handler)(params.uri, ctx).await);
             }
         }
         Err(format!("Unknown resource: {}", params.uri))
@@ -1187,7 +1242,10 @@ impl McpServer {
         self.blackbox.as_deref()
     }
 
-    pub fn safety_pipeline(&self, permission_set: &str) -> Option<&navra_safety::safety::FilterPipeline> {
+    pub fn safety_pipeline(
+        &self,
+        permission_set: &str,
+    ) -> Option<&navra_safety::safety::FilterPipeline> {
         self.safety_pipelines.get(permission_set)
     }
 

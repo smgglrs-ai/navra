@@ -1,4 +1,4 @@
-use crate::auth::AgentIdentity;
+use crate::auth::{AgentIdentity, CallContext};
 use crate::protocol::{
     GetPromptResult, PromptDefinition, ReadResourceResult, ResourceDefinition, ToolDefinition,
 };
@@ -10,18 +10,26 @@ use std::sync::Arc;
 
 /// Async prompt handler function type.
 ///
-/// Takes prompt arguments (name→value) and returns the rendered prompt.
+/// Takes prompt arguments (name→value) and caller context,
+/// returns the rendered prompt.
 pub type PromptHandler = Arc<
-    dyn Fn(HashMap<String, String>) -> Pin<Box<dyn Future<Output = GetPromptResult> + Send>>
+    dyn Fn(
+            HashMap<String, String>,
+            CallContext,
+        ) -> Pin<Box<dyn Future<Output = GetPromptResult> + Send>>
         + Send
         + Sync,
 >;
 
 /// Async resource handler function type.
 ///
-/// Takes the resource URI and returns the resource content.
-pub type ResourceHandler =
-    Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = ReadResourceResult> + Send>> + Send + Sync>;
+/// Takes the resource URI and caller context,
+/// returns the resource content.
+pub type ResourceHandler = Arc<
+    dyn Fn(String, CallContext) -> Pin<Box<dyn Future<Output = ReadResourceResult> + Send>>
+        + Send
+        + Sync,
+>;
 
 /// A feature module that contributes tools and prompts to the MCP server.
 ///

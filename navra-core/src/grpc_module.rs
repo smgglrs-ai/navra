@@ -291,43 +291,44 @@ impl Module for GrpcModule {
                 let client = self.client.clone();
                 let prompt_name = def.name.clone();
 
-                let handler: PromptHandler = Arc::new(move |args: HashMap<String, String>| {
-                    let mut client = client.clone();
-                    let name = prompt_name.clone();
-                    Box::pin(async move {
-                        let req = ProtoGetPromptRequest {
-                            name,
-                            arguments: args,
-                        };
-                        match client.get_prompt(req).await {
-                            Ok(resp) => {
-                                let inner = resp.into_inner();
-                                GetPromptResult {
-                                    description: if inner.description.is_empty() {
-                                        None
-                                    } else {
-                                        Some(inner.description)
-                                    },
-                                    messages: inner
-                                        .messages
-                                        .into_iter()
-                                        .map(|m| PromptMessage {
-                                            role: match m.role.as_str() {
-                                                "assistant" => PromptRole::Assistant,
-                                                _ => PromptRole::User,
-                                            },
-                                            content: Content::text(m.content),
-                                        })
-                                        .collect(),
+                let handler: PromptHandler =
+                    Arc::new(move |args: HashMap<String, String>, _ctx| {
+                        let mut client = client.clone();
+                        let name = prompt_name.clone();
+                        Box::pin(async move {
+                            let req = ProtoGetPromptRequest {
+                                name,
+                                arguments: args,
+                            };
+                            match client.get_prompt(req).await {
+                                Ok(resp) => {
+                                    let inner = resp.into_inner();
+                                    GetPromptResult {
+                                        description: if inner.description.is_empty() {
+                                            None
+                                        } else {
+                                            Some(inner.description)
+                                        },
+                                        messages: inner
+                                            .messages
+                                            .into_iter()
+                                            .map(|m| PromptMessage {
+                                                role: match m.role.as_str() {
+                                                    "assistant" => PromptRole::Assistant,
+                                                    _ => PromptRole::User,
+                                                },
+                                                content: Content::text(m.content),
+                                            })
+                                            .collect(),
+                                    }
                                 }
+                                Err(e) => GetPromptResult {
+                                    description: Some(format!("grpc error: {e}")),
+                                    messages: vec![],
+                                },
                             }
-                            Err(e) => GetPromptResult {
-                                description: Some(format!("grpc error: {e}")),
-                                messages: vec![],
-                            },
-                        }
-                    })
-                });
+                        })
+                    });
 
                 (prompt_def, handler)
             })
@@ -356,7 +357,7 @@ impl Module for GrpcModule {
 
                 let client = self.client.clone();
 
-                let handler: ResourceHandler = Arc::new(move |uri: String| {
+                let handler: ResourceHandler = Arc::new(move |uri: String, _ctx| {
                     let mut client = client.clone();
                     Box::pin(async move {
                         let req = ReadResourceRequest { uri: uri.clone() };
@@ -434,10 +435,7 @@ mod tests {
     #[test]
     fn parse_data_label_untrusted_sensitive() {
         let label = parse_data_label("Untrusted+Sensitive");
-        assert_eq!(
-            label,
-            navra_protocol::label::DataLabel::UNTRUSTED_SENSITIVE
-        );
+        assert_eq!(label, navra_protocol::label::DataLabel::UNTRUSTED_SENSITIVE);
     }
 
     #[test]
@@ -467,16 +465,10 @@ mod tests {
     #[test]
     fn parse_data_label_case_insensitive() {
         let label = parse_data_label("untrusted+sensitive");
-        assert_eq!(
-            label,
-            navra_protocol::label::DataLabel::UNTRUSTED_SENSITIVE
-        );
+        assert_eq!(label, navra_protocol::label::DataLabel::UNTRUSTED_SENSITIVE);
 
         let label = parse_data_label("UNTRUSTED+SENSITIVE");
-        assert_eq!(
-            label,
-            navra_protocol::label::DataLabel::UNTRUSTED_SENSITIVE
-        );
+        assert_eq!(label, navra_protocol::label::DataLabel::UNTRUSTED_SENSITIVE);
 
         let label = parse_data_label("trusted+public");
         assert_eq!(label, navra_protocol::label::DataLabel::TRUSTED_PUBLIC);
@@ -492,10 +484,7 @@ mod tests {
     #[test]
     fn parse_data_label_unknown_integrity_defaults_untrusted() {
         let label = parse_data_label("whatever+Public");
-        assert_eq!(
-            label.integrity,
-            navra_protocol::label::Integrity::Untrusted
-        );
+        assert_eq!(label.integrity, navra_protocol::label::Integrity::Untrusted);
     }
 
     #[test]
@@ -619,10 +608,7 @@ mod tests {
 
         let label = parse_data_label(&inner.result_data_label);
         assert!(!inner.is_error);
-        assert_eq!(
-            label,
-            navra_protocol::label::DataLabel::UNTRUSTED_SENSITIVE
-        );
+        assert_eq!(label, navra_protocol::label::DataLabel::UNTRUSTED_SENSITIVE);
     }
 
     #[test]

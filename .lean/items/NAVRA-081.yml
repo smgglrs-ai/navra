@@ -1,0 +1,38 @@
+id: "NAVRA-081"
+title: "Unified semantic permissions for tools, prompts, and resources"
+status: pending_approval
+priority: critical
+effort: L
+depends_on: ['NAVRA-077']
+feeds: ['NAVRA-001', 'NAVRA-032']
+progress: 95
+
+description: |
+  Fix five security flaws found during NAVRA-077 post-audit:
+  1. Prompts had zero permission checks (handle_get_prompt ignored agent)
+  2. Resource templates bypassed permission checks (listing filtered, reading didn't)
+  3. PromptHandler/ResourceHandler lacked CallContext (no defense-in-depth)
+  4. Builder silently fell back to allow-all on missing authenticator
+  5. Tool permissions were syntactic-only (glob on names, breaks with upstream tools)
+
+  Solution: domain:operation semantic classification system.
+  - Domain enum (12 variants) and Operation enum (4 variants) — navra's fixed taxonomy
+  - 4-tier classification: operator override > ToolAnnotations > AI embedding > name heuristic
+  - DomainRules engine per permission set (fail-closed, wildcard support)
+  - Auto-synthesize rules from existing operations field (backward compat with enforcement)
+  - Config: domain_rules + tool_class on PermissionSet and UpstreamConfig
+  - Breaking: PromptHandler/ResourceHandler now receive CallContext
+  - Breaking: builder panics without authenticator (was silent fallback)
+
+acceptance:
+  - "Prompts are permission-checked (domain_rules gate)"
+  - "Resource templates are permission-checked (agent_can_see_resource)"
+  - "PromptHandler and ResourceHandler receive CallContext"
+  - "Builder panics without authenticator (fail-closed)"
+  - "Domain classification produces correct results for navra and upstream tools"
+  - "No domain_rules configured still enforces via synthesized defaults"
+  - "All existing tests pass (zero regressions)"
+  - "New integration tests verify domain-based tool/prompt blocking"
+
+verification:
+  full: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo fmt -- --check && cargo test --workspace --lib -- --test-threads=1 && cargo test -p navra-core --test upstream_integration -- --test-threads=1"

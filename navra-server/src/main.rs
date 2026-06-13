@@ -17,11 +17,11 @@ mod grpc_manager;
 mod mdns;
 mod memory_tools;
 mod plan_execute;
+mod rag_retriever;
 mod registry_tools;
 mod team_tools;
 mod tray;
 mod triggers;
-mod rag_retriever;
 mod ui;
 mod ui_agent;
 mod ui_events;
@@ -1114,14 +1114,19 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     "vllm" => Box::new(navra_model_runtime::direct::DirectRuntime::new(
                         navra_model_runtime::Engine::Vllm,
                     )),
-                    "vllm-podman" => {
-                        Box::new(navra_model_runtime::podman::PodmanRuntime::new(
-                            navra_model_runtime::Engine::Vllm,
-                        ))
-                    }
+                    "vllm-podman" => Box::new(navra_model_runtime::podman::PodmanRuntime::new(
+                        navra_model_runtime::Engine::Vllm,
+                    )),
                     "ollama" => {
-                        let model_id = model_cfg.model_name.clone()
-                            .or_else(|| model_cfg.source.as_ref().and_then(|s| s.strip_prefix("ollama://").map(String::from)))
+                        let model_id = model_cfg
+                            .model_name
+                            .clone()
+                            .or_else(|| {
+                                model_cfg
+                                    .source
+                                    .as_ref()
+                                    .and_then(|s| s.strip_prefix("ollama://").map(String::from))
+                            })
                             .unwrap_or_else(|| name.clone());
                         let backend: Arc<dyn navra_model::ModelBackend> =
                             Arc::new(navra_model::OpenAiBackend::new(
@@ -1135,30 +1140,32 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         continue;
                     }
                     "ogx" => {
-                        let model_id = model_cfg.model_name.clone()
-                            .unwrap_or_else(|| name.clone());
-                        let base_url = model_cfg.base_url.as_deref()
+                        let model_id = model_cfg.model_name.clone().unwrap_or_else(|| name.clone());
+                        let base_url = model_cfg
+                            .base_url
+                            .as_deref()
                             .unwrap_or(navra_model::DEFAULT_OGX_URL);
                         let locality = if model_cfg.locality.as_deref() == Some("remote") {
                             navra_model::Locality::Remote
                         } else {
                             navra_model::Locality::Local
                         };
-                        let backend: Arc<dyn navra_model::ModelBackend> = if model_cfg.task == "classification" {
-                            Arc::new(navra_model::OgxBackend::new(
-                                base_url,
-                                &model_id,
-                                model_cfg.api_key.clone(),
-                                locality,
-                            ))
-                        } else {
-                            Arc::new(navra_model::OpenAiBackend::new(
-                                base_url,
-                                &model_id,
-                                model_cfg.api_key.clone(),
-                                locality,
-                            ))
-                        };
+                        let backend: Arc<dyn navra_model::ModelBackend> =
+                            if model_cfg.task == "classification" {
+                                Arc::new(navra_model::OgxBackend::new(
+                                    base_url,
+                                    &model_id,
+                                    model_cfg.api_key.clone(),
+                                    locality,
+                                ))
+                            } else {
+                                Arc::new(navra_model::OpenAiBackend::new(
+                                    base_url,
+                                    &model_id,
+                                    model_cfg.api_key.clone(),
+                                    locality,
+                                ))
+                            };
                         tracing::info!(model = %name, model_id = %model_id, base_url = %base_url, task = %model_cfg.task, "Model served via OGX");
                         models.insert(name.clone(), backend);
                         continue;
@@ -1450,8 +1457,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
 
         if !pset.operations.is_empty() {
-            let ops: std::collections::HashSet<String> =
-                pset.operations.iter().cloned().collect();
+            let ops: std::collections::HashSet<String> = pset.operations.iter().cloned().collect();
             builder = builder.agent_operations(name.clone(), ops);
         }
 
@@ -1467,6 +1473,98 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 "Tool disclosure rules"
             );
             builder = builder.tool_disclosure(name.clone(), disclosure);
+        }
+
+        // Domain-based permission rules.
+        // If explicit domain_rules are configured, use them.
+        // Otherwise, synthesize from the operations field so that
+        // prompts and resource templates are always enforced.
+        let domain_rules = if !pset.domain_rules.is_empty() {
+            let mut rules_map = std::collections::HashMap::new();
+            for rule in &pset.domain_rules {
+                let domain: navra_core::permissions::Domain = match rule.domain.parse() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::error!(
+                            permission_set = %name,
+                            domain = %rule.domain,
+                            "Invalid domain in domain_rules: {e}, skipping"
+                        );
+                        continue;
+                    }
+                };
+                let ops: std::collections::HashSet<navra_core::permissions::Operation> = rule
+                    .operations
+                    .iter()
+                    .filter_map(|s| match s.parse() {
+                        Ok(o) => Some(o),
+                        Err(e) => {
+                            tracing::error!(
+                                permission_set = %name,
+                                operation = %s,
+                                "Invalid operation in domain_rules: {e}, skipping"
+                            );
+                            None
+                        }
+                    })
+                    .collect();
+                rules_map.insert(domain, ops);
+            }
+            tracing::info!(
+                permission_set = %name,
+                domains = rules_map.len(),
+                source = "explicit",
+                "Domain permission rules"
+            );
+            navra_core::permissions::DomainRules::new(rules_map)
+        } else {
+            // Synthesize from operations field: map string operations
+            // to the wildcard domain so all primitives are covered.
+            let ops: std::collections::HashSet<navra_core::permissions::Operation> = pset
+                .operations
+                .iter()
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            let mut rules_map = std::collections::HashMap::new();
+            rules_map.insert(navra_core::permissions::Domain::Unknown, ops);
+            tracing::info!(
+                permission_set = %name,
+                operations = ?pset.operations,
+                source = "synthesized from operations",
+                "Domain permission rules"
+            );
+            navra_core::permissions::DomainRules::new(rules_map)
+        };
+        builder = builder.domain_rules(name.clone(), domain_rules);
+
+        // Per-tool classification overrides from permission set config
+        if !pset.tool_class.is_empty() {
+            let mut classes = std::collections::HashMap::new();
+            for (tool_name, tc) in &pset.tool_class {
+                match (tc.domain.parse(), tc.operation.parse()) {
+                    (Ok(domain), Ok(operation)) => {
+                        classes.insert(
+                            tool_name.clone(),
+                            navra_core::permissions::ResourceClass::new(domain, operation),
+                        );
+                    }
+                    (Err(e), _) | (_, Err(e)) => {
+                        tracing::error!(
+                            permission_set = %name,
+                            tool = %tool_name,
+                            "Invalid tool_class: {e}, skipping"
+                        );
+                    }
+                }
+            }
+            if !classes.is_empty() {
+                tracing::info!(
+                    permission_set = %name,
+                    overrides = classes.len(),
+                    "Tool classification overrides"
+                );
+                builder = builder.merge_tool_classifications(classes);
+            }
         }
     }
 
@@ -1717,15 +1815,14 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                     )
                     .with_cascade(cascade)
                     .with_metrics(metrics.clone());
-                    rag_context_retriever = Some(Arc::new(
-                        crate::rag_retriever::RagRetriever::new(
+                    rag_context_retriever =
+                        Some(Arc::new(crate::rag_retriever::RagRetriever::new(
                             Arc::clone(shared_chunk_store.as_ref().unwrap()),
                             model.clone(),
                             reranker_for_retriever,
                             cascade_for_retriever,
                             Some(metrics.clone()),
-                        ),
-                    ));
+                        )));
                     tracing::info!("Module 'rag' enabled (db: {rag_db_path}, dims: {dims}, cascade: on, graphability: 0.3)");
                     builder = builder.module(rag);
                 }
@@ -1833,7 +1930,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             );
             match navra_core::Upstream::http(&endpoint.domain, &endpoint.url).await {
                 Ok(upstream) => {
-                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default()).await {
+                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default())
+                        .await
+                    {
                         Ok(module) => {
                             tracing::info!(
                                 domain = %endpoint.domain,
@@ -1901,7 +2000,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             let url = server.url();
             match navra_core::Upstream::http(&server.name, &url).await {
                 Ok(upstream) => {
-                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default()).await {
+                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default())
+                        .await
+                    {
                         Ok(module) => {
                             tracing::info!(
                                 name = %server.name,
@@ -2054,8 +2155,42 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                             }
                         }
 
-                        builder =
-                            builder.merge_tool_operations(module.tool_operations().clone());
+                        builder = builder.merge_tool_operations(module.tool_operations().clone());
+                        builder = builder
+                            .merge_tool_classifications(module.tool_classifications().clone());
+
+                        // Apply upstream tool_class overrides
+                        if !upstream_cfg.tool_class.is_empty() {
+                            let mut classes = std::collections::HashMap::new();
+                            for (tool_name, tc) in &upstream_cfg.tool_class {
+                                match (tc.domain.parse(), tc.operation.parse()) {
+                                    (Ok(domain), Ok(operation)) => {
+                                        classes.insert(
+                                            tool_name.clone(),
+                                            navra_core::permissions::ResourceClass::new(
+                                                domain, operation,
+                                            ),
+                                        );
+                                    }
+                                    (Err(e), _) | (_, Err(e)) => {
+                                        tracing::error!(
+                                            upstream = %upstream_cfg.name,
+                                            tool = %tool_name,
+                                            "Invalid tool_class: {e}, skipping"
+                                        );
+                                    }
+                                }
+                            }
+                            if !classes.is_empty() {
+                                tracing::info!(
+                                    upstream = %upstream_cfg.name,
+                                    overrides = classes.len(),
+                                    "Upstream tool classification overrides"
+                                );
+                                builder = builder.merge_tool_classifications(classes);
+                            }
+                        }
+
                         builder = builder.module(module);
                     }
                     Err(e) => {
@@ -2507,11 +2642,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
         // Build composite model cards from config + discovered Ollama models.
         // Config entries take precedence; Ollama models not in config are added automatically.
-        let mut model_keys: Vec<(String, Option<&config::ModelConfig>)> = cfg.models
+        let mut model_keys: Vec<(String, Option<&config::ModelConfig>)> = cfg
+            .models
             .iter()
             .map(|(k, v)| (k.clone(), Some(v)))
             .collect();
-        let configured_sources: std::collections::HashSet<String> = cfg.models
+        let configured_sources: std::collections::HashSet<String> = cfg
+            .models
             .values()
             .filter_map(|m| m.source.as_ref())
             .filter_map(|s| s.strip_prefix("ollama://"))
@@ -2679,9 +2816,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                             url: format!("http://127.0.0.1:{port}"),
                             id: name,
                             backend: navra_model_runtime::RuntimeBackend::new(
-                            navra_model_runtime::Engine::LlamaCpp,
-                            navra_model_runtime::Isolation::Podman,
-                        ),
+                                navra_model_runtime::Engine::LlamaCpp,
+                                navra_model_runtime::Isolation::Podman,
+                            ),
                         },
                     ));
                     Some(url)
@@ -3045,7 +3182,6 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     };
 
     if let Some(ks) = knowledge_store.clone() {
-
         let ks_store = Arc::clone(&ks);
         let sanitizer_for_store = pii_sanitizer.clone();
         builder = builder.tool(memory_tools::memory_store_def(), move |args, _ctx| {
@@ -3309,7 +3445,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 mime_type: Some("text/plain".to_string()),
                 size: None,
             },
-            std::sync::Arc::new(move |uri: String| {
+            std::sync::Arc::new(move |uri: String, _ctx| {
                 let audit = Arc::clone(&flow_audit);
                 Box::pin(async move {
                     let text = if uri == "flow://" || uri == "flow://list" {
@@ -3383,7 +3519,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 mime_type: Some("application/json".to_string()),
                 size: None,
             },
-            Arc::new(move |uri: String| {
+            Arc::new(move |uri: String, _ctx| {
                 let pt = pt.clone();
                 Box::pin(async move {
                     let agents = pt.snapshot();
@@ -3412,7 +3548,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 mime_type: Some("application/json".to_string()),
                 size: None,
             },
-            Arc::new(move |uri: String| {
+            Arc::new(move |uri: String, _ctx| {
                 let ss = ss.clone();
                 Box::pin(async move {
                     let sessions = ss.list_all();
@@ -3457,7 +3593,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 mime_type: Some("text/plain".to_string()),
                 size: None,
             },
-            Arc::new(move |uri: String| {
+            Arc::new(move |uri: String, _ctx| {
                 let pt = pt.clone();
                 let ss = ss.clone();
                 Box::pin(async move {
@@ -3499,7 +3635,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 mime_type: Some("application/json".to_string()),
                 size: None,
             },
-            Arc::new(move |uri: String| {
+            Arc::new(move |uri: String, _ctx| {
                 let cell = Arc::clone(&cell);
                 Box::pin(async move {
                     let (count, tools) = match cell.get() {
@@ -3537,7 +3673,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                 mime_type: Some("application/json".to_string()),
                 size: None,
             },
-            Arc::new(move |uri: String| {
+            Arc::new(move |uri: String, _ctx| {
                 Box::pin(async move {
                     let json = serde_json::json!({
                         "name": "navra",
@@ -3595,8 +3731,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         // This means truncation happens first, then safety filtering.
 
         // Collect safety pipelines for the SafetyHook
-        let mut safety_hook =
-            navra_core::hooks::SafetyHook::new(std::collections::HashMap::new());
+        let mut safety_hook = navra_core::hooks::SafetyHook::new(std::collections::HashMap::new());
         for (name, pset) in &cfg.permissions {
             let mut pipeline = navra_core::safety::build_pipeline(&pset.safety);
             // Re-add custom PII filter
@@ -3691,22 +3826,18 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
     // Temporal behavioral contracts
     if cfg.temporal_contracts.enabled && !cfg.temporal_contracts.contracts.is_empty() {
-        let action_log = std::sync::Arc::new(
-            navra_core::hooks::SessionActionLog::new(
-                cfg.temporal_contracts.max_history_per_session,
-            ),
-        );
+        let action_log = std::sync::Arc::new(navra_core::hooks::SessionActionLog::new(
+            cfg.temporal_contracts.max_history_per_session,
+        ));
         let mut contracts = Vec::new();
         for tc in &cfg.temporal_contracts.contracts {
-            match serde_json::from_value::<navra_core::hooks::TemporalContract>(
-                serde_json::json!({
-                    "name": tc.name,
-                    "description": tc.description,
-                    "predicate": tc.predicate,
-                    "action": tc.action,
-                    "applies_to": tc.applies_to,
-                }),
-            ) {
+            match serde_json::from_value::<navra_core::hooks::TemporalContract>(serde_json::json!({
+                "name": tc.name,
+                "description": tc.description,
+                "predicate": tc.predicate,
+                "action": tc.action,
+                "applies_to": tc.applies_to,
+            })) {
                 Ok(contract) => contracts.push(contract),
                 Err(e) => {
                     tracing::warn!(
@@ -4004,10 +4135,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                                 continue;
                             }
                             if let Ok(content) = std::fs::read_to_string(&p) {
-                                if let Ok(flow) =
-                                    serde_yaml::from_str::<navra_flow::yaml_loader::FlowFile>(
-                                        &content,
-                                    )
+                                if let Ok(flow) = serde_yaml::from_str::<
+                                    navra_flow::yaml_loader::FlowFile,
+                                >(&content)
                                 {
                                     summaries.push(navra_core::acp::types::FlowSummary {
                                         name: flow.name.clone(),
@@ -4491,9 +4621,7 @@ async fn run_agent(
                 .await
                 .ok()
         } else {
-            navra_agent::Upstream::http("discover", endpoint)
-                .await
-                .ok()
+            navra_agent::Upstream::http("discover", endpoint).await.ok()
         };
         if let Some(upstream) = discover_upstream {
             let mut client = navra_agent::McpClient::new(upstream);
@@ -4744,18 +4872,30 @@ pub(crate) fn expand_tilde(path: &str) -> String {
     while let Some(c) = chars.next() {
         if c == '$' {
             let braced = chars.peek() == Some(&'{');
-            if braced { chars.next(); }
+            if braced {
+                chars.next();
+            }
             let var_name: String = chars
                 .by_ref()
-                .take_while(|&ch| if braced { ch != '}' } else { ch.is_alphanumeric() || ch == '_' })
+                .take_while(|&ch| {
+                    if braced {
+                        ch != '}'
+                    } else {
+                        ch.is_alphanumeric() || ch == '_'
+                    }
+                })
                 .collect();
             if let Ok(val) = std::env::var(&var_name) {
                 out.push_str(&val);
             } else {
                 out.push('$');
-                if braced { out.push('{'); }
+                if braced {
+                    out.push('{');
+                }
                 out.push_str(&var_name);
-                if braced { out.push('}'); }
+                if braced {
+                    out.push('}');
+                }
             }
         } else {
             out.push(c);
@@ -4780,8 +4920,7 @@ fn audit_command(
             bb_path.display()
         );
     }
-    let bb =
-        navra_core::blackbox::Blackbox::open(&bb_path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let bb = navra_core::blackbox::Blackbox::open(&bb_path).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     if verify {
         let (valid, broken) = bb.verify_chain();
@@ -4855,21 +4994,18 @@ fn policy_suggest(
     agent_filter: Option<&str>,
     min_count: usize,
 ) -> anyhow::Result<()> {
-    let bb_path = db_path
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            dirs::data_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("navra/blackbox.db")
-        });
+    let bb_path = db_path.map(std::path::PathBuf::from).unwrap_or_else(|| {
+        dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("navra/blackbox.db")
+    });
     if !bb_path.exists() {
         anyhow::bail!(
             "No blackbox found at {}. Start the server first.",
             bb_path.display()
         );
     }
-    let bb =
-        navra_core::blackbox::Blackbox::open(&bb_path).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let bb = navra_core::blackbox::Blackbox::open(&bb_path).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let cutoff_ms = {
         let now = std::time::SystemTime::now()
@@ -4982,8 +5118,7 @@ fn policy_suggest(
                 };
 
                 if show_cedar {
-                    println!(
-                        "# IFC write denial — consider adding trusted path");
+                    println!("# IFC write denial — consider adding trusted path");
                     if !common_prefix.is_empty() {
                         println!(
                             "# or use Cedar context:\n\
@@ -5027,7 +5162,9 @@ fn policy_suggest(
 
     let skipped = sorted.iter().filter(|(_, v)| v.len() < min_count).count();
     if skipped > 0 {
-        println!("# {skipped} groups with <{min_count} denials omitted (use --min-count 1 to see all)");
+        println!(
+            "# {skipped} groups with <{min_count} denials omitted (use --min-count 1 to see all)"
+        );
     }
 
     Ok(())
@@ -5063,7 +5200,7 @@ mod tests {
     /// Helper: build a resource handler closure for navra://proc.
     fn proc_handler(pt: &navra_core::process::ProcessTable) -> navra_core::ResourceHandler {
         let pt = pt.clone();
-        Arc::new(move |uri: String| {
+        Arc::new(move |uri: String, _ctx| {
             let pt = pt.clone();
             Box::pin(async move {
                 let agents = pt.snapshot();
@@ -5083,7 +5220,7 @@ mod tests {
     /// Helper: build a resource handler closure for navra://sessions.
     fn sessions_handler(ss: &navra_core::session::SessionStore) -> navra_core::ResourceHandler {
         let ss = ss.clone();
-        Arc::new(move |uri: String| {
+        Arc::new(move |uri: String, _ctx| {
             let ss = ss.clone();
             Box::pin(async move {
                 let sessions = ss.list_all();
@@ -5117,7 +5254,7 @@ mod tests {
     /// Helper: build a resource handler closure for navra://version.
     fn version_handler() -> navra_core::ResourceHandler {
         let boot = std::time::Instant::now();
-        Arc::new(move |uri: String| {
+        Arc::new(move |uri: String, _ctx| {
             Box::pin(async move {
                 let json = serde_json::json!({
                     "name": "navra",
@@ -5228,9 +5365,7 @@ mod tests {
                     ttl_ms: None,
                     cache_scope: None,
                 },
-                |_args, _ctx| {
-                    Box::pin(async { navra_core::protocol::CallToolResult::text("ok") })
-                },
+                |_args, _ctx| Box::pin(async { navra_core::protocol::CallToolResult::text("ok") }),
             )
             .tool(
                 ToolDefinition {
@@ -5245,9 +5380,7 @@ mod tests {
                     ttl_ms: None,
                     cache_scope: None,
                 },
-                |_args, _ctx| {
-                    Box::pin(async { navra_core::protocol::CallToolResult::text("ok") })
-                },
+                |_args, _ctx| Box::pin(async { navra_core::protocol::CallToolResult::text("ok") }),
             )
             .build();
 
