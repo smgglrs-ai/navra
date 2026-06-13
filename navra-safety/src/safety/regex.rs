@@ -1685,10 +1685,18 @@ mod kani_proofs {
     /// IP core logic: reject private ranges (10.x, 172.16-31.x, 192.168.x),
     /// loopback (127.x), and unspecified (0.0.0.0).
     fn ip_is_public(a: u8, b: u8) -> bool {
-        if a == 127 { return false; }
-        if a == 10 { return false; }
-        if a == 172 && (16..=31).contains(&b) { return false; }
-        if a == 192 && b == 168 { return false; }
+        if a == 127 {
+            return false;
+        }
+        if a == 10 {
+            return false;
+        }
+        if a == 172 && (16..=31).contains(&b) {
+            return false;
+        }
+        if a == 192 && b == 168 {
+            return false;
+        }
         true
     }
 

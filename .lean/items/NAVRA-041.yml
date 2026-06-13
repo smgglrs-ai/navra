@@ -1,0 +1,10 @@
+id: "NAVRA-041"
+title: "Evaluate LFM2.5-Audio-1.5B-ONNX"
+status: planned
+priority: high
+effort: 2-3d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  End-to-end speech-to-speech (hybrid SSM). ONNX export exists (Q4/Q8, 5 components, 696MB). Would replace separate ASR+TTS in navra-modal-voice.

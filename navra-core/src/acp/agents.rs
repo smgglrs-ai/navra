@@ -1,9 +1,7 @@
 //! Map navra McpServer capabilities to ACP AgentManifest.
 
 use super::store::RunStore;
-use super::types::{
-    AgentCapability, AgentManifest, AgentMetadata, AgentStatus, FlowSummary,
-};
+use super::types::{AgentCapability, AgentManifest, AgentMetadata, AgentStatus, FlowSummary};
 use crate::server::McpServer;
 
 /// Build ACP agent manifests: one for the gateway + one per flow node.
@@ -16,10 +14,7 @@ pub fn build_manifests(server: &McpServer, flows: &[FlowSummary]) -> Vec<AgentMa
             manifests.push(AgentManifest {
                 name: agent_name,
                 description: node.description.clone(),
-                input_content_types: vec![
-                    "text/plain".to_string(),
-                    "application/json".to_string(),
-                ],
+                input_content_types: vec!["text/plain".to_string(), "application/json".to_string()],
                 output_content_types: vec![
                     "text/plain".to_string(),
                     "application/json".to_string(),
@@ -113,7 +108,13 @@ fn to_dns_label(name: &str) -> String {
     let label: String = name
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let label = label.trim_matches('-').to_string();
     if label.is_empty() {

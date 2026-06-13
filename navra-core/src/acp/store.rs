@@ -151,7 +151,10 @@ impl RunStore {
     }
 
     pub fn metrics(&self) -> RunMetrics {
-        self.metrics.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.metrics
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn add_output_message(&self, id: &str, message: Message) -> Option<Run> {
@@ -263,7 +266,10 @@ impl RunStore {
 }
 
 fn compute_duration(created_at: &str, finished_at: &str) -> f64 {
-    match (parse_iso_epoch_ms(created_at), parse_iso_epoch_ms(finished_at)) {
+    match (
+        parse_iso_epoch_ms(created_at),
+        parse_iso_epoch_ms(finished_at),
+    ) {
         (Some(start), Some(end)) => (end - start) as f64 / 1000.0,
         _ => 0.0,
     }
@@ -316,8 +322,8 @@ fn date_to_epoch_days(y: i64, m: u32, d: u32) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::types::AcpError;
+    use super::*;
 
     fn make_run(id: &str, session: Option<&str>) -> Run {
         Run {
@@ -354,7 +360,11 @@ mod tests {
     fn set_finished_records_metrics() {
         let store = RunStore::new();
         store.create(make_run("r1", None));
-        store.set_finished("r1", RunStatus::Completed, "2026-06-05T10:00:05Z".to_string());
+        store.set_finished(
+            "r1",
+            RunStatus::Completed,
+            "2026-06-05T10:00:05Z".to_string(),
+        );
 
         let m = store.metrics();
         assert_eq!(m.total_runs, 1);
@@ -390,9 +400,21 @@ mod tests {
         store.create(make_run("r2", None));
         store.create(make_run("r3", None));
 
-        store.set_finished("r1", RunStatus::Completed, "2026-06-05T10:00:02Z".to_string());
-        store.set_finished("r2", RunStatus::Completed, "2026-06-05T10:00:04Z".to_string());
-        store.set_error("r3", AcpError::server_error("err"), "2026-06-05T10:00:01Z".to_string());
+        store.set_finished(
+            "r1",
+            RunStatus::Completed,
+            "2026-06-05T10:00:02Z".to_string(),
+        );
+        store.set_finished(
+            "r2",
+            RunStatus::Completed,
+            "2026-06-05T10:00:04Z".to_string(),
+        );
+        store.set_error(
+            "r3",
+            AcpError::server_error("err"),
+            "2026-06-05T10:00:01Z".to_string(),
+        );
 
         let m = store.metrics();
         assert_eq!(m.total_runs, 3);
@@ -444,7 +466,11 @@ mod tests {
     fn expire_removes_old_finished_runs() {
         let store = RunStore::new();
         store.create(make_run("r1", Some("s1")));
-        store.set_finished("r1", RunStatus::Completed, "2020-01-01T00:00:00Z".to_string());
+        store.set_finished(
+            "r1",
+            RunStatus::Completed,
+            "2020-01-01T00:00:00Z".to_string(),
+        );
 
         store.create(make_run("r2", Some("s1")));
         store.update_status("r2", RunStatus::InProgress);
@@ -477,7 +503,11 @@ mod tests {
     fn expire_cleans_session_mappings() {
         let store = RunStore::new();
         store.create(make_run("r1", Some("s1")));
-        store.set_finished("r1", RunStatus::Completed, "2020-01-01T00:00:00Z".to_string());
+        store.set_finished(
+            "r1",
+            RunStatus::Completed,
+            "2020-01-01T00:00:00Z".to_string(),
+        );
 
         store.expire(Duration::from_secs(60));
         assert!(store.runs_for_session("s1").is_empty());
@@ -503,12 +533,18 @@ mod tests {
         let store = RunStore::new();
         store.create(make_run("r1", None));
 
-        store.add_event("r1", Event::RunCreated {
-            run: store.get("r1").unwrap(),
-        });
-        store.add_event("r1", Event::RunInProgress {
-            run: store.get("r1").unwrap(),
-        });
+        store.add_event(
+            "r1",
+            Event::RunCreated {
+                run: store.get("r1").unwrap(),
+            },
+        );
+        store.add_event(
+            "r1",
+            Event::RunInProgress {
+                run: store.get("r1").unwrap(),
+            },
+        );
 
         let events = store.list_events("r1");
         assert_eq!(events.len(), 2);

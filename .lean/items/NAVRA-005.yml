@@ -1,0 +1,9 @@
+id: "NAVRA-005"
+title: "Rendra live dashboard"
+status: done
+priority: high
+effort: 2-3d
+depends_on: []
+feeds: ['NAVRA-054']
+description: |
+  Live agent dashboard. Separate repo.

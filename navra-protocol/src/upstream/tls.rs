@@ -114,14 +114,8 @@ mod tests {
         };
         let json = serde_json::to_string(&cfg).unwrap();
         let parsed: TlsConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            parsed.ca_cert.as_deref(),
-            Some("/etc/navra/ca-bundle.pem")
-        );
-        assert_eq!(
-            parsed.client_cert.as_deref(),
-            Some("/etc/navra/client.pem")
-        );
+        assert_eq!(parsed.ca_cert.as_deref(), Some("/etc/navra/ca-bundle.pem"));
+        assert_eq!(parsed.client_cert.as_deref(), Some("/etc/navra/client.pem"));
         assert_eq!(
             parsed.client_key.as_deref(),
             Some("/etc/navra/client-key.pem")

@@ -1,0 +1,35 @@
+id: "NAVRA-074"
+title: "Capability/architecture disclosure prevention"
+status: planned
+priority: medium
+effort: 1-2d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-12
+description: |
+  Prevent navra from leaking internal architecture details to downstream
+  agents. Microsoft's agentic AI taxonomy v2.0 identifies "Capability /
+  Architecture Disclosure" as failure mode #7 — agents revealing tool
+  names/schemas, system-prompt structure, memory interfaces, or HitL
+  trigger logic turns black-box probing into white-box exploit paths.
+
+  Ensure:
+  - System prompt fragments are not echoed in tool error messages
+  - Internal tool names (safety_, hook_, flow_) are not exposed in
+    tools/list responses to downstream clients
+  - HitL trigger conditions are not inferable from response patterns
+  - Permission denial messages don't reveal ACL rule structure
+  - IFC label names are not leaked in user-facing error messages
+
+  Reference: https://www.microsoft.com/en-us/security/blog/2026/06/04/updating-taxonomy-failure-modes-agentic-ai-systems-year-red-teaming-taught-us/
+notes:
+  - date: "2026-06-13"
+    source: tech-watch
+    detail: |
+      OX Security demonstrated STDIO transport RCE across all Anthropic MCP SDKs (14+ CVEs).
+      The fact that MCP servers are spawned via STDIO is itself an exploitable architectural
+      detail — user input flowing into StdioServerParameters enables arbitrary command execution.
+      navra must ensure that upstream MCP server spawn parameters are never influenced by
+      user-controlled input, and that error messages from STDIO spawning don't reveal the
+      transport mechanism or command-line arguments.
+      Reference: https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/

@@ -167,7 +167,10 @@ impl TokenRevocationList {
 /// Encode and sign a capability token.
 ///
 /// Returns the wire-format string: `navra_cap_v1.<cbor>.<sig>`
-pub fn encode_token(payload: &CapabilityPayload, signer: &dyn CapSigner) -> Result<String, CapabilityError> {
+pub fn encode_token(
+    payload: &CapabilityPayload,
+    signer: &dyn CapSigner,
+) -> Result<String, CapabilityError> {
     let cbor_bytes = cbor_encode(payload)?;
     let sig = signer.sign(&cbor_bytes);
 
@@ -181,7 +184,10 @@ pub fn encode_token(payload: &CapabilityPayload, signer: &dyn CapSigner) -> Resu
 ///
 /// Verifies the signature, checks expiry, and optionally checks the
 /// revocation list. Returns the payload if all checks pass.
-pub fn decode_token(token: &str, verifier: &dyn CapSigner) -> Result<CapabilityPayload, CapabilityError> {
+pub fn decode_token(
+    token: &str,
+    verifier: &dyn CapSigner,
+) -> Result<CapabilityPayload, CapabilityError> {
     decode_token_with_revocation(token, verifier, None)
 }
 
@@ -193,10 +199,14 @@ pub fn decode_token_with_revocation(
 ) -> Result<CapabilityPayload, CapabilityError> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 {
-        return Err(CapabilityError::InvalidFormat("expected 3 dot-separated parts".to_string()));
+        return Err(CapabilityError::InvalidFormat(
+            "expected 3 dot-separated parts".to_string(),
+        ));
     }
     if parts[0] != TOKEN_PREFIX {
-        return Err(CapabilityError::InvalidFormat(format!("expected prefix {TOKEN_PREFIX}")));
+        return Err(CapabilityError::InvalidFormat(format!(
+            "expected prefix {TOKEN_PREFIX}"
+        )));
     }
 
     let cbor_bytes = URL_SAFE_NO_PAD.decode(parts[1])?;
@@ -214,7 +224,10 @@ pub fn decode_token_with_revocation(
         .unwrap()
         .as_secs();
     if payload.exp < now {
-        return Err(CapabilityError::Expired { expired: payload.exp, now });
+        return Err(CapabilityError::Expired {
+            expired: payload.exp,
+            now,
+        });
     }
 
     if payload.v != 1 {
@@ -244,7 +257,9 @@ pub fn decode_token_with_revocation(
 pub fn decode_token_unchecked(token: &str) -> Result<CapabilityPayload, CapabilityError> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 || parts[0] != TOKEN_PREFIX {
-        return Err(CapabilityError::InvalidFormat("malformed token".to_string()));
+        return Err(CapabilityError::InvalidFormat(
+            "malformed token".to_string(),
+        ));
     }
     let cbor_bytes = URL_SAFE_NO_PAD.decode(parts[1])?;
     cbor_decode(&cbor_bytes)
@@ -329,7 +344,11 @@ pub fn validate_delegation(
     // Child must reference parent
     match child.parent {
         Some(parent_nonce) if parent_nonce == parent.nonce => {}
-        _ => return Err(CapabilityError::DelegationViolation("child token does not reference parent nonce".to_string())),
+        _ => {
+            return Err(CapabilityError::DelegationViolation(
+                "child token does not reference parent nonce".to_string(),
+            ))
+        }
     }
 
     check_attenuation(parent.ring, child.ring, parent.exp, child.exp).map_err(|e| {
@@ -342,20 +361,26 @@ pub fn validate_delegation(
     let parent_ops: HashSet<&str> = parent.cap.operations.iter().map(|s| s.as_str()).collect();
     for op in &child.cap.operations {
         if !parent_ops.contains(op.as_str()) {
-            return Err(CapabilityError::DelegationViolation(format!("operation escalation: child has '{op}' not in parent")));
+            return Err(CapabilityError::DelegationViolation(format!(
+                "operation escalation: child has '{op}' not in parent"
+            )));
         }
     }
 
     let parent_creds: HashSet<&str> = parent.cap.credentials.iter().map(|s| s.as_str()).collect();
     for cred in &child.cap.credentials {
         if !parent_creds.contains(cred.as_str()) {
-            return Err(CapabilityError::DelegationViolation(format!("credential escalation: child has '{cred}' not in parent")));
+            return Err(CapabilityError::DelegationViolation(format!(
+                "credential escalation: child has '{cred}' not in parent"
+            )));
         }
     }
 
     match (&parent.obo, &child.obo) {
         (None, Some(_)) => {
-            return Err(CapabilityError::DelegationViolation("obo escalation: child introduces obo identity not present in parent".to_string()));
+            return Err(CapabilityError::DelegationViolation(
+                "obo escalation: child introduces obo identity not present in parent".to_string(),
+            ));
         }
         (Some(parent_obo), Some(child_obo)) => {
             if parent_obo.sub != child_obo.sub || parent_obo.iss != child_obo.iss {
@@ -375,7 +400,9 @@ pub fn validate_delegation(
                 .map_err(|e| CapabilityError::DelegationViolation(e.to_string()))?;
         }
         (Some(_), None) => {
-            return Err(CapabilityError::DelegationViolation("sandbox escalation: child removes sandbox profile present in parent".to_string()));
+            return Err(CapabilityError::DelegationViolation(
+                "sandbox escalation: child removes sandbox profile present in parent".to_string(),
+            ));
         }
         _ => {} // (None, Some) is fine (child adds sandbox), (None, None) is common
     }
@@ -383,7 +410,9 @@ pub fn validate_delegation(
     // Depth check: max_depth indicates how many more delegations are allowed.
     // 0 = no further delegation, 1 = one more level, etc.
     if child.parent.is_some() && max_depth == 0 {
-        return Err(CapabilityError::DelegationViolation("chain depth exceeded (max_depth=0)".to_string()));
+        return Err(CapabilityError::DelegationViolation(
+            "chain depth exceeded (max_depth=0)".to_string(),
+        ));
     }
     // The child's effective max_depth must be strictly less than the parent's
     // to prevent unlimited re-delegation at the same depth.
@@ -463,7 +492,8 @@ pub fn build_delegated_payload(
     // Ring attenuation: child must be same or less privileged
     if ring < parent.ring {
         return Err(CapabilityError::DelegationViolation(format!(
-            "ring escalation: requested ring {ring} < parent ring {}", parent.ring
+            "ring escalation: requested ring {ring} < parent ring {}",
+            parent.ring
         )));
     }
 
@@ -474,7 +504,8 @@ pub fn build_delegated_payload(
             effective_ops.push(op.clone());
         } else {
             return Err(CapabilityError::DelegationViolation(format!(
-                "operation escalation: '{op}' not in parent's grants {:?}", parent.cap.operations
+                "operation escalation: '{op}' not in parent's grants {:?}",
+                parent.cap.operations
             )));
         }
     }
@@ -489,7 +520,8 @@ pub fn build_delegated_payload(
         });
         if !covered {
             return Err(CapabilityError::DelegationViolation(format!(
-                "tool escalation: '{tool}' not covered by parent's tool grants {:?}", parent.cap.tools
+                "tool escalation: '{tool}' not covered by parent's tool grants {:?}",
+                parent.cap.tools
             )));
         }
         effective_tools.push(tool.clone());

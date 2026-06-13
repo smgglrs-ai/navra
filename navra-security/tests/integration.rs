@@ -299,7 +299,10 @@ async fn hook_pipeline_pre_allows_safe_tool() {
     let outcome = pipeline
         .run_pre("file_read", serde_json::json!({}), &test_ctx())
         .await;
-    assert!(matches!(outcome, navra_security::hooks::PreHookOutcome::Proceed(_)));
+    assert!(matches!(
+        outcome,
+        navra_security::hooks::PreHookOutcome::Proceed(_)
+    ));
 }
 
 #[tokio::test]
@@ -755,7 +758,11 @@ fn asi01_ifc_marks_untrusted_input() {
 fn asi02_deny_wins_acl() {
     let engine = build_permission_engine();
     let allowed = engine.check("dev", "read", Path::new("/home/user/projects/app/main.rs"));
-    let denied = engine.check("dev", "read", Path::new("/home/user/projects/.secrets/key.pem"));
+    let denied = engine.check(
+        "dev",
+        "read",
+        Path::new("/home/user/projects/.secrets/key.pem"),
+    );
     assert_eq!(allowed, PermissionResult::Allowed);
     assert_eq!(denied, PermissionResult::DeniedPath);
 }
@@ -836,13 +843,7 @@ fn asi07_delegation_chain_cannot_escalate_ring() {
         2,
         3600,
     );
-    let mut child = build_payload(
-        "did:parent",
-        "did:child",
-        parent.cap.clone(),
-        1,
-        3600,
-    );
+    let mut child = build_payload("did:parent", "did:child", parent.cap.clone(), 1, 3600);
     child.parent = Some(parent.nonce);
     assert!(validate_delegation(&parent, &child, 3).is_err());
 }
@@ -852,7 +853,13 @@ fn asi07_delegation_chain_cannot_escalate_ring() {
 #[test]
 fn asi08_rate_limiting_prevents_runaway() {
     let mut engine = QuotaEngine::new();
-    engine.add_limit("dev".to_string(), RateLimit { max_calls: 2, window_secs: 60 });
+    engine.add_limit(
+        "dev".to_string(),
+        RateLimit {
+            max_calls: 2,
+            window_secs: 60,
+        },
+    );
     assert!(engine.check("agent", "dev"));
     assert!(engine.check("agent", "dev"));
     assert!(!engine.check("agent", "dev"));
@@ -870,5 +877,8 @@ fn asi10_trust_decay_on_safety_trigger() {
     for _ in 0..10 {
         score.record_safety_trigger();
     }
-    assert!(matches!(score.state(), TrustState::ReadOnly | TrustState::Suspended));
+    assert!(matches!(
+        score.state(),
+        TrustState::ReadOnly | TrustState::Suspended
+    ));
 }

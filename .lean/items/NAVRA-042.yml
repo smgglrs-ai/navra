@@ -1,0 +1,10 @@
+id: "NAVRA-042"
+title: "DNS-AID discovery support"
+status: planned
+priority: high
+effort: 2.5-3.5d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  SVCB records, IETF draft-mozleywilliams-02. Rust impl via hickory-dns for SVCB + DNSSEC. Update DISCOVERY.md. Early-stage (38 stars, pre-LF).

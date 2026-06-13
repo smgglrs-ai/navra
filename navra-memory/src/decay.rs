@@ -263,7 +263,10 @@ mod kani_proofs {
         let rate = 0.001_f64;
         let modulated1 = rate / (1.0 + imp1 as f64);
         let modulated2 = rate / (1.0 + imp2 as f64);
-        assert!(modulated2 <= modulated1, "higher importance must lower decay rate");
+        assert!(
+            modulated2 <= modulated1,
+            "higher importance must lower decay rate"
+        );
     }
 
     #[kani::proof]

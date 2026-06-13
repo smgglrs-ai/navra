@@ -79,9 +79,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
 
     group.bench_function("is_trusted_path_no_match", |b| {
         let patterns = vec!["~/Code/**".to_string()];
-        b.iter(|| {
-            navra_auth::ifc::is_trusted_path(black_box("/tmp/random/file.txt"), &patterns)
-        });
+        b.iter(|| navra_auth::ifc::is_trusted_path(black_box("/tmp/random/file.txt"), &patterns));
     });
 
     group.finish();
@@ -90,9 +88,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
 // --- Capability tokens ---
 
 fn bench_capability_tokens(c: &mut Criterion) {
-    use navra_auth::auth::capability::{
-        build_payload, decode_token, encode_token, CapabilitySet,
-    };
+    use navra_auth::auth::capability::{build_payload, decode_token, encode_token, CapabilitySet};
     use navra_auth::identity::{load_or_create_file_identity, CapSigner};
 
     let tmp = tempfile::tempdir().unwrap();

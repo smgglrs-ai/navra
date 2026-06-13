@@ -1,0 +1,9 @@
+id: "NAVRA-028"
+title: "TurboVec evaluation"
+status: planned
+priority: low
+effort: 2-3d
+depends_on: []
+feeds: []
+description: |
+  Evaluate TurboVec as sqlite-vec replacement.

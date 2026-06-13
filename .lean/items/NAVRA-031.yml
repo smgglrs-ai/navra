@@ -1,0 +1,10 @@
+id: "NAVRA-031"
+title: "DNS-AID doc update in DISCOVERY.md"
+status: planned
+priority: low
+effort: 0.5-0.5d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  Document SVCB naming convention, IETF draft, distinguish DNS-AID from AID.

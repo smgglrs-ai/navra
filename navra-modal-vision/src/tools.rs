@@ -10,12 +10,12 @@
 //! - `vision_screen` — capture screen and describe or OCR it
 
 use crate::screenshot;
+use navra_auth::auth::CallContext;
 use navra_core::models::{GenerateRequest, ImageInput, ModelBackend};
 use navra_core::permissions::{PermissionEngine, PermissionResult};
 use navra_core::protocol::CallToolResult;
 use navra_core::{Module, ToolHandler};
 use navra_macros::tool;
-use navra_auth::auth::CallContext;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -345,9 +345,9 @@ async fn handle_screen(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use navra_auth::auth::AgentIdentity;
     use navra_core::models::{GenerateResponse, ModelBackend, ModelError};
     use navra_core::permissions::{PathAcl, PermissionEngine};
-    use navra_auth::auth::AgentIdentity;
     use std::collections::HashSet;
     use std::io::Write;
 

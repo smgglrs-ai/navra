@@ -45,10 +45,10 @@ mod error;
 pub mod hibernate;
 /// Per-agent token quotas for fair scheduling.
 pub mod quota;
-/// Upstream MCP prompt resolution utilities.
-pub mod resolve;
 /// Deterministic replay for repetitive tool-loop tasks.
 pub mod replay;
+/// Upstream MCP prompt resolution utilities.
+pub mod resolve;
 /// Cooperative signal delivery for running agents.
 pub mod signal;
 mod tool_loop;
@@ -73,6 +73,8 @@ pub use trace::{HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, Tr
 // deps and import from the source crates instead.
 pub use audit::{AuditSink, SharedAuditSink};
 pub use convert::tool_def_to_response;
+pub use navra_auth::identity::{load_or_create_file_identity, CapSigner, Ed25519Signer};
+pub use navra_auth::ifc::TaintTracker;
 pub use navra_model::{
     AnthropicBackend, CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent,
     FunctionCallOutputItem, InputContent, InputItem, ItemStatus, Locality, MessageItem,
@@ -84,6 +86,4 @@ pub use navra_protocol::{
     CallToolParams, CallToolResult, Content, PromptDefinition, ResourceDefinition, ToolDefinition,
     Upstream,
 };
-pub use navra_auth::identity::{load_or_create_file_identity, CapSigner, Ed25519Signer};
-pub use navra_auth::ifc::TaintTracker;
 pub use navra_safety::safety::FilterPipeline;

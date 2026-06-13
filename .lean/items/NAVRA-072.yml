@@ -1,0 +1,19 @@
+id: "NAVRA-072"
+title: "Remove navra-tools-github crate"
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  Remove the navra-tools-github crate from the workspace. GitHub access
+  should go through the official GitHub MCP server with token-scoped
+  permissions and per-project policies. Navra's role is gateway-level
+  concerns (PII, IFC, audit), not service-specific access control.
+
+  Steps:
+  - Remove navra-tools-github from workspace Cargo.toml members
+  - Remove the dependency from navra-server/Cargo.toml
+  - Remove the module registration in navra-server main.rs
+  - Remove the crate directory
+  - Update any docs referencing GitHub module

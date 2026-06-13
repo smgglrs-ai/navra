@@ -260,8 +260,18 @@ mod tests {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/llama-3-70b"),
             gpus: vec![
-                GpuDevice { index: 0, name: "A100".into(), vram: None, kind: GpuKind::Nvidia },
-                GpuDevice { index: 1, name: "A100".into(), vram: None, kind: GpuKind::Nvidia },
+                GpuDevice {
+                    index: 0,
+                    name: "A100".into(),
+                    vram: None,
+                    kind: GpuKind::Nvidia,
+                },
+                GpuDevice {
+                    index: 1,
+                    name: "A100".into(),
+                    vram: None,
+                    kind: GpuKind::Nvidia,
+                },
             ],
             context_size: 8192,
             parallel: 8,

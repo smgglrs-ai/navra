@@ -150,9 +150,6 @@ pub fn build_router_with_discovery(
 }
 
 /// Set the OAuth provider on an existing router's state.
-pub fn set_oauth(
-    state: &mut AppState,
-    provider: Arc<navra_auth::auth::oauth::OAuthProvider>,
-) {
+pub fn set_oauth(state: &mut AppState, provider: Arc<navra_auth::auth::oauth::OAuthProvider>) {
     state.oauth = Some(provider);
 }

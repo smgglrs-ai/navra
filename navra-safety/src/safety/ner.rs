@@ -61,8 +61,9 @@ fn entity_type_to_category(entity_type: &str) -> Option<&'static str> {
         "PHONE_NUMBER" => Some("phone"),
         "CREDIT_CARD" => Some("credit-card"),
         "IP_ADDRESS" | "MAC_ADDRESS" => Some("ip-address"),
-        "IBAN_CODE" | "US_SSN" | "US_BANK_NUMBER" | "US_ITIN"
-        | "FINANCIAL" => Some("account-number"),
+        "IBAN_CODE" | "US_SSN" | "US_BANK_NUMBER" | "US_ITIN" | "FINANCIAL" => {
+            Some("account-number")
+        }
         "US_DRIVER_LICENSE" | "US_PASSPORT" => Some("identity-document"),
         "US_LICENSE_PLATE" => Some("vehicle-id"),
         "IMEI" => Some("device-fingerprint"),
@@ -71,26 +72,38 @@ fn entity_type_to_category(entity_type: &str) -> Option<&'static str> {
         "HONORIFIC" | "TITLE" => None,
         // Lowercase variants (ettin/Nemotron-PII)
         "first_name" | "last_name" | "middle_name" => Some("person"),
-        "street_address" | "city" | "state" | "county" | "postcode"
-        | "country" | "coordinate" => Some("address"),
+        "street_address" | "city" | "state" | "county" | "postcode" | "country" | "coordinate" => {
+            Some("address")
+        }
         "date" | "date_of_birth" | "date_time" | "time" => Some("date"),
         "password" | "pin" | "api_key" | "http_cookie" => Some("secret"),
         "email" => Some("email"),
         "phone_number" | "fax_number" => Some("phone"),
-        "ssn" | "national_id" | "tax_id" | "account_number"
-        | "bank_routing_number" | "swift_bic" => Some("account-number"),
+        "ssn"
+        | "national_id"
+        | "tax_id"
+        | "account_number"
+        | "bank_routing_number"
+        | "swift_bic" => Some("account-number"),
         "credit_debit_card" | "cvv" => Some("credit-card"),
         "ipv4" | "ipv6" | "mac_address" => Some("ip-address"),
         "url" | "user_name" => Some("url"),
         "company_name" => Some("organization"),
         "license_plate" | "vehicle_identifier" => Some("vehicle-id"),
         "device_identifier" => Some("device-fingerprint"),
-        "medical_record_number" | "health_plan_beneficiary_number"
+        "medical_record_number"
+        | "health_plan_beneficiary_number"
         | "certificate_license_number" => Some("identity-document"),
         "customer_id" | "employee_id" | "unique_id" => Some("account-number"),
-        "gender" | "age" | "race_ethnicity" | "sexuality"
-        | "political_view" | "religious_belief" | "language"
-        | "blood_type" | "biometric_identifier" => Some("demographic"),
+        "gender"
+        | "age"
+        | "race_ethnicity"
+        | "sexuality"
+        | "political_view"
+        | "religious_belief"
+        | "language"
+        | "blood_type"
+        | "biometric_identifier" => Some("demographic"),
         "occupation" | "employment_status" | "education_level" => None,
         _ => None,
     }
@@ -977,12 +990,14 @@ fn load_label_map(path: &Path) -> Result<Vec<String>, NerError> {
 /// Load label map from a HuggingFace config.json (id2label field).
 fn load_label_map_from_config(path: &Path) -> Result<Vec<String>, NerError> {
     let content = std::fs::read_to_string(path).map_err(|e| {
-        NerError::Load(format!("failed to read config from {}: {e}", path.display()))
+        NerError::Load(format!(
+            "failed to read config from {}: {e}",
+            path.display()
+        ))
     })?;
 
-    let json: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-        NerError::Load(format!("failed to parse config: {e}"))
-    })?;
+    let json: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| NerError::Load(format!("failed to parse config: {e}")))?;
 
     let id2label = json
         .get("id2label")

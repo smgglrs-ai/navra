@@ -440,12 +440,16 @@ impl<'a> AgenticRetriever<'a> {
         let sub_queries = decompose_query(query);
         let fetch_limit = limit * 3;
 
-        let mut all_results = self.execute_sub_queries(&sub_queries, query_embedding, fetch_limit)?;
+        let mut all_results =
+            self.execute_sub_queries(&sub_queries, query_embedding, fetch_limit)?;
         let mut hops = 1;
         let mut refined = false;
 
         while hops < self.max_hops {
-            let top_relevance = all_results.first().map(|r| r.distance as f32).unwrap_or(0.0);
+            let top_relevance = all_results
+                .first()
+                .map(|r| r.distance as f32)
+                .unwrap_or(0.0);
             if top_relevance >= self.min_relevance {
                 break;
             }
@@ -462,7 +466,8 @@ impl<'a> AgenticRetriever<'a> {
                 strategy: SearchStrategy::Hybrid,
                 negation_terms: Vec::new(),
             }];
-            let new_results = self.execute_sub_queries(&refined_sub, query_embedding, fetch_limit)?;
+            let new_results =
+                self.execute_sub_queries(&refined_sub, query_embedding, fetch_limit)?;
 
             all_results = merge_rrf(&[&all_results, &new_results]);
             hops += 1;
@@ -490,7 +495,8 @@ impl<'a> AgenticRetriever<'a> {
             let results = match sq.strategy {
                 SearchStrategy::Hybrid => {
                     let fts_query = apply_fts5_negation(&sq.text, &sq.negation_terms);
-                    self.store.search_hybrid(&fts_query, query_embedding, limit)?
+                    self.store
+                        .search_hybrid(&fts_query, query_embedding, limit)?
                 }
                 SearchStrategy::Semantic => self.store.search(query_embedding, limit)?,
                 SearchStrategy::Lexical => {
@@ -934,14 +940,20 @@ mod tests {
         assert!(!result.results.is_empty());
         assert_eq!(result.hops, 1);
         assert!(!result.refined);
-        assert_eq!(result.results[0].content, "Rust ownership and borrowing rules");
+        assert_eq!(
+            result.results[0].content,
+            "Rust ownership and borrowing rules"
+        );
     }
 
     #[test]
     fn retrieve_self_correction() {
         let store = test_store();
         let chunks = vec![
-            make_chunk("pub fn authenticate_user(token: &str) -> Result<User, AuthError>", 0),
+            make_chunk(
+                "pub fn authenticate_user(token: &str) -> Result<User, AuthError>",
+                0,
+            ),
             make_chunk("The auth system verifies credentials", 1),
         ];
         let embeddings = vec![vec![0.5, 0.5, 0.0, 0.0], vec![0.0, 0.0, 0.5, 0.5]];

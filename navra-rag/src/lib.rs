@@ -12,11 +12,13 @@ mod store;
 mod tools;
 
 pub use agentic::{
-    AgenticResult, AgenticRetriever, NumericOp, NumericPredicate, SearchStrategy, SubQuery,
     apply_fts5_negation, classify_strategy, decompose_query, detect_numeric_predicate,
+    AgenticResult, AgenticRetriever, NumericOp, NumericPredicate, SearchStrategy, SubQuery,
 };
 pub use cache::{CacheMetrics, QueryCache, QueryCacheConfig};
 pub use chunk::ChunkConfig;
-pub use rerank::{load_reranker, ConfidenceGate, CrossEncoderReranker, GatedReranker, NoopReranker, Reranker};
+pub use rerank::{
+    load_reranker, ConfidenceGate, CrossEncoderReranker, GatedReranker, NoopReranker, Reranker,
+};
 pub use store::{CascadeConfig, ChunkStore, SearchFilter};
 pub use tools::RagModule;

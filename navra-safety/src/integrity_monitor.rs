@@ -394,7 +394,9 @@ mod tests {
         let alerts = monitor.alerts.read().await;
         // 2 alerts: "all files deleted" + individual file deletion
         assert_eq!(alerts.len(), 2);
-        assert!(alerts.iter().all(|a| a.severity == AlertSeverity::Malicious));
+        assert!(alerts
+            .iter()
+            .all(|a| a.severity == AlertSeverity::Malicious));
         assert!(alerts.iter().any(|a| a.message.contains("deleted")));
     }
 

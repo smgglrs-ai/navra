@@ -1,0 +1,31 @@
+id: NAVRA-071
+title: HTML-to-markdown conversion
+status: backlog
+priority: low
+effort: S
+depends_on: []
+feeds: []
+description: Add an HTML-to-markdown conversion layer in the file indexing and reading pipelines. Currently, `navra-tools-file`
+  recognizes `.html` files as indexable (MIME `text/html`) and reads them raw -- tags, scripts, styles, and attributes all
+  flow into the FTS5 index, RAG chunk store, and `file_read` output. This produces noisy search results and wastes embedding
+  tokens on non-content markup. A lightweight converter (e.g., the `htmd` or `html2text` crate) should strip non-content elements
+  and produce clean markdown before indexing and before returning content to agents via `file_read`.
+acceptance:
+- HTML files indexed by the file watcher are converted to markdown before FTS5 upsert and embedding generation, so search
+  results contain readable text instead of raw markup
+- The file_read tool detects text/html MIME type and returns markdown-converted content by default, with an optional raw parameter
+  to get the original HTML
+- Script, style, nav, and footer elements are stripped during conversion; semantic elements (headings, lists, links, tables,
+  code blocks) are preserved as markdown equivalents
+- 'The conversion is covered by unit tests: at least one test with a realistic HTML page verifying tag stripping, heading
+  preservation, link extraction, and table rendering'
+- No new heavyweight dependencies -- the converter must be a pure-Rust crate with no C bindings (htmd or html2text both qualify)
+- MCP resource reads for file:// URIs pointing to .html files also return converted markdown
+scope:
+- navra-tools-file/Cargo.toml
+- navra-tools-file/src/watcher.rs
+- navra-tools-file/src/tools/handlers.rs
+- navra-tools-file/src/tools/mod.rs
+- navra-tools-file/src/tools/tests.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-tools-file -- html

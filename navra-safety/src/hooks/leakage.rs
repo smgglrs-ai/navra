@@ -231,8 +231,11 @@ impl Hook for SimilarityLeakageHook {
 /// Function that asks an LLM judge whether outgoing text reveals
 /// information from tainted content. Returns a confidence score
 /// (0.0 = no leakage, 1.0 = certain leakage).
-pub type JudgeFn =
-    Arc<dyn Fn(&str, &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<f32>> + Send>> + Send + Sync>;
+pub type JudgeFn = Arc<
+    dyn Fn(&str, &str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<f32>> + Send>>
+        + Send
+        + Sync,
+>;
 
 pub struct SemanticLeakageConfig {
     pub enabled: bool,

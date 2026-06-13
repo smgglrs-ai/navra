@@ -1,0 +1,23 @@
+id: "NAVRA-032"
+title: "Compliance mapping (EU AI Act + OWASP)"
+status: planned
+priority: medium
+effort: 2-3d
+depends_on: ['NAVRA-016']
+feeds: ['NAVRA-001']
+source: tech-watch-2026-06-02
+description: |
+  Formalize navra coverage against EU AI Act (Aug 2026) and OWASP Agentic Top 10. Documentation, not code.
+notes: |
+  [2026-06-12] Microsoft taxonomy v2.0 adds 7 new agentic failure modes
+  from real red team engagements. Map these alongside OWASP:
+  1. Agentic Supply Chain Compromise (plugin/MCP registries)
+  2. Goal Hijacking (silent goal-state redirection)
+  3. Inter-Agent Trust Escalation (confused deputy via NL)
+  4. CUA Visual Attack (hidden text, off-viewport elements)
+  5. Session Context Contamination (compound bias across steps — IFC addresses this)
+  6. MCP / Plugin Abuse (tool description poisoning, cross-server override)
+  7. Capability / Architecture Disclosure (see NAVRA-074)
+  HitL bypass was most consistently exploited failure mode.
+  OpenClaw: CVE-2026-25253 (one-click RCE), 512 vulns, 336 malicious plugins.
+  Reference: https://www.microsoft.com/en-us/security/blog/2026/06/04/updating-taxonomy-failure-modes-agentic-ai-systems-year-red-teaming-taught-us/

@@ -4,8 +4,8 @@
 //! Used by both the web UI agent and ACP agent-driven runs.
 
 use navra_core::auth::AgentIdentity;
-use navra_core::McpServer;
 use navra_core::upstream::Transport;
+use navra_core::McpServer;
 use std::sync::Arc;
 
 pub(crate) struct DirectTransport {

@@ -16,7 +16,9 @@ pub use self::privacy_filter::{
     default_privacy_filter_model_dir, load_privacy_filter, PrivacyFilterModel,
 };
 pub use self::pseudonym::{PseudonymMap, PseudonymReverser};
-pub use self::regex::{CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, PromptInjectionFilter, SecretFilter};
+pub use self::regex::{
+    CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, PromptInjectionFilter, SecretFilter,
+};
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -381,10 +383,7 @@ impl FilterPipeline {
 
     #[cfg(feature = "onnx")]
     /// Add a shared privacy-filter from an `Arc`.
-    pub fn add_privacy_filter_shared(
-        &mut self,
-        filter: std::sync::Arc<PrivacyFilterModel>,
-    ) {
+    pub fn add_privacy_filter_shared(&mut self, filter: std::sync::Arc<PrivacyFilterModel>) {
         self.filters.push(Box::new(SharedPrivacyFilter(filter)));
     }
 

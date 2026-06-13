@@ -193,15 +193,22 @@ pub fn pubkey_from_did(did: &str) -> Result<VerifyingKey, IdentityError> {
     let decoded = bs58::decode(multibase).into_vec()?;
 
     if decoded.len() != 34 {
-        return Err(IdentityError::InvalidKeyLength { expected: 34, actual: decoded.len() });
+        return Err(IdentityError::InvalidKeyLength {
+            expected: 34,
+            actual: decoded.len(),
+        });
     }
     if decoded[0] != ED25519_MULTICODEC[0] || decoded[1] != ED25519_MULTICODEC[1] {
         return Err(IdentityError::UnsupportedCodec(decoded[0], decoded[1]));
     }
 
-    let key_bytes: [u8; 32] = decoded[2..34]
-        .try_into()
-        .map_err(|_| IdentityError::InvalidKeyLength { expected: 32, actual: decoded.len() - 2 })?;
+    let key_bytes: [u8; 32] =
+        decoded[2..34]
+            .try_into()
+            .map_err(|_| IdentityError::InvalidKeyLength {
+                expected: 32,
+                actual: decoded.len() - 2,
+            })?;
     Ok(VerifyingKey::from_bytes(&key_bytes)?)
 }
 
@@ -210,11 +217,18 @@ pub fn load_or_create_file_identity(path: &Path) -> Result<Ed25519Signer, Identi
     if path.exists() {
         let seed_bytes = std::fs::read(path)?;
         if seed_bytes.len() != 32 {
-            return Err(IdentityError::InvalidKeyLength { expected: 32, actual: seed_bytes.len() });
+            return Err(IdentityError::InvalidKeyLength {
+                expected: 32,
+                actual: seed_bytes.len(),
+            });
         }
-        let seed: [u8; 32] = seed_bytes
-            .try_into()
-            .map_err(|_| IdentityError::InvalidKeyLength { expected: 32, actual: 0 })?;
+        let seed: [u8; 32] =
+            seed_bytes
+                .try_into()
+                .map_err(|_| IdentityError::InvalidKeyLength {
+                    expected: 32,
+                    actual: 0,
+                })?;
         Ok(Ed25519Signer::from_seed(&seed))
     } else {
         let signer = Ed25519Signer::generate();
@@ -240,11 +254,18 @@ pub fn load_or_create_keyring_identity() -> Result<Ed25519Signer, IdentityError>
     match entry.get_secret() {
         Ok(seed_bytes) => {
             if seed_bytes.len() != 32 {
-                return Err(IdentityError::InvalidKeyLength { expected: 32, actual: seed_bytes.len() });
+                return Err(IdentityError::InvalidKeyLength {
+                    expected: 32,
+                    actual: seed_bytes.len(),
+                });
             }
-            let seed: [u8; 32] = seed_bytes
-                .try_into()
-                .map_err(|_| IdentityError::InvalidKeyLength { expected: 32, actual: 0 })?;
+            let seed: [u8; 32] =
+                seed_bytes
+                    .try_into()
+                    .map_err(|_| IdentityError::InvalidKeyLength {
+                        expected: 32,
+                        actual: 0,
+                    })?;
             Ok(Ed25519Signer::from_seed(&seed))
         }
         Err(keyring::Error::NoEntry) => {

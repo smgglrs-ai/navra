@@ -1,0 +1,20 @@
+id: "NAVRA-039"
+title: "Gemma 4 12B multimodal backend"
+status: planned
+priority: low
+effort: 2-3d
+depends_on: []
+feeds: []
+gate: "onnxruntime-genai #2062 (ONNX path); Ollama path works now"
+source: tech-watch-2026-06-05
+description: |
+  Add Gemma 4 12B as optional GPU-tier multimodal backend via Ollama/vLLM in navra-model-runtime. Encoder-free architecture (35M vision embedder vs 550M encoder), unified text+vision+audio, Apache 2.0. Can replace ASR + vision input paths with single model but NOT TTS (understanding only). 12B too large for CPU tier. Complementary to Granite (text/tools). ONNX blocked until onnxruntime-genai supports Gemma 4 architecture.
+notes: |
+  [2026-06-12] Gemma 4 26B MoE agentic benchmarks: τ2-bench jumps from
+  6.6% (Gemma 3 27B) to 79%, LiveCodeBench v6 from 29.1% to 77.1%.
+  Only 3.8B active params per token. Recommended Ollama Modelfile config
+  for agentic use: num_ctx 65536 (minimum for agentic sessions),
+  temperature 0.2, top_p 0.9, repeat_penalty 1.15, num_predict 4096.
+  Without custom Modelfile, Ollama defaults to 4K context which breaks
+  agentic workflows. KV cache quantization (OLLAMA_KV_CACHE_TYPE=q8_0)
+  helps with memory pressure on constrained hardware.

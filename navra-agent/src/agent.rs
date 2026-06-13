@@ -4,10 +4,10 @@ use crate::client::McpClient;
 use crate::error::AgentError;
 use crate::signal::SignalHandle;
 use crate::tool_loop::{run_tool_loop, ToolLoopConfig, ToolLoopResult};
+use navra_auth::identity::CapSigner;
 use navra_model::ModelBackend;
 use navra_protocol::label::DataLabel;
 use navra_protocol::Upstream;
-use navra_auth::identity::CapSigner;
 use navra_safety::safety::FilterPipeline;
 use std::sync::Arc;
 
@@ -374,15 +374,16 @@ impl AgentBuilder {
                 .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
         // Patch the system prompt if the upstream source overrode the core mandate
-        let system = if persona.source.is_some()
-            && resolved_persona.core_mandate != persona.core_mandate
-        {
-            output
-                .system_prompt()
-                .replacen(&persona.core_mandate, &resolved_persona.core_mandate, 1)
-        } else {
-            output.system_prompt()
-        };
+        let system =
+            if persona.source.is_some() && resolved_persona.core_mandate != persona.core_mandate {
+                output.system_prompt().replacen(
+                    &persona.core_mandate,
+                    &resolved_persona.core_mandate,
+                    1,
+                )
+            } else {
+                output.system_prompt()
+            };
 
         self.apply_persona_config(system, &output, persona);
 

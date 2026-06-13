@@ -9,8 +9,8 @@
 //! regex secret detection is irrelevant for content an agent is writing.
 
 use super::{Hook, HookDecision};
-use navra_auth::auth::CallContext;
 use crate::safety::{is_pii_category, FilterContext, FilterPipeline};
+use navra_auth::auth::CallContext;
 use navra_protocol::label::Confidentiality;
 use navra_protocol::{CallToolResult, Content};
 use std::collections::HashMap;
@@ -133,10 +133,7 @@ impl Hook for SafetyHook {
                     }
                 }
                 _ => {
-                    tracing::warn!(
-                        tool = tool_name,
-                        "Non-text content bypassed safety filter"
-                    );
+                    tracing::warn!(tool = tool_name, "Non-text content bypassed safety filter");
                     filtered_content.push(content.clone());
                 }
             }

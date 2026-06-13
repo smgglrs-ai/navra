@@ -73,7 +73,7 @@ impl Engine {
     /// Number of health poll attempts (at 500ms intervals) before giving up.
     pub fn health_poll_attempts(&self) -> usize {
         match self {
-            Self::LlamaCpp => 60,  // 30s
+            Self::LlamaCpp => 60, // 30s
             Self::Vllm => 240,    // 120s (vLLM compiles CUDA kernels on first start)
         }
     }
@@ -271,10 +271,7 @@ impl Engine {
 
         let gpu_count = config.gpus.len();
         if gpu_count > 1 {
-            args.extend_from_slice(&[
-                "--tensor-parallel-size".to_string(),
-                gpu_count.to_string(),
-            ]);
+            args.extend_from_slice(&["--tensor-parallel-size".to_string(), gpu_count.to_string()]);
         }
 
         if let Some(cache_type) = &config.cache_type {
@@ -297,7 +294,6 @@ impl Engine {
         args.extend(config.extra_args.iter().cloned());
         args
     }
-
 }
 
 impl std::fmt::Display for Engine {
@@ -397,13 +393,26 @@ mod tests {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/test"),
             gpus: vec![
-                GpuDevice { kind: GpuKind::Nvidia, index: 0, name: "A100".into(), vram: None },
-                GpuDevice { kind: GpuKind::Nvidia, index: 1, name: "A100".into(), vram: None },
+                GpuDevice {
+                    kind: GpuKind::Nvidia,
+                    index: 0,
+                    name: "A100".into(),
+                    vram: None,
+                },
+                GpuDevice {
+                    kind: GpuKind::Nvidia,
+                    index: 1,
+                    name: "A100".into(),
+                    vram: None,
+                },
             ],
             ..Default::default()
         };
         let args = Engine::Vllm.build_serve_args(&config, 8000);
-        let tp_idx = args.iter().position(|a| a == "--tensor-parallel-size").unwrap();
+        let tp_idx = args
+            .iter()
+            .position(|a| a == "--tensor-parallel-size")
+            .unwrap();
         assert_eq!(args[tp_idx + 1], "2");
     }
 

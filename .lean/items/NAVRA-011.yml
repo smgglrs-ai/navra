@@ -1,0 +1,10 @@
+id: "NAVRA-011"
+title: "Negation-aware FTS5 queries"
+status: done
+priority: high
+effort: 0.5-1d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-05
+description: |
+  FTS5 supports NOT in query syntax but navra-rag's agentic retriever doesn't use it. Add negation detection in decompose_query (scan for 'not', 'without', 'except') and translate to FTS5 NOT operators on the lexical channel. Vector search still can't handle negation but RRF fusion with correct FTS5 results will boost overall recall. Addresses a verified failure mode from 'Embeddings Aren't Magic' (Angela Shi, 2026).

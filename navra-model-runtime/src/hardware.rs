@@ -168,19 +168,27 @@ mod tests {
     #[test]
     fn container_image_llamacpp() {
         assert_eq!(
-            HardwareTarget::Cpu.container_image(&Engine::LlamaCpp).unwrap(),
+            HardwareTarget::Cpu
+                .container_image(&Engine::LlamaCpp)
+                .unwrap(),
             "ghcr.io/ggml-org/llama.cpp:server"
         );
         assert_eq!(
-            HardwareTarget::Nvidia.container_image(&Engine::LlamaCpp).unwrap(),
+            HardwareTarget::Nvidia
+                .container_image(&Engine::LlamaCpp)
+                .unwrap(),
             "ghcr.io/ggml-org/llama.cpp:server-cuda"
         );
         assert_eq!(
-            HardwareTarget::Amd.container_image(&Engine::LlamaCpp).unwrap(),
+            HardwareTarget::Amd
+                .container_image(&Engine::LlamaCpp)
+                .unwrap(),
             "ghcr.io/ggml-org/llama.cpp:server-rocm"
         );
         assert_eq!(
-            HardwareTarget::Intel.container_image(&Engine::LlamaCpp).unwrap(),
+            HardwareTarget::Intel
+                .container_image(&Engine::LlamaCpp)
+                .unwrap(),
             "ghcr.io/ggml-org/llama.cpp:server"
         );
     }
@@ -188,14 +196,18 @@ mod tests {
     #[test]
     fn container_image_vllm() {
         assert_eq!(
-            HardwareTarget::Nvidia.container_image(&Engine::Vllm).unwrap(),
+            HardwareTarget::Nvidia
+                .container_image(&Engine::Vllm)
+                .unwrap(),
             "vllm/vllm-openai:latest"
         );
         assert_eq!(
             HardwareTarget::Amd.container_image(&Engine::Vllm).unwrap(),
             "vllm/vllm-openai:latest-rocm"
         );
-        assert!(HardwareTarget::Intel.container_image(&Engine::Vllm).is_err());
+        assert!(HardwareTarget::Intel
+            .container_image(&Engine::Vllm)
+            .is_err());
         assert!(HardwareTarget::Cpu.container_image(&Engine::Vllm).is_err());
     }
 
@@ -235,12 +247,30 @@ mod tests {
 
     #[test]
     fn from_str() {
-        assert_eq!("cpu".parse::<HardwareTarget>().unwrap(), HardwareTarget::Cpu);
-        assert_eq!("nvidia".parse::<HardwareTarget>().unwrap(), HardwareTarget::Nvidia);
-        assert_eq!("cuda".parse::<HardwareTarget>().unwrap(), HardwareTarget::Nvidia);
-        assert_eq!("amd".parse::<HardwareTarget>().unwrap(), HardwareTarget::Amd);
-        assert_eq!("rocm".parse::<HardwareTarget>().unwrap(), HardwareTarget::Amd);
-        assert_eq!("intel".parse::<HardwareTarget>().unwrap(), HardwareTarget::Intel);
+        assert_eq!(
+            "cpu".parse::<HardwareTarget>().unwrap(),
+            HardwareTarget::Cpu
+        );
+        assert_eq!(
+            "nvidia".parse::<HardwareTarget>().unwrap(),
+            HardwareTarget::Nvidia
+        );
+        assert_eq!(
+            "cuda".parse::<HardwareTarget>().unwrap(),
+            HardwareTarget::Nvidia
+        );
+        assert_eq!(
+            "amd".parse::<HardwareTarget>().unwrap(),
+            HardwareTarget::Amd
+        );
+        assert_eq!(
+            "rocm".parse::<HardwareTarget>().unwrap(),
+            HardwareTarget::Amd
+        );
+        assert_eq!(
+            "intel".parse::<HardwareTarget>().unwrap(),
+            HardwareTarget::Intel
+        );
         assert!("unknown".parse::<HardwareTarget>().is_err());
     }
 

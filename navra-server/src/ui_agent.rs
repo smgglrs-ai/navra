@@ -196,8 +196,7 @@ pub(crate) async fn handle_agentic_chat(
 
     // Build the NDJSON event channel
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<serde_json::Value>();
-    let audit_sink: navra_agent::SharedAuditSink =
-        Arc::new(StreamingAuditSink { tx: tx.clone() });
+    let audit_sink: navra_agent::SharedAuditSink = Arc::new(StreamingAuditSink { tx: tx.clone() });
 
     // Build system prompt from persona if specified
     let system_prompt = if let Some(ref persona_name) = req.persona {

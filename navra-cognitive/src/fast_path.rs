@@ -122,7 +122,12 @@ mod tests {
     fn threshold_controls_match_sensitivity() {
         let paths = vec![FastPath {
             name: "strict".into(),
-            keywords: vec!["alpha".into(), "beta".into(), "gamma".into(), "delta".into()],
+            keywords: vec![
+                "alpha".into(),
+                "beta".into(),
+                "gamma".into(),
+                "delta".into(),
+            ],
             constrained_tools: vec![],
             max_iterations: 3,
             temperature: None,

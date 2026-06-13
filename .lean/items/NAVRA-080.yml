@@ -1,0 +1,43 @@
+id: "NAVRA-080"
+title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
+status: planned
+priority: low
+effort: S
+depends_on: []
+feeds: ["NAVRA-074"]
+source: tech-watch-2026-06-13
+description: |
+  Two minor information leakage vectors identified during STDIO RCE
+  investigation (navra is NOT vulnerable to the OX Security RCE — command
+  params are config-only, never user-influenced). These are defense-in-depth
+  hardening, not urgent fixes.
+
+  1. **UpstreamError::Spawn sanitization**: The Spawn variant
+     (navra-protocol/src/upstream/mod.rs:30) includes the raw
+     std::io::Error which can contain the command path. This is logged
+     via tracing::error! at main.rs:2198. The error goes to server
+     stderr (not to MCP clients), but if OTel trace export is enabled
+     the string could reach external collectors. Strip or redact the
+     command path from the error before it reaches tracing spans.
+
+  2. **Upstream stderr rate-limiting**: StdioTransport (stdio.rs:54-77)
+     forwards the upstream process's stderr verbatim via tracing::warn!.
+     A malicious upstream MCP server could flood logs or inject misleading
+     entries. Add a per-upstream rate limit (e.g., 10 lines/sec) and
+     prefix all forwarded lines with a clear [upstream:<name>:stderr] tag
+     to distinguish them from navra's own log output.
+
+  Context: OX Security demonstrated STDIO RCE across all Anthropic MCP
+  SDKs (14+ CVEs, CVE-2026-30615). navra's config-only spawn parameters
+  fully mitigate the primary attack vector. These are residual hardening
+  items aligned with NAVRA-074 (architecture disclosure prevention).
+
+  Reference: https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/
+acceptance:
+  - "UpstreamError::Spawn does not include raw command path in Display output"
+  - "OTel spans from upstream errors do not leak filesystem paths"
+  - "Upstream stderr forwarding is rate-limited (configurable, default 10 lines/sec)"
+  - "Forwarded stderr lines are prefixed with [upstream:<name>:stderr]"
+scope:
+  - navra-protocol/src/upstream/mod.rs
+  - navra-protocol/src/upstream/stdio.rs

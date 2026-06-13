@@ -133,13 +133,9 @@ impl SandboxProfile {
                     ));
                 }
                 Some(child_rule) => {
-                    check_action_attenuation(&parent_rule.action, &child_rule.action)
-                        .map_err(|e| {
-                            format!(
-                                "sandbox attenuation error: {} for '{}'",
-                                e, tool_pattern
-                            )
-                        })?;
+                    check_action_attenuation(&parent_rule.action, &child_rule.action).map_err(
+                        |e| format!("sandbox attenuation error: {} for '{}'", e, tool_pattern),
+                    )?;
                 }
             }
         }
@@ -428,8 +424,14 @@ mod kani_proofs {
         kani::assume(p_win <= 3600);
         kani::assume(c_max <= 100);
         kani::assume(c_win <= 3600);
-        let parent = SandboxAction::RateLimit { max_calls: p_max, window_secs: p_win };
-        let child = SandboxAction::RateLimit { max_calls: c_max, window_secs: c_win };
+        let parent = SandboxAction::RateLimit {
+            max_calls: p_max,
+            window_secs: p_win,
+        };
+        let child = SandboxAction::RateLimit {
+            max_calls: c_max,
+            window_secs: c_win,
+        };
         let result = check_action_attenuation(&parent, &child);
         if c_max > p_max || c_win > p_win {
             assert!(result.is_err());
@@ -446,8 +448,14 @@ mod kani_proofs {
         kani::assume(p_win <= 3600);
         kani::assume(c_max <= p_max);
         kani::assume(c_win <= p_win);
-        let parent = SandboxAction::RateLimit { max_calls: p_max, window_secs: p_win };
-        let child = SandboxAction::RateLimit { max_calls: c_max, window_secs: c_win };
+        let parent = SandboxAction::RateLimit {
+            max_calls: p_max,
+            window_secs: p_win,
+        };
+        let child = SandboxAction::RateLimit {
+            max_calls: c_max,
+            window_secs: c_win,
+        };
         assert!(check_action_attenuation(&parent, &child).is_ok());
     }
 

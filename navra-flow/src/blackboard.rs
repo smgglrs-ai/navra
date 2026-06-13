@@ -6,9 +6,9 @@
 //! drops).
 
 use crate::error::FlowError;
-use serde_json::Value;
-use navra_protocol::label::DataLabel;
 use navra_auth::ifc::TaintTracker;
+use navra_protocol::label::DataLabel;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;

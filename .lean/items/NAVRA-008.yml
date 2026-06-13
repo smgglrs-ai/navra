@@ -1,0 +1,10 @@
+id: "NAVRA-008"
+title: "Graphability Indexing for navra-rag"
+status: done
+priority: medium
+effort: 1-2d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  Predict section relational yield before indexing, skip low-value sections. 16-38% token reduction. Source: Proxy-Pointer RAG.

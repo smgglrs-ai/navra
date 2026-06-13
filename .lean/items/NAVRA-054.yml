@@ -1,0 +1,36 @@
+id: NAVRA-054
+title: Interactive flow DAG visualization
+status: backlog
+priority: low
+effort: M
+depends_on:
+- NAVRA-005
+feeds: []
+description: Add HTTP endpoints and serialization logic to navra-server and navra-flow that expose running and completed flow
+  DAGs in visualization-ready formats (JSON graph for rendra consumption, and optionally DOT/Mermaid for CLI use). The server
+  already tracks flow state in FlowRegistry (node statuses, dependencies) and CausalProvenanceStore (causal edges), but neither
+  produces a renderable graph structure. This item bridges the gap by adding a /flows/{id}/graph endpoint returning nodes,
+  edges, statuses, and timing data so rendra or any web frontend can render an interactive DAG with live progress updates
+  via SSE.
+acceptance:
+- GET /flows/{id}/graph returns a JSON object with nodes (id, specialist, status, tokens, duration_ms), edges (source, target,
+  edge_type), and metadata (flow_id, name, started_at, status) for any tracked flow
+- GET /flows/{id}/graph/dot returns a Graphviz DOT string with color-coded node states (pending/running/done/failed) for CLI
+  piping to dot or xdot
+- SSE stream at GET /flows/{id}/events emits FlowEvent records from event_log in real time so dashboards can update node states
+  without polling
+- CausalSubgraph gains a to_viz_json() method that merges DependencyGraph edges with causal provenance edges into a single
+  renderable graph
+- Unit tests verify graph serialization for a 5-node DAG with mixed statuses and back-edges
+- Integration test starts a flow, hits /flows/{id}/graph, and asserts the response contains all expected nodes and dependency
+  edges
+scope:
+- navra-flow/src/dag.rs
+- navra-flow/src/causal_graph.rs
+- navra-flow/src/event_log.rs
+- navra-core/src/transport/streamable/router.rs
+- navra-core/src/transport/streamable/handlers.rs
+- navra-server/src/flow_tools.rs
+- navra-server/src/main.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-flow -- dag::tests::viz_json --no-fail-fast

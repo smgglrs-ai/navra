@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
 use navra_protocol::label::{Confidentiality, DataLabel, Integrity};
+use serde::{Deserialize, Serialize};
 
 use crate::types::SkillCard;
 use crate::weaver::select_skill_cards;
@@ -307,8 +307,12 @@ mod tests {
     #[test]
     fn select_filters_by_task() {
         let mut reg = SkillRegistry::new(false);
-        reg.register(make_skill("file_ops", vec!["file", "read", "write"], &valid_content()))
-            .unwrap();
+        reg.register(make_skill(
+            "file_ops",
+            vec!["file", "read", "write"],
+            &valid_content(),
+        ))
+        .unwrap();
         reg.register(make_skill(
             "git_workflow",
             vec!["git", "commit", "branch"],
@@ -468,7 +472,9 @@ mod tests {
             expected: "nonexistent_function".into(),
         }];
         let status = validate_skill(&skill, &bad_tests);
-        assert!(matches!(status, TestStatus::Failed(ref msg) if msg.contains("nonexistent_function")));
+        assert!(
+            matches!(status, TestStatus::Failed(ref msg) if msg.contains("nonexistent_function"))
+        );
     }
 
     #[test]
@@ -480,7 +486,9 @@ mod tests {
         let mut bad_name = make_skill("valid", vec!["test"], &valid_content());
         bad_name.card.name = "has-dashes".into();
         let status = validate_skill(&bad_name, &[]);
-        assert!(matches!(status, TestStatus::Failed(ref msg) if msg.contains("invalid characters")));
+        assert!(
+            matches!(status, TestStatus::Failed(ref msg) if msg.contains("invalid characters"))
+        );
     }
 
     #[test]

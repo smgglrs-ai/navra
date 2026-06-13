@@ -1,0 +1,8 @@
+id: "NAVRA-021"
+title: "ONNX/ort deepening"
+status: planned
+priority: low
+effort: 2-3d
+depends_on: []
+feeds: ['NAVRA-022']
+gate: "ONNX spec"

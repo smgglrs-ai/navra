@@ -1,0 +1,9 @@
+id: "NAVRA-034"
+title: "navra-core crate split (navra-router + navra-mcp)"
+status: planned
+priority: medium
+effort: 3-5d
+depends_on: []
+feeds: []
+description: |
+  Split navra-core into navra-router (HTTP transport, auth middleware, metrics, axum router) and navra-mcp (MCP protocol, dispatch, tool registry). navra-rag and other standalone services depend only on navra-router. Avoids pulling in MCP protocol machinery for non-MCP services.

@@ -5,8 +5,8 @@
 //! MCP spec — providing supply-chain integrity for tool definitions.
 
 use crate::identity::CapSigner;
-use serde::{Deserialize, Serialize};
 use navra_protocol::ToolDefinition;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,8 +240,7 @@ mod tests {
         let manifest = test_manifest();
         let sig = manifest.sign(&signer);
         let mut store = ManifestKeyStore::new();
-        let result =
-            verify_manifest_option(&manifest, Some(&sig), &mut store, &signer);
+        let result = verify_manifest_option(&manifest, Some(&sig), &mut store, &signer);
         assert_eq!(result, Some(true));
     }
 

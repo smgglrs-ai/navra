@@ -630,8 +630,7 @@ mod tests {
         .unwrap();
 
         let ks = KnowledgeStore::open_memory().unwrap();
-        let model: Arc<dyn navra_model::ModelBackend> =
-            Arc::new(MockModelBackend::new(model_json));
+        let model: Arc<dyn navra_model::ModelBackend> = Arc::new(MockModelBackend::new(model_json));
         let pipeline = DistillationPipeline::new(&wm, &ks).with_model(model);
 
         let segments = pipeline.ingest("s1").unwrap();
@@ -678,8 +677,7 @@ mod tests {
             .unwrap();
 
         let ks = KnowledgeStore::open_memory().unwrap();
-        let model: Arc<dyn navra_model::ModelBackend> =
-            Arc::new(MockModelBackend::new(model_json));
+        let model: Arc<dyn navra_model::ModelBackend> = Arc::new(MockModelBackend::new(model_json));
         let pipeline = DistillationPipeline::new(&wm, &ks).with_model(model);
 
         let stored = pipeline.run("s1").await.unwrap();

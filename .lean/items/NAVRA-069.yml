@@ -1,0 +1,36 @@
+id: NAVRA-069
+title: Multi-hypothesis tool routing
+status: backlog
+priority: low
+effort: M
+depends_on: []
+feeds: []
+description: Add a multi-hypothesis tool routing layer to the navra-agent tool loop that scores multiple candidate tools before
+  executing the best one. Currently, the ReAct loop in navra-agent/src/tool_loop.rs blindly executes whichever tool the model
+  selects. When an agent has access to 30+ tools (built-in modules plus upstream MCP servers), small models frequently pick
+  the wrong tool on the first attempt, wasting an iteration and context window tokens. Multi-hypothesis routing would let
+  the agent (or the gateway) generate N candidate tool calls, score each by schema fit and semantic relevance using the embedding
+  model already available in ToolLoopConfig, then execute only the top-ranked candidate -- reducing iteration waste and improving
+  tool selection accuracy for small local models.
+acceptance:
+- When the model returns a single function call and multi-hypothesis is disabled (default), the tool loop behaves identically
+  to today with no added latency
+- When multi-hypothesis routing is enabled via ToolLoopConfig, the agent requests multiple candidate tool calls from the model
+  (via tool_choice or temperature sampling) and ranks them by schema validation score and embedding similarity before executing
+  the top candidate
+- 'A ToolRoutingStrategy trait is defined in navra-agent with at least two implementations: PassThrough (current behavior)
+  and ScoredHypothesis (embedding-based ranking)'
+- Candidates that fail JSON schema validation against the tool's input_schema are demoted or discarded before ranking
+- The routing decision (candidates considered, scores, winner) is logged via tracing at debug level and recorded in the audit
+  sink when configured
+- 'Unit tests cover: passthrough mode unchanged behavior, schema-invalid candidates rejected, highest-scored candidate selected
+  from multiple options'
+scope:
+- navra-agent/src/tool_loop.rs
+- navra-agent/src/lib.rs
+- navra-agent/src/routing.rs
+- navra-model/src/lib.rs
+- navra-responses/src/tool.rs
+- navra-core/src/server/handlers.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-agent -- routing

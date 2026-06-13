@@ -34,7 +34,9 @@ pub enum VerifierType {
     JsonSyntaxCheck,
     MandateValidator,
     SafetyHook,
-    MinConfidence { threshold: f32 },
+    MinConfidence {
+        threshold: f32,
+    },
 }
 
 /// When the proposal becomes an action.
@@ -71,18 +73,12 @@ impl Default for SdbContract {
 ///
 /// Returns true if the proposal passes the verifier, false if it
 /// should be rejected.
-pub fn validate_proposal(
-    contract: &SdbContract,
-    output: &str,
-    validation_score: f32,
-) -> bool {
+pub fn validate_proposal(contract: &SdbContract, output: &str, validation_score: f32) -> bool {
     match &contract.verifier {
         VerifierType::None => true,
         VerifierType::MandateValidator => validation_score >= 50.0,
         VerifierType::MinConfidence { threshold } => validation_score >= *threshold,
-        VerifierType::JsonSyntaxCheck => {
-            serde_json::from_str::<serde_json::Value>(output).is_ok()
-        }
+        VerifierType::JsonSyntaxCheck => serde_json::from_str::<serde_json::Value>(output).is_ok(),
         VerifierType::SafetyHook => true,
     }
 }
@@ -140,6 +136,9 @@ mod tests {
         let c = SdbContract::default();
         let json = serde_json::to_string(&c).unwrap();
         let back: SdbContract = serde_json::from_str(&json).unwrap();
-        assert!(matches!(back.reject_action, RejectAction::Retry { max_attempts: 2 }));
+        assert!(matches!(
+            back.reject_action,
+            RejectAction::Retry { max_attempts: 2 }
+        ));
     }
 }

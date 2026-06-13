@@ -1,0 +1,135 @@
+date: "2026-06-13"
+mode: proactive
+
+sources:
+  - url: "https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"
+    title: "MCP 2026-07-28 Release Candidate"
+    impact: CRITICAL
+    relationship: directly affects NAVRA-018
+
+  - url: "https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/"
+    title: "OX Security — MCP STDIO Transport RCE"
+    impact: HIGH
+    relationship: threatens upstream MCP spawning
+
+  - url: "https://arxiv.org/abs/2605.17380"
+    title: "Uber ADR Framework (MLSys 2026 Industry Track)"
+    impact: HIGH
+    relationship: complements security evaluation
+
+  - url: "https://github.com/ollama/ollama/releases"
+    title: "Ollama v0.30.8 (June 12)"
+    impact: MEDIUM
+    relationship: complements multi-agent scheduling
+
+  - url: "https://blogs.cisco.com/ai/cisco-announces-defenseclaw"
+    title: "Cisco DefenseClaw — 5 scan engines"
+    impact: MEDIUM
+    relationship: competitive threat
+
+  - url: "https://aigateway.envoyproxy.io/docs/0.4/capabilities/mcp/"
+    title: "Envoy AI Gateway MCPRoute v1beta1"
+    impact: MEDIUM
+    relationship: commoditizes MCP proxy
+
+  - url: "https://developer.nvidia.com/blog/build-a-secure-always-on-local-ai-agent-with-nvidia-nemoclaw-and-openclaw/"
+    title: "NVIDIA NemoClaw + OpenShell"
+    impact: MEDIUM
+    relationship: validates IFC approach
+
+  - url: "https://www.enkryptai.com/clawpatrol"
+    title: "Enkrypt AI ClawPatrol — Skill Sentinel"
+    impact: MEDIUM
+    relationship: competitive threat
+
+  - url: "https://arxiv.org/abs/2604.23374"
+    title: "NeuroTaint (already tracked)"
+    impact: MEDIUM
+    relationship: complements IFC
+
+findings:
+  - source: "blog.modelcontextprotocol.io"
+    title: "MCP RC SEP details for NAVRA-018"
+    action: enrich
+    item_id: "NAVRA-018"
+    detail: "Added SEP-2567/2575/2577 details, _meta migration, server/discover method"
+
+  - source: "blog.modelcontextprotocol.io"
+    title: "MCP authorization SEPs (iss validation, credential binding)"
+    action: plan
+    item_id: "NAVRA-078"
+    detail: "6 OAuth hardening SEPs required for July 2026 spec compliance"
+
+  - source: "ox.security"
+    title: "STDIO RCE exposure in navra upstream MCP spawning"
+    action: investigate
+    resolution: |
+      NOT VULNERABLE. Command params are config-only (static TOML), never
+      user-influenced. No dynamic upstream registration API. AID discovery
+      returns HTTP URLs only. Tool arguments are JSON-RPC over stdin pipe,
+      no shell interpretation. Two minor hardening items → NAVRA-080.
+    detail: "14+ CVEs across all Anthropic MCP SDKs. navra spawns upstream servers via STDIO."
+
+  - source: "ox.security"
+    title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
+    action: plan
+    item_id: "NAVRA-080"
+    detail: "Sanitize UpstreamError::Spawn (strip command path), rate-limit upstream stderr forwarding"
+
+  - source: "ox.security"
+    title: "STDIO RCE as architecture disclosure example"
+    action: enrich
+    item_id: "NAVRA-074"
+    detail: "STDIO transport mechanism itself is exploitable architectural detail"
+
+  - source: "arxiv.org (2605.17380)"
+    title: "Evaluate ADR-Bench as navra security benchmark"
+    action: plan
+    item_id: "NAVRA-079"
+    detail: "302 tasks, 17 attack techniques, 133 MCP servers. Production-proven at Uber scale."
+
+  - source: "arxiv.org (2605.17380)"
+    title: "ADR-Bench as candidate benchmark methodology"
+    action: enrich
+    item_id: "NAVRA-048"
+    detail: "ADR-Bench alongside MVAR/TaintBench for adversarial evaluation suite"
+
+  - source: "blogs.cisco.com, aigateway.envoyproxy.io"
+    title: "DefenseClaw 5 scan engines + Envoy MCPRoute v1beta1"
+    action: update-positioning
+    detail: "Updated competitive landscape with DefenseClaw architecture and Envoy tool multiplexing"
+
+  - source: "github.com/ollama/ollama"
+    title: "Ollama v0.30.8 KV cache improvements"
+    action: watch
+    detail: "Decoupled prompt caching from context shift. Test with navra multi-agent routing."
+
+  - source: "enkryptai.com"
+    title: "ClawPatrol '9 detectors with zero LLM bypass' claim"
+    action: dismiss
+    detail: "Refuted 0-3 in adversarial verification. Vendor claim without evidence."
+
+follow_ups_resolved:
+  - from_watch: "2026-06-12"
+    title: "KV cache reuse (investigate)"
+    resolution: "Ollama v0.30.8 directly improves this. Downgrade to watch — test with multi-agent."
+
+  - from_watch: "2026-06-12"
+    title: "Hyperlight microVMs (investigate)"
+    resolution: "No new developments surfaced. Keep watching."
+
+summary: |
+  9 sources analyzed via deep-research workflow (111 agents, 28 sources fetched,
+  138 claims extracted, 24/25 verified).
+  2 new plan items (NAVRA-078, NAVRA-079).
+  3 existing items enriched (NAVRA-018, NAVRA-048, NAVRA-074).
+  Ecosystem positioning updated (DefenseClaw, Envoy, OX STDIO RCE, Uber ADR).
+  1 item to investigate (STDIO RCE exposure in navra upstream spawning).
+  1 item to watch (Ollama v0.30.8 KV cache).
+  1 item dismissed (ClawPatrol 9 detectors claim — refuted).
+
+  Key insight: MCP 2026-07-28 RC is a fundamental protocol redesign (stateless,
+  no sessions, no initialize). NAVRA-018 is tracking this but the authorization
+  SEPs (NAVRA-078) are a new dependency for spec compliance. The OX Security
+  STDIO RCE is the most urgent investigation — navra's config-only spawn params
+  likely mitigate, but needs verification.

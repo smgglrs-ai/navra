@@ -1,0 +1,23 @@
+id: "NAVRA-073"
+title: "Model refusal detection and gateway-level fallback routing"
+status: planned
+priority: medium
+effort: 2-3d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-12
+description: |
+  Detect stop_reason: "refusal" (or equivalent signals) from upstream
+  model backends and implement gateway-level fallback routing. When a
+  model refuses a request, navra should transparently retry on the next
+  configured model in the agent's model chain.
+
+  This generalizes Anthropic's Fable 5 server-side fallback pattern to
+  work across any model backend (Ollama, vLLM, etc.) where models may
+  refuse. The gateway owns the retry logic, not the client.
+
+  Refusal categories to detect: safety classifier declines, capability
+  limits, rate limits with fallback semantics. Propagate refusal signals
+  to downstream MCP clients when all models in the chain decline.
+
+  Reference: https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback

@@ -68,10 +68,7 @@ impl SessionActionLog {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TemporalPredicate {
     /// Tool X requires prior call to tool Y in this session.
-    Requires {
-        tool: String,
-        prerequisite: String,
-    },
+    Requires { tool: String, prerequisite: String },
     /// No more than N consecutive calls matching pattern.
     SequenceLimit {
         pattern: String,
@@ -83,14 +80,9 @@ pub enum TemporalPredicate {
         blocked_tools: Vec<String>,
     },
     /// After N blocked calls, trigger escalation.
-    DenialEscalation {
-        threshold: usize,
-    },
+    DenialEscalation { threshold: usize },
     /// Minimum interval between calls to a tool.
-    Cooldown {
-        tool: String,
-        min_interval_ms: u64,
-    },
+    Cooldown { tool: String, min_interval_ms: u64 },
     /// All sub-predicates must hold (AND).
     All(Vec<TemporalPredicate>),
     /// Any sub-predicate triggers (OR).
@@ -223,8 +215,7 @@ impl TemporalPredicate {
 
 /// Check if a DataLabel meets or exceeds the trigger label in any dimension.
 fn label_matches(actual: &DataLabel, trigger: &DataLabel) -> bool {
-    actual.confidentiality >= trigger.confidentiality
-        || actual.integrity >= trigger.integrity
+    actual.confidentiality >= trigger.confidentiality || actual.integrity >= trigger.integrity
 }
 
 /// Simple glob matching (prefix `*`, suffix `*`, exact).
@@ -318,7 +309,9 @@ impl Hook for TemporalContractHook {
             if !contract.applies_to_permission(&ctx.agent.permissions) {
                 continue;
             }
-            if let Some(violation) = contract.predicate.evaluate(tool_name, &history, current_label)
+            if let Some(violation) = contract
+                .predicate
+                .evaluate(tool_name, &history, current_label)
             {
                 let reason = contract.format_block_reason(&violation);
                 tracing::info!(
@@ -383,12 +376,15 @@ mod tests {
     fn session_action_log_caps_at_max() {
         let log = SessionActionLog::new(3);
         for i in 0..5 {
-            log.record("s1", ActionEntry {
-                tool_name: format!("tool_{i}"),
-                result_status: ResultStatus::Success,
-                ifc_label: DataLabel::TRUSTED_PUBLIC,
-                timestamp: std::time::Instant::now(),
-            });
+            log.record(
+                "s1",
+                ActionEntry {
+                    tool_name: format!("tool_{i}"),
+                    result_status: ResultStatus::Success,
+                    ifc_label: DataLabel::TRUSTED_PUBLIC,
+                    timestamp: std::time::Instant::now(),
+                },
+            );
         }
         let history = log.get("s1");
         assert_eq!(history.len(), 3);
@@ -398,18 +394,24 @@ mod tests {
     #[test]
     fn session_action_log_isolates_sessions() {
         let log = SessionActionLog::new(100);
-        log.record("s1", ActionEntry {
-            tool_name: "file_read".to_string(),
-            result_status: ResultStatus::Success,
-            ifc_label: DataLabel::TRUSTED_PUBLIC,
-            timestamp: std::time::Instant::now(),
-        });
-        log.record("s2", ActionEntry {
-            tool_name: "git_status".to_string(),
-            result_status: ResultStatus::Success,
-            ifc_label: DataLabel::TRUSTED_PUBLIC,
-            timestamp: std::time::Instant::now(),
-        });
+        log.record(
+            "s1",
+            ActionEntry {
+                tool_name: "file_read".to_string(),
+                result_status: ResultStatus::Success,
+                ifc_label: DataLabel::TRUSTED_PUBLIC,
+                timestamp: std::time::Instant::now(),
+            },
+        );
+        log.record(
+            "s2",
+            ActionEntry {
+                tool_name: "git_status".to_string(),
+                result_status: ResultStatus::Success,
+                ifc_label: DataLabel::TRUSTED_PUBLIC,
+                timestamp: std::time::Instant::now(),
+            },
+        );
         assert_eq!(log.get("s1").len(), 1);
         assert_eq!(log.get("s2").len(), 1);
         assert_eq!(log.get("s3").len(), 0);
@@ -430,12 +432,15 @@ mod tests {
     #[test]
     fn predicate_requires_allows_when_prereq_present() {
         let log = SessionActionLog::new(100);
-        log.record("s1", ActionEntry {
-            tool_name: "file_read".to_string(),
-            result_status: ResultStatus::Success,
-            ifc_label: DataLabel::TRUSTED_PUBLIC,
-            timestamp: Instant::now(),
-        });
+        log.record(
+            "s1",
+            ActionEntry {
+                tool_name: "file_read".to_string(),
+                result_status: ResultStatus::Success,
+                ifc_label: DataLabel::TRUSTED_PUBLIC,
+                timestamp: Instant::now(),
+            },
+        );
         let pred = TemporalPredicate::Requires {
             tool: "file_write".to_string(),
             prerequisite: "file_read".to_string(),
@@ -599,7 +604,9 @@ mod tests {
         CallContext::new(AgentIdentity::new("tester", perms), "test-session")
     }
 
-    fn make_hook(contracts: Vec<TemporalContract>) -> (Arc<SessionActionLog>, TemporalContractHook) {
+    fn make_hook(
+        contracts: Vec<TemporalContract>,
+    ) -> (Arc<SessionActionLog>, TemporalContractHook) {
         let log = Arc::new(SessionActionLog::new(100));
         let hook = TemporalContractHook::new(Arc::clone(&log), contracts);
         (log, hook)
@@ -642,12 +649,15 @@ mod tests {
         let ctx = test_ctx();
 
         // Simulate a prior read recorded by the post-hook
-        log.record(&ctx.session_id, ActionEntry {
-            tool_name: "file_read".to_string(),
-            result_status: ResultStatus::Success,
-            ifc_label: DataLabel::TRUSTED_PUBLIC,
-            timestamp: Instant::now(),
-        });
+        log.record(
+            &ctx.session_id,
+            ActionEntry {
+                tool_name: "file_read".to_string(),
+                result_status: ResultStatus::Success,
+                ifc_label: DataLabel::TRUSTED_PUBLIC,
+                timestamp: Instant::now(),
+            },
+        );
 
         let decision = hook
             .pre_tool_use("file_write", &serde_json::json!({}), &ctx)

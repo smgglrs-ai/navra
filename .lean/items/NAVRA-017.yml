@@ -1,0 +1,10 @@
+id: "NAVRA-017"
+title: "OGX backend in navra-model"
+status: done
+priority: high
+effort: 2-3d
+depends_on: ['NAVRA-002']
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  OGX (ex-Llama Stack) for model serving + Llama Guard as GPU-tier safety. 23 providers, Red Hat contributing.

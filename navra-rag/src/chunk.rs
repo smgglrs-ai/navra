@@ -674,9 +674,7 @@ pub fn detect_document_type(text: &str) -> DocumentType {
                 || t.starts_with("> ")
                 || t.starts_with("```")
                 || t.starts_with("| ")
-                || (t.len() > 3
-                    && t.as_bytes()[0] == b'['
-                    && t.contains("]("))
+                || (t.len() > 3 && t.as_bytes()[0] == b'[' && t.contains("]("))
         })
         .count();
 
@@ -743,7 +741,7 @@ mod tests {
             target_size: 1000,
             overlap: 0,
             min_size: 10,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let chunks = chunk_text(text, &config);
         // All paragraphs should be merged into one chunk (total < target)
@@ -762,7 +760,7 @@ mod tests {
             target_size: 250,
             overlap: 0,
             min_size: 10,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let chunks = chunk_text(&text, &config);
         assert!(
@@ -779,7 +777,7 @@ mod tests {
             target_size: 300,
             overlap: 0,
             min_size: 10,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let chunks = chunk_text(&text, &config);
         for (i, chunk) in chunks.iter().enumerate() {
@@ -796,7 +794,7 @@ mod tests {
             target_size: 30,
             overlap: 10,
             min_size: 10,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let chunks = chunk_text(&text, &config);
         if chunks.len() >= 2 {
@@ -818,7 +816,7 @@ mod tests {
             target_size: 1000,
             overlap: 0,
             min_size: 100,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let chunks = chunk_text(text, &config);
         // Content is too short for min_size, but single-chunk fallback kicks in
@@ -851,7 +849,7 @@ pub fn third_function() {\n\
             target_size: 80,
             overlap: 0,
             min_size: 10,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let chunks = chunk_text(code, &config);
         assert!(
@@ -879,7 +877,7 @@ pub fn third_function() {\n\
             target_size: 60,
             overlap: 0,
             min_size: 10,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let chunks = chunk_text(prose, &config);
         assert!(
@@ -930,7 +928,7 @@ pub fn third_function() {\n\
             target_size: 30,
             overlap: 0,
             min_size: 5,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let mut chunks = chunk_text(source, &config);
         inject_breadcrumbs(&mut chunks, source);
@@ -948,7 +946,7 @@ pub fn third_function() {\n\
             target_size: 1000,
             overlap: 0,
             min_size: 5,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let mut chunks = chunk_text(source, &config);
         let original_content = chunks[0].content.clone();
@@ -1013,7 +1011,7 @@ pub fn third_function() {\n\
             target_size: 100,
             overlap: 0,
             min_size: 10,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         let content = "A ".repeat(40); // 80 chars, within 50-150 range
         let chunks = vec![Chunk {
@@ -1036,7 +1034,7 @@ pub fn third_function() {\n\
             target_size: 100,
             overlap: 0,
             min_size: 10,
-        graphability_threshold: None,
+            graphability_threshold: None,
         };
         // A very short chunk (10 chars) is below lower bound (50)
         let chunks = vec![Chunk {
@@ -1139,6 +1137,9 @@ pub fn third_function() {\n\
             section_end_byte: None,
         };
         let score = predict_chunk_value(&chunk, &config);
-        assert!(score >= 0.7, "no breadcrumb should default high, got {score}");
+        assert!(
+            score >= 0.7,
+            "no breadcrumb should default high, got {score}"
+        );
     }
 }

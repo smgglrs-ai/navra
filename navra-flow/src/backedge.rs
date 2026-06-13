@@ -331,7 +331,10 @@ mod kani_proofs {
 
         let activated = tracker.should_activate(&edge, &result);
         if current_count >= max_iter {
-            assert!(!activated, "should not activate when count >= max_iterations");
+            assert!(
+                !activated,
+                "should not activate when count >= max_iterations"
+            );
         }
     }
 }

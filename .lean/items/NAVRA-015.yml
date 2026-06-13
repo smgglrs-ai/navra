@@ -1,0 +1,10 @@
+id: "NAVRA-015"
+title: "Cascading confidence gates in navra-rag"
+status: done
+priority: medium
+effort: 0.5-1d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  Wire FTS5 BM25 score threshold to skip vector search; wire vector score to skip reranker. Components exist, cascade logic missing.

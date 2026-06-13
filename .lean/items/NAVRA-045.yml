@@ -1,0 +1,13 @@
+id: "NAVRA-045"
+title: "GitLab module"
+status: wont_do
+priority: medium
+effort: 3-4d
+depends_on: []
+feeds: []
+description: |
+  Port of U2 GitHub module pattern to GitLab via glab CLI.
+reason: |
+  Prefer existing MCPs decision: GitLab ships an official MCP server.
+  Service-specific access control belongs in the MCP server (token scopes,
+  policies), not in navra modules. Same rationale as NAVRA-047.

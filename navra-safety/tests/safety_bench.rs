@@ -6,11 +6,11 @@
 //!
 //! Run with: cargo test -p navra-safety --test safety_bench
 
-use navra_safety::safety::{ContentFilter, FilterContext, SecretFilter};
 use navra_auth::tool_scanner::{
-    check_tool_poisoning, check_hidden_unicode, check_description_injection,
-    check_schema_abuse, ToolScanConfig,
+    check_description_injection, check_hidden_unicode, check_schema_abuse, check_tool_poisoning,
+    ToolScanConfig,
 };
+use navra_safety::safety::{ContentFilter, FilterContext, SecretFilter};
 
 fn filter_ctx() -> FilterContext<'static> {
     FilterContext {
@@ -177,11 +177,20 @@ fn description_injection_detection_rate() {
 
 fn schema_abuse_variants() -> Vec<(String, serde_json::Value)> {
     let sensitive_fields = [
-        "api_key", "apiKey", "API_KEY",
-        "password", "passwd", "secret",
-        "token", "access_token", "bearer_token",
-        "ssh_key", "private_key", "credentials",
-        "system_prompt", "SystemPrompt",
+        "api_key",
+        "apiKey",
+        "API_KEY",
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "access_token",
+        "bearer_token",
+        "ssh_key",
+        "private_key",
+        "credentials",
+        "system_prompt",
+        "SystemPrompt",
     ];
     let mut variants = Vec::new();
     for field in &sensitive_fields {

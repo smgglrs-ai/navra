@@ -94,10 +94,7 @@ enabled = false
     assert_eq!(config.upstream[0].name, "navra");
     assert_eq!(config.upstream[0].transport, "stdio");
     assert_eq!(config.upstream[0].command[0], "poetry");
-    assert_eq!(
-        config.upstream[0].cwd.as_deref(),
-        Some("/home/user/navra")
-    );
+    assert_eq!(config.upstream[0].cwd.as_deref(), Some("/home/user/navra"));
 
     // http
     assert_eq!(config.upstream[1].name, "api-server");

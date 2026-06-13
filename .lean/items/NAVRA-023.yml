@@ -1,0 +1,8 @@
+id: "NAVRA-023"
+title: "delta-mem OSAM evaluation"
+status: planned
+priority: low
+effort: 2-2d
+depends_on: []
+feeds: []
+gate: "ONNX integration"

@@ -198,16 +198,15 @@ impl HookPipeline {
         ctx: &ModelCallContext,
     ) -> PreModelOutcome {
         for hook in &self.hooks {
-            let decision =
-                tokio::time::timeout(self.timeout, hook.pre_model_call(&request, ctx))
-                    .await
-                    .unwrap_or_else(|_| {
-                        tracing::error!(
-                            hook = hook.name(),
-                            "Pre-model hook timed out — blocking (fail-closed)"
-                        );
-                        PreModelDecision::Block("hook timed out: model call blocked".into())
-                    });
+            let decision = tokio::time::timeout(self.timeout, hook.pre_model_call(&request, ctx))
+                .await
+                .unwrap_or_else(|_| {
+                    tracing::error!(
+                        hook = hook.name(),
+                        "Pre-model hook timed out — blocking (fail-closed)"
+                    );
+                    PreModelDecision::Block("hook timed out: model call blocked".into())
+                });
 
             match decision {
                 PreModelDecision::Continue => {}
@@ -236,18 +235,16 @@ impl HookPipeline {
         ctx: &ModelCallContext,
     ) -> PostModelOutcome {
         for hook in self.hooks.iter().rev() {
-            let decision = tokio::time::timeout(
-                self.timeout,
-                hook.post_model_call(request, &response, ctx),
-            )
-            .await
-            .unwrap_or_else(|_| {
-                tracing::error!(
-                    hook = hook.name(),
-                    "Post-model hook timed out — blocking (fail-closed)"
-                );
-                PostModelDecision::Block("hook timed out: model response blocked".into())
-            });
+            let decision =
+                tokio::time::timeout(self.timeout, hook.post_model_call(request, &response, ctx))
+                    .await
+                    .unwrap_or_else(|_| {
+                        tracing::error!(
+                            hook = hook.name(),
+                            "Post-model hook timed out — blocking (fail-closed)"
+                        );
+                        PostModelDecision::Block("hook timed out: model response blocked".into())
+                    });
 
             match decision {
                 PostModelDecision::Continue => {}
@@ -761,14 +758,12 @@ mod tests {
             .await;
 
         match outcome {
-            PreHookOutcome::Simulated(result) => {
-                match &result.content[0] {
-                    navra_protocol::Content::Text(t) => {
-                        assert_eq!(t.text, "simulated response");
-                    }
-                    _ => panic!("expected text content"),
+            PreHookOutcome::Simulated(result) => match &result.content[0] {
+                navra_protocol::Content::Text(t) => {
+                    assert_eq!(t.text, "simulated response");
                 }
-            }
+                _ => panic!("expected text content"),
+            },
             other => panic!("expected Simulated, got {:?}", other),
         }
     }

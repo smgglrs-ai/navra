@@ -6,8 +6,8 @@
 
 use crate::error::FlowError;
 use crate::task::Task;
-use serde::{Deserialize, Serialize};
 use navra_agent::Agent;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// How many verifier agents must approve for the result to pass.

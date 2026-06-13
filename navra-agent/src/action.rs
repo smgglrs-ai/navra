@@ -254,17 +254,38 @@ impl AgentAction {
     /// a direct tool call mapping.
     pub fn tool_call_parts(&self) -> Option<(String, serde_json::Value)> {
         match self {
-            Self::FileRead { path } => Some(("file_read".into(), serde_json::json!({"path": path}))),
-            Self::FileWrite { path } => Some(("file_write".into(), serde_json::json!({"path": path}))),
-            Self::FileEdit { path } => Some(("file_edit".into(), serde_json::json!({"path": path}))),
-            Self::FileDelete { path } => Some(("file_delete".into(), serde_json::json!({"path": path}))),
-            Self::FileSearch { query } => Some(("file_search".into(), serde_json::json!({"query": query}))),
-            Self::GitStatus { repo } => Some(("git_status".into(), serde_json::json!({"repo": repo}))),
+            Self::FileRead { path } => {
+                Some(("file_read".into(), serde_json::json!({"path": path})))
+            }
+            Self::FileWrite { path } => {
+                Some(("file_write".into(), serde_json::json!({"path": path})))
+            }
+            Self::FileEdit { path } => {
+                Some(("file_edit".into(), serde_json::json!({"path": path})))
+            }
+            Self::FileDelete { path } => {
+                Some(("file_delete".into(), serde_json::json!({"path": path})))
+            }
+            Self::FileSearch { query } => {
+                Some(("file_search".into(), serde_json::json!({"query": query})))
+            }
+            Self::GitStatus { repo } => {
+                Some(("git_status".into(), serde_json::json!({"repo": repo})))
+            }
             Self::GitDiff { repo } => Some(("git_diff".into(), serde_json::json!({"repo": repo}))),
-            Self::GitCommit { repo, message } => Some(("git_commit".into(), serde_json::json!({"repo": repo, "message": message}))),
-            Self::RagSearch { query } => Some(("rag_search".into(), serde_json::json!({"query": query}))),
-            Self::MemoryStore { kind } => Some(("memory_store".into(), serde_json::json!({"kind": kind}))),
-            Self::MemoryQuery { query } => Some(("memory_query".into(), serde_json::json!({"query": query}))),
+            Self::GitCommit { repo, message } => Some((
+                "git_commit".into(),
+                serde_json::json!({"repo": repo, "message": message}),
+            )),
+            Self::RagSearch { query } => {
+                Some(("rag_search".into(), serde_json::json!({"query": query})))
+            }
+            Self::MemoryStore { kind } => {
+                Some(("memory_store".into(), serde_json::json!({"kind": kind})))
+            }
+            Self::MemoryQuery { query } => {
+                Some(("memory_query".into(), serde_json::json!({"query": query})))
+            }
             Self::McpToolCall { tool } => Some((tool.clone(), serde_json::json!({}))),
             Self::Unknown { tool } => Some((tool.clone(), serde_json::json!({}))),
             _ => None,
@@ -403,12 +424,24 @@ mod kani_proofs {
         let choice: u8 = kani::any();
         kani::assume(choice <= 5);
         let action = match choice {
-            0 => AgentAction::FileRead { path: String::new() },
-            1 => AgentAction::FileSearch { query: String::new() },
-            2 => AgentAction::GitStatus { repo: String::new() },
-            3 => AgentAction::GitDiff { repo: String::new() },
-            4 => AgentAction::RagSearch { query: String::new() },
-            _ => AgentAction::MemoryQuery { query: String::new() },
+            0 => AgentAction::FileRead {
+                path: String::new(),
+            },
+            1 => AgentAction::FileSearch {
+                query: String::new(),
+            },
+            2 => AgentAction::GitStatus {
+                repo: String::new(),
+            },
+            3 => AgentAction::GitDiff {
+                repo: String::new(),
+            },
+            4 => AgentAction::RagSearch {
+                query: String::new(),
+            },
+            _ => AgentAction::MemoryQuery {
+                query: String::new(),
+            },
         };
         assert!(action.is_read_only());
         assert!(rank(&action.risk_level()) <= rank(&RiskLevel::Low));
@@ -420,11 +453,22 @@ mod kani_proofs {
         let choice: u8 = kani::any();
         kani::assume(choice <= 4);
         let action = match choice {
-            0 => AgentAction::FileWrite { path: String::new() },
-            1 => AgentAction::FileDelete { path: String::new() },
-            2 => AgentAction::GitCommit { repo: String::new(), message: String::new() },
-            3 => AgentAction::FlowStart { flow: String::new() },
-            _ => AgentAction::TeamCreate { name: String::new() },
+            0 => AgentAction::FileWrite {
+                path: String::new(),
+            },
+            1 => AgentAction::FileDelete {
+                path: String::new(),
+            },
+            2 => AgentAction::GitCommit {
+                repo: String::new(),
+                message: String::new(),
+            },
+            3 => AgentAction::FlowStart {
+                flow: String::new(),
+            },
+            _ => AgentAction::TeamCreate {
+                name: String::new(),
+            },
         };
         assert!(!action.is_read_only());
         assert!(rank(&action.risk_level()) >= rank(&RiskLevel::Medium));
@@ -436,20 +480,50 @@ mod kani_proofs {
         let choice: u8 = kani::any();
         kani::assume(choice <= 13);
         let action = match choice {
-            0 => AgentAction::FileRead { path: String::new() },
-            1 => AgentAction::FileWrite { path: String::new() },
-            2 => AgentAction::FileEdit { path: String::new() },
-            3 => AgentAction::FileDelete { path: String::new() },
-            4 => AgentAction::FileSearch { query: String::new() },
-            5 => AgentAction::GitStatus { repo: String::new() },
-            6 => AgentAction::GitDiff { repo: String::new() },
-            7 => AgentAction::GitCommit { repo: String::new(), message: String::new() },
-            8 => AgentAction::RagSearch { query: String::new() },
-            9 => AgentAction::MemoryStore { kind: String::new() },
-            10 => AgentAction::MemoryQuery { query: String::new() },
-            11 => AgentAction::TeamCreate { name: String::new() },
-            12 => AgentAction::TeamMessage { team: String::new(), target: String::new() },
-            _ => AgentAction::FlowStart { flow: String::new() },
+            0 => AgentAction::FileRead {
+                path: String::new(),
+            },
+            1 => AgentAction::FileWrite {
+                path: String::new(),
+            },
+            2 => AgentAction::FileEdit {
+                path: String::new(),
+            },
+            3 => AgentAction::FileDelete {
+                path: String::new(),
+            },
+            4 => AgentAction::FileSearch {
+                query: String::new(),
+            },
+            5 => AgentAction::GitStatus {
+                repo: String::new(),
+            },
+            6 => AgentAction::GitDiff {
+                repo: String::new(),
+            },
+            7 => AgentAction::GitCommit {
+                repo: String::new(),
+                message: String::new(),
+            },
+            8 => AgentAction::RagSearch {
+                query: String::new(),
+            },
+            9 => AgentAction::MemoryStore {
+                kind: String::new(),
+            },
+            10 => AgentAction::MemoryQuery {
+                query: String::new(),
+            },
+            11 => AgentAction::TeamCreate {
+                name: String::new(),
+            },
+            12 => AgentAction::TeamMessage {
+                team: String::new(),
+                target: String::new(),
+            },
+            _ => AgentAction::FlowStart {
+                flow: String::new(),
+            },
         };
         let r = action.risk_level();
         assert!(rank(&r) <= 4);

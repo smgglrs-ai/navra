@@ -1,0 +1,9 @@
+id: "NAVRA-002"
+title: "model-runtime dimension refactor"
+status: done
+priority: critical
+effort: 1-2d
+depends_on: []
+feeds: ['NAVRA-017']
+description: |
+  Extract HardwareTarget, ModelFormat, ExecutionMode from Engine×Isolation product. All 3 dimensions done. ExecutionMode decouples model purpose from how it runs — operator can override in config.

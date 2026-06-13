@@ -1,0 +1,10 @@
+id: "NAVRA-029"
+title: "Cross-session fact extraction"
+status: planned
+priority: medium
+effort: 2-3d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  On session_end, distill durable facts from conversation to KnowledgeStore via MemForest. Tree exists but no auto-extraction trigger.

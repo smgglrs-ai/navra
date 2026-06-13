@@ -1,0 +1,28 @@
+id: NAVRA-051
+title: Paper significant fixes
+status: backlog
+priority: medium
+effort: M
+depends_on: []
+feeds:
+- NAVRA-001
+- NAVRA-019
+- NAVRA-020
+description: Update PAPER.md to reflect current codebase state after the navra-security split (into navra-auth + navra-safety
+  facade) and ongoing development. The paper claims 22 crates but the workspace now has 24, states ~126K LoC but actual is
+  ~134K, cites 138 Kani proofs but 139 exist, and references navra-security as a monolith throughout Sections 3.3, 3.5, 7.2
+  without reflecting the auth/safety split. The crate table (Section 7.2), dependency layering description, kernel boundary
+  tables, abstract, and conclusion all contain stale numbers or architectural descriptions that no longer match the implementation.
+acceptance:
+- All crate count references updated from 22 to 24 (abstract, Section 7.1, 7.2, conclusion)
+- Line-of-code count updated from ~126K to ~134K in all occurrences
+- Kani proof count updated from 138 to 139 in all occurrences (abstract, Section 7.1, 9.1, 10)
+- Section 7.2 crate table updated to show navra-auth, navra-safety, and navra-security (facade) as separate entries
+- Sections 3.3 and 3.5 kernel boundary tables updated to reference navra-auth and navra-safety instead of monolithic navra-security
+- 'Dependency layering description in the paper reflects the actual layer: navra-auth depends on protocol, navra-safety depends
+  on auth+protocol+model, navra-security is a facade re-exporting both'
+scope:
+- PAPER.md
+verification:
+  quick: grep -cE '22 crates|22 workspace|22 Rust|~126K|138 Kani' PAPER.md && echo 'STALE REFERENCES FOUND' || echo 'ALL REFERENCES
+    UPDATED'

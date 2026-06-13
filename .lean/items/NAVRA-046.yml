@@ -1,0 +1,11 @@
+id: "NAVRA-046"
+title: "Jira module"
+status: wont_do
+priority: low
+effort: 2-3d
+depends_on: ['NAVRA-045']
+feeds: []
+reason: |
+  Prefer existing MCPs decision: Jira access should go through a dedicated
+  MCP server with its own token scopes and policies. Same rationale as
+  NAVRA-045 and NAVRA-047.

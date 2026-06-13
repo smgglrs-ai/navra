@@ -147,10 +147,7 @@ pub fn create_run(
         finished_at: None,
     };
     store.create(run.clone());
-    store.add_event(
-        &run.run_id,
-        Event::RunCreated { run: run.clone() },
-    );
+    store.add_event(&run.run_id, Event::RunCreated { run: run.clone() });
     run
 }
 

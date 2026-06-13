@@ -1,0 +1,8 @@
+id: "NAVRA-024"
+title: "IFC adversarial corpus benchmark"
+status: planned
+priority: low
+effort: 3-5d
+depends_on: []
+feeds: ['NAVRA-025', 'NAVRA-001']
+gate: "MVAR/TaintBench corpus availability"

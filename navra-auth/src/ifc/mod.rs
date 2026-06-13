@@ -708,8 +708,10 @@ mod kani_proofs {
         // If A can write to public target, B must NOT be able to
         // (secret data taints the session, preventing write-down)
         if target_clearance == Confidentiality::Public && can_write_a {
-            assert!(!can_write_b,
-                "secret data must prevent write-down to public target");
+            assert!(
+                !can_write_b,
+                "secret data must prevent write-down to public target"
+            );
         }
     }
 

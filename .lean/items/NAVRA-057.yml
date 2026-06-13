@@ -1,0 +1,47 @@
+id: NAVRA-057
+title: Lazy-loading tool and persona metadata
+status: backlog
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: |
+  Generalize lazy-loading across persona specializations AND tool
+  definitions. Currently ForgeService::load() eagerly deserializes all
+  specialization YAML, and tools/list returns full schemas for all tools.
+
+  Part 1 (personas): Replace the eager HashMap with a thread-safe cache
+  populated on first access. Switch build_catalog() to lightweight
+  partial parse (serde_yaml::Value or minimal struct) so startup only
+  reads metadata, not full content.
+
+  Part 2 (tools): tools/list returns lightweight metadata (name, short
+  description) by default. Full tool schema (inputSchema, detailed
+  description) is loaded on first tools/call or on explicit request.
+  This reduces context window consumption for agents connecting to
+  navra with many registered tools/upstream MCP servers.
+
+  Same pattern as Hermes Agent's lazy-loading skills: "agent reads
+  short descriptions cheaply, loads full content only when needed."
+  Since navra exposes personas as MCP tools, the persona lazy-load
+  naturally extends to all tools.
+acceptance:
+- ForgeService::load() no longer eagerly deserializes specialization YAML content into the specializations HashMap -- only
+  SpecializationMeta entries are built at startup
+- build_catalog() extracts base_persona and description without fully deserializing the Specialization struct (uses a minimal
+  metadata-only struct or serde_yaml::Value)
+- load_specialization() caches the parsed Specialization after first access so repeated calls for the same key do not re-read
+  from disk
+- get_persona_specialized() continues to work identically -- existing tests in forge.rs (specialization_merges, validate_missing_base_persona_in_specialization)
+  pass without modification
+- validate() checks specialization base_persona references against the catalog metadata rather than requiring eagerly loaded
+  specializations
+- ForgeService remains Send + Sync (cache uses interior mutability compatible with shared references, e.g., std::sync::Mutex
+  or dashmap)
+scope:
+- navra-cognitive/src/forge.rs
+- navra-cognitive/src/types.rs
+- navra-cognitive/src/lib.rs
+- navra-cognitive/tests/load_cognitive_core.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-cognitive

@@ -4,12 +4,12 @@
 //! and blackboard, back-edge lifecycle with conditional re-execution,
 //! concurrent blackboard access, and TOML deserialization of mesh config.
 
+use navra_auth::ifc::TaintTracker;
 use navra_flow::{
     BackEdgeTracker, Blackboard, ConditionalEdge, EdgeCondition, FlowError, MailboxRegistry,
     TaskResult, TaskStatus,
 };
 use navra_protocol::label::{Confidentiality, DataLabel};
-use navra_auth::ifc::TaintTracker;
 
 // ── TOML deserialization of mesh config ──
 

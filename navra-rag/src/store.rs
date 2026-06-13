@@ -221,7 +221,11 @@ impl ChunkStore {
                 .and_then(|mut s| s.exists([]))
                 .unwrap_or(false);
             if !exists {
-                let col_type = if col == "updated_at" { "INTEGER" } else { "TEXT" };
+                let col_type = if col == "updated_at" {
+                    "INTEGER"
+                } else {
+                    "TEXT"
+                };
                 conn.execute_batch(&format!(
                     "ALTER TABLE rag_chunks ADD COLUMN {col} {col_type}"
                 ))?;
@@ -343,7 +347,11 @@ impl ChunkStore {
     }
 
     /// Full-text search using FTS5 BM25 ranking.
-    pub(crate) fn search_fts(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<ChunkResult>> {
+    pub(crate) fn search_fts(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> rusqlite::Result<Vec<ChunkResult>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT c.path, c.content, c.chunk_index, rank \
@@ -857,9 +865,9 @@ mod tests {
             start_byte: 0,
             end_byte: 11,
             index: 0,
-                breadcrumb: None,
-                section_start_byte: None,
-                section_end_byte: None,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
         }];
         let new_embeddings = vec![vec![0.0, 0.0, 1.0, 0.0]];
         store
@@ -918,9 +926,9 @@ mod tests {
             start_byte: 0,
             end_byte: 16,
             index: 0,
-                breadcrumb: None,
-                section_start_byte: None,
-                section_end_byte: None,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
         }];
         let other_embeddings = vec![vec![0.9, 0.1, 0.0, 0.0]]; // close to /a.md chunk 0
         store
@@ -1022,7 +1030,7 @@ mod tests {
                 start_byte: 0,
                 end_byte: 28,
                 index: 0,
-            breadcrumb: None,
+                breadcrumb: None,
                 section_start_byte: None,
                 section_end_byte: None,
             },
@@ -1031,7 +1039,7 @@ mod tests {
                 start_byte: 29,
                 end_byte: 54,
                 index: 1,
-            breadcrumb: None,
+                breadcrumb: None,
                 section_start_byte: None,
                 section_end_byte: None,
             },
@@ -1059,7 +1067,7 @@ mod tests {
                 start_byte: 0,
                 end_byte: 20,
                 index: 0,
-            breadcrumb: None,
+                breadcrumb: None,
                 section_start_byte: None,
                 section_end_byte: None,
             },
@@ -1068,7 +1076,7 @@ mod tests {
                 start_byte: 21,
                 end_byte: 40,
                 index: 1,
-            breadcrumb: None,
+                breadcrumb: None,
                 section_start_byte: None,
                 section_end_byte: None,
             },
@@ -1153,9 +1161,9 @@ mod tests {
             start_byte: 0,
             end_byte: 19,
             index: 0,
-        breadcrumb: None,
-                section_start_byte: None,
-                section_end_byte: None,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
         }];
         store
             .index_document("/doc.md", &new_chunks, &[vec![0.5, 0.5, 0.0, 0.0]])
@@ -1183,9 +1191,9 @@ mod tests {
             start_byte: 0,
             end_byte: 30,
             index: 0,
-                breadcrumb: None,
-                section_start_byte: None,
-                section_end_byte: None,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
         }];
         let other_embeddings = vec![vec![0.5, 0.5, 0.0, 0.0]];
         store
@@ -1242,9 +1250,7 @@ mod tests {
             .unwrap();
 
         let query_embedding = vec![0.9, 0.1, 0.0, 0.0];
-        let without = store
-            .search_hybrid("Rust", &query_embedding, 5)
-            .unwrap();
+        let without = store.search_hybrid("Rust", &query_embedding, 5).unwrap();
         let with_none = store
             .search_hybrid_with_hyde("Rust", &query_embedding, None, 5)
             .unwrap();
@@ -1323,9 +1329,7 @@ mod tests {
         let oauth_rank_without = without_hyde
             .iter()
             .position(|r| r.content.contains("OAuth"));
-        let oauth_rank_with = with_hyde
-            .iter()
-            .position(|r| r.content.contains("OAuth"));
+        let oauth_rank_with = with_hyde.iter().position(|r| r.content.contains("OAuth"));
 
         // With HyDE, OAuth chunk should be present and ranked higher
         // (or at least equally) compared to without HyDE
@@ -1351,7 +1355,9 @@ mod tests {
             section_end_byte: None,
         }];
         let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]];
-        store.index_document("/auth.md", &chunks, &embeddings).unwrap();
+        store
+            .index_document("/auth.md", &chunks, &embeddings)
+            .unwrap();
 
         // FTS5 BM25 negated rank scores are very small (e.g. 0.000001)
         let cascade = CascadeConfig {
@@ -1359,11 +1365,15 @@ mod tests {
             vector_skip_rerank_threshold: None,
         };
         let query_emb = vec![0.0, 1.0, 0.0, 0.0];
-        let (results, vector_skipped, _) =
-            store.search_hybrid_cascading("authentication", &query_emb, 5, &cascade).unwrap();
+        let (results, vector_skipped, _) = store
+            .search_hybrid_cascading("authentication", &query_emb, 5, &cascade)
+            .unwrap();
 
         assert!(!results.is_empty());
-        assert!(vector_skipped, "vector search should be skipped for exact BM25 match");
+        assert!(
+            vector_skipped,
+            "vector search should be skipped for exact BM25 match"
+        );
     }
 
     #[test]
@@ -1379,18 +1389,27 @@ mod tests {
             section_end_byte: None,
         }];
         let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]];
-        store.index_document("/doc.md", &chunks, &embeddings).unwrap();
+        store
+            .index_document("/doc.md", &chunks, &embeddings)
+            .unwrap();
 
         let cascade = CascadeConfig {
             bm25_skip_vector_threshold: Some(100.0),
             vector_skip_rerank_threshold: Some(0.001),
         };
         let query_emb = vec![0.5, 0.5, 0.0, 0.0];
-        let (_, vector_skipped, rerank_skipped) =
-            store.search_hybrid_cascading("zzz_nomatch", &query_emb, 5, &cascade).unwrap();
+        let (_, vector_skipped, rerank_skipped) = store
+            .search_hybrid_cascading("zzz_nomatch", &query_emb, 5, &cascade)
+            .unwrap();
 
-        assert!(!vector_skipped, "should not skip vector with high threshold");
-        assert!(!rerank_skipped, "should not skip rerank with tight threshold");
+        assert!(
+            !vector_skipped,
+            "should not skip vector with high threshold"
+        );
+        assert!(
+            !rerank_skipped,
+            "should not skip rerank with tight threshold"
+        );
     }
 
     #[test]
@@ -1406,7 +1425,9 @@ mod tests {
             section_end_byte: None,
         }];
         let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]];
-        store.index_document("/exact.md", &chunks, &embeddings).unwrap();
+        store
+            .index_document("/exact.md", &chunks, &embeddings)
+            .unwrap();
 
         let cascade = CascadeConfig {
             bm25_skip_vector_threshold: None,
@@ -1414,11 +1435,15 @@ mod tests {
         };
         // Query embedding very close to indexed embedding
         let query_emb = vec![0.99, 0.01, 0.0, 0.0];
-        let (results, vector_skipped, rerank_skipped) =
-            store.search_hybrid_cascading("nomatch", &query_emb, 5, &cascade).unwrap();
+        let (results, vector_skipped, rerank_skipped) = store
+            .search_hybrid_cascading("nomatch", &query_emb, 5, &cascade)
+            .unwrap();
 
         assert!(!results.is_empty());
         assert!(!vector_skipped);
-        assert!(rerank_skipped, "should skip rerank when vector distance is small");
+        assert!(
+            rerank_skipped,
+            "should skip rerank when vector distance is small"
+        );
     }
 }

@@ -1,0 +1,10 @@
+id: "NAVRA-040"
+title: "ASSERT integration for C3 eval"
+status: planned
+priority: low
+effort: 1-2d
+depends_on: []
+feeds: ['NAVRA-020']
+source: tech-watch-2026-06-05
+description: |
+  Evaluate Microsoft ASSERT (spec-driven evaluation framework) as complement to Glasswing for C3. ASSERT converts natural-language policies into test suites with LLM-as-judge scoring grounded in OTel traces. Supports 100+ model endpoints via LiteLLM, 33+ frameworks via OpenInference. Could provide structured, reproducible evaluation alongside Glasswing's adversarial testing. MIT license.

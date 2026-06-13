@@ -8,7 +8,10 @@
 //! - `--ipc=host` when the engine requires it (vLLM NCCL)
 
 use crate::engine::Engine;
-use crate::{Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError, ServeConfig};
+use crate::{
+    Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError,
+    ServeConfig,
+};
 use std::future::Future;
 use std::pin::Pin;
 

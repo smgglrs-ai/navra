@@ -1,0 +1,10 @@
+id: "NAVRA-016"
+title: "Cedar policies for OWASP Agentic Top 10"
+status: done
+priority: high
+effort: 2-3d
+depends_on: []
+feeds: ['NAVRA-032', 'NAVRA-001']
+source: tech-watch-2026-06-02
+description: |
+  Pre-built Cedar policies for all 10 OWASP ASI categories. policies/owasp-asi-baseline.cedar with forbid rules for each threat and explicit permits for approved operations. 13 tests verify all paths. Load via cedar_policies config key.

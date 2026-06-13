@@ -1,0 +1,27 @@
+id: "NAVRA-035"
+title: "Model-call hook point in navra-agent"
+status: done
+priority: high
+effort: S
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-05
+description: |
+  Add pre_model_call/post_model_call hook phases around LLM inference in navra-agent's ReAct loop. Currently navra's hook pipeline only intercepts tool calls (gateway-side). This extends hooks to the agent side, enabling: (1) PromptCachingHook to inject cache-control headers, (2) ModelFallbackHook to retry with a stronger model on failure, (3) BudgetHook to enforce token limits before inference. Maps to ACS checkpoints 3-4 (pre/post-model) which navra currently lacks. Does not change the gateway — this is agent-side only.
+acceptance:
+  - "Hook trait has pre_model_call and post_model_call with default Continue impls"
+  - "PreModelDecision/PostModelDecision enums separate from HookDecision"
+  - "HookPipeline has run_pre_model and run_post_model methods"
+  - "ToolLoopConfig has optional hook_pipeline field"
+  - "Pre-model hooks can modify request or block"
+  - "Post-model hooks can modify response, request retry, or block"
+  - "Timeout triggers fail-closed (Block)"
+  - "7 new tests in pipeline.rs all pass"
+  - "All 2112 workspace unit tests pass"
+scope:
+  - navra-safety/src/hooks/mod.rs
+  - navra-safety/src/hooks/pipeline.rs
+  - navra-agent/src/tool_loop.rs
+  - navra-agent/src/agent.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety -- hooks::pipeline"

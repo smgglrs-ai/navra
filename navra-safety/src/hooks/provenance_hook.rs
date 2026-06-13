@@ -61,8 +61,7 @@ impl Hook for ProvenanceHook {
             &[],
         );
 
-        self.sink
-            .record_tool_result(&result_node_id, &call_node_id);
+        self.sink.record_tool_result(&result_node_id, &call_node_id);
 
         HookDecision::Continue
     }

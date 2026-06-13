@@ -1,0 +1,31 @@
+id: NAVRA-061
+title: Memory type classification
+status: backlog
+priority: low
+effort: S
+depends_on: []
+feeds: []
+description: Add a rule-based classifier that automatically assigns a MemoryType (Fact, Event, Instruction, Insight, User,
+  Project) to incoming memory content based on textual signals. Currently the stub synthesizer in the distillation pipeline
+  hardcodes all entries as MemoryType::Fact, and the LLM-based path relies entirely on the model to classify correctly (with
+  a silent fallback to Fact for unknown types). A dedicated classifier provides a deterministic, testable fallback that improves
+  type accuracy when no model is available and can validate or override model-assigned types during the reconcile stage.
+acceptance:
+- 'A MemoryClassifier struct in navra-memory exposes a classify(content: &str, title: &str, tags: &[String]) -> MemoryType
+  method that returns a MemoryType based on keyword and structural heuristics (e.g., imperative verbs -> Instruction, temporal
+  markers -> Event, first/second person preference signals -> User)'
+- The stub synthesizer (synthesize_stub in pipeline.rs) uses MemoryClassifier instead of hardcoding MemoryType::Fact, so entries
+  produced without a model get meaningful type assignments
+- The reconcile stage can optionally validate model-assigned types against the classifier and log a warning when they disagree
+  (no override by default, configurable)
+- Unit tests cover at least 3 examples per MemoryType variant (18+ test cases) verifying correct classification from representative
+  content strings
+- MemoryClassifier::classify is deterministic and does not require a model backend, async runtime, or network access
+- Existing tests in navra-memory continue to pass without modification
+scope:
+- 'navra-memory/src/classify.rs (new file: MemoryClassifier struct and heuristic rules)'
+- navra-memory/src/pipeline.rs (update synthesize_stub to use classifier; optionally wire classifier into reconcile)
+- navra-memory/src/lib.rs (add pub mod classify and re-export MemoryClassifier)
+- navra-memory/src/types.rs (no changes expected, but MemoryType may gain a Display impl for logging)
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-memory

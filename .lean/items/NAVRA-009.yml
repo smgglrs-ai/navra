@@ -1,0 +1,10 @@
+id: "NAVRA-009"
+title: "Tool schema pruning"
+status: done
+priority: medium
+effort: 1-2d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-02
+description: |
+  Track tool usage per session, suppress unused tools after N sessions. GitHub achieved 37-62% token reduction.

@@ -1,6 +1,6 @@
+use navra_core::auth::CallContext;
 use navra_macros::tool;
 use navra_protocol::{CallToolResult, Content, TextContent};
-use navra_core::auth::CallContext;
 
 // --- Basic tool: single required arg ---
 

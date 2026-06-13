@@ -1,0 +1,8 @@
+id: "NAVRA-022"
+title: "KAME tandem voice"
+status: planned
+priority: low
+effort: 2-3d
+depends_on: ['NAVRA-021']
+feeds: []
+gate: "Moshi ONNX export"

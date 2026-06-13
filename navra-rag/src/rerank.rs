@@ -125,7 +125,11 @@ impl CrossEncoderReranker {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let max_len = encodings.iter().map(|e| e.get_ids().len()).max().unwrap_or(0);
+        let max_len = encodings
+            .iter()
+            .map(|e| e.get_ids().len())
+            .max()
+            .unwrap_or(0);
         let batch_size = encodings.len();
 
         let mut all_ids = vec![0i64; batch_size * max_len];
@@ -146,10 +150,14 @@ impl CrossEncoderReranker {
 
         let ids_array = ndarray::Array2::from_shape_vec((batch_size, max_len), all_ids)
             .map_err(|e| CrossEncoderError::Inference(format!("batch input_ids shape: {e}")))?;
-        let mask_array = ndarray::Array2::from_shape_vec((batch_size, max_len), all_mask)
-            .map_err(|e| CrossEncoderError::Inference(format!("batch attention_mask shape: {e}")))?;
+        let mask_array =
+            ndarray::Array2::from_shape_vec((batch_size, max_len), all_mask).map_err(|e| {
+                CrossEncoderError::Inference(format!("batch attention_mask shape: {e}"))
+            })?;
         let type_array = ndarray::Array2::from_shape_vec((batch_size, max_len), all_types)
-            .map_err(|e| CrossEncoderError::Inference(format!("batch token_type_ids shape: {e}")))?;
+            .map_err(|e| {
+                CrossEncoderError::Inference(format!("batch token_type_ids shape: {e}"))
+            })?;
 
         let ids_tensor = ort::value::TensorRef::from_array_view(&ids_array)
             .map_err(|e| CrossEncoderError::Inference(format!("batch ids tensor: {e}")))?;
@@ -162,16 +170,19 @@ impl CrossEncoderReranker {
         let outputs = session
             .run(ort::inputs![ids_tensor, mask_tensor, type_tensor])
             .map_err(|e| {
-                CrossEncoderError::Inference(format!("batch inference error for '{}': {e}", self.name))
+                CrossEncoderError::Inference(format!(
+                    "batch inference error for '{}': {e}",
+                    self.name
+                ))
             })?;
 
         let (_name, output) = outputs.iter().next().ok_or_else(|| {
             CrossEncoderError::Inference("no output from cross-encoder".to_string())
         })?;
 
-        let (_shape, data) = output.try_extract_tensor::<f32>().map_err(|e| {
-            CrossEncoderError::Inference(format!("batch output extraction: {e}"))
-        })?;
+        let (_shape, data) = output
+            .try_extract_tensor::<f32>()
+            .map_err(|e| CrossEncoderError::Inference(format!("batch output extraction: {e}")))?;
 
         let output_cols = data.len() / batch_size;
         let mut scores = Vec::with_capacity(batch_size);
@@ -287,8 +298,7 @@ impl Reranker for CrossEncoderReranker {
             }
         };
 
-        let mut scored: Vec<(ChunkResult, f32)> =
-            candidates.into_iter().zip(scores).collect();
+        let mut scored: Vec<(ChunkResult, f32)> = candidates.into_iter().zip(scores).collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 

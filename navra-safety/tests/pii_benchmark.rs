@@ -615,23 +615,21 @@ fn pii_benchmark_three_layer_pipeline() {
         return;
     }
     if !pf_available {
-        eprintln!(
-            "Skipping: privacy-filter not found at {}",
-            pf_dir.display()
-        );
+        eprintln!("Skipping: privacy-filter not found at {}", pf_dir.display());
         return;
     }
 
     let ner_filter = load_ner_filter(&ner_dir).expect("NER filter should load");
 
-    let pf_filter = match navra_safety::safety::privacy_filter::PrivacyFilterModel::load_from_dir(&pf_dir) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Skipping: privacy-filter failed to load: {e}");
-            eprintln!("(requires ORT >= 1.26 for MoE contrib ops)");
-            return;
-        }
-    };
+    let pf_filter =
+        match navra_safety::safety::privacy_filter::PrivacyFilterModel::load_from_dir(&pf_dir) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Skipping: privacy-filter failed to load: {e}");
+                eprintln!("(requires ORT >= 1.26 for MoE contrib ops)");
+                return;
+            }
+        };
 
     let cases = unified_test_cases();
 
@@ -639,7 +637,11 @@ fn pii_benchmark_three_layer_pipeline() {
     let regex_only = run_benchmark("Layer 1: Regex only", &[&regex_filter], &cases);
 
     // Layer 2: regex + NER
-    let regex_ner = run_benchmark("Layer 2: Regex + NER", &[&regex_filter, &ner_filter], &cases);
+    let regex_ner = run_benchmark(
+        "Layer 2: Regex + NER",
+        &[&regex_filter, &ner_filter],
+        &cases,
+    );
 
     // Layer 3: regex + NER + privacy-filter
     let full = run_benchmark(
@@ -648,7 +650,10 @@ fn pii_benchmark_three_layer_pipeline() {
         &cases,
     );
 
-    println!("=== Three-layer comparison (same {} cases) ===", cases.len());
+    println!(
+        "=== Three-layer comparison (same {} cases) ===",
+        cases.len()
+    );
     println!(
         "  Regex only:           F1={:.3}, precision={:.3}, recall={:.3}",
         regex_only.f1(),

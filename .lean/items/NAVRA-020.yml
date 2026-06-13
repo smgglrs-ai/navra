@@ -1,0 +1,9 @@
+id: "NAVRA-020"
+title: "Review paper"
+status: planned
+priority: medium
+effort: 3-5d
+depends_on: ['NAVRA-006']
+feeds: []
+description: |
+  Autonomous multi-domain review. Workshop paper.
