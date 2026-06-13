@@ -131,7 +131,12 @@ mod tests {
     use crate::transport::sse::SseBroadcaster;
 
     fn make_state() -> AppState {
-        let server = Arc::new(McpServer::builder().name("ws-test").build());
+        let server = Arc::new(
+            McpServer::builder()
+                .name("ws-test")
+                .allow_anonymous()
+                .build(),
+        );
         AppState {
             server,
             broadcaster: SseBroadcaster::new(),

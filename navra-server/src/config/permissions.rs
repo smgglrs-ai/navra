@@ -77,6 +77,49 @@ pub struct PermissionSet {
     /// Tool disclosure: glob patterns of tools to hide from tools/list.
     #[serde(default)]
     pub tool_disclosure_exclude: Vec<String>,
+    /// Semantic domain rules: which operations are allowed per domain.
+    /// Evaluated before glob-based tool_rules as an additional gate.
+    /// If absent, domain-based enforcement is skipped (backward compat).
+    ///
+    /// Example:
+    /// ```toml
+    /// domain_rules = [
+    ///   { domain = "filesystem", operations = ["read", "write"] },
+    ///   { domain = "shell", operations = [] },
+    ///   { domain = "*", operations = ["read"] },
+    /// ]
+    /// ```
+    #[serde(default)]
+    pub domain_rules: Vec<DomainRuleConfig>,
+    /// Override auto-classification for specific tools.
+    /// Keys are tool names, values specify domain and operation.
+    ///
+    /// Example:
+    /// ```toml
+    /// [permissions.readonly.tool_class]
+    /// zip_files = { domain = "filesystem", operation = "write" }
+    /// ```
+    #[serde(default)]
+    pub tool_class: HashMap<String, ToolClassConfig>,
+}
+
+/// A domain rule entry in config.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct DomainRuleConfig {
+    /// Domain name (must be a valid navra Domain: filesystem, git, shell, etc.)
+    /// Use "*" as wildcard default for unlisted domains.
+    pub domain: String,
+    /// Allowed operations for this domain. Empty list = deny all.
+    pub operations: Vec<String>,
+}
+
+/// Classification override for a specific tool.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct ToolClassConfig {
+    /// Domain to assign (must be a valid navra Domain).
+    pub domain: String,
+    /// Operation to assign (must be a valid navra Operation).
+    pub operation: String,
 }
 
 fn default_tainted_write_policy() -> String {

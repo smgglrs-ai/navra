@@ -236,7 +236,10 @@ pub(crate) async fn dispatch(
                         );
                     }
                 };
-            let resp = match server.handle_read_resource(params, &agent).await {
+            let resp = match server
+                .handle_read_resource(params, &agent, session_id.as_deref().unwrap_or(""))
+                .await
+            {
                 Ok(result) => JsonRpcResponse::success(
                     id,
                     serde_json::to_value(&result).unwrap_or_else(|e| {
@@ -281,7 +284,10 @@ pub(crate) async fn dispatch(
                         );
                     }
                 };
-            let resp = match server.handle_get_prompt(params, &agent).await {
+            let resp = match server
+                .handle_get_prompt(params, &agent, session_id.as_deref().unwrap_or(""))
+                .await
+            {
                 Ok(result) => JsonRpcResponse::success(
                     id,
                     serde_json::to_value(&result).unwrap_or_else(|e| {
@@ -558,6 +564,7 @@ async fn dispatch_stateless(
 ) -> (JsonRpcResponse, Option<String>) {
     let id = request.id.clone();
     let context_key = format!("stateless:{}", agent.name);
+    let session_id: Option<String> = Some(context_key.clone());
 
     match request.method.as_str() {
         "initialize" => {
@@ -589,10 +596,7 @@ async fn dispatch_stateless(
             }
         }
 
-        "notifications/initialized" => (
-            JsonRpcResponse::success(id, serde_json::json!({})),
-            None,
-        ),
+        "notifications/initialized" => (JsonRpcResponse::success(id, serde_json::json!({})), None),
 
         _ => {
             ensure_stateless_session(&server, &agent, &context_key);
@@ -601,11 +605,7 @@ async fn dispatch_stateless(
     }
 }
 
-fn ensure_stateless_session(
-    server: &McpServer,
-    agent: &crate::auth::AgentIdentity,
-    key: &str,
-) {
+fn ensure_stateless_session(server: &McpServer, agent: &crate::auth::AgentIdentity, key: &str) {
     if server.sessions().get(key).is_some() {
         server.sessions().touch(key);
         return;
@@ -646,10 +646,7 @@ async fn dispatch_with_session(
     }
 
     match request.method.as_str() {
-        "ping" => (
-            JsonRpcResponse::success(id, serde_json::json!({})),
-            None,
-        ),
+        "ping" => (JsonRpcResponse::success(id, serde_json::json!({})), None),
 
         "tools/list" => {
             let pagination: PaginatedRequest = request
@@ -750,7 +747,7 @@ async fn dispatch_with_session(
                         );
                     }
                 };
-            let resp = match server.handle_read_resource(params, &agent).await {
+            let resp = match server.handle_read_resource(params, &agent, &sid).await {
                 Ok(result) => JsonRpcResponse::success(
                     id,
                     serde_json::to_value(&result).unwrap_or_else(|e| {
@@ -795,7 +792,7 @@ async fn dispatch_with_session(
                         );
                     }
                 };
-            let resp = match server.handle_get_prompt(params, &agent).await {
+            let resp = match server.handle_get_prompt(params, &agent, &sid).await {
                 Ok(result) => JsonRpcResponse::success(
                     id,
                     serde_json::to_value(&result).unwrap_or_else(|e| {
@@ -958,10 +955,7 @@ async fn dispatch_with_session(
                     }
                 };
             server.handle_set_log_level(params, &sid);
-            (
-                JsonRpcResponse::success(id, serde_json::json!({})),
-                None,
-            )
+            (JsonRpcResponse::success(id, serde_json::json!({})), None)
         }
 
         "resources/subscribe" => {
@@ -986,10 +980,7 @@ async fn dispatch_with_session(
                     None,
                 );
             }
-            (
-                JsonRpcResponse::success(id, serde_json::json!({})),
-                None,
-            )
+            (JsonRpcResponse::success(id, serde_json::json!({})), None)
         }
 
         "resources/unsubscribe" => {
@@ -1014,10 +1005,7 @@ async fn dispatch_with_session(
                     None,
                 );
             }
-            (
-                JsonRpcResponse::success(id, serde_json::json!({})),
-                None,
-            )
+            (JsonRpcResponse::success(id, serde_json::json!({})), None)
         }
 
         _ => (

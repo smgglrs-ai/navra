@@ -39,6 +39,10 @@ pub struct McpServer {
     agent_operations: HashMap<String, HashSet<String>>,
     /// Operation classification per tool (from upstream auto-classify + overrides).
     tool_operations: HashMap<String, crate::upstream_module::ToolOperation>,
+    /// Semantic classification per tool/prompt/resource (domain:operation).
+    tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
+    /// Domain-based permission rules per permission set.
+    domain_rules: HashMap<String, navra_auth::permissions::DomainRules>,
     /// Hook pipeline for pre/post tool-call interception.
     hooks: HookPipeline,
     /// Shared pause flag — when true, tool calls are rejected.

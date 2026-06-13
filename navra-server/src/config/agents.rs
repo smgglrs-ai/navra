@@ -57,6 +57,17 @@ pub struct UpstreamConfig {
     /// name heuristics. Tools set to "deny" are never registered.
     #[serde(default)]
     pub tool_overrides: std::collections::HashMap<String, String>,
+    /// Per-tool semantic classification overrides.
+    /// Keys are tool names, values specify domain and operation.
+    /// Takes precedence over auto-classification and tool_overrides.
+    ///
+    /// Example:
+    /// ```toml
+    /// [upstream.tool_class]
+    /// zip_files = { domain = "filesystem", operation = "write" }
+    /// ```
+    #[serde(default)]
+    pub tool_class: std::collections::HashMap<String, super::permissions::ToolClassConfig>,
 }
 
 impl UpstreamConfig {

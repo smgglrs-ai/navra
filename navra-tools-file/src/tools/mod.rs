@@ -125,7 +125,7 @@ impl Module for FileModule {
             mime_type: None,
             size: None,
         };
-        let handler: ResourceHandler = Arc::new(move |uri: String| {
+        let handler: ResourceHandler = Arc::new(move |uri: String, _ctx| {
             let state = s.clone();
             Box::pin(async move { handle_resource_read(uri, state).await })
         });

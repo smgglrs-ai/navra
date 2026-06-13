@@ -29,7 +29,7 @@ impl Module for TestPromptModule {
                 description: Some("A greeting".to_string()),
                 arguments: vec![],
             },
-            std::sync::Arc::new(|_args: std::collections::HashMap<String, String>| {
+            std::sync::Arc::new(|_args: std::collections::HashMap<String, String>, _ctx| {
                 Box::pin(async {
                     crate::protocol::GetPromptResult {
                         description: Some("Greeting".to_string()),
@@ -62,7 +62,7 @@ impl Module for TestResourceModule {
                 mime_type: Some("text/plain".to_string()),
                 size: None,
             },
-            std::sync::Arc::new(|uri: String| {
+            std::sync::Arc::new(|uri: String, _ctx| {
                 Box::pin(async move {
                     crate::protocol::ReadResourceResult {
                         contents: vec![crate::protocol::ResourceContent {
@@ -418,6 +418,7 @@ async fn initialize_returns_session_header_legacy() {
         crate::McpServer::builder()
             .name("test-server")
             .mcp_version("2025-03-26")
+            .allow_anonymous()
             .build(),
     );
     let router = build_router(server);
@@ -440,7 +441,9 @@ async fn initialize_returns_session_header_legacy() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["result"]["protocolVersion"], "2025-03-26");
 
-    let session_id = headers.get(SESSION_HEADER).expect("missing session header in legacy mode");
+    let session_id = headers
+        .get(SESSION_HEADER)
+        .expect("missing session header in legacy mode");
     let sid = session_id.to_str().unwrap();
     assert!(!sid.is_empty());
     assert!(uuid::Uuid::parse_str(sid).is_ok());

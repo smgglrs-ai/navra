@@ -29,6 +29,8 @@ pub struct McpServerBuilder {
     tool_permissions: HashMap<String, ToolPermissions>,
     agent_operations: HashMap<String, HashSet<String>>,
     tool_operations: HashMap<String, crate::upstream_module::ToolOperation>,
+    tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
+    domain_rules: HashMap<String, navra_auth::permissions::DomainRules>,
     hooks: Vec<Box<dyn crate::hooks::Hook>>,
     hook_timeout: std::time::Duration,
     quota_engine: Option<QuotaEngine>,
@@ -61,6 +63,8 @@ impl McpServerBuilder {
             tool_permissions: HashMap::new(),
             agent_operations: HashMap::new(),
             tool_operations: HashMap::new(),
+            tool_classifications: HashMap::new(),
+            domain_rules: HashMap::new(),
             hooks: Vec::new(),
             hook_timeout: std::time::Duration::from_secs(10),
             quota_engine: None,
@@ -281,6 +285,25 @@ impl McpServerBuilder {
         self
     }
 
+    /// Merge tool semantic classifications into the server.
+    pub fn merge_tool_classifications(
+        mut self,
+        classes: HashMap<String, navra_auth::permissions::ResourceClass>,
+    ) -> Self {
+        self.tool_classifications.extend(classes);
+        self
+    }
+
+    /// Set domain-based permission rules for a permission set.
+    pub fn domain_rules(
+        mut self,
+        permission_set: impl Into<String>,
+        rules: navra_auth::permissions::DomainRules,
+    ) -> Self {
+        self.domain_rules.insert(permission_set.into(), rules);
+        self
+    }
+
     /// Set the quota engine for rate limiting.
     pub fn quota_engine(mut self, engine: QuotaEngine) -> Self {
         self.quota_engine = Some(engine);
@@ -392,17 +415,12 @@ impl McpServerBuilder {
         self
     }
 
-    pub fn build(self) -> McpServer {
+    pub fn build(mut self) -> McpServer {
         let authenticator = self.authenticator.unwrap_or_else(|| {
-            tracing::error!(
-                "No authenticator configured and allow_anonymous() not called. \
-                 Falling back to NoAuthenticator — all connections will be \
-                 accepted as anonymous. Add [[agents]] to config.toml or \
-                 call .allow_anonymous() for intentional open access."
+            panic!(
+                "No authenticator configured. Call .allow_anonymous() for \
+                 intentional open access, or add [[agents]] to config.toml."
             );
-            Arc::new(crate::auth::NoAuthenticator {
-                default_identity: crate::auth::AgentIdentity::new("anonymous", "readonly"),
-            })
         });
 
         let mut hooks = HookPipeline::new(self.hook_timeout);
@@ -575,7 +593,7 @@ impl McpServerBuilder {
                         mime_type: Some("application/json".to_string()),
                         size: None,
                     },
-                    handler: Arc::new(move |uri| {
+                    handler: Arc::new(move |uri, _ctx| {
                         let pt = pt.clone();
                         Box::pin(async move {
                             let snapshot = pt.snapshot();
@@ -607,7 +625,7 @@ impl McpServerBuilder {
                         mime_type: Some("application/json".to_string()),
                         size: None,
                     },
-                    handler: Arc::new(move |uri| {
+                    handler: Arc::new(move |uri, _ctx| {
                         let sess = sess.clone();
                         Box::pin(async move {
                             let all = sess.list_all();
@@ -649,7 +667,7 @@ impl McpServerBuilder {
                         mime_type: Some("application/json".to_string()),
                         size: None,
                     },
-                    handler: Arc::new(move |uri| {
+                    handler: Arc::new(move |uri, _ctx| {
                         let bb = bb.clone();
                         Box::pin(async move {
                             let entries = bb
@@ -685,7 +703,7 @@ impl McpServerBuilder {
                         mime_type: Some("application/json".to_string()),
                         size: None,
                     },
-                    handler: Arc::new(|uri| {
+                    handler: Arc::new(|uri, _ctx| {
                         Box::pin(async move {
                             let json = serde_json::json!({
                                 "note": "GPU semaphore is managed per-flow; query flow executor for live permit state"
@@ -719,7 +737,7 @@ impl McpServerBuilder {
                     ttl_ms: None,
                     cache_scope: None,
                 },
-                handler: Arc::new(move |uri| {
+                handler: Arc::new(move |uri, _ctx| {
                     let sess = sess.clone();
                     Box::pin(async move {
                         let agent_name = uri
@@ -777,7 +795,7 @@ impl McpServerBuilder {
                     ttl_ms: None,
                     cache_scope: None,
                 },
-                handler: Arc::new(move |uri| {
+                handler: Arc::new(move |uri, _ctx| {
                     let sess = sess.clone();
                     Box::pin(async move {
                         let agent_name = uri
@@ -836,6 +854,17 @@ impl McpServerBuilder {
             });
         }
 
+        // Auto-classify any tools not already classified by upstream or overrides.
+        for (name, tool) in &tools {
+            if !self.tool_classifications.contains_key(name.as_str()) {
+                let class = navra_auth::permissions::resource_class::classify_tool_heuristic(
+                    name,
+                    tool.definition.annotations.as_ref(),
+                );
+                self.tool_classifications.insert(name.clone(), class);
+            }
+        }
+
         McpServer {
             name: self.name,
             version: self.version,
@@ -849,6 +878,8 @@ impl McpServerBuilder {
             tool_permissions: self.tool_permissions,
             agent_operations: self.agent_operations,
             tool_operations: self.tool_operations,
+            tool_classifications: self.tool_classifications,
+            domain_rules: self.domain_rules,
             hooks,
             paused: Arc::new(AtomicBool::new(false)),
             task_store: crate::a2a::TaskStore::new(),

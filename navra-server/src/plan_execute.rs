@@ -1396,6 +1396,7 @@ steps:
     async fn test_handle_missing_plan() {
         let args = serde_json::json!({"format": "yaml"});
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1411,6 +1412,7 @@ steps:
             "plan": "not: valid: yaml: [["
         });
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1426,6 +1428,7 @@ steps:
             "plan": "steps: []"
         });
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1441,6 +1444,7 @@ steps:
             "plan": "print('hello')"
         });
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1467,6 +1471,7 @@ steps:
             "stop_on_error": true
         });
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1496,6 +1501,7 @@ steps:
             "stop_on_error": false
         });
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1534,6 +1540,7 @@ steps:
             cache_scope: None,
         };
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .tool(echo_def, |args, _ctx| {
@@ -1597,6 +1604,7 @@ steps:
             cache_scope: None,
         };
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .tool(echo_def, |args, _ctx| {
@@ -1649,6 +1657,7 @@ steps:
             "plan": "print('hello from python')"
         });
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1683,6 +1692,7 @@ steps:
             "plan": "import sys; print('before exit', flush=True); sys.exit(1)"
         });
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1710,6 +1720,7 @@ steps:
         }
         // Force direct mode by using execute_python directly
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -1869,6 +1880,7 @@ steps:
             cache_scope: None,
         };
         navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .tool(echo_def, |args, _ctx| {
@@ -2076,6 +2088,7 @@ steps:
     #[tokio::test]
     async fn test_on_error_continue_skips_failed_step() {
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -2116,6 +2129,7 @@ steps:
     #[tokio::test]
     async fn test_on_error_default_uses_default_value() {
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();
@@ -2162,6 +2176,7 @@ steps:
             cache_scope: None,
         };
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .tool(echo_def, |args, _ctx| {
@@ -2231,6 +2246,7 @@ steps:
             cache_scope: None,
         };
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .tool(echo_def, |args, _ctx| {
@@ -2307,6 +2323,7 @@ steps:
             "plan": "print('should not run')"
         });
         let server = navra_core::McpServer::builder()
+            .allow_anonymous()
             .name("test")
             .version("0.1")
             .build();

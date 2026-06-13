@@ -75,7 +75,7 @@ fn session_ctx(session_id: &str) -> CallContext {
 
 /// Build a server with read + write tools and IFC Deny policy.
 fn build_ifc_server() -> McpServer {
-    McpServer::builder()
+    McpServer::builder().allow_anonymous()
         .tool(read_tool_def(), |args, _ctx| {
             Box::pin(async move {
                 let path = args
