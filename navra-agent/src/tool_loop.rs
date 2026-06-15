@@ -119,6 +119,10 @@ pub struct ToolLoopConfig {
     /// When set, pre_model_call/post_model_call hooks run around
     /// each model.respond() invocation.
     pub hook_pipeline: Option<Arc<HookPipeline>>,
+    /// Optional fallback model for refusal recovery.
+    /// When the primary model refuses a request, the gateway
+    /// retries with this model before propagating the refusal.
+    pub fallback_model: Option<Arc<dyn ModelBackend>>,
 }
 
 impl Default for ToolLoopConfig {
@@ -146,6 +150,7 @@ impl Default for ToolLoopConfig {
             reasoning_phases: Vec::new(),
             context_retriever: None,
             hook_pipeline: None,
+            fallback_model: None,
         }
     }
 }
@@ -873,6 +878,25 @@ pub async fn run_tool_loop(
             warn_if_sensitive(&text);
         }
 
+        // Refusal detection and fallback routing
+        let response = if detect_model_refusal(&response) {
+            tracing::warn!("Model refused request, attempting fallback");
+            if let Some(ref fallback) = config.fallback_model {
+                let fallback_resp = fallback.respond(&request).await?;
+                if detect_model_refusal(&fallback_resp) {
+                    tracing::warn!("Fallback model also refused");
+                    response
+                } else {
+                    tracing::info!("Fallback model accepted request");
+                    fallback_resp
+                }
+            } else {
+                response
+            }
+        } else {
+            response
+        };
+
         if let Some(ref usage) = response.usage {
             total_input += usage.input_tokens;
             total_output += usage.output_tokens;
@@ -1227,6 +1251,28 @@ pub async fn run_tool_loop(
             compact_conversation(&mut input, 6, embed_ref, query_ref).await;
         }
     }
+}
+
+const REFUSAL_PATTERNS: &[&str] = &[
+    "i cannot",
+    "i can't",
+    "i'm unable to",
+    "i am unable to",
+    "i'm not able to",
+    "as an ai",
+    "i must decline",
+    "i cannot assist with",
+];
+
+fn detect_model_refusal(response: &navra_model::ModelResponse) -> bool {
+    if let Some(text) = response.text() {
+        if text.is_empty() {
+            return false;
+        }
+        let lower = text.to_lowercase();
+        return text.len() < 500 && REFUSAL_PATTERNS.iter().any(|p| lower.contains(p));
+    }
+    false
 }
 
 /// Check if text contains patterns that look like leaked secrets.

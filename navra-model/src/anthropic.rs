@@ -411,6 +411,7 @@ fn anthropic_stop_reason(reason: &str) -> FinishReason {
         "end_turn" => FinishReason::Stop,
         "max_tokens" => FinishReason::Length,
         "tool_use" => FinishReason::ToolCalls,
+        "refusal" => FinishReason::Refusal,
         _ => FinishReason::Stop,
     }
 }

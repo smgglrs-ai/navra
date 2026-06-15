@@ -134,6 +134,7 @@ pub enum FinishReason {
     Stop,
     Length,
     ToolCalls,
+    Refusal,
 }
 
 impl FinishReason {
@@ -142,8 +143,13 @@ impl FinishReason {
             "stop" => Self::Stop,
             "length" => Self::Length,
             "tool_calls" => Self::ToolCalls,
+            "refusal" => Self::Refusal,
             _ => Self::Stop,
         }
+    }
+
+    pub fn is_refusal(&self) -> bool {
+        matches!(self, Self::Refusal)
     }
 }
 
