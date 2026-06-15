@@ -590,11 +590,12 @@ fn apply_action(
                 .collect::<std::collections::HashSet<_>>()
                 .into_iter()
                 .collect();
-            Err(format!(
-                "Content blocked: detected {} sensitive item(s) ({})",
-                findings.len(),
-                categories.join(", "),
-            ))
+            tracing::info!(
+                count = findings.len(),
+                categories = %categories.join(", "),
+                "Content blocked by safety filter"
+            );
+            Err("Content blocked by security policy".to_string())
         }
         FilterAction::Redact => Ok(redact(content, findings)),
         FilterAction::Pseudonymize => Ok(pseudonymize(content, findings, pseudonym_map)),

@@ -78,7 +78,8 @@ pub async fn handle_build_test(
     match perm_engine.check(&ctx.agent.permissions, "build", &canon) {
         navra_core::permissions::PermissionResult::Allowed => {}
         other => {
-            return CallToolResult::error(format!("Permission denied: {other:?}"));
+            tracing::info!(path = %canon.display(), result = ?other, "Permission denied for build");
+            return CallToolResult::error("Permission denied".to_string());
         }
     }
 

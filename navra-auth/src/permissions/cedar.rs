@@ -84,12 +84,10 @@ impl CedarEngine {
                     .reason()
                     .map(|id| id.to_string())
                     .collect();
-                let msg = if reasons.is_empty() {
-                    "Cedar policy denied (default deny)".to_string()
-                } else {
-                    format!("Cedar policy denied by: {}", reasons.join(", "))
-                };
-                CedarDecision::Deny(msg)
+                if !reasons.is_empty() {
+                    tracing::info!(policies = %reasons.join(", "), "Cedar policy denied");
+                }
+                CedarDecision::Deny("Access denied by policy".to_string())
             }
         }
     }

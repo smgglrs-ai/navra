@@ -172,23 +172,14 @@ fn check_perm(
         ctx.agent.capabilities.as_ref(),
     ) {
         PermissionResult::Allowed => Ok(()),
-        PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
-            "Access denied: {}",
-            path.display()
-        ))),
-        PermissionResult::DeniedOperation => Err(CallToolResult::error(format!(
-            "Operation '{}' not permitted for agent '{}'",
-            op, ctx.agent.name
-        ))),
-        PermissionResult::DeniedUnknown => Err(CallToolResult::error(format!(
-            "Unknown permission set: {}",
-            ctx.agent.permissions
-        ))),
-        PermissionResult::NeedsApproval => Err(CallToolResult::error(format!(
-            "Approval required: {} on {}",
-            op,
-            path.display()
-        ))),
+        PermissionResult::NeedsApproval => {
+            tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, "Approval required");
+            Err(CallToolResult::error("Approval required".to_string()))
+        }
+        other => {
+            tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, result = ?other, "Permission denied");
+            Err(CallToolResult::error("Permission denied".to_string()))
+        }
     }
 }
 
@@ -295,10 +286,7 @@ async fn handle_query(
         .perm_engine
         .has_operation(&ctx.agent.permissions, "search")
     {
-        return CallToolResult::error(format!(
-            "Operation 'search' not permitted for agent '{}'",
-            ctx.agent.name
-        ));
+        return CallToolResult::error("Permission denied");
     }
 
     if query.is_empty() {

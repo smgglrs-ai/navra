@@ -134,18 +134,10 @@ pub(super) async fn check_perm(
                 )),
             ]))
         }
-        PermissionResult::DeniedPath => Err(CallToolResult::error(format!(
-            "Access denied: {}",
-            path.display()
-        ))),
-        PermissionResult::DeniedOperation => Err(CallToolResult::error(format!(
-            "Operation '{op}' not permitted for agent '{}'",
-            ctx.agent.name
-        ))),
-        PermissionResult::DeniedUnknown => Err(CallToolResult::error(format!(
-            "Unknown permission set: {}",
-            ctx.agent.permissions
-        ))),
+        other => {
+            tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, result = ?other, "Permission denied");
+            Err(CallToolResult::error("Permission denied".to_string()))
+        }
     }
 }
 

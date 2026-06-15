@@ -33,10 +33,7 @@ pub(crate) async fn handle_search(
             .as_ref()
             .map_or(false, |c| c.operations.contains("search"))
     {
-        return CallToolResult::error(format!(
-            "Operation 'search' not permitted for agent '{}'",
-            ctx.agent.name
-        ));
+        return CallToolResult::error("Permission denied");
     }
 
     let results = match state.index.search(&query, limit) {
