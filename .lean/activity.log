@@ -1,3 +1,8 @@
+- timestamp: "2026-06-15T18:00:00+02:00"
+  actor: claude
+  action: implement
+  summary: "NAVRA-087: Signed agent bundles with pre-install permission check. 6 new modules in navra-server/src/agent_bundle/ (manifest, compare, cosign, fetch, install, registry). CLI: navra agent install|inspect|list|remove. Permission comparison engine diffs manifest vs operator policy. 20 tests. Also fixed 3 pre-existing broken resource handler tests from NAVRA-081, marked NAVRA-081/082 done, added 4 new lean items (086-089)."
+
 - timestamp: "2026-06-14T16:00:00+02:00"
   actor: claude
   action: implement

@@ -1,6 +1,6 @@
 id: NAVRA-087
 title: "Signed agent bundles with pre-install permission check"
-status: in_progress
+status: done
 priority: high
 effort: 3-5d
 depends_on: []

@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 23 completed items
+# 24 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -156,6 +156,12 @@ items:
 
   - id: "NAVRA-082"
     title: "OpenAPI-to-MCP runtime bridge (navra-openapi crate)"
+    status: done
+    priority: high
+    effort: 3-5d
+
+  - id: "NAVRA-087"
+    title: "Signed agent bundles with pre-install permission check"
     status: done
     priority: high
     effort: 3-5d
