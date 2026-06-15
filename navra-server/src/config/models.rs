@@ -82,9 +82,12 @@ pub struct ModelConfig {
 /// Speculative decoding configuration for runtime-served models.
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct SpeculativeModelConfig {
+    /// Model name or path for the draft (fast) model.
     pub draft_model: String,
+    /// Number of tokens to draft per step (default: 5).
     #[serde(default = "default_draft_tokens")]
     pub draft_tokens: u32,
+    /// Minimum probability threshold for draft acceptance (default: 0.0).
     #[serde(default)]
     pub draft_min_p: f32,
 }
@@ -110,26 +113,37 @@ fn default_draft_tokens() -> u32 {
 /// ```
 #[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 pub struct AgenticConfig {
+    /// What this model is good at (free-text tags for routing).
     #[serde(default)]
     pub strengths: Vec<String>,
+    /// Known limitations (free-text tags for routing).
     #[serde(default)]
     pub weaknesses: Vec<String>,
+    /// Task types this model is recommended for.
     #[serde(default)]
     pub recommended_tasks: Vec<String>,
+    /// Task types this model should not be used for.
     #[serde(default)]
     pub avoid_tasks: Vec<String>,
+    /// Tool-use capability level: "none", "basic", "advanced".
     #[serde(default)]
     pub tool_use: Option<String>,
+    /// Cost tier: "free", "low", "medium", "high".
     #[serde(default)]
     pub cost_tier: Option<String>,
+    /// Inference speed tier: "fast", "medium", "slow".
     #[serde(default)]
     pub speed_tier: Option<String>,
+    /// Maximum concurrent agents this model can serve.
     #[serde(default)]
     pub max_agents: Option<u32>,
+    /// Reasoning capability: "none", "basic", "chain-of-thought".
     #[serde(default)]
     pub reasoning: Option<String>,
+    /// JSON output compliance: "none", "partial", "strict".
     #[serde(default)]
     pub json_compliance: Option<String>,
+    /// Data locality: "local" or "remote".
     #[serde(default)]
     pub locality: Option<String>,
 }
@@ -179,12 +193,16 @@ fn default_threshold() -> Option<f32> {
 /// ```
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct BudgetConfig {
+    /// Maximum total agents across all teams/subflows (default: 50).
     #[serde(default = "default_budget_max_agents")]
     pub max_agents: u32,
+    /// Maximum escalation nesting depth (default: 5).
     #[serde(default = "default_budget_max_depth")]
     pub max_depth: u32,
+    /// Timeout in seconds per flow tree (default: 3600).
     #[serde(default = "default_budget_timeout")]
     pub timeout_secs: u64,
+    /// Maximum ReAct iterations per agent (default: 200).
     #[serde(default = "default_budget_max_iterations")]
     pub max_iterations: usize,
     /// Maximum tasks running simultaneously (GPU throttling).

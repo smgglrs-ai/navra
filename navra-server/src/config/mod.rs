@@ -23,23 +23,31 @@ fn default_true() -> bool {
     true
 }
 
+/// Top-level navra configuration, loaded from `~/.config/navra/config.toml`.
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct Config {
+    /// Server transport, identity, and container settings.
     pub server: ServerConfig,
+    /// Per-module enablement and module-specific settings.
     #[serde(default)]
     pub modules: ModulesConfig,
+    /// Human-in-the-loop approval workflow settings.
     #[serde(default)]
     pub approval: ApprovalConfig,
+    /// Registered agent identities and their permission bindings.
     #[serde(default)]
     pub agents: Vec<AgentConfig>,
+    /// Named permission sets referenced by agents.
     #[serde(default)]
     pub permissions: HashMap<String, PermissionSet>,
+    /// Upstream MCP servers to proxy through the gateway.
     #[serde(default)]
     pub upstream: Vec<UpstreamConfig>,
     /// Credential label → backend source mappings.
     /// Only credentials listed here are accessible to agents.
     #[serde(default)]
     pub credentials: HashMap<String, navra_core::credentials::CredentialMapping>,
+    /// Named model definitions (embedding, classification, chat, generate).
     #[serde(default)]
     pub models: HashMap<String, ModelConfig>,
     /// Path to cognitive core directory (personas, heuristics, directives).

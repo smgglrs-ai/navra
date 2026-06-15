@@ -506,3 +506,17 @@ tcp = "127.0.0.1:9315"
     assert!(config.routing.tiers.is_empty());
     assert!(config.triggers.is_empty());
 }
+
+#[test]
+fn schema_all_fields_described() {
+    let schema = schemars::schema_for!(super::Config);
+    let json = serde_json::to_value(&schema).unwrap();
+    if let Some(props) = json.pointer("/properties") {
+        for (key, val) in props.as_object().unwrap() {
+            assert!(
+                val.get("description").is_some() || val.get("$ref").is_some(),
+                "field '{key}' lacks a description in the JSON Schema"
+            );
+        }
+    }
+}

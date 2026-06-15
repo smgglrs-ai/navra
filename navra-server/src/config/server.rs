@@ -2,8 +2,10 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct ServerConfig {
+    /// Unix socket path. Default: `$XDG_RUNTIME_DIR/navra/navra.sock`.
     #[serde(default = "default_socket")]
     pub socket: Option<String>,
+    /// TCP listen address (e.g., "127.0.0.1:9315"). Used instead of socket when set.
     pub tcp: Option<String>,
     /// Per-hook timeout in seconds (default: 10).
     #[serde(default = "default_hook_timeout")]

@@ -407,9 +407,13 @@ impl Default for RoutingConfig {
 /// A single tier in the routing configuration.
 #[derive(Debug, Clone, serde::Deserialize, schemars::JsonSchema)]
 pub struct ModelTierConfig {
+    /// Tier name (e.g., "small", "medium", "large").
     pub name: String,
+    /// Model identifier to use for this tier.
     pub model: String,
+    /// Maximum output tokens for requests routed to this tier.
     pub max_tokens: usize,
+    /// Tool name glob patterns that route to this tier.
     #[serde(default)]
     pub patterns: Vec<String>,
 }

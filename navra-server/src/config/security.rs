@@ -36,8 +36,10 @@ pub struct StatisticalGuardrailServerConfig {
     /// Default: false (monitor/warn only).
     #[serde(default)]
     pub block_on_anomaly: bool,
+    /// Sliding window size for tool-transition anomaly detection (default: 50).
     #[serde(default = "default_transition_window")]
     pub transition_window: usize,
+    /// Minimum observations before transition anomalies are flagged (default: 10).
     #[serde(default = "default_transition_min_observations")]
     pub transition_min_observations: usize,
 }
@@ -137,10 +139,15 @@ fn default_max_history() -> usize {
 /// A single temporal contract definition in server config.
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct TemporalContractConfig {
+    /// Unique contract name for logging and diagnostics.
     pub name: String,
+    /// Human-readable description of the contract.
     #[serde(default)]
     pub description: String,
+    /// Predicate JSON object (e.g., `{ "type": "requires", "tool": "...", "prerequisite": "..." }`).
     pub predicate: serde_json::Value,
+    /// Action JSON object (e.g., `{ "type": "block", "value": "..." }`).
     pub action: serde_json::Value,
+    /// Permission sets this contract applies to (glob patterns, "*" = all).
     pub applies_to: Vec<String>,
 }

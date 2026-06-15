@@ -8,12 +8,16 @@ pub struct PermissionSet {
     /// lower-numbered rings, and operations are intersected.
     #[serde(default)]
     pub ring: Option<u8>,
+    /// Glob patterns of allowed file paths (e.g., "~/Code/**").
     #[serde(default)]
     pub allow: Vec<String>,
+    /// Glob patterns of denied file paths (e.g., "**/.env").
     #[serde(default)]
     pub deny: Vec<String>,
+    /// Allowed operations (e.g., "read", "write", "git.commit", "shell.exec").
     #[serde(default)]
     pub operations: Vec<String>,
+    /// Operations requiring human approval before execution.
     #[serde(default)]
     pub approve: Vec<String>,
     /// Safety profile: "standard", "pseudonymize", "secrets-only", "block",
