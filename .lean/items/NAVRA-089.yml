@@ -1,0 +1,77 @@
+id: NAVRA-089
+title: "React security dashboard components (@navra/react)"
+status: planned
+priority: medium
+effort: 2-3w
+depends_on: []
+description: |
+  Build a React component library (@navra/react) providing embeddable
+  security dashboard widgets for navra. PatternFly React as the
+  component foundation. Each component connects to navra's existing
+  SSE notifications and Prometheus /metrics endpoint.
+
+  Components (priority order):
+
+  1. **<SecurityDashboard />** (3-5d): Real-time security overview.
+     Blocked calls count, PII detections, IFC violations, safety hook
+     triggers. Time-series charts (last hour/day/week). Connects to
+     Prometheus metrics (navra_tool_calls_total, navra_safety_blocked,
+     navra_ifc_violations, navra_pii_detections).
+
+  2. **<ApprovalQueue />** (2-3d): Pending human-in-the-loop approvals.
+     Shows tool name, agent, arguments (redacted), timestamp. Approve/
+     deny buttons that POST to navra's approval endpoint. Replaces
+     D-Bus desktop notifications for web-based workflows. Connects to
+     SSE notifications/approval_requested.
+
+  3. **<AgentActivity />** (2-3d): Real-time tool call timeline per
+     agent. Shows tool invocations, durations, results (success/denied/
+     error), IFC label propagation. Filterable by agent, tool, status.
+     Connects to SSE and/or audit log endpoint.
+
+  4. **<FlowVisualizer />** (3-5d): DAG execution view for navra-flow.
+     Shows nodes (agents), edges (handoffs), current execution state,
+     mandate compliance. Uses React Flow or similar for the graph.
+
+  5. **<PermissionEditor />** (3-5d): Visual ACL configuration. Shows
+     permission sets, path rules (deny/allow/approve), tool rules,
+     IFC labels. TOML preview of the generated config. Validates
+     rules before applying.
+
+  Architecture:
+
+  - @navra/react — component library (npm package)
+  - @navra/react-hooks — useNavraMetrics(), useNavraSSE(),
+    useApprovalQueue() hooks for custom UIs
+  - Built on PatternFly React (@patternfly/react-core, react-charts)
+  - Data: Prometheus HTTP API for metrics, navra SSE for real-time
+  - No backend — components connect directly to navra's existing
+    HTTP endpoints
+
+  Each component is independently useful — drop <SecurityDashboard />
+  into an existing admin panel without buying into the full stack.
+  Embeddable in domain apps (syllogis, medikit web versions), Rendra
+  (when Servo matures), or any React application.
+acceptance:
+  - "<SecurityDashboard /> renders with live data from navra Prometheus metrics"
+  - "<ApprovalQueue /> shows pending approvals and can approve/deny"
+  - "<AgentActivity /> shows real-time tool call timeline via SSE"
+  - "Components work standalone (npm install @navra/react, import, render)"
+  - "PatternFly React theming applied (consistent with Red Hat ecosystem)"
+  - "Published to npm with TypeScript types"
+scope:
+  - new repo or directory: navra-react/ or packages/react/
+  - "@navra/react (component library)"
+  - "@navra/react-hooks (data hooks)"
+notes: |
+  - PatternFly React is the natural choice — Red Hat ecosystem, mature,
+    accessible, good chart components.
+  - Rendra can embed these components later when Servo supports enough
+    CSS/JS — the React API is the stable interface, runtime is swappable.
+  - The hooks package (@navra/react-hooks) is potentially more valuable
+    than the components — it lets people build custom dashboards with
+    navra data without being locked into PatternFly's look.
+  - Consider Storybook for component development and documentation.
+  - navra needs an audit log HTTP endpoint (not just Prometheus counters)
+    for AgentActivity to show individual events. May require a small
+    navra-server addition.

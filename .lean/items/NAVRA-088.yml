@@ -1,0 +1,78 @@
+id: NAVRA-088
+title: "Decouple navra-safety for crates.io publication"
+status: planned
+priority: high
+effort: 1-2w
+depends_on: []
+description: |
+  Make navra-safety usable as a standalone library crate published to
+  crates.io. Any Rust application handling user data should be able to
+  add PII detection, content safety, and NER without running the full
+  navra gateway.
+
+  Current state: navra-safety depends on navra-auth and navra-protocol,
+  and requires ONNX Runtime for ML models. The dependency chain pulls
+  in the full navra type system.
+
+  Target state:
+
+    navra-safety (crates.io)
+      ├── default features: regex pipeline, NER label mappings
+      ├── feature "onnx": ONNX Runtime ML models (PII, content safety)
+      └── feature "tokenizers": HuggingFace tokenizers for text chunking
+
+  Work required:
+
+  1. **Extract shared types** (1-2d): Move types that navra-safety needs
+     from navra-auth and navra-protocol into navra-safety itself, or into
+     a minimal navra-types crate. The safety pipeline should not pull in
+     auth/ACL/IFC/JSON-RPC code.
+
+  2. **Feature-gate ONNX** (1d): The regex pipeline (RegexSafetyFilter),
+     NER label mappings, and hook pipeline should work without ort.
+     ML models (PiiFilter, content classifiers) behind `onnx` feature.
+
+  3. **Public API surface** (2-3d): Design the library API for standalone
+     use. Current API is designed for navra-core's hook pipeline. Need a
+     simpler entry point:
+
+       use navra_safety::{SafetyPipeline, PiiFilter, RegexFilter};
+
+       let pipeline = SafetyPipeline::builder()
+           .regex_filter(RegexFilter::standard())  // built-in patterns
+           .pii_filter(PiiFilter::onnx("path/to/model"))  // optional
+           .build();
+
+       let result = pipeline.scan("text with SSN 123-45-6789");
+       // result.findings: Vec<Finding> with span, category, confidence
+
+  4. **Documentation and examples** (2d): README with usage examples,
+     doc comments on public API, example binary that scans stdin.
+
+  5. **CI for crates.io** (1d): Publish workflow, version management,
+     cargo-deny license check, MSRV policy.
+
+  Also evaluate navra-macros and navra-openapi for simultaneous
+  crates.io publication — both are already standalone with no navra
+  dependencies. Low incremental effort to publish alongside safety.
+acceptance:
+  - "navra-safety builds and tests without navra-auth, navra-protocol, or navra-core"
+  - "Default features (no onnx) provide regex pipeline and NER label mappings"
+  - "onnx feature enables ML models (PiiFilter, content classifiers)"
+  - "Public API documented with examples (builder pattern, scan, findings)"
+  - "Published to crates.io with proper metadata, license, categories"
+  - "navra-macros and navra-openapi also published if ready"
+scope:
+  - navra-safety/
+  - navra-macros/ (for simultaneous publication)
+  - navra-openapi/ (for simultaneous publication)
+  - possibly new: navra-types/ (shared minimal types)
+notes: |
+  - navra-macros is the easiest win — already has zero navra deps,
+    just needs crates.io metadata and a README with examples.
+  - navra-openapi just shipped (NAVRA-082). Evaluate API stability
+    before publishing — may want to let it settle for a few weeks.
+  - The safety crate's regex patterns are the core value — they work
+    on any platform, no ML runtime needed. ML is the upgrade path.
+  - Consider: should the crate be named navra-safety or navra-pii
+    or navra-content-safety? The navra- prefix ties it to the ecosystem.

@@ -1,6 +1,6 @@
 id: "NAVRA-081"
 title: "Unified semantic permissions for tools, prompts, and resources"
-status: pending_approval
+status: done
 priority: critical
 effort: L
 depends_on: ['NAVRA-077']
