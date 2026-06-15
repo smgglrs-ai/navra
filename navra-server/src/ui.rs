@@ -589,6 +589,16 @@ pub(crate) fn attach_ui_routes(
                         }
                         srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
+                        if let Some(usage) = resp_json.get("usage") {
+                            let prompt = usage["prompt_tokens"].as_u64().unwrap_or(0);
+                            let completion = usage["completion_tokens"].as_u64().unwrap_or(0);
+                            let cached = usage["prompt_tokens_details"]["cached_tokens"]
+                                .as_u64()
+                                .unwrap_or(0);
+                            let uncached = prompt.saturating_sub(cached);
+                            srv.metrics().record_tokens(uncached, completion, cached);
+                        }
+
                         axum::Json(resp_json).into_response()
                     }
                 },
