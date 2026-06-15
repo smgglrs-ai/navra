@@ -3,8 +3,8 @@
 //! Runs the regex PII filter against labeled test data and reports
 //! metrics. This is the S7 evaluation for paper submission.
 
-use navra_safety::safety::ner::load_ner_filter;
-use navra_safety::safety::{ContentFilter, FilterContext, PiiFilter};
+use navra_safety_hooks::safety::ner::load_ner_filter;
+use navra_safety_hooks::safety::{ContentFilter, FilterContext, PiiFilter};
 use std::path::Path;
 
 /// A labeled test case: text with expected PII findings.
@@ -622,7 +622,7 @@ fn pii_benchmark_three_layer_pipeline() {
     let ner_filter = load_ner_filter(&ner_dir).expect("NER filter should load");
 
     let pf_filter =
-        match navra_safety::safety::privacy_filter::PrivacyFilterModel::load_from_dir(&pf_dir) {
+        match navra_safety_hooks::safety::PrivacyFilterModel::load_from_dir(&pf_dir) {
             Ok(f) => f,
             Err(e) => {
                 eprintln!("Skipping: privacy-filter failed to load: {e}");

@@ -8,7 +8,7 @@ use navra_auth::identity::CapSigner;
 use navra_model::ModelBackend;
 use navra_protocol::label::DataLabel;
 use navra_protocol::Upstream;
-use navra_safety::safety::FilterPipeline;
+use navra_safety_hooks::safety::FilterPipeline;
 use std::sync::Arc;
 
 /// An AI agent connected to an MCP server with a model backend.
@@ -248,7 +248,7 @@ impl AgentBuilder {
     }
 
     /// Set a hook pipeline for model-call interception.
-    pub fn hook_pipeline(mut self, pipeline: Arc<navra_safety::hooks::HookPipeline>) -> Self {
+    pub fn hook_pipeline(mut self, pipeline: Arc<navra_safety_hooks::hooks::HookPipeline>) -> Self {
         self.config.hook_pipeline = Some(pipeline);
         self
     }

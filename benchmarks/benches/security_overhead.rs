@@ -140,7 +140,7 @@ fn bench_blake3_auth(c: &mut Criterion) {
 // --- Safety pipeline ---
 
 fn bench_safety_pipeline(c: &mut Criterion) {
-    use navra_safety::safety::{build_pipeline, FilterContext};
+    use navra_safety_hooks::safety::{build_pipeline, FilterContext};
 
     let mut group = c.benchmark_group("safety_pipeline");
 

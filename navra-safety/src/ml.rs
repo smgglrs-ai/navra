@@ -2,13 +2,13 @@
 //!
 //! Complements the regex-based filters with contextual detection
 //! that regex can't catch (e.g., "medical records", "salary info").
-//! Uses any `ModelBackend` that supports classification.
+//! Uses any [`Classifier`](crate::Classifier) implementation.
 //!
 //! Implements the async `ModelFilter` trait — runs after sync regex
 //! filters in the pipeline.
 
 use super::{FilterAction, FilterContext, Finding, ModelFilter};
-use navra_model::{ClassifyRequest, ModelBackend};
+use crate::classifier::Classifier;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -21,7 +21,7 @@ use std::sync::Arc;
 /// check for any non-"safe" label. For multi-label models that emit
 /// per-category scores, use [`MultiLabelFilter`] instead.
 pub struct MlFilter {
-    model: Arc<dyn ModelBackend>,
+    model: Arc<dyn Classifier>,
     /// Minimum confidence to trigger a finding.
     threshold: f32,
     /// Category to report (e.g., "ml-unsafe", "sensitive-content").
@@ -30,7 +30,7 @@ pub struct MlFilter {
 
 impl MlFilter {
     /// Create a new ML filter.
-    pub fn new(model: Arc<dyn ModelBackend>, threshold: f32, category: impl Into<String>) -> Self {
+    pub fn new(model: Arc<dyn Classifier>, threshold: f32, category: impl Into<String>) -> Self {
         Self {
             model,
             threshold,
@@ -50,18 +50,14 @@ impl ModelFilter for MlFilter {
         _ctx: &'a FilterContext<'a>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
-            let request = ClassifyRequest {
-                text: content.to_string(),
-            };
-
-            match self.model.classify(&request).await {
-                Ok(response) => {
-                    if response.is_unsafe(self.threshold) {
+            match self.model.classify(content).await {
+                Ok(output) => {
+                    if output.is_unsafe(self.threshold) {
                         vec![Finding {
                             start: 0,
                             end: content.len(),
                             category: self.category.clone(),
-                            confidence: response
+                            confidence: output
                                 .labels
                                 .iter()
                                 .find(|l| l.label != "safe")
@@ -110,7 +106,7 @@ pub struct CategoryPolicy {
 /// let filter = MultiLabelFilter::new(model, policies);
 /// ```
 pub struct MultiLabelFilter {
-    model: Arc<dyn ModelBackend>,
+    model: Arc<dyn Classifier>,
     /// Per-category threshold and action.
     policies: HashMap<String, CategoryPolicy>,
     /// Fallback threshold for categories not in the policy map.
@@ -120,7 +116,7 @@ pub struct MultiLabelFilter {
 
 impl MultiLabelFilter {
     /// Create a new multi-label filter with per-category policies.
-    pub fn new(model: Arc<dyn ModelBackend>, policies: HashMap<String, CategoryPolicy>) -> Self {
+    pub fn new(model: Arc<dyn Classifier>, policies: HashMap<String, CategoryPolicy>) -> Self {
         Self {
             model,
             policies,
@@ -132,7 +128,7 @@ impl MultiLabelFilter {
     ///
     /// Convenience constructor for the common case where all categories
     /// should block content when they exceed their threshold.
-    pub fn from_thresholds(model: Arc<dyn ModelBackend>, thresholds: HashMap<String, f32>) -> Self {
+    pub fn from_thresholds(model: Arc<dyn Classifier>, thresholds: HashMap<String, f32>) -> Self {
         let policies = thresholds
             .into_iter()
             .map(|(cat, thresh)| {
@@ -183,15 +179,11 @@ impl ModelFilter for MultiLabelFilter {
         _ctx: &'a FilterContext<'a>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
-            let request = ClassifyRequest {
-                text: content.to_string(),
-            };
-
-            match self.model.classify(&request).await {
-                Ok(response) => {
+            match self.model.classify(content).await {
+                Ok(output) => {
                     let mut findings = Vec::new();
 
-                    for label in &response.labels {
+                    for label in &output.labels {
                         if label.label == "safe" {
                             continue;
                         }
@@ -251,9 +243,8 @@ impl ModelFilter for MultiLabelFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_model::{ClassifyLabel, ClassifyResponse, ModelError};
+    use crate::classifier::{ClassifyError, ClassifyLabel, ClassifyOutput};
 
-    /// A mock model backend that returns pre-configured classification labels.
     struct MockClassifier {
         labels: Vec<ClassifyLabel>,
     }
@@ -264,29 +255,28 @@ mod tests {
         }
     }
 
-    impl navra_model::ModelBackend for MockClassifier {
-        fn classify(
-            &self,
-            _request: &ClassifyRequest,
+    impl Classifier for MockClassifier {
+        fn classify<'a>(
+            &'a self,
+            _text: &'a str,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<ClassifyResponse, ModelError>> + Send + '_>,
+            Box<dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a>,
         > {
             let labels = self.labels.clone();
-            Box::pin(async move { Ok(ClassifyResponse { labels }) })
+            Box::pin(async move { Ok(ClassifyOutput { labels }) })
         }
     }
 
-    /// A mock that always fails classification.
     struct FailingClassifier;
 
-    impl navra_model::ModelBackend for FailingClassifier {
-        fn classify(
-            &self,
-            _request: &ClassifyRequest,
+    impl Classifier for FailingClassifier {
+        fn classify<'a>(
+            &'a self,
+            _text: &'a str,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<ClassifyResponse, ModelError>> + Send + '_>,
+            Box<dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a>,
         > {
-            Box::pin(async { Err(ModelError::Inference("test failure".into())) })
+            Box::pin(async { Err(ClassifyError::Inference("test failure".into())) })
         }
     }
 
@@ -361,32 +351,32 @@ mod tests {
         assert!(findings.is_empty());
     }
 
-    // --- ClassifyResponse backward compat ---
+    // --- ClassifyOutput tests ---
 
     #[test]
-    fn classify_response_empty_labels() {
-        let resp = ClassifyResponse { labels: vec![] };
-        assert!(resp.top_label().is_none());
-        assert!(!resp.is_unsafe(0.5));
+    fn classify_output_empty_labels() {
+        let out = ClassifyOutput { labels: vec![] };
+        assert!(out.top_label().is_none());
+        assert!(!out.is_unsafe(0.5));
         let thresholds = HashMap::new();
-        assert!(resp.exceeds_thresholds(&thresholds).is_empty());
+        assert!(out.exceeds_thresholds(&thresholds).is_empty());
     }
 
     #[test]
-    fn classify_response_single_label_compat() {
-        let resp = ClassifyResponse {
+    fn classify_output_single_label() {
+        let out = ClassifyOutput {
             labels: vec![ClassifyLabel {
                 label: "safe".into(),
                 score: 0.99,
             }],
         };
-        assert!(!resp.is_unsafe(0.5));
-        assert_eq!(resp.top_label().unwrap().label, "safe");
+        assert!(!out.is_unsafe(0.5));
+        assert_eq!(out.top_label().unwrap().label, "safe");
     }
 
     #[test]
-    fn classify_response_exceeds_thresholds() {
-        let resp = ClassifyResponse {
+    fn classify_output_exceeds_thresholds() {
+        let out = ClassifyOutput {
             labels: vec![
                 ClassifyLabel {
                     label: "harm".into(),
@@ -407,9 +397,8 @@ mod tests {
         thresholds.insert("pii".into(), 0.5);
         thresholds.insert("jailbreak".into(), 0.9);
 
-        let triggered = resp.exceeds_thresholds(&thresholds);
+        let triggered = out.exceeds_thresholds(&thresholds);
         assert_eq!(triggered.len(), 2);
-        // Sorted by score descending
         assert_eq!(triggered[0].label, "harm");
         assert_eq!(triggered[1].label, "pii");
     }

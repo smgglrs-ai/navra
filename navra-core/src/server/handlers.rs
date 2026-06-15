@@ -1245,7 +1245,7 @@ impl McpServer {
     pub fn safety_pipeline(
         &self,
         permission_set: &str,
-    ) -> Option<&navra_safety::safety::FilterPipeline> {
+    ) -> Option<&navra_safety_hooks::safety::FilterPipeline> {
         self.safety_pipelines.get(permission_set)
     }
 

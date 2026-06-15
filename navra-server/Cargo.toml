@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 navra-core = { path = "../navra-core" }
+navra-safety-hooks = { path = "../navra-safety-hooks" }
 navra-cognitive = { path = "../navra-cognitive" }
 navra-agent = { path = "../navra-agent" }
 navra-flow = { path = "../navra-flow" }

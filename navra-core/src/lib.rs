@@ -13,8 +13,8 @@ pub use navra_auth::notify;
 pub use navra_auth::permissions;
 pub use navra_auth::process;
 pub use navra_auth::quota;
-pub use navra_safety::hooks;
-pub use navra_safety::safety;
+pub use navra_safety_hooks::hooks;
+pub use navra_safety_hooks::safety;
 
 pub use navra_protocol as protocol;
 pub use navra_protocol::upstream;
