@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 28 completed items
+# 29 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -118,6 +118,14 @@ items:
     priority: high
     effort: 2-3d
     depends_on: ['NAVRA-002']
+
+  - id: "NAVRA-032"
+    title: "Compliance mapping (EU AI Act + OWASP)"
+    status: done
+    priority: high
+    effort: 2-3d
+    depends_on: ['NAVRA-016']
+    feeds: ['NAVRA-001']
 
   - id: "NAVRA-035"
     title: "Model-call hook point in navra-agent"
