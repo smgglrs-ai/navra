@@ -4,6 +4,7 @@
 //! (stdio, HTTP, or SSE), handles initialization and capability discovery,
 //! and proxies MCP requests.
 
+pub mod auth;
 pub mod http;
 pub mod retry;
 pub mod sse;
@@ -13,6 +14,7 @@ mod transport;
 #[cfg(feature = "webmcp")]
 pub mod webmcp;
 
+pub use auth::{StaticTokenProvider, TokenProvider};
 pub use retry::{RetryConfig, TransportFactory};
 pub use tls::TlsConfig;
 pub use transport::{Transport, UpstreamNotification};

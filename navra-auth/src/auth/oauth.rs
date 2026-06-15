@@ -49,6 +49,11 @@ pub struct ClientRegistrationRequest {
     pub grant_types: Option<Vec<String>>,
     pub response_types: Option<Vec<String>>,
     pub client_name: Option<String>,
+    /// Application type per SEP-837: "native" or "web".
+    /// Clients SHOULD include this to avoid OIDC-compliant servers
+    /// rejecting localhost redirect URIs.
+    #[serde(default)]
+    pub application_type: Option<String>,
 }
 
 /// OAuth client registration response.
@@ -60,6 +65,9 @@ pub struct ClientRegistration {
     pub grant_types: Option<Vec<String>>,
     pub response_types: Option<Vec<String>>,
     pub client_name: Option<String>,
+    /// Application type echoed back from registration.
+    #[serde(default)]
+    pub application_type: Option<String>,
 }
 
 /// Token request for client_credentials grant.
@@ -232,6 +240,7 @@ impl OAuthProvider {
             grant_types: request.grant_types.clone(),
             response_types: request.response_types.clone(),
             client_name: request.client_name.clone(),
+            application_type: request.application_type.clone(),
         }
     }
 
@@ -853,6 +862,7 @@ mod tests {
             grant_types: Some(vec!["client_credentials".to_string()]),
             response_types: None,
             client_name: Some("My Agent".to_string()),
+            application_type: Some("native".to_string()),
         };
 
         let reg = provider.register_dynamic(&request);

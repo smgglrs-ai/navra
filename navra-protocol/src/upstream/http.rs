@@ -1,12 +1,15 @@
 //! HTTP transport: JSON-RPC over HTTP POST (MCP streamable-http).
 //!
 //! Sends JSON-RPC requests as POST to the upstream URL and reads
-//! JSON-RPC responses from the response body.
+//! JSON-RPC responses from the response body. Supports pluggable
+//! token providers for OAuth 2.1 authentication with 401/403 handling.
 
+use super::auth::{StaticTokenProvider, TokenProvider};
 use super::tls::TlsConfig;
 use super::transport::Transport;
 use super::UpstreamError;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 /// HTTP transport backed by reqwest.
 pub struct HttpTransport {
@@ -14,7 +17,7 @@ pub struct HttpTransport {
     url: String,
     client: reqwest::Client,
     session_id: Option<String>,
-    auth_token: Option<String>,
+    token_provider: Arc<dyn TokenProvider>,
 }
 
 impl HttpTransport {
@@ -27,7 +30,7 @@ impl HttpTransport {
             url: url.to_string(),
             client: reqwest::Client::new(),
             session_id: None,
-            auth_token: None,
+            token_provider: StaticTokenProvider::new(None),
         }
     }
 
@@ -42,14 +45,60 @@ impl HttpTransport {
             url: url.to_string(),
             client,
             session_id: None,
-            auth_token: None,
+            token_provider: StaticTokenProvider::new(None),
         })
     }
 
-    /// Set an authentication token (sent as `Authorization: Bearer <token>`).
+    /// Set a static authentication token (sent as `Authorization: Bearer <token>`).
     pub fn with_auth(mut self, token: impl Into<String>) -> Self {
-        self.auth_token = Some(token.into());
+        self.token_provider = StaticTokenProvider::new(Some(token.into()));
         self
+    }
+
+    /// Set a dynamic token provider for OAuth 2.1 authentication.
+    pub fn with_token_provider(mut self, provider: Arc<dyn TokenProvider>) -> Self {
+        self.token_provider = provider;
+        self
+    }
+
+    async fn send_request(
+        &mut self,
+        body: &serde_json::Value,
+        token: Option<&str>,
+    ) -> Result<reqwest::Response, UpstreamError> {
+        let mut req = self
+            .client
+            .post(&self.url)
+            .header("Content-Type", "application/json")
+            .json(body);
+
+        if let Some(ref sid) = self.session_id {
+            req = req.header("mcp-session-id", sid);
+        }
+
+        if let Some(token) = token {
+            req = req.header("authorization", format!("Bearer {token}"));
+        }
+
+        req.send().await.map_err(|e| UpstreamError::Protocol {
+            name: self.name.clone(),
+            message: format!("HTTP request failed: {e}"),
+        })
+    }
+
+    fn capture_session_id(&mut self, resp: &reqwest::Response) {
+        if let Some(sid) = resp.headers().get("mcp-session-id") {
+            if let Ok(s) = sid.to_str() {
+                self.session_id = Some(s.to_string());
+            }
+        }
+    }
+
+    fn extract_www_authenticate(resp: &reqwest::Response) -> Option<String> {
+        resp.headers()
+            .get("www-authenticate")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
     }
 }
 
@@ -59,35 +108,81 @@ impl Transport for HttpTransport {
         &mut self,
         body: serde_json::Value,
     ) -> Result<serde_json::Value, UpstreamError> {
-        let mut req = self
-            .client
-            .post(&self.url)
-            .header("Content-Type", "application/json")
-            .json(&body);
+        let token = self.token_provider.get_token().await?;
+        let resp = self.send_request(&body, token.as_deref()).await?;
 
-        // Include session header if we have one (from a previous initialize)
-        if let Some(ref sid) = self.session_id {
-            req = req.header("mcp-session-id", sid);
-        }
+        self.capture_session_id(&resp);
+        let status = resp.status();
 
-        // Include auth token if set
-        if let Some(ref token) = self.auth_token {
-            req = req.header("authorization", format!("Bearer {token}"));
-        }
-
-        let resp = req.send().await.map_err(|e| UpstreamError::Protocol {
-            name: self.name.clone(),
-            message: format!("HTTP request failed: {e}"),
-        })?;
-
-        // Capture session ID from response headers
-        if let Some(sid) = resp.headers().get("mcp-session-id") {
-            if let Ok(s) = sid.to_str() {
-                self.session_id = Some(s.to_string());
+        // 401 Unauthorized — attempt token acquisition and retry once
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            let www_auth = Self::extract_www_authenticate(&resp);
+            match self
+                .token_provider
+                .handle_401(&self.name, www_auth.as_deref())
+                .await
+            {
+                Ok(new_token) => {
+                    let retry_resp = self.send_request(&body, Some(&new_token)).await?;
+                    self.capture_session_id(&retry_resp);
+                    let retry_status = retry_resp.status();
+                    if !retry_status.is_success() {
+                        let body_text = retry_resp.text().await.unwrap_or_default();
+                        return Err(UpstreamError::Protocol {
+                            name: self.name.clone(),
+                            message: format!("HTTP {retry_status} (after auth): {body_text}"),
+                        });
+                    }
+                    return retry_resp
+                        .json::<serde_json::Value>()
+                        .await
+                        .map_err(|e| UpstreamError::Protocol {
+                            name: self.name.clone(),
+                            message: format!("failed to parse response JSON: {e}"),
+                        });
+                }
+                Err(e) => return Err(e),
             }
         }
 
-        let status = resp.status();
+        // 403 Forbidden — attempt scope step-up and retry once
+        if status == reqwest::StatusCode::FORBIDDEN {
+            let www_auth = Self::extract_www_authenticate(&resp);
+            if let Some(ref auth_header) = www_auth {
+                if auth_header.contains("insufficient_scope") {
+                    match self
+                        .token_provider
+                        .handle_403(&self.name, www_auth.as_deref())
+                        .await
+                    {
+                        Ok(new_token) => {
+                            let retry_resp =
+                                self.send_request(&body, Some(&new_token)).await?;
+                            self.capture_session_id(&retry_resp);
+                            let retry_status = retry_resp.status();
+                            if !retry_status.is_success() {
+                                let body_text = retry_resp.text().await.unwrap_or_default();
+                                return Err(UpstreamError::Protocol {
+                                    name: self.name.clone(),
+                                    message: format!(
+                                        "HTTP {retry_status} (after step-up): {body_text}"
+                                    ),
+                                });
+                            }
+                            return retry_resp
+                                .json::<serde_json::Value>()
+                                .await
+                                .map_err(|e| UpstreamError::Protocol {
+                                    name: self.name.clone(),
+                                    message: format!("failed to parse response JSON: {e}"),
+                                });
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
             return Err(UpstreamError::Protocol {
