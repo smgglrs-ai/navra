@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 24 completed items
+# 25 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -144,6 +144,13 @@ items:
     priority: critical
     effort: 2-3d
     feeds: ['NAVRA-075']
+
+  - id: "NAVRA-078"
+    title: "MCP authorization SEPs (iss validation, credential binding)"
+    status: done
+    priority: high
+    effort: 2-3d
+    depends_on: ['NAVRA-018']
 
   - id: "NAVRA-081"
     title: "Unified semantic permissions for tools, prompts, and resources"

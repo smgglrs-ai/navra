@@ -1,6 +1,6 @@
 id: "NAVRA-078"
 title: "MCP authorization SEPs (iss validation, credential binding)"
-status: planned
+status: done
 priority: high
 effort: 2-3d
 depends_on: ["NAVRA-018"]

@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 65 active items
+# 64 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -50,13 +50,6 @@ items:
     status: planned
     priority: high
     effort: 2.5-3.5d
-
-  - id: "NAVRA-078"
-    title: "MCP authorization SEPs (iss validation, credential binding)"
-    status: planned
-    priority: high
-    effort: 2-3d
-    depends_on: ['NAVRA-018']
 
   - id: "NAVRA-086"
     title: "Agent skills for navra adoption (init, policy, flow, diagnose)"
