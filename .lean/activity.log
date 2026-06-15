@@ -1,3 +1,8 @@
+- timestamp: "2026-06-15T22:00:00+02:00"
+  actor: claude
+  action: implement
+  summary: "NAVRA-078: MCP authorization SEPs — OAuth 2.1 client for upstream MCP servers. New oauth_client.rs (AS discovery RFC 8414/9728, iss validation SEP-2468, credential store SEP-2352, scope accumulation SEP-2350, DCR with application_type SEP-837, Auth Code+PKCE, Client Credentials, Device Auth RFC 8628, token refresh SEP-2207, localhost callback server). New TokenProvider trait in navra-protocol with 401/403 challenge handling in HttpTransport. UpstreamOAuthConfig in config. 35 new tests, 0 regressions across 2800+ workspace tests."
+
 - timestamp: "2026-06-15T18:00:00+02:00"
   actor: claude
   action: implement
