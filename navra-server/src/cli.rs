@@ -50,6 +50,11 @@ pub(crate) enum Commands {
     Install,
     /// Uninstall systemd user units
     Uninstall,
+    /// Manage agent bundles (install, inspect, list, remove)
+    Agent {
+        #[command(subcommand)]
+        action: AgentAction,
+    },
     /// Manage ONNX models
     Model {
         #[command(subcommand)]
@@ -185,6 +190,33 @@ pub(crate) enum ConfigAction {
         /// Show secret values instead of redacting them
         #[arg(long)]
         no_redact: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AgentAction {
+    /// Install an agent bundle from an OCI registry
+    Install {
+        /// OCI reference (e.g., oci://quay.io/navra/agent:v1)
+        oci_ref: String,
+        /// Skip signature verification for this install
+        #[arg(long)]
+        allow_unsigned: bool,
+        /// Permission set to check against (uses its rules as max allowed)
+        #[arg(long)]
+        max_permissions: Option<String>,
+    },
+    /// Inspect an agent bundle without installing
+    Inspect {
+        /// OCI reference
+        oci_ref: String,
+    },
+    /// List installed agent bundles
+    List,
+    /// Remove an installed agent bundle
+    Remove {
+        /// Agent name
+        name: String,
     },
 }
 
@@ -350,6 +382,161 @@ async fn download_file(url: &str, dest: &std::path::Path) -> anyhow::Result<()> 
     }
     eprintln!();
     file.flush().await?;
+    Ok(())
+}
+
+// --- Agent bundle commands ---
+
+pub(crate) async fn agent_install(
+    oci_ref: &str,
+    allow_unsigned: bool,
+    max_permissions: Option<&str>,
+    cfg: &crate::config::Config,
+) -> anyhow::Result<()> {
+    use crate::agent_bundle::{compare, cosign, fetch, install, registry};
+
+    let policy = if allow_unsigned {
+        cosign::SignaturePolicy::Skip
+    } else {
+        cfg.server
+            .agent_signature_policy
+            .parse::<cosign::SignaturePolicy>()?
+    };
+
+    // Gate 1: signature verification
+    let signed = cosign::verify_signature(oci_ref, policy).await?;
+
+    // Fetch manifest
+    let client = reqwest::Client::new();
+    let manifest = fetch::fetch_agent_manifest(&client, oci_ref).await?;
+
+    let token = crate::config::generate_token();
+    let hash = navra_core::auth::TokenAuthenticator::hash_token(&token);
+
+    match manifest {
+        Some(manifest) => {
+            println!("Agent: {} v{}", manifest.meta.name, manifest.meta.version);
+            if let Some(publisher) = &manifest.meta.publisher {
+                println!("Publisher: {publisher}");
+            }
+            if let Some(desc) = &manifest.meta.description {
+                println!("Description: {desc}");
+            }
+            println!("Signed: {signed}");
+            println!();
+
+            // Gate 2: permission check
+            let max_policy = match max_permissions {
+                Some(name) => cfg.permissions.get(name).ok_or_else(|| {
+                    anyhow::anyhow!("permission set {name:?} not found in config")
+                })?,
+                None => &crate::config::PermissionSet::default(),
+            };
+
+            let diff = compare::compare_permissions(&manifest.permissions, max_policy);
+            if !diff.allowed {
+                println!("{diff}");
+                anyhow::bail!(
+                    "Installation aborted — bundle permissions exceed operator policy.\n\
+                     Use --max-permissions to specify a more permissive policy, or adjust your config."
+                );
+            }
+
+            let snippet = install::generate_config_snippet(&manifest, oci_ref, &token, &hash);
+            println!("Add to config.toml:\n");
+            println!("{snippet}");
+
+            registry::save(&registry::InstalledAgent {
+                name: manifest.meta.name.clone(),
+                version: manifest.meta.version.clone(),
+                publisher: manifest.meta.publisher.clone(),
+                oci_ref: oci_ref.to_string(),
+                installed_at: {
+                    use std::time::SystemTime;
+                    let d = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or_default();
+                    format!("{}", d.as_secs())
+                },
+                signed,
+            })?;
+
+            if let Some(image) = &manifest.image {
+                println!("\nPull container image:");
+                println!("  podman pull {image}");
+            }
+        }
+        None => {
+            eprintln!("warning: no agent manifest found for {oci_ref}");
+            eprintln!("Generating skeleton config — configure permissions manually.\n");
+            let snippet = install::generate_skeleton_config(oci_ref, &token, &hash);
+            println!("Add to config.toml:\n");
+            println!("{snippet}");
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) async fn agent_inspect(oci_ref: &str) -> anyhow::Result<()> {
+    use crate::agent_bundle::fetch;
+
+    let client = reqwest::Client::new();
+    let manifest = fetch::fetch_agent_manifest(&client, oci_ref).await?;
+
+    match manifest {
+        Some(manifest) => {
+            println!("{}", serde_json::to_string_pretty(&manifest)?);
+        }
+        None => {
+            println!("No agent manifest found for {oci_ref}");
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn agent_list() -> anyhow::Result<()> {
+    use crate::agent_bundle::registry;
+
+    let agents = registry::list()?;
+    if agents.is_empty() {
+        println!("No agent bundles installed.");
+        return Ok(());
+    }
+
+    println!(
+        "{:<20} {:<10} {:<15} {:<6} {}",
+        "NAME", "VERSION", "PUBLISHER", "SIGNED", "OCI REF"
+    );
+    println!(
+        "{:<20} {:<10} {:<15} {:<6} {}",
+        "----", "-------", "---------", "------", "-------"
+    );
+    for agent in &agents {
+        println!(
+            "{:<20} {:<10} {:<15} {:<6} {}",
+            agent.name,
+            agent.version,
+            agent.publisher.as_deref().unwrap_or("-"),
+            if agent.signed { "yes" } else { "no" },
+            agent.oci_ref,
+        );
+    }
+
+    Ok(())
+}
+
+pub(crate) fn agent_remove(name: &str) -> anyhow::Result<()> {
+    use crate::agent_bundle::registry;
+
+    if registry::remove(name)? {
+        println!("Removed agent bundle: {name}");
+        println!("Note: config.toml entries for this agent must be removed manually.");
+    } else {
+        println!("No installed agent bundle named {name:?}.");
+    }
+
     Ok(())
 }
 

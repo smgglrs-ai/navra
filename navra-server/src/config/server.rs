@@ -57,6 +57,11 @@ pub struct ServerConfig {
     /// or "2025-03-26" (legacy session-based, deprecated).
     #[serde(default = "default_mcp_version")]
     pub mcp_version: String,
+    /// Agent bundle signature policy: "enforce", "warn", or "skip".
+    /// Controls whether `navra agent install` requires cosign signature
+    /// verification. Default: "warn".
+    #[serde(default = "default_agent_signature_policy")]
+    pub agent_signature_policy: String,
     /// Watch the config file for changes and hot-reload.
     #[serde(default)]
     pub config_watch: bool,
@@ -95,6 +100,10 @@ fn default_container_pids() -> u32 {
 
 fn default_hook_timeout() -> u64 {
     10
+}
+
+fn default_agent_signature_policy() -> String {
+    "warn".to_string()
 }
 
 /// Root identity configuration.
