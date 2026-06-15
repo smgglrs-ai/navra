@@ -1,7 +1,11 @@
 //! Block-based tool execution model for structured output.
 
+fn instant_now() -> std::time::Instant {
+    std::time::Instant::now()
+}
+
 /// A single tool execution block — addressable, timed, renderable.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolBlock {
     /// Unique identifier for this block.
     pub block_id: String,
@@ -12,7 +16,7 @@ pub struct ToolBlock {
     /// Current execution status.
     pub status: BlockStatus,
     /// When execution started (not serialized).
-    #[serde(skip)]
+    #[serde(skip, default = "instant_now")]
     pub started_at: std::time::Instant,
     /// Wall-clock duration in milliseconds, set on completion/cancellation.
     pub duration_ms: Option<u64>,
@@ -23,7 +27,7 @@ pub struct ToolBlock {
 }
 
 /// Status of a tool execution block.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockStatus {
     /// Queued but not yet started.
