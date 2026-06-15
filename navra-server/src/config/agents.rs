@@ -87,6 +87,11 @@ pub struct UpstreamConfig {
     /// Supports glob patterns (e.g., "get_*", "*_search").
     #[serde(default)]
     pub tool_filter: Vec<String>,
+    /// OAuth 2.1 configuration for authenticating to this upstream server.
+    /// When set, navra acts as an OAuth client and handles token acquisition,
+    /// refresh, and 401/403 challenges automatically.
+    #[serde(default)]
+    pub oauth: Option<UpstreamOAuthConfig>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
@@ -109,6 +114,35 @@ pub struct OpenApiAuthConfig {
     /// Basic auth password (or env var reference).
     #[serde(default)]
     pub basic_password: Option<String>,
+}
+
+/// OAuth 2.1 client configuration for upstream MCP servers.
+///
+/// Enables navra to authenticate to remote upstream servers that require
+/// OAuth. Supports Authorization Code + PKCE, Client Credentials, and
+/// Device Authorization (RFC 8628) flows.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+pub struct UpstreamOAuthConfig {
+    /// Pre-registered OAuth client ID. If absent, navra uses Dynamic
+    /// Client Registration (RFC 7591) to obtain credentials.
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// Pre-registered client secret (or env var reference like "${SECRET}").
+    /// Required for Client Credentials flow.
+    #[serde(default)]
+    pub client_secret: Option<String>,
+    /// OAuth flow preference: "auto" (default), "code", "client_credentials", "device".
+    ///
+    /// - "auto": tries client_credentials if secret is present, then device
+    ///   auth if headless (no DISPLAY/WAYLAND), else authorization code + PKCE.
+    /// - "code": Authorization Code + PKCE with localhost callback.
+    /// - "client_credentials": Machine-to-machine, no user interaction.
+    /// - "device": Device Authorization Flow (RFC 8628).
+    #[serde(default)]
+    pub flow: Option<String>,
+    /// OAuth scopes to request.
+    #[serde(default)]
+    pub scopes: Vec<String>,
 }
 
 impl UpstreamConfig {
