@@ -77,10 +77,7 @@ impl OpenApiModule {
     }
 
     /// Run the tool scanner on generated tools, removing malicious ones.
-    pub fn scan_tools(
-        &mut self,
-        scanner: &mut navra_auth::tool_scanner::ToolScanner,
-    ) {
+    pub fn scan_tools(&mut self, scanner: &mut navra_auth::tool_scanner::ToolScanner) {
         use navra_auth::tool_scanner::ScanVerdict;
         let defs: Vec<_> = self.tools.iter().map(|p| p.definition.clone()).collect();
         let results = scanner.scan_tools(&self.name, &defs);
@@ -118,8 +115,8 @@ impl OpenApiModule {
     /// Remove tools marked "deny" in tool_overrides so they never
     /// appear in tools/list or tool_operations().
     pub fn apply_overrides(&mut self, overrides: &HashMap<String, String>) {
-        self.tools.retain(|parsed| {
-            match overrides.get(&parsed.definition.name) {
+        self.tools
+            .retain(|parsed| match overrides.get(&parsed.definition.name) {
                 Some(v) if v == "deny" => {
                     tracing::info!(
                         tool = %parsed.definition.name,
@@ -128,8 +125,7 @@ impl OpenApiModule {
                     false
                 }
                 _ => true,
-            }
-        });
+            });
     }
 
     pub fn tool_operations(&self) -> HashMap<String, ToolOperation> {

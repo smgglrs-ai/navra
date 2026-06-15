@@ -1,6 +1,6 @@
 id: NAVRA-082
 title: "OpenAPI-to-MCP runtime bridge (navra-openapi crate)"
-status: in_progress
+status: done
 priority: high
 effort: 3-5d
 source: "tech-watch-2026-06-14"

@@ -70,10 +70,7 @@ fn build_url(
                 other => other.to_string(),
             })
             .ok_or_else(|| format!("Missing required path parameter: {param}"))?;
-        path = path.replace(
-            &format!("{{{param}}}"),
-            &urlencoding::encode(&value),
-        );
+        path = path.replace(&format!("{{{param}}}"), &urlencoding::encode(&value));
     }
 
     let mut query_parts: Vec<(String, String)> = Vec::new();
@@ -96,13 +93,7 @@ fn build_url(
     if !query_parts.is_empty() {
         let qs: Vec<String> = query_parts
             .iter()
-            .map(|(k, v)| {
-                format!(
-                    "{}={}",
-                    urlencoding::encode(k),
-                    urlencoding::encode(v)
-                )
-            })
+            .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
             .collect();
         url.push('?');
         url.push_str(&qs.join("&"));
@@ -141,10 +132,7 @@ mod tests {
         let args = serde_json::json!({"petId": "123", "fields": "name,status"});
         let auth = AuthConfig::default();
         let url = build_url("https://api.example.com", &meta, &args, &auth).unwrap();
-        assert_eq!(
-            url,
-            "https://api.example.com/pets/123?fields=name%2Cstatus"
-        );
+        assert_eq!(url, "https://api.example.com/pets/123?fields=name%2Cstatus");
     }
 
     #[test]
