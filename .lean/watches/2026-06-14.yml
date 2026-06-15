@@ -1,0 +1,91 @@
+date: "2026-06-14"
+mode: proactive
+topic: "Generic MCP server creation from OpenAPI specs"
+
+sources:
+  - url: "https://github.com/harsha-iiiv/openapi-mcp-generator"
+    title: "openapi-mcp-generator (TypeScript CLI, 495 stars)"
+    impact: MEDIUM
+    relationship: complements
+
+  - url: "https://gitlab.com/lx-industries/rmcp-openapi"
+    title: "rmcp-openapi (Rust, 70+ releases on crates.io)"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://www.stainless.com/blog/generate-mcp-servers-from-openapi-specs/"
+    title: "Stainless MCP server generation (experimental, free)"
+    impact: MEDIUM
+    relationship: complements
+
+  - url: "https://awslabs.github.io/mcp/servers/openapi-mcp-server"
+    title: "AWS Labs openapi-mcp-server (Python, PyPI v1.1.0)"
+    impact: LOW
+    relationship: complements
+
+  - url: "https://www.speakeasy.com/blog/generating-mcp-from-openapi-lessons-from-50-production-servers"
+    title: "Speakeasy — Lessons from 50 production MCP servers"
+    impact: MEDIUM
+    relationship: validates
+
+  - url: "https://developer.konghq.com/mcp/autogenerate-mcp-tools/"
+    title: "Kong AI MCP Proxy (manual YAML, not true autogeneration)"
+    impact: LOW
+    relationship: contextual
+
+  - url: "https://mcp.composio.dev/apify"
+    title: "Composio hosted MCP servers (112 Apify tools)"
+    impact: LOW
+    relationship: contextual
+
+findings:
+  - source: "gitlab.com/lx-industries/rmcp-openapi"
+    title: "OpenAPI-to-MCP runtime bridge for navra"
+    action: plan
+    item_id: "NAVRA-082"
+    detail: "New navra-openapi crate: parse OpenAPI specs at startup, expose as MCP tools with zero code"
+
+  - source: "gitlab.com/lx-industries/rmcp-openapi"
+    title: "rmcp-openapi validates replacement path for navra-tools-github"
+    action: enrich
+    item_id: "NAVRA-072"
+    detail: "rmcp-openapi + GitHub OpenAPI spec replaces custom GitHub module. NAVRA-082 generalizes this."
+
+  - source: "speakeasy.com"
+    title: "Speakeasy scope model for tool filtering"
+    action: watch
+    detail: "Server-side scope-based ACL (read/write/custom domain) for tool filtering. Similar to navra's NAVRA-081."
+
+  - source: "github.com/modelcontextprotocol/rust-sdk"
+    title: "Anthropic official stance on OpenAPI→MCP"
+    action: watch
+    detail: "No official tooling. SDKs provide transport/protocol only, OpenAPI conversion delegated to ecosystem."
+
+  - source: "github.com/harsha-iiiv/openapi-mcp-generator"
+    title: "openapi-mcp-generator as TypeScript reference"
+    action: watch
+    detail: "495 stars, npm v3.1.4. Good reference for mapping patterns but TypeScript — navra uses Rust."
+
+  - source: "awslabs.github.io/mcp/servers/openapi-mcp-server"
+    title: "AWS Labs openapi-mcp-server"
+    action: dismiss
+    detail: "Python/boto3, not relevant to Rust stack. rmcp-openapi and navra-openapi cover the Rust need."
+
+  - source: "developer.konghq.com/mcp/autogenerate-mcp-tools/"
+    title: "Kong AI MCP Proxy"
+    action: dismiss
+    detail: "Manual YAML tool definitions despite 'autogenerate' marketing. Not true OpenAPI ingestion."
+
+summary: |
+  7 sources analyzed (deep-research workflow: 101 agents, 19 sources fetched,
+  94 claims extracted, 25 verified, 23 confirmed, 2 killed).
+  1 new plan item (NAVRA-082: OpenAPI-to-MCP runtime bridge).
+  1 existing item enriched (NAVRA-072: rmcp-openapi as replacement path).
+  3 items to watch (Speakeasy scopes, Anthropic stance, openapi-mcp-generator).
+  2 items dismissed (AWS Labs Python tool, Kong manual YAML).
+
+  Key insight: all existing tools are CODE GENERATORS producing standalone
+  MCP servers. navra's gateway architecture enables a fundamentally different
+  approach — a RUNTIME BRIDGE where the operator adds an OpenAPI spec URL to
+  config and navra exposes filtered, ACL-enforced, IFC-tracked API tools with
+  zero code. No competitor does this.

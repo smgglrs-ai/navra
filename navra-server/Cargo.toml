@@ -28,6 +28,7 @@ navra-tools-exec = { path = "../navra-tools-exec" }
 navra-rag = { path = "../navra-rag" }
 navra-modal-vision = { path = "../navra-modal-vision" }
 navra-modal-voice = { path = "../navra-modal-voice" }
+navra-openapi = { path = "../navra-openapi" }
 axum = { workspace = true }
 tokio = { workspace = true }
 schemars = { workspace = true }

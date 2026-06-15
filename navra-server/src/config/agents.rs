@@ -68,6 +68,41 @@ pub struct UpstreamConfig {
     /// ```
     #[serde(default)]
     pub tool_class: std::collections::HashMap<String, super::permissions::ToolClassConfig>,
+    /// OpenAPI 3.x spec source (URL or file path).
+    /// When set, transport/command/url are ignored — navra parses the spec
+    /// and exposes operations as MCP tools directly.
+    #[serde(default)]
+    pub openapi: Option<String>,
+    /// Authentication for the target API (used with openapi upstreams).
+    #[serde(default)]
+    pub auth: Option<OpenApiAuthConfig>,
+    /// Tool name filter — only expose operations matching these names.
+    /// Matches against both the prefixed tool name and the raw operationId.
+    /// Supports glob patterns (e.g., "get_*", "*_search").
+    #[serde(default)]
+    pub tool_filter: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+pub struct OpenApiAuthConfig {
+    /// Bearer token (or env var reference like "${JIRA_TOKEN}").
+    #[serde(default)]
+    pub bearer: Option<String>,
+    /// API key header name.
+    #[serde(default)]
+    pub api_key_name: Option<String>,
+    /// API key value (or env var reference).
+    #[serde(default)]
+    pub api_key_value: Option<String>,
+    /// API key location: "header" (default) or "query".
+    #[serde(default)]
+    pub api_key_location: Option<String>,
+    /// Basic auth username.
+    #[serde(default)]
+    pub basic_username: Option<String>,
+    /// Basic auth password (or env var reference).
+    #[serde(default)]
+    pub basic_password: Option<String>,
 }
 
 impl UpstreamConfig {

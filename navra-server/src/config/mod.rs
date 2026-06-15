@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub use crate::grpc_manager::GrpcModuleConfig;
-pub use agents::{AgentConfig, UpstreamConfig};
+pub use agents::{AgentConfig, OpenApiAuthConfig, UpstreamConfig};
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
 pub use permissions::{PermissionSet, PiiPatternConfig};

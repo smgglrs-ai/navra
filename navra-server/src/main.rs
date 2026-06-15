@@ -2051,6 +2051,99 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             continue;
         }
 
+        // OpenAPI bridge — parse spec directly, skip MCP transport
+        if let Some(ref spec_source) = upstream_cfg.openapi {
+            let auth = resolve_openapi_auth(&upstream_cfg.auth);
+            let spec_source = resolve_env_vars(spec_source);
+            let timeout = upstream_cfg
+                .request_timeout_secs
+                .map(std::time::Duration::from_secs);
+            match navra_openapi::OpenApiModule::from_spec_with_timeout(
+                &upstream_cfg.name,
+                &spec_source,
+                auth,
+                &upstream_cfg.tool_filter,
+                timeout,
+            )
+            .await
+            {
+                Ok(mut module) => {
+                    // Remove denied tools before they reach tools/list
+                    if !upstream_cfg.tool_overrides.is_empty() {
+                        module.apply_overrides(&upstream_cfg.tool_overrides);
+                    }
+
+                    tracing::info!(
+                        upstream = %upstream_cfg.name,
+                        tools = module.tool_count(),
+                        "Connected OpenAPI upstream"
+                    );
+
+                    // Merge tool operations (read/write classification)
+                    let mut ops = module.tool_operations();
+                    for (tool_name, override_str) in &upstream_cfg.tool_overrides {
+                        match override_str.as_str() {
+                            "read" => {
+                                ops.insert(tool_name.clone(), navra_core::ToolOperation::Read);
+                            }
+                            "write" => {
+                                ops.insert(tool_name.clone(), navra_core::ToolOperation::Write);
+                            }
+                            "deny" => {
+                                ops.insert(tool_name.clone(), navra_core::ToolOperation::Deny);
+                            }
+                            _ => {
+                                tracing::warn!(
+                                    upstream = %upstream_cfg.name,
+                                    tool = %tool_name,
+                                    value = %override_str,
+                                    "Invalid tool_overrides value, expected read/write/deny"
+                                );
+                            }
+                        }
+                    }
+                    builder = builder.merge_tool_operations(ops);
+
+                    // Apply tool_class overrides
+                    if !upstream_cfg.tool_class.is_empty() {
+                        let mut classes = std::collections::HashMap::new();
+                        for (tool_name, tc) in &upstream_cfg.tool_class {
+                            match (tc.domain.parse(), tc.operation.parse()) {
+                                (Ok(domain), Ok(operation)) => {
+                                    classes.insert(
+                                        tool_name.clone(),
+                                        navra_core::permissions::ResourceClass::new(
+                                            domain, operation,
+                                        ),
+                                    );
+                                }
+                                (Err(e), _) | (_, Err(e)) => {
+                                    tracing::error!(
+                                        upstream = %upstream_cfg.name,
+                                        tool = %tool_name,
+                                        "Invalid tool_class: {e}, skipping"
+                                    );
+                                }
+                            }
+                        }
+                        if !classes.is_empty() {
+                            builder = builder.merge_tool_classifications(classes);
+                        }
+                    }
+
+                    builder = builder.module(module);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        upstream = %upstream_cfg.name,
+                        error = %e,
+                        "Failed to parse OpenAPI spec, skipping"
+                    );
+                }
+            }
+            continue;
+        }
+
         let retry_config = upstream_cfg.retry_config();
         let connect_result = match upstream_cfg.transport.as_str() {
             "stdio" => {
@@ -5189,6 +5282,53 @@ fn common_path_prefix(paths: &[String]) -> String {
     match prefix.rfind('/') {
         Some(pos) => prefix[..pos].to_string(),
         None => String::new(),
+    }
+}
+
+fn resolve_openapi_auth(
+    auth_cfg: &Option<config::OpenApiAuthConfig>,
+) -> navra_openapi::auth::AuthConfig {
+    let Some(auth) = auth_cfg else {
+        return navra_openapi::auth::AuthConfig::default();
+    };
+
+    let bearer = auth.bearer.as_deref().map(|s| resolve_env_vars(s));
+
+    let api_key = match (&auth.api_key_name, &auth.api_key_value) {
+        (Some(name), Some(value)) => {
+            let location = match auth.api_key_location.as_deref() {
+                Some("query") => navra_openapi::auth::ApiKeyLocation::Query,
+                _ => navra_openapi::auth::ApiKeyLocation::Header,
+            };
+            Some(navra_openapi::auth::ApiKeyAuth {
+                name: name.clone(),
+                value: resolve_env_vars(value),
+                location,
+            })
+        }
+        _ => None,
+    };
+
+    let basic = match (&auth.basic_username, &auth.basic_password) {
+        (Some(user), Some(pass)) => Some(navra_openapi::auth::BasicAuth {
+            username: user.clone(),
+            password: resolve_env_vars(pass),
+        }),
+        _ => None,
+    };
+
+    navra_openapi::auth::AuthConfig {
+        bearer,
+        api_key,
+        basic,
+    }
+}
+
+fn resolve_env_vars(s: &str) -> String {
+    if let Some(var) = s.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
+        std::env::var(var).unwrap_or_else(|_| s.to_string())
+    } else {
+        s.to_string()
     }
 }
 

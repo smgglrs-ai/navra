@@ -1,0 +1,15 @@
+id: NAVRA-083
+title: "OpenAPI upstream: OAuth2 authorization code flow"
+status: planned
+priority: low
+effort: 3-5d
+depends_on: ['NAVRA-082']
+description: |
+  Extend navra-openapi auth to support OAuth2 authorization code flow
+  with PKCE and token refresh. Enables APIs that require user-level auth
+  (Google Workspace, Microsoft Graph, Salesforce, etc.).
+
+  Requires: credential system integration, token storage/refresh in
+  navra-auth, possibly a callback endpoint in navra-core's HTTP router.
+  Static tokens (bearer, API key, basic) are already supported in
+  NAVRA-082.

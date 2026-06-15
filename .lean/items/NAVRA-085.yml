@@ -1,0 +1,26 @@
+id: NAVRA-085
+title: "Handle notifications/tools/list_changed from upstream MCP servers"
+status: planned
+priority: medium
+effort: 2-3d
+description: |
+  When an upstream MCP server sends notifications/tools/list_changed,
+  navra should re-run tools/list and update the registered tool set
+  without requiring a navra restart.
+
+  Currently the tool set is frozen at startup. Reconnection (via
+  ResilientTransport) re-establishes the transport but does not
+  re-discover tools. This blocks the decoupled deployment pattern
+  where navra-openapi runs as a standalone MCP server in its own
+  container — updating the OpenAPI spec and restarting the container
+  should propagate new tools to navra automatically.
+
+  Requires: notification listener on upstream transports, dynamic
+  tool re-registration in McpServer (currently tools are immutable
+  after build), and downstream notifications/tools/list_changed
+  forwarding to connected clients.
+notes: |
+  - MCP spec defines notifications/tools/list_changed for this purpose
+  - Affects all upstream types, not just OpenAPI
+  - Enables hot-reload of upstream tool sets without navra restart
+  - Key enabler for containerized/decoupled upstream MCP servers
