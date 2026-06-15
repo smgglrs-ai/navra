@@ -51,22 +51,49 @@ impl StdioTransport {
         })?;
 
         // Spawn a background task to log stderr output from the subprocess.
+        // Rate-limited to MAX_STDERR_LINES_PER_SEC to prevent log flooding.
         let stderr_task = if let Some(stderr) = child.stderr.take() {
             let upstream_name = name.to_string();
             Some(tokio::spawn(async move {
+                const MAX_STDERR_LINES_PER_SEC: u32 = 10;
                 let mut reader = BufReader::new(stderr);
                 let mut line = String::new();
+                let mut window_start = tokio::time::Instant::now();
+                let mut lines_in_window: u32 = 0;
+                let mut suppressed: u64 = 0;
                 loop {
                     line.clear();
                     match reader.read_line(&mut line).await {
-                        Ok(0) => break, // EOF
+                        Ok(0) => break,
                         Ok(_) => {
                             let trimmed = line.trim_end();
-                            if !trimmed.is_empty() {
+                            if trimmed.is_empty() {
+                                continue;
+                            }
+
+                            let now = tokio::time::Instant::now();
+                            if now.duration_since(window_start)
+                                >= std::time::Duration::from_secs(1)
+                            {
+                                if suppressed > 0 {
+                                    tracing::warn!(
+                                        upstream = %upstream_name,
+                                        "[upstream:{upstream_name}:stderr] {suppressed} lines suppressed (rate-limited)"
+                                    );
+                                }
+                                window_start = now;
+                                lines_in_window = 0;
+                                suppressed = 0;
+                            }
+
+                            lines_in_window += 1;
+                            if lines_in_window <= MAX_STDERR_LINES_PER_SEC {
                                 tracing::warn!(
                                     upstream = %upstream_name,
-                                    "stderr: {trimmed}"
+                                    "[upstream:{upstream_name}:stderr] {trimmed}"
                                 );
+                            } else {
+                                suppressed += 1;
                             }
                         }
                         Err(_) => break,
