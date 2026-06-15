@@ -15,7 +15,7 @@ pub mod webmcp;
 
 pub use retry::{RetryConfig, TransportFactory};
 pub use tls::TlsConfig;
-pub use transport::Transport;
+pub use transport::{Transport, UpstreamNotification};
 
 use crate::mcp::{
     CallToolParams, CallToolResult, GetPromptParams, GetPromptResult, ListPromptsResult,
@@ -23,6 +23,7 @@ use crate::mcp::{
     ResourceDefinition, ToolDefinition, PROTOCOL_VERSION,
 };
 use std::sync::atomic::{AtomicI64, Ordering};
+use tokio::sync::mpsc;
 
 /// Strip filesystem paths from io::Error messages to prevent information leakage.
 fn sanitize_io_error(err: &std::io::Error) -> String {
@@ -372,6 +373,25 @@ impl Upstream {
         })
     }
 
+    /// Subscribe to notifications from the upstream server.
+    ///
+    /// Returns a receiver that will receive notifications such as
+    /// `ToolsListChanged` when the upstream server sends them.
+    /// The notification sender is forwarded to the transport so it
+    /// can detect and forward server-initiated JSON-RPC notifications.
+    pub fn subscribe_notifications(
+        &mut self,
+    ) -> mpsc::UnboundedReceiver<UpstreamNotification> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.transport.set_notification_sender(tx);
+        rx
+    }
+
+    /// Re-fetch tools from the upstream and return the updated list.
+    pub async fn refresh_tools(&mut self) -> Result<Vec<ToolDefinition>, UpstreamError> {
+        self.list_tools().await
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -390,6 +410,7 @@ impl Drop for Upstream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::sync::mpsc;
 
     #[test]
     fn sanitize_io_error_not_found() {
@@ -447,5 +468,177 @@ mod tests {
             "Display should not contain paths: {display}"
         );
         assert!(display.contains("permission denied"));
+    }
+
+    /// Mock transport that replays a sequence of JSON lines, simulating
+    /// a mix of notifications and responses.
+    struct MockNotifyTransport {
+        responses: Vec<serde_json::Value>,
+        cursor: usize,
+        notification_tx: Option<mpsc::UnboundedSender<UpstreamNotification>>,
+    }
+
+    impl MockNotifyTransport {
+        fn new(responses: Vec<serde_json::Value>) -> Self {
+            Self {
+                responses,
+                cursor: 0,
+                notification_tx: None,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Transport for MockNotifyTransport {
+        async fn request(
+            &mut self,
+            _body: serde_json::Value,
+        ) -> Result<serde_json::Value, UpstreamError> {
+            while self.cursor < self.responses.len() {
+                let msg = self.responses[self.cursor].clone();
+                self.cursor += 1;
+
+                // Detect notifications (has method, no id)
+                if msg.get("method").is_some() && msg.get("id").is_none() {
+                    if let Some(method) = msg["method"].as_str() {
+                        if method == "notifications/tools/list_changed" {
+                            if let Some(ref tx) = self.notification_tx {
+                                let _ = tx.send(UpstreamNotification::ToolsListChanged);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                return Ok(msg);
+            }
+            Err(UpstreamError::Protocol {
+                name: "mock".to_string(),
+                message: "no more responses".to_string(),
+            })
+        }
+
+        fn shutdown(&mut self) {}
+
+        fn set_notification_sender(&mut self, tx: mpsc::UnboundedSender<UpstreamNotification>) {
+            self.notification_tx = Some(tx);
+        }
+    }
+
+    #[test]
+    fn notification_detection_tools_list_changed() {
+        let msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/tools/list_changed"
+        });
+        assert!(msg.get("method").is_some());
+        assert!(msg.get("id").is_none());
+        assert_eq!(msg["method"].as_str().unwrap(), "notifications/tools/list_changed");
+    }
+
+    #[test]
+    fn response_is_not_a_notification() {
+        let msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "tools": [] }
+        });
+        assert!(msg.get("id").is_some());
+        // Has id → not a notification, even if method were present
+    }
+
+    #[tokio::test]
+    async fn notification_does_not_block_response() {
+        let transport = MockNotifyTransport::new(vec![
+            // Notification first
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/tools/list_changed"
+            }),
+            // Then the actual response
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": { "tools": [] }
+            }),
+        ]);
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut transport = transport;
+        transport.set_notification_sender(tx);
+
+        let result = transport.request(serde_json::json!({})).await.unwrap();
+        assert!(result.get("result").is_some());
+
+        let notif = rx.try_recv().unwrap();
+        assert_eq!(notif, UpstreamNotification::ToolsListChanged);
+    }
+
+    #[tokio::test]
+    async fn subscribe_notifications_wires_channel() {
+        let notify = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/tools/list_changed"
+        });
+        let tools_response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "tools": [
+                { "name": "echo", "description": "echo", "inputSchema": { "type": "object" } }
+            ]}
+        });
+
+        let transport = MockNotifyTransport::new(vec![notify, tools_response]);
+
+        let mut upstream = Upstream {
+            name: "test".to_string(),
+            transport: Box::new(transport),
+            next_id: AtomicI64::new(1),
+        };
+
+        let mut rx = upstream.subscribe_notifications();
+
+        let tools = upstream.list_tools().await.unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "echo");
+
+        let notif = rx.try_recv().unwrap();
+        assert_eq!(notif, UpstreamNotification::ToolsListChanged);
+    }
+
+    #[tokio::test]
+    async fn refresh_tools_returns_updated_list() {
+        let tools_v1 = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "tools": [
+                { "name": "old_tool", "description": "old", "inputSchema": { "type": "object" } }
+            ]}
+        });
+        let tools_v2 = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": { "tools": [
+                { "name": "alpha", "description": "a", "inputSchema": { "type": "object" } },
+                { "name": "beta", "description": "b", "inputSchema": { "type": "object" } }
+            ]}
+        });
+
+        let transport = MockNotifyTransport::new(vec![tools_v1, tools_v2]);
+
+        let mut upstream = Upstream {
+            name: "test".to_string(),
+            transport: Box::new(transport),
+            next_id: AtomicI64::new(1),
+        };
+
+        let initial = upstream.list_tools().await.unwrap();
+        assert_eq!(initial.len(), 1);
+        assert_eq!(initial[0].name, "old_tool");
+
+        let refreshed = upstream.refresh_tools().await.unwrap();
+        assert_eq!(refreshed.len(), 2);
+        assert_eq!(refreshed[0].name, "alpha");
+        assert_eq!(refreshed[1].name, "beta");
     }
 }

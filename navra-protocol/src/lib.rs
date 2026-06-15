@@ -42,4 +42,4 @@ pub use mcp::{
     NOTIFY_RESOURCES_LIST_CHANGED, NOTIFY_RESOURCES_UPDATED, NOTIFY_TOOLS_LIST_CHANGED,
     PROTOCOL_VERSION, PROTOCOL_VERSION_2026,
 };
-pub use upstream::{RetryConfig, TlsConfig, Upstream};
+pub use upstream::{RetryConfig, TlsConfig, Upstream, UpstreamNotification};
