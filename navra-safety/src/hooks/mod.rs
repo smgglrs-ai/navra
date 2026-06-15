@@ -20,6 +20,7 @@ mod sandbox_hook;
 pub mod skill_hook;
 pub mod statistical;
 pub mod temporal_contract;
+pub mod verifier;
 mod tool_guard;
 
 pub use approval_gate::{ApprovalGateConfig, ApprovalGateHook, ApprovalStatus, PendingApproval};
@@ -42,6 +43,7 @@ pub use temporal_contract::{
     ContractAction, SessionActionLog, TemporalContract, TemporalContractHook, TemporalPredicate,
 };
 pub use tool_guard::ToolGuardHook;
+pub use verifier::{VerifierConfig, VerifierHook, VerifierStats};
 
 use async_trait::async_trait;
 use navra_auth::auth::CallContext;
