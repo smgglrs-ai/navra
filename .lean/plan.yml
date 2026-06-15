@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 62 active items
+# 61 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -49,12 +49,6 @@ items:
     status: planned
     priority: high
     effort: 2.5-3.5d
-
-  - id: "NAVRA-074"
-    title: "Capability/architecture disclosure prevention"
-    status: planned
-    priority: high
-    effort: 1-2d
 
   - id: "NAVRA-086"
     title: "Agent skills for navra adoption (init, policy, flow, diagnose)"

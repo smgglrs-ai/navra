@@ -466,8 +466,8 @@ async fn a7_ifc_write_down_blocked() {
     );
     let text = result_text(&write_resp);
     assert!(
-        text.contains("taint") || text.contains("IFC") || text.contains("write"),
-        "Expected IFC denial message, got: {text}"
+        text.contains("Permission denied") || text.contains("Access denied"),
+        "Expected denial message, got: {text}"
     );
     assert!(
         !output_file.exists(),

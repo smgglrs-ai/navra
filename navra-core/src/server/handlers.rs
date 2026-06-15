@@ -374,9 +374,13 @@ impl McpServer {
                             agent_did,
                             agent_ring,
                         );
+                        tracing::warn!(
+                            tool = %params.name,
+                            permission_set = %ctx.agent.permissions,
+                            "Tool requires approval"
+                        );
                         return CallToolResult::error(format!(
-                            "Approval required: tool '{}' requires approval for permission set '{}'",
-                            params.name, ctx.agent.permissions
+                            "Approval required: '{}'", params.name
                         ));
                     }
                     tracing::info!(
@@ -402,16 +406,18 @@ impl McpServer {
                             agent_did,
                             agent_ring,
                         );
+                        tracing::warn!(
+                            tool = %params.name,
+                            permission_set = %ctx.agent.permissions,
+                            "Write operation denied by permission set"
+                        );
                         return CallToolResult::error(format!(
-                            "Permission denied: '{}' is classified as a write operation \
-                             but permission set '{}' does not allow write",
-                            params.name, ctx.agent.permissions
+                            "Permission denied: '{}'", params.name
                         ));
                     }
                     crate::upstream_module::ToolOperation::Deny => {
                         return CallToolResult::error(format!(
-                            "Permission denied: '{}' is blocked by upstream policy",
-                            params.name
+                            "Permission denied: '{}'", params.name
                         ));
                     }
                     _ => {}
@@ -434,10 +440,14 @@ impl McpServer {
                     self.metrics
                         .tool_calls_denied
                         .fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        tool = %params.name,
+                        classification = %class,
+                        permission_set = %ctx.agent.permissions,
+                        "Domain classification denied"
+                    );
                     return CallToolResult::error(format!(
-                        "Permission denied: '{}' classified as {} \
-                         but permission set '{}' does not allow it",
-                        params.name, class, ctx.agent.permissions
+                        "Permission denied: '{}'", params.name
                     ));
                 }
             }
@@ -467,9 +477,13 @@ impl McpServer {
                         agent_ring,
                     );
                     self.metrics.cedar_denials.fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        tool = %params.name,
+                        cedar_reason = %reason,
+                        "Cedar policy denied"
+                    );
                     return CallToolResult::error(format!(
-                        "Policy denied: tool '{}' — {}",
-                        params.name, reason
+                        "Permission denied: '{}'", params.name
                     ));
                 }
             }
@@ -527,8 +541,7 @@ impl McpServer {
                             "IFC: tainted write denied"
                         );
                         return CallToolResult::error(format!(
-                            "IFC: write tool '{}' denied — data tainted with untrusted content",
-                            params.name
+                            "Permission denied: '{}'", params.name
                         ));
                     }
                     Some(crate::ifc::TaintedWritePolicy::Approve) => {
@@ -539,8 +552,7 @@ impl McpServer {
                             agent_ring,
                         );
                         return CallToolResult::error(format!(
-                            "IFC: write tool '{}' requires approval — data tainted with untrusted content",
-                            params.name
+                            "Approval required: '{}'", params.name
                         ));
                     }
                     _ => {} // Allow or no policy
@@ -580,11 +592,24 @@ impl McpServer {
                 crate::hooks::PreHookOutcome::Blocked(reason) => {
                     self.process_table
                         .complete_call(&ctx.agent.name, &params.name);
-                    return CallToolResult::error(reason);
+                    tracing::warn!(
+                        tool = %params.name,
+                        reason = %reason,
+                        "Tool blocked by pre-hook"
+                    );
+                    return CallToolResult::error(format!(
+                        "Permission denied: '{}'", params.name
+                    ));
                 }
                 crate::hooks::PreHookOutcome::Pending { request_id, reason } => {
+                    tracing::info!(
+                        tool = %params.name,
+                        request_id = %request_id,
+                        reason = %reason,
+                        "Tool pending approval"
+                    );
                     return CallToolResult::error(format!(
-                        "Pending approval {request_id}: {reason}"
+                        "Approval required: '{}' (request: {})", params.name, request_id
                     ));
                 }
             }
@@ -674,9 +699,14 @@ impl McpServer {
                                     &result.label.to_string(),
                                 );
                             }
+                            tracing::warn!(
+                                tool = %params.name,
+                                classification = ?result.label.confidentiality,
+                                clearance = ?clearance.level,
+                                "IFC: read blocked — classification exceeds clearance"
+                            );
                             return CallToolResult::error(format!(
-                                "IFC: read blocked — data classified {:?} exceeds {:?} clearance",
-                                result.label.confidentiality, clearance.level
+                                "Access denied: insufficient clearance for '{}'", params.name
                             ));
                         }
                         crate::ifc::TaintedWritePolicy::Approve => {

@@ -122,11 +122,15 @@ fn extract_var_id(result: &CallToolResult) -> Option<String> {
     None
 }
 
-/// Check if a result is an IFC error.
+/// Check if a result is a permission/access denial (IFC or ACL).
 fn is_ifc_error(result: &CallToolResult) -> bool {
     result.is_error
         && result.content.iter().any(|c| match c {
-            Content::Text(t) => t.text.contains("IFC"),
+            Content::Text(t) => {
+                t.text.contains("Permission denied")
+                    || t.text.contains("Access denied")
+                    || t.text.contains("Approval required")
+            }
             _ => panic!("expected text content"),
         })
 }

@@ -1531,8 +1531,7 @@ async fn ifc_deny_write_after_untrusted_read() {
     assert!(write_result.is_error);
     match &write_result.content[0] {
         crate::protocol::Content::Text(t) => {
-            assert!(t.text.contains("IFC"));
-            assert!(t.text.contains("tainted"));
+            assert!(t.text.contains("Permission denied"));
         }
         _ => panic!("expected text content"),
     }
@@ -1812,7 +1811,8 @@ async fn hook_blocks_tool_call() {
     assert!(result.is_error);
     match &result.content[0] {
         crate::protocol::Content::Text(t) => {
-            assert!(t.text.contains("blocked by test hook"));
+            assert!(t.text.contains("Permission denied"),
+                "Expected sanitized denial, got: {}", t.text);
         }
         _ => panic!("expected text content"),
     }

@@ -183,7 +183,7 @@ async fn handle_resource_read(uri: String, state: Arc<DocsState>) -> ReadResourc
             contents: vec![ResourceContent {
                 uri,
                 mime_type: Some("text/plain".to_string()),
-                text: Some(format!("Access denied: {}", path.display())),
+                text: Some("Access denied".to_string()),
                 blob: None,
             }],
         };
