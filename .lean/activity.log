@@ -1,3 +1,8 @@
+- timestamp: "2026-06-16T01:00:00+02:00"
+  actor: claude
+  action: implement
+  summary: "NAVRA-072/074/032: Priority re-evaluation + three items completed. (1) Removed navra-tools-github crate (847 lines deleted) — GitHub access via upstream MCP/OpenAPI. (2) Sanitized all error messages across 10 files to prevent architecture disclosure (NAVRA-074) — permission set names, IFC labels, Cedar policy IDs, safety filter categories no longer leaked to clients; details preserved in tracing logs. (3) Comprehensive compliance mapping against EU AI Act (Art 9/12/13/14/50), OWASP ASI01-10 (9/10 mitigated), and Microsoft taxonomy v2.0 (7 failure modes). Also re-prioritized 6 items: promoted NAVRA-032/074/072 to high, demoted NAVRA-019/020/030 to low."
+
 - timestamp: "2026-06-15T22:00:00+02:00"
   actor: claude
   action: implement
