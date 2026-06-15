@@ -1,6 +1,6 @@
 id: "NAVRA-073"
 title: "Model refusal detection and gateway-level fallback routing"
-status: planned
+status: completed
 priority: medium
 effort: 2-3d
 depends_on: []

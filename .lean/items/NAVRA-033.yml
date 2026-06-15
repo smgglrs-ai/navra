@@ -1,6 +1,6 @@
 id: "NAVRA-033"
 title: "ET metric in Prometheus"
-status: planned
+status: completed
 priority: low
 effort: 0.5-0.5d
 depends_on: []

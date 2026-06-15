@@ -131,3 +131,25 @@
 
 ### Status: PENDING_APPROVAL
 Breaking API changes + security architecture change require human review before merge.
+
+## 2026-06-15 — Underrated items batch
+
+### Completed (7 items, parallel agents)
+- **NAVRA-033**: Effective tokens (ET) metric in Prometheus — 3 atomic counters (input/output/cached), computed ET gauge, `record_tokens()` method, wired into metrics render
+- **NAVRA-036**: VerifierHook with false-pass-rate tracking — post-tool-use hook in navra-safety, configurable rubrics, per-tool stats with flagged/total ratio, Prometheus metrics
+- **NAVRA-065**: Config schema doc comments — all config struct fields now have doc comments, `schema_all_fields_described` regression test, schemars output is self-documenting
+- **NAVRA-067**: ToolBlock wired into tool loop — ToolBlock created before each call_tool(), completed/failed/cancelled after, Vec<ToolBlock> in ToolLoopResult, Deserialize added, 4 integration tests
+- **NAVRA-080**: Upstream transport hardening — sanitize_io_error() strips paths from Spawn Display, stderr rate-limited to 10 lines/sec with [upstream:<name>:stderr] prefix
+- **NAVRA-073**: Model refusal detection — FinishReason::Refusal variant, detect_refusal() with explicit + heuristic detection, fallback_model in ToolLoopConfig, 3 Prometheus counters
+- **NAVRA-085**: Handle notifications/tools/list_changed — UpstreamNotification enum, notification detection in stdio transport read loop, subscribe_notifications() + refresh_tools() on Upstream
+
+### Key artifacts
+- NEW: navra-model/src/refusal.rs — refusal detection module (9 tests)
+- NEW: navra-safety/src/hooks/verifier.rs — VerifierHook implementation
+- MOD: navra-core/src/metrics.rs — 6 new Prometheus counters (ET + refusal)
+- MOD: navra-agent/src/tool_loop.rs — ToolBlock wiring + fallback_model field
+- MOD: navra-protocol/src/upstream/{mod,stdio,transport}.rs — notification support
+- MOD: navra-server/src/config/*.rs — doc comments on all fields
+
+### Test results
+1,092 tests across 5 crates — 0 failures
