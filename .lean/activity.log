@@ -158,3 +158,4 @@ Breaking API changes + security architecture change require human review before 
 
 ### Test results
 1,092 tests across 5 crates — 0 failures
+2026-06-15T20:12:43Z | NAVRA-088 done: navra-safety decoupled as standalone crates.io library (119 regex tests + 57 ML tests), navra-safety-hooks retains gateway hooks, navra-macros prepped for publication, 2755 workspace tests pass
