@@ -1,25 +1,35 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
+/// Per-module enablement and configuration.
 #[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 pub struct ModulesConfig {
+    /// File indexing and search module (alias: "docs").
     #[serde(default)]
     #[serde(alias = "docs")]
     pub file: Option<FileModuleConfig>,
+    /// Git repository operations module.
     #[serde(default)]
     pub git: Option<GitModuleConfig>,
+    /// GitHub API integration module.
     #[serde(default)]
     pub github: Option<GithubModuleConfig>,
+    /// GitLab API integration module.
     #[serde(default)]
     pub gitlab: Option<GitlabModuleConfig>,
+    /// Retrieval-augmented generation module.
     #[serde(default)]
     pub rag: Option<RagModuleConfig>,
+    /// Voice I/O module (ASR + TTS).
     #[serde(default)]
     pub voice: Option<VoiceModuleConfig>,
+    /// Vision/image analysis module.
     #[serde(default)]
     pub vision: Option<VisionModuleConfig>,
+    /// MCP server registry and discovery module.
     #[serde(default)]
     pub registry: Option<RegistryModuleConfig>,
+    /// Persistent memory module with PII-aware retention.
     #[serde(default)]
     pub memory: Option<MemoryModuleConfig>,
 }
@@ -70,24 +80,28 @@ impl Default for MemoryModuleConfig {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct GitModuleConfig {
+    /// Enable the git module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct GithubModuleConfig {
+    /// Enable the GitHub module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct GitlabModuleConfig {
+    /// Enable the GitLab module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct VisionModuleConfig {
+    /// Enable the vision module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
     /// Name of the vision model in [models.*] config.
@@ -101,6 +115,7 @@ fn default_vision_model() -> String {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct RagModuleConfig {
+    /// Enable the RAG module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
     /// Database path. Defaults to the same directory as docs, separate file.
@@ -138,6 +153,7 @@ pub(super) fn default_rag_db_path() -> String {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct VoiceModuleConfig {
+    /// Enable the voice module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
     /// Name of the ASR model in [models.*] config.
@@ -182,8 +198,10 @@ fn default_silence_timeout_ms() -> u64 {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct FileModuleConfig {
+    /// Enable the file module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
+    /// SQLite database path for the file index.
     #[serde(default = "default_db_path")]
     pub db: String,
     /// Default root path for file_tree when no path argument is given.
@@ -205,6 +223,7 @@ pub(super) fn default_db_path() -> String {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct RegistryModuleConfig {
+    /// Enable the registry module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
     /// Cache TTL for registry responses in seconds (default: 3600 = 1 hour).
@@ -238,12 +257,14 @@ impl Default for FileModuleConfig {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct ApprovalConfig {
+    /// Timeout in seconds for human approval responses (default: 300).
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
     /// Time-to-live for cached approval grants in seconds (default: 300 = 5 min).
     /// After approval, the agent has this long to retry the operation.
     #[serde(default = "default_grant_ttl")]
     pub grant_ttl_secs: u64,
+    /// Notification backend: "dbus" (default) or "none".
     #[serde(default = "default_notify")]
     pub notify: String,
 }

@@ -1,0 +1,2234 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Config",
+  "description": "Top-level navra configuration, loaded from `~/.config/navra/config.toml`.",
+  "type": "object",
+  "required": [
+    "server"
+  ],
+  "properties": {
+    "agents": {
+      "description": "Registered agent identities and their permission bindings.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/AgentConfig"
+      }
+    },
+    "approval": {
+      "description": "Human-in-the-loop approval workflow settings.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ApprovalConfig"
+        }
+      ]
+    },
+    "budget": {
+      "description": "Default resource budget for teams and flows.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/BudgetConfig"
+        }
+      ]
+    },
+    "cognitive_core": {
+      "description": "Path to cognitive core directory (personas, heuristics, directives).",
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "credentials": {
+      "description": "Credential label → backend source mappings. Only credentials listed here are accessible to agents.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/CredentialMapping"
+      }
+    },
+    "discover": {
+      "description": "Domains to query for AID upstream discovery at startup.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "flow_dirs": {
+      "description": "Directories containing flow TOML files.",
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "grpc_modules": {
+      "description": "Out-of-process gRPC modules.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/GrpcModuleConfig"
+      }
+    },
+    "models": {
+      "description": "Named model definitions (embedding, classification, chat, generate).",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/ModelConfig"
+      }
+    },
+    "modules": {
+      "description": "Per-module enablement and module-specific settings.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ModulesConfig"
+        }
+      ]
+    },
+    "permissions": {
+      "description": "Named permission sets referenced by agents.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/PermissionSet"
+      }
+    },
+    "pii_patterns": {
+      "description": "Custom PII patterns applied globally to all safety pipelines. Categories defined here are treated as PII for IFC labeling.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PiiPatternConfig"
+      }
+    },
+    "registry": {
+      "description": "Whitelisted MCP servers to advertise in the registry. These appear in the /v0.1/servers endpoint alongside navra's own modules and connected upstream servers.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RegistryEntry"
+      }
+    },
+    "routing": {
+      "description": "Cost-aware model routing configuration.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/RoutingConfig"
+        }
+      ]
+    },
+    "server": {
+      "description": "Server transport, identity, and container settings.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ServerConfig"
+        }
+      ]
+    },
+    "statistical": {
+      "description": "Statistical guardrail configuration for anomaly detection.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/StatisticalGuardrailServerConfig"
+        }
+      ]
+    },
+    "temporal_contracts": {
+      "description": "Temporal behavioral contracts for trajectory-level policy enforcement.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/TemporalContractServerConfig"
+        }
+      ]
+    },
+    "triggers": {
+      "description": "Event-driven triggers that start flows automatically.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/TriggerConfig"
+      }
+    },
+    "upstream": {
+      "description": "Upstream MCP servers to proxy through the gateway.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/UpstreamConfig"
+      }
+    }
+  },
+  "definitions": {
+    "AgentConfig": {
+      "type": "object",
+      "required": [
+        "name",
+        "permissions",
+        "token_hash"
+      ],
+      "properties": {
+        "capability_token": {
+          "description": "Enable capability token issuance for this agent.",
+          "default": false,
+          "type": "boolean"
+        },
+        "did": {
+          "description": "DID:key identifier (alternative to pubkey file).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Unique agent identifier used in logging and auth.",
+          "type": "string"
+        },
+        "permissions": {
+          "description": "Name of the permission set to apply (must match a key in `[permissions]`).",
+          "type": "string"
+        },
+        "pubkey": {
+          "description": "Path to Ed25519 public key file for capability token auth.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signing_key": {
+          "description": "Path to an Ed25519 private key for commit signing. When set, git_commit signs commits with this key using Git's SSH signing support (gpg.format=ssh).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "token_hash": {
+          "description": "SHA-256 hash of the agent's bearer token.",
+          "type": "string"
+        },
+        "token_ttl": {
+          "description": "Override token TTL for this agent (seconds).",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "AgenticConfig": {
+      "description": "Operator-defined agentic capabilities for a model.\n\nConfigured in `[models.<name>.agentic]` and merged into the model card at startup.\n\n```toml [models.granite-code.agentic] strengths = [\"code generation\", \"fast inference\"] weaknesses = [\"limited reasoning\", \"small context\"] recommended_tasks = [\"code review\", \"simple analysis\"] avoid_tasks = [\"multi-step planning\"] tool_use = \"basic\" cost_tier = \"free\" speed_tier = \"fast\" ```",
+      "type": "object",
+      "properties": {
+        "avoid_tasks": {
+          "description": "Task types this model should not be used for.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cost_tier": {
+          "description": "Cost tier: \"free\", \"low\", \"medium\", \"high\".",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json_compliance": {
+          "description": "JSON output compliance: \"none\", \"partial\", \"strict\".",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "locality": {
+          "description": "Data locality: \"local\" or \"remote\".",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_agents": {
+          "description": "Maximum concurrent agents this model can serve.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "reasoning": {
+          "description": "Reasoning capability: \"none\", \"basic\", \"chain-of-thought\".",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recommended_tasks": {
+          "description": "Task types this model is recommended for.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "speed_tier": {
+          "description": "Inference speed tier: \"fast\", \"medium\", \"slow\".",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "strengths": {
+          "description": "What this model is good at (free-text tags for routing).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tool_use": {
+          "description": "Tool-use capability level: \"none\", \"basic\", \"advanced\".",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "weaknesses": {
+          "description": "Known limitations (free-text tags for routing).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ApprovalConfig": {
+      "type": "object",
+      "properties": {
+        "grant_ttl_secs": {
+          "description": "Time-to-live for cached approval grants in seconds (default: 300 = 5 min). After approval, the agent has this long to retry the operation.",
+          "default": 300,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "notify": {
+          "description": "Notification backend: \"dbus\" (default) or \"none\".",
+          "default": "dbus",
+          "type": "string"
+        },
+        "timeout_secs": {
+          "description": "Timeout in seconds for human approval responses (default: 300).",
+          "default": 300,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "BudgetConfig": {
+      "description": "Default resource budget for teams and flows.\n\nDefaults are generous for autonomous operation — agents get enough iterations, time, and depth to converge on thorough results. The operator tunes down via config for cost control.\n\n```toml [budget] max_agents = 50       # total across all teams/subflows max_depth = 5         # escalation nesting depth timeout_secs = 1800   # 30 minutes per flow tree max_iterations = 200  # per agent ReAct iterations max_parallel = 4      # concurrent agents (GPU bound) checkpoint = true     # enable SQLite checkpoint for crash recovery checkpoint_db = \"~/.local/share/navra/checkpoints.db\" ```",
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "description": "Enable SQLite-backed checkpointing for DAG execution crash resilience.",
+          "default": false,
+          "type": "boolean"
+        },
+        "checkpoint_db": {
+          "description": "Path to the checkpoint SQLite database.",
+          "default": "/home/fdupont/.local/share/navra/checkpoints.db",
+          "type": "string"
+        },
+        "head_ratio": {
+          "description": "Ratio of budget allocated to head in head_tail strategy.",
+          "default": 0.699999988079071,
+          "type": "number",
+          "format": "float"
+        },
+        "max_agents": {
+          "description": "Maximum total agents across all teams/subflows (default: 50).",
+          "default": 50,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_depth": {
+          "description": "Maximum escalation nesting depth (default: 5).",
+          "default": 5,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "max_iterations": {
+          "description": "Maximum ReAct iterations per agent (default: 200).",
+          "default": 200,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "max_parallel": {
+          "description": "Maximum tasks running simultaneously (GPU throttling). 0 means no limit.",
+          "default": 2,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "max_tool_output_tokens": {
+          "description": "Maximum tool output tokens before truncation (0 = disabled).",
+          "default": 0,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "timeout_secs": {
+          "description": "Timeout in seconds per flow tree (default: 3600).",
+          "default": 3600,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "truncation_strategy": {
+          "description": "Truncation strategy: \"truncate\", \"head_tail\", \"summarize\".",
+          "default": "head_tail",
+          "type": "string"
+        }
+      }
+    },
+    "CredentialMapping": {
+      "description": "A credential source mapping from config.\n\nMaps a label (e.g., \"github.pat\") to a backend source (keyring path, environment variable, etc.).",
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "path": {
+          "description": "Keyring path (for source = \"keyring\"). e.g., \"navra/github-pat\" or \"org.gnome.OnlineAccounts/github\"",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "Backend: \"keyring\" or \"env\".",
+          "type": "string"
+        },
+        "var": {
+          "description": "Environment variable name (for source = \"env\").",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "DiscoveryConfig": {
+      "description": "AID (Agent Identity & Discovery) configuration.\n\nPopulates the `/.well-known/agent` JSON endpoint per the AID spec. See: https://aid.agentcommunity.org/docs/specification",
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "auth": {
+          "description": "Authentication hint: \"none\", \"pat\", \"apikey\", \"oauth2_code\", \"mtls\".",
+          "default": "pat",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable description (max 60 bytes per AID spec).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "docs_url": {
+          "description": "Documentation URL.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mdns": {
+          "description": "Enable mDNS/DNS-SD advertising and browsing on the local network.",
+          "default": false,
+          "type": "boolean"
+        },
+        "mdns_browse_secs": {
+          "description": "mDNS browse duration in seconds (default: 3).",
+          "default": 3,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "timeout_secs": {
+          "description": "Timeout in seconds for AID HTTP lookups and mDNS browse (default: 10).",
+          "default": 10,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "url": {
+          "description": "Externally-reachable URL of this server's MCP endpoint. Example: \"https://tools.example.com/mcp\"",
+          "type": "string"
+        }
+      }
+    },
+    "DomainRuleConfig": {
+      "description": "A domain rule entry in config.",
+      "type": "object",
+      "required": [
+        "domain",
+        "operations"
+      ],
+      "properties": {
+        "domain": {
+          "description": "Domain name (must be a valid navra Domain: filesystem, git, shell, etc.) Use \"*\" as wildcard default for unlisted domains.",
+          "type": "string"
+        },
+        "operations": {
+          "description": "Allowed operations for this domain. Empty list = deny all.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ExecutionMode": {
+      "description": "How a model executes: loaded in-process (ONNX) or served via a runtime backend (llama.cpp, vLLM). Decouples model *purpose* (embedding, classification, chat) from *how it runs*.\n\nDefault: `from_task()` preserves current behavior — embedding and classification run in-process, chat/generate run served. Operators can override in config: `execution_mode = \"served\"` on an embedding model to serve it via vLLM instead of loading it in-process.",
+      "oneOf": [
+        {
+          "description": "Load model directly into the navra process (ONNX Runtime).",
+          "type": "string",
+          "enum": [
+            "in_process"
+          ]
+        },
+        {
+          "description": "Spawn a dedicated inference server (llama.cpp, vLLM).",
+          "type": "string",
+          "enum": [
+            "served"
+          ]
+        }
+      ]
+    },
+    "FileModuleConfig": {
+      "type": "object",
+      "properties": {
+        "db": {
+          "description": "SQLite database path for the file index.",
+          "default": "/home/fdupont/.local/share/navra/index.db",
+          "type": "string"
+        },
+        "default_root": {
+          "description": "Default root path for file_tree when no path argument is given. Overrides the top-level `cognitive_core` setting for docs routing.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "description": "Enable the file module. Default: true.",
+          "default": true,
+          "type": "boolean"
+        },
+        "watch": {
+          "description": "Directories to watch for auto-reindexing.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "GitModuleConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable the git module. Default: true.",
+          "default": true,
+          "type": "boolean"
+        }
+      }
+    },
+    "GithubModuleConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable the GitHub module. Default: true.",
+          "default": true,
+          "type": "boolean"
+        }
+      }
+    },
+    "GitlabModuleConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable the GitLab module. Default: true.",
+          "default": true,
+          "type": "boolean"
+        }
+      }
+    },
+    "GrpcModuleConfig": {
+      "description": "Configuration for a single gRPC module.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "address": {
+          "description": "TCP address for remote modules (e.g., \"gpu-host:50051\").",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "command": {
+          "description": "Command to spawn the module process (first element is binary, rest are arguments). Empty if the module is externally managed.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "health_interval_secs": {
+          "description": "Health check interval in seconds (default: 10).",
+          "default": 10,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "max_restarts": {
+          "description": "Maximum number of restarts before giving up (default: 3).",
+          "default": 3,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "name": {
+          "description": "Module name (used in logging and tool registration).",
+          "type": "string"
+        },
+        "restart_on_failure": {
+          "description": "Whether to restart the module on failure (default: true).",
+          "default": true,
+          "type": "boolean"
+        },
+        "socket": {
+          "description": "Unix socket path for the module endpoint.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "IdentityConfig": {
+      "description": "Root identity configuration.\n\nControls where navra stores its Ed25519 root keypair and how capability tokens are issued.",
+      "type": "object",
+      "properties": {
+        "key_path": {
+          "description": "Path to Ed25519 seed file. If omitted, the OS keyring is used.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_delegation_depth": {
+          "description": "Maximum delegation chain depth (default: 3).",
+          "default": 3,
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "nonce_cache_ttl_secs": {
+          "description": "Nonce cache TTL in seconds for replay tracking (default: 7200 = 2 hours).",
+          "default": 7200,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "token_ttl": {
+          "description": "Default capability token TTL in seconds (default: 3600 = 1 hour).",
+          "default": 3600,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "KvCacheType": {
+      "description": "KV cache quantization type.\n\nFor llama-server: controls `--cache-type-k` and `--cache-type-v`. For vLLM: maps to `--kv-cache-dtype` (fp8). Lower precision reduces VRAM usage at the cost of quality.",
+      "oneOf": [
+        {
+          "description": "Full 16-bit precision (llama-server default).",
+          "type": "string",
+          "enum": [
+            "f16"
+          ]
+        },
+        {
+          "description": "8-bit quantized KV cache.",
+          "type": "string",
+          "enum": [
+            "q8_0"
+          ]
+        },
+        {
+          "description": "4-bit quantized KV cache.",
+          "type": "string",
+          "enum": [
+            "q4_0"
+          ]
+        }
+      ]
+    },
+    "MemoryModuleConfig": {
+      "type": "object",
+      "properties": {
+        "audit_retention_days": {
+          "description": "Auto-delete audit log entries older than N days. Default: 365 days (1 year).",
+          "default": 365,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "pii_filter": {
+          "description": "PII filter profile for memory ingestion and audit logs. Uses the same profiles as safety: \"standard\", \"secrets-only\", \"none\". Default: \"standard\".",
+          "default": "standard",
+          "type": "string"
+        },
+        "pii_retention_days": {
+          "description": "Stricter TTL for entries flagged as containing PII. Default: 30 days.",
+          "default": 30,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "retention_days": {
+          "description": "Auto-delete knowledge entries older than N days. Default: None (keep forever).",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ModelConfig": {
+      "description": "Configuration for a model.\n\nModels can be loaded from local files (ONNX) or pulled from registries and served via a runtime backend.",
+      "type": "object",
+      "properties": {
+        "agentic": {
+          "description": "Operator-defined agentic capabilities for model selection.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgenticConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "api_key": {
+          "description": "API key for authenticated model servers.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_url": {
+          "description": "Base URL for remote model servers (e.g., OGX, custom OpenAI-compatible). Overrides the default URL for the chosen runtime.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cache_type": {
+          "description": "KV cache quantization type for runtime-served models.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/KvCacheType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context_size": {
+          "description": "Context window size for runtime-served models (default: 4096).",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "device": {
+          "description": "Execution device for ONNX models: \"cpu\", \"cuda\", \"openvino\", \"openvino:AUTO\", \"openvino:NPU\", \"openvino:GPU\". Defaults to \"cpu\" if not specified.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dimensions": {
+          "description": "Embedding dimensions (for embedding models).",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "execution_mode": {
+          "description": "Execution mode: \"in_process\" (ONNX in gateway process) or \"served\" (spawn inference server). Auto-derived from `task` if not set: embedding/classification → in_process, chat/generate → served. Override to serve an embedding model via vLLM or load a small chat model in-process.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ExecutionMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "format": {
+          "description": "Model format: \"gguf\", \"safetensors\", \"awq\", \"gptq\". Auto-detected from the model path if not specified.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "labels": {
+          "description": "Classification labels (for classification models).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "locality": {
+          "description": "Data locality: \"local\" (default) or \"remote\". Remote models require content filtering before sending.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_name": {
+          "description": "Model name for the OpenAI-compatible API. Defaults to the config key.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_path": {
+          "description": "Path to a local model file (ONNX). Used directly when no `source` is set.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parallel": {
+          "description": "Number of parallel request slots for runtime (default: 1).",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "runtime": {
+          "description": "Runtime backend: \"auto\", \"podman\", \"direct\", or \"none\" (default). Used for chat/generate tasks served via navra-model-runtime.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "Hub source URI (e.g. `ollama://granite3.3:8b`, `hf://org/repo`). When set, the model is pulled and cached via navra-model-hub.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "speculative": {
+          "description": "Speculative decoding configuration.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SpeculativeModelConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task": {
+          "description": "Model task: \"embedding\", \"classification\", \"chat\", or \"generate\".",
+          "default": "embedding",
+          "type": "string"
+        },
+        "threshold": {
+          "description": "Confidence threshold for safety classification (default: 0.5).",
+          "default": 0.5,
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float"
+        },
+        "tokenizer_path": {
+          "description": "Path to the HuggingFace tokenizer.json file.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ModelTierConfig": {
+      "description": "A single tier in the routing configuration.",
+      "type": "object",
+      "required": [
+        "max_tokens",
+        "model",
+        "name"
+      ],
+      "properties": {
+        "max_tokens": {
+          "description": "Maximum output tokens for requests routed to this tier.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "model": {
+          "description": "Model identifier to use for this tier.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Tier name (e.g., \"small\", \"medium\", \"large\").",
+          "type": "string"
+        },
+        "patterns": {
+          "description": "Tool name glob patterns that route to this tier.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ModulesConfig": {
+      "description": "Per-module enablement and configuration.",
+      "type": "object",
+      "properties": {
+        "file": {
+          "description": "File indexing and search module (alias: \"docs\").",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FileModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "git": {
+          "description": "Git repository operations module.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GitModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "github": {
+          "description": "GitHub API integration module.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GithubModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gitlab": {
+          "description": "GitLab API integration module.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/GitlabModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "memory": {
+          "description": "Persistent memory module with PII-aware retention.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MemoryModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rag": {
+          "description": "Retrieval-augmented generation module.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RagModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "registry": {
+          "description": "MCP server registry and discovery module.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RegistryModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vision": {
+          "description": "Vision/image analysis module.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VisionModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "voice": {
+          "description": "Voice I/O module (ASR + TTS).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VoiceModuleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "OpenApiAuthConfig": {
+      "type": "object",
+      "properties": {
+        "api_key_location": {
+          "description": "API key location: \"header\" (default) or \"query\".",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "api_key_name": {
+          "description": "API key header name.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "api_key_value": {
+          "description": "API key value (or env var reference).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "basic_password": {
+          "description": "Basic auth password (or env var reference).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "basic_username": {
+          "description": "Basic auth username.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bearer": {
+          "description": "Bearer token (or env var reference like \"${JIRA_TOKEN}\").",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "OpenShellAuthConfig": {
+      "description": "Configuration for OpenShell identity verification.",
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "default_permissions": {
+          "description": "Default permission set when no label matches.",
+          "default": "restricted",
+          "type": "string"
+        },
+        "http_timeout_secs": {
+          "description": "HTTP request timeout in seconds for JWKS fetches (default: 5).",
+          "default": 5,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "jwks_cache_ttl_secs": {
+          "description": "JWKS cache TTL in seconds (default: 60).",
+          "default": 60,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "label_mapping": {
+          "description": "Maps OpenShell label expressions to navra permission set names. Example: \"role=worker\" -> \"restricted\"",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "mode": {
+          "description": "Verification mode.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/OpenShellAuthMode"
+            }
+          ]
+        }
+      }
+    },
+    "OpenShellAuthMode": {
+      "description": "Verification backend mode.",
+      "oneOf": [
+        {
+          "description": "Verify JWT-SVID against SPIRE trust bundle.",
+          "type": "object",
+          "required": [
+            "trust_bundle_path",
+            "type"
+          ],
+          "properties": {
+            "audience": {
+              "description": "Expected audience claim (if set, audience validation is enabled).",
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trust_bundle_path": {
+              "description": "Path to SPIRE agent trust bundle PEM.",
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "spiffe"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Verify JWT against OIDC provider JWKS endpoint.",
+          "type": "object",
+          "required": [
+            "issuer",
+            "type"
+          ],
+          "properties": {
+            "audience": {
+              "description": "Expected audience claim.",
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "issuer": {
+              "description": "OIDC issuer URL (JWKS fetched from .well-known/openid-configuration).",
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "oidc"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Trust Unix socket peer credentials. Returns InvalidToken to let the chain continue to other authenticators.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Verify JWT signed by OpenShell gateway's Ed25519 key.",
+          "type": "object",
+          "required": [
+            "public_key_path",
+            "type"
+          ],
+          "properties": {
+            "audience": {
+              "description": "Expected audience claim (if set, audience validation is enabled).",
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "public_key_path": {
+              "description": "Path to the gateway's Ed25519 public key PEM.",
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "static"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "PermissionSet": {
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Glob patterns of allowed file paths (e.g., \"~/Code/**\").",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "approve": {
+          "description": "Operations requiring human approval before execution.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "can_delegate": {
+          "description": "Whether agents with this permission set can delegate capabilities.",
+          "default": false,
+          "type": "boolean"
+        },
+        "compliance": {
+          "description": "Compliance framework tags for this permission set. Informational — logged at startup for audit trail. Example: [\"SOC2-CC6.1\", \"EU-AI-Act-Art-14\", \"HIPAA-164.312\"]",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "credentials": {
+          "description": "Credential labels this permission set can access.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default_tool_policy": {
+          "description": "Default policy for tools not matched by any rule: \"allow\", \"deny\", \"approve\"",
+          "default": "allow",
+          "type": "string"
+        },
+        "deny": {
+          "description": "Glob patterns of denied file paths (e.g., \"**/.env\").",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "domain_rules": {
+          "description": "Semantic domain rules: which operations are allowed per domain. Evaluated before glob-based tool_rules as an additional gate. If absent, domain-based enforcement is skipped (backward compat).\n\nExample: ```toml domain_rules = [ { domain = \"filesystem\", operations = [\"read\", \"write\"] }, { domain = \"shell\", operations = [] }, { domain = \"*\", operations = [\"read\"] }, ] ```",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DomainRuleConfig"
+          }
+        },
+        "operations": {
+          "description": "Allowed operations (e.g., \"read\", \"write\", \"git.commit\", \"shell.exec\").",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rate_limit": {
+          "description": "Rate limit: maximum tool calls per window (e.g., \"60/60\" = 60 calls per 60 seconds).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ring": {
+          "description": "Privilege ring (0 = most privileged, 3 = most restricted). When set, deny rules and approval requirements cascade from lower-numbered rings, and operations are intersected.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "safety": {
+          "description": "Safety profile: \"standard\", \"pseudonymize\", \"secrets-only\", \"block\", \"multi-label\", \"guardian\", \"guardian-deep\", \"none\"",
+          "default": "standard",
+          "type": "string"
+        },
+        "safety_patterns": {
+          "description": "Custom regex patterns for content safety filtering.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SafetyPatternConfig"
+          }
+        },
+        "safety_thresholds": {
+          "description": "Per-category confidence thresholds for multi-label safety models.\n\nUsed when `safety = \"multi-label\"`. Each key is a category name (e.g., \"harm\", \"jailbreak\", \"pii\") and the value is the minimum confidence score (0.0-1.0) to trigger filtering for that category.\n\nExample: ```toml [permissions.dev.safety_thresholds] harm = 0.7 jailbreak = 0.9 pii = 0.5 refusal = 0.8 ```",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "tainted_write_policy": {
+          "description": "IFC policy for tainted writes: \"allow\", \"approve\", or \"deny\". When an agent reads external data (taint rises to Untrusted), this policy controls whether subsequent writes are permitted.",
+          "default": "allow",
+          "type": "string"
+        },
+        "tool_class": {
+          "description": "Override auto-classification for specific tools. Keys are tool names, values specify domain and operation.\n\nExample: ```toml [permissions.readonly.tool_class] zip_files = { domain = \"filesystem\", operation = \"write\" } ```",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ToolClassConfig"
+          }
+        },
+        "tool_disclosure_exclude": {
+          "description": "Tool disclosure: glob patterns of tools to hide from tools/list.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tool_disclosure_include": {
+          "description": "Tool disclosure: glob patterns of tools to show in tools/list. Empty = show all tools. This is UI-level filtering only — agents can still call hidden tools if they know the name.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tool_rules": {
+          "description": "Per-tool permission rules (evaluated before handler invocation).",
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ToolRuleConfig"
+          }
+        },
+        "trusted_paths": {
+          "description": "File paths that should keep their Trusted integrity label even when accessed via external read tools. Supports glob patterns. Example: [\"~/Code/myproject/**\", \"~/Documents/**\"]",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PiiPatternConfig": {
+      "description": "A custom PII pattern for global content safety filtering.\n\nCategories defined here are treated as PII for IFC labeling, unlike `SafetyPatternConfig` which only triggers redaction/blocking.",
+      "type": "object",
+      "required": [
+        "category",
+        "name",
+        "regex"
+      ],
+      "properties": {
+        "category": {
+          "description": "PII category name (e.g., \"employee-id\", \"badge\", \"project-code\").",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable name for this pattern (e.g., \"employee-id\").",
+          "type": "string"
+        },
+        "regex": {
+          "description": "Regex pattern to match.",
+          "type": "string"
+        }
+      }
+    },
+    "RagModuleConfig": {
+      "type": "object",
+      "properties": {
+        "db": {
+          "description": "Database path. Defaults to the same directory as docs, separate file.",
+          "default": "/home/fdupont/.local/share/navra/rag.db",
+          "type": "string"
+        },
+        "enabled": {
+          "description": "Enable the RAG module. Default: true.",
+          "default": true,
+          "type": "boolean"
+        },
+        "query_cache_max_entries": {
+          "description": "Maximum number of cached query entries (default: 1000).",
+          "default": 1000,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "query_cache_ttl_secs": {
+          "description": "Query cache TTL in seconds (default: 300). Set to 0 to disable caching.",
+          "default": 300,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "reranker_model_path": {
+          "description": "Path to the ONNX cross-encoder model for reranking (optional).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reranker_tokenizer_path": {
+          "description": "Path to the tokenizer.json for the cross-encoder model (optional).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RegistryEntry": {
+      "description": "A whitelisted MCP server for the registry.",
+      "type": "object",
+      "required": [
+        "name",
+        "url"
+      ],
+      "properties": {
+        "description": {
+          "description": "Human-readable description.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Server name (unique identifier).",
+          "type": "string"
+        },
+        "registry_type": {
+          "description": "Registry type: \"mcp\", \"http\", \"aws_agent_registry\". - \"mcp\": queries an MCP registry endpoint (default) - \"http\": generic HTTP/JSON registry with configurable URL template - \"aws_agent_registry\": AWS Agent Registry (future)",
+          "default": "mcp",
+          "type": "string"
+        },
+        "remote_type": {
+          "description": "Transport type: \"streamable-http\", \"sse\", \"stdio\".",
+          "default": "streamable-http",
+          "type": "string"
+        },
+        "repository": {
+          "description": "Repository URL (optional).",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "results_path": {
+          "description": "JSON path to extract results from the HTTP response (default: root array). Example: \"data.results\" to extract from `{\"data\": {\"results\": [...]}}`",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "search_url": {
+          "description": "URL template for search queries (HTTP type only). Use `{query}` as placeholder for the search term. Example: \"https://registry.example.com/api/search?q={query}\"",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "Remote endpoint URL.",
+          "type": "string"
+        }
+      }
+    },
+    "RegistryModuleConfig": {
+      "type": "object",
+      "properties": {
+        "cache_ttl_secs": {
+          "description": "Cache TTL for registry responses in seconds (default: 3600 = 1 hour).",
+          "default": 3600,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "enabled": {
+          "description": "Enable the registry module. Default: true.",
+          "default": true,
+          "type": "boolean"
+        }
+      }
+    },
+    "RoutingConfig": {
+      "description": "Configuration for the routing hook, deserializable from TOML.",
+      "type": "object",
+      "properties": {
+        "default_tier": {
+          "description": "Default tier when no rule matches.",
+          "default": "medium",
+          "type": "string"
+        },
+        "enabled": {
+          "description": "Whether routing is enabled.",
+          "default": false,
+          "type": "boolean"
+        },
+        "tiers": {
+          "description": "Model tiers, ordered from smallest to largest.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ModelTierConfig"
+          }
+        }
+      }
+    },
+    "SafetyPatternConfig": {
+      "description": "A custom regex pattern for safety filtering.",
+      "type": "object",
+      "required": [
+        "category",
+        "pattern"
+      ],
+      "properties": {
+        "category": {
+          "description": "Category name for this pattern (e.g., \"internal-url\", \"project-secret\").",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "Regex pattern to match.",
+          "type": "string"
+        }
+      }
+    },
+    "ServerConfig": {
+      "type": "object",
+      "properties": {
+        "agent_image": {
+          "description": "Container image for agent sandboxes.",
+          "default": "localhost/navra-agent:latest",
+          "type": "string"
+        },
+        "agent_signature_policy": {
+          "description": "Agent bundle signature policy: \"enforce\", \"warn\", or \"skip\". Controls whether `navra agent install` requires cosign signature verification. Default: \"warn\".",
+          "default": "warn",
+          "type": "string"
+        },
+        "allow_direct_execution": {
+          "description": "Allow direct (unsandboxed) execution when no container runtime is available. Default: `false`.",
+          "default": false,
+          "type": "boolean"
+        },
+        "config_watch": {
+          "description": "Watch the config file for changes and hot-reload.",
+          "default": false,
+          "type": "boolean"
+        },
+        "config_watch_debounce_ms": {
+          "description": "Debounce interval in ms for config file watch events.",
+          "default": 50,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "container_cpus": {
+          "description": "CPU limit per agent container (e.g., \"2\", \"0.5\").",
+          "default": "2",
+          "type": "string"
+        },
+        "container_memory": {
+          "description": "Memory limit per agent container (e.g., \"2g\", \"512m\").",
+          "default": "2g",
+          "type": "string"
+        },
+        "container_pids": {
+          "description": "Maximum PIDs per agent container.",
+          "default": 256,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "containerized": {
+          "description": "Use containerized agent execution. `true` = always, `false` = never, absent = auto-detect Podman.",
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "discovery": {
+          "description": "AID discovery configuration. When set, navra serves `/.well-known/agent` for the AID fallback protocol.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DiscoveryConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hook_timeout_secs": {
+          "description": "Per-hook timeout in seconds (default: 10).",
+          "default": 10,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "identity": {
+          "description": "Root identity configuration for DID-based auth.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/IdentityConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mcp_version": {
+          "description": "MCP protocol version: \"2026-07-28\" (stateless dispatch, default) or \"2025-03-26\" (legacy session-based, deprecated).",
+          "default": "2026-07-28",
+          "type": "string"
+        },
+        "model_server_image": {
+          "description": "Container image for the shared model server.",
+          "default": "ghcr.io/ggerganov/llama.cpp:server-cuda",
+          "type": "string"
+        },
+        "openshell_auth": {
+          "description": "OpenShell identity federation config. When set, OpenShellAuthenticator is inserted into the auth chain.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OpenShellAuthConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "openshell_gateway": {
+          "description": "OpenShell compute driver gRPC endpoint for agent sandboxing.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pii_model_path": {
+          "description": "Path to PII NER model directory (English). Default: ~/.local/share/navra/models/pii-ner/",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pii_multilingual_model_path": {
+          "description": "Path to multilingual PII NER model directory. Default: ~/.local/share/navra/models/pii-ner-multilingual/",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "socket": {
+          "description": "Unix socket path. Default: `$XDG_RUNTIME_DIR/navra/navra.sock`.",
+          "default": "/run/user/1000/navra/navra.sock",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tcp": {
+          "description": "TCP listen address (e.g., \"127.0.0.1:9315\"). Used instead of socket when set.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "SpeculativeModelConfig": {
+      "description": "Speculative decoding configuration for runtime-served models.",
+      "type": "object",
+      "required": [
+        "draft_model"
+      ],
+      "properties": {
+        "draft_min_p": {
+          "description": "Minimum probability threshold for draft acceptance (default: 0.0).",
+          "default": 0.0,
+          "type": "number",
+          "format": "float"
+        },
+        "draft_model": {
+          "description": "Model name or path for the draft (fast) model.",
+          "type": "string"
+        },
+        "draft_tokens": {
+          "description": "Number of tokens to draft per step (default: 5).",
+          "default": 5,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "StatisticalGuardrailServerConfig": {
+      "description": "Server-side configuration for the statistical guardrail hook.\n\n```toml [statistical] enabled = true cosine_window = 50 cosine_z_threshold = 3.0 entropy_window = 20 entropy_min = 0.5 entropy_max = 4.0 block_on_anomaly = false ```",
+      "type": "object",
+      "properties": {
+        "block_on_anomaly": {
+          "description": "Whether to block tool calls when anomalies are detected. Default: false (monitor/warn only).",
+          "default": false,
+          "type": "boolean"
+        },
+        "cosine_window": {
+          "description": "Sliding window size for cosine drift detection. Default: 50.",
+          "default": 50,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "cosine_z_threshold": {
+          "description": "Z-score threshold for cosine drift anomaly detection. Default: 3.0.",
+          "default": 3.0,
+          "type": "number",
+          "format": "double"
+        },
+        "enabled": {
+          "description": "Whether statistical guardrails are enabled. Default: false.",
+          "default": false,
+          "type": "boolean"
+        },
+        "entropy_max": {
+          "description": "Maximum acceptable entropy (above = scatter). Default: 4.0.",
+          "default": 4.0,
+          "type": "number",
+          "format": "double"
+        },
+        "entropy_min": {
+          "description": "Minimum acceptable entropy (below = fixation). Default: 0.5.",
+          "default": 0.5,
+          "type": "number",
+          "format": "double"
+        },
+        "entropy_window": {
+          "description": "Sliding window size for entropy monitoring. Default: 20.",
+          "default": 20,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "transition_min_observations": {
+          "description": "Minimum observations before transition anomalies are flagged (default: 10).",
+          "default": 10,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "transition_window": {
+          "description": "Sliding window size for tool-transition anomaly detection (default: 50).",
+          "default": 50,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "TemporalContractConfig": {
+      "description": "A single temporal contract definition in server config.",
+      "type": "object",
+      "required": [
+        "action",
+        "applies_to",
+        "name",
+        "predicate"
+      ],
+      "properties": {
+        "action": {
+          "description": "Action JSON object (e.g., `{ \"type\": \"block\", \"value\": \"...\" }`)."
+        },
+        "applies_to": {
+          "description": "Permission sets this contract applies to (glob patterns, \"*\" = all).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "description": "Human-readable description of the contract.",
+          "default": "",
+          "type": "string"
+        },
+        "name": {
+          "description": "Unique contract name for logging and diagnostics.",
+          "type": "string"
+        },
+        "predicate": {
+          "description": "Predicate JSON object (e.g., `{ \"type\": \"requires\", \"tool\": \"...\", \"prerequisite\": \"...\" }`)."
+        }
+      }
+    },
+    "TemporalContractServerConfig": {
+      "description": "Server-side configuration for temporal behavioral contracts.\n\n```toml [temporal_contracts] enabled = true max_history_per_session = 200\n\n[[temporal_contracts.contracts]] name = \"read-before-write\" description = \"Must read a file before writing\" predicate = { type = \"requires\", tool = \"file_write\", prerequisite = \"file_read\" } action = { type = \"block\", value = \"Read the file first\" } applies_to = [\"*\"] ```",
+      "type": "object",
+      "properties": {
+        "contracts": {
+          "description": "List of temporal contract definitions.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TemporalContractConfig"
+          }
+        },
+        "enabled": {
+          "description": "Whether temporal contracts are enabled. Default: false.",
+          "default": false,
+          "type": "boolean"
+        },
+        "max_history_per_session": {
+          "description": "Maximum action history entries per session. Default: 200.",
+          "default": 200,
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ToolClassConfig": {
+      "description": "Classification override for a specific tool.",
+      "type": "object",
+      "required": [
+        "domain",
+        "operation"
+      ],
+      "properties": {
+        "domain": {
+          "description": "Domain to assign (must be a valid navra Domain).",
+          "type": "string"
+        },
+        "operation": {
+          "description": "Operation to assign (must be a valid navra Operation).",
+          "type": "string"
+        }
+      }
+    },
+    "ToolRuleConfig": {
+      "description": "A per-tool permission rule in config.",
+      "type": "object",
+      "required": [
+        "policy",
+        "tool"
+      ],
+      "properties": {
+        "policy": {
+          "description": "Policy: \"allow\", \"deny\", or \"approve\".",
+          "type": "string"
+        },
+        "tool": {
+          "description": "Glob pattern matching tool names (e.g., \"git_*\", \"shell_exec\").",
+          "type": "string"
+        }
+      }
+    },
+    "TriggerConfig": {
+      "description": "Configuration for a single trigger, deserialized from TOML.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "flow_name",
+            "path",
+            "type"
+          ],
+          "properties": {
+            "flow_name": {
+              "description": "Name of the flow to start when triggered",
+              "type": "string"
+            },
+            "path": {
+              "description": "URL path suffix, e.g. \"/hook/deploy\" becomes POST /hook/deploy",
+              "type": "string"
+            },
+            "secret": {
+              "description": "Optional HMAC-SHA256 secret for request verification",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "webhook"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "flow_name",
+            "schedule",
+            "type"
+          ],
+          "properties": {
+            "flow_name": {
+              "description": "Name of the flow to start on schedule",
+              "type": "string"
+            },
+            "schedule": {
+              "description": "Cron expression: \"minute hour day-of-month month day-of-week\"",
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "cron"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "flow_name",
+            "path",
+            "type"
+          ],
+          "properties": {
+            "debounce_ms": {
+              "description": "Debounce interval in milliseconds (default: 500)",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "flow_name": {
+              "description": "Name of the flow to start when a matching file changes",
+              "type": "string"
+            },
+            "path": {
+              "description": "Directory path to watch (supports ~ expansion)",
+              "type": "string"
+            },
+            "pattern": {
+              "description": "Optional glob pattern to filter events, e.g. \"*.pdf\"",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "file_watch"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "UpstreamConfig": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "auth": {
+          "description": "Authentication for the target API (used with openapi upstreams).",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OpenApiAuthConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "command": {
+          "description": "Command for stdio transport (e.g., [\"python3\", \"-m\", \"server\"])",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "description": "Working directory for stdio transport",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "description": "Enable or disable this upstream. Default: true (absent = enabled).",
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Unique name for this upstream server.",
+          "type": "string"
+        },
+        "openapi": {
+          "description": "OpenAPI 3.x spec source (URL or file path). When set, transport/command/url are ignored — navra parses the spec and exposes operations as MCP tools directly.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "request_timeout_secs": {
+          "description": "Request timeout in seconds (default: 45)",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "retry_base_delay_ms": {
+          "description": "Retry base delay in milliseconds (default: 1000)",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "retry_budget_secs": {
+          "description": "Total retry budget in seconds (default: 600)",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "retry_max_delay_ms": {
+          "description": "Maximum retry delay in milliseconds (default: 30000)",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "tool_class": {
+          "description": "Per-tool semantic classification overrides. Keys are tool names, values specify domain and operation. Takes precedence over auto-classification and tool_overrides.\n\nExample: ```toml [upstream.tool_class] zip_files = { domain = \"filesystem\", operation = \"write\" } ```",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/ToolClassConfig"
+          }
+        },
+        "tool_filter": {
+          "description": "Tool name filter — only expose operations matching these names. Matches against both the prefixed tool name and the raw operationId. Supports glob patterns (e.g., \"get_*\", \"*_search\").",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tool_overrides": {
+          "description": "Per-tool operation overrides: \"read\", \"write\", or \"deny\". Overrides the auto-classification from MCP annotations and name heuristics. Tools set to \"deny\" are never registered.",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "transport": {
+          "description": "Transport protocol: \"stdio\" (default), \"http\", or \"sse\".",
+          "default": "stdio",
+          "type": "string"
+        },
+        "url": {
+          "description": "URL for http/sse transport (e.g., \"http://localhost:8001/mcp\")",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "VisionModuleConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable the vision module. Default: true.",
+          "default": true,
+          "type": "boolean"
+        },
+        "model": {
+          "description": "Name of the vision model in [models.*] config.",
+          "default": "vision",
+          "type": "string"
+        }
+      }
+    },
+    "VoiceModuleConfig": {
+      "type": "object",
+      "properties": {
+        "asr_model": {
+          "description": "Name of the ASR model in [models.*] config.",
+          "default": "asr",
+          "type": "string"
+        },
+        "enabled": {
+          "description": "Enable the voice module. Default: true.",
+          "default": true,
+          "type": "boolean"
+        },
+        "max_record_secs": {
+          "description": "Maximum recording duration in seconds (default: 30).",
+          "default": 30,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "silence_timeout_ms": {
+          "description": "Silence timeout in milliseconds before auto-stopping recording (default: 1500).",
+          "default": 1500,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "tts_model": {
+          "description": "Name of the TTS model in [models.*] config.",
+          "default": "tts",
+          "type": "string"
+        },
+        "vad_threshold": {
+          "description": "VAD energy threshold (RMS). Default: 0.01",
+          "default": 0.009999999776482582,
+          "type": "number",
+          "format": "float"
+        },
+        "voice": {
+          "description": "Default voice for TTS.",
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

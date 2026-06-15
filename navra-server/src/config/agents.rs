@@ -2,8 +2,11 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct AgentConfig {
+    /// Unique agent identifier used in logging and auth.
     pub name: String,
+    /// SHA-256 hash of the agent's bearer token.
     pub token_hash: String,
+    /// Name of the permission set to apply (must match a key in `[permissions]`).
     pub permissions: String,
     /// Path to an Ed25519 private key for commit signing.
     /// When set, git_commit signs commits with this key using
@@ -26,7 +29,9 @@ pub struct AgentConfig {
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct UpstreamConfig {
+    /// Unique name for this upstream server.
     pub name: String,
+    /// Transport protocol: "stdio" (default), "http", or "sse".
     #[serde(default = "default_transport")]
     pub transport: String,
     /// Command for stdio transport (e.g., ["python3", "-m", "server"])
@@ -38,6 +43,7 @@ pub struct UpstreamConfig {
     /// URL for http/sse transport (e.g., "http://localhost:8001/mcp")
     #[serde(default)]
     pub url: Option<String>,
+    /// Enable or disable this upstream. Default: true (absent = enabled).
     #[serde(default)]
     pub enabled: Option<bool>,
     /// Retry base delay in milliseconds (default: 1000)
