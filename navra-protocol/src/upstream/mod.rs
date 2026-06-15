@@ -24,10 +24,19 @@ use crate::mcp::{
 };
 use std::sync::atomic::{AtomicI64, Ordering};
 
+/// Strip filesystem paths from io::Error messages to prevent information leakage.
+fn sanitize_io_error(err: &std::io::Error) -> String {
+    match err.kind() {
+        std::io::ErrorKind::NotFound => "command not found".to_string(),
+        std::io::ErrorKind::PermissionDenied => "permission denied".to_string(),
+        _ => format!("{}", err.kind()),
+    }
+}
+
 /// Error type for upstream operations.
 #[derive(Debug, thiserror::Error)]
 pub enum UpstreamError {
-    #[error("failed to spawn upstream '{name}': {source}")]
+    #[error("failed to spawn upstream '{name}': {}", sanitize_io_error(source))]
     Spawn {
         name: String,
         source: std::io::Error,
@@ -375,5 +384,68 @@ impl Upstream {
 impl Drop for Upstream {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_io_error_not_found() {
+        let err = std::io::Error::new(std::io::ErrorKind::NotFound, "No such file or directory");
+        assert_eq!(sanitize_io_error(&err), "command not found");
+    }
+
+    #[test]
+    fn sanitize_io_error_permission_denied() {
+        let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
+        assert_eq!(sanitize_io_error(&err), "permission denied");
+    }
+
+    #[test]
+    fn sanitize_io_error_other_kind() {
+        let err = std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "connection refused at /var/run/sock",
+        );
+        let sanitized = sanitize_io_error(&err);
+        assert!(!sanitized.contains('/'));
+        assert_eq!(sanitized, "connection refused");
+    }
+
+    #[test]
+    fn spawn_error_display_no_path_not_found() {
+        let err = UpstreamError::Spawn {
+            name: "test-upstream".to_string(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "No such file or directory (os error 2): /usr/local/bin/mcp-server",
+            ),
+        };
+        let display = format!("{err}");
+        assert!(
+            !display.contains("/usr"),
+            "Display should not contain paths: {display}"
+        );
+        assert!(display.contains("command not found"));
+        assert!(display.contains("test-upstream"));
+    }
+
+    #[test]
+    fn spawn_error_display_no_path_permission_denied() {
+        let err = UpstreamError::Spawn {
+            name: "restricted".to_string(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "/opt/secret/binary: permission denied",
+            ),
+        };
+        let display = format!("{err}");
+        assert!(
+            !display.contains("/opt"),
+            "Display should not contain paths: {display}"
+        );
+        assert!(display.contains("permission denied"));
     }
 }
