@@ -23,6 +23,7 @@ mod ogx;
 #[cfg(feature = "onnx")]
 mod onnx;
 mod openai;
+pub mod refusal;
 pub mod safe_backend;
 
 pub use anthropic::AnthropicBackend;
@@ -436,6 +437,7 @@ pub(crate) fn chat_to_responses(model: &str, resp: &chat::ChatResponse) -> Model
     let status = match resp.finish_reason {
         FinishReason::Stop | FinishReason::ToolCalls => ResponseStatus::Completed,
         FinishReason::Length => ResponseStatus::Incomplete,
+        FinishReason::Refusal => ResponseStatus::Completed,
     };
 
     ModelResponse {

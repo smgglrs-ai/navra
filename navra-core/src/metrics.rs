@@ -42,6 +42,9 @@ pub struct Metrics {
     pub tools_listed_total: AtomicU64,
     pub tools_pruned_total: AtomicU64,
     pub model_proxy_requests: AtomicU64,
+    pub model_refusals_total: AtomicU64,
+    pub model_fallback_attempts: AtomicU64,
+    pub model_fallback_successes: AtomicU64,
     pub input_tokens_total: AtomicU64,
     pub output_tokens_total: AtomicU64,
     pub cached_tokens_total: AtomicU64,
@@ -85,6 +88,9 @@ impl Metrics {
             tools_listed_total: AtomicU64::new(0),
             tools_pruned_total: AtomicU64::new(0),
             model_proxy_requests: AtomicU64::new(0),
+            model_refusals_total: AtomicU64::new(0),
+            model_fallback_attempts: AtomicU64::new(0),
+            model_fallback_successes: AtomicU64::new(0),
             input_tokens_total: AtomicU64::new(0),
             output_tokens_total: AtomicU64::new(0),
             cached_tokens_total: AtomicU64::new(0),
@@ -327,6 +333,25 @@ impl Metrics {
             "navra_model_proxy_requests_total",
             "Chat completion requests proxied through the gateway",
             self.model_proxy_requests.load(Ordering::Relaxed),
+        );
+
+        prom_counter(
+            &mut out,
+            "navra_model_refusals_total",
+            "Model responses detected as refusals",
+            self.model_refusals_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_model_fallback_attempts_total",
+            "Fallback model attempts after refusal",
+            self.model_fallback_attempts.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_model_fallback_successes_total",
+            "Successful fallback model responses",
+            self.model_fallback_successes.load(Ordering::Relaxed),
         );
 
         prom_counter(
