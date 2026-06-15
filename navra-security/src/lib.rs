@@ -14,6 +14,6 @@ pub use navra_auth::quota;
 pub use navra_auth::tool_scanner;
 pub use navra_auth::trust_score;
 
-pub use navra_safety::hooks;
-pub use navra_safety::integrity_monitor;
-pub use navra_safety::safety;
+pub use navra_safety_hooks::hooks;
+pub use navra_safety_hooks::integrity_monitor;
+pub use navra_safety_hooks::safety;

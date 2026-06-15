@@ -1,38 +1,32 @@
 [package]
 name = "navra-safety"
-description = "ML safety filters, content hooks, and integrity monitoring"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.75"
+description = "PII detection, content safety filters, and pseudonymization for Rust applications"
+repository = "https://github.com/smgglrs-ai/navra"
+keywords = ["pii", "safety", "content-filter", "ner", "privacy"]
+categories = ["text-processing", "accessibility"]
+readme = "README.md"
 
 [features]
-default = ["onnx"]
-onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers", "navra-model/onnx"]
+default = []
+onnx = ["dep:dirs", "dep:ort", "dep:ndarray", "dep:tokenizers"]
 
 [dependencies]
-navra-auth = { path = "../navra-auth", default-features = false }
-navra-protocol = { path = "../navra-protocol" }
-navra-model = { path = "../navra-model", default-features = false }
-anyhow = { workspace = true }
-async-trait = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
-uuid = { workspace = true }
-dirs = "6"
-glob = "0.3"
 regex-lite = "0.1"
-serde_yaml = "0.9"
-schemars = { workspace = true }
-sha2 = "0.10"
-hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+
+# ONNX-gated
+dirs = { version = "6", optional = true }
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
 ndarray = { version = "0.17", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = ["onig"], optional = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["test-util", "macros"] }
+tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
 tempfile = "3"

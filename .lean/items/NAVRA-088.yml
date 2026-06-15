@@ -1,6 +1,7 @@
 id: NAVRA-088
 title: "Decouple navra-safety for crates.io publication"
-status: planned
+status: in_progress
+progress: 0
 priority: high
 effort: 1-2w
 depends_on: []

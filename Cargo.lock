@@ -2774,7 +2774,7 @@ dependencies = [
  "navra-model",
  "navra-protocol",
  "navra-responses",
- "navra-safety",
+ "navra-safety-hooks",
  "regex-lite",
  "rusqlite",
  "serde",
@@ -2837,7 +2837,7 @@ dependencies = [
  "navra-memory",
  "navra-model",
  "navra-responses",
- "navra-safety",
+ "navra-safety-hooks",
  "serde_json",
  "tempfile",
  "tokio",
@@ -2877,7 +2877,7 @@ dependencies = [
  "navra-auth",
  "navra-model",
  "navra-protocol",
- "navra-safety",
+ "navra-safety-hooks",
  "prost",
  "reqwest",
  "rusqlite",
@@ -2907,7 +2907,7 @@ dependencies = [
  "navra-model",
  "navra-protocol",
  "navra-responses",
- "navra-safety",
+ "navra-safety-hooks",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3114,6 +3114,23 @@ dependencies = [
 name = "navra-safety"
 version = "0.1.0"
 dependencies = [
+ "dirs",
+ "ndarray",
+ "ort",
+ "regex-lite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokenizers",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "navra-safety-hooks"
+version = "0.1.0"
+dependencies = [
  "anyhow",
  "async-trait",
  "dirs",
@@ -3122,6 +3139,7 @@ dependencies = [
  "navra-auth",
  "navra-model",
  "navra-protocol",
+ "navra-safety",
  "ndarray",
  "ort",
  "regex-lite",
@@ -3146,7 +3164,7 @@ dependencies = [
  "axum 0.8.9",
  "navra-auth",
  "navra-protocol",
- "navra-safety",
+ "navra-safety-hooks",
  "serde_json",
  "tokio",
 ]
@@ -3182,6 +3200,7 @@ dependencies = [
  "navra-model-runtime",
  "navra-openapi",
  "navra-rag",
+ "navra-safety-hooks",
  "navra-tools-exec",
  "navra-tools-file",
  "navra-tools-git",

@@ -6,7 +6,7 @@ publish = false
 
 [dev-dependencies]
 navra-auth = { path = "../navra-auth" }
-navra-safety = { path = "../navra-safety" }
+navra-safety-hooks = { path = "../navra-safety-hooks" }
 navra-core = { path = "../navra-core" }
 navra-model = { path = "../navra-model" }
 navra-cognitive = { path = "../navra-cognitive" }

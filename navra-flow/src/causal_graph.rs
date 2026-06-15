@@ -363,7 +363,7 @@ enum Direction {
     Forward,
 }
 
-impl navra_safety::hooks::CausalSink for CausalGraphStore {
+impl navra_safety_hooks::hooks::CausalSink for CausalGraphStore {
     fn record_tool_call(
         &self,
         node_id: &str,
@@ -621,7 +621,7 @@ mod tests {
 
     #[test]
     fn causal_sink_records_tool_call_and_result() {
-        use navra_safety::hooks::CausalSink;
+        use navra_safety_hooks::hooks::CausalSink;
         let store = CausalGraphStore::open_memory().unwrap();
         store.record_tool_call("tc-1", "file_read", "agent-a", "sess-1", &[]);
         store.record_tool_result("tr-1", "tc-1");

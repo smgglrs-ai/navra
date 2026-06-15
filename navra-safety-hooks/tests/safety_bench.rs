@@ -10,7 +10,7 @@ use navra_auth::tool_scanner::{
     check_description_injection, check_hidden_unicode, check_schema_abuse, check_tool_poisoning,
     ToolScanConfig,
 };
-use navra_safety::safety::{ContentFilter, FilterContext, SecretFilter};
+use navra_safety_hooks::safety::{ContentFilter, FilterContext, SecretFilter};
 
 fn filter_ctx() -> FilterContext<'static> {
     FilterContext {

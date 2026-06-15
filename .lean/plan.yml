@@ -12,6 +12,12 @@ items:
     effort: M
     gate: "2026-07-28 flip default; implement now behind feature gate"
 
+  - id: "NAVRA-088"
+    title: "Decouple navra-safety for crates.io publication"
+    status: in_progress
+    priority: high
+    effort: 1-2w
+
   - id: "NAVRA-024"
     title: "IFC adversarial corpus benchmark"
     status: planned
@@ -53,12 +59,6 @@ items:
 
   - id: "NAVRA-086"
     title: "Agent skills for navra adoption (init, policy, flow, diagnose)"
-    status: planned
-    priority: high
-    effort: 1-2w
-
-  - id: "NAVRA-088"
-    title: "Decouple navra-safety for crates.io publication"
     status: planned
     priority: high
     effort: 1-2w

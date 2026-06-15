@@ -86,4 +86,4 @@ pub use navra_protocol::{
     CallToolParams, CallToolResult, Content, PromptDefinition, ResourceDefinition, ToolDefinition,
     Upstream,
 };
-pub use navra_safety::safety::FilterPipeline;
+pub use navra_safety_hooks::safety::FilterPipeline;

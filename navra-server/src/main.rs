@@ -1380,11 +1380,13 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         for (model_name, model_cfg) in &cfg.models {
             if model_cfg.task == "classification" {
                 if let Some(model) = models.get(model_name) {
+                    let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
+                        std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(model.clone()));
                     if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
                         // Multi-label filter with per-category thresholds
                         pipeline.add_model_filter(
                             navra_core::safety::MultiLabelFilter::from_thresholds(
-                                model.clone(),
+                                classifier,
                                 pset.safety_thresholds.clone(),
                             ),
                         );
@@ -1397,7 +1399,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
                         // Single-label (binary) filter
                         let threshold = model_cfg.threshold.unwrap_or(0.5);
                         pipeline.add_model_filter(navra_core::safety::MlFilter::new(
-                            model.clone(),
+                            classifier,
                             threshold,
                             "ml-unsafe",
                         ));
@@ -3873,17 +3875,19 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             for (model_name, model_cfg) in &cfg.models {
                 if model_cfg.task == "classification" {
                     if let Some(model) = models.get(model_name) {
+                        let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
+                            std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(model.clone()));
                         if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
                             pipeline.add_model_filter(
                                 navra_core::safety::MultiLabelFilter::from_thresholds(
-                                    model.clone(),
+                                    classifier,
                                     pset.safety_thresholds.clone(),
                                 ),
                             );
                         } else {
                             let threshold = model_cfg.threshold.unwrap_or(0.5);
                             pipeline.add_model_filter(navra_core::safety::MlFilter::new(
-                                model.clone(),
+                                classifier,
                                 threshold,
                                 "ml-unsafe",
                             ));
