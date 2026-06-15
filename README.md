@@ -241,7 +241,6 @@ the approval workflow.
 | `navra-tools-file` | File tools, SQLite FTS5 + sqlite-vec, MCP resources |
 | `navra-tools-git` | Git tools (status, diff, log, branch, commit) |
 | `navra-tools-exec` | Command execution inside OpenShell sandboxes |
-| `navra-tools-github` | GitHub forge tools (PR, issues) via `gh` CLI |
 | `navra-tools-gitlab` | GitLab forge tools (MR, issues) via `glab` CLI |
 | `navra-rag` | Vector search, sqlite-vec, semantic chunking, reranking |
 | `navra-modal-voice` | Speech I/O (ASR + TTS via ONNX models) |

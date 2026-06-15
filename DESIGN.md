@@ -18,7 +18,7 @@ of origin.
 
 ## Crate Structure
 
-24-crate workspace (23 navra-* + benchmarks).
+23-crate workspace (22 navra-* + benchmarks).
 
 | Crate | Category | Role |
 |---|---|---|
@@ -38,7 +38,6 @@ of origin.
 | `navra-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
 | `navra-tools-git` | Tool | Git tools (status, diff, log, branch, commit, push, pull, fetch) |
 | `navra-tools-exec` | Tool | Command execution inside OpenShell sandboxes |
-| `navra-tools-github` | Tool | GitHub forge tools (PR create/list/view, issue create/list/comment) via `gh` CLI |
 | `navra-tools-gitlab` | Tool | GitLab forge tools (MR, issues) via `glab` CLI |
 | `navra-rag` | Context enrichment | Hybrid FTS5+vector search (RRF fusion), breadcrumb chunking, cross-encoder reranking (batched), confidence gating |
 | `navra-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
@@ -687,7 +686,7 @@ Operations that interact with forge/platform APIs use
 
 ### Rules
 
-1. **Module prefix = crate suffix.** `navra-tools-github` → `github_*`.
+1. **Module prefix = crate suffix.** `navra-tools-git` → `git_*`.
 2. **Resource = noun from the MCP resource URI.** `pr`, `issue`, `mr`, `board`.
 3. **Action = verb.** `create`, `list`, `get`, `update`, `delete`,
    `comment`, `review`, `approve`, `transition`.
@@ -702,7 +701,6 @@ Operations that interact with forge/platform APIs use
 |-------|-------------|-------|
 | `navra-tools-file` | `file_` | Local filesystem |
 | `navra-tools-git` | `git_` | Local + transport (push/pull/fetch) |
-| `navra-tools-github` | `github_` | GitHub API (PRs, issues, repos) |
 | `navra-tools-gitlab` | `gitlab_` | GitLab API (MRs, issues, projects) |
 | `navra-tools-jira` | `jira_` | Jira API (issues, boards, sprints) |
 

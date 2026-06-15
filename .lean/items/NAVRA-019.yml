@@ -1,7 +1,7 @@
 id: "NAVRA-019"
 title: "Persona paper"
 status: planned
-priority: medium
+priority: low
 effort: 5-7d
 depends_on: ['NAVRA-003']
 feeds: []

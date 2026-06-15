@@ -1742,11 +1742,6 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         builder = builder.module(git);
     }
 
-    if cfg.github_enabled() {
-        tracing::info!("Module 'github' enabled");
-        builder = builder.module(navra_tools_github::GithubModule);
-    }
-
     if cfg.gitlab_enabled() {
         tracing::info!("Module 'gitlab' enabled");
         builder = builder.module(navra_tools_gitlab::GitlabModule);

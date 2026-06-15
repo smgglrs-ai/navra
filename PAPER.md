@@ -400,7 +400,7 @@ the kernel through the `Module` trait interface:
 |---|---|---|
 | File tools | navra-tools-file | FTS5 search, read/write/edit |
 | Git tools | navra-tools-git | status, diff, log, commit |
-| Forge tools | navra-tools-github/gitlab | PR/MR/issue management |
+| Forge tools | navra-tools-gitlab, upstream MCP | PR/MR/issue management |
 | Command execution | navra-tools-exec | OpenShell sandboxed exec |
 | RAG | navra-rag | Hybrid FTS5+vector search |
 | Voice I/O | navra-modal-voice | ASR + TTS (ONNX) |

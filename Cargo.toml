@@ -16,7 +16,6 @@ members = [
     "navra-core",
     "navra-tools-file",
     "navra-tools-git",
-    "navra-tools-github",
     "navra-tools-gitlab",
     "navra-tools-exec",
     "navra-rag",

@@ -1,7 +1,7 @@
 id: "NAVRA-030"
 title: "X-Token Projection for safety model KD"
 status: planned
-priority: medium
+priority: low
 effort: 3-5d
 depends_on: ['NAVRA-007']
 feeds: []

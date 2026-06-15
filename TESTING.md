@@ -95,7 +95,6 @@ Run `cargo test --workspace --no-fail-fast` for exact numbers.
 | navra-rag | 49 | 13 | — | 62 |
 | navra-tools-file | 54 | 11 | — | 65 |
 | navra-tools-git | 25 | 27 | — | 52 |
-| navra-tools-github | 21 | — | — | 21 |
 | navra-modal-vision | 40 | — | — | 40 |
 | navra-model-hub | 30 | — | — | 30 |
 | navra-responses | 26 | — | — | 26 |

@@ -1,7 +1,7 @@
 id: "NAVRA-072"
 title: "Remove navra-tools-github crate"
-status: planned
-priority: medium
+status: done
+priority: high
 effort: S
 depends_on: []
 feeds: []

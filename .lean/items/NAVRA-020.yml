@@ -1,7 +1,7 @@
 id: "NAVRA-020"
 title: "Review paper"
 status: planned
-priority: medium
+priority: low
 effort: 3-5d
 depends_on: ['NAVRA-006']
 feeds: []
