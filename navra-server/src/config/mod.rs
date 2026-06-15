@@ -13,7 +13,7 @@ pub use crate::grpc_manager::GrpcModuleConfig;
 pub use agents::{AgentConfig, OpenApiAuthConfig, UpstreamConfig};
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
-pub use permissions::{PermissionSet, PiiPatternConfig};
+pub use permissions::{DomainRuleConfig, PermissionSet, PiiPatternConfig, ToolRuleConfig};
 pub use server::{RegistryEntry, ServerConfig};
 
 pub use security::{StatisticalGuardrailServerConfig, TemporalContractServerConfig};
@@ -303,6 +303,7 @@ impl Default for Config {
                 container_cpus: "2".to_string(),
                 container_pids: 256,
                 mcp_version: "2026-07-28".to_string(),
+                agent_signature_policy: "warn".to_string(),
                 config_watch: false,
                 config_watch_debounce_ms: 50,
             },

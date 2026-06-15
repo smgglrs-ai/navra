@@ -1,0 +1,127 @@
+id: NAVRA-087
+title: "Signed agent bundles with pre-install permission check"
+status: in_progress
+priority: high
+effort: 3-5d
+depends_on: []
+description: |
+  Distribute navra agents as signed config bundles that the gateway
+  validates BEFORE installation. An agent is a configuration bundle
+  (persona + permission manifest + MCP server references), not a
+  binary. Container images are a secondary transport for agents that
+  embed custom MCP servers.
+
+  This is navra's marketplace differentiator: other platforms
+  (GPT Store, Microsoft Agent Store) let agents self-declare
+  capabilities with no enforcement. Navra verifies the signed
+  manifest against operator policy at install time and enforces
+  declared permissions at runtime — the manifest is a security
+  contract, not a UX convenience.
+
+  ## Agent bundle structure
+
+  An agent bundle is an OCI artifact (not an image) pushed to any
+  OCI registry. Minimal — just config files with a signed manifest:
+
+    oci://quay.io/navra/legal-researcher:1.0
+      ├── application/vnd.navra.agent-bundle.v1+json (manifest layer)
+      │     ├── meta: name, version, publisher, description
+      │     ├── persona: cognitive core (system prompt, directives)
+      │     ├── permissions: requested capabilities
+      │     │     ├── operations: ["filesystem.read", "git.read"]
+      │     │     ├── tool_rules: [{tool: "file_*", policy: "allow"}]
+      │     │     ├── domain_rules: [{domain: "filesystem", ops: ["read"]}]
+      │     │     └── ifc: {reads: "untrusted", writes: "public"}
+      │     ├── upstreams: MCP servers the agent expects
+      │     │     └── [{name: "search", transport: "stdio", command: [...]}]
+      │     └── safety_scan: {date, scanner, threat_count} (optional)
+      ├── cosign signature (publisher verification)
+      └── (optional) container image ref for agents with custom MCP servers
+
+  ## Pre-install permission check
+
+  `navra agent install` enforces a two-gate process:
+
+  1. **Signature gate**: verify cosign signature. Reject unsigned
+     bundles unless policy allows (agent_signature_policy config).
+
+  2. **Permission gate**: compare manifest permissions against
+     operator policy. The operator can define maximum allowed
+     permissions per trust tier. If the bundle requests
+     filesystem.write but the operator caps at filesystem.read,
+     installation is rejected with a clear diff of what was
+     requested vs what's allowed.
+
+  Only after both gates pass does navra generate the [[agents]]
+  and [permissions.*] config entries.
+
+  ## CLI commands
+
+    navra agent install oci://quay.io/navra/legal-researcher:1.0
+      → verify signature
+      → fetch manifest, display requested permissions
+      → check against operator policy (reject if exceeds)
+      → prompt operator to approve/customize
+      → generate [[agents]] + [permissions.*] in config.toml
+      → if bundle references a container image, podman pull it
+
+    navra agent inspect oci://quay.io/navra/legal-researcher:1.0
+      → fetch and display manifest without installing
+      → show permission diff against current operator policy
+
+    navra agent list
+      → list installed agents with bundle refs and trust status
+
+    navra agent remove <name>
+      → remove agent config entry, optionally remove container image
+
+    navra agent push <bundle-dir> --sign
+      → package config bundle as OCI artifact, cosign sign, push
+
+  ## Graceful degradation
+
+  - Bundle with manifest: full pre-install check, auto-generate config
+  - Bare container image (no manifest): pull image, create skeleton
+    config with empty permissions, warn operator to configure manually
+  - No image at all: operator writes [[agents]] by hand (status quo)
+
+  ## Config
+
+    [server]
+    agent_signature_policy = "enforce"  # enforce | warn | skip
+
+  ## What an agent is NOT
+
+  An agent is not a custom binary or framework. navra-agent is a
+  reference MCP client, but any process speaking MCP (Python, Go,
+  shell script) can connect to navra. The bundle distributes
+  configuration, not code — unless the agent embeds custom MCP
+  servers (container image ref in the manifest).
+
+acceptance:
+  - "navra agent install verifies cosign signature before proceeding"
+  - "Manifest permissions checked against operator policy at install time"
+  - "Installation rejected with clear diff when permissions exceed policy"
+  - "navra agent inspect shows manifest without installing"
+  - "Config entries (agents + permissions) generated from manifest"
+  - "Bare image without manifest: skeleton config + warning"
+  - "agent_signature_policy in config controls enforce/warn/skip"
+  - "navra agent push packages and signs a bundle directory"
+  - "navra agent list shows installed agents with trust status"
+
+scope:
+  - navra-server/src/cli.rs (agent subcommands)
+  - new: navra-server/src/agent_bundle/ (manifest schema, install logic)
+  - navra-model-hub/src/transport/oci.rs (OCI artifact fetch, not image pull)
+  - navra-server/src/config/agents.rs (optional image field)
+
+notes: |
+  - Media type: application/vnd.navra.agent-bundle.v1+json
+  - OCI artifact, not OCI image — uses oras-style artifact push
+  - Cosign: shell out to `cosign verify`, don't reimplement crypto
+  - Container images pulled via podman/skopeo when referenced in manifest
+  - The manifest schema should be published as JSON Schema so third
+    parties can build navra-compatible bundles without navra tooling
+  - Future: keyless verification via Fulcio/Rekor (sigstore)
+  - The permission gate is the architectural differentiator — no other
+    agent marketplace validates permissions before installation

@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
@@ -104,7 +104,7 @@ pub struct PermissionSet {
 }
 
 /// A domain rule entry in config.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DomainRuleConfig {
     /// Domain name (must be a valid navra Domain: filesystem, git, shell, etc.)
     /// Use "*" as wildcard default for unlisted domains.
@@ -114,7 +114,7 @@ pub struct DomainRuleConfig {
 }
 
 /// Classification override for a specific tool.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ToolClassConfig {
     /// Domain to assign (must be a valid navra Domain).
     pub domain: String,
@@ -127,7 +127,7 @@ fn default_tainted_write_policy() -> String {
 }
 
 /// A per-tool permission rule in config.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ToolRuleConfig {
     /// Glob pattern matching tool names (e.g., "git_*", "shell_exec").
     pub tool: String,
@@ -164,4 +164,31 @@ fn default_tool_policy() -> String {
 
 fn default_safety() -> String {
     "standard".to_string()
+}
+
+impl Default for PermissionSet {
+    fn default() -> Self {
+        Self {
+            ring: None,
+            allow: Vec::new(),
+            deny: Vec::new(),
+            operations: Vec::new(),
+            approve: Vec::new(),
+            safety: default_safety(),
+            safety_thresholds: HashMap::new(),
+            safety_patterns: Vec::new(),
+            compliance: Vec::new(),
+            tool_rules: Vec::new(),
+            default_tool_policy: default_tool_policy(),
+            credentials: Vec::new(),
+            can_delegate: false,
+            rate_limit: None,
+            tainted_write_policy: "allow".to_string(),
+            trusted_paths: Vec::new(),
+            tool_disclosure_include: Vec::new(),
+            tool_disclosure_exclude: Vec::new(),
+            domain_rules: Vec::new(),
+            tool_class: HashMap::new(),
+        }
+    }
 }

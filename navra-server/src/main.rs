@@ -5,6 +5,7 @@
 //! a running gateway.
 
 mod acp_agent;
+mod agent_bundle;
 mod build_tools;
 mod cli;
 mod config;
@@ -34,7 +35,7 @@ use navra_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPo
 use navra_core::Module;
 use std::sync::Arc;
 
-use cli::{Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
+use cli::{AgentAction, Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
 
 /// Wrapper to register an `Arc<ExecModule>` as a `Module`.
 /// Allows sharing the same ExecState between the module (tool handlers)
@@ -182,6 +183,26 @@ async fn main() -> anyhow::Result<()> {
         Commands::Uninstall => {
             uninstall_systemd_units()?;
         }
+        Commands::Agent { action } => match action {
+            AgentAction::Install {
+                oci_ref,
+                allow_unsigned,
+                max_permissions,
+            } => {
+                let cfg = config::Config::load(None)?;
+                cli::agent_install(&oci_ref, allow_unsigned, max_permissions.as_deref(), &cfg)
+                    .await?;
+            }
+            AgentAction::Inspect { oci_ref } => {
+                cli::agent_inspect(&oci_ref).await?;
+            }
+            AgentAction::List => {
+                cli::agent_list()?;
+            }
+            AgentAction::Remove { name } => {
+                cli::agent_remove(&name)?;
+            }
+        },
         Commands::Model { action } => match action {
             ModelAction::Pull { name } => {
                 cli::model_pull(&name).await?;
@@ -5423,7 +5444,11 @@ mod tests {
         pt.record_denied("claude", "dev", None, None);
 
         let handler = proc_handler(&pt);
-        let result = handler("navra://proc".to_string()).await;
+        let ctx = navra_core::auth::CallContext::new(
+            navra_core::auth::AgentIdentity::new("tester", "dev"),
+            "test-session",
+        );
+        let result = handler("navra://proc".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
         let text = result.contents[0].text.as_deref().unwrap();
@@ -5452,7 +5477,11 @@ mod tests {
         });
 
         let handler = sessions_handler(&ss);
-        let result = handler("navra://sessions".to_string()).await;
+        let ctx = navra_core::auth::CallContext::new(
+            navra_core::auth::AgentIdentity::new("tester", "dev"),
+            "test-session",
+        );
+        let result = handler("navra://sessions".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
         let text = result.contents[0].text.as_deref().unwrap();
@@ -5467,7 +5496,11 @@ mod tests {
     #[tokio::test]
     async fn kernel_version_has_expected_fields() {
         let handler = version_handler();
-        let result = handler("navra://version".to_string()).await;
+        let ctx = navra_core::auth::CallContext::new(
+            navra_core::auth::AgentIdentity::new("tester", "dev"),
+            "test-session",
+        );
+        let result = handler("navra://version".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
         let text = result.contents[0].text.as_deref().unwrap();
