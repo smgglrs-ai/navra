@@ -42,6 +42,9 @@ pub struct Metrics {
     pub tools_listed_total: AtomicU64,
     pub tools_pruned_total: AtomicU64,
     pub model_proxy_requests: AtomicU64,
+    pub input_tokens_total: AtomicU64,
+    pub output_tokens_total: AtomicU64,
+    pub cached_tokens_total: AtomicU64,
 }
 
 impl Metrics {
@@ -82,7 +85,25 @@ impl Metrics {
             tools_listed_total: AtomicU64::new(0),
             tools_pruned_total: AtomicU64::new(0),
             model_proxy_requests: AtomicU64::new(0),
+            input_tokens_total: AtomicU64::new(0),
+            output_tokens_total: AtomicU64::new(0),
+            cached_tokens_total: AtomicU64::new(0),
         }
+    }
+
+    /// Atomically increment all three token counters.
+    pub fn record_tokens(&self, input: u64, output: u64, cached: u64) {
+        self.input_tokens_total.fetch_add(input, Ordering::Relaxed);
+        self.output_tokens_total.fetch_add(output, Ordering::Relaxed);
+        self.cached_tokens_total.fetch_add(cached, Ordering::Relaxed);
+    }
+
+    /// Compute effective tokens (GitHub billing formula).
+    pub fn effective_tokens(&self) -> f64 {
+        let input = self.input_tokens_total.load(Ordering::Relaxed) as f64;
+        let output = self.output_tokens_total.load(Ordering::Relaxed) as f64;
+        let cached = self.cached_tokens_total.load(Ordering::Relaxed) as f64;
+        (output * 4.0) + (cached * 0.1) + input
     }
 
     /// Render all metrics in Prometheus text exposition format.
@@ -308,6 +329,31 @@ impl Metrics {
             self.model_proxy_requests.load(Ordering::Relaxed),
         );
 
+        prom_counter(
+            &mut out,
+            "navra_input_tokens_total",
+            "Uncached input tokens consumed",
+            self.input_tokens_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_output_tokens_total",
+            "Output tokens generated",
+            self.output_tokens_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_cached_tokens_total",
+            "Cached input tokens consumed",
+            self.cached_tokens_total.load(Ordering::Relaxed),
+        );
+        prom_gauge_f64(
+            &mut out,
+            "navra_effective_tokens_total",
+            "Effective tokens (ET = output*4 + cached*0.1 + input)",
+            self.effective_tokens(),
+        );
+
         out
     }
 }
@@ -325,6 +371,12 @@ fn prom_counter(out: &mut String, name: &str, help: &str, value: u64) {
 }
 
 fn prom_gauge(out: &mut String, name: &str, help: &str, value: u64) {
+    out.push_str(&format!(
+        "# HELP {name} {help}\n# TYPE {name} gauge\n{name} {value}\n"
+    ));
+}
+
+fn prom_gauge_f64(out: &mut String, name: &str, help: &str, value: f64) {
     out.push_str(&format!(
         "# HELP {name} {help}\n# TYPE {name} gauge\n{name} {value}\n"
     ));
@@ -376,6 +428,32 @@ mod tests {
         assert!(output.contains("navra_leakage_similarity_blocks_total"));
         assert!(output.contains("navra_leakage_semantic_blocks_total"));
         assert!(output.contains("navra_leakage_semantic_async_detections_total"));
+        assert!(output.contains("navra_input_tokens_total"));
+        assert!(output.contains("navra_output_tokens_total"));
+        assert!(output.contains("navra_cached_tokens_total"));
+        assert!(output.contains("navra_effective_tokens_total"));
+    }
+
+    #[test]
+    fn record_tokens_increments_all_counters() {
+        let m = Metrics::new();
+        m.record_tokens(100, 50, 20);
+        assert_eq!(m.input_tokens_total.load(Ordering::Relaxed), 100);
+        assert_eq!(m.output_tokens_total.load(Ordering::Relaxed), 50);
+        assert_eq!(m.cached_tokens_total.load(Ordering::Relaxed), 20);
+        m.record_tokens(10, 5, 2);
+        assert_eq!(m.input_tokens_total.load(Ordering::Relaxed), 110);
+        assert_eq!(m.output_tokens_total.load(Ordering::Relaxed), 55);
+        assert_eq!(m.cached_tokens_total.load(Ordering::Relaxed), 22);
+    }
+
+    #[test]
+    fn effective_tokens_formula() {
+        let m = Metrics::new();
+        m.record_tokens(100, 50, 200);
+        // ET = (50 * 4) + (200 * 0.1) + 100 = 200 + 20 + 100 = 320
+        let et = m.effective_tokens();
+        assert!((et - 320.0).abs() < f64::EPSILON);
     }
 
     #[test]
