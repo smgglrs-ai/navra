@@ -4,6 +4,7 @@
 //! feed results back → repeat until completion or max iterations.
 
 use crate::action::{ActionRecord, AgentAction};
+use crate::block::ToolBlock;
 use crate::client::McpClient;
 use crate::error::AgentError;
 use crate::signal::{AgentSignal, SignalReceiver};
@@ -219,6 +220,8 @@ pub struct ToolLoopResult {
     pub taint: DataLabel,
     /// Classified action records for every tool call in this run.
     pub actions: Vec<ActionRecord>,
+    /// Structured tool execution blocks for every tool call in this run.
+    pub blocks: Vec<ToolBlock>,
     /// Total characters saved by tool output compression.
     pub compressed_chars_saved: usize,
     /// Whether the run was stopped by a signal (Interrupt or Terminate).
@@ -676,6 +679,7 @@ pub async fn run_tool_loop(
     let mut prev_outputs: Vec<String> = Vec::new();
 
     let mut actions: Vec<ActionRecord> = Vec::new();
+    let mut blocks: Vec<ToolBlock> = Vec::new();
     let mut loop_detector = LoopDetector::new(config.loop_detection_threshold);
     let mut compressed_chars_saved: usize = 0;
     let mut budget_exhausted = false;
@@ -706,6 +710,7 @@ pub async fn run_tool_loop(
                         output_tokens: total_output,
                         taint: client.taint(),
                         actions,
+                        blocks,
                         compressed_chars_saved,
                         interrupted: true,
                     });
@@ -725,6 +730,7 @@ pub async fn run_tool_loop(
                         output_tokens: total_output,
                         taint: client.taint(),
                         actions,
+                        blocks,
                         compressed_chars_saved,
                         interrupted: true,
                     });
@@ -917,6 +923,7 @@ pub async fn run_tool_loop(
                     output_tokens: total_output,
                     taint: client.taint(),
                     actions,
+                    blocks,
                     compressed_chars_saved,
                     interrupted: false,
                 });
@@ -1016,6 +1023,7 @@ pub async fn run_tool_loop(
                 output_tokens: total_output,
                 taint: client.taint(),
                 actions,
+                blocks,
                 compressed_chars_saved,
                 interrupted: false,
             });
@@ -1059,6 +1067,11 @@ pub async fn run_tool_loop(
                 let error_msg =
                     format!("Unknown tool '{}'. Available tools: {}", fc.name, available);
                 tracing::warn!(tool = %fc.name, "Model hallucinated tool name");
+                let args_value = serde_json::from_str(&fc.arguments)
+                    .unwrap_or(serde_json::json!({}));
+                let mut block = ToolBlock::new(&fc.name, args_value);
+                block.complete(&error_msg, true);
+                blocks.push(block);
                 input.push(InputItem::FunctionCall(FunctionCallItem {
                     id: fc.id.clone(),
                     call_id: fc.call_id.clone(),
@@ -1096,12 +1109,14 @@ pub async fn run_tool_loop(
                             error = %e,
                             "Failed to parse or repair tool call arguments"
                         );
+                        let error_msg = format!("Error: malformed JSON arguments — {e}");
+                        let mut block = ToolBlock::new(&fc.name, serde_json::json!({}));
+                        block.complete(&error_msg, true);
+                        blocks.push(block);
                         input.push(InputItem::FunctionCallOutput(FunctionCallOutputItem {
                             id: None,
                             call_id: fc.call_id.clone(),
-                            output: FunctionCallOutputContent::Text(format!(
-                                "Error: malformed JSON arguments — {e}"
-                            )),
+                            output: FunctionCallOutputContent::Text(error_msg),
                             status: Some(ItemStatus::Completed),
                         }));
                         continue;
@@ -1119,10 +1134,12 @@ pub async fn run_tool_loop(
 
             let action = AgentAction::classify(&fc.name, &args);
             let loop_warning = loop_detector.record(&fc.name, &args);
-            let call_start = std::time::Instant::now();
+            let mut block = ToolBlock::new(&fc.name, args.clone());
             let result = client.call_tool(&fc.name, args).await?;
-            let duration_ms = call_start.elapsed().as_millis() as u64;
             let raw_text = extract_text(&result);
+            block.complete(&raw_text, result.is_error);
+            let duration_ms = block.duration_ms.unwrap_or(0);
+            blocks.push(block);
 
             if let Some(ref sink) = config.audit_sink {
                 let truncated_result = if raw_text.len() > 4096 {
@@ -1300,6 +1317,13 @@ mod tests {
     }
 
     async fn mock_client(tool_responses: Vec<serde_json::Value>) -> McpClient {
+        mock_client_with_tools(vec![], tool_responses).await
+    }
+
+    async fn mock_client_with_tools(
+        tools: Vec<serde_json::Value>,
+        tool_responses: Vec<serde_json::Value>,
+    ) -> McpClient {
         let mut all = vec![
             serde_json::json!({
                 "jsonrpc": "2.0",
@@ -1313,7 +1337,7 @@ mod tests {
             serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 2}),
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "result": {"tools": []},
+                "result": {"tools": tools},
                 "id": 3
             }),
         ];
@@ -2592,5 +2616,116 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
     #[test]
     fn phase_temperature_empty_returns_none() {
         assert_eq!(phase_temperature(&[], 5), None);
+    }
+
+    // --- ToolBlock integration tests ---
+
+    fn git_status_tool_def() -> serde_json::Value {
+        serde_json::json!({
+            "name": "git_status",
+            "description": "Show git status",
+            "inputSchema": {"type": "object", "properties": {}}
+        })
+    }
+
+    #[tokio::test]
+    async fn tool_call_produces_completed_block() {
+        let model = MockModel::new(vec![
+            tool_call_response("git_status", "{}"),
+            stop_response("Done."),
+        ]);
+        let mut client = mock_client_with_tools(
+            vec![git_status_tool_def()],
+            vec![serde_json::json!({
+                "jsonrpc": "2.0",
+                "result": {
+                    "content": [{"type": "text", "text": "nothing to commit"}],
+                    "isError": false
+                },
+                "id": 4
+            })],
+        )
+        .await;
+        let mut config = ToolLoopConfig::default();
+
+        let result = run_tool_loop(&model, &mut client, "status", &mut config, "run1".into())
+            .await
+            .unwrap();
+        assert_eq!(result.blocks.len(), 1);
+        let block = &result.blocks[0];
+        assert_eq!(block.tool_name, "git_status");
+        assert!(matches!(block.status, crate::block::BlockStatus::Completed));
+        assert!(!block.is_error);
+        assert!(block.duration_ms.is_some());
+        assert!(block.result_preview.as_deref().unwrap().contains("nothing to commit"));
+    }
+
+    #[tokio::test]
+    async fn hallucinated_tool_produces_failed_block() {
+        let model = MockModel::new(vec![
+            tool_call_response("nonexistent_tool", "{}"),
+            stop_response("Recovered."),
+        ]);
+        let mut client = mock_client(vec![]).await;
+        let mut config = ToolLoopConfig::default();
+
+        let result = run_tool_loop(&model, &mut client, "test", &mut config, "run2".into())
+            .await
+            .unwrap();
+        assert_eq!(result.blocks.len(), 1);
+        let block = &result.blocks[0];
+        assert_eq!(block.tool_name, "nonexistent_tool");
+        assert!(matches!(block.status, crate::block::BlockStatus::Failed));
+        assert!(block.is_error);
+        assert!(block.result_preview.as_deref().unwrap().contains("Unknown tool"));
+    }
+
+    #[tokio::test]
+    async fn blocks_included_in_result() {
+        let model = MockModel::new(vec![
+            tool_call_response("git_status", r#"{"verbose": false}"#),
+            tool_call_response("git_status", r#"{"verbose": true}"#),
+            stop_response("All done."),
+        ]);
+        let tool_result = serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": false
+            },
+            "id": 4
+        });
+        let mut client = mock_client_with_tools(
+            vec![git_status_tool_def()],
+            vec![tool_result.clone(), tool_result],
+        )
+        .await;
+        let mut config = ToolLoopConfig::default();
+
+        let result = run_tool_loop(&model, &mut client, "multi", &mut config, "run3".into())
+            .await
+            .unwrap();
+        assert_eq!(result.blocks.len(), 2);
+        assert_eq!(result.blocks[0].tool_name, "git_status");
+        assert_eq!(result.blocks[1].tool_name, "git_status");
+        assert_eq!(result.actions.len(), result.blocks.len());
+    }
+
+    #[test]
+    fn tool_block_json_round_trip() {
+        use crate::block::{BlockStatus, ToolBlock};
+
+        let mut block = ToolBlock::new("file_read", serde_json::json!({"path": "/etc/hosts"}));
+        block.complete("contents here", false);
+
+        let json = serde_json::to_string(&block).unwrap();
+        let deserialized: ToolBlock = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.block_id, block.block_id);
+        assert_eq!(deserialized.tool_name, "file_read");
+        assert!(matches!(deserialized.status, BlockStatus::Completed));
+        assert!(!deserialized.is_error);
+        assert_eq!(deserialized.duration_ms, block.duration_ms);
+        assert_eq!(deserialized.result_preview, block.result_preview);
     }
 }
