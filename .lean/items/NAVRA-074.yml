@@ -1,7 +1,7 @@
 id: "NAVRA-074"
 title: "Capability/architecture disclosure prevention"
 status: planned
-priority: medium
+priority: high
 effort: 1-2d
 depends_on: []
 feeds: []

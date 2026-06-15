@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 63 active items
+# 62 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -33,8 +33,7 @@ items:
   - id: "NAVRA-032"
     title: "Compliance mapping (EU AI Act + OWASP)"
     status: planned
-    priority: medium
-    effective_priority: high
+    priority: high
     effort: 2-3d
     depends_on: ['NAVRA-016']
     feeds: ['NAVRA-001']
@@ -51,38 +50,23 @@ items:
     priority: high
     effort: 2.5-3.5d
 
+  - id: "NAVRA-074"
+    title: "Capability/architecture disclosure prevention"
+    status: planned
+    priority: high
+    effort: 1-2d
+
   - id: "NAVRA-086"
     title: "Agent skills for navra adoption (init, policy, flow, diagnose)"
     status: planned
     priority: high
     effort: 1-2w
 
-  - id: "NAVRA-019"
-    title: "Persona paper"
-    status: planned
-    priority: medium
-    effort: 5-7d
-    depends_on: ['NAVRA-003']
-
-  - id: "NAVRA-020"
-    title: "Review paper"
-    status: planned
-    priority: medium
-    effort: 3-5d
-    depends_on: ['NAVRA-006']
-
   - id: "NAVRA-029"
     title: "Cross-session fact extraction"
     status: planned
     priority: medium
     effort: 2-3d
-
-  - id: "NAVRA-030"
-    title: "X-Token Projection for safety model KD"
-    status: planned
-    priority: medium
-    effort: 3-5d
-    depends_on: ['NAVRA-007']
 
   - id: "NAVRA-034"
     title: "navra-core crate split (navra-router + navra-mcp)"
@@ -102,14 +86,6 @@ items:
     priority: medium
     effort: 1-2d
 
-  - id: "NAVRA-040"
-    title: "ASSERT integration for C3 eval"
-    status: planned
-    priority: low
-    effective_priority: medium
-    effort: 1-2d
-    feeds: ['NAVRA-020']
-
   - id: "NAVRA-043"
     title: "Context compression post-hook"
     status: planned
@@ -118,18 +94,6 @@ items:
 
   - id: "NAVRA-044"
     title: "Execution ring refinement"
-    status: planned
-    priority: medium
-    effort: 1-2d
-
-  - id: "NAVRA-072"
-    title: "Remove navra-tools-github crate"
-    status: planned
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-074"
-    title: "Capability/architecture disclosure prevention"
     status: planned
     priority: medium
     effort: 1-2d
@@ -153,6 +117,20 @@ items:
     status: planned
     priority: medium
     effort: 2-3w
+
+  - id: "NAVRA-019"
+    title: "Persona paper"
+    status: planned
+    priority: low
+    effort: 5-7d
+    depends_on: ['NAVRA-003']
+
+  - id: "NAVRA-020"
+    title: "Review paper"
+    status: planned
+    priority: low
+    effort: 3-5d
+    depends_on: ['NAVRA-006']
 
   - id: "NAVRA-021"
     title: "ONNX/ort deepening"
@@ -197,6 +175,13 @@ items:
     priority: low
     effort: 2-3d
 
+  - id: "NAVRA-030"
+    title: "X-Token Projection for safety model KD"
+    status: planned
+    priority: low
+    effort: 3-5d
+    depends_on: ['NAVRA-007']
+
   - id: "NAVRA-031"
     title: "DNS-AID doc update in DISCOVERY.md"
     status: planned
@@ -209,6 +194,13 @@ items:
     priority: low
     effort: 2-3d
     gate: "onnxruntime-genai #2062 (ONNX path); Ollama path works now"
+
+  - id: "NAVRA-040"
+    title: "ASSERT integration for C3 eval"
+    status: planned
+    priority: low
+    effort: 1-2d
+    feeds: ['NAVRA-020']
 
   - id: "NAVRA-083"
     title: "OpenAPI upstream: OAuth2 authorization code flow"
@@ -363,6 +355,14 @@ items:
     priority: high
     effort: 1-2d
 
+  - id: "NAVRA-080"
+    title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
+    status: completed
+    priority: low
+    effective_priority: high
+    effort: S
+    feeds: ['NAVRA-074']
+
   - id: "NAVRA-036"
     title: "VerifierHook with false-pass-rate tracking"
     status: completed
@@ -386,14 +386,6 @@ items:
     status: completed
     priority: medium
     effort: 2-3d
-
-  - id: "NAVRA-080"
-    title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
-    status: completed
-    priority: low
-    effective_priority: medium
-    effort: S
-    feeds: ['NAVRA-074']
 
   - id: "NAVRA-085"
     title: "Handle notifications/tools/list_changed from upstream MCP servers"

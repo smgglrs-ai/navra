@@ -1,7 +1,7 @@
 id: "NAVRA-032"
 title: "Compliance mapping (EU AI Act + OWASP)"
 status: planned
-priority: medium
+priority: high
 effort: 2-3d
 depends_on: ['NAVRA-016']
 feeds: ['NAVRA-001']

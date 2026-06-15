@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 26 completed items
+# 27 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -121,6 +121,12 @@ items:
 
   - id: "NAVRA-035"
     title: "Model-call hook point in navra-agent"
+    status: done
+    priority: high
+    effort: S
+
+  - id: "NAVRA-072"
+    title: "Remove navra-tools-github crate"
     status: done
     priority: high
     effort: S

@@ -11,9 +11,6 @@ pub struct ModulesConfig {
     /// Git repository operations module.
     #[serde(default)]
     pub git: Option<GitModuleConfig>,
-    /// GitHub API integration module.
-    #[serde(default)]
-    pub github: Option<GithubModuleConfig>,
     /// GitLab API integration module.
     #[serde(default)]
     pub gitlab: Option<GitlabModuleConfig>,
@@ -81,13 +78,6 @@ impl Default for MemoryModuleConfig {
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct GitModuleConfig {
     /// Enable the git module. Default: true.
-    #[serde(default = "super::default_true")]
-    pub enabled: bool,
-}
-
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
-pub struct GithubModuleConfig {
-    /// Enable the GitHub module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
 }
