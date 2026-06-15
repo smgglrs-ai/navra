@@ -1,6 +1,6 @@
 id: "NAVRA-036"
 title: "VerifierHook with false-pass-rate tracking"
-status: planned
+status: completed
 priority: medium
 effort: 1-2d
 depends_on: []

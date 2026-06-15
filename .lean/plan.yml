@@ -103,12 +103,6 @@ items:
     priority: medium
     effort: 3-5d
 
-  - id: "NAVRA-036"
-    title: "VerifierHook with false-pass-rate tracking"
-    status: planned
-    priority: medium
-    effort: 1-2d
-
   - id: "NAVRA-037"
     title: "SQLite entity-relationship table for navra-memory"
     status: planned
@@ -147,12 +141,6 @@ items:
     priority: medium
     effort: S
 
-  - id: "NAVRA-073"
-    title: "Model refusal detection and gateway-level fallback routing"
-    status: planned
-    priority: medium
-    effort: 2-3d
-
   - id: "NAVRA-074"
     title: "Capability/architecture disclosure prevention"
     status: planned
@@ -166,26 +154,12 @@ items:
     effort: 2-3d
     feeds: ['NAVRA-048']
 
-  - id: "NAVRA-080"
-    title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
-    status: planned
-    priority: low
-    effective_priority: medium
-    effort: S
-    feeds: ['NAVRA-074']
-
   - id: "NAVRA-084"
     title: "OpenAPI upstream: response truncation and token budget"
     status: planned
     priority: medium
     effort: 1-2d
     depends_on: ['NAVRA-082']
-
-  - id: "NAVRA-085"
-    title: "Handle notifications/tools/list_changed from upstream MCP servers"
-    status: planned
-    priority: medium
-    effort: 2-3d
 
   - id: "NAVRA-089"
     title: "React security dashboard components (@navra/react)"
@@ -238,12 +212,6 @@ items:
 
   - id: "NAVRA-031"
     title: "DNS-AID doc update in DISCOVERY.md"
-    status: planned
-    priority: low
-    effort: 0.5-0.5d
-
-  - id: "NAVRA-033"
-    title: "ET metric in Prometheus"
     status: planned
     priority: low
     effort: 0.5-0.5d
@@ -303,12 +271,6 @@ items:
     status: backlog
     priority: medium
     effort: M
-
-  - id: "NAVRA-067"
-    title: "ToolBlock structured output"
-    status: backlog
-    priority: medium
-    effort: S
 
   - id: "NAVRA-068"
     title: "Intent-based tool grouping"
@@ -396,12 +358,6 @@ items:
     priority: low
     effort: M
 
-  - id: "NAVRA-065"
-    title: "Config schema generation"
-    status: backlog
-    priority: low
-    effort: S
-
   - id: "NAVRA-069"
     title: "Multi-hypothesis tool routing"
     status: backlog
@@ -420,11 +376,49 @@ items:
     priority: high
     effort: 1-2d
 
+  - id: "NAVRA-036"
+    title: "VerifierHook with false-pass-rate tracking"
+    status: completed
+    priority: medium
+    effort: 1-2d
+
   - id: "NAVRA-045"
     title: "GitLab module"
     status: wont_do
     priority: medium
     effort: 3-4d
+
+  - id: "NAVRA-067"
+    title: "ToolBlock structured output"
+    status: completed
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-073"
+    title: "Model refusal detection and gateway-level fallback routing"
+    status: completed
+    priority: medium
+    effort: 2-3d
+
+  - id: "NAVRA-080"
+    title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
+    status: completed
+    priority: low
+    effective_priority: medium
+    effort: S
+    feeds: ['NAVRA-074']
+
+  - id: "NAVRA-085"
+    title: "Handle notifications/tools/list_changed from upstream MCP servers"
+    status: completed
+    priority: medium
+    effort: 2-3d
+
+  - id: "NAVRA-033"
+    title: "ET metric in Prometheus"
+    status: completed
+    priority: low
+    effort: 0.5-0.5d
 
   - id: "NAVRA-046"
     title: "Jira module"
@@ -432,4 +426,10 @@ items:
     priority: low
     effort: 2-3d
     depends_on: ['NAVRA-045']
+
+  - id: "NAVRA-065"
+    title: "Config schema generation"
+    status: completed
+    priority: low
+    effort: S
 

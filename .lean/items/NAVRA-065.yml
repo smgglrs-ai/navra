@@ -1,6 +1,6 @@
 id: NAVRA-065
 title: Config schema generation
-status: backlog
+status: completed
 priority: low
 effort: S
 depends_on: []

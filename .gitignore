@@ -23,6 +23,10 @@ ONBOARDING.md
 *.p12
 *.pfx
 
+# RPM build artifacts
+*.src.rpm
+*.spec
+
 # Model weights
 *.onnx
 *.gguf
