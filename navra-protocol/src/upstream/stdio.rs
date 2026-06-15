@@ -1,11 +1,12 @@
 //! Stdio transport: line-delimited JSON-RPC over subprocess stdin/stdout.
 
-use super::transport::Transport;
+use super::transport::{Transport, UpstreamNotification};
 use super::UpstreamError;
 use async_trait::async_trait;
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::sync::mpsc;
 
 /// Stdio transport backed by a subprocess.
 pub struct StdioTransport {
@@ -15,6 +16,7 @@ pub struct StdioTransport {
     stdout: BufReader<ChildStdout>,
     /// Handle to the stderr logging task (kept alive while transport lives).
     _stderr_task: Option<tokio::task::JoinHandle<()>>,
+    notification_tx: Option<mpsc::UnboundedSender<UpstreamNotification>>,
 }
 
 impl StdioTransport {
@@ -110,6 +112,7 @@ impl StdioTransport {
             stdin: BufWriter::new(child_stdin),
             stdout: BufReader::new(child_stdout),
             _stderr_task: stderr_task,
+            notification_tx: None,
         })
     }
 
@@ -149,7 +152,7 @@ impl Transport for StdioTransport {
             source: e,
         })?;
 
-        // Read response lines until we get valid JSON
+        // Read response lines until we get a JSON-RPC response (not a notification).
         let mut buf = String::new();
         loop {
             buf.clear();
@@ -174,16 +177,35 @@ impl Transport for StdioTransport {
                 continue;
             }
 
-            return serde_json::from_str(trimmed).map_err(|e| UpstreamError::Json {
-                name: self.name.clone(),
-                source: e,
-            });
+            let parsed: serde_json::Value =
+                serde_json::from_str(trimmed).map_err(|e| UpstreamError::Json {
+                    name: self.name.clone(),
+                    source: e,
+                })?;
+
+            // A JSON-RPC notification has "method" but no "id".
+            if parsed.get("method").is_some() && parsed.get("id").is_none() {
+                if let Some(method) = parsed["method"].as_str() {
+                    if method == "notifications/tools/list_changed" {
+                        if let Some(ref tx) = self.notification_tx {
+                            let _ = tx.send(UpstreamNotification::ToolsListChanged);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            return Ok(parsed);
         }
     }
 
     fn shutdown(&mut self) {
         drop(self.child.stdin.take());
         let _ = self.child.start_kill();
+    }
+
+    fn set_notification_sender(&mut self, tx: mpsc::UnboundedSender<UpstreamNotification>) {
+        self.notification_tx = Some(tx);
     }
 }
 
