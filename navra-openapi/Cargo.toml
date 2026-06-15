@@ -1,0 +1,27 @@
+[package]
+name = "navra-openapi"
+description = "OpenAPI-to-MCP runtime bridge for navra"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+navra-auth = { path = "../navra-auth" }
+navra-core = { path = "../navra-core" }
+navra-protocol = { path = "../navra-protocol" }
+
+openapiv3 = "2.2"
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true }
+urlencoding = "2"
+
+[dev-dependencies]
+axum = { workspace = true }
+tokio = { workspace = true, features = ["full"] }

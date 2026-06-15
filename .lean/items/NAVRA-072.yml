@@ -17,3 +17,8 @@ description: |
   - Remove the module registration in navra-server main.rs
   - Remove the crate directory
   - Update any docs referencing GitHub module
+notes: |
+  - 2026-06-14: rmcp-openapi (Rust, 70+ releases on crates.io) + GitHub's
+    OpenAPI spec is a proven replacement path. Once NAVRA-082 (OpenAPI runtime
+    bridge) ships, operators configure GitHub's OpenAPI spec as an upstream
+    and navra exposes the tools directly — no custom module needed.

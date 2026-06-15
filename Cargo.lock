@@ -3038,6 +3038,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "navra-openapi"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "navra-auth",
+ "navra-core",
+ "navra-protocol",
+ "openapiv3",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
+ "tracing",
+ "urlencoding",
+]
+
+[[package]]
 name = "navra-protocol"
 version = "0.1.0"
 dependencies = [
@@ -3157,6 +3177,7 @@ dependencies = [
  "navra-model",
  "navra-model-hub",
  "navra-model-runtime",
+ "navra-openapi",
  "navra-rag",
  "navra-tools-exec",
  "navra-tools-file",
@@ -3574,6 +3595,17 @@ name = "oorandom"
 version = "11.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
+
+[[package]]
+name = "openapiv3"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c8d427828b22ae1fff2833a03d8486c2c881367f1c336349f307f321e7f4d05"
+dependencies = [
+ "indexmap 2.14.0",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "openssl"
@@ -4075,7 +4107,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4112,9 +4144,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

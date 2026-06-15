@@ -1,0 +1,26 @@
+id: NAVRA-082
+title: "OpenAPI-to-MCP runtime bridge (navra-openapi crate)"
+status: in_progress
+priority: high
+effort: 3-5d
+source: "tech-watch-2026-06-14"
+description: |
+  New navra-openapi crate that parses OpenAPI 3.x specs at startup and
+  exposes API operations as MCP tools directly — no code generation,
+  no separate process. Operators add an openapi field to [[upstream]]
+  config and navra bridges REST APIs to MCP with zero code.
+
+  Runtime bridge, not code generator. Uses reqwest for HTTP calls,
+  navra's own ToolDefinition types, full ACL/IFC/safety integration.
+  Solves the tool explosion problem at the gateway layer via tool_filter
+  and existing semantic permissions (NAVRA-081).
+notes: |
+  - Tech watch 2026-06-14: researched 5+ existing tools (rmcp-openapi,
+    openapi-mcp-generator, Stainless, FastMCP, AWS Labs). All are code
+    generators. navra's gateway approach is architecturally unique.
+  - rmcp-openapi (Rust, 70+ releases on crates.io) validates the mapping
+    approach but uses rmcp SDK (navra has its own MCP stack).
+  - Core mapping: operationId → tool name, HTTP method → annotations,
+    parameters → input_schema. Well-established pattern.
+  - Key unsolved problem in the space: tool explosion (500+ ops from
+    large APIs). navra solves this at the gateway layer.

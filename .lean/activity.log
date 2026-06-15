@@ -1,3 +1,13 @@
+- timestamp: "2026-06-14T16:00:00+02:00"
+  actor: claude
+  action: implement
+  summary: "NAVRA-082: navra-openapi crate — OpenAPI-to-MCP runtime bridge. 34 tests (28 unit + 6 integration). Wired into UpstreamConfig and main.rs."
+
+- timestamp: "2026-06-14T14:00:00+02:00"
+  actor: claude
+  action: tech-watch
+  summary: "7 sources (OpenAPI-to-MCP tools), 1 new item (NAVRA-082), 1 enriched (NAVRA-072), 3 watch, 2 dismissed"
+
 - timestamp: "2026-06-13T14:00:00+02:00"
   actor: claude
   action: tech-watch

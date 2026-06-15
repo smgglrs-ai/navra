@@ -23,6 +23,7 @@ members = [
     "navra-modal-vision",
     "navra-responses",
     "navra-macros",
+    "navra-openapi",
     "navra-server",
     "benchmarks",
 ]

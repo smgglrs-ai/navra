@@ -1,0 +1,15 @@
+id: NAVRA-084
+title: "OpenAPI upstream: response truncation and token budget"
+status: planned
+priority: medium
+effort: 1-2d
+depends_on: ['NAVRA-082']
+description: |
+  Large API responses (paginated lists, verbose JSON) can overwhelm the
+  LLM context window. OpenAPI tool handlers should integrate with navra's
+  existing token budget mechanism (CallContext::remaining_tokens) and
+  the compress_tool_output path.
+
+  Options: max_response_bytes config field, automatic truncation at
+  sentence boundaries (existing CallToolResult::compress), or
+  query-aware extractive compression via embeddings.

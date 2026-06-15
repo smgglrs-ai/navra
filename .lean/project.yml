@@ -5,7 +5,7 @@ repository: git@github.com:smgglrs-ai/navra.git
 type: monorepo
 license: Apache-2.0
 item_prefix: NAVRA
-next_item_id: 82
+next_item_id: 86
 
 stack:
   language: rust
