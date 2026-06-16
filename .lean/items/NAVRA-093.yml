@@ -1,0 +1,34 @@
+id: NAVRA-093
+title: "Run ADR-Bench against navra"
+status: planned
+priority: low
+effort: 2-3d
+depends_on: ['NAVRA-079']
+feeds: ['NAVRA-048']
+source: tech-watch-2026-06-13
+gate: "ADR-Bench dataset publicly available"
+description: |
+  Run the full ADR-Bench (302 tasks, 17 attack techniques, 133 MCP
+  servers) against navra. Compare detection rates with ADR's published
+  numbers (67% detection, 0% false positive) and with GuardAgent and
+  LlamaFirewall baselines.
+
+  Prerequisites:
+  - NAVRA-079 (taxonomy mapping) completed
+  - ADR-Bench dataset downloaded
+  - Ollama running with a model for agent simulation
+
+  Steps:
+  1. Download full ADR-Bench dataset and mock MCP server definitions
+  2. Stand up the 133 mock MCP servers per benchmark spec
+  3. Run navra as gateway, route agent traffic through it
+  4. Execute all 302 tasks across all 17 attack techniques
+  5. Measure: detection rate, false positive rate, latency overhead
+  6. Compare directly with published numbers (same benchmark, same
+     tasks — no subset selection bias)
+  7. Document results in docs/evaluations/adr-bench-results.md
+acceptance:
+  - "Full 302-task benchmark executed"
+  - "Detection and false positive rates computed"
+  - "Direct comparison with ADR/GuardAgent/LlamaFirewall published numbers"
+  - "Results documented"

@@ -1,0 +1,20 @@
+id: NAVRA-097
+title: "<FlowVisualizer /> component"
+status: planned
+priority: low
+effort: 3-5d
+depends_on: ['NAVRA-089']
+description: |
+  DAG execution view for navra-flow. Shows nodes (agents), edges
+  (handoffs), current execution state, mandate compliance. Uses
+  React Flow or similar library for the graph rendering.
+
+  Data source: flow execution events via SSE or polling.
+
+  PatternFly + React Flow integration.
+acceptance:
+  - "Renders flow DAG with nodes and edges"
+  - "Shows execution state (running/completed/failed per node)"
+  - "Storybook story with mock flow definition"
+scope:
+  - navra-react/packages/react/src/FlowVisualizer/

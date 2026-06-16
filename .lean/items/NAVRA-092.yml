@@ -1,0 +1,28 @@
+id: NAVRA-092
+title: "Evaluate LCLM for context compression"
+status: planned
+priority: low
+effort: 2-3d
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-12
+gate: "LCLM 0.6B encoder available as ONNX export"
+description: |
+  Evaluate Latent Context Language Models (LCLMs) for production-grade
+  context compression before agent prompt injection. 0.6B encoder +
+  4B decoder achieves 91.76% accuracy at 4x compression on RULER.
+
+  Steps:
+  1. Check if LCLM encoder is available as ONNX (currently PyTorch only)
+  2. If yes: export 0.6B encoder to ONNX, load in navra-model-runtime
+  3. Benchmark: compression ratio, latency, accuracy on navra's typical
+     retrieved context (RAG chunks, tool responses)
+  4. Compare with BudgetHook truncation (baseline) on context quality
+  5. Write evaluation in docs/evaluations/lclm-compression.md
+
+  Decision: adopt as post-hook, wait for ONNX export, or reject.
+
+  Reference: huggingface.co/latent-context | github.com/LeonLixyz/LCLM
+acceptance:
+  - "Benchmark comparing LCLM vs truncation on context quality"
+  - "Architecture decision documented"
