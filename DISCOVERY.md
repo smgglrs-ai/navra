@@ -75,20 +75,103 @@ for equivalent JSON.
 **Specification:** https://aid.agentcommunity.org/docs/specification
 **IETF draft:** https://datatracker.ietf.org/doc/draft-nemethi-aid-agent-identity-discovery/
 
-### Competing DNS Approaches
+### DNS-AID (DNS for AI Discovery)
 
-Two other IETF drafts exist in this space:
+IETF Internet-Draft `draft-mozleywilliams-dnsop-dnsaid-00`. Despite
+the similar name, DNS-AID and AID are independent proposals with
+fundamentally different designs.
 
-- **DNS-AID** (`draft-mozleywilliams-dnsop-dnsaid-00`): Uses SVCB
-  records under structured namespaces like `_a2a._agents.example.com`.
-  Richer than TXT but requires more DNS infrastructure. Supports
-  mDNS/DNS-SD for local network discovery.
+| Dimension        | AID (draft-nemethi)                | DNS-AID (draft-mozleywilliams)           |
+|------------------|------------------------------------|------------------------------------------|
+| Record type      | TXT (single semicolon-delimited)   | SVCB/HTTPS + TXT + TLSA                 |
+| Namespace        | `_agent.<domain>`                  | `<agent>._<proto>._agents.<domain>`      |
+| Granularity      | One record per domain              | One leaf per agent per protocol          |
+| Capabilities     | Free-text `s=` description         | Custom SvcParamKeys (cap, cap-sha256)    |
+| Security         | Optional Ed25519 PKA               | Mandatory DNSSEC, optional DANE/TLSA     |
+| Local discovery  | `.well-known/agent` JSON fallback  | mDNS/DNS-SD (RFC 6763)                  |
+| Complexity       | Minimal (deployable today)         | Richer (requires SVCB-capable infra)     |
 
-- **DNS-Native Agent Naming** (`draft-cui-dns-native-agent-naming-resolution-00`):
-  FQDN-based agent identity with SVCB records and cryptographic keys
-  published via DNS TXT.
+**Naming convention** — DNS-AID defines a structured namespace under
+`_agents.<domain>` with underscore-prefixed labels:
 
-AID is the simplest and most deployable of the three.
+```
+_agents.example.com                       # top-level agent namespace
+_index._agents.example.com                # well-known entry for the org's agent index
+billing._mcp._agents.example.com          # named agent "billing" using MCP
+_data-cleaner._a2a._agents.example.com    # capability-based discovery via DNS-SD
+customer1._agents.vendor.com              # multi-tenant scoping
+```
+
+Each agent gets its own leaf record per protocol it supports. Friendly
+alias names point to canonical (hashed) leaves via SVCB AliasMode:
+
+```
+billing._mcp._agents  300  IN SVCB 0 a4k2f9._mcp._agents.example.org.
+```
+
+**SVCB records** — DNS-AID reuses RFC 9460 SVCB in ServiceMode:
+
+```
+a4k2f9._mcp._agents  600  IN SVCB 1 svc-a4k2f9.example.net. (
+    alpn="h2,h3"
+    port=443
+    ipv4hint=192.0.2.5
+    mandatory=alpn,port,key65001,key65010
+    key65001="cap=urn:cap:example:mcp:invoice.v1"
+    key65002="cap-sha256=yvZ0n7q8bE2gYkz8m1j1s0..."
+    key65010="bap=a2a/1,mcp/1"
+)
+```
+
+Custom SvcParamKeys (experimental, numeric form until IANA registration):
+
+| Key       | Number   | Purpose                                            |
+|-----------|----------|----------------------------------------------------|
+| `cap`     | key65001 | Capability descriptor locator (URN or JSON-Ref)    |
+| `cap-sha256` | key65002 | SHA-256 digest for cache revalidation          |
+| `policy`  | key65003 | Policy bundle URI (jurisdiction, data handling)     |
+| `realm`   | key65004 | Multi-tenant scoping or authz realm token          |
+| `bap`     | key65010 | Supported application protocols (`a2a/1,mcp/1`)   |
+
+**Discovery statuses** — the draft defines four in-scope scenarios:
+
+1. **Known service + domain** — direct SVCB query to the agent's leaf
+2. **Known domain, unknown service** — query `_index._agents.<domain>`,
+   enumerate via the index service, then query the selected agent
+3. **Multi-domain** — parallel queries for the same well-known agent
+   name across multiple domains, select by capability/trust/cost
+4. **Registry-based** — query a consolidated trusted registry when
+   neither domain nor service is known
+
+**mDNS/DNS-SD** — DNS-AID integrates with RFC 6763 for local network
+discovery. Agents publish SVCB records under `_agents.local` and peers
+discover them via multicast DNS, which directly supports navra's
+desktop-first model.
+
+**Security** — public zones MUST use DNSSEC with a complete chain of
+trust. Agents MUST treat DNSSEC-bogus responses as failures. Optional
+DANE/TLSA records bind endpoint certificates to DNSSEC-validated names.
+Domain Control Validation (DCV) proves an agent is authorized to act
+on behalf of a domain.
+
+**Draft:** https://www.ietf.org/archive/id/draft-mozleywilliams-dnsop-dnsaid-00.html
+
+### DNS-Native Agent Naming
+
+IETF Internet-Draft `draft-cui-dns-native-agent-naming-resolution-00`.
+FQDN-based agent identity with SVCB records and cryptographic keys
+published via DNS TXT. Similar to DNS-AID in its use of SVCB but
+focuses on agent naming and identity resolution rather than discovery
+workflows.
+
+### Comparison
+
+AID is the simplest and most deployable of the three — a single TXT
+record, no SVCB infrastructure required. DNS-AID is the richest,
+offering per-agent granularity, capability descriptors, and mDNS
+support, but requires SVCB-capable DNS infrastructure and DNSSEC.
+For navra, both are relevant: AID for quick bootstrap, DNS-AID for
+enterprise and local-network scenarios.
 
 ## Layer 2: Agent Discovery — "What can it do as a peer?"
 
@@ -178,7 +261,8 @@ to the OSS MCP Community Registry and they appear in both.
 ```
 ┌─────────────────────────────────────────────────┐
 │          DNS Discovery (AID / DNS-AID)           │  "Where is the agent?"
-│  _agent.example.com TXT → endpoint + protocol    │
+│  AID: _agent.example.com TXT → endpoint + proto  │
+│  DNS-AID: _agents.example.com SVCB → cap + auth  │
 ├─────────────────────────────────────────────────┤
 │        Agent Discovery (A2A Agent Cards)         │  "What can it do as a peer?"
 │  /.well-known/agent-card.json → skills, auth     │
@@ -273,10 +357,13 @@ Discovery mechanisms could supplement this:
 2. **Registry queries** — Query the MCP Registry API to discover
    servers matching specific tool categories or capabilities.
 
-3. **Local network discovery** — Use mDNS/DNS-SD (the `zeroconf`
-   protocol token in AID) to discover MCP servers on the local
-   network. This is particularly relevant for navra's desktop-first
-   deployment model.
+3. **Local network discovery** — Use mDNS/DNS-SD to discover MCP
+   servers on the local network. Both AID (via the `zeroconf` protocol
+   token) and DNS-AID (via native RFC 6763 integration with SVCB
+   records under `_agents.local`) support this. DNS-AID's approach
+   carries richer metadata (capability descriptors, protocol versions)
+   in the SVCB SvcParamKeys. This is particularly relevant for navra's
+   desktop-first deployment model.
 
 ### Security Considerations
 
