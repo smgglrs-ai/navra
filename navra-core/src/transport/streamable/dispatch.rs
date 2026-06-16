@@ -581,6 +581,10 @@ async fn dispatch_stateless(
                         );
                     }
                 };
+            // Reset session on initialize — semantically "start a new conversation".
+            // Without this, a persisted session from a previous server run
+            // retains its taint, and the new client inherits stale restrictions.
+            server.sessions().remove(&context_key);
             match server.handle_initialize(params, agent) {
                 Ok((result, _session_id)) => {
                     let value = serde_json::to_value(&result).unwrap_or_else(|e| {

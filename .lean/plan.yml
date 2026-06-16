@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 53 active items
+# 52 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -11,15 +11,6 @@ items:
     priority: critical
     effort: M
     gate: "2026-07-28 flip default; implement now behind feature gate"
-
-  - id: "NAVRA-102"
-    title: "Opaque taint token for IFC in stateless MCP transport"
-    status: planned
-    priority: medium
-    effective_priority: critical
-    effort: 3-5d
-    depends_on: ['NAVRA-101']
-    feeds: ['NAVRA-018']
 
   - id: "NAVRA-025"
     title: "NeuroTaint offline taint audit"
