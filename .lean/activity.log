@@ -1,3 +1,8 @@
+- timestamp: "2026-06-16T12:00:00+02:00"
+  actor: claude
+  action: implement
+  summary: "NAVRA-086/044/084/034: Four items completed. (1) NAVRA-086: adoption skills wave 1 — navra-init, navra-diagnose, navra-policy as Claude Code skills. (2) NAVRA-044: ExecutionRing enum mapping TrustState x RiskTier to 4 isolation levels (SreWitnessed/OpenShell/Podman/Direct), 11 tests. (3) NAVRA-084: OpenAPI response truncation with max_response_bytes config (default 32KB), JSON array element-level truncation, 4 tests. (4) NAVRA-034: extracted navra-mcp crate (Module trait, ToolHandler, ToolOperation, re-exports) from navra-core. 10 tool crates migrated to lightweight navra-mcp dep. 24-crate workspace, 75 test suites pass. Also added NAVRA-090/091 (replace git/file modules with upstream MCPs), demoted NAVRA-041/042 to medium."
+
 - timestamp: "2026-06-16T01:00:00+02:00"
   actor: claude
   action: implement
