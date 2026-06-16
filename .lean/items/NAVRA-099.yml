@@ -1,0 +1,70 @@
+id: "NAVRA-099"
+title: "ADR-style detect-only monitoring agent"
+status: planned
+priority: medium
+effort: 5-7d
+depends_on: []
+feeds: ['NAVRA-048']
+source: loop/2026-06-16-2
+description: |
+  Implement a detect-only monitoring agent inspired by Uber's ADR
+  (arxiv:2605.17380) two-tier detection architecture. The agent
+  connects through navra as a privileged MCP client and reasons
+  about suspicious events escalated from the existing hook pipeline.
+
+  Architecture:
+
+  Tier 1 (already exists): statistical guardrails, temporal contracts,
+  and safety hooks act as fast triage — deterministic, cheap, catches
+  known patterns. Equivalent to ADR's lightweight triage layer.
+
+  Tier 2 (this item): a monitoring agent that receives escalated
+  events (borderline hook decisions, trust score degradations,
+  anomalous temporal contract patterns) and reasons about them
+  using MCP tools:
+
+  - Tool inspection: read tool definitions and metadata to understand
+    what a flagged tool actually does
+  - Session trace: pull OTel traces for the flagged session to see
+    the full causal chain (user prompt → agent reasoning → tool calls)
+  - Threat intelligence: query known attack patterns (curated from
+    ADR-Bench taxonomy, see docs/evaluations/adr-bench-mapping.md)
+  - Policy lookup: read current ACLs and hook configs to assess
+    whether the flagged behavior violates policy
+
+  Detect-only: the agent produces verdicts and logs them to the
+  audit trail. It does NOT modify policy, block sessions, or take
+  enforcement actions. Operators review verdicts and decide on
+  action. Live policy modification is a future extension.
+
+  The agent must route through navra (per decision: agents through
+  gateway) with its own agent identity and permission set scoped
+  to read-only introspection tools.
+
+  Implementation steps:
+  1. Define MCP tools for introspection: tool_inspect, session_trace,
+     threat_lookup, policy_read
+  2. Define escalation channel: how Tier 1 hooks surface events to
+     the monitoring agent (event queue or polling)
+  3. Implement the monitoring agent as a navra module that consumes
+     escalated events and invokes an LLM for reasoning
+  4. Verdict format: structured JSON with severity, technique
+     classification (ADR-Bench taxonomy), evidence citations, and
+     recommended action
+  5. Audit trail integration: verdicts logged via temporal contracts
+  6. Dashboard: verdicts surfaced in Prometheus metrics
+
+  Design constraints:
+  - Detect-only, no enforcement
+  - Must not block or slow the tool-call hot path (async processing)
+  - LLM calls for Tier 2 reasoning are acceptable latency-wise
+    since they're post-hoc, not inline
+  - Agent identity is read-only — cannot modify ACLs, hooks, or
+    trust scores
+acceptance:
+  - "Tier 1 hooks can escalate events to the monitoring agent"
+  - "Monitoring agent reasons about escalated events using MCP tools"
+  - "Verdicts are structured JSON with ADR-Bench technique classification"
+  - "Verdicts are logged to the audit trail"
+  - "Monitoring agent is detect-only — no policy modification"
+  - "Async processing — does not block the tool-call hot path"
