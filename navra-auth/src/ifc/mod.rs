@@ -38,6 +38,8 @@
 //! `!a.can_write_to(t) || !b.can_write_to(t) → !a.join(b).can_write_to(t)`
 //! (proven by Kani in label.rs).
 
+pub mod benchmark;
+pub mod corpus;
 pub mod value_store;
 pub mod witness;
 
