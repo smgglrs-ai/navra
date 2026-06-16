@@ -21,3 +21,11 @@ export {
   type UseApprovalQueueOptions,
   type UseApprovalQueueResult,
 } from "./useApprovalQueue";
+
+export {
+  useToolEvents,
+  type ToolEvent,
+  type ToolOutcome,
+  type UseToolEventsOptions,
+  type UseToolEventsResult,
+} from "./useToolEvents";

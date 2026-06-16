@@ -273,3 +273,11 @@ Breaking API changes + security architecture change require human review before 
   summary: "ApprovalQueue component + replaced Storybook with Vite dev app. PatternFly Table with approve/deny buttons, argument redaction, SSE-driven state via useApprovalQueue hook."
   iteration: 3
   max_iterations: 5
+
+- timestamp: "2026-06-16T21:30:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-096"
+  summary: "AgentActivity component + useToolEvents hook. Real-time tool call timeline with outcome/agent/tool filtering, duration display, IFC labels."
+  iteration: 4
+  max_iterations: 5

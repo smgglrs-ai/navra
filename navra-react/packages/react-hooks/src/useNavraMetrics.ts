@@ -108,6 +108,7 @@ export function useNavraMetrics(
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
+  const consecutiveErrorsRef = useRef(0);
 
   const fetchMetrics = useCallback(async () => {
     abortRef.current?.abort();
@@ -119,8 +120,10 @@ export function useNavraMetrics(
       const text = await res.text();
       setMetrics(parsePrometheusText(text));
       setError(null);
+      consecutiveErrorsRef.current = 0;
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
+      consecutiveErrorsRef.current++;
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
@@ -130,7 +133,10 @@ export function useNavraMetrics(
   useEffect(() => {
     if (!enabled) return;
     fetchMetrics();
-    const id = setInterval(fetchMetrics, intervalMs);
+    const id = setInterval(() => {
+      if (consecutiveErrorsRef.current >= 3) return;
+      fetchMetrics();
+    }, intervalMs);
     return () => {
       clearInterval(id);
       abortRef.current?.abort();
