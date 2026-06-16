@@ -50,6 +50,10 @@ pub struct MemoryModuleConfig {
     /// Default: 365 days (1 year).
     #[serde(default = "default_audit_retention_days")]
     pub audit_retention_days: Option<u32>,
+    /// Automatically distill facts from session conversations on session end.
+    /// Default: true.
+    #[serde(default = "super::default_true")]
+    pub auto_distill: bool,
 }
 
 fn default_pii_filter() -> String {
@@ -71,6 +75,7 @@ impl Default for MemoryModuleConfig {
             retention_days: None,
             pii_retention_days: default_pii_retention_days(),
             audit_retention_days: default_audit_retention_days(),
+            auto_distill: true,
         }
     }
 }

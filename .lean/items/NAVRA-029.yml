@@ -1,6 +1,6 @@
 id: "NAVRA-029"
 title: "Cross-session fact extraction"
-status: planned
+status: done
 priority: medium
 effort: 2-3d
 depends_on: []

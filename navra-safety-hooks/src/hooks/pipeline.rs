@@ -268,6 +268,32 @@ impl HookPipeline {
         }
         PostModelOutcome::Accept(response)
     }
+
+    /// Run all session-end hooks.
+    ///
+    /// Errors are logged but never propagate — session cleanup always
+    /// proceeds regardless of hook outcomes.
+    pub async fn run_session_end(
+        &self,
+        session_id: &str,
+        agent_name: &str,
+        tool_count: usize,
+    ) {
+        for hook in &self.hooks {
+            let result = tokio::time::timeout(
+                self.timeout,
+                hook.on_session_end(session_id, agent_name, tool_count),
+            )
+            .await;
+            if result.is_err() {
+                tracing::warn!(
+                    hook = hook.name(),
+                    session_id,
+                    "Session-end hook timed out"
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]

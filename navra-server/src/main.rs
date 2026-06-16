@@ -20,6 +20,7 @@ mod memory_tools;
 mod plan_execute;
 mod rag_retriever;
 mod registry_tools;
+mod session_distillation;
 mod team_tools;
 mod tray;
 mod triggers;
