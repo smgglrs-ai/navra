@@ -1,6 +1,6 @@
 id: NAVRA-094
 title: "<SecurityDashboard /> component"
-status: planned
+status: done
 priority: medium
 effort: 3-5d
 depends_on: ['NAVRA-089']
