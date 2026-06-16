@@ -3,12 +3,57 @@ use crate::parser::{Method, OperationMeta};
 use navra_core::protocol::CallToolResult;
 use reqwest::Client;
 
+pub fn truncate_response(body: String, max_bytes: Option<usize>) -> String {
+    let limit = match max_bytes {
+        Some(l) if body.len() > l => l,
+        _ => return body,
+    };
+
+    if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&body) {
+        let mut kept = Vec::new();
+        let mut size = 1; // opening '['
+        for item in &arr {
+            let serialized = serde_json::to_string(item).unwrap_or_default();
+            let entry_cost = serialized.len() + if kept.is_empty() { 0 } else { 1 }; // comma
+            if size + entry_cost + 1 > limit {
+                break;
+            }
+            size += entry_cost;
+            kept.push(serialized);
+        }
+        let dropped = arr.len() - kept.len();
+        let mut result = format!("[{}]", kept.join(","));
+        if dropped > 0 {
+            result.push_str(&format!(
+                "\n[truncated: showed {}/{} items, response was {} bytes]",
+                kept.len(),
+                arr.len(),
+                body.len()
+            ));
+        }
+        return result;
+    }
+
+    let mut truncated = limit;
+    while truncated > 0 && !body.is_char_boundary(truncated) {
+        truncated -= 1;
+    }
+    let mut result = body[..truncated].to_string();
+    result.push_str(&format!(
+        "\n[response truncated: {} bytes, showing first {}]",
+        body.len(),
+        truncated
+    ));
+    result
+}
+
 pub async fn execute_operation(
     client: &Client,
     base_url: &str,
     meta: &OperationMeta,
     args: &serde_json::Value,
     auth: &AuthConfig,
+    max_response_bytes: Option<usize>,
 ) -> CallToolResult {
     let url = match build_url(base_url, meta, args, auth) {
         Ok(u) => u,
@@ -48,7 +93,7 @@ pub async fn execute_operation(
     };
 
     if status.is_success() {
-        CallToolResult::text(body)
+        CallToolResult::text(truncate_response(body, max_response_bytes))
     } else {
         CallToolResult::error(format!("HTTP {status}: {body}"))
     }
@@ -203,5 +248,40 @@ mod tests {
         let auth = AuthConfig::default();
         let url = build_url("https://api.example.com", &meta, &args, &auth).unwrap();
         assert_eq!(url, "https://api.example.com/users/john%20doe%2Fadmin");
+    }
+
+    #[test]
+    fn truncate_large_json_array() {
+        let items: Vec<serde_json::Value> = (0..100)
+            .map(|i| serde_json::json!({"id": i, "name": format!("item_{i}")}))
+            .collect();
+        let body = serde_json::to_string(&items).unwrap();
+        let result = truncate_response(body.clone(), Some(500));
+        assert!(result.len() < body.len());
+        assert!(result.contains("[truncated:"));
+        assert!(result.contains("100 items"));
+        assert!(result.starts_with('['));
+    }
+
+    #[test]
+    fn truncate_large_text() {
+        let body = "x".repeat(10_000);
+        let result = truncate_response(body, Some(1000));
+        assert!(result.contains("[response truncated: 10000 bytes, showing first 1000]"));
+        assert!(result.starts_with(&"x".repeat(1000)));
+    }
+
+    #[test]
+    fn no_truncation_under_limit() {
+        let body = "small response".to_string();
+        let result = truncate_response(body.clone(), Some(1000));
+        assert_eq!(result, body);
+    }
+
+    #[test]
+    fn no_truncation_when_none() {
+        let body = "x".repeat(100_000);
+        let result = truncate_response(body.clone(), None);
+        assert_eq!(result, body);
     }
 }

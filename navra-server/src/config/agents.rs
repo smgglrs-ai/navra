@@ -74,6 +74,11 @@ pub struct UpstreamConfig {
     /// ```
     #[serde(default)]
     pub tool_class: std::collections::HashMap<String, super::permissions::ToolClassConfig>,
+    /// Maximum response body size in bytes for OpenAPI upstreams.
+    /// Responses exceeding this limit are truncated to avoid overwhelming
+    /// LLM context windows. Default: 32768 (32 KB).
+    #[serde(default)]
+    pub max_response_bytes: Option<usize>,
     /// OpenAPI 3.x spec source (URL or file path).
     /// When set, transport/command/url are ignored — navra parses the spec
     /// and exposes operations as MCP tools directly.

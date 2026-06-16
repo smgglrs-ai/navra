@@ -2076,12 +2076,14 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             let timeout = upstream_cfg
                 .request_timeout_secs
                 .map(std::time::Duration::from_secs);
+            let max_response_bytes = upstream_cfg.max_response_bytes.or(Some(32768));
             match navra_openapi::OpenApiModule::from_spec_with_timeout(
                 &upstream_cfg.name,
                 &spec_source,
                 auth,
                 &upstream_cfg.tool_filter,
                 timeout,
+                max_response_bytes,
             )
             .await
             {

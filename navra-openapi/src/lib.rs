@@ -16,6 +16,7 @@ pub struct OpenApiModule {
     client: reqwest::Client,
     base_url: String,
     auth: AuthConfig,
+    max_response_bytes: Option<usize>,
 }
 
 impl OpenApiModule {
@@ -25,7 +26,7 @@ impl OpenApiModule {
         auth: AuthConfig,
         filter: &[String],
     ) -> anyhow::Result<Self> {
-        Self::from_spec_with_timeout(name, spec_source, auth, filter, None).await
+        Self::from_spec_with_timeout(name, spec_source, auth, filter, None, None).await
     }
 
     pub async fn from_spec_with_timeout(
@@ -34,6 +35,7 @@ impl OpenApiModule {
         auth: AuthConfig,
         filter: &[String],
         request_timeout: Option<Duration>,
+        max_response_bytes: Option<usize>,
     ) -> anyhow::Result<Self> {
         let spec_text = fetch_spec(spec_source).await?;
         let spec = if spec_source.ends_with(".yaml")
@@ -69,6 +71,7 @@ impl OpenApiModule {
             client,
             base_url,
             auth,
+            max_response_bytes,
         })
     }
 
@@ -176,6 +179,7 @@ impl Module for OpenApiModule {
                 let base_url = self.base_url.clone();
                 let meta = parsed.meta.clone();
                 let auth = self.auth.clone();
+                let max_response_bytes = self.max_response_bytes;
 
                 let handler: ToolHandler = Arc::new(move |args, _ctx| {
                     let client = client.clone();
@@ -183,7 +187,15 @@ impl Module for OpenApiModule {
                     let meta = meta.clone();
                     let auth = auth.clone();
                     Box::pin(async move {
-                        handler::execute_operation(&client, &base_url, &meta, &args, &auth).await
+                        handler::execute_operation(
+                            &client,
+                            &base_url,
+                            &meta,
+                            &args,
+                            &auth,
+                            max_response_bytes,
+                        )
+                        .await
                     })
                 });
 

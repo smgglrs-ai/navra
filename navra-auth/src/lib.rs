@@ -17,6 +17,7 @@
 pub mod auth;
 #[cfg(feature = "desktop")]
 pub mod credentials;
+pub mod execution_ring;
 pub mod identity;
 pub mod ifc;
 pub mod manifest;
