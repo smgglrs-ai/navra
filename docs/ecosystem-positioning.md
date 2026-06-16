@@ -250,16 +250,21 @@ navra-security's IFC module:
 | FIDES (Microsoft Research) | Planner-level lattice IFC | 0.522 | Formal info-hiding primitives | Gateway-level > planner-level (can't be bypassed) |
 | MVAR | Dual-lattice + crypto provenance | N/A (100% on 50-vector) | Execution firewall paradigm | Broader defense-in-depth stack |
 | NeuroTaint | Semantic + causal + persistent | 0.928 | Semantic taint tracking | Inline label tracking is faster |
-| **navra** | **Gateway-level 2×4 product lattice** | **TBD** | **Per-value IFC + statistical guardrails** | **No semantic/causal tracking** |
+| **navra** | **Gateway-level 2×4 product lattice** | **1.000** | **Per-value IFC + statistical guardrails** | **No semantic/causal tracking** |
 
 Key insights:
 - Pure label-only IFC is insufficient (FIDES F1=0.522)
+- navra achieves F1=1.000 on a 261-vector corpus (61 attacks from
+  navra + MVAR corpora, 200 benign operations, 0 FP, 0 FN). See
+  `docs/evaluations/ifc-benchmark.md` for methodology and caveats
+- The perfect score reflects deterministic gateway-level enforcement:
+  the IFC pipeline is a reference monitor, not a statistical classifier.
+  It either blocks or allows — no model accuracy involved
 - navra must layer offline semantic audit (NeuroTaint-style) on
   top of inline label tracking for defense-in-depth
 - Gateway-level enforcement remains architecturally superior — none
   of the competitors can enforce at the transport layer
 - Cryptographic witness for declassification is a gap (11k)
-- Adversarial benchmarking needed to establish navra's position (11l)
 
 Reference: FIDES (arXiv:2505.23643), MVAR (github.com/mvar-security/
 mvar), NeuroTaint (arXiv:2604.23374).

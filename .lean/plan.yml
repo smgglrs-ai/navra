@@ -14,12 +14,11 @@ items:
 
   - id: "NAVRA-024"
     title: "IFC adversarial corpus benchmark"
-    status: planned
+    status: in_progress
     priority: low
     effective_priority: high
     effort: 3-5d
     feeds: ['NAVRA-025', 'NAVRA-001']
-    gate: "MVAR/TaintBench corpus availability"
 
   - id: "NAVRA-025"
     title: "NeuroTaint offline taint audit"
