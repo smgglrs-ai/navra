@@ -5,4 +5,10 @@ export {
   SecurityDashboard,
   type SecurityDashboardProps,
 } from "./SecurityDashboard";
+export {
+  FlowVisualizer,
+  type FlowVisualizerProps,
+  TaskNode,
+  type TaskNodeData,
+} from "./FlowVisualizer";
 

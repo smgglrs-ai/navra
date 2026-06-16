@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 45 completed items
+# 46 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -300,5 +300,12 @@ items:
     status: done
     priority: medium
     effort: 2-3d
+    depends_on: ['NAVRA-089']
+
+  - id: "NAVRA-097"
+    title: "<FlowVisualizer /> component"
+    status: done
+    priority: low
+    effort: 3-5d
     depends_on: ['NAVRA-089']
 

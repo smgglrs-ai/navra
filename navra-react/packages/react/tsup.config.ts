@@ -6,5 +6,5 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  external: ["react", "@patternfly/react-core", "@patternfly/react-charts", "@patternfly/react-charts/victory"],
+  external: ["react", "@patternfly/react-core", "@patternfly/react-charts", "@patternfly/react-charts/victory", "@xyflow/react"],
 });

@@ -313,3 +313,11 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "Remaining UI components require DAG rendering and form builders (3-5d each)"
     branch: "loop/2026-06-16-4"
     tag: "loop-run/2026-06-16-4-1"
+
+- timestamp: "2026-06-16T23:00:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-097"
+  summary: "FlowVisualizer component with React Flow (@xyflow/react). DAG layout with custom TaskNode (specialist, mandate, status badge, validation score bar, token count). Back-edges as dashed animated lines. useFlowEvents hook for SSE-driven state."
+  iteration: 2
+  max_iterations: 5
