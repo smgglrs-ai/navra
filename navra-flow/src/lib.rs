@@ -58,7 +58,7 @@ pub use error::FlowError;
 pub use executor::{DagExecutor, DagResult, InsightCallback, InsightRetriever, TaskInsight};
 pub use handoff::HANDOFF_TOOL_NAME;
 pub use iterative::{Finding, IterativeConfig, IterativeExecutor, IterativeResult, RoundMetric};
-pub use mailbox::{MailboxMessage, MailboxRegistry};
+pub use mailbox::{MailboxMessage, MailboxRegistry, MessageBody};
 pub use mesh::{AgentCardDirectory, MeshRouter, TeammateLocation};
 pub use mesh_tools::{flow_kill_tool_def, FLOW_KILL};
 pub use recovery::{

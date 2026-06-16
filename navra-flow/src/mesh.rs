@@ -199,7 +199,7 @@ impl MeshRouter {
                 let now = Instant::now();
                 let msg = MailboxMessage {
                     sender: from.to_string(),
-                    body,
+                    body: crate::mailbox::MessageBody::Complete(body),
                     label: data_label,
                     timestamp: now,
                     provenance: vec![(from.to_string(), now)],
@@ -464,7 +464,7 @@ mod tests {
 
         let msg = rx.try_recv().unwrap();
         assert_eq!(msg.sender, "alice");
-        assert_eq!(msg.body, "hello");
+        assert_eq!(msg.body.text(), "hello");
         assert_eq!(msg.label, DataLabel::TRUSTED_PUBLIC);
     }
 
@@ -512,7 +512,7 @@ mod tests {
             .unwrap();
 
         let msg = rx.try_recv().unwrap();
-        assert_eq!(msg.body, "public data");
+        assert_eq!(msg.body.text(), "public data");
     }
 
     #[tokio::test]
@@ -533,7 +533,7 @@ mod tests {
             .unwrap();
 
         let msg = rx.try_recv().unwrap();
-        assert_eq!(msg.body, "sensitive data");
+        assert_eq!(msg.body.text(), "sensitive data");
     }
 
     #[tokio::test]
