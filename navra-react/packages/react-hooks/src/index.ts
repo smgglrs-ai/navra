@@ -36,3 +36,14 @@ export {
   type UseMetricsHistoryOptions,
   type UseMetricsHistoryResult,
 } from "./useMetricsHistory";
+
+export {
+  useFlowEvents,
+  type FlowTask,
+  type FlowTaskStatus,
+  type FlowBackEdge,
+  type FlowState,
+  type FlowDefinition,
+  type UseFlowEventsOptions,
+  type UseFlowEventsResult,
+} from "./useFlowEvents";

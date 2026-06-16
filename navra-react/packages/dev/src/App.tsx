@@ -14,6 +14,7 @@ import { MetricsPanel } from "./panels/MetricsPanel";
 import { ApprovalPanel } from "./panels/ApprovalPanel";
 import { ActivityPanel } from "./panels/ActivityPanel";
 import { SecurityPanel } from "./panels/SecurityPanel";
+import { FlowPanel } from "./panels/FlowPanel";
 
 export function App() {
   const [activeTab, setActiveTab] = useState(0);
@@ -55,7 +56,12 @@ export function App() {
               <SecurityPanel />
             </PageSection>
           </Tab>
-          <Tab eventKey={3} title={<TabTitleText>Activity</TabTitleText>}>
+          <Tab eventKey={3} title={<TabTitleText>Flow</TabTitleText>}>
+            <PageSection>
+              <FlowPanel />
+            </PageSection>
+          </Tab>
+          <Tab eventKey={4} title={<TabTitleText>Activity</TabTitleText>}>
             <PageSection>
               <ActivityPanel />
             </PageSection>
