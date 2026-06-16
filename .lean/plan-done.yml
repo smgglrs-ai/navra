@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 43 completed items
+# 44 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -283,6 +283,13 @@ items:
 
   - id: "NAVRA-095"
     title: "<ApprovalQueue /> component"
+    status: done
+    priority: medium
+    effort: 2-3d
+    depends_on: ['NAVRA-089']
+
+  - id: "NAVRA-096"
+    title: "<AgentActivity /> component"
     status: done
     priority: medium
     effort: 2-3d

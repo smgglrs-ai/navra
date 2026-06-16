@@ -12,6 +12,7 @@ import {
 } from "@patternfly/react-core";
 import { MetricsPanel } from "./panels/MetricsPanel";
 import { ApprovalPanel } from "./panels/ApprovalPanel";
+import { ActivityPanel } from "./panels/ActivityPanel";
 
 export function App() {
   const [activeTab, setActiveTab] = useState(0);
@@ -46,6 +47,11 @@ export function App() {
           <Tab eventKey={1} title={<TabTitleText>Approvals</TabTitleText>}>
             <PageSection>
               <ApprovalPanel />
+            </PageSection>
+          </Tab>
+          <Tab eventKey={2} title={<TabTitleText>Activity</TabTitleText>}>
+            <PageSection>
+              <ActivityPanel />
             </PageSection>
           </Tab>
         </Tabs>

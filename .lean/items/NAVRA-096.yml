@@ -1,6 +1,6 @@
 id: NAVRA-096
 title: "<AgentActivity /> component"
-status: planned
+status: done
 priority: medium
 effort: 2-3d
 depends_on: ['NAVRA-089']
