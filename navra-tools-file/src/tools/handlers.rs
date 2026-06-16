@@ -1,6 +1,6 @@
-use navra_core::auth::CallContext;
-use navra_core::permissions::PermissionResult;
-use navra_core::protocol::CallToolResult;
+use navra_mcp::auth::CallContext;
+use navra_mcp::permissions::PermissionResult;
+use navra_mcp::protocol::CallToolResult;
 use navra_macros::tool;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -582,7 +582,7 @@ fn collect_tree(
     max_depth: Option<usize>,
     current_depth: usize,
     entries: &mut Vec<(String, usize)>,
-    perm_engine: &navra_core::permissions::PermissionEngine,
+    perm_engine: &navra_mcp::permissions::PermissionEngine,
     permissions: &str,
 ) {
     if let Some(max) = max_depth {
@@ -709,7 +709,7 @@ fn grep_recursive(
     matches: &mut Vec<String>,
     files_searched: &mut u32,
     files_matched: &mut u32,
-    perm_engine: &navra_core::permissions::PermissionEngine,
+    perm_engine: &navra_mcp::permissions::PermissionEngine,
     permissions: &str,
 ) {
     let Ok(read_dir) = std::fs::read_dir(dir) else {
@@ -884,7 +884,7 @@ pub(crate) async fn handle_semantic_search(
     };
 
     // Generate embedding for the query
-    let embed_request = navra_core::models::EmbedRequest {
+    let embed_request = navra_mcp::models::EmbedRequest {
         text: query.to_string(),
     };
     let embed_response = match model.embed(&embed_request).await {
@@ -896,7 +896,7 @@ pub(crate) async fn handle_semantic_search(
     match state.index.search_similar(&embed_response.embedding, limit) {
         Ok(results) => {
             // Filter results through per-path ACL check
-            use navra_core::permissions::PermissionResult;
+            use navra_mcp::permissions::PermissionResult;
             let filtered: Vec<_> = results
                 .iter()
                 .filter(|r| {

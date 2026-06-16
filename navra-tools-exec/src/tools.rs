@@ -1,6 +1,6 @@
-use navra_core::auth::CallContext;
-use navra_core::protocol::{CallToolResult, Content};
-use navra_core::Module;
+use navra_mcp::auth::CallContext;
+use navra_mcp::protocol::{CallToolResult, Content};
+use navra_mcp::Module;
 use navra_macros::tool;
 use navra_model_runtime::openshell::{ComputeDriverClient, ExecCommandRequest};
 use std::collections::HashMap;
@@ -55,8 +55,8 @@ impl Module for ExecModule {
     fn tools(
         &self,
     ) -> Vec<(
-        navra_core::protocol::ToolDefinition,
-        navra_core::ToolHandler,
+        navra_mcp::protocol::ToolDefinition,
+        navra_mcp::ToolHandler,
     )> {
         vec![handle_exec_run_handler(self.state.clone())]
     }
@@ -156,7 +156,7 @@ async fn handle_exec_run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_core::auth::AgentIdentity;
+    use navra_mcp::auth::AgentIdentity;
 
     fn test_ctx(did: Option<&str>) -> CallContext {
         CallContext::new(

@@ -1,8 +1,8 @@
-use navra_core::auth::CallContext;
+use navra_mcp::auth::CallContext;
 use navra_core::notify::Notifier;
-use navra_core::permissions::{ApprovalStore, PermissionEngine, PermissionResult};
-use navra_core::protocol::{CallToolResult, Content};
-use navra_core::Module;
+use navra_mcp::permissions::{ApprovalStore, PermissionEngine, PermissionResult};
+use navra_mcp::protocol::{CallToolResult, Content};
+use navra_mcp::Module;
 use navra_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -49,8 +49,8 @@ impl Module for GitModule {
     fn tools(
         &self,
     ) -> Vec<(
-        navra_core::protocol::ToolDefinition,
-        navra_core::ToolHandler,
+        navra_mcp::protocol::ToolDefinition,
+        navra_mcp::ToolHandler,
     )> {
         let s = self.state.clone();
         vec![
@@ -576,8 +576,8 @@ async fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_core::auth::AgentIdentity;
-    use navra_core::permissions::PathAcl;
+    use navra_mcp::auth::AgentIdentity;
+    use navra_mcp::permissions::PathAcl;
     use std::collections::HashSet;
 
     fn test_perm_engine(repo_path: &str) -> PermissionEngine {
@@ -897,7 +897,7 @@ mod tests {
         assert!(result.is_error);
         match &result.content[0] {
             Content::Text(t) => {
-                assert!(t.text.contains("not permitted"));
+                assert!(t.text.contains("Permission denied"));
             }
             _ => panic!("expected text content"),
         }
@@ -932,7 +932,7 @@ mod tests {
         assert!(result.is_error);
         match &result.content[0] {
             Content::Text(t) => {
-                assert!(t.text.contains("Access denied"));
+                assert!(t.text.contains("Permission denied"));
             }
             _ => panic!("expected text content"),
         }
@@ -1117,7 +1117,7 @@ mod tests {
 
         assert!(result.is_error);
         match &result.content[0] {
-            Content::Text(t) => assert!(t.text.contains("not permitted")),
+            Content::Text(t) => assert!(t.text.contains("Permission denied")),
             _ => panic!("expected text content"),
         }
     }

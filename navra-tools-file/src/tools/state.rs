@@ -1,7 +1,7 @@
 use crate::store::IndexStore;
-use navra_core::models::ModelBackend;
+use navra_mcp::models::ModelBackend;
 use navra_core::notify::Notifier;
-use navra_core::permissions::{ApprovalStore, PermissionEngine};
+use navra_mcp::permissions::{ApprovalStore, PermissionEngine};
 use std::sync::Arc;
 
 pub(crate) struct DocsState {

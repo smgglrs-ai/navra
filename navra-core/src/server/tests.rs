@@ -3,6 +3,7 @@ use crate::auth::AgentIdentity;
 use crate::auth::CallContext;
 use crate::module::{Module, PromptHandler, ResourceHandler};
 use crate::protocol::{CallToolParams, CallToolResult, ToolDefinition, ToolInputSchema};
+use navra_mcp::ToolHandler;
 use std::collections::HashMap;
 use std::sync::Arc;
 

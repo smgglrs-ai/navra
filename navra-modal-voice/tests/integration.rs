@@ -2,12 +2,12 @@
 //!
 //! Tests VoiceModule construction, tool definitions, and audio utilities.
 
-use navra_core::models::{
+use navra_mcp::models::{
     ModelBackend, ModelError, SynthesizeRequest, SynthesizeResponse, TranscribeRequest,
     TranscribeResponse,
 };
-use navra_core::permissions::PermissionEngine;
-use navra_core::Module;
+use navra_mcp::permissions::PermissionEngine;
+use navra_mcp::Module;
 use navra_modal_voice::audio;
 use navra_modal_voice::VoiceModule;
 use std::sync::Arc;

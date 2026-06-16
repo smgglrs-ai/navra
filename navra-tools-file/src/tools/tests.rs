@@ -1,10 +1,10 @@
 use super::path_security::resolve_path;
 use super::*;
 use crate::store::IndexStore;
-use navra_core::auth::{AgentIdentity, CallContext};
+use navra_mcp::auth::{AgentIdentity, CallContext};
 use navra_core::notify::NoopNotifier;
-use navra_core::permissions::{ApprovalStore, PathAcl, PermissionEngine};
-use navra_core::protocol::CallToolResult;
+use navra_mcp::permissions::{ApprovalStore, PathAcl, PermissionEngine};
+use navra_mcp::protocol::CallToolResult;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -58,7 +58,7 @@ fn readonly_ctx() -> CallContext {
 
 fn text_of(result: &CallToolResult) -> &str {
     match &result.content[0] {
-        navra_core::protocol::Content::Text(t) => &t.text,
+        navra_mcp::protocol::Content::Text(t) => &t.text,
         _ => panic!("expected text content"),
     }
 }

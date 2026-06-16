@@ -1,5 +1,5 @@
 use axum::{routing, Json, Router};
-use navra_core::Module;
+use navra_mcp::Module;
 use navra_openapi::auth::AuthConfig;
 use navra_openapi::OpenApiModule;
 use serde_json::json;
@@ -268,9 +268,9 @@ async fn tool_filter_limits_exposed_tools() {
     tokio::fs::remove_file(&tmpfile).await.ok();
 }
 
-fn dummy_ctx() -> navra_core::auth::CallContext {
-    navra_core::auth::CallContext::new(
-        navra_core::auth::AgentIdentity {
+fn dummy_ctx() -> navra_mcp::auth::CallContext {
+    navra_mcp::auth::CallContext::new(
+        navra_mcp::auth::AgentIdentity {
             name: "test".to_string(),
             permissions: "default".to_string(),
             signing_key: None,

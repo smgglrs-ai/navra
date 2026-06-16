@@ -1,4 +1,4 @@
-use navra_core::auth::CallContext;
+use navra_mcp::auth::CallContext;
 use navra_macros::tool;
 use navra_protocol::{CallToolResult, Content, TextContent};
 
@@ -157,7 +157,7 @@ async fn handler_can_be_called() {
     let (_, handler) = test_echo_handler();
     let args = serde_json::json!({"message": "hello"});
     let ctx = CallContext::new(
-        navra_core::auth::AgentIdentity {
+        navra_mcp::auth::AgentIdentity {
             name: "test".to_string(),
             permissions: "admin".to_string(),
             signing_key: None,
@@ -181,7 +181,7 @@ async fn missing_required_arg_returns_error() {
     let (_, handler) = test_echo_handler();
     let args = serde_json::json!({});
     let ctx = CallContext::new(
-        navra_core::auth::AgentIdentity {
+        navra_mcp::auth::AgentIdentity {
             name: "test".to_string(),
             permissions: "admin".to_string(),
             signing_key: None,
@@ -250,7 +250,7 @@ async fn state_handler_passes_state_to_function() {
     let (_, handler) = test_stateful_handler(state);
     let args = serde_json::json!({"text": "world"});
     let ctx = CallContext::new(
-        navra_core::auth::AgentIdentity {
+        navra_mcp::auth::AgentIdentity {
             name: "test".to_string(),
             permissions: "admin".to_string(),
             signing_key: None,

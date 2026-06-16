@@ -28,7 +28,7 @@ pub struct McpServerBuilder {
     safety_pipelines: HashMap<String, FilterPipeline>,
     tool_permissions: HashMap<String, ToolPermissions>,
     agent_operations: HashMap<String, HashSet<String>>,
-    tool_operations: HashMap<String, crate::upstream_module::ToolOperation>,
+    tool_operations: HashMap<String, navra_mcp::ToolOperation>,
     tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
     domain_rules: HashMap<String, navra_auth::permissions::DomainRules>,
     hooks: Vec<Box<dyn crate::hooks::Hook>>,
@@ -279,7 +279,7 @@ impl McpServerBuilder {
     /// Merge upstream tool operation classifications into the server.
     pub fn merge_tool_operations(
         mut self,
-        ops: HashMap<String, crate::upstream_module::ToolOperation>,
+        ops: HashMap<String, navra_mcp::ToolOperation>,
     ) -> Self {
         self.tool_operations.extend(ops);
         self

@@ -7,7 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-navra-core = { path = "../navra-core" }
+navra-mcp = { path = "../navra-mcp" }
 navra-macros = { path = "../navra-macros" }
 navra-protocol = { path = "../navra-protocol" }
 navra-model-runtime = { path = "../navra-model-runtime", features = ["openshell"] }

@@ -3,8 +3,8 @@ pub mod handler;
 pub mod parser;
 
 use auth::AuthConfig;
-use navra_core::protocol::ToolDefinition;
-use navra_core::{Module, ToolHandler, ToolOperation};
+use navra_mcp::protocol::ToolDefinition;
+use navra_mcp::{Module, ToolHandler, ToolOperation};
 use parser::{Method, ParsedOperation};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -288,11 +288,11 @@ mod tests {
         let ops = module.tool_operations();
         assert_eq!(
             ops.get("petstore_listpets"),
-            Some(&navra_core::ToolOperation::Read)
+            Some(&navra_mcp::ToolOperation::Read)
         );
         assert_eq!(
             ops.get("petstore_createpet"),
-            Some(&navra_core::ToolOperation::Write)
+            Some(&navra_mcp::ToolOperation::Write)
         );
 
         tokio::fs::remove_file(&tmpfile).await.ok();

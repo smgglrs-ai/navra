@@ -19,7 +19,7 @@ impl Module for TestPromptModule {
     fn name(&self) -> &str {
         "test_prompt"
     }
-    fn tools(&self) -> Vec<(ToolDefinition, crate::server::ToolHandler)> {
+    fn tools(&self) -> Vec<(ToolDefinition, navra_mcp::ToolHandler)> {
         vec![]
     }
     fn prompts(&self) -> Vec<(crate::protocol::PromptDefinition, PromptHandler)> {
@@ -50,7 +50,7 @@ impl Module for TestResourceModule {
     fn name(&self) -> &str {
         "test_resource"
     }
-    fn tools(&self) -> Vec<(ToolDefinition, crate::server::ToolHandler)> {
+    fn tools(&self) -> Vec<(ToolDefinition, navra_mcp::ToolHandler)> {
         vec![]
     }
     fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, ResourceHandler)> {

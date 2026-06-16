@@ -11,10 +11,10 @@
 
 use crate::screenshot;
 use navra_auth::auth::CallContext;
-use navra_core::models::{GenerateRequest, ImageInput, ModelBackend};
-use navra_core::permissions::{PermissionEngine, PermissionResult};
-use navra_core::protocol::CallToolResult;
-use navra_core::{Module, ToolHandler};
+use navra_mcp::models::{GenerateRequest, ImageInput, ModelBackend};
+use navra_mcp::permissions::{PermissionEngine, PermissionResult};
+use navra_mcp::protocol::CallToolResult;
+use navra_mcp::{Module, ToolHandler};
 use navra_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -40,7 +40,7 @@ impl Module for VisionModule {
         "vision"
     }
 
-    fn tools(&self) -> Vec<(navra_core::protocol::ToolDefinition, ToolHandler)> {
+    fn tools(&self) -> Vec<(navra_mcp::protocol::ToolDefinition, ToolHandler)> {
         let s = Arc::new(VisionState {
             vision_model: self.vision_model.clone(),
             perm_engine: self.perm_engine.clone(),
@@ -337,8 +337,8 @@ async fn handle_screen(
 mod tests {
     use super::*;
     use navra_auth::auth::AgentIdentity;
-    use navra_core::models::{GenerateResponse, ModelBackend, ModelError};
-    use navra_core::permissions::{PathAcl, PermissionEngine};
+    use navra_mcp::models::{GenerateResponse, ModelBackend, ModelError};
+    use navra_mcp::permissions::{PathAcl, PermissionEngine};
     use std::collections::HashSet;
     use std::io::Write;
 
@@ -785,7 +785,7 @@ mod tests {
         // so we use a non-existent permission set name to trigger DeniedUnknown.
         let state = Arc::new(VisionState {
             vision_model: Arc::new(FakeVisionModel),
-            perm_engine: Arc::new(navra_core::permissions::PermissionEngine::new()),
+            perm_engine: Arc::new(navra_mcp::permissions::PermissionEngine::new()),
         });
         let ctx = CallContext::new(
             AgentIdentity::new("restricted-agent", "nonexistent_perm_set"),

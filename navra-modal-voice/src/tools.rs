@@ -9,11 +9,11 @@
 //! - `voice_status` — show audio device info and model availability
 
 use crate::audio;
-use navra_core::auth::CallContext;
-use navra_core::models::ModelBackend;
-use navra_core::permissions::{PermissionEngine, PermissionResult};
-use navra_core::protocol::CallToolResult;
-use navra_core::Module;
+use navra_mcp::auth::CallContext;
+use navra_mcp::models::ModelBackend;
+use navra_mcp::permissions::{PermissionEngine, PermissionResult};
+use navra_mcp::protocol::CallToolResult;
+use navra_mcp::Module;
 use navra_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -91,8 +91,8 @@ impl Module for VoiceModule {
     fn tools(
         &self,
     ) -> Vec<(
-        navra_core::protocol::ToolDefinition,
-        navra_core::ToolHandler,
+        navra_mcp::protocol::ToolDefinition,
+        navra_mcp::ToolHandler,
     )> {
         let s = self.state.clone();
         vec![
@@ -147,7 +147,7 @@ async fn handle_listen(
     tracing::info!("Recorded {:.1}s, transcribing...", duration_secs);
 
     // Transcribe
-    let request = navra_core::models::TranscribeRequest { audio, language };
+    let request = navra_mcp::models::TranscribeRequest { audio, language };
     match state.asr_model.transcribe(&request).await {
         Ok(response) => {
             let mut output = response.text.clone();
@@ -181,7 +181,7 @@ async fn handle_speak(
     let voice = voice.or_else(|| state.default_voice.clone());
 
     // Synthesize
-    let request = navra_core::models::SynthesizeRequest {
+    let request = navra_mcp::models::SynthesizeRequest {
         text: text.to_string(),
         voice,
     };
@@ -238,7 +238,7 @@ async fn handle_transcribe(
     let duration_secs = audio.len() as f64 / 16000.0;
     tracing::info!(path = %resolved.display(), duration = duration_secs, "Transcribing audio file");
 
-    let request = navra_core::models::TranscribeRequest { audio, language };
+    let request = navra_mcp::models::TranscribeRequest { audio, language };
     match state.asr_model.transcribe(&request).await {
         Ok(response) => {
             let mut output = response.text.clone();
@@ -423,12 +423,12 @@ fn read_wav_file(path: &std::path::Path) -> Result<Vec<f32>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_core::auth::AgentIdentity;
-    use navra_core::models::{
+    use navra_mcp::auth::AgentIdentity;
+    use navra_mcp::models::{
         ModelBackend, ModelError, SynthesizeRequest, SynthesizeResponse, TranscribeRequest,
         TranscribeResponse,
     };
-    use navra_core::permissions::PathAcl;
+    use navra_mcp::permissions::PathAcl;
     use std::collections::HashSet;
 
     fn test_perm_engine() -> PermissionEngine {
@@ -513,7 +513,7 @@ mod tests {
         let module = VoiceModule::new(
             asr,
             tts,
-            Arc::new(navra_core::permissions::PermissionEngine::new()),
+            Arc::new(navra_mcp::permissions::PermissionEngine::new()),
         );
 
         assert_eq!(module.name(), "voice");
@@ -533,7 +533,7 @@ mod tests {
         let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(!result.is_error);
         match &result.content[0] {
-            navra_core::protocol::Content::Text(t) => {
+            navra_mcp::protocol::Content::Text(t) => {
                 assert!(t.text.contains("Voice Module Status"));
                 assert!(t.text.contains("Audio host"));
             }

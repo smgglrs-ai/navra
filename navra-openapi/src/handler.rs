@@ -1,6 +1,6 @@
 use crate::auth::AuthConfig;
 use crate::parser::{Method, OperationMeta};
-use navra_core::protocol::CallToolResult;
+use navra_mcp::protocol::CallToolResult;
 use reqwest::Client;
 
 pub fn truncate_response(body: String, max_bytes: Option<usize>) -> String {

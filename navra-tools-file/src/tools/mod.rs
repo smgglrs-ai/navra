@@ -4,14 +4,14 @@ mod path_security;
 mod state;
 
 use crate::store::IndexStore;
-use navra_core::models::ModelBackend;
+use navra_mcp::models::ModelBackend;
 use navra_core::notify::Notifier;
-use navra_core::permissions::{ApprovalStore, PermissionEngine};
-use navra_core::protocol::{
+use navra_mcp::permissions::{ApprovalStore, PermissionEngine};
+use navra_mcp::protocol::{
     ReadResourceResult, ResourceContent, ResourceDefinition, ToolDefinition,
 };
-use navra_core::ToolHandler;
-use navra_core::{Module, ResourceHandler};
+use navra_mcp::ToolHandler;
+use navra_mcp::{Module, ResourceHandler};
 use std::sync::Arc;
 
 use handlers::*;
@@ -174,7 +174,7 @@ async fn handle_resource_read(uri: String, state: Arc<DocsState>) -> ReadResourc
 
     // ACL check: resources/read uses the "readonly" permission set
     // since there is no agent context available at the resource layer.
-    use navra_core::permissions::PermissionResult;
+    use navra_mcp::permissions::PermissionResult;
     let perm = state
         .perm_engine
         .check(&"readonly".to_string(), "read", &path);

@@ -5,24 +5,15 @@
 //! module. This lets the server builder, dispatch, and safety filtering
 //! work unchanged.
 
-use crate::module::{Module, PromptHandler, ResourceHandler};
+use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperation};
 use crate::protocol::{
     CallToolParams, CallToolResult, GetPromptParams, PromptDefinition, ReadResourceParams,
     ResourceDefinition, ToolDefinition,
 };
-use crate::server::ToolHandler;
 use crate::upstream::{Upstream, UpstreamError};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-/// Classified operation type for an upstream tool.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ToolOperation {
-    Read,
-    Write,
-    Deny,
-}
 
 fn classify_tool(def: &ToolDefinition) -> ToolOperation {
     if let Some(ref ann) = def.annotations {

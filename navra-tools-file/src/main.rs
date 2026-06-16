@@ -13,8 +13,8 @@ async fn main() {
         navra_tools_file::IndexStore::open(&db_path.to_string_lossy())
             .expect("failed to open index database"),
     );
-    let perm = Arc::new(navra_core::permissions::PermissionEngine::new());
-    let approvals = Arc::new(navra_core::permissions::ApprovalStore::new(3600));
+    let perm = Arc::new(navra_mcp::permissions::PermissionEngine::new());
+    let approvals = Arc::new(navra_mcp::permissions::ApprovalStore::new(3600));
     let notifier: Arc<dyn navra_core::notify::Notifier> =
         Arc::new(navra_core::notify::NoopNotifier);
     let module = navra_tools_file::FileModule::new(perm, index, approvals, notifier);

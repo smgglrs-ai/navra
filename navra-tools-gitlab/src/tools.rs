@@ -1,6 +1,6 @@
-use navra_core::auth::CallContext;
-use navra_core::protocol::CallToolResult;
-use navra_core::Module;
+use navra_mcp::auth::CallContext;
+use navra_mcp::protocol::CallToolResult;
+use navra_mcp::Module;
 use navra_macros::tool;
 
 /// GitLab forge module for navra.
@@ -22,8 +22,8 @@ impl Module for GitlabModule {
     fn tools(
         &self,
     ) -> Vec<(
-        navra_core::protocol::ToolDefinition,
-        navra_core::ToolHandler,
+        navra_mcp::protocol::ToolDefinition,
+        navra_mcp::ToolHandler,
     )> {
         vec![
             gitlab_mr_list_handler(),
