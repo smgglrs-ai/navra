@@ -29,3 +29,10 @@ export {
   type UseToolEventsOptions,
   type UseToolEventsResult,
 } from "./useToolEvents";
+
+export {
+  useMetricsHistory,
+  type MetricsSnapshot,
+  type UseMetricsHistoryOptions,
+  type UseMetricsHistoryResult,
+} from "./useMetricsHistory";

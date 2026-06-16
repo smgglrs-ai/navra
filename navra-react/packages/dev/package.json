@@ -10,11 +10,17 @@
   "dependencies": {
     "@navra/react": "*",
     "@navra/react-hooks": "*",
+    "@patternfly/react-charts": "^8.5.1",
     "@patternfly/react-core": "^6.0.0",
     "@patternfly/react-icons": "^6.0.0",
     "@patternfly/react-table": "^6.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "victory": "^37.3.6",
+    "victory-area": "^37.3.6",
+    "victory-chart": "^37.3.6",
+    "victory-core": "^37.3.6",
+    "victory-voronoi-container": "^37.3.6"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
