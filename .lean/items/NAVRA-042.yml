@@ -1,10 +1,29 @@
 id: "NAVRA-042"
 title: "DNS-AID discovery support"
 status: planned
-priority: medium
-effort: 2.5-3.5d
+priority: low
+effort: 2-3d
 depends_on: []
 feeds: []
 source: tech-watch-2026-06-02
+gate: "IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision"
 description: |
-  SVCB records, IETF draft-mozleywilliams-02. Rust impl via hickory-dns for SVCB + DNSSEC. Update DISCOVERY.md. Early-stage (38 stars, pre-LF).
+  Add DNS-based Agent/MCP server discovery via SVCB records (IETF
+  draft-mozleywilliams-02). Complements existing mDNS discovery.
+
+  Steps:
+  1. Add hickory-dns dependency (resolver only, not full server)
+  2. Implement SVCB record query: _mcp._tcp.<domain> → endpoint URL
+  3. Parse SVCB target, port, and alpn parameters
+  4. Validate DNSSEC signatures when available
+  5. Integrate with navra-server discover.rs alongside mDNS
+  6. Add config: `discover = ["example.com"]` triggers DNS-AID lookup
+  7. Update DISCOVERY.md with DNS-AID section
+
+  The spec is early-stage (38 stars, pre-LF). Gate on spec maturity
+  before investing — navra's mDNS discovery already works for LAN.
+acceptance:
+  - "SVCB query resolves MCP server endpoints"
+  - "DNSSEC validation when available"
+  - "Integrated with existing discover config"
+  - "DISCOVERY.md updated"

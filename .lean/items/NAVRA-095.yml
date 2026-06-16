@@ -1,0 +1,23 @@
+id: NAVRA-095
+title: "<ApprovalQueue /> component"
+status: planned
+priority: medium
+effort: 2-3d
+depends_on: ['NAVRA-089']
+description: |
+  Pending human-in-the-loop approvals widget. Shows tool name, agent,
+  arguments (redacted), timestamp. Approve/deny buttons that POST to
+  navra's approval endpoint. Replaces D-Bus desktop notifications for
+  web-based workflows.
+
+  Data source: useApprovalQueue() hook → SSE notifications/approval_requested.
+  Actions: POST to navra approval/deny endpoints.
+
+  PatternFly components: Table, Button, Label, Timestamp.
+acceptance:
+  - "Shows pending approvals from SSE stream"
+  - "Approve/deny buttons call navra API"
+  - "Arguments redacted (no raw secrets displayed)"
+  - "Storybook story with mock approval data"
+scope:
+  - navra-react/packages/react/src/ApprovalQueue/

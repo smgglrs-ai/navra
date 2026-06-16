@@ -1,0 +1,23 @@
+id: NAVRA-098
+title: "<PermissionEditor /> component"
+status: planned
+priority: low
+effort: 3-5d
+depends_on: ['NAVRA-089']
+description: |
+  Visual ACL configuration editor. Shows permission sets, path rules
+  (deny/allow/approve), tool rules, IFC labels. Generates TOML
+  preview of the configuration. Validates rules before applying.
+
+  Read-only initially — shows current config. Write support (apply
+  changes to running navra) is a follow-up.
+
+  PatternFly components: Table, CodeEditor (for TOML preview),
+  Form, Switch, TextInput.
+acceptance:
+  - "Renders current permission sets from navra config"
+  - "TOML preview updates as rules are edited"
+  - "Validates deny-wins semantics (warns on conflicting rules)"
+  - "Storybook story with sample permission set"
+scope:
+  - navra-react/packages/react/src/PermissionEditor/

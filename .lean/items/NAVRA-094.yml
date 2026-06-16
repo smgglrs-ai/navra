@@ -1,0 +1,22 @@
+id: NAVRA-094
+title: "<SecurityDashboard /> component"
+status: planned
+priority: medium
+effort: 3-5d
+depends_on: ['NAVRA-089']
+description: |
+  Real-time security overview widget. Blocked calls count, PII
+  detections, IFC violations, safety hook triggers. Time-series
+  charts (last hour/day/week).
+
+  Data source: useNavraMetrics() hook → Prometheus metrics
+  (navra_tool_calls_total, navra_safety_blocked,
+  navra_ifc_violations, navra_pii_detections).
+
+  PatternFly components: Card, Chart (react-charts), Grid.
+acceptance:
+  - "Renders with live data from navra Prometheus endpoint"
+  - "Time-series charts update in real time"
+  - "Storybook story with mock data"
+scope:
+  - navra-react/packages/react/src/SecurityDashboard/
