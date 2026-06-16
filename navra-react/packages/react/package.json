@@ -9,9 +9,9 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -25,12 +25,15 @@
     "@patternfly/react-core": "^6.0.0"
   },
   "dependencies": {
-    "@navra/react-hooks": "*"
+    "@navra/react-hooks": "*",
+    "@patternfly/react-icons": "^6.0.0",
+    "@patternfly/react-table": "^6.0.0"
   },
   "devDependencies": {
     "@patternfly/react-core": "^6.0.0",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0"
   }

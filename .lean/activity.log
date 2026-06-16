@@ -265,3 +265,11 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "Remaining items require multi-day effort or external actions (repo forks, package publishing)"
     branch: "loop/2026-06-16-3"
     tag: "loop-run/2026-06-16-3-2"
+
+- timestamp: "2026-06-16T21:00:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-095"
+  summary: "ApprovalQueue component + replaced Storybook with Vite dev app. PatternFly Table with approve/deny buttons, argument redaction, SSE-driven state via useApprovalQueue hook."
+  iteration: 3
+  max_iterations: 5

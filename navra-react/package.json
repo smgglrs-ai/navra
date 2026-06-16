@@ -5,9 +5,9 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace=@navra/dev",
     "test": "npm run test --workspaces --if-present",
-    "storybook": "npm run storybook --workspace=@navra/react-hooks",
     "lint": "npm run lint --workspaces --if-present"
   },
   "engines": {

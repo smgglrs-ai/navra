@@ -1,6 +1,6 @@
 id: NAVRA-095
 title: "<ApprovalQueue /> component"
-status: planned
+status: done
 priority: medium
 effort: 2-3d
 depends_on: ['NAVRA-089']
