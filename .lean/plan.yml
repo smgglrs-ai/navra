@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 58 active items
+# 60 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -68,6 +68,20 @@ items:
     priority: medium
     effort: 2-3d
     depends_on: ['NAVRA-089']
+
+  - id: "NAVRA-099"
+    title: "ADR-style detect-only monitoring agent"
+    status: planned
+    priority: medium
+    effort: 5-7d
+    feeds: ['NAVRA-048']
+
+  - id: "NAVRA-100"
+    title: "ASSERT integration for compliance evaluation"
+    status: planned
+    priority: medium
+    effort: 3-5d
+    feeds: ['NAVRA-020']
 
   - id: "NAVRA-019"
     title: "Persona paper"

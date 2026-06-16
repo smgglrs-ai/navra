@@ -1,0 +1,62 @@
+id: "NAVRA-100"
+title: "ASSERT integration for compliance evaluation"
+status: planned
+priority: medium
+effort: 3-5d
+depends_on: []
+feeds: ['NAVRA-020']
+source: loop/2026-06-16-2
+description: |
+  Integrate Microsoft ASSERT (github.com/responsibleai/ASSERT) for
+  C2 (Compliance) evaluation of navra agent sessions. ASSERT converts
+  natural-language policies into executable test suites with
+  LLM-as-judge scoring grounded in OTel traces.
+
+  See docs/evaluations/assert-evaluation.md for the full evaluation
+  and rationale. ASSERT complements Glasswing: ASSERT verifies
+  known-good (policy adherence), Glasswing probes unknown-bad
+  (adversarial failures).
+
+  Phase 1 — Policy specs + trace consumption:
+
+  1. Write navra security policies as ASSERT specs:
+     - IFC policies: clearance level enforcement, taint propagation
+     - ACL policies: least-privilege tool access, argument constraints
+     - Safety policies: credential exclusion, egress filtering
+     - Budget policies: token limits, response size bounds
+
+  2. Configure ASSERT to consume navra OTel traces:
+     - navra already exports OTel traces via the `otel` feature flag
+     - ASSERT needs OpenInference-compatible span naming; add a thin
+       mapping layer or use raw OTel with custom judge prompts
+     - Configure ASSERT's eval_config.yaml to point at navra's
+       OTel collector endpoint
+
+  3. Run ASSERT judge against recorded sessions:
+     - Use traces from adversarial_eval test suite as initial corpus
+     - Score against written policies
+     - Produce per-session compliance reports
+
+  Phase 2 — CI integration:
+
+  4. Add ASSERT as a post-integration-test step in CI
+  5. Generate test cases from navra policies automatically
+  6. Fail CI on compliance violations above configurable threshold
+  7. Store ASSERT artifacts alongside test results
+
+  Technical notes:
+  - ASSERT uses LiteLLM for 100+ model endpoints; for local-only
+    evaluation, configure LiteLLM to use Ollama
+  - Judge accuracy is 80-90% vs human annotators (Microsoft's
+    figures) — sufficient for CI gating with human review for
+    high-risk findings
+  - ASSERT is MIT licensed, Python-based; integration is via CLI
+    (`assert-ai run`) or Python API
+  - navra's OTel spans cover tool calls, hook decisions, IFC label
+    transitions, and trust score changes — rich evidence for the
+    judge to cite
+acceptance:
+  - "navra security policies written as ASSERT spec files"
+  - "ASSERT consumes navra OTel traces without rerunning inference"
+  - "Compliance reports produced for adversarial_eval test sessions"
+  - "CI integration with configurable pass/fail threshold"
