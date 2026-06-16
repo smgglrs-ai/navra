@@ -13,7 +13,7 @@ description: |
      - packages/react-hooks/ (@navra/react-hooks)
      - packages/react/ (@navra/react) — empty, components added later
   2. Set up TypeScript, PatternFly React, build tooling (tsup or vite)
-  3. Set up Storybook for component development
+  3. Set up Vite dev app for component development
   4. Implement useNavraMetrics() — fetches and parses Prometheus /metrics
   5. Implement useNavraSSE() — subscribes to navra SSE notification stream
   6. Implement useApprovalQueue() — manages pending approval state via SSE
@@ -23,7 +23,7 @@ description: |
   into PatternFly's look.
 acceptance:
   - "navra-react/ monorepo builds with TypeScript"
-  - "Storybook runs"
+  - "Vite dev app runs"
   - "useNavraMetrics() fetches and parses Prometheus metrics"
   - "useNavraSSE() connects to SSE and receives events"
   - "PatternFly React dependency configured"
@@ -31,5 +31,5 @@ scope:
   - navra-react/
 notes: |
   - PatternFly React: Red Hat ecosystem, mature, accessible.
-  - Storybook for development and documentation.
+  - Vite dev app for component development (replaced Storybook).
   - Components (NAVRA-094 through NAVRA-098) depend on this scaffolding.

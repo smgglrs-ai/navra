@@ -20,25 +20,17 @@
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "storybook": "storybook dev -p 6006 --config-dir .storybook",
-    "build-storybook": "storybook build --config-dir .storybook",
-    "lint": "eslint src/"
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
-    "@patternfly/react-core": "^6.0.0",
-    "@storybook/addon-essentials": "^8.6.0",
-    "@storybook/react": "^8.6.0",
-    "@storybook/react-vite": "^8.6.0",
     "@testing-library/react": "^16.0.0",
     "@types/react": "^19.0.0",
     "jsdom": "^26.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "storybook": "^8.6.0",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
