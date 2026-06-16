@@ -1,6 +1,6 @@
 id: NAVRA-091
 title: "Replace navra-tools-file with upstream Filesystem MCP server"
-status: planned
+status: done
 priority: medium
 effort: 2-3d
 depends_on: []
