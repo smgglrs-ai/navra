@@ -1,15 +1,15 @@
 id: NAVRA-086
 title: "Agent skills for navra adoption (init, policy, flow, diagnose)"
-status: planned
+status: done
 priority: high
-effort: 1-2w
+effort: 3-5d
 depends_on: []
 description: |
   Build Claude Code skills that make navra configuration and operation
   AI-assisted. These reduce the adoption barrier from "read docs and
   write TOML" to "tell the agent what you want."
 
-  Skills to build:
+  Wave 1 — first-contact adoption skills (this item):
 
   1. **navra-init** (1-2d): Detects agent setup (Claude Code, Goose,
      custom), generates config.toml with appropriate permission sets,
@@ -17,44 +17,34 @@ description: |
      Interactive: asks what agents will connect, what directories to
      expose, what safety level to apply.
 
-  2. **navra-policy** (1d): Natural language to ACL rules. "My agent
-     should read code but not .env files" → generates deny/allow rules
-     with proper glob patterns. Can also audit an existing config and
-     suggest tightening (audit2allow inverse — suggest2deny).
-
-  3. **navra-flow-builder** (2d): "I need research → draft → review"
-     → generates flow YAML with matching personas, tool permissions,
-     and IFC labels. Uses the syllogis/navra/ integration as the
-     reference pattern. Validates the flow graph (no cycles unless
-     back-edge, all tools exist).
-
-  4. **navra-diagnose** (1d): "Why was this tool call blocked?" →
+  2. **navra-diagnose** (1d): "Why was this tool call blocked?" →
      reads navra logs/audit trail, identifies the denial reason
      (ACL rule, IFC violation, safety hook, approval timeout),
      and suggests the minimal config change to allow it if
      appropriate. The audit2allow for navra.
 
-  5. **navra-agent-scaffold** (2d): "Build me a legal research agent"
-     → generates Dockerfile, cognitive persona YAML, permission set,
-     flow definition, and OCI build/push commands. Uses the
-     syllogis/navra/ directory as the template pattern.
+  3. **navra-policy** (1d): Natural language to ACL rules. "My agent
+     should read code but not .env files" → generates deny/allow rules
+     with proper glob patterns. Can also audit an existing config and
+     suggest tightening (audit2allow inverse — suggest2deny).
 
-  These skills serve double duty: they ARE the developer experience,
+  Wave 2 — advanced use cases (separate item, deferred):
+
+  4. navra-flow-builder: flow YAML from natural language
+  5. navra-agent-scaffold: Dockerfile + persona + permissions
+
+  Wave 1 skills serve double duty: they ARE the developer experience,
   and they're also the integration test for navra's programmatic API
   surface. If a skill can't configure navra, the API needs work.
 acceptance:
   - "navra-init skill generates valid config.toml for Claude Code setup"
-  - "navra-policy skill converts natural language to correct ACL rules"
-  - "navra-flow-builder produces valid flow YAML that navra can execute"
   - "navra-diagnose reads audit log and explains denial chain"
-  - "navra-agent-scaffold generates working Dockerfile + persona + permissions"
+  - "navra-policy skill converts natural language to correct ACL rules"
   - "All skills work as Claude Code skills (invokable via /skill-name)"
 scope:
   - skills/navra-init/
-  - skills/navra-policy/
-  - skills/navra-flow-builder/
   - skills/navra-diagnose/
-  - skills/navra-agent-scaffold/
+  - skills/navra-policy/
 notes: |
   - Skills also validate navra's public API surface — if a skill can't
     programmatically configure navra, the config format needs improvement.
