@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 56 active items
+# 55 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -29,12 +29,6 @@ items:
     effort: 5-7d
     depends_on: ['NAVRA-024']
     feeds: ['NAVRA-001']
-
-  - id: "NAVRA-037"
-    title: "SQLite entity-relationship table for navra-memory"
-    status: planned
-    priority: medium
-    effort: 2-3d
 
   - id: "NAVRA-041"
     title: "Evaluate LFM2.5-Audio-1.5B-ONNX"
