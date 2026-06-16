@@ -1,10 +1,28 @@
 id: "NAVRA-041"
-title: "Evaluate LFM2.5-Audio-1.5B-ONNX"
+title: "Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice"
 status: planned
-priority: medium
-effort: 2-3d
+priority: low
+effort: 1d
 depends_on: []
 feeds: []
 source: tech-watch-2026-06-02
+gate: "Model available on HuggingFace in ONNX format"
 description: |
-  End-to-end speech-to-speech (hybrid SSM). ONNX export exists (Q4/Q8, 5 components, 696MB). Would replace separate ASR+TTS in navra-modal-voice.
+  Evaluate whether LFM2.5-Audio-1.5B (hybrid SSM, end-to-end
+  speech-to-speech) can replace the separate ASR+TTS pipeline in
+  navra-modal-voice. ONNX export exists (Q4/Q8, 5 components, 696MB).
+
+  Steps:
+  1. Download Q8 ONNX model from HuggingFace
+  2. Load in navra-model-runtime via ONNX Runtime
+  3. Measure: latency (first token, full response), memory, CPU/GPU
+  4. Compare with current Whisper ASR + Kokoro TTS pipeline
+  5. Test voice quality subjectively (English + French)
+  6. Write evaluation summary in docs/evaluations/lfm25-audio.md
+
+  Decision outcome: adopt (replace ASR+TTS), defer (wait for smaller
+  model), or reject (quality/latency insufficient).
+acceptance:
+  - "Model loaded and running in ONNX Runtime"
+  - "Benchmark numbers documented (latency, memory, quality)"
+  - "Architecture decision documented: adopt, defer, or reject"

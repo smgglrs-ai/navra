@@ -1,3 +1,27 @@
+- timestamp: "2026-06-16T15:00:00+02:00"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 1 item completed (NAVRA-037). Exit: remaining candidates require external resources or exceed loop scope"
+  details:
+    iterations: 1
+    max_iterations: 5
+    completed: ['NAVRA-037']
+    exit_reason: "Remaining candidates require external resources (model downloads, dataset downloads, new deps)"
+    branch: "loop/2026-06-16-2"
+    tag: "loop-run/2026-06-16-2-1"
+
+- timestamp: "2026-06-16T14:00:00+02:00"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 1 item completed (NAVRA-038). Exit: no unblocked items in autonomous scope"
+  details:
+    iterations: 1
+    max_iterations: 5
+    completed: ['NAVRA-038']
+    exit_reason: "No unblocked items remaining in autonomous scope"
+    branch: "loop/2026-06-16"
+    tag: "loop-run/2026-06-16-1"
+
 - timestamp: "2026-06-16T12:00:00+02:00"
   actor: claude
   action: implement
@@ -169,3 +193,47 @@ Breaking API changes + security architecture change require human review before 
 ### Test results
 1,092 tests across 5 crates — 0 failures
 2026-06-15T20:12:43Z | NAVRA-088 done: navra-safety decoupled as standalone crates.io library (119 regex tests + 57 ML tests), navra-safety-hooks retains gateway hooks, navra-macros prepped for publication, 2755 workspace tests pass
+
+- timestamp: "2026-06-16T17:00:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-031"
+  summary: "Expanded DNS-AID section in DISCOVERY.md: SVCB naming convention, custom SvcParamKeys, discovery statuses, mDNS/DNS-SD, comparison table vs AID"
+  iteration: 1
+  max_iterations: 5
+
+- timestamp: "2026-06-16T17:30:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-043"
+  summary: "JSON response compression hook — key stripping, array truncation, depth flattening as post-hook in navra-safety-hooks, 15 tests"
+  iteration: 2
+  max_iterations: 5
+
+- timestamp: "2026-06-16T18:00:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-079"
+  summary: "ADR-Bench attack taxonomy mapped to navra defense layers — 17 techniques across 5 tactics, 8 strong / 7 partial / 2 weak coverage, comparison of ADR prevention vs navra hooks"
+  iteration: 3
+  max_iterations: 5
+
+- timestamp: "2026-06-16T18:30:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-040"
+  summary: "ASSERT evaluation for C3 — spec-driven eval complementing Glasswing, OTel trace integration path, three-phase adoption roadmap"
+  iteration: 4
+  max_iterations: 5
+
+- timestamp: "2026-06-16T18:45:00+02:00"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 4 items completed (NAVRA-031, NAVRA-043, NAVRA-079, NAVRA-040). Exit: no unblocked items fitting single iteration"
+  details:
+    iterations: 4
+    max_iterations: 5
+    completed: ['NAVRA-031', 'NAVRA-043', 'NAVRA-079', 'NAVRA-040']
+    exit_reason: "No unblocked items remaining that fit a single loop iteration (all remaining are 2-3d+ or gated)"
+    branch: "loop/2026-06-16-2"
+    tag: "loop-run/2026-06-16-2-4"

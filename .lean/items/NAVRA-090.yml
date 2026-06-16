@@ -6,51 +6,43 @@ effort: 3-5d
 depends_on: []
 feeds: []
 description: |
-  Remove navra-tools-git and use cyanheads/git-mcp-server (28 tools,
-  GPG/SSH signing, JWT/OAuth auth, path sandboxing) as an upstream MCP
-  server. Follows the "prefer existing MCPs" decision (NAVRA-045/046/047
-  closed as wont_do, NAVRA-072 removed GitHub module).
+  Remove navra-tools-git and use Anthropic's mcp-server-git as the
+  upstream Git MCP server. Fork the reference implementation, add
+  delegated signing key support, and use the fork immediately. Submit
+  upstream PR in parallel — not blocked on acceptance.
 
-  navra-tools-git has 8 tools with two navra-specific features:
-  1. Agent commit signing via delegated Ed25519 key
-  2. Per-path approval with grant caching (identical to file module)
+  Follows the "prefer existing MCPs" decision. Contributing to the
+  official reference server benefits the ecosystem and positions navra
+  as the gateway that enables agent-level provenance.
 
-  Both are gateway-level concerns, not module concerns:
-  - Signing: navra should delegate a derived key to the agent via
-    capability token. The upstream git server accepts the key and
-    signs on behalf of the agent. Requires contribution to
-    cyanheads/git-mcp-server to accept a signing key parameter.
-  - Per-path approval: navra's existing tool_rules + path ACLs +
-    approval gates handle this at the gateway layer for any upstream.
+  Phase 1 — Fork and extend (not blocked):
+  1. Fork modelcontextprotocol/servers (or just mcp-server-git)
+     to smgglrs-ai/mcp-server-git
+  2. Add signing key parameter to git_commit: agent passes a derived
+     Ed25519 key, server uses it for commit signing. Adds Signed-off-by
+     with agent identity from capability chain
+  3. Publish fork to PyPI as smgglrs-mcp-server-git (or use direct
+     path install)
+  4. Configure as upstream in navra, verify tool_rules replicate
+     per-operation permissions
+  5. Remove navra-tools-git crate
 
-  Steps:
-  1. Contribute signing key parameter support to cyanheads/git-mcp-server
-     (or fork). Agent passes derived Ed25519 key, server uses it for
-     commit/tag signing. This preserves provenance (signature proves
-     which agent committed, through which delegation chain).
-  2. Configure git MCP server as upstream in navra
-  3. Verify tool_rules can replicate per-operation permissions:
-     - git_commit → policy: approve
-     - git_push → policy: approve
-     - git_status/diff/log/branch/fetch/pull → policy: allow
-  4. Remove navra-tools-git from workspace Cargo.toml, navra-server
-     dependency, config, main.rs module registration
-  5. Remove crate directory and update docs
-  6. Update test count in TESTING.md
+  Phase 2 — Upstream contribution (parallel, non-blocking):
+  6. Submit PR to modelcontextprotocol/servers with signing key support
+  7. When merged, switch from fork to official package
+  8. Archive/delete fork
 
-  Current crate: 8 tools, 52 tests (25 unit + 27 integration).
-  No external type dependencies — only navra-server instantiates it.
+  navra-tools-git: 8 tools, 52 tests. No external type dependencies.
 acceptance:
-  - "Upstream git MCP server configured and functional"
+  - "Fork with signing key support published and functional"
+  - "navra configured to use fork as upstream"
   - "Agent commit signing works via delegated key"
-  - "Per-path approval enforced at gateway level"
+  - "Per-operation approval enforced at gateway (tool_rules)"
   - "navra-tools-git crate removed"
-  - "All workspace tests pass"
+  - "Upstream PR submitted"
 notes: |
-  - cyanheads/git-mcp-server: 28 tools, GPG/SSH signing (server-local
-    config only — no client key passthrough yet), GIT_BASE_DIR sandboxing,
-    JWT/OAuth auth. MIT license.
-  - Anthropic's mcp-server-git: 8 tools (Python), simpler but less
-    capable. No signing support.
-  - Signing key contribution is the blocking dependency. Without it,
-    commit provenance is lost.
+  - Anthropic's mcp-server-git: Python, 8 tools, MIT, maintained by
+    MCP steering group. Official reference implementation.
+  - Signing key contribution: agent passes Ed25519 key via tool argument
+    or MCP context. Server configures git with the key for that commit.
+  - Fork lives at smgglrs-ai/mcp-server-git until upstream merges.

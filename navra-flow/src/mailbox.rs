@@ -12,11 +12,35 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::mpsc;
 
+/// Body of a mailbox message: complete or incremental.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MessageBody {
+    /// A complete message (current default).
+    Complete(String),
+    /// An incremental reasoning step for streaming delivery.
+    /// The mpsc channels already support this — receivers can
+    /// process steps as they arrive without waiting for `is_final`.
+    Step {
+        index: u32,
+        content: String,
+        is_final: bool,
+    },
+}
+
+impl MessageBody {
+    pub fn text(&self) -> &str {
+        match self {
+            MessageBody::Complete(s) => s,
+            MessageBody::Step { content, .. } => content,
+        }
+    }
+}
+
 /// A labeled message between agents with provenance tracking.
 #[derive(Debug, Clone)]
 pub struct MailboxMessage {
     pub sender: String,
-    pub body: String,
+    pub body: MessageBody,
     pub label: DataLabel,
     pub timestamp: Instant,
     /// Provenance chain: ordered list of (agent_id, timestamp) pairs
@@ -88,7 +112,13 @@ impl MailboxRegistry {
         target_id: &str,
         body: String,
     ) -> Result<(), FlowError> {
-        self.post_with_provenance(sender_id, sender_label, target_id, body, Vec::new())
+        self.post_with_provenance(
+            sender_id,
+            sender_label,
+            target_id,
+            MessageBody::Complete(body),
+            Vec::new(),
+        )
     }
 
     /// Post a message with an inherited provenance chain.
@@ -102,7 +132,7 @@ impl MailboxRegistry {
         sender_id: &str,
         sender_label: DataLabel,
         target_id: &str,
-        body: String,
+        body: MessageBody,
         inherited_provenance: Vec<(String, Instant)>,
     ) -> Result<(), FlowError> {
         // Rate limit check
@@ -230,7 +260,7 @@ mod tests {
 
         let msg = reg.recv("bob").expect("should have a message");
         assert_eq!(msg.sender, "alice");
-        assert_eq!(msg.body, "hello");
+        assert_eq!(msg.body.text(), "hello");
         assert_eq!(msg.label, DataLabel::TRUSTED_PUBLIC);
     }
 
@@ -273,7 +303,7 @@ mod tests {
         .unwrap();
 
         let msg = reg.recv("bob").expect("should have a message");
-        assert_eq!(msg.body, "sensitive data");
+        assert_eq!(msg.body.text(), "sensitive data");
     }
 
     #[test]
@@ -301,9 +331,9 @@ mod tests {
 
         let msgs = reg.recv_all("bob");
         assert_eq!(msgs.len(), 3);
-        assert_eq!(msgs[0].body, "msg 0");
-        assert_eq!(msgs[1].body, "msg 1");
-        assert_eq!(msgs[2].body, "msg 2");
+        assert_eq!(msgs[0].body.text(), "msg 0");
+        assert_eq!(msgs[1].body.text(), "msg 1");
+        assert_eq!(msgs[2].body.text(), "msg 2");
 
         assert!(reg.recv("bob").is_none());
     }
@@ -355,5 +385,60 @@ mod tests {
             FlowError::MailboxFull(name) => assert_eq!(name, "bob"),
             other => panic!("expected MailboxFull, got: {other}"),
         }
+    }
+
+    #[test]
+    fn step_messages_delivered_incrementally() {
+        let ids = agent_ids(&["alice", "bob"]);
+        let reg = MailboxRegistry::new(&ids, 16);
+
+        for i in 0..3 {
+            reg.post_with_provenance(
+                "alice",
+                DataLabel::TRUSTED_PUBLIC,
+                "bob",
+                MessageBody::Step {
+                    index: i,
+                    content: format!("step {i}"),
+                    is_final: i == 2,
+                },
+                Vec::new(),
+            )
+            .unwrap();
+        }
+
+        let msgs = reg.recv_all("bob");
+        assert_eq!(msgs.len(), 3);
+
+        match &msgs[0].body {
+            MessageBody::Step {
+                index,
+                content,
+                is_final,
+            } => {
+                assert_eq!(*index, 0);
+                assert_eq!(content, "step 0");
+                assert!(!is_final);
+            }
+            _ => panic!("expected Step"),
+        }
+
+        match &msgs[2].body {
+            MessageBody::Step { is_final, .. } => assert!(is_final),
+            _ => panic!("expected Step"),
+        }
+    }
+
+    #[test]
+    fn message_body_text_accessor() {
+        let complete = MessageBody::Complete("hello".into());
+        assert_eq!(complete.text(), "hello");
+
+        let step = MessageBody::Step {
+            index: 0,
+            content: "step content".into(),
+            is_final: false,
+        };
+        assert_eq!(step.text(), "step content");
     }
 }

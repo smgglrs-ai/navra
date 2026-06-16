@@ -160,7 +160,7 @@ fn tainted_blackboard_reader_can_post_to_sensitive_mailbox() {
     .unwrap();
 
     let msg = reg.recv("secure_agent").unwrap();
-    assert_eq!(msg.body, "sensitive data");
+    assert_eq!(msg.body.text(), "sensitive data");
     assert_eq!(msg.label, DataLabel::UNTRUSTED_SENSITIVE);
 }
 
@@ -357,11 +357,11 @@ fn mailbox_preserves_message_order_from_multiple_senders() {
     let msgs = reg.recv_all("dave");
     assert_eq!(msgs.len(), 3);
     assert_eq!(msgs[0].sender, "alice");
-    assert_eq!(msgs[0].body, "msg 1");
+    assert_eq!(msgs[0].body.text(), "msg 1");
     assert_eq!(msgs[1].sender, "bob");
-    assert_eq!(msgs[1].body, "msg 2");
+    assert_eq!(msgs[1].body.text(), "msg 2");
     assert_eq!(msgs[2].sender, "carol");
-    assert_eq!(msgs[2].body, "msg 3");
+    assert_eq!(msgs[2].body.text(), "msg 3");
 }
 
 // ── Mailbox: IFC labels propagate through messages ──

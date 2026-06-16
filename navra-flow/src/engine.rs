@@ -425,7 +425,7 @@ async fn run_node_loop(
                             .map(|m| {
                                 serde_json::json!({
                                     "sender": m.sender,
-                                    "body": m.body,
+                                    "body": m.body.text(),
                                 })
                             })
                             .collect();
@@ -842,7 +842,7 @@ mod tests {
         let audit = flow.mailbox_registry.as_ref().unwrap().audit_log();
         assert_eq!(audit.len(), 1);
         assert_eq!(audit[0].sender, "sender");
-        assert_eq!(audit[0].body, "hello from sender");
+        assert_eq!(audit[0].body.text(), "hello from sender");
     }
 
     #[tokio::test]
