@@ -253,3 +253,15 @@ Breaking API changes + security architecture change require human review before 
   summary: "Removed navra-tools-file crate (65 tests, ~3200 LOC). File tools now provided by upstream Filesystem MCP server. 1 adversarial test ignored pending upstream config."
   iteration: 2
   max_iterations: 5
+
+- timestamp: "2026-06-16T20:30:00+02:00"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 2 items completed (NAVRA-089, NAVRA-091). Exit: remaining items require multi-day effort or external actions"
+  details:
+    iterations: 2
+    max_iterations: 5
+    completed: ['NAVRA-089', 'NAVRA-091']
+    exit_reason: "Remaining items require multi-day effort or external actions (repo forks, package publishing)"
+    branch: "loop/2026-06-16-3"
+    tag: "loop-run/2026-06-16-3-2"
