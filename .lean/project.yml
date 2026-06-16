@@ -50,3 +50,13 @@ verification:
 env:
   ORT_LIB_PATH: /usr/lib64
   ORT_PREFER_DYNAMIC_LINK: "1"
+
+loop:
+  max_iterations: 20
+  scope: autonomous
+  sandbox: openshell
+  git:
+    branch_prefix: loop
+    tag_runs: true
+    push_after_each: false
+    commit_style: conventional

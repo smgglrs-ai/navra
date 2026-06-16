@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 49 completed items
+# 50 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -331,4 +331,13 @@ items:
     effort: S
     progress: 100
     feeds: ['NAVRA-102']
+
+  - id: "NAVRA-102"
+    title: "IFC enforcement in stateless MCP transport"
+    status: done
+    priority: medium
+    effort: S
+    progress: 100
+    depends_on: ['NAVRA-101']
+    feeds: ['NAVRA-018']
 
