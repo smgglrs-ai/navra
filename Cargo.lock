@@ -2875,6 +2875,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "navra-auth",
+ "navra-mcp",
  "navra-model",
  "navra-protocol",
  "navra-safety-hooks",
@@ -2923,7 +2924,7 @@ dependencies = [
 name = "navra-macros"
 version = "0.1.0"
 dependencies = [
- "navra-core",
+ "navra-mcp",
  "navra-protocol",
  "proc-macro2",
  "quote",
@@ -2934,11 +2935,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "navra-mcp"
+version = "0.1.0"
+dependencies = [
+ "navra-auth",
+ "navra-model",
+ "navra-protocol",
+ "navra-safety-hooks",
+ "serde_json",
+]
+
+[[package]]
 name = "navra-memory"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "navra-core",
+ "navra-mcp",
  "navra-model",
  "navra-rag",
  "rusqlite",
@@ -2961,8 +2974,8 @@ dependencies = [
  "dirs",
  "futures-util",
  "navra-auth",
- "navra-core",
  "navra-macros",
+ "navra-mcp",
  "navra-protocol",
  "serde",
  "serde_json",
@@ -2978,8 +2991,8 @@ version = "0.1.0"
 dependencies = [
  "cpal",
  "dirs",
- "navra-core",
  "navra-macros",
+ "navra-mcp",
  "navra-protocol",
  "serde",
  "serde_json",
@@ -3048,7 +3061,7 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "navra-auth",
- "navra-core",
+ "navra-mcp",
  "navra-protocol",
  "openapiv3",
  "reqwest",
@@ -3084,6 +3097,7 @@ dependencies = [
  "dirs",
  "navra-core",
  "navra-macros",
+ "navra-mcp",
  "navra-protocol",
  "ndarray",
  "ort",
@@ -3234,8 +3248,8 @@ dependencies = [
 name = "navra-tools-exec"
 version = "0.1.0"
 dependencies = [
- "navra-core",
  "navra-macros",
+ "navra-mcp",
  "navra-model-runtime",
  "navra-protocol",
  "serde",
@@ -3254,6 +3268,7 @@ dependencies = [
  "libc",
  "navra-core",
  "navra-macros",
+ "navra-mcp",
  "navra-protocol",
  "notify",
  "rusqlite",
@@ -3275,6 +3290,7 @@ dependencies = [
  "dirs",
  "navra-core",
  "navra-macros",
+ "navra-mcp",
  "navra-protocol",
  "serde",
  "serde_json",
@@ -3290,6 +3306,7 @@ version = "0.1.0"
 dependencies = [
  "navra-core",
  "navra-macros",
+ "navra-mcp",
  "navra-protocol",
  "serde",
  "serde_json",

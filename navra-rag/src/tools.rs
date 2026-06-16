@@ -10,11 +10,11 @@
 use crate::chunk::{chunk_text, predict_chunk_value, ChunkConfig};
 use crate::rerank::{NoopReranker, Reranker};
 use crate::store::{CascadeConfig, ChunkStore};
-use navra_core::auth::CallContext;
-use navra_core::models::ModelBackend;
-use navra_core::permissions::{PermissionEngine, PermissionResult};
-use navra_core::protocol::CallToolResult;
-use navra_core::Module;
+use navra_mcp::auth::CallContext;
+use navra_mcp::models::ModelBackend;
+use navra_mcp::permissions::{PermissionEngine, PermissionResult};
+use navra_mcp::protocol::CallToolResult;
+use navra_mcp::Module;
 use navra_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -123,8 +123,8 @@ impl Module for RagModule {
     fn tools(
         &self,
     ) -> Vec<(
-        navra_core::protocol::ToolDefinition,
-        navra_core::ToolHandler,
+        navra_mcp::protocol::ToolDefinition,
+        navra_mcp::ToolHandler,
     )> {
         let s = self.state.clone();
         vec![
@@ -245,7 +245,7 @@ async fn handle_index(
     // Generate embeddings for each chunk
     let mut embeddings = Vec::with_capacity(chunks.len());
     for chunk in &chunks {
-        let request = navra_core::models::EmbedRequest {
+        let request = navra_mcp::models::EmbedRequest {
             text: chunk.content.clone(),
         };
         match state.embedding_model.embed(&request).await {
@@ -296,7 +296,7 @@ async fn handle_query(
     let limit = limit.unwrap_or(5) as usize;
 
     // Embed the query
-    let request = navra_core::models::EmbedRequest {
+    let request = navra_mcp::models::EmbedRequest {
         text: query.clone(),
     };
     let embed_response = match state.embedding_model.embed(&request).await {
@@ -437,8 +437,8 @@ async fn handle_status(_ctx: CallContext, #[state] state: Arc<RagState>) -> Call
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_core::auth::AgentIdentity;
-    use navra_core::permissions::PathAcl;
+    use navra_mcp::auth::AgentIdentity;
+    use navra_mcp::permissions::PathAcl;
     use std::collections::HashSet;
 
     fn test_ctx() -> CallContext {
@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn module_provides_all_tools() {
-        use navra_core::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
+        use navra_mcp::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
 
         struct FakeModel;
         impl ModelBackend for FakeModel {
@@ -488,7 +488,7 @@ mod tests {
         let module = RagModule::new(
             store,
             model,
-            Arc::new(navra_core::permissions::PermissionEngine::new()),
+            Arc::new(navra_mcp::permissions::PermissionEngine::new()),
         );
 
         assert_eq!(module.name(), "rag");
@@ -503,7 +503,7 @@ mod tests {
 
     #[tokio::test]
     async fn status_shows_empty_index() {
-        use navra_core::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
+        use navra_mcp::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
 
         struct FakeModel;
         impl ModelBackend for FakeModel {
@@ -539,7 +539,7 @@ mod tests {
         let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(!result.is_error);
         match &result.content[0] {
-            navra_core::protocol::Content::Text(t) => {
+            navra_mcp::protocol::Content::Text(t) => {
                 assert!(t.text.contains("Documents: 0"));
                 assert!(t.text.contains("Chunks:    0"));
             }
@@ -551,7 +551,7 @@ mod tests {
 
     use crate::cache::QueryCacheConfig;
     use crate::store::ChunkResult;
-    use navra_core::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
+    use navra_mcp::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
     use std::time::Duration;
 
     /// A reranker that reverses the order of candidates, for testing.
@@ -670,7 +670,7 @@ mod tests {
 
         assert!(!result.is_error);
         match &result.content[0] {
-            navra_core::protocol::Content::Text(t) => {
+            navra_mcp::protocol::Content::Text(t) => {
                 // The reversing reranker should put the last vector-search
                 // result first. With our fixed embedding close to [1,0,0,0],
                 // the original order is Alpha, Beta, Gamma. Reversed: Gamma first.
@@ -708,7 +708,7 @@ mod tests {
 
         assert!(!result.is_error);
         match &result.content[0] {
-            navra_core::protocol::Content::Text(t) => {
+            navra_mcp::protocol::Content::Text(t) => {
                 // With noop reranker and embedding close to [1,0,0,0],
                 // Alpha (embedding [1,0,0,0]) should come first.
                 let alpha_pos = t.text.find("Alpha").expect("Alpha should appear");
@@ -779,7 +779,7 @@ mod tests {
 
         assert!(!result.is_error);
         match &result.content[0] {
-            navra_core::protocol::Content::Text(t) => {
+            navra_mcp::protocol::Content::Text(t) => {
                 assert!(
                     t.text.contains("Found 1 result"),
                     "Should return exactly 1 result despite overfetching"

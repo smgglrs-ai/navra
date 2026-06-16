@@ -11,7 +11,7 @@ use crate::protocol::{
     PromptRole, ReadResourceResult, ResourceContent, ResourceDefinition, ToolDefinition,
     ToolInputSchema,
 };
-use crate::server::ToolHandler;
+use navra_mcp::ToolHandler;
 use std::collections::HashMap;
 use std::sync::Arc;
 

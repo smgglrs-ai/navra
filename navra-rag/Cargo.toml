@@ -20,6 +20,7 @@ axum = { workspace = true, optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 anyhow = { version = "1", optional = true }
+navra-mcp = { path = "../navra-mcp" }
 navra-core = { path = "../navra-core" }
 navra-macros = { path = "../navra-macros" }
 navra-protocol = { path = "../navra-protocol" }

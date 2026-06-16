@@ -35,13 +35,12 @@ pub mod session;
 mod upstream_module;
 
 pub use grpc_module::GrpcModule;
-pub use module::{serve_module, Module, PromptHandler, ResourceHandler};
+pub use module::serve_module;
+pub use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperation};
 pub use navra_protocol::{RetryConfig, Upstream};
-pub use server::{
-    McpServer, McpServerBuilder, ToolFilter, ToolHandler, ToolUsageTracker, UsagePruningFilter,
-};
+pub use server::{McpServer, McpServerBuilder, ToolFilter, ToolUsageTracker, UsagePruningFilter};
 pub use session::Session;
-pub use upstream_module::{ToolOperation, UpstreamModule};
+pub use upstream_module::UpstreamModule;
 
 /// Re-export dispatch for unit tests (not part of public API).
 #[cfg(test)]

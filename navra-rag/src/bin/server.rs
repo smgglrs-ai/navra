@@ -21,7 +21,7 @@ use axum::extract::State;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use clap::Parser;
-use navra_core::models::{Locality, ModelBackend, OpenAiBackend};
+use navra_mcp::models::{Locality, ModelBackend, OpenAiBackend};
 use navra_rag::chunk::{inject_breadcrumbs, predict_chunk_value, ChunkConfig};
 use navra_rag::{CascadeConfig, ChunkStore, NoopReranker, Reranker};
 use std::sync::Arc;
@@ -114,7 +114,7 @@ async fn handle_retrieve(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RetrieveRequest>,
 ) -> Json<RetrieveResponse> {
-    let embed_req = navra_core::models::EmbedRequest {
+    let embed_req = navra_mcp::models::EmbedRequest {
         text: req.query.clone(),
     };
     let embedding = match state.embedding_model.embed(&embed_req).await {
@@ -197,7 +197,7 @@ async fn handle_index(
 
     let mut embeddings = Vec::with_capacity(chunks.len());
     for chunk in &chunks {
-        let embed_req = navra_core::models::EmbedRequest {
+        let embed_req = navra_mcp::models::EmbedRequest {
             text: chunk.content.clone(),
         };
         match state.embedding_model.embed(&embed_req).await {

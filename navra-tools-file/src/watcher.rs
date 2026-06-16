@@ -5,7 +5,7 @@
 //! are created, modified, or deleted.
 
 use crate::store::IndexStore;
-use navra_core::models::ModelBackend;
+use navra_mcp::models::ModelBackend;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -144,7 +144,7 @@ fn index_file(path: &Path, index: &IndexStore, embedding_model: Option<&Arc<dyn 
             // Generate embedding if model is available
             if let Some(model) = embedding_model {
                 if index.has_vectors() {
-                    let request = navra_core::models::EmbedRequest {
+                    let request = navra_mcp::models::EmbedRequest {
                         text: content.clone(),
                     };
                     // We're in spawn_blocking, so use Handle::block_on for async

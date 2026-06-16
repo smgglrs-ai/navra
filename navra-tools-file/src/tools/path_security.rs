@@ -1,6 +1,6 @@
-use navra_core::auth::CallContext;
-use navra_core::permissions::PermissionResult;
-use navra_core::protocol::CallToolResult;
+use navra_mcp::auth::CallContext;
+use navra_mcp::permissions::PermissionResult;
+use navra_mcp::protocol::CallToolResult;
 use std::path::{Path, PathBuf};
 
 use super::state::DocsState;
@@ -124,7 +124,7 @@ pub(super) async fn check_perm(
 
             // Return approval-needed response to the MCP client
             Err(CallToolResult::success(vec![
-                navra_core::protocol::Content::text(format!(
+                navra_mcp::protocol::Content::text(format!(
                     "Approval required: {} on {}\n\n\
                      Request ID: {}\n\
                      Agent: {}\n\n\
@@ -183,7 +183,7 @@ pub(super) async fn maybe_embed(state: &DocsState, doc_id: i64, content: &str) {
         return;
     }
 
-    let request = navra_core::models::EmbedRequest {
+    let request = navra_mcp::models::EmbedRequest {
         text: content.to_string(),
     };
     match model.embed(&request).await {

@@ -399,7 +399,7 @@ impl McpServer {
         if let Some(ops) = self.agent_operations.get(&ctx.agent.permissions) {
             if let Some(tool_op) = self.tool_operations.get(&params.name) {
                 match tool_op {
-                    crate::upstream_module::ToolOperation::Write if !ops.contains("write") => {
+                    navra_mcp::ToolOperation::Write if !ops.contains("write") => {
                         self.process_table.record_denied(
                             &ctx.agent.name,
                             &ctx.agent.permissions,
@@ -415,7 +415,7 @@ impl McpServer {
                             "Permission denied: '{}'", params.name
                         ));
                     }
-                    crate::upstream_module::ToolOperation::Deny => {
+                    navra_mcp::ToolOperation::Deny => {
                         return CallToolResult::error(format!(
                             "Permission denied: '{}'", params.name
                         ));

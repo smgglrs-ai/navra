@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use navra_core::protocol::{ToolAnnotations, ToolDefinition, ToolInputSchema};
+use navra_mcp::protocol::{ToolAnnotations, ToolDefinition, ToolInputSchema};
 use openapiv3::{
     OpenAPI, Operation, Parameter, ParameterSchemaOrContent, ReferenceOr, Schema, SchemaKind, Type,
 };

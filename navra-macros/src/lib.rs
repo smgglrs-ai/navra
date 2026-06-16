@@ -487,15 +487,15 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
         }
 
         #vis fn #handler_fn(#(#state_params),*) -> (navra_protocol::ToolDefinition, std::sync::Arc<
-            dyn Fn(serde_json::Value, navra_core::auth::CallContext)
+            dyn Fn(serde_json::Value, navra_mcp::auth::CallContext)
                 -> std::pin::Pin<Box<dyn std::future::Future<Output = navra_protocol::CallToolResult> + Send>>
                 + Send + Sync
         >) {
             let handler: std::sync::Arc<
-                dyn Fn(serde_json::Value, navra_core::auth::CallContext)
+                dyn Fn(serde_json::Value, navra_mcp::auth::CallContext)
                     -> std::pin::Pin<Box<dyn std::future::Future<Output = navra_protocol::CallToolResult> + Send>>
                     + Send + Sync
-            > = std::sync::Arc::new(move |args: serde_json::Value, ctx: navra_core::auth::CallContext| {
+            > = std::sync::Arc::new(move |args: serde_json::Value, ctx: navra_mcp::auth::CallContext| {
                 #(#state_clones)*
                 Box::pin(async move {
                     #(#arg_extractions)*

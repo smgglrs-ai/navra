@@ -17,7 +17,6 @@ use std::sync::{Arc, RwLock};
 
 pub use builder::McpServerBuilder;
 pub use handlers::{IFCToolFilter, ToolFilter, ToolUsageTracker, UsagePruningFilter};
-pub use types::ToolHandler;
 
 use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};
 
@@ -38,7 +37,7 @@ pub struct McpServer {
     /// Allowed operations per permission set (from config).
     agent_operations: HashMap<String, HashSet<String>>,
     /// Operation classification per tool (from upstream auto-classify + overrides).
-    tool_operations: HashMap<String, crate::upstream_module::ToolOperation>,
+    tool_operations: HashMap<String, navra_mcp::ToolOperation>,
     /// Semantic classification per tool/prompt/resource (domain:operation).
     tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
     /// Domain-based permission rules per permission set.

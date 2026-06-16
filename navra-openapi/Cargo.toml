@@ -8,7 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 navra-auth = { path = "../navra-auth" }
-navra-core = { path = "../navra-core" }
+navra-mcp = { path = "../navra-mcp" }
 navra-protocol = { path = "../navra-protocol" }
 
 openapiv3 = "2.2"
