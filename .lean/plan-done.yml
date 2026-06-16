@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 37 completed items
+# 38 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -159,6 +159,12 @@ items:
 
   - id: "NAVRA-038"
     title: "Incremental mailbox messages in navra-flow"
+    status: done
+    priority: medium
+    effort: 1-2d
+
+  - id: "NAVRA-043"
+    title: "JSON response compression hook"
     status: done
     priority: medium
     effort: 1-2d
