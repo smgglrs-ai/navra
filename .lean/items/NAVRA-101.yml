@@ -1,6 +1,7 @@
 id: "NAVRA-101"
 title: "Refuse stateless mode when IFC tainted_write_policy is deny/approve"
-status: planned
+status: done
+progress: 100
 priority: high
 effort: S
 depends_on: []

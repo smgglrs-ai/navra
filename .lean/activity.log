@@ -1,3 +1,11 @@
+- timestamp: "2026-06-16T20:30:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-101"
+  summary: "Refuse stateless mode when IFC deny/approve configured. Bail in main.rs after IFC policy wiring."
+  iteration: 1
+  max_iterations: 5
+
 - timestamp: "2026-06-16T18:00:00+02:00"
   actor: claude
   action: item-complete
