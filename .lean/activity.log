@@ -321,3 +321,11 @@ Breaking API changes + security architecture change require human review before 
   summary: "FlowVisualizer component with React Flow (@xyflow/react). DAG layout with custom TaskNode (specialist, mandate, status badge, validation score bar, token count). Back-edges as dashed animated lines. useFlowEvents hook for SSE-driven state."
   iteration: 2
   max_iterations: 5
+
+- timestamp: "2026-06-16T23:30:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-098"
+  summary: "PermissionEditor component — visual ACL editor with path rules (allow/deny labels, add/remove), tool rules table, safety/taint/policy dropdowns, delegation switch, TOML preview, deny-wins validation warnings."
+  iteration: 3
+  max_iterations: 5

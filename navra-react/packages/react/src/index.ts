@@ -11,4 +11,13 @@ export {
   TaskNode,
   type TaskNodeData,
 } from "./FlowVisualizer";
+export {
+  PermissionEditor,
+  type PermissionEditorProps,
+  type PermissionSet as PermissionSetConfig,
+  type PermissionConfig,
+  permissionSetToToml,
+  validatePermissionSet,
+  defaultPermissionSet,
+} from "./PermissionEditor";
 

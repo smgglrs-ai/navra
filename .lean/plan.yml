@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 54 active items
+# 53 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -157,13 +157,6 @@ items:
     depends_on: ['NAVRA-079']
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
-
-  - id: "NAVRA-098"
-    title: "<PermissionEditor /> component"
-    status: planned
-    priority: low
-    effort: 3-5d
-    depends_on: ['NAVRA-089']
 
   - id: "NAVRA-051"
     title: "Paper significant fixes"
