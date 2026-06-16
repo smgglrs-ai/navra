@@ -1,6 +1,6 @@
 id: "NAVRA-044"
 title: "Execution ring refinement"
-status: planned
+status: done
 priority: medium
 effort: 1-2d
 depends_on: []

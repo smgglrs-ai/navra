@@ -1,6 +1,6 @@
 id: NAVRA-084
 title: "OpenAPI upstream: response truncation and token budget"
-status: planned
+status: done
 priority: medium
 effort: 1-2d
 depends_on: ['NAVRA-082']
