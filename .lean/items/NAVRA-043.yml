@@ -1,21 +1,36 @@
 id: "NAVRA-043"
-title: "Context compression post-hook"
-status: planned
+title: "JSON response compression hook"
+status: done
 priority: medium
-effort: 3-4d
+effort: 1-2d
 depends_on: []
 feeds: []
 source: tech-watch-2026-06-02
 description: |
-  Headroom-style response-side compression. SmartCrusher for JSON, kompress-small ONNX for text. Complements query-side cache.
-notes: |
-  [2026-06-12] LCLMs (Latent Context Language Models) achieve production-
-  grade context compression: 0.6B encoder + 4B decoder. At 4x compression:
-  91.76% accuracy on RULER (vs 94.41% uncompressed). At 16x: 75.06% but
-  8.8x faster inference. Compresses BEFORE decoder prefill (unlike KV
-  cache eviction). The 0.6B encoder could run on ONNX Runtime alongside
-  navra's existing safety models. "Swap out for any existing LLM" — navra
-  could compress retrieved context before injecting into agent prompts.
-  Limitation: reasoning trace compression unsolved — helps with document/
-  retrieval context but not agent-internal state accumulation.
-  Models: huggingface.co/latent-context | Code: github.com/LeonLixyz/LCLM
+  Post-hook that compresses large JSON tool responses before they
+  reach the agent's context window. No ML model required — pure
+  structural compression.
+
+  Strategies (configurable per permission set):
+  1. Key filtering: remove verbose metadata keys (timestamps, IDs,
+     pagination cursors) that agents rarely need
+  2. Array truncation: keep first N elements + count of remaining
+     (already exists in navra-openapi handler — generalize to a hook)
+  3. Nested flattening: collapse deep JSON trees to 2-level summaries
+
+  Implement as a post-hook in navra-safety-hooks. The BudgetHook
+  already handles token-level truncation — this hook operates on
+  JSON structure before token counting.
+
+  Config:
+  ```toml
+  [hooks.json_compress]
+  max_array_elements = 20
+  max_depth = 3
+  strip_keys = ["_links", "pagination", "metadata"]
+  ```
+acceptance:
+  - "Large JSON arrays truncated to configured limit with count annotation"
+  - "Configurable key stripping works"
+  - "Hook integrates with existing HookPipeline"
+  - "Tests with realistic API response payloads"

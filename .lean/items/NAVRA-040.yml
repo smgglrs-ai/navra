@@ -1,6 +1,6 @@
 id: "NAVRA-040"
 title: "ASSERT integration for C3 eval"
-status: planned
+status: done
 priority: low
 effort: 1-2d
 depends_on: []

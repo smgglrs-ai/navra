@@ -1,0 +1,27 @@
+id: NAVRA-096
+title: "<AgentActivity /> component"
+status: planned
+priority: medium
+effort: 2-3d
+depends_on: ['NAVRA-089']
+description: |
+  Real-time tool call timeline per agent. Shows tool invocations,
+  durations, results (success/denied/error), IFC label propagation.
+  Filterable by agent, tool, status.
+
+  Data source: useNavraSSE() hook + audit log HTTP endpoint.
+  Note: navra needs an audit log query endpoint (not just Prometheus
+  counters) for this component. May require adding a /api/audit
+  endpoint to navra-server that queries the blackbox SQLite.
+
+  PatternFly components: Table, Toolbar, FilterSelect, Label.
+acceptance:
+  - "Shows real-time tool call events via SSE"
+  - "Filterable by agent, tool name, outcome"
+  - "Storybook story with mock event stream"
+scope:
+  - navra-react/packages/react/src/AgentActivity/
+notes: |
+  Depends on navra-server exposing a blackbox query endpoint.
+  If the endpoint doesn't exist yet, the component can work with
+  SSE-only (live events, no history).

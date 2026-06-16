@@ -16,6 +16,7 @@
 
 pub mod audit;
 pub mod decay;
+pub mod entity_graph;
 mod error;
 mod knowledge;
 pub mod pipeline;
@@ -29,6 +30,7 @@ pub use audit::{
     AuditLog, AuditModelCall, AuditRun, AuditSummary, AuditToolCall, FlowSummary, FlowTaskResult,
 };
 pub use decay::{cleanup_decayed, effective_score};
+pub use entity_graph::{EntityGraph, Relationship};
 pub use error::MemoryError;
 pub use knowledge::KnowledgeStore;
 pub use pipeline::{

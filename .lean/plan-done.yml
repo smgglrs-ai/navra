@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 34 completed items
+# 40 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -125,6 +125,12 @@ items:
     priority: medium
     effort: 2-3d
 
+  - id: "NAVRA-031"
+    title: "DNS-AID doc update in DISCOVERY.md"
+    status: done
+    priority: low
+    effort: 0.5-0.5d
+
   - id: "NAVRA-032"
     title: "Compliance mapping (EU AI Act + OWASP)"
     status: done
@@ -144,6 +150,31 @@ items:
     status: done
     priority: high
     effort: S
+
+  - id: "NAVRA-037"
+    title: "SQLite entity-relationship table for navra-memory"
+    status: done
+    priority: medium
+    effort: 2-3d
+
+  - id: "NAVRA-038"
+    title: "Incremental mailbox messages in navra-flow"
+    status: done
+    priority: medium
+    effort: 1-2d
+
+  - id: "NAVRA-040"
+    title: "ASSERT integration for C3 eval"
+    status: done
+    priority: low
+    effort: 1-2d
+    feeds: ['NAVRA-020']
+
+  - id: "NAVRA-043"
+    title: "JSON response compression hook"
+    status: done
+    priority: medium
+    effort: 1-2d
 
   - id: "NAVRA-044"
     title: "Execution ring refinement"
@@ -189,6 +220,13 @@ items:
     priority: high
     effort: 2-3d
     depends_on: ['NAVRA-018']
+
+  - id: "NAVRA-079"
+    title: "Map ADR-Bench attack taxonomy to navra defense layers"
+    status: done
+    priority: medium
+    effort: 1d
+    feeds: ['NAVRA-048']
 
   - id: "NAVRA-081"
     title: "Unified semantic permissions for tools, prompts, and resources"
