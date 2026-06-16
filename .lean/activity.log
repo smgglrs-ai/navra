@@ -245,3 +245,11 @@ Breaking API changes + security architecture change require human review before 
   summary: "React dashboard scaffolding — npm workspaces monorepo, @navra/react-hooks with useNavraMetrics/useNavraSSE/useApprovalQueue, Storybook, vitest, tsup build"
   iteration: 1
   max_iterations: 5
+
+- timestamp: "2026-06-16T20:00:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-091"
+  summary: "Removed navra-tools-file crate (65 tests, ~3200 LOC). File tools now provided by upstream Filesystem MCP server. 1 adversarial test ignored pending upstream config."
+  iteration: 2
+  max_iterations: 5

@@ -3216,7 +3216,6 @@ dependencies = [
  "navra-rag",
  "navra-safety-hooks",
  "navra-tools-exec",
- "navra-tools-file",
  "navra-tools-git",
  "navra-tools-gitlab",
  "notify",
@@ -3257,30 +3256,6 @@ dependencies = [
  "tokio",
  "tonic",
  "tracing",
-]
-
-[[package]]
-name = "navra-tools-file"
-version = "0.1.0"
-dependencies = [
- "blake3",
- "dirs",
- "libc",
- "navra-core",
- "navra-macros",
- "navra-mcp",
- "navra-protocol",
- "notify",
- "rusqlite",
- "serde",
- "serde_json",
- "sqlite-vec",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "zerocopy",
 ]
 
 [[package]]

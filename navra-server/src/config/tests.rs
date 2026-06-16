@@ -8,7 +8,6 @@ tcp = "127.0.0.1:9315"
 "#;
     let config: Config = toml::from_str(toml).unwrap();
     assert_eq!(config.server.tcp.as_deref(), Some("127.0.0.1:9315"));
-    assert!(config.file_enabled());
 }
 
 #[test]
@@ -33,8 +32,6 @@ operations = ["read", "write", "search", "list", "git.status"]
 approve = ["write", "git.commit"]
 "#;
     let config: Config = toml::from_str(toml).unwrap();
-    assert!(config.file_enabled());
-    assert_eq!(config.file_db_path(), "/tmp/test.db");
     assert_eq!(config.agents.len(), 1);
     let dev = &config.permissions["developer"];
     assert!(dev.operations.contains(&"git.status".to_string()));
@@ -42,7 +39,7 @@ approve = ["write", "git.commit"]
 }
 
 #[test]
-fn disable_module() {
+fn legacy_file_config_still_parses() {
     let toml = r#"
 [server]
 tcp = "127.0.0.1:9315"
@@ -51,14 +48,13 @@ tcp = "127.0.0.1:9315"
 enabled = false
 "#;
     let config: Config = toml::from_str(toml).unwrap();
-    assert!(!config.file_enabled());
+    assert!(config.modules.file.is_some());
 }
 
 #[test]
 fn default_config_is_valid() {
     let config = Config::default();
     assert!(config.agents.is_empty());
-    assert!(config.file_enabled());
 }
 
 #[test]

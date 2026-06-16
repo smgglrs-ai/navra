@@ -21,7 +21,6 @@ navra-memory = { path = "../navra-memory" }
 navra-model = { path = "../navra-model" }
 navra-model-hub = { path = "../navra-model-hub" }
 navra-model-runtime = { path = "../navra-model-runtime", features = ["openshell"] }
-navra-tools-file = { path = "../navra-tools-file" }
 navra-tools-git = { path = "../navra-tools-git" }
 navra-tools-gitlab = { path = "../navra-tools-gitlab" }
 navra-tools-exec = { path = "../navra-tools-exec" }

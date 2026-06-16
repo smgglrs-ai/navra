@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 59 active items
+# 58 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -35,12 +35,6 @@ items:
     status: planned
     priority: medium
     effort: 3-5d
-
-  - id: "NAVRA-091"
-    title: "Replace navra-tools-file with upstream Filesystem MCP server"
-    status: planned
-    priority: medium
-    effort: 2-3d
 
   - id: "NAVRA-094"
     title: "<SecurityDashboard /> component"
