@@ -8,6 +8,7 @@
 pub mod approval_gate;
 mod budget;
 pub mod egress;
+mod json_compress;
 pub mod field_filter;
 pub mod leakage;
 mod memory_extraction;
@@ -27,6 +28,7 @@ pub use approval_gate::{ApprovalGateConfig, ApprovalGateHook, ApprovalStatus, Pe
 pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
 pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
+pub use json_compress::{JsonCompressConfig, JsonCompressHook};
 pub use leakage::{
     SemanticLeakageConfig, SemanticLeakageJudge, SimilarityLeakageConfig, SimilarityLeakageHook,
 };

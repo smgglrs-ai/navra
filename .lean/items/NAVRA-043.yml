@@ -1,6 +1,6 @@
 id: "NAVRA-043"
 title: "JSON response compression hook"
-status: planned
+status: done
 priority: medium
 effort: 1-2d
 depends_on: []

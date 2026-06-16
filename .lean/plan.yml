@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 61 active items
+# 60 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -29,12 +29,6 @@ items:
     effort: 5-7d
     depends_on: ['NAVRA-024']
     feeds: ['NAVRA-001']
-
-  - id: "NAVRA-043"
-    title: "JSON response compression hook"
-    status: planned
-    priority: medium
-    effort: 1-2d
 
   - id: "NAVRA-079"
     title: "Map ADR-Bench attack taxonomy to navra defense layers"
