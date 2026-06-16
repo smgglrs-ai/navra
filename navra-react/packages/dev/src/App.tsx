@@ -13,6 +13,7 @@ import {
 import { MetricsPanel } from "./panels/MetricsPanel";
 import { ApprovalPanel } from "./panels/ApprovalPanel";
 import { ActivityPanel } from "./panels/ActivityPanel";
+import { SecurityPanel } from "./panels/SecurityPanel";
 
 export function App() {
   const [activeTab, setActiveTab] = useState(0);
@@ -49,7 +50,12 @@ export function App() {
               <ApprovalPanel />
             </PageSection>
           </Tab>
-          <Tab eventKey={2} title={<TabTitleText>Activity</TabTitleText>}>
+          <Tab eventKey={2} title={<TabTitleText>Security</TabTitleText>}>
+            <PageSection>
+              <SecurityPanel />
+            </PageSection>
+          </Tab>
+          <Tab eventKey={3} title={<TabTitleText>Activity</TabTitleText>}>
             <PageSection>
               <ActivityPanel />
             </PageSection>
