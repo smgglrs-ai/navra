@@ -1,6 +1,6 @@
 id: NAVRA-089
 title: "React dashboard scaffolding (@navra/react-hooks)"
-status: planned
+status: done
 priority: medium
 effort: 2-3d
 depends_on: []
