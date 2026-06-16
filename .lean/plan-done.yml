@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 47 completed items
+# 48 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -118,6 +118,14 @@ items:
     priority: high
     effort: 2-3d
     depends_on: ['NAVRA-002']
+
+  - id: "NAVRA-024"
+    title: "IFC adversarial corpus benchmark"
+    status: done
+    priority: low
+    effort: 3-5d
+    progress: 100
+    feeds: ['NAVRA-025', 'NAVRA-001']
 
   - id: "NAVRA-029"
     title: "Cross-session fact extraction"

@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 53 active items
+# 52 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -11,14 +11,6 @@ items:
     priority: critical
     effort: M
     gate: "2026-07-28 flip default; implement now behind feature gate"
-
-  - id: "NAVRA-024"
-    title: "IFC adversarial corpus benchmark"
-    status: in_progress
-    priority: low
-    effective_priority: high
-    effort: 3-5d
-    feeds: ['NAVRA-025', 'NAVRA-001']
 
   - id: "NAVRA-025"
     title: "NeuroTaint offline taint audit"
