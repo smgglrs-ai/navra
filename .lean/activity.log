@@ -1,3 +1,15 @@
+- timestamp: "2026-06-16T18:00:00+02:00"
+  actor: claude
+  action: item-complete
+  summary: "NAVRA-024 done: IFC adversarial corpus benchmark. 261-vector corpus (navra+MVAR+benign), F1=1.000. Benchmark harness, integration tests, methodology doc."
+  details:
+    - "Cleared MVAR corpus gate (v1.5.3, Apache-2.0); TaintBench irrelevant (Android malware)"
+    - "corpus.rs: 11 navra + 50 MVAR + 200 benign vectors"
+    - "benchmark.rs: harness with per-category and per-invariant F1 scoring"
+    - "ifc_benchmark.rs: 3 integration tests (full, navra-only, MVAR-only)"
+    - "Updated ecosystem-positioning.md F1 from TBD to 1.000"
+    - "Created docs/evaluations/ifc-benchmark.md with methodology and caveats"
+
 - timestamp: "2026-06-16T15:00:00+02:00"
   actor: claude
   action: loop-complete
