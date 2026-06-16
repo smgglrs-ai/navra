@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 48 completed items
+# 49 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -323,4 +323,12 @@ items:
     priority: low
     effort: 3-5d
     depends_on: ['NAVRA-089']
+
+  - id: "NAVRA-101"
+    title: "Refuse stateless mode when IFC tainted_write_policy is deny/approve"
+    status: done
+    priority: high
+    effort: S
+    progress: 100
+    feeds: ['NAVRA-102']
 

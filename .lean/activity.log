@@ -1,3 +1,22 @@
+- timestamp: "2026-06-16T20:35:00+02:00"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 1 item completed (NAVRA-101). Exit: no unblocked items remaining in approve scope"
+  details:
+    iterations: 1
+    max_iterations: 5
+    completed: ['NAVRA-101']
+    exit_reason: "No unblocked items remaining in approve scope"
+    branch: "loop/2026-06-16-5"
+
+- timestamp: "2026-06-16T20:30:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-101"
+  summary: "Refuse stateless mode when IFC deny/approve configured. Bail in main.rs after IFC policy wiring."
+  iteration: 1
+  max_iterations: 5
+
 - timestamp: "2026-06-16T18:00:00+02:00"
   actor: claude
   action: item-complete

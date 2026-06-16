@@ -827,6 +827,26 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
     }
 
+    // IFC + stateless guard: taint tracking requires session persistence.
+    // Stateless dispatch (2026-07-28) doesn't persist taint between requests,
+    // silently disabling IFC enforcement. Refuse to start in this config.
+    if cfg.server.mcp_version != "2025-03-26" {
+        let has_ifc_enforcement = cfg.permissions.values().any(|pset| {
+            let p = navra_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy);
+            p != navra_core::ifc::TaintedWritePolicy::Allow
+        });
+        if has_ifc_enforcement {
+            anyhow::bail!(
+                "IFC tainted_write_policy (deny/approve) requires session-based dispatch, \
+                 but mcp_version is \"{}\". Taint does not persist across requests in stateless mode, \
+                 so IFC enforcement would be silently disabled.\n\
+                 Fix: set mcp_version = \"2025-03-26\" in [server], \
+                 or change tainted_write_policy to \"allow\" in all [permissions.*] sections.",
+                cfg.server.mcp_version
+            );
+        }
+    }
+
     if quota_engine.has_limits() {
         builder = builder.quota_engine(quota_engine);
     }
