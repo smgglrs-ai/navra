@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 62 active items
+# 61 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -29,12 +29,6 @@ items:
     effort: 5-7d
     depends_on: ['NAVRA-024']
     feeds: ['NAVRA-001']
-
-  - id: "NAVRA-086"
-    title: "Agent skills for navra adoption (init, policy, flow, diagnose)"
-    status: planned
-    priority: high
-    effort: 1-2w
 
   - id: "NAVRA-029"
     title: "Cross-session fact extraction"
