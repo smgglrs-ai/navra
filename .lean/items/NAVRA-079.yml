@@ -1,6 +1,6 @@
 id: "NAVRA-079"
 title: "Map ADR-Bench attack taxonomy to navra defense layers"
-status: planned
+status: done
 priority: medium
 effort: 1d
 depends_on: []
