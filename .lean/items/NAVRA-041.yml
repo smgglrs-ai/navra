@@ -1,7 +1,7 @@
 id: "NAVRA-041"
 title: "Evaluate LFM2.5-Audio-1.5B-ONNX"
 status: planned
-priority: high
+priority: medium
 effort: 2-3d
 depends_on: []
 feeds: []

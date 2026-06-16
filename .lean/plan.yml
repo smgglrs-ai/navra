@@ -30,18 +30,6 @@ items:
     depends_on: ['NAVRA-024']
     feeds: ['NAVRA-001']
 
-  - id: "NAVRA-041"
-    title: "Evaluate LFM2.5-Audio-1.5B-ONNX"
-    status: planned
-    priority: high
-    effort: 2-3d
-
-  - id: "NAVRA-042"
-    title: "DNS-AID discovery support"
-    status: planned
-    priority: high
-    effort: 2.5-3.5d
-
   - id: "NAVRA-086"
     title: "Agent skills for navra adoption (init, policy, flow, diagnose)"
     status: planned
@@ -71,6 +59,18 @@ items:
     status: planned
     priority: medium
     effort: 1-2d
+
+  - id: "NAVRA-041"
+    title: "Evaluate LFM2.5-Audio-1.5B-ONNX"
+    status: planned
+    priority: medium
+    effort: 2-3d
+
+  - id: "NAVRA-042"
+    title: "DNS-AID discovery support"
+    status: planned
+    priority: medium
+    effort: 2.5-3.5d
 
   - id: "NAVRA-043"
     title: "Context compression post-hook"
