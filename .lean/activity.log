@@ -217,3 +217,11 @@ Breaking API changes + security architecture change require human review before 
   summary: "ADR-Bench attack taxonomy mapped to navra defense layers — 17 techniques across 5 tactics, 8 strong / 7 partial / 2 weak coverage, comparison of ADR prevention vs navra hooks"
   iteration: 3
   max_iterations: 5
+
+- timestamp: "2026-06-16T18:30:00+02:00"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-040"
+  summary: "ASSERT evaluation for C3 — spec-driven eval complementing Glasswing, OTel trace integration path, three-phase adoption roadmap"
+  iteration: 4
+  max_iterations: 5
