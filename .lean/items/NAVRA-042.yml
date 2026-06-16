@@ -1,7 +1,7 @@
 id: "NAVRA-042"
 title: "DNS-AID discovery support"
 status: planned
-priority: high
+priority: medium
 effort: 2.5-3.5d
 depends_on: []
 feeds: []
