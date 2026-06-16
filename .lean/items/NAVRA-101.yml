@@ -1,0 +1,26 @@
+id: "NAVRA-101"
+title: "Refuse stateless mode when IFC tainted_write_policy is deny/approve"
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: ['NAVRA-102']
+description: |
+  If any permission set has tainted_write_policy != "allow", refuse to
+  start with mcp_version = "2026-07-28" (stateless). IFC taint tracking
+  requires session persistence — stateless dispatch silently disables
+  IFC enforcement because taint doesn't persist across HTTP requests.
+
+  Implementation: in main.rs, after wiring IFC policies (line ~810),
+  check if any Deny/Approve policy exists AND mcp_version is stateless.
+  If so, log an error and exit with a clear message:
+
+    "IFC tainted_write_policy requires session-based dispatch.
+     Set mcp_version = \"2025-03-26\" in [server] or change
+     tainted_write_policy to \"allow\"."
+
+  This is the honest short-term fix. The proper solution is NAVRA-102.
+acceptance:
+  - "Server refuses to start with stateless + IFC deny/approve"
+  - "Error message names both config fields to change"
+  - "No behavior change when tainted_write_policy = allow"

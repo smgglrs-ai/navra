@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 52 active items
+# 54 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -11,6 +11,23 @@ items:
     priority: critical
     effort: M
     gate: "2026-07-28 flip default; implement now behind feature gate"
+
+  - id: "NAVRA-101"
+    title: "Refuse stateless mode when IFC tainted_write_policy is deny/approve"
+    status: planned
+    priority: high
+    effective_priority: critical
+    effort: S
+    feeds: ['NAVRA-102']
+
+  - id: "NAVRA-102"
+    title: "Opaque taint token for IFC in stateless MCP transport"
+    status: planned
+    priority: medium
+    effective_priority: critical
+    effort: 3-5d
+    depends_on: ['NAVRA-101']
+    feeds: ['NAVRA-018']
 
   - id: "NAVRA-025"
     title: "NeuroTaint offline taint audit"

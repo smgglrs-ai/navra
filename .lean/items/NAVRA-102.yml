@@ -1,0 +1,56 @@
+id: "NAVRA-102"
+title: "Opaque taint token for IFC in stateless MCP transport"
+status: planned
+priority: medium
+effort: 3-5d
+depends_on: ['NAVRA-101']
+feeds: ['NAVRA-018']
+description: |
+  Enable IFC enforcement over the 2026-07-28 stateless transport
+  using an opaque server-managed taint token.
+
+  Design:
+
+  The server returns an encrypted taint handle in tool call responses
+  (MCP result metadata or a custom header). The client must echo it
+  on the next request. The server holds the real taint state keyed by
+  a random session ID embedded in the encrypted token.
+
+  Security properties:
+  - Client carries a handle, not the taint data — can't forge labels
+  - Client that drops/omits the token gets maximum taint (fail-closed):
+    Untrusted integrity + Secret confidentiality → all writes blocked
+  - Token is encrypted (AES-GCM with server-side key) so the client
+    can't read or modify the session ID
+  - Token includes a timestamp for expiry (same as session TTL)
+  - Replay of an old token gets the old (higher) taint — safe because
+    taint only rises (INV-1)
+
+  This is analogous to HTTP signed cookies: stateless from the
+  protocol perspective, but the server holds the real state. The
+  client is just a dumb courier. A compromised agent that manipulates
+  the token gets MORE restricted, not less.
+
+  Implementation steps:
+  1. Generate a per-server AES-GCM key at startup (or derive from
+     the existing Ed25519 identity key)
+  2. On first tool call without a taint token, create a new internal
+     session and return the encrypted session ID as the taint token
+  3. On subsequent calls, decrypt the token, load the session's taint
+     state, proceed with normal IFC enforcement
+  4. On missing/invalid token, create a new session at maximum taint
+  5. Return updated token in every tool call response
+
+  Wire format: `_meta.taint_token` field in the tool call result,
+  echoed back via `_meta.taint_token` in the next tool call params.
+
+  MCP compliance: the `_meta` field is reserved for transport-level
+  metadata in MCP 2026-07-28. Using it for taint tokens is within
+  spec.
+acceptance:
+  - "IFC enforcement works over 2026-07-28 stateless transport"
+  - "Missing taint token → maximum taint (fail-closed)"
+  - "Forged/tampered token → rejected, maximum taint"
+  - "Taint persists across tool calls via opaque token"
+  - "e2e benchmark passes in stateless mode"
+  - "NAVRA-101 startup check relaxed when taint tokens are enabled"
