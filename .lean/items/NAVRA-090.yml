@@ -1,0 +1,56 @@
+id: NAVRA-090
+title: "Replace navra-tools-git with upstream Git MCP server"
+status: planned
+priority: medium
+effort: 3-5d
+depends_on: []
+feeds: []
+description: |
+  Remove navra-tools-git and use cyanheads/git-mcp-server (28 tools,
+  GPG/SSH signing, JWT/OAuth auth, path sandboxing) as an upstream MCP
+  server. Follows the "prefer existing MCPs" decision (NAVRA-045/046/047
+  closed as wont_do, NAVRA-072 removed GitHub module).
+
+  navra-tools-git has 8 tools with two navra-specific features:
+  1. Agent commit signing via delegated Ed25519 key
+  2. Per-path approval with grant caching (identical to file module)
+
+  Both are gateway-level concerns, not module concerns:
+  - Signing: navra should delegate a derived key to the agent via
+    capability token. The upstream git server accepts the key and
+    signs on behalf of the agent. Requires contribution to
+    cyanheads/git-mcp-server to accept a signing key parameter.
+  - Per-path approval: navra's existing tool_rules + path ACLs +
+    approval gates handle this at the gateway layer for any upstream.
+
+  Steps:
+  1. Contribute signing key parameter support to cyanheads/git-mcp-server
+     (or fork). Agent passes derived Ed25519 key, server uses it for
+     commit/tag signing. This preserves provenance (signature proves
+     which agent committed, through which delegation chain).
+  2. Configure git MCP server as upstream in navra
+  3. Verify tool_rules can replicate per-operation permissions:
+     - git_commit → policy: approve
+     - git_push → policy: approve
+     - git_status/diff/log/branch/fetch/pull → policy: allow
+  4. Remove navra-tools-git from workspace Cargo.toml, navra-server
+     dependency, config, main.rs module registration
+  5. Remove crate directory and update docs
+  6. Update test count in TESTING.md
+
+  Current crate: 8 tools, 52 tests (25 unit + 27 integration).
+  No external type dependencies — only navra-server instantiates it.
+acceptance:
+  - "Upstream git MCP server configured and functional"
+  - "Agent commit signing works via delegated key"
+  - "Per-path approval enforced at gateway level"
+  - "navra-tools-git crate removed"
+  - "All workspace tests pass"
+notes: |
+  - cyanheads/git-mcp-server: 28 tools, GPG/SSH signing (server-local
+    config only — no client key passthrough yet), GIT_BASE_DIR sandboxing,
+    JWT/OAuth auth. MIT license.
+  - Anthropic's mcp-server-git: 8 tools (Python), simpler but less
+    capable. No signing support.
+  - Signing key contribution is the blocking dependency. Without it,
+    commit provenance is lost.
