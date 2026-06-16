@@ -180,4 +180,17 @@ pub trait Hook: Send + Sync + 'static {
     ) -> PostModelDecision {
         PostModelDecision::Continue
     }
+
+    /// Called when a session ends (explicit close or expiry).
+    ///
+    /// Runs before session state is removed. Use for cross-session
+    /// fact extraction, audit summarization, or cleanup.
+    /// Returning `Block` is a no-op — session cleanup always proceeds.
+    async fn on_session_end(
+        &self,
+        _session_id: &str,
+        _agent_name: &str,
+        _tool_count: usize,
+    ) {
+    }
 }
