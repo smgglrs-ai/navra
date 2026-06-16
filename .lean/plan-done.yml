@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 39 completed items
+# 40 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -162,6 +162,13 @@ items:
     status: done
     priority: medium
     effort: 1-2d
+
+  - id: "NAVRA-040"
+    title: "ASSERT integration for C3 eval"
+    status: done
+    priority: low
+    effort: 1-2d
+    feeds: ['NAVRA-020']
 
   - id: "NAVRA-043"
     title: "JSON response compression hook"
