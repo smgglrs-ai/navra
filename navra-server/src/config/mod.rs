@@ -126,22 +126,6 @@ impl Config {
             .unwrap_or(false)
     }
 
-    pub fn file_enabled(&self) -> bool {
-        self.modules
-            .file
-            .as_ref()
-            .map(|d| d.enabled)
-            .unwrap_or(true)
-    }
-
-    pub fn file_db_path(&self) -> String {
-        self.modules
-            .file
-            .as_ref()
-            .map(|d| d.db.clone())
-            .unwrap_or_else(modules::default_db_path)
-    }
-
     pub fn rag_enabled(&self) -> bool {
         self.modules
             .rag

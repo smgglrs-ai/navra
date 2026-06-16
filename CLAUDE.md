@@ -20,7 +20,7 @@ package only provides shared libraries.
 
 ## Workspace
 
-23-crate Rust workspace. See `DESIGN.md` for the full crate table,
+22-crate Rust workspace. See `DESIGN.md` for the full crate table,
 dependency layering, architecture diagrams, and design decisions.
 
 ## Agent Workflow (MANDATORY)
