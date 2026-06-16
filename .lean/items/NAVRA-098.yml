@@ -1,6 +1,6 @@
 id: NAVRA-098
 title: "<PermissionEditor /> component"
-status: planned
+status: done
 priority: low
 effort: 3-5d
 depends_on: ['NAVRA-089']

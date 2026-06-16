@@ -15,6 +15,7 @@ import { ApprovalPanel } from "./panels/ApprovalPanel";
 import { ActivityPanel } from "./panels/ActivityPanel";
 import { SecurityPanel } from "./panels/SecurityPanel";
 import { FlowPanel } from "./panels/FlowPanel";
+import { PermissionsPanel } from "./panels/PermissionsPanel";
 
 export function App() {
   const [activeTab, setActiveTab] = useState(0);
@@ -61,7 +62,12 @@ export function App() {
               <FlowPanel />
             </PageSection>
           </Tab>
-          <Tab eventKey={4} title={<TabTitleText>Activity</TabTitleText>}>
+          <Tab eventKey={4} title={<TabTitleText>Permissions</TabTitleText>}>
+            <PageSection>
+              <PermissionsPanel />
+            </PageSection>
+          </Tab>
+          <Tab eventKey={5} title={<TabTitleText>Activity</TabTitleText>}>
             <PageSection>
               <ActivityPanel />
             </PageSection>
