@@ -93,6 +93,68 @@ tainted_write_policy = "allow"
     )
 }
 
+fn stateless_deny_config() -> String {
+    let server_path = test_server_path();
+    format!(
+        r#"
+cognitive_core = "cognitive_core"
+
+[server]
+tcp = "127.0.0.1:{{port}}"
+
+[[upstream]]
+name = "testdocs"
+transport = "stdio"
+command = ["python3", "{server_path}"]
+
+[permissions.default]
+ring = 1
+operations = ["read", "write", "search"]
+allow = ["**"]
+safety = "standard"
+tainted_write_policy = "deny"
+
+[permissions.readonly]
+ring = 1
+operations = ["read", "write", "search"]
+allow = ["**"]
+safety = "standard"
+tainted_write_policy = "deny"
+"#
+    )
+}
+
+fn stateless_allow_config() -> String {
+    let server_path = test_server_path();
+    format!(
+        r#"
+cognitive_core = "cognitive_core"
+
+[server]
+tcp = "127.0.0.1:{{port}}"
+
+[[upstream]]
+name = "testdocs"
+transport = "stdio"
+command = ["python3", "{server_path}"]
+
+[permissions.default]
+ring = 1
+operations = ["read", "write", "search"]
+allow = ["**"]
+safety = "standard"
+tainted_write_policy = "allow"
+
+[permissions.readonly]
+ring = 1
+operations = ["read", "write", "search"]
+allow = ["**"]
+safety = "standard"
+tainted_write_policy = "allow"
+"#
+    )
+}
+
 async fn spawn_navra(config_template: &str) -> (Child, u16, String) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -580,5 +642,68 @@ async fn ifc_e2e_benchmark() {
     assert!(
         recall >= 0.8,
         "E2e IFC benchmark: recall {recall:.3} below 0.8 threshold"
+    );
+}
+
+/// Same benchmark over 2026-07-28 stateless transport.
+/// Taint persists via server-side sessions keyed by agent name.
+///
+/// In stateless mode, all anonymous clients share one session
+/// ("stateless:anonymous"), so taint accumulates across vectors.
+/// Attack vectors are run on one server (all should be blocked).
+/// Benign vectors need a fresh server (clean taint state).
+#[tokio::test]
+async fn ifc_e2e_benchmark_stateless() {
+    let client = reqwest::Client::new();
+    let mut all_results = Vec::new();
+
+    // Attack vectors on server with Deny policy
+    {
+        let config = stateless_deny_config();
+        let (mut child, _port, url) = spawn_navra(&config).await;
+
+        let mvar_results = run_attack_vectors(&client, &url, &mvar_attack_vectors()).await;
+        all_results.extend(mvar_results);
+
+        let navra_results = run_attack_vectors(&client, &url, &navra_attack_vectors()).await;
+        all_results.extend(navra_results);
+
+        child.kill().await.ok();
+    }
+
+    // Benign vectors on fresh server (clean taint)
+    {
+        let config = stateless_deny_config();
+        let (mut child, _port, url) = spawn_navra(&config).await;
+
+        let benign_results = run_benign_vectors(&client, &url).await;
+        all_results.extend(benign_results);
+
+        child.kill().await.ok();
+    }
+
+    // Benign with Allow policy on fresh server
+    {
+        let config = stateless_allow_config();
+        let (mut child, _port, url) = spawn_navra(&config).await;
+
+        let allow_results = run_benign_allow_policy(&client, &url).await;
+        all_results.extend(allow_results);
+
+        child.kill().await.ok();
+    }
+
+    eprintln!("\n[STATELESS MODE]");
+    print_report(&all_results);
+
+    let failures: Vec<_> = all_results
+        .iter()
+        .filter(|r| r.blocked != r.expected_blocked)
+        .collect();
+
+    assert!(
+        failures.is_empty(),
+        "E2e IFC benchmark (stateless): {} vectors had wrong outcome",
+        failures.len()
     );
 }

@@ -827,22 +827,25 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
     }
 
-    // IFC + stateless guard: taint tracking requires session persistence.
-    // Stateless dispatch (2026-07-28) doesn't persist taint between requests,
-    // silently disabling IFC enforcement. Refuse to start in this config.
+    // IFC + stateless mode: taint persists via server-side sessions
+    // keyed by agent name ("stateless:{agent_name}"). This means all
+    // clients sharing the same agent identity share taint state — if
+    // one reads a secret, all are blocked from writing. This is safe
+    // (fails closed) but can over-block in multi-client deployments.
     if cfg.server.mcp_version != "2025-03-26" {
         let has_ifc_enforcement = cfg.permissions.values().any(|pset| {
             let p = navra_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy);
             p != navra_core::ifc::TaintedWritePolicy::Allow
         });
         if has_ifc_enforcement {
-            anyhow::bail!(
-                "IFC tainted_write_policy (deny/approve) requires session-based dispatch, \
-                 but mcp_version is \"{}\". Taint does not persist across requests in stateless mode, \
-                 so IFC enforcement would be silently disabled.\n\
-                 Fix: set mcp_version = \"2025-03-26\" in [server], \
-                 or change tainted_write_policy to \"allow\" in all [permissions.*] sections.",
-                cfg.server.mcp_version
+            tracing::warn!(
+                "IFC tainted_write_policy is active in stateless mode. \
+                 Taint persists via server-side sessions keyed by agent name. \
+                 All clients sharing the same identity share taint state — \
+                 if one reads sensitive data, all are blocked from writing. \
+                 This is safe (fail-closed) but may over-block in multi-client setups. \
+                 Use session-based dispatch (mcp_version = \"2025-03-26\") or \
+                 capability tokens for per-client taint isolation."
             );
         }
     }
