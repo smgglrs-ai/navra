@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 61 active items
+# 59 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -72,25 +72,12 @@ items:
     priority: medium
     effort: 3-4d
 
-  - id: "NAVRA-044"
-    title: "Execution ring refinement"
-    status: planned
-    priority: medium
-    effort: 1-2d
-
   - id: "NAVRA-079"
     title: "Evaluate ADR-Bench as navra security benchmark"
     status: planned
     priority: medium
     effort: 2-3d
     feeds: ['NAVRA-048']
-
-  - id: "NAVRA-084"
-    title: "OpenAPI upstream: response truncation and token budget"
-    status: planned
-    priority: medium
-    effort: 1-2d
-    depends_on: ['NAVRA-082']
 
   - id: "NAVRA-089"
     title: "React security dashboard components (@navra/react)"
