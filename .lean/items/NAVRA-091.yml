@@ -1,0 +1,59 @@
+id: NAVRA-091
+title: "Replace navra-tools-file with upstream Filesystem MCP server"
+status: planned
+priority: medium
+effort: 2-3d
+depends_on: []
+feeds: []
+description: |
+  Remove navra-tools-file and use the official Anthropic filesystem MCP
+  server (@modelcontextprotocol/server-filesystem) as an upstream.
+  Follows the "prefer existing MCPs" decision.
+
+  navra-tools-file provides: file_read, file_write, file_edit,
+  file_tree, file_search (FTS5), file_approve/file_deny (HitL). It has
+  the same per-path approval + grant caching pattern as the git module.
+
+  Gateway-level concerns that stay in navra:
+  - Per-agent path ACLs (deny-wins) — already in navra-auth
+  - Per-path approval with grant caching — already in navra-auth
+  - Tool rules (allow/deny/approve per tool) — already in navra-core
+  - IFC taint tracking on file content — already in navra-core
+  - PII filtering on file content — already in navra-safety
+
+  MCP server concerns that move to upstream:
+  - Path validation (traversal, symlinks)
+  - Actual file I/O
+  - Directory listing
+  - Search indexing
+
+  Steps:
+  1. Configure filesystem MCP server as upstream
+  2. Verify tool_rules replicate per-operation permissions:
+     - file_write/file_edit → policy: approve
+     - file_read/file_tree → policy: allow
+  3. Evaluate FTS5 search — the upstream server may not have full-text
+     search. Options: keep navra-rag for search, or accept upstream's
+     search capabilities
+  4. Migrate HitL approval flow — verify gateway-level approval gates
+     cover the file_approve/file_deny pattern
+  5. Remove navra-tools-file from workspace
+  6. Update docs
+
+  Note: navra-tools-file has the most tests in the workspace (54 unit +
+  11 integration = 65). Careful validation needed.
+acceptance:
+  - "Upstream filesystem MCP server configured and functional"
+  - "Per-path approval enforced at gateway level"
+  - "File search available (via upstream or navra-rag)"
+  - "navra-tools-file crate removed"
+  - "All workspace tests pass"
+notes: |
+  - @modelcontextprotocol/server-filesystem: Anthropic reference
+    implementation. Configurable allowed directories. Node.js.
+  - FTS5 search is the main feature gap — upstream may not have it.
+    navra-rag already provides search via vector+FTS5 hybrid, so
+    this may not matter.
+  - The HitL approval flow (file_approve/file_deny tools) is specific
+    to navra's approval protocol. Need to verify the gateway-level
+    approval gate (tool_rules policy: approve) provides equivalent UX.
