@@ -449,3 +449,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Merged seq+prev_hash into single ChainState mutex; insert errors now logged via tracing::error; schema migration handles duplicate column gracefully"
   iteration: 8
   max_iterations: 20
+- timestamp: "2026-06-17T11:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-123"
+  summary: "Added snap_to_char_boundary helper for redact/pseudonymize; compress now snaps cut point to valid UTF-8 boundary; tests with CJK and emoji"
+  iteration: 9
+  max_iterations: 20

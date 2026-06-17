@@ -167,7 +167,7 @@ items:
 
   - id: "NAVRA-123"
     title: "UTF-8 boundary safety in redact/pseudonymize and compress"
-    status: planned
+    status: done
     priority: medium
     effort: S
 
