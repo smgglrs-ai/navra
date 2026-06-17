@@ -27,9 +27,11 @@ pub struct ConditionalEdge {
     pub max_iterations: u32,
 }
 
-/// Tracker for back-edge iteration counts.
+/// Tracker for back-edge iteration counts with global execution bound.
 pub struct BackEdgeTracker {
     counts: HashMap<(String, String), u32>,
+    global_activations: u32,
+    global_max: u32,
 }
 
 /// Parse a condition string into an `EdgeCondition`.
@@ -80,26 +82,35 @@ impl ConditionalEdge {
 
 impl Default for BackEdgeTracker {
     fn default() -> Self {
-        Self::new()
+        Self::with_global_max(1000)
     }
 }
 
 impl BackEdgeTracker {
     pub fn new() -> Self {
+        Self::with_global_max(1000)
+    }
+
+    pub fn with_global_max(max: u32) -> Self {
         Self {
             counts: HashMap::new(),
+            global_activations: 0,
+            global_max: max,
         }
     }
 
-    /// Check whether the back-edge should activate: condition is met and
-    /// iteration count has not reached the maximum.
+    /// Check whether the back-edge should activate: condition is met,
+    /// per-edge iteration count has not reached the maximum, AND the
+    /// global activation count has not reached the global bound.
     pub fn should_activate(&self, edge: &ConditionalEdge, result: &TaskResult) -> bool {
         evaluate_condition(&edge.condition, result)
             && self.iteration_count(&edge.from, &edge.to) < edge.max_iterations
+            && self.global_activations < self.global_max
     }
 
-    /// Record a back-edge activation and return the new count.
+    /// Record a back-edge activation and return the new per-edge count.
     pub fn record_activation(&mut self, from: &str, to: &str) -> u32 {
+        self.global_activations += 1;
         let key = (from.to_string(), to.to_string());
         let count = self.counts.entry(key).or_insert(0);
         *count += 1;
@@ -110,6 +121,16 @@ impl BackEdgeTracker {
     pub fn iteration_count(&self, from: &str, to: &str) -> u32 {
         let key = (from.to_string(), to.to_string());
         self.counts.get(&key).copied().unwrap_or(0)
+    }
+
+    /// Total back-edge activations across all edges.
+    pub fn global_activations(&self) -> u32 {
+        self.global_activations
+    }
+
+    /// Whether the global bound has been reached.
+    pub fn is_exhausted(&self) -> bool {
+        self.global_activations >= self.global_max
     }
 }
 
