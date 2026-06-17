@@ -587,3 +587,21 @@ Breaking API changes + security architecture change require human review before 
   summary: "Added audience (aud) claim to capability tokens for transport binding; decode_token_unchecked restricted to pub(crate)"
   iteration: 6
   max_iterations: 20
+- timestamp: "2026-06-17T17:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-121"
+  summary: "WorkingMemory and KnowledgeStore Connection wrapped in Mutex; internal helpers refactored to take &Connection to avoid deadlocks"
+  iteration: 7
+  max_iterations: 20
+- timestamp: "2026-06-17T17:30:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 7 items completed. Exit: all planned items complete"
+  details:
+    iterations: 7
+    max_iterations: 20
+    completed: [NAVRA-107, NAVRA-111, NAVRA-112, NAVRA-116, NAVRA-119, NAVRA-124, NAVRA-121]
+    exit_reason: "All planned notify-scope items completed"
+    branch: "loop/2026-06-17-3"
+    tag: "loop-run/2026-06-17-3-7"
