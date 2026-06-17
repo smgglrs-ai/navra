@@ -68,7 +68,7 @@ items:
 
   - id: "NAVRA-110"
     title: "is_write_tool: deny-by-default for unannotated tools"
-    status: planned
+    status: done
     priority: high
     effort: S
 
