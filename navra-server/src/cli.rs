@@ -26,6 +26,9 @@ pub(crate) enum Commands {
         /// Disable system tray icon
         #[arg(long)]
         no_tray: bool,
+        /// Enable anonymous access (dev only — do not use in production)
+        #[arg(long)]
+        dev_mode: bool,
     },
     /// Run as a stdio MCP server (for Claude Desktop, Cursor, etc.)
     Stdio {

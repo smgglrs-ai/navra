@@ -122,9 +122,13 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve {
             config: config_path,
             no_tray,
+            dev_mode,
         } => {
             let cfg = config::Config::load(config_path.as_deref())?;
-            serve(cfg, no_tray).await?;
+            if dev_mode {
+                tracing::warn!("--dev-mode enabled: anonymous access allowed without authentication");
+            }
+            serve(cfg, no_tray, dev_mode).await?;
         }
         Commands::Stdio {
             config: config_path,
@@ -650,14 +654,14 @@ enum TransportMode {
 }
 
 async fn stdio(cfg: config::Config) -> anyhow::Result<()> {
-    serve_inner(cfg, TransportMode::Stdio).await
+    serve_inner(cfg, TransportMode::Stdio, false).await
 }
 
-async fn serve(cfg: config::Config, no_tray: bool) -> anyhow::Result<()> {
-    serve_inner(cfg, TransportMode::Http { no_tray }).await
+async fn serve(cfg: config::Config, no_tray: bool, dev_mode: bool) -> anyhow::Result<()> {
+    serve_inner(cfg, TransportMode::Http { no_tray }, dev_mode).await
 }
 
-async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result<()> {
+async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -> anyhow::Result<()> {
     tracing::info!("Starting navra");
 
     // Bootstrap root identity (DID:key from Ed25519)
@@ -1019,9 +1023,6 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             Box::new(Arc::clone(&root_signer)),
             nonce_cache_ttl,
         );
-        let no_auth = navra_core::auth::NoAuthenticator {
-            default_identity: AgentIdentity::new("anonymous", "readonly"),
-        };
         let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
 
         // Insert OpenShell authenticator if configured
@@ -1031,12 +1032,23 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
             tracing::info!("OpenShell identity federation enabled");
         }
 
-        let chain = chain.add(no_auth);
-        builder = builder.authenticator(chain);
-        tracing::warn!(
-            "No agents configured — external requests accepted as anonymous. \
-             Flow tasks and teammates authenticate via capability tokens."
-        );
+        if dev_mode {
+            let no_auth = navra_core::auth::NoAuthenticator {
+                default_identity: AgentIdentity::new("anonymous", "readonly"),
+            };
+            let chain = chain.add(no_auth);
+            builder = builder.authenticator(chain);
+            tracing::warn!(
+                "DEV MODE: No agents configured — anonymous access enabled. \
+                 Do not use in production."
+            );
+        } else {
+            anyhow::bail!(
+                "No agents configured and --dev-mode not set. \
+                 Add [[agents]] to config.toml, configure OAuth, \
+                 or pass --dev-mode for development."
+            );
+        }
     }
 
     // --- Load models into registry ---
