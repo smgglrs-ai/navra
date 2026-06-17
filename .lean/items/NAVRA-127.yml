@@ -1,0 +1,26 @@
+id: "NAVRA-127"
+title: "IFC label metadata: stop leaking classification to agents"
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-6. handlers.rs:742-746 appends
+  "_var: {var_id} (label: {label})_" as visible text to every tool
+  result. Leaks internal security metadata to agents. A malicious
+  agent can parse these labels to understand classification.
+
+  Fix:
+  1. Move IFC variable metadata to a separate metadata channel
+     (e.g., a non-content field in CallToolResult, or an internal-only
+     annotation not serialized to clients).
+  2. Or: only include var_id, not the label text.
+  3. If labels must be visible (for debugging), gate behind a
+     config option per permission set.
+acceptance:
+  - "IFC labels not visible in tool result text by default"
+  - "Variable metadata accessible via internal API"
+  - "Config option to enable label visibility for debugging"
+scope:
+  - navra-core/src/server/handlers.rs

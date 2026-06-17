@@ -1,0 +1,29 @@
+id: "NAVRA-110"
+title: "is_write_tool: deny-by-default for unannotated tools"
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-1. is_write_tool and is_external_read_tool use
+  substring denylists that miss tools named update_, create_, post_,
+  modify_, api_, etc. Same for is_external_read_tool (ifc/mod.rs:287).
+
+  Fix:
+  1. For tools WITHOUT MCP annotations: default to is_write=true
+     (deny-by-default). Only tools explicitly annotated as
+     read_only_hint=true are classified as read-only.
+  2. Keep the name-based heuristic as a fallback ONLY for legacy
+     tools that cannot be annotated, behind a config flag.
+  3. Log a warning when a tool is classified by heuristic.
+  4. Same treatment for is_external_read_tool: unannotated tools
+     that read external data should default to Untrusted integrity.
+acceptance:
+  - "Unannotated tools default to write=true"
+  - "Unannotated external-read tools default to Untrusted"
+  - "Warning logged when heuristic classification used"
+  - "Existing annotated tools unaffected"
+  - "Config flag for legacy heuristic fallback"
+scope:
+  - navra-auth/src/ifc/mod.rs

@@ -1,0 +1,30 @@
+id: "NAVRA-113"
+title: "Model hub: integrity verification on pull"
+status: planned
+priority: high
+effort: M
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-12. model-hub pull() downloads model bytes and stores
+  them with content-addressed SHA-256, but the hash is computed FROM
+  the downloaded bytes — not verified against a known-good digest.
+  MITM could serve malicious model.
+
+  Fix:
+  1. Add expected_digest field to ModelUri or pull options
+  2. When digest is provided, verify downloaded bytes match BEFORE
+     storing in cache
+  3. Support digest pinning in config: model URIs with @sha256:...
+  4. For Ollama transport: verify against Ollama's own digest
+  5. For OCI transport: verify against OCI manifest digest
+  6. Log warning when pulling without digest verification
+acceptance:
+  - "Pull with expected digest verifies before caching"
+  - "Digest mismatch returns error, does not cache"
+  - "Config supports digest-pinned model URIs"
+  - "Warning logged for unverified pulls"
+scope:
+  - navra-model-hub/src/lib.rs
+  - navra-model-hub/src/cache.rs
+  - navra-model-hub/src/uri.rs

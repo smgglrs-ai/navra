@@ -1,0 +1,31 @@
+id: "NAVRA-111"
+title: "Declassify authority verification"
+status: planned
+priority: high
+effort: M
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-5. TaintTracker::declassify() accepts any &str as
+  declassifier identity. No validation that the caller is a trusted
+  authority. Any code with &mut TaintTracker can declassify by
+  passing "pii-filter".
+
+  Fix:
+  1. Create a DeclassificationAuthority type (not just a string)
+     that can only be constructed within the safety pipeline module.
+  2. Change declassify() signature to require DeclassificationAuthority
+     instead of &str.
+  3. Register authorities at server startup (PII filter, etc.).
+  4. The authority type carries a reference to the CapSigner, so
+     witnesses are always signed (fixing witness optional-signing
+     gap M-3 simultaneously).
+acceptance:
+  - "declassify() requires DeclassificationAuthority, not &str"
+  - "Authority can only be constructed by registered modules"
+  - "Witnesses are always signed when produced by declassify()"
+  - "Existing declassify tests updated"
+scope:
+  - navra-auth/src/ifc/mod.rs
+  - navra-auth/src/ifc/witness.rs
+  - navra-core/src/server/handlers.rs

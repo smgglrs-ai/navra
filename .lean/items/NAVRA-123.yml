@@ -1,0 +1,31 @@
+id: "NAVRA-123"
+title: "UTF-8 boundary safety in redact/pseudonymize and compress"
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-9, M-20. Two UTF-8 slicing hazards:
+
+  1. redact()/pseudonymize() (safety/lib.rs:605-650) index into
+     content using byte offsets from Finding.start/end. If offsets
+     land mid-character, slicing panics.
+  2. compress() (mcp.rs:325-346) may compute cut points that split
+     multi-byte UTF-8 sequences.
+
+  Fix:
+  1. In redact/pseudonymize: assert content.is_char_boundary(start)
+     and content.is_char_boundary(end) before slicing. If not,
+     adjust to nearest boundary.
+  2. In compress: use floor_char_boundary (or manual equivalent)
+     before slicing.
+  3. Add Kani proof: all slice operations use valid char boundaries.
+acceptance:
+  - "No panic on non-ASCII input in redact/pseudonymize"
+  - "No panic on non-ASCII input in compress"
+  - "Unit tests with CJK, emoji, and mixed UTF-8"
+  - "Kani proof for char boundary invariant"
+scope:
+  - navra-safety/src/lib.rs
+  - navra-protocol/src/mcp.rs

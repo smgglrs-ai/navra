@@ -1,0 +1,34 @@
+id: "NAVRA-108"
+title: "IFC config hardening: reject unknown strings, default-deny"
+status: planned
+priority: critical
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-2, H-3. Two fail-open config parsing issues:
+
+  1. TaintedWritePolicy::from_str (ifc/mod.rs:154) defaults to Allow
+     on unknown input. Typo "denny" silently disables IFC.
+  2. Missing IFC policy in ifc_policies HashMap (handlers.rs:528)
+     defaults to Allow. New permission sets get zero enforcement.
+
+  Fix:
+  1. TaintedWritePolicy::from_str → return Result<Self, ConfigError>.
+     Reject unknown strings. Update all callers to handle the error.
+     Make parsing case-insensitive.
+  2. ReadClearance::from_config: same — reject unknown level strings
+     instead of defaulting to Secret (which is fail-open for reads).
+  3. In handlers.rs IFC check: when ifc_policies.get() returns None,
+     default to TaintedWritePolicy::Deny (not Allow).
+  4. Add Kani proof: from_str(s).is_ok() => s in valid_set.
+acceptance:
+  - "Unknown TaintedWritePolicy string → error, not Allow"
+  - "Unknown ReadClearance level string → error, not Secret"
+  - "Missing IFC policy defaults to Deny"
+  - "Case-insensitive config parsing"
+  - "Kani proof for valid-set membership"
+  - "Config validation test with typos"
+scope:
+  - navra-auth/src/ifc/mod.rs
+  - navra-core/src/server/handlers.rs

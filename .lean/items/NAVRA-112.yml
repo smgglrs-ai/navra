@@ -1,0 +1,38 @@
+id: "NAVRA-112"
+title: "Transport DoS hardening: size limits on all inputs"
+status: planned
+priority: high
+effort: M
+depends_on: []
+feeds: ['NAVRA-080']
+description: |
+  PROOF-GAPS H-13, H-14, H-15, H-16, M-12..14. Multiple transport
+  layers accept unbounded input.
+
+  Fix:
+  1. Stdio transport (stdio.rs:157): add MAX_LINE_SIZE limit on
+     read_line. Use BufReader::take() or manual byte counting.
+  2. SSE transport (sse.rs:83,158): stream response body with byte
+     limit instead of resp.text().await. Use reqwest's body streaming.
+  3. HTTP transport: same streaming body limit.
+  4. Session flooding (handlers.rs:189): add MAX_SESSIONS_PER_AGENT
+     counter. Reject initialize when limit reached.
+  5. SSE endpoint URL (sse.rs:96-108): validate discovered endpoint
+     URL has same origin as base URL.
+  6. JSON-RPC: validate jsonrpc field == "2.0", add batch size limit,
+     add method name length limit.
+  7. RequestId: cap String variant length.
+acceptance:
+  - "Stdio read_line bounded to MAX_LINE_SIZE"
+  - "SSE/HTTP response bodies streamed with byte limit"
+  - "Session count per agent capped"
+  - "SSE endpoint URL validated for same-origin"
+  - "JSON-RPC version field validated"
+  - "Batch request size capped"
+  - "Unit tests for each limit"
+scope:
+  - navra-protocol/src/upstream/stdio.rs
+  - navra-protocol/src/upstream/sse.rs
+  - navra-protocol/src/upstream/http.rs
+  - navra-protocol/src/jsonrpc.rs
+  - navra-core/src/server/handlers.rs

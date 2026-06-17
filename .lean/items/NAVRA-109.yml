@@ -1,0 +1,27 @@
+id: "NAVRA-109"
+title: "Exec workspace path: directory-prefix check with canonicalization"
+status: planned
+priority: critical
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-17. navra-tools-exec/src/tools.rs:87 uses
+  starts_with("/workspace") which is a string prefix, not a
+  directory prefix. Accepts /workspacefoo, /workspace/../etc.
+
+  Fix:
+  1. Canonicalize working_dir before checking
+  2. Use Path::starts_with (directory-prefix semantics, not string)
+  3. Reject paths containing ".." components before canonicalization
+  4. Add minimum timeout (1 second, not 0)
+  5. Add Kani proof: passes_check(p) => canonicalize(p) is within
+     /workspace/ directory tree
+acceptance:
+  - "Path::starts_with used instead of str::starts_with"
+  - "Canonicalization before check"
+  - ".. components rejected"
+  - "Minimum timeout enforced"
+  - "Unit tests for /workspacefoo, /workspace/../etc"
+scope:
+  - navra-tools-exec/src/tools.rs

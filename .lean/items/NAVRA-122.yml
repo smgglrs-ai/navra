@@ -1,0 +1,25 @@
+id: "NAVRA-122"
+title: "Safety hook: inspect all argument field names, not just hardcoded set"
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-10. Inbound safety hook (safety_hook.rs:72-77) only
+  checks "content", "new_string", "text" fields. Write tools using
+  "body", "data", "payload", "message" are unfiltered.
+
+  Fix:
+  1. Instead of hardcoded field names, iterate ALL string-valued
+     fields in tool arguments and run safety scan on each.
+  2. Skip known-safe fields (e.g., "path", "repo", "branch") via
+     a configurable exclusion list.
+  3. Or: scan the JSON-serialized arguments as a whole string,
+     catching content in any field.
+acceptance:
+  - "All string-valued tool arguments scanned"
+  - "Configurable field exclusion list"
+  - "Test with non-standard field name containing sensitive content"
+scope:
+  - navra-safety-hooks/src/hooks/safety_hook.rs

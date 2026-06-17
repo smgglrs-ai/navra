@@ -1,0 +1,32 @@
+id: "NAVRA-117"
+title: "GitLab tools: add permission checks"
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-19. navra-tools-gitlab has zero permission checks.
+  Unlike navra-tools-git which checks via PermissionEngine, GitLab
+  tools allow any agent to create MRs, issues, comments without
+  authorization. ctx: CallContext is received but never used.
+
+  Also fix:
+  - Branch names and titles not validated (flag injection, M-37)
+  - No timeout on glab subprocess (resource leak)
+  - validate_repo doesn't block backtick, $(), etc.
+
+  Fix:
+  1. Add permission check at the start of each GitLab tool handler:
+     check ctx.agent.permissions against a GitLab-specific ACL.
+  2. Add validate_ref_name for source_branch and target_branch
+     (reuse from navra-tools-git or extract to shared util).
+  3. Add timeout on run_glab subprocess (300s default, matching exec).
+  4. Extend validate_repo to block all shell metacharacters.
+acceptance:
+  - "Every GitLab tool checks agent permissions"
+  - "Branch names validated against injection"
+  - "Subprocess has timeout"
+  - "Shell metacharacters blocked in repo validation"
+scope:
+  - navra-tools-gitlab/src/tools.rs

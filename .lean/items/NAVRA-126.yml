@@ -1,0 +1,25 @@
+id: "NAVRA-126"
+title: "OpenAPI handler: stream response body, bounded spec download"
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS M-38, from tools analysis. OpenAPI handler reads full
+  response into memory before truncation (OOM on large response).
+  Spec download has no size limit or timeout.
+
+  Fix:
+  1. Stream response body with byte limit (use reqwest body streaming
+     with take()). Truncate during streaming, not after.
+  2. Add size limit and timeout to spec download (fetch_spec).
+  3. Fix hardcoded Content-Type: application/json — consult the
+     OpenAPI spec's content field.
+acceptance:
+  - "Response body streamed with byte limit"
+  - "Spec download has size limit and timeout"
+  - "Content-Type from spec honored"
+scope:
+  - navra-openapi/src/handler.rs
+  - navra-openapi/src/lib.rs

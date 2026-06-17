@@ -1,0 +1,25 @@
+id: "NAVRA-124"
+title: "Capability token: transport binding and decode_token_unchecked restriction"
+status: planned
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-22, H-23. Capability tokens are not bound to
+  transport (replayable from any network). decode_token_unchecked
+  is pub (not test-gated).
+
+  Fix:
+  1. Add optional `aud` (audience) claim to CapabilityPayload.
+     When present, validate against the server's identity/URL.
+  2. Add optional `cnf` (confirmation) claim for token binding
+     (TLS session hash or client certificate fingerprint).
+  3. Restrict decode_token_unchecked to pub(crate) or #[cfg(test)].
+  4. Audit all callers of decode_token_unchecked outside tests.
+acceptance:
+  - "Audience claim validated when present"
+  - "decode_token_unchecked not accessible from external crates"
+  - "Token replay from different origin rejected when aud is set"
+scope:
+  - navra-auth/src/auth/capability.rs

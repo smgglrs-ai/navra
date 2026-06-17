@@ -379,3 +379,17 @@ Breaking API changes + security architecture change require human review before 
   summary: "PermissionEditor component — visual ACL editor with path rules (allow/deny labels, add/remove), tool rules table, safety/taint/policy dropdowns, delegation switch, TOML preview, deny-wins validation warnings."
   iteration: 3
   max_iterations: 5
+
+- date: 2026-06-17
+  session: proof-gap-analysis
+  action: analysis
+  summary: |
+    Full formal proof gap analysis — 141K lines across 25 crates.
+    Five specialized agents analyzed security/auth/core, safety/model,
+    protocol/transport, agent/flow/tools, and RAG/memory/cognitive/macros.
+    Found 97 gaps (7 critical, 24 high, 38 medium, 28 low).
+    Created 25 lean items (NAVRA-103 through NAVRA-127) covering all
+    P0/P1/P2 fixes from PROOF-GAPS.md report.
+    Key findings: ML fail-open, delegation subset missing, non-text
+    bypass, hand-rolled crypto, transport DoS, DAG termination.
+    Project already has 139 Kani proofs — IFC lattice is fully proven.

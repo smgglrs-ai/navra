@@ -1,0 +1,34 @@
+id: "NAVRA-105"
+title: "Safety pipeline: block or inspect non-text content"
+status: planned
+priority: critical
+effort: M
+depends_on: []
+feeds: ['NAVRA-048']
+description: |
+  PROOF-GAPS C-4. Non-text content (Image, Audio, Resource) bypasses
+  the safety pipeline entirely in both the legacy filter path
+  (handlers.rs:830) and the hook-based path (safety_hook.rs:136).
+  Only a tracing::warn is emitted.
+
+  Fix:
+  1. In `apply_safety_filter` (handlers.rs), block non-text content
+     by default. Return CallToolResult::error for Image/Audio/Resource
+     unless the permission set explicitly allows unfiltered binary.
+  2. In `SafetyHook::post_tool_use`, same treatment.
+  3. For Content::Image: extract base64, decode, check for embedded
+     text via OCR-free heuristic (or just block if no vision model).
+  4. For Content::Resource: if the resource has a text MIME type,
+     extract and filter. Otherwise block.
+  5. Add config option `allow_unfiltered_binary: bool` per permission
+     set for tools that legitimately return images.
+  6. Add Kani proof: for all content types, safety_filtered OR blocked.
+acceptance:
+  - "Non-text content is blocked by default in safety pipeline"
+  - "Config option to allow unfiltered binary per permission set"
+  - "Integration test: tool returning base64 image is blocked"
+  - "Integration test: tool returning text resource is filtered"
+  - "Kani proof: no content type passes unexamined"
+scope:
+  - navra-core/src/server/handlers.rs
+  - navra-safety-hooks/src/hooks/safety_hook.rs
