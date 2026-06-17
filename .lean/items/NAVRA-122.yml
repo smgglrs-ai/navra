@@ -1,6 +1,6 @@
 id: "NAVRA-122"
 title: "Safety hook: inspect all argument field names, not just hardcoded set"
-status: planned
+status: done
 priority: medium
 effort: S
 depends_on: []

@@ -488,3 +488,49 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "No unblocked items remaining in autonomous scope"
     branch: "loop/2026-06-17"
     tag: "loop-run/2026-06-17-12"
+- timestamp: "2026-06-17T13:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-108"
+  summary: "TaintedWritePolicy::from_str returns Result, rejects typos; ReadClearance::from_config validates level; missing IFC policy defaults to Deny"
+  iteration: 1
+  max_iterations: 20
+- timestamp: "2026-06-17T13:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-110"
+  summary: "Unannotated tools default to write=true; is_external_read_tool defaults all non-gateway tools to untrusted"
+  iteration: 2
+  max_iterations: 20
+- timestamp: "2026-06-17T13:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-117"
+  summary: "Permission checks on all GitLab write tools; branch name validation; run_glab 60s timeout; extended shell metachar blocking"
+  iteration: 3
+  max_iterations: 20
+- timestamp: "2026-06-17T13:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-122"
+  summary: "Safety hook now scans ALL string-valued tool argument fields, not just content/new_string/text; configurable SKIP_FIELDS exclusion list"
+  iteration: 4
+  max_iterations: 20
+- timestamp: "2026-06-17T14:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-105"
+  summary: "Non-text content (Image/Audio) blocked by default in both legacy pipeline and hook path; text resources extracted and filtered"
+  iteration: 5
+  max_iterations: 20
+- timestamp: "2026-06-17T14:10:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 5 items completed. Exit: remaining items are M-effort, need careful planning"
+  details:
+    iterations: 5
+    max_iterations: 20
+    completed: [NAVRA-108, NAVRA-110, NAVRA-117, NAVRA-122, NAVRA-105]
+    exit_reason: "Remaining items (107,111,112,116,124) are M-effort requiring deeper architectural changes"
+    branch: "loop/2026-06-17-2"
+    tag: "loop-run/2026-06-17-2-5"

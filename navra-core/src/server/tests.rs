@@ -1562,8 +1562,8 @@ async fn ifc_allow_write_without_taint() {
 }
 
 #[tokio::test]
-async fn ifc_no_policy_allows_tainted_write() {
-    // No IFC policy configured — tainted writes pass through
+async fn ifc_no_policy_denies_tainted_write() {
+    // No IFC policy configured — tainted writes default to deny (fail-closed)
     let server = test_builder()
         .tool(write_tool_def(), |_args, _ctx| {
             Box::pin(async { CallToolResult::text("written") })
@@ -1583,7 +1583,7 @@ async fn ifc_no_policy_allows_tainted_write() {
             ctx,
         )
         .await;
-    assert!(!result.is_error);
+    assert!(result.is_error, "missing IFC policy should default to deny");
 }
 
 #[tokio::test]
