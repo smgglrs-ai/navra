@@ -191,7 +191,7 @@ items:
 
   - id: "NAVRA-127"
     title: "IFC label metadata: stop leaking classification to agents"
-    status: planned
+    status: done
     priority: medium
     effort: S
 
