@@ -30,7 +30,14 @@ pub struct MlFilter {
 
 impl MlFilter {
     /// Create a new ML filter.
+    ///
+    /// # Panics
+    /// Panics if `threshold` is NaN, negative, or greater than 1.0.
     pub fn new(model: Arc<dyn Classifier>, threshold: f32, category: impl Into<String>) -> Self {
+        assert!(
+            !threshold.is_nan() && (0.0..=1.0).contains(&threshold),
+            "threshold must be in [0.0, 1.0], got {threshold}"
+        );
         Self {
             model,
             threshold,
@@ -157,7 +164,14 @@ impl MultiLabelFilter {
     ///
     /// When set, any category label from the model that exceeds this
     /// threshold will produce a finding with FilterAction::Block.
+    ///
+    /// # Panics
+    /// Panics if `threshold` is NaN, negative, or greater than 1.0.
     pub fn with_fallback_threshold(mut self, threshold: f32) -> Self {
+        assert!(
+            !threshold.is_nan() && (0.0..=1.0).contains(&threshold),
+            "fallback threshold must be in [0.0, 1.0], got {threshold}"
+        );
         self.fallback_threshold = Some(threshold);
         self
     }
@@ -194,9 +208,9 @@ impl ModelFilter for MultiLabelFilter {
                         }
 
                         let triggered = if let Some(policy) = self.policies.get(&label.label) {
-                            label.score >= policy.threshold
+                            label.score.is_nan() || label.score >= policy.threshold
                         } else if let Some(fallback) = self.fallback_threshold {
-                            label.score >= fallback
+                            label.score.is_nan() || label.score >= fallback
                         } else {
                             false
                         };
@@ -361,6 +375,27 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "inference_failure");
         assert!((findings[0].confidence - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    #[should_panic(expected = "threshold must be in [0.0, 1.0]")]
+    fn ml_filter_rejects_nan_threshold() {
+        let model = Arc::new(MockClassifier::new(vec![]));
+        let _ = MlFilter::new(model, f32::NAN, "ml-unsafe");
+    }
+
+    #[test]
+    #[should_panic(expected = "threshold must be in [0.0, 1.0]")]
+    fn ml_filter_rejects_negative_threshold() {
+        let model = Arc::new(MockClassifier::new(vec![]));
+        let _ = MlFilter::new(model, -0.1, "ml-unsafe");
+    }
+
+    #[test]
+    #[should_panic(expected = "threshold must be in [0.0, 1.0]")]
+    fn ml_filter_rejects_above_one_threshold() {
+        let model = Arc::new(MockClassifier::new(vec![]));
+        let _ = MlFilter::new(model, 1.5, "ml-unsafe");
     }
 
     // --- ClassifyOutput tests ---

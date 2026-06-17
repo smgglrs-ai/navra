@@ -43,10 +43,11 @@ impl ClassifyOutput {
     }
 
     /// Returns true if any non-"safe" label exceeds the threshold.
+    /// NaN scores are treated as unsafe (fail-closed).
     pub fn is_unsafe(&self, threshold: f32) -> bool {
         self.labels
             .iter()
-            .any(|l| l.label != "safe" && l.score >= threshold)
+            .any(|l| l.label != "safe" && (l.score.is_nan() || l.score >= threshold))
     }
 
     /// Check labels against per-category thresholds.
@@ -60,7 +61,7 @@ impl ClassifyOutput {
             .iter()
             .filter(|l| {
                 if let Some(&thresh) = thresholds.get(&l.label) {
-                    l.score >= thresh
+                    l.score.is_nan() || l.score >= thresh
                 } else {
                     false
                 }
@@ -89,4 +90,52 @@ pub struct ClassifyLabel {
 pub enum ClassifyError {
     #[error("inference failed: {0}")]
     Inference(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nan_score_is_unsafe() {
+        let output = ClassifyOutput {
+            labels: vec![ClassifyLabel {
+                label: "harm".into(),
+                score: f32::NAN,
+            }],
+        };
+        assert!(output.is_unsafe(0.5));
+    }
+
+    #[test]
+    fn nan_score_exceeds_threshold() {
+        let output = ClassifyOutput {
+            labels: vec![ClassifyLabel {
+                label: "harm".into(),
+                score: f32::NAN,
+            }],
+        };
+        let mut thresholds = HashMap::new();
+        thresholds.insert("harm".into(), 0.5);
+        let triggered = output.exceeds_thresholds(&thresholds);
+        assert_eq!(triggered.len(), 1);
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn nan_score_always_unsafe() {
+        let output = ClassifyOutput {
+            labels: vec![ClassifyLabel {
+                label: "harm".to_string(),
+                score: f32::NAN,
+            }],
+        };
+        let threshold: f32 = kani::any();
+        kani::assume(!threshold.is_nan() && threshold >= 0.0 && threshold <= 1.0);
+        assert!(output.is_unsafe(threshold));
+    }
 }

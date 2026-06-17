@@ -520,7 +520,14 @@ impl NerFilter {
     ///
     /// Entities with softmax probability below this threshold are
     /// not reported. Default is 0.7.
+    ///
+    /// # Panics
+    /// Panics if `threshold` is NaN, negative, or greater than 1.0.
     pub fn with_confidence_threshold(mut self, threshold: f32) -> Self {
+        assert!(
+            !threshold.is_nan() && (0.0..=1.0).contains(&threshold),
+            "confidence threshold must be in [0.0, 1.0], got {threshold}"
+        );
         self.confidence_threshold = threshold;
         self
     }
@@ -697,7 +704,7 @@ impl NerFilter {
         // Filter by confidence threshold
         let filtered: Vec<EntitySpan> = spans
             .into_iter()
-            .filter(|s| s.confidence >= self.confidence_threshold)
+            .filter(|s| s.confidence.is_nan() || s.confidence >= self.confidence_threshold)
             .collect();
 
         Ok(filtered)
