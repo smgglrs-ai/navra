@@ -580,3 +580,10 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "Remaining items (NAVRA-121, NAVRA-124) are large refactors"
     branch: "loop/2026-06-17-3"
     tag: "loop-run/2026-06-17-3-5"
+- timestamp: "2026-06-17T17:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-124"
+  summary: "Added audience (aud) claim to capability tokens for transport binding; decode_token_unchecked restricted to pub(crate)"
+  iteration: 6
+  max_iterations: 20

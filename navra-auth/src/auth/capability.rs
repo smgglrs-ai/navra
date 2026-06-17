@@ -110,6 +110,11 @@ pub struct CapabilityPayload {
     /// path rewrite). Restrictions can only be added/tightened, never removed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<super::sandbox_profile::SandboxProfile>,
+    /// Audience: the intended server identity/URL. When present, the
+    /// receiving server must validate this matches its own identity.
+    /// Prevents token replay across different servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aud: Option<String>,
 }
 
 /// Resolved capabilities extracted from a verified token.
@@ -243,6 +248,27 @@ pub fn decode_token_with_revocation(
     Ok(payload)
 }
 
+/// Decode and verify a capability token with audience validation.
+///
+/// When the token carries an `aud` claim, it must match `expected_audience`.
+/// This prevents token replay across different servers.
+pub fn decode_token_with_audience(
+    token: &str,
+    verifier: &dyn CapSigner,
+    expected_audience: &str,
+) -> Result<CapabilityPayload, CapabilityError> {
+    let payload = decode_token(token, verifier)?;
+    if let Some(ref aud) = payload.aud {
+        if aud != expected_audience {
+            return Err(CapabilityError::DelegationViolation(format!(
+                "audience mismatch: token is for '{}', server is '{}'",
+                aud, expected_audience
+            )));
+        }
+    }
+    Ok(payload)
+}
+
 /// Decode a token without checking expiry or signature.
 ///
 /// **WARNING**: This skips signature verification. Use `decode_token()`
@@ -254,7 +280,7 @@ pub fn decode_token_with_revocation(
 /// **Do not use for authentication** — skips signature verification.
 /// Intended for testing, token inspection, and delegation validation.
 #[cfg_attr(not(test), doc(hidden))]
-pub fn decode_token_unchecked(token: &str) -> Result<CapabilityPayload, CapabilityError> {
+pub(crate) fn decode_token_unchecked(token: &str) -> Result<CapabilityPayload, CapabilityError> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 || parts[0] != TOKEN_PREFIX {
         return Err(CapabilityError::InvalidFormat(
@@ -528,6 +554,7 @@ pub fn build_payload(
         parent: None,
         obo: None,
         sandbox: None,
+        aud: None,
     }
 }
 
@@ -616,6 +643,7 @@ pub fn build_delegated_payload(
         parent: Some(parent.nonce),
         obo: parent.obo.clone(),
         sandbox: parent.sandbox.clone(),
+        aud: parent.aud.clone(),
     })
 }
 
@@ -659,6 +687,33 @@ mod tests {
         assert_eq!(decoded.cap.tools, vec!["file_*", "git_*"]);
         assert_eq!(decoded.cap.credentials, vec!["github.pat"]);
         assert_eq!(decoded.nonce, payload.nonce);
+    }
+
+    #[test]
+    fn audience_validation_rejects_wrong_server() {
+        let signer = Ed25519Signer::generate();
+        let mut payload = test_payload(&signer);
+        payload.aud = Some("https://server-a.example.com".to_string());
+        let token = encode_token(&payload, &signer).unwrap();
+
+        // Correct audience passes
+        let result = decode_token_with_audience(&token, &signer, "https://server-a.example.com");
+        assert!(result.is_ok());
+
+        // Wrong audience fails
+        let result = decode_token_with_audience(&token, &signer, "https://server-b.example.com");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("audience mismatch"));
+    }
+
+    #[test]
+    fn audience_none_accepted_by_any_server() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer); // aud: None
+        let token = encode_token(&payload, &signer).unwrap();
+
+        let result = decode_token_with_audience(&token, &signer, "https://any-server.example.com");
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -797,6 +852,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         assert!(validate_delegation(&parent, &child, 3).is_ok());
@@ -852,6 +908,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -880,6 +937,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -908,6 +966,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -936,6 +995,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         assert!(validate_delegation(&parent, &child, 3).is_ok());
@@ -963,6 +1023,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1305,6 +1366,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: Some(test_obo()), // trying to inject obo
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1338,6 +1400,7 @@ mod tests {
                 auth_time: None,
             }),
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();

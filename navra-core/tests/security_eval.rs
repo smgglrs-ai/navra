@@ -7,7 +7,7 @@ use axum::http::HeaderMap;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use navra_core::auth::capability::{
-    build_payload, decode_token, decode_token_unchecked, encode_token, validate_delegation,
+    build_payload, decode_token, encode_token, validate_delegation,
     CapabilityPayload, CapabilitySet,
 };
 use navra_core::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
@@ -488,7 +488,7 @@ mod credential_isolation {
             token.contains("github") == false || {
                 // The token is base64-encoded CBOR — the raw string won't appear
                 // unless we decode it
-                let decoded = decode_token_unchecked(&token).unwrap();
+                let decoded = decode_token(&token, &signer).unwrap();
                 decoded.cap.credentials == vec!["github.pat"]
                 // The label is there, but no secret value
             }
