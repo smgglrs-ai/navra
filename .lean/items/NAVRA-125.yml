@@ -1,6 +1,6 @@
 id: "NAVRA-125"
 title: "Git tools: TOCTOU mitigation and URL-encoded path traversal"
-status: planned
+status: done
 priority: medium
 effort: S
 depends_on: []

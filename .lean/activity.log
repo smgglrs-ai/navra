@@ -456,3 +456,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Added snap_to_char_boundary helper for redact/pseudonymize; compress now snaps cut point to valid UTF-8 boundary; tests with CJK and emoji"
   iteration: 9
   max_iterations: 20
+- timestamp: "2026-06-17T12:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-125"
+  summary: "Git resolve_repo_path now URL-decodes before dotdot check (%2e%2e, %2f); run_git has 60s timeout"
+  iteration: 10
+  max_iterations: 20
