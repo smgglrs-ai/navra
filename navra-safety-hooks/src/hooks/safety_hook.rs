@@ -68,28 +68,41 @@ impl Hook for SafetyHook {
             _ => return HookDecision::Continue,
         };
 
-        // Extract the content field from arguments
-        let content_field = arguments
-            .get("content")
-            .or_else(|| arguments.get("new_string"))
-            .or_else(|| arguments.get("text"))
-            .and_then(|v| v.as_str());
-
-        let content = match content_field {
-            Some(c) => c,
-            None => return HookDecision::Continue,
-        };
-
         let filter_ctx = FilterContext {
             agent_name: &ctx.agent.name,
             operation: tool_name,
             path: arguments.get("path").and_then(|v| v.as_str()),
         };
 
-        match pipeline.process_inbound(content, &filter_ctx).await {
-            Ok(_) => HookDecision::Continue,
-            Err(reason) => HookDecision::Block(reason),
+        // Scan ALL string-valued fields, not just hardcoded names.
+        // Skip known-safe fields that contain paths/identifiers, not content.
+        const SKIP_FIELDS: &[&str] = &[
+            "path", "repo", "branch", "source_branch", "target_branch",
+            "ref", "working_dir", "command", "id", "name", "key",
+        ];
+
+        if let Some(obj) = arguments.as_object() {
+            for (field, value) in obj {
+                if SKIP_FIELDS.contains(&field.as_str()) {
+                    continue;
+                }
+                if let Some(text) = value.as_str() {
+                    if text.is_empty() {
+                        continue;
+                    }
+                    match pipeline.process_inbound(text, &filter_ctx).await {
+                        Ok(_) => {}
+                        Err(reason) => {
+                            return HookDecision::Block(format!(
+                                "blocked in field '{}': {}", field, reason
+                            ));
+                        }
+                    }
+                }
+            }
         }
+
+        HookDecision::Continue
     }
 
     async fn post_tool_use(
@@ -347,6 +360,31 @@ mod tests {
         let decision = hook.pre_tool_use("file_read", &args, &test_ctx()).await;
 
         // file_read is not a write-path tool, so inbound filtering skips it
+        assert!(matches!(decision, HookDecision::Continue));
+    }
+
+    #[tokio::test]
+    async fn inbound_scans_non_standard_field_names() {
+        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("block"));
+
+        // "body" and "payload" are non-standard field names that should now be scanned
+        let args = serde_json::json!({"path": "/tmp/test", "body": "SSN: 123-45-6789"});
+        let decision = hook.pre_tool_use("file_write", &args, &test_ctx()).await;
+
+        assert!(
+            matches!(decision, HookDecision::Block(_)),
+            "Expected Block for 'body' field with SSN, got {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn inbound_skips_path_fields() {
+        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("block"));
+
+        // "path" is in the skip list, so its content should not trigger blocking
+        let args = serde_json::json!({"path": "AKIAIOSFODNN7EXAMPLE", "content": "clean"});
+        let decision = hook.pre_tool_use("file_write", &args, &test_ctx()).await;
+
         assert!(matches!(decision, HookDecision::Continue));
     }
 
