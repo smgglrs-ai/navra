@@ -442,3 +442,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Witness canonical_payload() switched from serde_json to deterministic CBOR; verify() falls back to legacy JSON for backward compatibility"
   iteration: 7
   max_iterations: 20
+- timestamp: "2026-06-17T11:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-120"
+  summary: "Merged seq+prev_hash into single ChainState mutex; insert errors now logged via tracing::error; schema migration handles duplicate column gracefully"
+  iteration: 8
+  max_iterations: 20
