@@ -566,15 +566,10 @@ fn decode_jwt(token: &str, verifier: &dyn CapSigner) -> Result<JwtClaims, String
     Ok(claims)
 }
 
-/// Constant-time byte comparison (CWE-208 mitigation).
+/// Constant-time byte comparison via the `subtle` crate (CWE-208).
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
+    use subtle::ConstantTimeEq;
+    a.ct_eq(b).into()
 }
 
 /// Generate a random client secret (32 bytes, hex-encoded).
