@@ -151,11 +151,15 @@ pub enum TaintedWritePolicy {
 }
 
 impl TaintedWritePolicy {
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "approve" => Self::Approve,
-            "deny" => Self::Deny,
-            _ => Self::Allow,
+    pub fn from_str(s: &str) -> Result<Self, String> {
+        match s.to_ascii_lowercase().as_str() {
+            "allow" => Ok(Self::Allow),
+            "approve" => Ok(Self::Approve),
+            "deny" => Ok(Self::Deny),
+            _ => Err(format!(
+                "unknown tainted_write_policy '{}' (valid: allow, approve, deny)",
+                s
+            )),
         }
     }
 }
@@ -184,17 +188,23 @@ impl ReadClearance {
         }
     }
 
-    pub fn from_config(level: &str, policy: &str) -> Self {
-        let l = match level {
+    pub fn from_config(level: &str, policy: &str) -> Result<Self, String> {
+        let l = match level.to_ascii_lowercase().as_str() {
             "public" => Confidentiality::Public,
             "sensitive" => Confidentiality::Sensitive,
             "pii" => Confidentiality::Pii,
-            _ => Confidentiality::Secret,
+            "secret" => Confidentiality::Secret,
+            _ => {
+                return Err(format!(
+                    "unknown read_clearance level '{}' (valid: public, sensitive, pii, secret)",
+                    level
+                ))
+            }
         };
-        Self {
+        Ok(Self {
             level: l,
-            policy: TaintedWritePolicy::from_str(policy),
-        }
+            policy: TaintedWritePolicy::from_str(policy)?,
+        })
     }
 }
 
@@ -627,6 +637,44 @@ mod tests {
         tracker.absorb(DataLabel::UNTRUSTED_SENSITIVE);
         assert_eq!(tracker.level().confidentiality, Confidentiality::Sensitive);
     }
+
+    #[test]
+    fn tainted_write_policy_accepts_valid_strings() {
+        assert_eq!(TaintedWritePolicy::from_str("allow").unwrap(), TaintedWritePolicy::Allow);
+        assert_eq!(TaintedWritePolicy::from_str("approve").unwrap(), TaintedWritePolicy::Approve);
+        assert_eq!(TaintedWritePolicy::from_str("deny").unwrap(), TaintedWritePolicy::Deny);
+    }
+
+    #[test]
+    fn tainted_write_policy_case_insensitive() {
+        assert_eq!(TaintedWritePolicy::from_str("DENY").unwrap(), TaintedWritePolicy::Deny);
+        assert_eq!(TaintedWritePolicy::from_str("Allow").unwrap(), TaintedWritePolicy::Allow);
+        assert_eq!(TaintedWritePolicy::from_str("Approve").unwrap(), TaintedWritePolicy::Approve);
+    }
+
+    #[test]
+    fn tainted_write_policy_rejects_typos() {
+        assert!(TaintedWritePolicy::from_str("denny").is_err());
+        assert!(TaintedWritePolicy::from_str("").is_err());
+        assert!(TaintedWritePolicy::from_str("block").is_err());
+    }
+
+    #[test]
+    fn read_clearance_accepts_valid_config() {
+        let rc = ReadClearance::from_config("public", "deny").unwrap();
+        assert_eq!(rc.level, Confidentiality::Public);
+        assert_eq!(rc.policy, TaintedWritePolicy::Deny);
+    }
+
+    #[test]
+    fn read_clearance_rejects_unknown_level() {
+        assert!(ReadClearance::from_config("top_secret", "deny").is_err());
+    }
+
+    #[test]
+    fn read_clearance_rejects_unknown_policy() {
+        assert!(ReadClearance::from_config("public", "denny").is_err());
+    }
 }
 
 #[cfg(kani)]
@@ -718,6 +766,26 @@ mod kani_proofs {
     }
 
     // --- Declassification safety ---
+
+    #[kani::proof]
+    fn from_str_valid_set_membership() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 5);
+        let s = match choice {
+            0 => "allow",
+            1 => "approve",
+            2 => "deny",
+            3 => "DENY",
+            4 => "denny",
+            _ => "block",
+        };
+        let result = TaintedWritePolicy::from_str(s);
+        if choice <= 3 {
+            assert!(result.is_ok());
+        } else {
+            assert!(result.is_err());
+        }
+    }
 
     #[kani::proof]
     fn declassify_only_steps_down() {
