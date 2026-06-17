@@ -831,6 +831,18 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
     }
 
+    // Wire path ACLs for gateway-level enforcement on upstream tools.
+    for (name, pset) in &cfg.permissions {
+        let acl = PathAcl {
+            ring: pset.ring,
+            allow: pset.allow.clone(),
+            deny: pset.deny.clone(),
+            operations: pset.operations.iter().cloned().collect(),
+            requires_approval: pset.approve.iter().cloned().collect(),
+        };
+        builder = builder.path_acl(name.clone(), acl);
+    }
+
     // IFC + stateless mode: taint persists via server-side sessions
     // keyed by agent name ("stateless:{agent_name}"). This means all
     // clients sharing the same agent identity share taint state — if

@@ -333,12 +333,8 @@ async fn a4_privilege_escalation_write() {
 }
 
 // ── A5: Deny-wins — allow + deny on same path, deny wins ────────
-// KNOWN GAP: navra's path ACL deny rules are not enforced for upstream
-// MCP tools — the upstream handler proxies the call without checking
-// navra's allow/deny patterns. Needs gateway-level path interception.
 
 #[tokio::test]
-#[ignore = "upstream tools bypass navra path ACLs (needs gateway-level path interception)"]
 async fn a5_deny_wins_over_allow() {
     let dir = tempfile::tempdir().unwrap();
     let ssh_dir = dir.path().join(".ssh");
