@@ -1,0 +1,30 @@
+id: "NAVRA-103"
+title: "Replace hand-rolled constant_time_eq with subtle crate"
+status: planned
+priority: critical
+effort: S
+depends_on: []
+feeds: ['NAVRA-104']
+description: |
+  PROOF-GAPS C-1. Two duplicate hand-rolled `constant_time_eq`
+  implementations (auth/mod.rs:119, oauth.rs:570) return early on
+  length mismatch, leaking secret length via timing side-channel
+  (CWE-208).
+
+  Fix:
+  1. Add `subtle` crate to navra-auth/Cargo.toml
+  2. Replace both `constant_time_eq` with `subtle::ConstantTimeEq`
+  3. Remove the duplicate — single import, two call sites
+  4. Add Kani proof: constant_time_eq(a,b) == (a==b) for all inputs
+  5. Verify all callers pass fixed-length inputs (BLAKE3 hashes
+     are always 64 hex chars, so length leak is mitigated in
+     practice, but fix properly for defense in depth)
+acceptance:
+  - "subtle crate used for all secret comparisons"
+  - "No hand-rolled constant_time_eq in codebase"
+  - "Kani proof for functional equivalence"
+  - "cargo test -p navra-auth passes"
+scope:
+  - navra-auth/src/auth/mod.rs
+  - navra-auth/src/auth/oauth.rs
+  - navra-auth/Cargo.toml

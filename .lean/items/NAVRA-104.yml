@@ -1,0 +1,25 @@
+id: "NAVRA-104"
+title: "Replace manual secret zeroization with zeroize crate"
+status: planned
+priority: critical
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS C-2. The `Secret` type in credentials.rs zeroes its
+  buffer on drop with a manual loop that the compiler may optimize
+  away (dead store elimination). The `zeroize` crate is not used.
+
+  Fix:
+  1. Add `zeroize` crate to navra-auth/Cargo.toml
+  2. Derive `Zeroize` + `ZeroizeOnDrop` on `Secret`, or wrap the
+     inner Vec<u8> in `Zeroizing<Vec<u8>>`
+  3. Remove the manual Drop impl
+  4. Verify the test `secret_zeroized_on_drop` still passes
+acceptance:
+  - "zeroize crate used for Secret type"
+  - "No manual zeroing loop in credentials.rs"
+  - "cargo test -p navra-auth passes"
+scope:
+  - navra-auth/src/credentials.rs
+  - navra-auth/Cargo.toml

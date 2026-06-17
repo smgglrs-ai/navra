@@ -1,0 +1,23 @@
+id: "NAVRA-125"
+title: "Git tools: TOCTOU mitigation and URL-encoded path traversal"
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-20, M-36. Git tools have symlink TOCTOU and
+  resolve_repo_path doesn't catch URL-encoded ".." (%2e%2e).
+
+  Fix:
+  1. URL-decode path before .. check in resolve_repo_path.
+  2. Use O_PATH file descriptor for atomic resolve+use where
+     possible, or accept the TOCTOU as documented risk.
+  3. Add unit tests for %2e%2e, %2f, and other encoded traversals.
+  4. Add timeout to run_git subprocess (matching exec tools).
+acceptance:
+  - "URL-encoded path traversal rejected"
+  - "Git subprocess has timeout"
+  - "Unit tests for encoded traversal attacks"
+scope:
+  - navra-tools-git/src/tools.rs

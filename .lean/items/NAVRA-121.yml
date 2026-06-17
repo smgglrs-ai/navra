@@ -1,0 +1,25 @@
+id: "NAVRA-121"
+title: "Memory stores: wrap Connection in Mutex for thread safety"
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS from data analysis. WorkingMemory and KnowledgeStore
+  hold bare Connection (not Mutex<Connection>). SQLite connections
+  are not thread-safe without serialization. ChunkStore in navra-rag
+  already uses Mutex<Connection>.
+
+  Fix:
+  1. Wrap Connection in Mutex in WorkingMemory
+  2. Wrap Connection in Mutex in KnowledgeStore
+  3. Follow the same pattern as ChunkStore
+  4. Update all methods to lock before use
+acceptance:
+  - "WorkingMemory uses Mutex<Connection>"
+  - "KnowledgeStore uses Mutex<Connection>"
+  - "All existing tests pass"
+scope:
+  - navra-memory/src/working.rs
+  - navra-memory/src/knowledge.rs

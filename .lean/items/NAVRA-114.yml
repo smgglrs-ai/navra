@@ -1,0 +1,31 @@
+id: "NAVRA-114"
+title: "Safety threshold validation and NaN defense"
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-8, M-35. Safety thresholds are bare f32 with no
+  validation. NaN makes comparisons always false (nothing triggers).
+  > 1.0 makes the filter unable to fire on softmax output.
+
+  Fix:
+  1. Add threshold validation in MlFilter::new, MultiLabelFilter,
+     NerFilter, PrivacyFilterModel constructors: assert
+     threshold >= 0.0 && threshold <= 1.0 && !threshold.is_nan()
+  2. In is_unsafe() and exceeds_thresholds(): treat NaN scores as
+     unsafe (fail-closed). `score.is_nan() || score >= threshold`
+  3. Add Kani proof: threshold in [0.0, 1.0] AND
+     score.is_nan() => is_unsafe() returns true
+acceptance:
+  - "Threshold validation in all filter constructors"
+  - "NaN scores treated as unsafe"
+  - "Kani proof for threshold invariant"
+  - "Kani proof for NaN fail-closed"
+  - "Unit tests for NaN, negative, >1.0 thresholds"
+scope:
+  - navra-safety/src/ml.rs
+  - navra-safety/src/ner.rs
+  - navra-safety/src/privacy_filter.rs
+  - navra-safety/src/classifier.rs

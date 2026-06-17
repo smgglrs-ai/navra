@@ -1,0 +1,33 @@
+id: "NAVRA-116"
+title: "DAG back-edge termination bound"
+status: planned
+priority: high
+effort: M
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-18. DAG executor (flow/executor.rs:285-628) has
+  per-edge max_iterations but no global cycle detection across
+  back-edge chains. A→B→C→A through three edges doesn't hit any
+  single edge's limit.
+
+  Fix:
+  1. Add global execution counter: total task executions across
+     all back-edge re-runs. Cap at
+     num_tasks * max_iterations_per_edge (or configurable global max).
+  2. Detect cross-edge cycles: if a task is re-queued and was
+     already re-queued by a different back-edge in the same
+     "wave," flag as cascading cycle.
+  3. Add Kani proof: total_executions <= bounded_function(tasks,
+     max_iterations).
+  4. Also fix: max_concurrent field is unused (dead config).
+     Either implement concurrent execution or remove the field.
+acceptance:
+  - "Global execution counter caps total re-executions"
+  - "Cross-edge cascade detected and terminated"
+  - "Kani proof for termination bound"
+  - "max_concurrent either implemented or removed"
+  - "Unit test for A→B→C→A cascade"
+scope:
+  - navra-flow/src/executor.rs
+  - navra-flow/src/backedge.rs

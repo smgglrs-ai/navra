@@ -1,0 +1,36 @@
+id: "NAVRA-106"
+title: "ML/NER/Privacy filter: fail-closed on inference error"
+status: planned
+priority: critical
+effort: S
+depends_on: []
+feeds: ['NAVRA-048']
+description: |
+  PROOF-GAPS C-5, C-6. When ONNX inference fails (OOM, network error,
+  model corruption), MlFilter, MultiLabelFilter, NerFilter, and
+  PrivacyFilterModel all return empty findings — content passes
+  unfiltered. Must default to deny.
+
+  Fix:
+  1. MlFilter::scan (ml.rs:71): on model error, return a synthetic
+     Finding with category "inference_failure" and score 1.0, OR
+     return Err and let the pipeline treat errors as Block.
+  2. Same for MultiLabelFilter::scan (ml.rs:234)
+  3. NerFilter::scan (ner.rs:925): return Err, not empty Vec
+  4. PrivacyFilterModel::scan (privacy_filter.rs:407): same
+  5. Update FilterPipeline to treat scan errors as Block decisions
+  6. Add Kani proof: model_error => pipeline_decision != Pass
+  7. Also fix ONNX session mutex: use unwrap_or_else(|e| e.into_inner())
+     instead of unwrap() (ner.rs:622, privacy_filter.rs:335, onnx.rs:203)
+acceptance:
+  - "ML inference failure blocks content (not passes)"
+  - "NER inference failure blocks content"
+  - "Privacy filter inference failure blocks content"
+  - "ONNX mutex poisoning does not cascade-panic"
+  - "Kani proof: inference_error => Block"
+  - "Unit tests for fail-closed behavior"
+scope:
+  - navra-safety/src/ml.rs
+  - navra-safety/src/ner.rs
+  - navra-safety/src/privacy_filter.rs
+  - navra-model/src/onnx.rs

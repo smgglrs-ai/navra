@@ -1,0 +1,33 @@
+id: "NAVRA-107"
+title: "validate_delegation: enforce path and tool subset checks"
+status: planned
+priority: critical
+effort: M
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS C-7. validate_delegation() (capability.rs:339-421)
+  checks operations, credentials, ring, expiry, OBO, and sandbox
+  but does NOT verify that child token paths ⊆ parent paths or
+  child tools ⊆ parent tools under glob semantics. An externally
+  constructed child token can escalate access.
+
+  Fix:
+  1. Add path subset check: for each child path glob, verify it
+     is covered by at least one parent path glob. Use
+     `glob::Pattern` containment logic or implement glob-subset.
+  2. Add tool subset check: same logic for tool globs.
+  3. Return CapabilityError::Escalation on violation.
+  4. Add Kani proof: validate_delegation(p, c).is_ok() =>
+     c.paths ⊆ p.paths ∧ c.tools ⊆ p.tools (bounded)
+  5. Also fix depth check: embed max_depth in CapabilityPayload
+     rather than accepting it as a caller parameter (H-24).
+acceptance:
+  - "validate_delegation rejects child with broader paths than parent"
+  - "validate_delegation rejects child with broader tools than parent"
+  - "Kani proof for subset property"
+  - "max_depth embedded in token payload"
+  - "Existing delegation tests still pass"
+  - "New test: externally-constructed escalation token is rejected"
+scope:
+  - navra-auth/src/auth/capability.rs

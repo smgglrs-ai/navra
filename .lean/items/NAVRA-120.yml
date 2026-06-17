@@ -1,0 +1,26 @@
+id: "NAVRA-120"
+title: "Blackbox: merge mutexes, silence → error propagation"
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS M-7, M-8, 6.1. Blackbox has two mutexes (seq,
+  prev_hash) with no ordering enforcement and silences insert errors.
+
+  Fix:
+  1. Merge seq and prev_hash into a single struct behind one Mutex.
+  2. Change `let _ = db.execute(INSERT ...)` to propagate errors
+     via tracing::error and a return value or metric counter.
+  3. Change schema migration `let _ =` to check error type:
+     "duplicate column" is OK, other errors should be logged.
+  4. Add Kani proof: record() under concurrent calls produces
+     valid chain (append-only property).
+acceptance:
+  - "Single mutex for seq + prev_hash"
+  - "Insert failures logged as errors, not silenced"
+  - "Schema migration errors handled properly"
+  - "Kani proof for append-only property"
+scope:
+  - navra-core/src/blackbox.rs

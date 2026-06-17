@@ -1,0 +1,29 @@
+id: "NAVRA-118"
+title: "Witness canonical encoding: switch to deterministic format"
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS C-3. DeclassificationWitness canonical_payload() uses
+  serde_json::json! which relies on insertion-order preservation —
+  an implementation detail. Future serde_json versions could change
+  key ordering, breaking signature verification.
+
+  Fix:
+  1. Switch canonical encoding to CBOR deterministic mode (RFC 7049
+     Section 3.9) using the existing `ciborium` crate (already a
+     dependency via capability tokens).
+  2. OR implement JCS (RFC 8785) — sorted keys, no whitespace.
+  3. CBOR is preferred since capability tokens already use it.
+  4. Migrate: bump witness version field, support verifying both
+     old JSON and new CBOR formats for backward compatibility.
+acceptance:
+  - "Canonical encoding uses deterministic CBOR"
+  - "Sign/verify roundtrip works"
+  - "Wrong-key rejection still works"
+  - "Tampered witness rejection still works"
+  - "Backward-compatible verification of old JSON witnesses"
+scope:
+  - navra-auth/src/ifc/witness.rs

@@ -1,0 +1,33 @@
+id: "NAVRA-115"
+title: "RAG embedding dimension invariant + transactional indexing"
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS from RAG analysis. Three gaps in navra-rag/src/store.rs:
+
+  1. Embedding dimension not validated on insert (line 302) or
+     search (line 336). Mismatched dims produce silent garbage.
+  2. chunks/embeddings length mismatch silently truncates via zip.
+  3. index_document is non-transactional — delete old + insert new
+     without a SQLite transaction. Crash leaves partial state.
+
+  Fix:
+  1. Add assert_eq!(embedding.len(), self.dimensions) in
+     index_document before insert loop.
+  2. Add assert_eq!(query_embedding.len(), self.dimensions) in search.
+  3. Add assert_eq!(chunks.len(), embeddings.len()) at start of
+     index_document.
+  4. Wrap delete + insert in a SQLite transaction.
+  5. Add Kani proof: stored dimension == configured dimension.
+acceptance:
+  - "Dimension mismatch panics with clear message on insert"
+  - "Dimension mismatch panics with clear message on search"
+  - "chunks/embeddings length mismatch panics"
+  - "index_document wrapped in SQLite transaction"
+  - "Crash during indexing leaves consistent state"
+  - "Kani proof for dimension invariant"
+scope:
+  - navra-rag/src/store.rs

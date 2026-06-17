@@ -1,0 +1,30 @@
+id: "NAVRA-119"
+title: "Remove NoAuthenticator from production; require OAuth or agents"
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: []
+description: |
+  PROOF-GAPS H-21. When no agents configured, NoAuthenticator grants
+  anonymous access. With OAuth already implemented, this is
+  unnecessary.
+
+  Fix:
+  1. Remove NoAuthenticator from production chain in main.rs:1005-1023
+  2. When no agents AND no OAuth configured: refuse to start with
+     clear error message (fail-closed)
+  3. When no agents but OAuth configured: use OAuth
+     client_credentials as the authentication path
+  4. Keep NoAuthenticator available for tests only (#[cfg(test)])
+  5. Guard with #[cfg(debug_assertions)] or a --dev-mode CLI flag
+     for development use
+acceptance:
+  - "NoAuthenticator not in production auth chain"
+  - "Server refuses to start without configured auth"
+  - "OAuth works as sole auth mechanism"
+  - "NoAuthenticator still available in tests"
+  - "--dev-mode flag for development"
+scope:
+  - navra-server/src/main.rs
+  - navra-auth/src/auth/mod.rs
