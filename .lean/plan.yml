@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 53 active items
+# 52 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -20,12 +20,6 @@ items:
     effort: 5-7d
     depends_on: ['NAVRA-024']
     feeds: ['NAVRA-001']
-
-  - id: "NAVRA-113"
-    title: "Model hub: integrity verification on pull"
-    status: planned
-    priority: high
-    effort: M
 
   - id: "NAVRA-090"
     title: "Replace navra-tools-git with upstream Git MCP server"

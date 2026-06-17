@@ -33,34 +33,58 @@ pub struct ModelUri {
     /// - OCI: `registry/org/repo:tag`
     /// - File: `/absolute/path/to/model.gguf`
     pub path: String,
+    /// Expected content digest for integrity verification.
+    /// Parsed from `@sha256:...` suffix in the URI string.
+    /// When present, downloaded bytes are verified before caching.
+    pub digest: Option<String>,
+}
+
+/// Extract `@sha256:...` digest suffix from a path string.
+fn split_digest(path: &str) -> (&str, Option<String>) {
+    if let Some(at_pos) = path.rfind("@sha256:") {
+        let digest = &path[at_pos + 8..];
+        if digest.len() == 64 && digest.chars().all(|c| c.is_ascii_hexdigit()) {
+            return (&path[..at_pos], Some(digest.to_string()));
+        }
+    }
+    (path, None)
 }
 
 impl ModelUri {
     /// Parse a model URI string.
+    ///
+    /// Supports optional digest pinning via `@sha256:...` suffix:
+    /// `ollama://granite-code:3b@sha256:abcd1234...`
     pub fn parse(s: &str) -> Result<Self, HubError> {
         if let Some(path) = s.strip_prefix("ollama://") {
             if path.is_empty() {
                 return Err(HubError::InvalidUri(s.to_string()));
             }
+            let (path, digest) = split_digest(path);
             Ok(Self {
                 registry: Registry::Ollama,
                 path: path.to_string(),
+                digest,
             })
         } else if let Some(path) = s.strip_prefix("hf://") {
             if path.is_empty() || !path.contains('/') {
                 return Err(HubError::InvalidUri(s.to_string()));
             }
+            let (path, digest) = split_digest(path);
             Ok(Self {
                 registry: Registry::HuggingFace,
                 path: path.to_string(),
+                digest,
             })
         } else if let Some(path) = s.strip_prefix("oci://") {
             if path.is_empty() {
                 return Err(HubError::InvalidUri(s.to_string()));
             }
+            let (path, digest) = split_digest(path);
             Ok(Self {
                 registry: Registry::Oci,
                 path: path.to_string(),
+                digest,
             })
         } else if let Some(path) = s.strip_prefix("file://") {
             if path.is_empty() {
@@ -69,12 +93,15 @@ impl ModelUri {
             Ok(Self {
                 registry: Registry::File,
                 path: path.to_string(),
+                digest: None,
             })
         } else {
             // Default: treat as Ollama shorthand (like ramalama does)
+            let (path, digest) = split_digest(s);
             Ok(Self {
                 registry: Registry::Ollama,
-                path: s.to_string(),
+                path: path.to_string(),
+                digest,
             })
         }
     }
@@ -149,6 +176,22 @@ mod tests {
         let uri = ModelUri::parse("granite-code:3b").unwrap();
         assert_eq!(uri.registry, Registry::Ollama);
         assert_eq!(uri.path, "granite-code:3b");
+    }
+
+    #[test]
+    fn parse_digest_pinned_uri() {
+        let digest = "a".repeat(64);
+        let s = format!("ollama://granite-code:3b@sha256:{digest}");
+        let uri = ModelUri::parse(&s).unwrap();
+        assert_eq!(uri.registry, Registry::Ollama);
+        assert_eq!(uri.path, "granite-code:3b");
+        assert_eq!(uri.digest.as_deref(), Some(digest.as_str()));
+    }
+
+    #[test]
+    fn parse_uri_without_digest() {
+        let uri = ModelUri::parse("ollama://granite-code:3b").unwrap();
+        assert!(uri.digest.is_none());
     }
 
     #[test]

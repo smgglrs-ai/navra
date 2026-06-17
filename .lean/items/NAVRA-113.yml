@@ -1,6 +1,6 @@
 id: "NAVRA-113"
 title: "Model hub: integrity verification on pull"
-status: planned
+status: done
 priority: high
 effort: M
 depends_on: []

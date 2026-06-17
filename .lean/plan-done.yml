@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 74 completed items
+# 75 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -404,6 +404,12 @@ items:
     priority: high
     effort: M
     feeds: ['NAVRA-080']
+
+  - id: "NAVRA-113"
+    title: "Model hub: integrity verification on pull"
+    status: done
+    priority: high
+    effort: M
 
   - id: "NAVRA-114"
     title: "Safety threshold validation and NaN defense"
