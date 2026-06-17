@@ -173,7 +173,7 @@ items:
 
   - id: "NAVRA-124"
     title: "Capability token: transport binding and decode_token_unchecked restriction"
-    status: planned
+    status: done
     priority: medium
     effort: M
 

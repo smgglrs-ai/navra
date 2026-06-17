@@ -2516,6 +2516,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
                         parent: None,
                         obo: None,
                         sandbox: None,
+                        aud: None,
                     };
 
                     // Set parent nonce reference
