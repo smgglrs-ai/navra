@@ -541,3 +541,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "validate_delegation now checks child paths ⊆ parent paths and child tools ⊆ parent tools under glob semantics"
   iteration: 1
   max_iterations: 20
+- timestamp: "2026-06-17T15:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-111"
+  summary: "declassify() now requires DeclassificationAuthority (holds CapSigner); witnesses are always signed"
+  iteration: 2
+  max_iterations: 20
