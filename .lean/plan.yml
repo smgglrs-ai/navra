@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 77 active items
+# 53 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -12,51 +12,6 @@ items:
     effort: M
     gate: "2026-07-28 flip default; implement now behind feature gate"
 
-  - id: "NAVRA-103"
-    title: "Replace hand-rolled constant_time_eq with subtle crate"
-    status: done
-    priority: critical
-    effort: S
-    feeds: ['NAVRA-104']
-
-  - id: "NAVRA-104"
-    title: "Replace manual secret zeroization with zeroize crate"
-    status: done
-    priority: critical
-    effort: S
-
-  - id: "NAVRA-105"
-    title: "Safety pipeline: block or inspect non-text content"
-    status: done
-    priority: critical
-    effort: M
-    feeds: ['NAVRA-048']
-
-  - id: "NAVRA-106"
-    title: "ML/NER/Privacy filter: fail-closed on inference error"
-    status: done
-    priority: critical
-    effort: S
-    feeds: ['NAVRA-048']
-
-  - id: "NAVRA-107"
-    title: "validate_delegation: enforce path and tool subset checks"
-    status: done
-    priority: critical
-    effort: M
-
-  - id: "NAVRA-108"
-    title: "IFC config hardening: reject unknown strings, default-deny"
-    status: done
-    priority: critical
-    effort: S
-
-  - id: "NAVRA-109"
-    title: "Exec workspace path: directory-prefix check with canonicalization"
-    status: done
-    priority: critical
-    effort: S
-
   - id: "NAVRA-025"
     title: "NeuroTaint offline taint audit"
     status: planned
@@ -66,66 +21,11 @@ items:
     depends_on: ['NAVRA-024']
     feeds: ['NAVRA-001']
 
-  - id: "NAVRA-110"
-    title: "is_write_tool: deny-by-default for unannotated tools"
-    status: done
-    priority: high
-    effort: S
-
-  - id: "NAVRA-111"
-    title: "Declassify authority verification"
-    status: done
-    priority: high
-    effort: M
-
-  - id: "NAVRA-112"
-    title: "Transport DoS hardening: size limits on all inputs"
-    status: done
-    priority: high
-    effort: M
-    feeds: ['NAVRA-080']
-
   - id: "NAVRA-113"
     title: "Model hub: integrity verification on pull"
     status: planned
     priority: high
     effort: M
-
-  - id: "NAVRA-114"
-    title: "Safety threshold validation and NaN defense"
-    status: done
-    priority: high
-    effort: S
-
-  - id: "NAVRA-115"
-    title: "RAG embedding dimension invariant + transactional indexing"
-    status: done
-    priority: high
-    effort: S
-
-  - id: "NAVRA-116"
-    title: "DAG back-edge termination bound"
-    status: done
-    priority: high
-    effort: M
-
-  - id: "NAVRA-117"
-    title: "GitLab tools: add permission checks"
-    status: done
-    priority: high
-    effort: S
-
-  - id: "NAVRA-118"
-    title: "Witness canonical encoding: switch to deterministic format"
-    status: done
-    priority: high
-    effort: S
-
-  - id: "NAVRA-119"
-    title: "Remove NoAuthenticator from production; require OAuth or agents"
-    status: done
-    priority: high
-    effort: S
 
   - id: "NAVRA-090"
     title: "Replace navra-tools-git with upstream Git MCP server"
@@ -146,54 +46,6 @@ items:
     priority: medium
     effort: 3-5d
     feeds: ['NAVRA-020']
-
-  - id: "NAVRA-120"
-    title: "Blackbox: merge mutexes, silence → error propagation"
-    status: done
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-121"
-    title: "Memory stores: wrap Connection in Mutex for thread safety"
-    status: done
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-122"
-    title: "Safety hook: inspect all argument field names, not just hardcoded set"
-    status: done
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-123"
-    title: "UTF-8 boundary safety in redact/pseudonymize and compress"
-    status: done
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-124"
-    title: "Capability token: transport binding and decode_token_unchecked restriction"
-    status: done
-    priority: medium
-    effort: M
-
-  - id: "NAVRA-125"
-    title: "Git tools: TOCTOU mitigation and URL-encoded path traversal"
-    status: done
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-126"
-    title: "OpenAPI handler: stream response body, bounded spec download"
-    status: done
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-127"
-    title: "IFC label metadata: stop leaking classification to agents"
-    status: done
-    priority: medium
-    effort: S
 
   - id: "NAVRA-019"
     title: "Persona paper"
@@ -339,18 +191,6 @@ items:
     priority: medium
     effort: M
 
-  - id: "NAVRA-066"
-    title: "Computer use Actor trait"
-    status: backlog
-    priority: medium
-    effort: M
-
-  - id: "NAVRA-068"
-    title: "Intent-based tool grouping"
-    status: backlog
-    priority: medium
-    effort: M
-
   - id: "NAVRA-070"
     title: "WebSocket agentic loops"
     status: backlog
@@ -469,11 +309,23 @@ items:
     priority: medium
     effort: 3-4d
 
+  - id: "NAVRA-066"
+    title: "Computer use Actor trait"
+    status: wont_do
+    priority: medium
+    effort: M
+
   - id: "NAVRA-067"
     title: "ToolBlock structured output"
     status: completed
     priority: medium
     effort: S
+
+  - id: "NAVRA-068"
+    title: "Intent-based tool grouping"
+    status: wont_do
+    priority: medium
+    effort: M
 
   - id: "NAVRA-073"
     title: "Model refusal detection and gateway-level fallback routing"
