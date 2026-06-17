@@ -808,7 +808,11 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
 
     // Wire IFC policies and trusted paths from permission sets
     for (name, pset) in &cfg.permissions {
-        let policy = navra_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy);
+        let policy = navra_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy)
+            .unwrap_or_else(|e| {
+                tracing::error!(permission_set = %name, error = %e, "Invalid IFC config, defaulting to Deny");
+                navra_core::ifc::TaintedWritePolicy::Deny
+            });
         if policy != navra_core::ifc::TaintedWritePolicy::Allow {
             builder = builder.ifc_policy(name.clone(), policy.clone());
             tracing::info!(
@@ -827,6 +831,18 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
         }
     }
 
+    // Wire path ACLs for gateway-level enforcement on upstream tools.
+    for (name, pset) in &cfg.permissions {
+        let acl = PathAcl {
+            ring: pset.ring,
+            allow: pset.allow.clone(),
+            deny: pset.deny.clone(),
+            operations: pset.operations.iter().cloned().collect(),
+            requires_approval: pset.approve.iter().cloned().collect(),
+        };
+        builder = builder.path_acl(name.clone(), acl);
+    }
+
     // IFC + stateless mode: taint persists via server-side sessions
     // keyed by agent name ("stateless:{agent_name}"). This means all
     // clients sharing the same agent identity share taint state — if
@@ -834,7 +850,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode) -> anyhow::Result
     // (fails closed) but can over-block in multi-client deployments.
     if cfg.server.mcp_version != "2025-03-26" {
         let has_ifc_enforcement = cfg.permissions.values().any(|pset| {
-            let p = navra_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy);
+            let p = navra_core::ifc::TaintedWritePolicy::from_str(&pset.tainted_write_policy)
+                .unwrap_or(navra_core::ifc::TaintedWritePolicy::Deny);
             p != navra_core::ifc::TaintedWritePolicy::Allow
         });
         if has_ifc_enforcement {

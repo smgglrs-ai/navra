@@ -27,7 +27,7 @@ items:
 
   - id: "NAVRA-105"
     title: "Safety pipeline: block or inspect non-text content"
-    status: planned
+    status: done
     priority: critical
     effort: M
     feeds: ['NAVRA-048']
@@ -47,7 +47,7 @@ items:
 
   - id: "NAVRA-108"
     title: "IFC config hardening: reject unknown strings, default-deny"
-    status: planned
+    status: done
     priority: critical
     effort: S
 
@@ -68,7 +68,7 @@ items:
 
   - id: "NAVRA-110"
     title: "is_write_tool: deny-by-default for unannotated tools"
-    status: planned
+    status: done
     priority: high
     effort: S
 
@@ -111,7 +111,7 @@ items:
 
   - id: "NAVRA-117"
     title: "GitLab tools: add permission checks"
-    status: planned
+    status: done
     priority: high
     effort: S
 
@@ -161,7 +161,7 @@ items:
 
   - id: "NAVRA-122"
     title: "Safety hook: inspect all argument field names, not just hardcoded set"
-    status: planned
+    status: done
     priority: medium
     effort: S
 

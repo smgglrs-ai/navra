@@ -47,22 +47,81 @@ fn validate_repo(repo: &str) -> Result<(), CallToolResult> {
             "Invalid project path: contains empty segment",
         ));
     }
-    if repo.contains(|c: char| c.is_whitespace() || c == ';' || c == '|' || c == '&') {
+    if repo.contains(|c: char| {
+        c.is_whitespace()
+            || c == ';'
+            || c == '|'
+            || c == '&'
+            || c == '$'
+            || c == '`'
+            || c == '('
+            || c == ')'
+            || c == '\''
+            || c == '"'
+            || c == '\\'
+            || c == '\n'
+    }) {
         return Err(CallToolResult::error(
-            "Invalid project path: contains disallowed characters",
+            "Invalid project path: contains shell metacharacters",
         ));
     }
     Ok(())
 }
 
+fn validate_ref_name(name: &str) -> Result<(), CallToolResult> {
+    if name.is_empty() {
+        return Err(CallToolResult::error("Branch name must not be empty"));
+    }
+    if name.contains(|c: char| {
+        c.is_whitespace()
+            || c == ';'
+            || c == '|'
+            || c == '&'
+            || c == '$'
+            || c == '`'
+            || c == '('
+            || c == ')'
+            || c == '\''
+            || c == '"'
+            || c == '\\'
+            || c == '\n'
+            || c == '~'
+            || c == '^'
+            || c == ':'
+    }) {
+        return Err(CallToolResult::error(
+            "Branch name contains disallowed characters",
+        ));
+    }
+    if name.contains("..") {
+        return Err(CallToolResult::error(
+            "Branch name must not contain '..'",
+        ));
+    }
+    Ok(())
+}
+
+fn check_permission(ctx: &CallContext, operation: &str) -> Result<(), CallToolResult> {
+    let perms = &ctx.agent.permissions;
+    if perms == "restricted" || perms == "readonly" {
+        return Err(CallToolResult::error(format!(
+            "Permission denied: agent '{}' ({}) cannot perform GitLab {} operation",
+            ctx.agent.name, perms, operation
+        )));
+    }
+    Ok(())
+}
+
 async fn run_glab(args: &[&str]) -> Result<String, CallToolResult> {
-    let output = tokio::process::Command::new("glab")
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| {
-            CallToolResult::error(format!("Failed to run glab CLI (is it installed?): {e}"))
-        })?;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        tokio::process::Command::new("glab").args(args).output(),
+    )
+    .await
+    .map_err(|_| CallToolResult::error("glab command timed out (60s)"))?
+    .map_err(|e| {
+        CallToolResult::error(format!("Failed to run glab CLI (is it installed?): {e}"))
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -125,12 +184,21 @@ async fn gitlab_mr_create(
         String,
     >,
     #[arg(description = "MR description")] description: Option<String>,
-    _ctx: CallContext,
+    ctx: CallContext,
 ) -> CallToolResult {
+    if let Err(e) = check_permission(&ctx, "mr_create") {
+        return e;
+    }
     if let Err(e) = validate_repo(&repo) {
         return e;
     }
+    if let Err(e) = validate_ref_name(&source_branch) {
+        return e;
+    }
     let target = target_branch.unwrap_or_else(|| "main".to_string());
+    if let Err(e) = validate_ref_name(&target) {
+        return e;
+    }
 
     let mut args = vec![
         "mr",
@@ -238,8 +306,11 @@ async fn gitlab_issue_create(
     #[arg(description = "Issue title")] title: String,
     #[arg(description = "Issue description")] description: Option<String>,
     #[arg(description = "Comma-separated label names")] labels: Option<String>,
-    _ctx: CallContext,
+    ctx: CallContext,
 ) -> CallToolResult {
+    if let Err(e) = check_permission(&ctx, "issue_create") {
+        return e;
+    }
     if let Err(e) = validate_repo(&repo) {
         return e;
     }
@@ -271,8 +342,11 @@ async fn gitlab_issue_comment(
     repo: String,
     #[arg(description = "Issue or MR IID")] number: i64,
     #[arg(description = "Comment body")] body: String,
-    _ctx: CallContext,
+    ctx: CallContext,
 ) -> CallToolResult {
+    if let Err(e) = check_permission(&ctx, "issue_comment") {
+        return e;
+    }
     if let Err(e) = validate_repo(&repo) {
         return e;
     }
@@ -339,6 +413,59 @@ mod tests {
         assert!(names.contains(&"gitlab_issue_list"));
         assert!(names.contains(&"gitlab_issue_create"));
         assert!(names.contains(&"gitlab_issue_comment"));
+    }
+
+    #[test]
+    fn validate_repo_rejects_shell_metacharacters() {
+        assert!(validate_repo("group$(cmd)/repo").is_err());
+        assert!(validate_repo("group`cmd`/repo").is_err());
+        assert!(validate_repo("group/repo\n").is_err());
+        assert!(validate_repo("group'repo/x").is_err());
+        assert!(validate_repo("group\"repo/x").is_err());
+        assert!(validate_repo("group\\repo/x").is_err());
+    }
+
+    #[test]
+    fn validate_ref_name_accepts_valid() {
+        assert!(validate_ref_name("main").is_ok());
+        assert!(validate_ref_name("feature/my-branch").is_ok());
+        assert!(validate_ref_name("fix-123").is_ok());
+    }
+
+    #[test]
+    fn validate_ref_name_rejects_injection() {
+        assert!(validate_ref_name("branch;rm -rf /").is_err());
+        assert!(validate_ref_name("branch$(cmd)").is_err());
+        assert!(validate_ref_name("branch`cmd`").is_err());
+        assert!(validate_ref_name("a..b").is_err());
+        assert!(validate_ref_name("").is_err());
+        assert!(validate_ref_name("branch\ninjection").is_err());
+    }
+
+    #[test]
+    fn check_permission_blocks_restricted() {
+        use navra_mcp::auth::AgentIdentity;
+        let ctx = CallContext::new(
+            AgentIdentity::new("test", "restricted"),
+            "test-session",
+        );
+        assert!(check_permission(&ctx, "mr_create").is_err());
+
+        let ctx2 = CallContext::new(
+            AgentIdentity::new("test", "readonly"),
+            "test-session",
+        );
+        assert!(check_permission(&ctx2, "issue_create").is_err());
+    }
+
+    #[test]
+    fn check_permission_allows_developer() {
+        use navra_mcp::auth::AgentIdentity;
+        let ctx = CallContext::new(
+            AgentIdentity::new("test", "developer"),
+            "test-session",
+        );
+        assert!(check_permission(&ctx, "mr_create").is_ok());
     }
 
     #[test]

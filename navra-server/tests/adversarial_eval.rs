@@ -10,12 +10,10 @@
 //! auth → ACL → IFC → safety → hook pipeline under adversarial
 //! conditions.
 //!
-//! NOTE: These tests depend on file tools (file_read, file_write) that
-//! were provided by the now-removed navra-tools-file module. They need
-//! to be adapted to use the upstream Filesystem MCP server (NAVRA-091)
-//! once it is configured as an upstream. Until then, most tests pass
-//! coincidentally (Unknown tool is still an error) but are not testing
-//! the intended security properties.
+//! File tools (read_file, write_file) are provided by the upstream
+//! MCP Filesystem server running in a container
+//! (localhost/mcp-filesystem). Build it before running these tests:
+//!   podman build -t localhost/mcp-filesystem tests/containers/mcp-filesystem/
 
 use serde_json::json;
 use std::process::Stdio;
@@ -63,13 +61,13 @@ async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
     let url = format!("http://127.0.0.1:{port}");
 
     let client = reqwest::Client::new();
-    for i in 0..30 {
+    for i in 0..60 {
         tokio::time::sleep(Duration::from_millis(500)).await;
         if client.get(format!("{url}/mcp")).send().await.is_ok() {
             break;
         }
-        if i == 29 {
-            panic!("navra did not start within 15 seconds");
+        if i == 59 {
+            panic!("navra did not start within 30 seconds");
         }
     }
 
@@ -139,7 +137,7 @@ fn is_error_result(resp: &serde_json::Value) -> bool {
     resp["result"]["isError"].as_bool().unwrap_or(false)
 }
 
-// Config with file + git modules, ring 2 (readonly) agent, safety=standard, IFC=deny.
+// Config with upstream filesystem MCP, ring 2 (readonly) agent, safety=standard, IFC=deny.
 // Uses [permissions.default] as fallback for anonymous agents, plus
 // [permissions.readonly] which the anonymous identity maps to.
 const ADVERSARIAL_CONFIG: &str = r#"
@@ -148,8 +146,10 @@ cognitive_core = "cognitive_core"
 [server]
 tcp = "127.0.0.1:{port}"
 
-[modules.file]
-enabled = true
+[[upstream]]
+name = "filesystem"
+transport = "stdio"
+command = ["podman", "run", "--rm", "-i", "--userns=keep-id", "-v", "{project_dir}:{project_dir}:Z", "localhost/mcp-filesystem", "{project_dir}"]
 
 [permissions.default]
 ring = 2
@@ -177,8 +177,10 @@ cognitive_core = "cognitive_core"
 [server]
 tcp = "127.0.0.1:{port}"
 
-[modules.file]
-enabled = true
+[[upstream]]
+name = "filesystem"
+transport = "stdio"
+command = ["podman", "run", "--rm", "-i", "--userns=keep-id", "-v", "{project_dir}:{project_dir}:Z", "localhost/mcp-filesystem", "{project_dir}"]
 
 [permissions.default]
 ring = 1
@@ -215,7 +217,7 @@ async fn a1_path_traversal_absolute() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": "/etc/shadow"}),
         2,
     )
@@ -252,7 +254,7 @@ async fn a2_path_traversal_dotdot() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": attack_path}),
         2,
     )
@@ -283,7 +285,7 @@ async fn a3_symlink_escape() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": symlink_path.to_string_lossy()}),
         2,
     )
@@ -312,7 +314,7 @@ async fn a4_privilege_escalation_write() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({"path": target.to_string_lossy(), "content": "attacker was here"}),
         2,
     )
@@ -347,8 +349,10 @@ cognitive_core = "cognitive_core"
 [server]
 tcp = "127.0.0.1:{{port}}"
 
-[modules.file]
-enabled = true
+[[upstream]]
+name = "filesystem"
+transport = "stdio"
+command = ["podman", "run", "--rm", "-i", "--userns=keep-id", "-v", "{dir}:{dir}:Z", "localhost/mcp-filesystem", "{dir}"]
 
 [permissions.default]
 ring = 2
@@ -375,7 +379,7 @@ safety = "none"
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": ssh_dir.join("id_rsa").to_string_lossy()}),
         2,
     )
@@ -450,7 +454,7 @@ async fn a7_ifc_write_down_blocked() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": untrusted_file.to_string_lossy()}),
         2,
     )
@@ -461,7 +465,7 @@ async fn a7_ifc_write_down_blocked() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({
             "path": output_file.to_string_lossy(),
             "content": "exfiltrated data"
@@ -476,7 +480,9 @@ async fn a7_ifc_write_down_blocked() {
     );
     let text = result_text(&write_resp);
     assert!(
-        text.contains("Permission denied") || text.contains("Access denied"),
+        text.contains("Permission denied")
+            || text.contains("Access denied")
+            || text.contains("denied"),
         "Expected denial message, got: {text}"
     );
     assert!(
@@ -616,7 +622,7 @@ async fn a10_taint_accumulation_blocks_write() {
             &client,
             &url,
             &session,
-            "file_read",
+            "read_file",
             json!({"path": dir.path().join(name).to_string_lossy()}),
             (i + 2) as u64,
         )
@@ -628,7 +634,7 @@ async fn a10_taint_accumulation_blocks_write() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({
             "path": output_file.to_string_lossy(),
             "content": "aggregated data"
@@ -690,7 +696,7 @@ async fn b1_injection_claims_public_label() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": injected_file.to_string_lossy()}),
         2,
     )
@@ -703,7 +709,7 @@ async fn b1_injection_claims_public_label() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({"path": output_file.to_string_lossy(), "content": "exfil"}),
         3,
     )
@@ -756,7 +762,7 @@ async fn b2_fake_declassification() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": secret_file.to_string_lossy()}),
         2,
     )
@@ -767,7 +773,7 @@ async fn b2_fake_declassification() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": cleared_file.to_string_lossy()}),
         3,
     )
@@ -778,7 +784,7 @@ async fn b2_fake_declassification() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({"path": output_file.to_string_lossy(), "content": "cleared data"}),
         4,
     )
@@ -815,7 +821,7 @@ async fn b3_taint_laundering_via_file() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": secret_file.to_string_lossy()}),
         2,
     )
@@ -826,7 +832,7 @@ async fn b3_taint_laundering_via_file() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({"path": temp_file.to_string_lossy(), "content": "laundered"}),
         3,
     )
@@ -864,7 +870,7 @@ async fn b4_character_by_character_exfiltration() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": secret_file.to_string_lossy()}),
         2,
     )
@@ -877,7 +883,7 @@ async fn b4_character_by_character_exfiltration() {
             &client,
             &url,
             &session,
-            "file_write",
+            "write_file",
             json!({
                 "path": char_file.to_string_lossy(),
                 "content": c.to_string()
@@ -923,7 +929,7 @@ async fn b5_taint_monotonicity_after_clean_reads() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": secret_file.to_string_lossy()}),
         2,
     )
@@ -935,7 +941,7 @@ async fn b5_taint_monotonicity_after_clean_reads() {
             &client,
             &url,
             &session,
-            "file_read",
+            "read_file",
             json!({"path": dir.path().join(format!("clean_{i}.txt")).to_string_lossy()}),
             (10 + i) as u64,
         )
@@ -947,7 +953,7 @@ async fn b5_taint_monotonicity_after_clean_reads() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({"path": output_file.to_string_lossy(), "content": "should be blocked"}),
         20,
     )
@@ -1014,7 +1020,7 @@ async fn c1_shadow_escape_document_exfiltration() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": malicious_doc.to_string_lossy()}),
         2,
     )
@@ -1025,7 +1031,7 @@ async fn c1_shadow_escape_document_exfiltration() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": ssh_key.to_string_lossy()}),
         3,
     )
@@ -1040,7 +1046,7 @@ async fn c1_shadow_escape_document_exfiltration() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({
             "path": exfil_file.to_string_lossy(),
             "content": "SSH KEY CONTENTS HERE"
@@ -1098,7 +1104,7 @@ async fn c2_pale_fire_data_source_injection() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": calendar_data.to_string_lossy()}),
         2,
     )
@@ -1109,7 +1115,7 @@ async fn c2_pale_fire_data_source_injection() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({
             "path": output_file.to_string_lossy(),
             "content": "beacon response"
@@ -1141,7 +1147,6 @@ async fn c2_pale_fire_data_source_injection() {
 // still taints the session (external read → Untrusted), so
 // subsequent writes are blocked.
 #[tokio::test]
-#[ignore = "requires file tools from upstream Filesystem MCP (NAVRA-091)"]
 async fn d1_base64_encoded_secret_ifc_still_blocks() {
     let dir = tempfile::tempdir().unwrap();
 
@@ -1162,7 +1167,7 @@ async fn d1_base64_encoded_secret_ifc_still_blocks() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": encoded_file.to_string_lossy()}),
         2,
     )
@@ -1180,7 +1185,7 @@ async fn d1_base64_encoded_secret_ifc_still_blocks() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({
             "path": output_file.to_string_lossy(),
             "content": "QVBJX0tFWT1zay1hbnQtc2VjcmV0MTIz"
@@ -1223,7 +1228,7 @@ async fn d2_unicode_homoglyph_ssn_still_detected() {
         &client,
         &url,
         &session,
-        "file_read",
+        "read_file",
         json!({"path": file.to_string_lossy()}),
         2,
     )
@@ -1241,7 +1246,7 @@ async fn d2_unicode_homoglyph_ssn_still_detected() {
         &client,
         &url,
         &session,
-        "file_write",
+        "write_file",
         json!({"path": output_file.to_string_lossy(), "content": "test"}),
         3,
     )

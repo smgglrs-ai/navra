@@ -1,0 +1,9 @@
+FROM docker.io/oven/bun:1 AS build
+WORKDIR /build
+RUN bun init -y && bun add @modelcontextprotocol/server-filesystem
+RUN bun build node_modules/@modelcontextprotocol/server-filesystem/dist/index.js \
+    --compile --minify --outfile mcp-filesystem
+
+FROM registry.access.redhat.com/ubi10/ubi-micro
+COPY --from=build /build/mcp-filesystem /usr/local/bin/mcp-filesystem
+ENTRYPOINT ["mcp-filesystem"]

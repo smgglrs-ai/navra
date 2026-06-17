@@ -83,6 +83,8 @@ pub struct McpServer {
     /// Optional Cedar policy engine for conditional access control.
     #[cfg(feature = "cedar")]
     cedar_engine: Option<navra_auth::permissions::CedarEngine>,
+    /// Path ACLs per permission set (allow/deny patterns for tool path arguments).
+    path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     /// MCP protocol version — "2025-03-26" (default) or "2026-07-28" (stateless).
     mcp_version: String,
 }

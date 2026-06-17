@@ -489,6 +489,54 @@ impl McpServer {
             }
         }
 
+        // Gateway-level path ACL check: extract path from tool arguments
+        // and validate against the agent's allow/deny patterns. This ensures
+        // upstream MCP tools respect navra's path ACLs.
+        if let Some(path_str) = params
+            .arguments
+            .get("path")
+            .or_else(|| params.arguments.get("file_path"))
+            .and_then(|v| v.as_str())
+        {
+            if let Some(acl) = self.path_acls.get(&ctx.agent.permissions) {
+                let path = std::path::Path::new(path_str);
+                let tool_op = if crate::ifc::is_write_tool(
+                    &params.name,
+                    self.tools
+                        .get(&params.name)
+                        .and_then(|t| t.definition.annotations.as_ref()),
+                ) {
+                    "write"
+                } else {
+                    "read"
+                };
+                match navra_auth::permissions::PermissionEngine::check_acl(acl, tool_op, path) {
+                    navra_auth::permissions::PermissionResult::Allowed => {}
+                    result => {
+                        self.process_table.record_denied(
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
+                        );
+                        self.metrics
+                            .tool_calls_denied
+                            .fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            tool = %params.name,
+                            path = %path_str,
+                            result = ?result,
+                            "Path ACL denied at gateway"
+                        );
+                        return CallToolResult::error(format!(
+                            "Access denied: path '{}' blocked by ACL policy",
+                            path_str
+                        ));
+                    }
+                }
+            }
+        }
+
         // IFC: resolve variable references in arguments
         let session_store = self.value_stores.get_or_create(&ctx.session_id);
         let resolved =
@@ -555,7 +603,25 @@ impl McpServer {
                             "Approval required: '{}'", params.name
                         ));
                     }
-                    _ => {} // Allow or no policy
+                    Some(crate::ifc::TaintedWritePolicy::Allow) => {} // Explicitly allowed
+                    None => {
+                        // Missing policy defaults to Deny (fail-closed)
+                        self.process_table.record_denied(
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
+                        );
+                        tracing::warn!(
+                            agent = %ctx.agent.name,
+                            permissions = %ctx.agent.permissions,
+                            tool = %params.name,
+                            "IFC: no policy configured, defaulting to deny"
+                        );
+                        return CallToolResult::error(format!(
+                            "Permission denied: '{}'", params.name
+                        ));
+                    }
                 }
             }
         }
@@ -828,13 +894,40 @@ impl McpServer {
                         }
                     }
                 }
-                other => {
+                Content::Resource(ref res) => {
+                    if res.resource.mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
+                        if let Some(ref text) = res.resource.text {
+                            match pipeline.process(text, &filter_ctx) {
+                                Ok(processed) => {
+                                    filtered_content.push(Content::text(processed));
+                                }
+                                Err(reason) => {
+                                    return CallToolResult::error(reason);
+                                }
+                            }
+                        } else {
+                            filtered_content.push(content);
+                        }
+                    } else {
+                        tracing::warn!(
+                            tool = tool_name,
+                            agent = ctx.agent.name,
+                            "Non-text resource blocked by safety pipeline"
+                        );
+                        return CallToolResult::error(
+                            "Non-text resource content blocked by safety pipeline"
+                        );
+                    }
+                }
+                _binary => {
                     tracing::warn!(
                         tool = tool_name,
                         agent = ctx.agent.name,
-                        "Non-text content bypassed safety filter"
+                        "Non-text content (image/audio) blocked by safety pipeline"
                     );
-                    filtered_content.push(other);
+                    return CallToolResult::error(
+                        "Non-text content blocked by safety pipeline (no binary filter configured)"
+                    );
                 }
             }
         }

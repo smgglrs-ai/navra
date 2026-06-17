@@ -266,6 +266,37 @@ impl PermissionEngine {
         PermissionResult::Allowed
     }
 
+    /// Check a path against a single PathAcl (no permission set lookup).
+    pub fn check_acl(acl: &PathAcl, operation: &str, path: &Path) -> PermissionResult {
+        if !acl.operations.contains(operation) {
+            return PermissionResult::DeniedOperation;
+        }
+
+        let canonical = Self::normalize_path(path);
+
+        for pattern in &acl.deny {
+            let expanded = Self::expand_tilde(pattern);
+            if Self::glob_matches(&expanded, &canonical) {
+                return PermissionResult::DeniedPath;
+            }
+        }
+
+        let allowed = acl.allow.iter().any(|pattern| {
+            let expanded = Self::expand_tilde(pattern);
+            Self::glob_matches(&expanded, &canonical)
+        });
+
+        if !allowed {
+            return PermissionResult::DeniedPath;
+        }
+
+        if acl.requires_approval.contains(operation) {
+            return PermissionResult::NeedsApproval;
+        }
+
+        PermissionResult::Allowed
+    }
+
     /// Expand `~` to the user's home directory.
     fn expand_tilde(pattern: &str) -> String {
         if pattern.starts_with("~/") {
