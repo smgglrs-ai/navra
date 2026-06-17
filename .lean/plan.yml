@@ -80,7 +80,7 @@ items:
 
   - id: "NAVRA-112"
     title: "Transport DoS hardening: size limits on all inputs"
-    status: planned
+    status: done
     priority: high
     effort: M
     feeds: ['NAVRA-080']

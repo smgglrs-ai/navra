@@ -201,6 +201,14 @@ impl McpServer {
             return Err("Missing client_info.name".to_string());
         }
 
+        // DoS protection: cap total sessions
+        const MAX_SESSIONS: usize = 1000;
+        if self.sessions.count() >= MAX_SESSIONS {
+            return Err(format!(
+                "Session limit reached ({MAX_SESSIONS}). Close existing sessions first."
+            ));
+        }
+
         let session_id = uuid::Uuid::new_v4().to_string();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
