@@ -534,3 +534,10 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "Remaining items (107,111,112,116,124) are M-effort requiring deeper architectural changes"
     branch: "loop/2026-06-17-2"
     tag: "loop-run/2026-06-17-2-5"
+- timestamp: "2026-06-17T15:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-107"
+  summary: "validate_delegation now checks child paths ⊆ parent paths and child tools ⊆ parent tools under glob semantics"
+  iteration: 1
+  max_iterations: 20
