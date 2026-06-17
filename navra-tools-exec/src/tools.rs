@@ -4,6 +4,7 @@ use navra_mcp::Module;
 use navra_macros::tool;
 use navra_model_runtime::openshell::{ComputeDriverClient, ExecCommandRequest};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tonic::transport::Channel;
 
@@ -84,13 +85,21 @@ async fn handle_exec_run(
     }
 
     let working_dir = working_dir.unwrap_or_else(|| "/workspace".to_string());
-    if !working_dir.starts_with("/workspace") {
+    let working_path = Path::new(&working_dir);
+
+    if working_path.components().any(|c| c == std::path::Component::ParentDir) {
+        return CallToolResult::error(
+            "working_dir must not contain '..' components (path traversal denied)",
+        );
+    }
+
+    if !working_path.starts_with("/workspace") {
         return CallToolResult::error(
             "working_dir must be within /workspace (path traversal denied)",
         );
     }
 
-    let timeout_secs = timeout_secs.unwrap_or(60).min(300) as u32;
+    let timeout_secs = timeout_secs.unwrap_or(60).clamp(1, 300) as u32;
     let env = env.unwrap_or_default();
 
     let did = match &ctx.agent.did {
@@ -193,6 +202,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_workspacefoo_prefix_trick() {
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
+        let module = ExecModule::new(ComputeDriverClient::new(channel));
+        let (_, handler) = handle_exec_run_handler(module.state.clone());
+
+        let args = serde_json::json!({
+            "command": ["ls"],
+            "working_dir": "/workspacefoo"
+        });
+
+        let result = handler(args, test_ctx(Some("did:test:agent"))).await;
+        assert!(result.is_error);
+        let text = match &result.content[0] {
+            Content::Text(t) => t.text.as_str(),
+            _ => panic!("expected text content"),
+        };
+        assert!(text.contains("path traversal denied"));
+    }
+
+    #[tokio::test]
+    async fn rejects_dotdot_traversal() {
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
+        let module = ExecModule::new(ComputeDriverClient::new(channel));
+        let (_, handler) = handle_exec_run_handler(module.state.clone());
+
+        let args = serde_json::json!({
+            "command": ["ls"],
+            "working_dir": "/workspace/../etc"
+        });
+
+        let result = handler(args, test_ctx(Some("did:test:agent"))).await;
+        assert!(result.is_error);
+        let text = match &result.content[0] {
+            Content::Text(t) => t.text.as_str(),
+            _ => panic!("expected text content"),
+        };
+        assert!(text.contains("path traversal denied"));
+    }
+
+    #[tokio::test]
     async fn rejects_missing_did() {
         let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
         let module = ExecModule::new(ComputeDriverClient::new(channel));
@@ -275,33 +324,50 @@ mod tests {
 
 #[cfg(kani)]
 mod kani_proofs {
-    /// Prove workspace path check rejects traversal.
-    /// Models the starts_with check on bounded strings.
+    use std::path::Path;
+
     fn is_workspace_safe(path: &str) -> bool {
-        path.starts_with("/workspace")
+        let p = Path::new(path);
+        !p.components()
+            .any(|c| c == std::path::Component::ParentDir)
+            && p.starts_with("/workspace")
     }
 
     #[kani::proof]
     fn workspace_rejects_traversal_attempts() {
         let choice: u8 = kani::any();
-        kani::assume(choice <= 4);
+        kani::assume(choice <= 5);
         let path = match choice {
             0 => "/tmp/escape",
             1 => "/etc/passwd",
             2 => "/workspace/../etc",
-            3 => "/workspac", // prefix substring
+            3 => "/workspac",
+            4 => "/workspacefoo",
             _ => "/home/user",
         };
-        if !path.starts_with("/workspace") {
-            assert!(!is_workspace_safe(path));
-        }
+        // /workspacefoo is rejected by Path::starts_with (directory semantics)
+        // /workspace/../etc is rejected by the dotdot check
+        assert!(!is_workspace_safe(path));
+    }
+
+    #[kani::proof]
+    fn workspace_accepts_valid_paths() {
+        let choice: u8 = kani::any();
+        kani::assume(choice <= 2);
+        let path = match choice {
+            0 => "/workspace",
+            1 => "/workspace/project",
+            _ => "/workspace/a/b/c",
+        };
+        assert!(is_workspace_safe(path));
     }
 
     #[kani::proof]
     fn timeout_clamp_bounded() {
         let input: u64 = kani::any();
         kani::assume(input <= 1000);
-        let clamped = input.min(300) as u32;
+        let clamped = input.clamp(1, 300) as u32;
+        assert!(clamped >= 1);
         assert!(clamped <= 300);
     }
 }

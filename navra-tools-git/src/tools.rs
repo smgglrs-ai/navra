@@ -453,10 +453,38 @@ fn validate_ref_name(name: &str, label: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Simple percent-decoding for path traversal detection.
+fn percent_decode(s: &str) -> Option<String> {
+    if !s.contains('%') {
+        return None;
+    }
+    let mut out = Vec::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (
+                char::from(bytes[i + 1]).to_digit(16),
+                char::from(bytes[i + 2]).to_digit(16),
+            ) {
+                out.push((hi * 16 + lo) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).ok()
+}
+
 // --- Path validation ---
 
 fn resolve_repo_path(raw: &str) -> Result<PathBuf, String> {
-    if raw.split('/').any(|c| c == "..") {
+    // URL-decode before checking for path traversal (CWE-22).
+    let decoded = percent_decode(raw);
+    let check = decoded.as_deref().unwrap_or(raw);
+    if check.split('/').any(|c| c == "..") {
         return Err(format!("Path must not contain '..': {raw}"));
     }
 
@@ -558,12 +586,16 @@ async fn check_perm(
 // --- Git command runner ---
 
 async fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
-    let output = tokio::process::Command::new("git")
-        .args(args)
-        .current_dir(repo_path)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run git: {e}"))?;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(repo_path)
+            .output(),
+    )
+    .await
+    .map_err(|_| "git command timed out (60s)".to_string())?
+    .map_err(|e| format!("Failed to run git: {e}"))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -1030,6 +1062,37 @@ mod tests {
         init_test_repo(tmp.path());
         let result = resolve_repo_path(tmp.path().to_str().unwrap());
         assert!(result.is_ok(), "Valid absolute repo path should succeed");
+    }
+
+    #[test]
+    fn resolve_repo_path_rejects_url_encoded_dotdot() {
+        let result = resolve_repo_path("/home/user/%2e%2e/etc/passwd");
+        assert!(result.is_err(), "URL-encoded .. should be rejected");
+    }
+
+    #[test]
+    fn resolve_repo_path_rejects_mixed_encoded_dotdot() {
+        let result = resolve_repo_path("/home/user/.%2e/etc");
+        assert!(result.is_err(), "Mixed encoded .. should be rejected");
+    }
+
+    #[test]
+    fn resolve_repo_path_rejects_encoded_slash_dotdot() {
+        let result = resolve_repo_path("/home/user%2f..%2fetc");
+        assert!(result.is_err(), "URL-encoded /../ should be rejected");
+    }
+
+    #[test]
+    fn percent_decode_basic() {
+        assert_eq!(
+            super::percent_decode("%2e%2e").unwrap(),
+            ".."
+        );
+        assert_eq!(
+            super::percent_decode("%2f").unwrap(),
+            "/"
+        );
+        assert!(super::percent_decode("hello").is_none());
     }
 
     // --- Remote operation tests ---

@@ -1,6 +1,6 @@
 id: "NAVRA-104"
 title: "Replace manual secret zeroization with zeroize crate"
-status: planned
+status: done
 priority: critical
 effort: S
 depends_on: []

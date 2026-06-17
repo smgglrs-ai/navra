@@ -277,39 +277,73 @@ impl ChunkStore {
         chunks: &[Chunk],
         embeddings: &[Vec<f32>],
     ) -> rusqlite::Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        assert_eq!(
+            chunks.len(),
+            embeddings.len(),
+            "chunks/embeddings length mismatch: {} chunks vs {} embeddings",
+            chunks.len(),
+            embeddings.len()
+        );
 
-        // Remove old chunks for this path
-        self.delete_chunks_inner(&conn, path)?;
-
-        let mut count = 0;
-        for (chunk, embedding) in chunks.iter().zip(embeddings.iter()) {
-            conn.execute(
-                "INSERT INTO rag_chunks (path, chunk_index, content, start_byte, end_byte, breadcrumb)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    path,
-                    chunk.index as i64,
-                    chunk.content,
-                    chunk.start_byte as i64,
-                    chunk.end_byte as i64,
-                    chunk.breadcrumb,
-                ],
-            )?;
-
-            let chunk_id = conn.last_insert_rowid();
-
-            if self.dimensions > 0 && !embedding.is_empty() {
-                conn.execute(
-                    "INSERT INTO rag_chunk_vectors(rowid, embedding) VALUES (?1, ?2)",
-                    params![chunk_id, embedding.as_bytes()],
-                )?;
+        if self.dimensions > 0 {
+            for (i, emb) in embeddings.iter().enumerate() {
+                assert_eq!(
+                    emb.len(),
+                    self.dimensions,
+                    "embedding {i} has {actual} dimensions, expected {expected}",
+                    actual = emb.len(),
+                    expected = self.dimensions
+                );
             }
-
-            count += 1;
         }
 
-        Ok(count)
+        let conn = self.conn.lock().unwrap();
+
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+
+        let result = (|| {
+            self.delete_chunks_inner(&conn, path)?;
+
+            let mut count = 0;
+            for (chunk, embedding) in chunks.iter().zip(embeddings.iter()) {
+                conn.execute(
+                    "INSERT INTO rag_chunks (path, chunk_index, content, start_byte, end_byte, breadcrumb)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        path,
+                        chunk.index as i64,
+                        chunk.content,
+                        chunk.start_byte as i64,
+                        chunk.end_byte as i64,
+                        chunk.breadcrumb,
+                    ],
+                )?;
+
+                let chunk_id = conn.last_insert_rowid();
+
+                if self.dimensions > 0 && !embedding.is_empty() {
+                    conn.execute(
+                        "INSERT INTO rag_chunk_vectors(rowid, embedding) VALUES (?1, ?2)",
+                        params![chunk_id, embedding.as_bytes()],
+                    )?;
+                }
+
+                count += 1;
+            }
+
+            Ok(count)
+        })();
+
+        match result {
+            Ok(count) => {
+                conn.execute_batch("COMMIT")?;
+                Ok(count)
+            }
+            Err(e) => {
+                conn.execute_batch("ROLLBACK").ok();
+                Err(e)
+            }
+        }
     }
 
     /// Search for chunks similar to the query embedding.
@@ -321,6 +355,14 @@ impl ChunkStore {
         if self.dimensions == 0 {
             return Ok(Vec::new());
         }
+
+        assert_eq!(
+            query_embedding.len(),
+            self.dimensions,
+            "query embedding has {actual} dimensions, expected {expected}",
+            actual = query_embedding.len(),
+            expected = self.dimensions
+        );
 
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -1410,6 +1452,41 @@ mod tests {
             !rerank_skipped,
             "should not skip rerank with tight threshold"
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "chunks/embeddings length mismatch")]
+    fn rejects_chunks_embeddings_length_mismatch() {
+        let store = test_store();
+        let chunks = sample_chunks(); // 2 chunks
+        let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]]; // 1 embedding
+        store.index_document("/doc.md", &chunks, &embeddings).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "dimensions, expected 4")]
+    fn rejects_wrong_embedding_dimension_on_insert() {
+        let store = test_store(); // dimensions = 4
+        let chunks = vec![Chunk {
+            content: "test".to_string(),
+            start_byte: 0,
+            end_byte: 4,
+            index: 0,
+            breadcrumb: None,
+            section_start_byte: None,
+            section_end_byte: None,
+        }];
+        let embeddings = vec![vec![1.0, 0.0]]; // 2 dimensions, expected 4
+        store.index_document("/doc.md", &chunks, &embeddings).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "dimensions, expected 4")]
+    fn rejects_wrong_query_dimension_on_search() {
+        let store = test_store(); // dimensions = 4
+        store.index_document("/doc.md", &sample_chunks(), &sample_embeddings()).unwrap();
+        let query = vec![1.0, 0.0]; // 2 dimensions, expected 4
+        store.search(&query, 5).unwrap();
     }
 
     #[test]

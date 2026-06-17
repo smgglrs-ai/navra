@@ -393,3 +393,98 @@ Breaking API changes + security architecture change require human review before 
     Key findings: ML fail-open, delegation subset missing, non-text
     bypass, hand-rolled crypto, transport DoS, DAG termination.
     Project already has 139 Kani proofs — IFC lattice is fully proven.
+- timestamp: "2026-06-17T10:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-103"
+  summary: "Replaced hand-rolled constant_time_eq with subtle::ConstantTimeEq in mod.rs and oauth.rs"
+  iteration: 1
+  max_iterations: 20
+- timestamp: "2026-06-17T10:10:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-104"
+  summary: "Replaced manual Drop zeroing loop with zeroize::Zeroizing wrapper for Secret type"
+  iteration: 2
+  max_iterations: 20
+- timestamp: "2026-06-17T10:20:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-106"
+  summary: "All 4 ML/NER/privacy filters now fail-closed (return inference_failure finding on error); fixed 3 mutex unwrap() to unwrap_or_else"
+  iteration: 3
+  max_iterations: 20
+- timestamp: "2026-06-17T10:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-109"
+  summary: "Workspace path now uses Path::starts_with (directory semantics), rejects .. components, enforces minimum 1s timeout"
+  iteration: 4
+  max_iterations: 20
+- timestamp: "2026-06-17T10:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-114"
+  summary: "Threshold validation (panic on NaN/negative/>1.0) in all filter constructors; NaN scores treated as unsafe everywhere"
+  iteration: 5
+  max_iterations: 20
+- timestamp: "2026-06-17T11:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-115"
+  summary: "Embedding dimension assertions on insert+search, chunks/embeddings length check, index_document wrapped in SQLite transaction"
+  iteration: 6
+  max_iterations: 20
+- timestamp: "2026-06-17T11:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-118"
+  summary: "Witness canonical_payload() switched from serde_json to deterministic CBOR; verify() falls back to legacy JSON for backward compatibility"
+  iteration: 7
+  max_iterations: 20
+- timestamp: "2026-06-17T11:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-120"
+  summary: "Merged seq+prev_hash into single ChainState mutex; insert errors now logged via tracing::error; schema migration handles duplicate column gracefully"
+  iteration: 8
+  max_iterations: 20
+- timestamp: "2026-06-17T11:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-123"
+  summary: "Added snap_to_char_boundary helper for redact/pseudonymize; compress now snaps cut point to valid UTF-8 boundary; tests with CJK and emoji"
+  iteration: 9
+  max_iterations: 20
+- timestamp: "2026-06-17T12:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-125"
+  summary: "Git resolve_repo_path now URL-decodes before dotdot check (%2e%2e, %2f); run_git has 60s timeout"
+  iteration: 10
+  max_iterations: 20
+- timestamp: "2026-06-17T12:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-127"
+  summary: "Tool result metadata now shows var_id only, not IFC label — prevents agents from parsing security classification"
+  iteration: 11
+  max_iterations: 20
+- timestamp: "2026-06-17T12:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-126"
+  summary: "OpenAPI fetch_spec has 30s timeout + 10MiB size limit; handler response body bounded by max_response_bytes (default 1MiB)"
+  iteration: 12
+  max_iterations: 20
+- timestamp: "2026-06-17T12:35:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 12 items completed. Exit: No unblocked items remaining in autonomous scope"
+  details:
+    iterations: 12
+    max_iterations: 20
+    completed: [NAVRA-103, NAVRA-104, NAVRA-106, NAVRA-109, NAVRA-114, NAVRA-115, NAVRA-118, NAVRA-120, NAVRA-123, NAVRA-125, NAVRA-126, NAVRA-127]
+    exit_reason: "No unblocked items remaining in autonomous scope"
+    branch: "loop/2026-06-17"
+    tag: "loop-run/2026-06-17-12"

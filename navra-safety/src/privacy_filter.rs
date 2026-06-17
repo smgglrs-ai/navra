@@ -332,7 +332,7 @@ impl PrivacyFilterModel {
         let mask_tensor = ort::value::TensorRef::from_array_view(&mask_array)
             .map_err(|e| PrivacyFilterError::Inference(format!("attention_mask tensor: {e}")))?;
 
-        let mut session = self.session.lock().unwrap();
+        let mut session = self.session.lock().unwrap_or_else(|e| e.into_inner());
 
         let outputs = session
             .run(ort::inputs![ids_tensor, mask_tensor])
@@ -393,7 +393,7 @@ impl PrivacyFilterModel {
 
         Ok(spans
             .into_iter()
-            .filter(|s| s.confidence >= self.confidence_threshold)
+            .filter(|s| s.confidence.is_nan() || s.confidence >= self.confidence_threshold)
             .collect())
     }
 }
@@ -418,8 +418,13 @@ impl ContentFilter for PrivacyFilterModel {
                 })
                 .collect(),
             Err(e) => {
-                tracing::warn!(error = %e, "Privacy-filter inference failed, skipping");
-                Vec::new()
+                tracing::warn!(error = %e, "Privacy-filter inference failed, blocking (fail-closed)");
+                vec![Finding {
+                    start: 0,
+                    end: content.len(),
+                    category: "inference_failure".to_string(),
+                    confidence: 1.0,
+                }]
             }
         }
     }

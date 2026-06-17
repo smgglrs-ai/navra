@@ -1,6 +1,6 @@
 id: "NAVRA-115"
 title: "RAG embedding dimension invariant + transactional indexing"
-status: planned
+status: done
 priority: high
 effort: S
 depends_on: []
