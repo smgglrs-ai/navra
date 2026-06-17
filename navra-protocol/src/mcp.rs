@@ -327,13 +327,18 @@ impl CallToolResult {
         for content in &mut self.content {
             if let Content::Text(ref mut text) = content {
                 if text.text.len() > chars_budget {
-                    let cut = chars_budget.saturating_sub(40);
-                    let slice = &text.text[..cut.min(text.text.len())];
+                    let cut = chars_budget.saturating_sub(40).min(text.text.len());
+                    // Snap to a valid UTF-8 char boundary
+                    let mut safe_cut = cut;
+                    while safe_cut > 0 && !text.text.is_char_boundary(safe_cut) {
+                        safe_cut -= 1;
+                    }
+                    let slice = &text.text[..safe_cut];
                     let cut_point = slice
                         .rfind(". ")
                         .or_else(|| slice.rfind('\n'))
                         .map(|p| p + 1)
-                        .unwrap_or(cut);
+                        .unwrap_or(safe_cut);
                     let remaining = text.text.len() - cut_point;
                     text.text = format!(
                         "{}\n[compressed — {remaining} chars omitted]",
@@ -1837,6 +1842,33 @@ mod tests {
         let meta: RequestMeta = serde_json::from_str(json).unwrap();
         assert_eq!(meta.traceparent.as_deref(), Some("00-1234"));
         assert_eq!(meta.tracestate.as_deref(), Some("k=v"));
+    }
+
+    #[test]
+    fn compress_handles_multibyte_utf8() {
+        let cjk = "你好世界".repeat(100); // 1200 bytes of CJK
+        let mut result = CallToolResult {
+            content: vec![Content::text(&cjk)],
+            is_error: false,
+            label: Default::default(),
+        };
+        result.compress(10); // 40 bytes budget, well within the CJK string
+        // Should not panic
+        if let Content::Text(t) = &result.content[0] {
+            assert!(t.text.contains("[compressed"));
+        }
+    }
+
+    #[test]
+    fn compress_handles_emoji_content() {
+        let emoji = "🎉🎊🎈✨".repeat(50); // lots of 4-byte chars
+        let mut result = CallToolResult {
+            content: vec![Content::text(&emoji)],
+            is_error: false,
+            label: Default::default(),
+        };
+        result.compress(5);
+        // Should not panic on 4-byte emoji boundaries
     }
 }
 
