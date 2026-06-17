@@ -470,3 +470,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Tool result metadata now shows var_id only, not IFC label — prevents agents from parsing security classification"
   iteration: 11
   max_iterations: 20
+- timestamp: "2026-06-17T12:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-126"
+  summary: "OpenAPI fetch_spec has 30s timeout + 10MiB size limit; handler response body bounded by max_response_bytes (default 1MiB)"
+  iteration: 12
+  max_iterations: 20
