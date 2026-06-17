@@ -71,6 +71,7 @@ pub struct DagResult {
 pub struct DagExecutor {
     agents: HashMap<String, Agent>,
     signal_handles: HashMap<String, SignalHandle>,
+    #[allow(dead_code)]
     max_concurrent: usize,
     blackboard: Option<Blackboard>,
     insight_callback: Option<InsightCallback>,

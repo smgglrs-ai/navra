@@ -110,6 +110,11 @@ pub struct CapabilityPayload {
     /// path rewrite). Restrictions can only be added/tightened, never removed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<super::sandbox_profile::SandboxProfile>,
+    /// Audience: the intended server identity/URL. When present, the
+    /// receiving server must validate this matches its own identity.
+    /// Prevents token replay across different servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aud: Option<String>,
 }
 
 /// Resolved capabilities extracted from a verified token.
@@ -243,6 +248,27 @@ pub fn decode_token_with_revocation(
     Ok(payload)
 }
 
+/// Decode and verify a capability token with audience validation.
+///
+/// When the token carries an `aud` claim, it must match `expected_audience`.
+/// This prevents token replay across different servers.
+pub fn decode_token_with_audience(
+    token: &str,
+    verifier: &dyn CapSigner,
+    expected_audience: &str,
+) -> Result<CapabilityPayload, CapabilityError> {
+    let payload = decode_token(token, verifier)?;
+    if let Some(ref aud) = payload.aud {
+        if aud != expected_audience {
+            return Err(CapabilityError::DelegationViolation(format!(
+                "audience mismatch: token is for '{}', server is '{}'",
+                aud, expected_audience
+            )));
+        }
+    }
+    Ok(payload)
+}
+
 /// Decode a token without checking expiry or signature.
 ///
 /// **WARNING**: This skips signature verification. Use `decode_token()`
@@ -254,7 +280,7 @@ pub fn decode_token_with_revocation(
 /// **Do not use for authentication** — skips signature verification.
 /// Intended for testing, token inspection, and delegation validation.
 #[cfg_attr(not(test), doc(hidden))]
-pub fn decode_token_unchecked(token: &str) -> Result<CapabilityPayload, CapabilityError> {
+pub(crate) fn decode_token_unchecked(token: &str) -> Result<CapabilityPayload, CapabilityError> {
     let parts: Vec<&str> = token.splitn(3, '.').collect();
     if parts.len() != 3 || parts[0] != TOKEN_PREFIX {
         return Err(CapabilityError::InvalidFormat(
@@ -335,6 +361,48 @@ fn check_ops_subset(parent_ops: &[u8], child_ops: &[u8]) -> bool {
     child_ops.iter().all(|c| parent_ops.contains(c))
 }
 
+/// Check if a child glob pattern is covered by any parent glob.
+///
+/// A child pattern is covered if every string it matches would also be
+/// matched by at least one parent pattern. Conservative approach:
+/// - Exact match: always covered
+/// - `/**` suffix patterns: child prefix must start with parent prefix
+/// - Wildcard patterns: parent pattern must match the child literal
+fn is_glob_covered_by(child: &str, parent_patterns: &[String]) -> bool {
+    for parent in parent_patterns {
+        if child == parent {
+            return true;
+        }
+        // "dir/**" covers "dir/sub/**" and "dir/sub/file"
+        if let Some(parent_prefix) = parent.strip_suffix("/**") {
+            if let Some(child_prefix) = child.strip_suffix("/**") {
+                if child_prefix.starts_with(parent_prefix)
+                    && (child_prefix.len() == parent_prefix.len()
+                        || child_prefix.as_bytes()[parent_prefix.len()] == b'/')
+                {
+                    return true;
+                }
+            }
+            // Literal child path under parent's glob tree
+            if child.starts_with(parent_prefix)
+                && (child.len() == parent_prefix.len()
+                    || child.as_bytes().get(parent_prefix.len()) == Some(&b'/'))
+            {
+                return true;
+            }
+        }
+        // Parent with * wildcard: check if it matches the child literally
+        if parent.contains('*') {
+            if let Ok(pat) = glob::Pattern::new(parent) {
+                if pat.matches(child) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Validate that a delegated token's capabilities are a subset of the parent's.
 pub fn validate_delegation(
     parent: &CapabilityPayload,
@@ -391,6 +459,26 @@ pub fn validate_delegation(
             }
         }
         _ => {}
+    }
+
+    // Path subset check: each child path glob must be covered by a parent glob.
+    for child_path in &child.cap.paths {
+        if !is_glob_covered_by(child_path, &parent.cap.paths) {
+            return Err(CapabilityError::DelegationViolation(format!(
+                "path escalation: child path '{}' not covered by parent paths",
+                child_path
+            )));
+        }
+    }
+
+    // Tool subset check: each child tool glob must be covered by a parent glob.
+    for child_tool in &child.cap.tools {
+        if !is_glob_covered_by(child_tool, &parent.cap.tools) {
+            return Err(CapabilityError::DelegationViolation(format!(
+                "tool escalation: child tool '{}' not covered by parent tools",
+                child_tool
+            )));
+        }
     }
 
     match (&parent.sandbox, &child.sandbox) {
@@ -466,6 +554,7 @@ pub fn build_payload(
         parent: None,
         obo: None,
         sandbox: None,
+        aud: None,
     }
 }
 
@@ -554,6 +643,7 @@ pub fn build_delegated_payload(
         parent: Some(parent.nonce),
         obo: parent.obo.clone(),
         sandbox: parent.sandbox.clone(),
+        aud: parent.aud.clone(),
     })
 }
 
@@ -597,6 +687,33 @@ mod tests {
         assert_eq!(decoded.cap.tools, vec!["file_*", "git_*"]);
         assert_eq!(decoded.cap.credentials, vec!["github.pat"]);
         assert_eq!(decoded.nonce, payload.nonce);
+    }
+
+    #[test]
+    fn audience_validation_rejects_wrong_server() {
+        let signer = Ed25519Signer::generate();
+        let mut payload = test_payload(&signer);
+        payload.aud = Some("https://server-a.example.com".to_string());
+        let token = encode_token(&payload, &signer).unwrap();
+
+        // Correct audience passes
+        let result = decode_token_with_audience(&token, &signer, "https://server-a.example.com");
+        assert!(result.is_ok());
+
+        // Wrong audience fails
+        let result = decode_token_with_audience(&token, &signer, "https://server-b.example.com");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("audience mismatch"));
+    }
+
+    #[test]
+    fn audience_none_accepted_by_any_server() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer); // aud: None
+        let token = encode_token(&payload, &signer).unwrap();
+
+        let result = decode_token_with_audience(&token, &signer, "https://any-server.example.com");
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -735,6 +852,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         assert!(validate_delegation(&parent, &child, 3).is_ok());
@@ -790,6 +908,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -818,10 +937,97 @@ mod tests {
             parent: Some(parent.nonce),
             obo: None,
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
         assert!(err.to_string().contains("aws.secret"));
+    }
+
+    #[test]
+    fn delegation_path_escalation_rejected() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec!["/etc/**".to_string()],
+                operations: vec!["read".to_string()],
+                tools: vec!["file_*".to_string()],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: None,
+            sandbox: None,
+            aud: None,
+        };
+
+        let err = validate_delegation(&parent, &child, 3).unwrap_err();
+        assert!(err.to_string().contains("path escalation"));
+    }
+
+    #[test]
+    fn delegation_path_subset_accepted() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec!["/home/user/projects/navra/**".to_string()],
+                operations: vec!["read".to_string()],
+                tools: vec!["file_*".to_string()],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: None,
+            sandbox: None,
+            aud: None,
+        };
+
+        assert!(validate_delegation(&parent, &child, 3).is_ok());
+    }
+
+    #[test]
+    fn delegation_tool_escalation_rejected() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec!["/home/user/projects/**".to_string()],
+                operations: vec!["read".to_string()],
+                tools: vec!["shell_*".to_string()],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: None,
+            sandbox: None,
+            aud: None,
+        };
+
+        let err = validate_delegation(&parent, &child, 3).unwrap_err();
+        assert!(err.to_string().contains("tool escalation"));
     }
 
     #[test]
@@ -1160,6 +1366,7 @@ mod tests {
             parent: Some(parent.nonce),
             obo: Some(test_obo()), // trying to inject obo
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1193,6 +1400,7 @@ mod tests {
                 auth_time: None,
             }),
             sandbox: None,
+            aud: None,
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();

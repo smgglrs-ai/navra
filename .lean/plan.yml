@@ -41,7 +41,7 @@ items:
 
   - id: "NAVRA-107"
     title: "validate_delegation: enforce path and tool subset checks"
-    status: planned
+    status: done
     priority: critical
     effort: M
 
@@ -74,13 +74,13 @@ items:
 
   - id: "NAVRA-111"
     title: "Declassify authority verification"
-    status: planned
+    status: done
     priority: high
     effort: M
 
   - id: "NAVRA-112"
     title: "Transport DoS hardening: size limits on all inputs"
-    status: planned
+    status: done
     priority: high
     effort: M
     feeds: ['NAVRA-080']
@@ -105,7 +105,7 @@ items:
 
   - id: "NAVRA-116"
     title: "DAG back-edge termination bound"
-    status: planned
+    status: done
     priority: high
     effort: M
 
@@ -123,7 +123,7 @@ items:
 
   - id: "NAVRA-119"
     title: "Remove NoAuthenticator from production; require OAuth or agents"
-    status: planned
+    status: done
     priority: high
     effort: S
 
@@ -155,7 +155,7 @@ items:
 
   - id: "NAVRA-121"
     title: "Memory stores: wrap Connection in Mutex for thread safety"
-    status: planned
+    status: done
     priority: medium
     effort: S
 
@@ -173,7 +173,7 @@ items:
 
   - id: "NAVRA-124"
     title: "Capability token: transport binding and decode_token_unchecked restriction"
-    status: planned
+    status: done
     priority: medium
     effort: M
 

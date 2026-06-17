@@ -46,6 +46,31 @@ pub mod witness;
 pub use navra_protocol::label::{Confidentiality, DataLabel, Integrity};
 pub use witness::DeclassificationWitness;
 
+use crate::identity::CapSigner;
+
+/// A trusted declassification authority.
+///
+/// Can only be constructed via `DeclassificationAuthority::new()`, which
+/// requires a CapSigner. This ensures that declassification witnesses are
+/// always signed and that only code holding a signer can declassify.
+pub struct DeclassificationAuthority {
+    name: String,
+    signer: Box<dyn CapSigner>,
+}
+
+impl DeclassificationAuthority {
+    pub fn new(name: impl Into<String>, signer: Box<dyn CapSigner>) -> Self {
+        Self {
+            name: name.into(),
+            signer,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 /// Session taint tracker.
 ///
 /// Accumulates the highest label seen during a session.
@@ -76,28 +101,29 @@ impl TaintTracker {
 
     /// Declassify: step down the confidentiality level.
     ///
-    /// This is the ONLY exception to IFC monotonicity. It must only
-    /// be called by trusted declassification authorities (e.g., the
-    /// PII filter pipeline after full redaction).
+    /// This is the ONLY exception to IFC monotonicity. Requires a
+    /// `DeclassificationAuthority` which can only be constructed with
+    /// a CapSigner — ensuring witnesses are always signed and only
+    /// trusted code can declassify.
     ///
     /// The new level must be LOWER than the current level — stepping
     /// UP via declassify is rejected (use absorb for that).
     ///
-    /// Returns `Some(witness)` on success (unsigned — caller signs if
-    /// they have a signer), `None` if the declassification would step UP.
+    /// Returns `Some(witness)` on success (always signed), `None` if
+    /// the declassification would step UP.
     pub fn declassify(
         &mut self,
         new_confidentiality: Confidentiality,
-        declassifier: &str,
+        authority: &DeclassificationAuthority,
         justification: &str,
     ) -> Option<DeclassificationWitness> {
         if new_confidentiality < self.current.confidentiality {
             let original_label = self.current;
             self.current.confidentiality = new_confidentiality;
-            let w = DeclassificationWitness {
+            let mut w = DeclassificationWitness {
                 original_label,
                 new_label: self.current,
-                declassifier: declassifier.to_string(),
+                declassifier: authority.name.clone(),
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
@@ -105,6 +131,7 @@ impl TaintTracker {
                 justification: justification.to_string(),
                 signature: None,
             };
+            w.sign(authority.signer.as_ref());
             self.witnesses.push(w.clone());
             Some(w)
         } else {
@@ -315,6 +342,11 @@ pub fn is_external_read_tool(tool_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity::Ed25519Signer;
+
+    fn test_authority(name: &str) -> DeclassificationAuthority {
+        DeclassificationAuthority::new(name, Box::new(Ed25519Signer::generate()))
+    }
 
     #[test]
     fn taint_tracker_starts_clean() {
@@ -592,7 +624,7 @@ mod tests {
         // Cannot step UP via declassify
         assert!(
             tracker
-                .declassify(Confidentiality::Secret, "test", "reason")
+                .declassify(Confidentiality::Secret, &test_authority("test"), "reason")
                 .is_none(),
             "INV-5: declassify must reject stepping UP"
         );
@@ -601,7 +633,7 @@ mod tests {
         // Can step DOWN
         assert!(
             tracker
-                .declassify(Confidentiality::Sensitive, "test", "reason")
+                .declassify(Confidentiality::Sensitive, &test_authority("test"), "reason")
                 .is_some(),
             "INV-5: declassify should allow stepping DOWN"
         );
@@ -613,20 +645,20 @@ mod tests {
         let mut tracker = TaintTracker::new();
         tracker.absorb(DataLabel::UNTRUSTED_PII);
         let w = tracker
-            .declassify(Confidentiality::Public, "pii-filter", "full redaction")
+            .declassify(Confidentiality::Public, &test_authority("pii-filter"), "full redaction")
             .unwrap();
         assert_eq!(w.original_label.confidentiality, Confidentiality::Pii);
         assert_eq!(w.new_label.confidentiality, Confidentiality::Public);
         assert_eq!(w.declassifier, "pii-filter");
         assert_eq!(w.justification, "full redaction");
-        assert!(w.signature.is_none());
+        assert!(w.signature.is_some(), "witnesses must always be signed");
     }
 
     #[test]
     fn declassify_step_up_rejected() {
         let mut tracker = TaintTracker::new();
         assert!(tracker
-            .declassify(Confidentiality::Pii, "attacker", "no reason")
+            .declassify(Confidentiality::Pii, &test_authority("attacker"), "no reason")
             .is_none());
     }
 
@@ -634,8 +666,8 @@ mod tests {
     fn witnesses_accumulate() {
         let mut tracker = TaintTracker::new();
         tracker.absorb(DataLabel::TRUSTED_SECRET);
-        tracker.declassify(Confidentiality::Pii, "auth-a", "step 1");
-        tracker.declassify(Confidentiality::Public, "auth-b", "step 2");
+        tracker.declassify(Confidentiality::Pii, &test_authority("auth-a"), "step 1");
+        tracker.declassify(Confidentiality::Public, &test_authority("auth-b"), "step 2");
         assert_eq!(tracker.witnesses().len(), 2);
         assert_eq!(tracker.witnesses()[0].declassifier, "auth-a");
         assert_eq!(tracker.witnesses()[1].declassifier, "auth-b");
@@ -645,7 +677,7 @@ mod tests {
     fn declassify_preserves_monotonicity() {
         let mut tracker = TaintTracker::new();
         tracker.absorb(DataLabel::UNTRUSTED_PII);
-        tracker.declassify(Confidentiality::Public, "filter", "redacted");
+        tracker.declassify(Confidentiality::Public, &test_authority("filter"), "redacted");
         assert_eq!(tracker.level().confidentiality, Confidentiality::Public);
         // Re-absorb raises taint back up
         tracker.absorb(DataLabel::UNTRUSTED_SENSITIVE);
@@ -808,7 +840,11 @@ mod kani_proofs {
         tracker.absorb(label);
         let before = tracker.level().confidentiality;
         let target: Confidentiality = kani::any();
-        let accepted = tracker.declassify(target, "kani", "proof").is_some();
+        let authority = DeclassificationAuthority {
+            name: "kani".to_string(),
+            signer: Box::new(crate::identity::Ed25519Signer::generate()),
+        };
+        let accepted = tracker.declassify(target, &authority, "proof").is_some();
         if target >= before {
             assert!(!accepted, "declassify must reject stepping up");
         }

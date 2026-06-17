@@ -1,6 +1,6 @@
 id: "NAVRA-107"
 title: "validate_delegation: enforce path and tool subset checks"
-status: planned
+status: done
 priority: critical
 effort: M
 depends_on: []
