@@ -602,6 +602,15 @@ fn apply_action(
     }
 }
 
+/// Snap a byte offset to the nearest valid UTF-8 char boundary (rounding down).
+fn snap_to_char_boundary(s: &str, pos: usize) -> usize {
+    let mut p = pos.min(s.len());
+    while p > 0 && !s.is_char_boundary(p) {
+        p -= 1;
+    }
+    p
+}
+
 fn redact(content: &str, findings: &mut [Finding]) -> String {
     if findings.is_empty() {
         return content.to_string();
@@ -610,14 +619,16 @@ fn redact(content: &str, findings: &mut [Finding]) -> String {
     let mut result = String::with_capacity(content.len());
     let mut pos = 0;
     for finding in findings.iter() {
-        if finding.start < pos {
+        let start = snap_to_char_boundary(content, finding.start);
+        let end = snap_to_char_boundary(content, finding.end);
+        if start < pos {
             continue;
         }
-        if finding.start > pos {
-            result.push_str(&content[pos..finding.start]);
+        if start > pos {
+            result.push_str(&content[pos..start]);
         }
         result.push_str(&format!("[REDACTED:{}]", finding.category));
-        pos = finding.end;
+        pos = end;
     }
     if pos < content.len() {
         result.push_str(&content[pos..]);
@@ -633,16 +644,18 @@ fn pseudonymize(content: &str, findings: &mut [Finding], map: &PseudonymMap) -> 
     let mut result = String::with_capacity(content.len());
     let mut pos = 0;
     for finding in findings.iter() {
-        if finding.start < pos {
+        let start = snap_to_char_boundary(content, finding.start);
+        let end = snap_to_char_boundary(content, finding.end);
+        if start < pos {
             continue;
         }
-        if finding.start > pos {
-            result.push_str(&content[pos..finding.start]);
+        if start > pos {
+            result.push_str(&content[pos..start]);
         }
-        let original = &content[finding.start..finding.end];
+        let original = &content[start..end];
         let pseudonym = map.get_or_create(original, &finding.category);
         result.push_str(&pseudonym);
-        pos = finding.end;
+        pos = end;
     }
     if pos < content.len() {
         result.push_str(&content[pos..]);
@@ -797,6 +810,49 @@ mod tests {
         ];
         let result = redact("ABCDEFGH", &mut findings);
         assert_eq!(result, "[REDACTED:wide]FGH");
+    }
+
+    #[test]
+    fn redact_handles_multibyte_utf8() {
+        // CJK characters are 3 bytes each: 你好世界 = 12 bytes
+        let content = "AB你好CD";
+        // Simulate a finding that starts mid-character (byte 3 = middle of 你)
+        let mut findings = vec![Finding {
+            start: 3,
+            end: 8,
+            category: "pii".to_string(),
+            confidence: 1.0,
+        }];
+        // Should not panic — snaps to nearest char boundary
+        let result = redact(content, &mut findings);
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn redact_handles_emoji() {
+        let content = "Hello 🎉 world";
+        let mut findings = vec![Finding {
+            start: 6,
+            end: 10,
+            category: "emoji".to_string(),
+            confidence: 1.0,
+        }];
+        let result = redact(content, &mut findings);
+        assert!(result.contains("[REDACTED:emoji]"));
+    }
+
+    #[test]
+    fn pseudonymize_handles_multibyte_utf8() {
+        let content = "名前は田中です";
+        let mut findings = vec![Finding {
+            start: 9,
+            end: 15,
+            category: "name".to_string(),
+            confidence: 1.0,
+        }];
+        let map = PseudonymMap::new();
+        let result = pseudonymize(content, &mut findings, &map);
+        assert!(!result.is_empty());
     }
 
     #[test]

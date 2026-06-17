@@ -520,7 +520,14 @@ impl NerFilter {
     ///
     /// Entities with softmax probability below this threshold are
     /// not reported. Default is 0.7.
+    ///
+    /// # Panics
+    /// Panics if `threshold` is NaN, negative, or greater than 1.0.
     pub fn with_confidence_threshold(mut self, threshold: f32) -> Self {
+        assert!(
+            !threshold.is_nan() && (0.0..=1.0).contains(&threshold),
+            "confidence threshold must be in [0.0, 1.0], got {threshold}"
+        );
         self.confidence_threshold = threshold;
         self
     }
@@ -619,7 +626,7 @@ impl NerFilter {
         let type_ids_tensor = ort::value::TensorRef::from_array_view(&type_ids_array)
             .map_err(|e| NerError::Inference(format!("token_type_ids tensor: {e}")))?;
 
-        let mut session = self.session.lock().unwrap();
+        let mut session = self.session.lock().unwrap_or_else(|e| e.into_inner());
 
         // Check whether the model expects token_type_ids
         let needs_type_ids = session
@@ -697,7 +704,7 @@ impl NerFilter {
         // Filter by confidence threshold
         let filtered: Vec<EntitySpan> = spans
             .into_iter()
-            .filter(|s| s.confidence >= self.confidence_threshold)
+            .filter(|s| s.confidence.is_nan() || s.confidence >= self.confidence_threshold)
             .collect();
 
         Ok(filtered)
@@ -923,8 +930,13 @@ impl ContentFilter for NerFilter {
                 })
                 .collect(),
             Err(e) => {
-                tracing::warn!(error = %e, "NER filter inference failed, skipping");
-                Vec::new()
+                tracing::warn!(error = %e, "NER filter inference failed, blocking (fail-closed)");
+                vec![Finding {
+                    start: 0,
+                    end: content.len(),
+                    category: "inference_failure".to_string(),
+                    confidence: 1.0,
+                }]
             }
         }
     }

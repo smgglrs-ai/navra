@@ -8,6 +8,7 @@
 
 use serde::Deserialize;
 use std::collections::HashMap;
+use zeroize::Zeroizing;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CredentialError {
@@ -27,12 +28,12 @@ pub enum CredentialError {
     Keyring(#[from] keyring::Error),
 }
 
-/// A resolved secret value. Zeroized on drop where possible.
-pub struct Secret(Vec<u8>);
+/// A resolved secret value. Zeroized on drop via the `zeroize` crate.
+pub struct Secret(Zeroizing<Vec<u8>>);
 
 impl Secret {
     pub fn new(data: Vec<u8>) -> Self {
-        Self(data)
+        Self(Zeroizing::new(data))
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -41,15 +42,6 @@ impl Secret {
 
     pub fn as_str(&self) -> Option<&str> {
         std::str::from_utf8(&self.0).ok()
-    }
-}
-
-impl Drop for Secret {
-    fn drop(&mut self) {
-        // Best-effort zeroization
-        for byte in self.0.iter_mut() {
-            *byte = 0;
-        }
     }
 }
 

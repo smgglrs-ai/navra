@@ -32,11 +32,16 @@ pub struct BlackboxEntry {
     pub obo_sub: Option<String>,
 }
 
+/// Chain state: sequence counter and previous entry hash.
+struct ChainState {
+    seq: u64,
+    prev_hash: String,
+}
+
 /// The gateway blackbox. Embedded in McpServer.
 pub struct Blackbox {
     db: Mutex<Connection>,
-    seq: Mutex<u64>,
-    prev_hash: Mutex<String>,
+    chain: Mutex<ChainState>,
     /// Optional PII filter applied to tool_args and tool_result before recording.
     pii_filter: Option<Arc<FilterPipeline>>,
 }
@@ -72,7 +77,12 @@ impl Blackbox {
         .map_err(|e| format!("blackbox schema failed: {e}"))?;
 
         // Migrate existing databases: add obo_sub column if missing.
-        let _ = db.execute_batch("ALTER TABLE blackbox ADD COLUMN obo_sub TEXT;");
+        // "duplicate column" errors are expected and safe to ignore.
+        match db.execute_batch("ALTER TABLE blackbox ADD COLUMN obo_sub TEXT;") {
+            Ok(()) => {}
+            Err(e) if e.to_string().contains("duplicate column") => {}
+            Err(e) => tracing::error!(error = %e, "blackbox migration failed"),
+        }
 
         // Resume from last entry
         let (last_seq, last_hash) = db
@@ -85,8 +95,10 @@ impl Blackbox {
 
         Ok(Self {
             db: Mutex::new(db),
-            seq: Mutex::new(last_seq),
-            prev_hash: Mutex::new(last_hash),
+            chain: Mutex::new(ChainState {
+                seq: last_seq,
+                prev_hash: last_hash,
+            }),
             pii_filter: None,
         })
     }
@@ -161,10 +173,9 @@ impl Blackbox {
         ifc_label: &str,
         obo_sub: Option<&str>,
     ) {
-        let mut seq = self.seq.lock().unwrap_or_else(|e| e.into_inner());
-        let mut prev_hash = self.prev_hash.lock().unwrap_or_else(|e| e.into_inner());
+        let mut chain = self.chain.lock().unwrap_or_else(|e| e.into_inner());
 
-        *seq += 1;
+        chain.seq += 1;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -184,23 +195,25 @@ impl Blackbox {
         let _ = write!(
             preimage,
             "{}|{}|{}|{}|{}|{}|{}",
-            seq, prev_hash, agent_name, tool_name, args_trunc, result_trunc, outcome
+            chain.seq, chain.prev_hash, agent_name, tool_name, args_trunc, result_trunc, outcome
         );
         let hash = sha256_hex(&preimage);
 
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        let _ = db.execute(
+        if let Err(e) = db.execute(
             "INSERT INTO blackbox (seq, timestamp_ms, agent_name, agent_perms, session_id, \
              tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash, obo_sub) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
-                *seq, now, agent_name, agent_permissions, session_id,
+                chain.seq, now, agent_name, agent_permissions, session_id,
                 tool_name, args_trunc, result_trunc, outcome, duration_us as i64,
-                ifc_label, *prev_hash, hash, obo_sub,
+                ifc_label, chain.prev_hash, hash, obo_sub,
             ],
-        );
+        ) {
+            tracing::error!(error = %e, seq = chain.seq, "blackbox insert failed");
+        }
 
-        *prev_hash = hash;
+        chain.prev_hash = hash;
     }
 
     /// Verify the hash chain integrity. Returns (valid_count, first_broken_seq).

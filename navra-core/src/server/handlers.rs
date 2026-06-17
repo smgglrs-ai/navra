@@ -739,10 +739,11 @@ impl McpServer {
             created_at: std::time::Instant::now(),
             is_error: result.is_error,
         });
-        // Append variable metadata to result content
+        // Append variable ID (but not the IFC label — exposing
+        // classification to agents leaks security metadata).
         result.content.push(crate::protocol::Content::text(format!(
-            "\n---\n_var: {} (label: {})_",
-            var_id, result.label
+            "\n---\n_var: {}_",
+            var_id
         )));
 
         // Mark call complete in process table

@@ -112,7 +112,10 @@ fn extract_var_id(result: &CallToolResult) -> Option<String> {
                 if let Some(line) = t.text.lines().find(|l| l.contains("_var: ")) {
                     let start = line.find("_var: ")? + 6;
                     let rest = &line[start..];
-                    let end = rest.find(' ').unwrap_or(rest.len());
+                    // Stop at space, underscore, or end of string
+                    let end = rest
+                        .find(|c: char| c == ' ' || c == '_')
+                        .unwrap_or(rest.len());
                     return Some(rest[..end].to_string());
                 }
             }
