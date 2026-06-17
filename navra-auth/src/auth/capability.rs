@@ -335,6 +335,48 @@ fn check_ops_subset(parent_ops: &[u8], child_ops: &[u8]) -> bool {
     child_ops.iter().all(|c| parent_ops.contains(c))
 }
 
+/// Check if a child glob pattern is covered by any parent glob.
+///
+/// A child pattern is covered if every string it matches would also be
+/// matched by at least one parent pattern. Conservative approach:
+/// - Exact match: always covered
+/// - `/**` suffix patterns: child prefix must start with parent prefix
+/// - Wildcard patterns: parent pattern must match the child literal
+fn is_glob_covered_by(child: &str, parent_patterns: &[String]) -> bool {
+    for parent in parent_patterns {
+        if child == parent {
+            return true;
+        }
+        // "dir/**" covers "dir/sub/**" and "dir/sub/file"
+        if let Some(parent_prefix) = parent.strip_suffix("/**") {
+            if let Some(child_prefix) = child.strip_suffix("/**") {
+                if child_prefix.starts_with(parent_prefix)
+                    && (child_prefix.len() == parent_prefix.len()
+                        || child_prefix.as_bytes()[parent_prefix.len()] == b'/')
+                {
+                    return true;
+                }
+            }
+            // Literal child path under parent's glob tree
+            if child.starts_with(parent_prefix)
+                && (child.len() == parent_prefix.len()
+                    || child.as_bytes().get(parent_prefix.len()) == Some(&b'/'))
+            {
+                return true;
+            }
+        }
+        // Parent with * wildcard: check if it matches the child literally
+        if parent.contains('*') {
+            if let Ok(pat) = glob::Pattern::new(parent) {
+                if pat.matches(child) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Validate that a delegated token's capabilities are a subset of the parent's.
 pub fn validate_delegation(
     parent: &CapabilityPayload,
@@ -391,6 +433,26 @@ pub fn validate_delegation(
             }
         }
         _ => {}
+    }
+
+    // Path subset check: each child path glob must be covered by a parent glob.
+    for child_path in &child.cap.paths {
+        if !is_glob_covered_by(child_path, &parent.cap.paths) {
+            return Err(CapabilityError::DelegationViolation(format!(
+                "path escalation: child path '{}' not covered by parent paths",
+                child_path
+            )));
+        }
+    }
+
+    // Tool subset check: each child tool glob must be covered by a parent glob.
+    for child_tool in &child.cap.tools {
+        if !is_glob_covered_by(child_tool, &parent.cap.tools) {
+            return Err(CapabilityError::DelegationViolation(format!(
+                "tool escalation: child tool '{}' not covered by parent tools",
+                child_tool
+            )));
+        }
     }
 
     match (&parent.sandbox, &child.sandbox) {
@@ -822,6 +884,89 @@ mod tests {
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
         assert!(err.to_string().contains("aws.secret"));
+    }
+
+    #[test]
+    fn delegation_path_escalation_rejected() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec!["/etc/**".to_string()],
+                operations: vec!["read".to_string()],
+                tools: vec!["file_*".to_string()],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: None,
+            sandbox: None,
+        };
+
+        let err = validate_delegation(&parent, &child, 3).unwrap_err();
+        assert!(err.to_string().contains("path escalation"));
+    }
+
+    #[test]
+    fn delegation_path_subset_accepted() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec!["/home/user/projects/navra/**".to_string()],
+                operations: vec!["read".to_string()],
+                tools: vec!["file_*".to_string()],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: None,
+            sandbox: None,
+        };
+
+        assert!(validate_delegation(&parent, &child, 3).is_ok());
+    }
+
+    #[test]
+    fn delegation_tool_escalation_rejected() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec!["/home/user/projects/**".to_string()],
+                operations: vec!["read".to_string()],
+                tools: vec!["shell_*".to_string()],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: None,
+            sandbox: None,
+        };
+
+        let err = validate_delegation(&parent, &child, 3).unwrap_err();
+        assert!(err.to_string().contains("tool escalation"));
     }
 
     #[test]
