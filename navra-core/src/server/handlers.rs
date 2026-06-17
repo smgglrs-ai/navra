@@ -489,6 +489,54 @@ impl McpServer {
             }
         }
 
+        // Gateway-level path ACL check: extract path from tool arguments
+        // and validate against the agent's allow/deny patterns. This ensures
+        // upstream MCP tools respect navra's path ACLs.
+        if let Some(path_str) = params
+            .arguments
+            .get("path")
+            .or_else(|| params.arguments.get("file_path"))
+            .and_then(|v| v.as_str())
+        {
+            if let Some(acl) = self.path_acls.get(&ctx.agent.permissions) {
+                let path = std::path::Path::new(path_str);
+                let tool_op = if crate::ifc::is_write_tool(
+                    &params.name,
+                    self.tools
+                        .get(&params.name)
+                        .and_then(|t| t.definition.annotations.as_ref()),
+                ) {
+                    "write"
+                } else {
+                    "read"
+                };
+                match navra_auth::permissions::PermissionEngine::check_acl(acl, tool_op, path) {
+                    navra_auth::permissions::PermissionResult::Allowed => {}
+                    result => {
+                        self.process_table.record_denied(
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
+                        );
+                        self.metrics
+                            .tool_calls_denied
+                            .fetch_add(1, Ordering::Relaxed);
+                        tracing::info!(
+                            tool = %params.name,
+                            path = %path_str,
+                            result = ?result,
+                            "Path ACL denied at gateway"
+                        );
+                        return CallToolResult::error(format!(
+                            "Access denied: path '{}' blocked by ACL policy",
+                            path_str
+                        ));
+                    }
+                }
+            }
+        }
+
         // IFC: resolve variable references in arguments
         let session_store = self.value_stores.get_or_create(&ctx.session_id);
         let resolved =

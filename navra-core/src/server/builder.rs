@@ -45,6 +45,7 @@ pub struct McpServerBuilder {
     cedar_engine: Option<navra_auth::permissions::CedarEngine>,
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
+    path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     mcp_version: String,
     metrics: Option<Arc<crate::metrics::Metrics>>,
 }
@@ -79,9 +80,19 @@ impl McpServerBuilder {
             cedar_engine: None,
             tool_disclosure: HashMap::new(),
             dynamic_filters: Vec::new(),
+            path_acls: HashMap::new(),
             mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
             metrics: None,
         }
+    }
+
+    pub fn path_acl(
+        mut self,
+        permission_set: impl Into<String>,
+        acl: navra_auth::permissions::PathAcl,
+    ) -> Self {
+        self.path_acls.insert(permission_set.into(), acl);
+        self
     }
 
     pub fn mcp_version(mut self, version: &str) -> Self {
@@ -905,6 +916,7 @@ impl McpServerBuilder {
             session_log_levels: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            path_acls: self.path_acls,
             metrics: self
                 .metrics
                 .unwrap_or_else(|| std::sync::Arc::new(crate::metrics::Metrics::new())),
