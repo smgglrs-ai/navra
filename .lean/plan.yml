@@ -111,7 +111,7 @@ items:
 
   - id: "NAVRA-117"
     title: "GitLab tools: add permission checks"
-    status: planned
+    status: done
     priority: high
     effort: S
 
