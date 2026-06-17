@@ -5,20 +5,23 @@ use crate::error::MemoryError;
 use crate::types::{MergeStrategy, Message, Role, Turn};
 use rusqlite::{params, Connection};
 use std::path::Path;
+use std::sync::Mutex;
 
 /// Persistent working memory backed by SQLite.
 ///
 /// Stores conversation turns (user messages, assistant responses,
 /// tool calls/results) across sessions.
 pub struct WorkingMemory {
-    db: Connection,
+    db: Mutex<Connection>,
 }
 
 impl WorkingMemory {
     /// Open working memory from a file path.
     pub fn open(path: &Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
-        let mem = Self { db };
+        let mem = Self {
+            db: Mutex::new(db),
+        };
         mem.init_schema()?;
         Ok(mem)
     }
@@ -26,13 +29,16 @@ impl WorkingMemory {
     /// Open in-memory working memory (for testing).
     pub fn open_memory() -> Result<Self, MemoryError> {
         let db = Connection::open_in_memory()?;
-        let mem = Self { db };
+        let mem = Self {
+            db: Mutex::new(db),
+        };
         mem.init_schema()?;
         Ok(mem)
     }
 
     fn init_schema(&self) -> Result<(), MemoryError> {
-        self.db.execute_batch(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute_batch(
             "CREATE TABLE IF NOT EXISTS memory_turns (
                 turn_id TEXT PRIMARY KEY,
                 session_id TEXT NOT NULL,
@@ -58,19 +64,18 @@ impl WorkingMemory {
             CREATE INDEX IF NOT EXISTS idx_messages_turn
                 ON memory_messages(turn_id, sort_order);",
         )?;
-        self.migrate_add_fork_columns()?;
-        self.migrate_add_decay_columns()?;
+        Self::migrate_add_fork_columns(&db)?;
+        Self::migrate_add_decay_columns(&db)?;
         Ok(())
     }
 
     /// Add fork_id and parent_fork columns if they don't exist (migration).
-    fn migrate_add_fork_columns(&self) -> Result<(), MemoryError> {
-        let has_fork_id: bool = self
-            .db
+    fn migrate_add_fork_columns(db: &Connection) -> Result<(), MemoryError> {
+        let has_fork_id: bool = db
             .prepare("SELECT fork_id FROM memory_turns LIMIT 0")
             .is_ok();
         if !has_fork_id {
-            self.db.execute_batch(
+            db.execute_batch(
                 "ALTER TABLE memory_turns ADD COLUMN fork_id TEXT;
                  ALTER TABLE memory_turns ADD COLUMN parent_fork TEXT;
                  CREATE INDEX IF NOT EXISTS idx_turns_fork ON memory_turns(fork_id);",
@@ -80,13 +85,12 @@ impl WorkingMemory {
     }
 
     /// Add importance and access_count columns if they don't exist (migration).
-    fn migrate_add_decay_columns(&self) -> Result<(), MemoryError> {
-        let has_importance: bool = self
-            .db
+    fn migrate_add_decay_columns(db: &Connection) -> Result<(), MemoryError> {
+        let has_importance: bool = db
             .prepare("SELECT importance FROM memory_turns LIMIT 0")
             .is_ok();
         if !has_importance {
-            self.db.execute_batch(
+            db.execute_batch(
                 "ALTER TABLE memory_turns ADD COLUMN importance REAL NOT NULL DEFAULT 0.0;
                  ALTER TABLE memory_turns ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0;",
             )?;
@@ -96,7 +100,8 @@ impl WorkingMemory {
 
     /// Store a conversation turn with all its messages.
     pub fn add_turn(&self, turn: &Turn) -> Result<(), MemoryError> {
-        let tx = self.db.unchecked_transaction()?;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = db.unchecked_transaction()?;
 
         tx.execute(
             "INSERT INTO memory_turns (turn_id, session_id, agent, created_at, fork_id, parent_fork)
@@ -139,7 +144,8 @@ impl WorkingMemory {
         agent: &str,
         count: usize,
     ) -> Result<Vec<Turn>, MemoryError> {
-        let mut stmt = self.db.prepare(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
             "SELECT turn_id, session_id, agent, created_at, fork_id, parent_fork
              FROM memory_turns
              WHERE session_id = ?1 AND agent = ?2 AND fork_id IS NULL
@@ -162,7 +168,7 @@ impl WorkingMemory {
 
         let mut turns = Vec::new();
         for (turn_id, session_id, agent, created_at, fork_id, parent_fork) in turn_rows {
-            let messages = self.load_messages(&turn_id)?;
+            let messages = Self::load_messages(&db, &turn_id)?;
             turns.push(Turn {
                 turn_id,
                 session_id,
@@ -181,7 +187,9 @@ impl WorkingMemory {
 
     /// Get all turns for a session on the main timeline, in chronological order.
     pub fn get_session_turns(&self, session_id: &str) -> Result<Vec<Turn>, MemoryError> {
-        self.get_turns_query(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        Self::get_turns_query(
+            &db,
             "SELECT turn_id, session_id, agent, created_at, fork_id, parent_fork
              FROM memory_turns
              WHERE session_id = ?1 AND fork_id IS NULL
@@ -196,7 +204,9 @@ impl WorkingMemory {
         session_id: &str,
         fork_name: &str,
     ) -> Result<Vec<Turn>, MemoryError> {
-        self.get_turns_query(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        Self::get_turns_query(
+            &db,
             "SELECT turn_id, session_id, agent, created_at, fork_id, parent_fork
              FROM memory_turns
              WHERE session_id = ?1 AND fork_id = ?2
@@ -207,11 +217,11 @@ impl WorkingMemory {
 
     /// Helper to load turns from a prepared query.
     fn get_turns_query(
-        &self,
+        db: &Connection,
         sql: &str,
         params: impl rusqlite::Params,
     ) -> Result<Vec<Turn>, MemoryError> {
-        let mut stmt = self.db.prepare(sql)?;
+        let mut stmt = db.prepare(sql)?;
 
         let turn_rows: Vec<_> = stmt
             .query_map(params, |row| {
@@ -228,7 +238,7 @@ impl WorkingMemory {
 
         let mut turns = Vec::new();
         for (turn_id, session_id, agent, created_at, fork_id, parent_fork) in turn_rows {
-            let messages = self.load_messages(&turn_id)?;
+            let messages = Self::load_messages(db, &turn_id)?;
             turns.push(Turn {
                 turn_id,
                 session_id,
@@ -245,7 +255,8 @@ impl WorkingMemory {
 
     /// Count turns in a session.
     pub fn turn_count(&self, session_id: &str) -> Result<usize, MemoryError> {
-        let count: i64 = self.db.query_row(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let count: i64 = db.query_row(
             "SELECT COUNT(*) FROM memory_turns WHERE session_id = ?1",
             params![session_id],
             |row| row.get(0),
@@ -255,7 +266,8 @@ impl WorkingMemory {
 
     /// Clear all turns for a session.
     pub fn clear_session(&self, session_id: &str) -> Result<(), MemoryError> {
-        let tx = self.db.unchecked_transaction()?;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = db.unchecked_transaction()?;
         tx.execute(
             "DELETE FROM memory_messages WHERE turn_id IN
              (SELECT turn_id FROM memory_turns WHERE session_id = ?1)",
@@ -302,10 +314,11 @@ impl WorkingMemory {
         fork_name: &str,
         up_to_turn: Option<&str>,
     ) -> Result<(), MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+
         // Determine the cutoff timestamp if forking from a specific turn
         let cutoff = if let Some(tid) = up_to_turn {
-            let ts: i64 = self
-                .db
+            let ts: i64 = db
                 .query_row(
                     "SELECT created_at FROM memory_turns WHERE turn_id = ?1 AND session_id = ?2",
                     params![tid, session_id],
@@ -339,7 +352,7 @@ impl WorkingMemory {
                              ORDER BY created_at ASC"
                         .to_string(),
                 };
-                self.get_turns_query(&sql, params![session_id])?
+                Self::get_turns_query(&db, &sql, params![session_id])?
             }
             Some(src) => {
                 let sql = match cutoff {
@@ -356,12 +369,12 @@ impl WorkingMemory {
                              ORDER BY created_at ASC"
                         .to_string(),
                 };
-                self.get_turns_query(&sql, params![session_id, src])?
+                Self::get_turns_query(&db, &sql, params![session_id, src])?
             }
         };
 
         let parent = source_fork.map(String::from);
-        let tx = self.db.unchecked_transaction()?;
+        let tx = db.unchecked_transaction()?;
 
         for turn in &source_turns {
             let new_turn_id = uuid::Uuid::new_v4().to_string();
@@ -379,7 +392,7 @@ impl WorkingMemory {
             )?;
 
             // Copy messages
-            let mut msg_stmt = self.db.prepare(
+            let mut msg_stmt = db.prepare(
                 "SELECT role, content, timestamp, metadata, sort_order
                  FROM memory_messages
                  WHERE turn_id = ?1
@@ -412,7 +425,8 @@ impl WorkingMemory {
 
     /// List all fork names for a session.
     pub fn list_forks(&self, session_id: &str) -> Result<Vec<String>, MemoryError> {
-        let mut stmt = self.db.prepare(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
             "SELECT DISTINCT fork_id FROM memory_turns
              WHERE session_id = ?1 AND fork_id IS NOT NULL
              ORDER BY fork_id ASC",
@@ -438,12 +452,20 @@ impl WorkingMemory {
         fork_name: &str,
         strategy: MergeStrategy,
     ) -> Result<(), MemoryError> {
-        let fork_turns = self.get_fork_turns(session_id, fork_name)?;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let fork_turns = Self::get_turns_query(
+            &db,
+            "SELECT turn_id, session_id, agent, created_at, fork_id, parent_fork
+             FROM memory_turns
+             WHERE session_id = ?1 AND fork_id = ?2
+             ORDER BY created_at ASC",
+            params![session_id, fork_name],
+        )?;
         if fork_turns.is_empty() {
             return Ok(());
         }
 
-        let tx = self.db.unchecked_transaction()?;
+        let tx = db.unchecked_transaction()?;
 
         match strategy {
             MergeStrategy::Append => {
@@ -455,7 +477,7 @@ impl WorkingMemory {
                          VALUES (?1, ?2, ?3, ?4, NULL, NULL)",
                         params![new_id, session_id, turn.agent, turn.created_at],
                     )?;
-                    self.copy_messages_tx(&tx, &turn.turn_id, &new_id)?;
+                    Self::copy_messages_tx(&db, &tx, &turn.turn_id, &new_id)?;
                 }
             }
             MergeStrategy::Replace => {
@@ -481,7 +503,7 @@ impl WorkingMemory {
                          VALUES (?1, ?2, ?3, ?4, NULL, NULL)",
                         params![new_id, session_id, turn.agent, turn.created_at],
                     )?;
-                    self.copy_messages_tx(&tx, &turn.turn_id, &new_id)?;
+                    Self::copy_messages_tx(&db, &tx, &turn.turn_id, &new_id)?;
                 }
             }
             MergeStrategy::Summarize => {
@@ -521,12 +543,12 @@ impl WorkingMemory {
 
     /// Copy messages from one turn to another within a transaction.
     fn copy_messages_tx(
-        &self,
+        db: &Connection,
         tx: &rusqlite::Transaction<'_>,
         from_turn_id: &str,
         to_turn_id: &str,
     ) -> Result<(), MemoryError> {
-        let mut stmt = self.db.prepare(
+        let mut stmt = db.prepare(
             "SELECT role, content, timestamp, metadata, sort_order
              FROM memory_messages
              WHERE turn_id = ?1
@@ -567,12 +589,13 @@ impl WorkingMemory {
         max_count: usize,
         decay_rate: f64,
     ) -> Result<Vec<Turn>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let now_secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
 
-        let mut stmt = self.db.prepare(
+        let mut stmt = db.prepare(
             "SELECT turn_id, session_id, agent, created_at, fork_id, parent_fork,
                     importance, access_count
              FROM memory_turns
@@ -627,7 +650,7 @@ impl WorkingMemory {
         let mut turns = Vec::with_capacity(scored.len());
         for (i, _) in scored {
             let (turn_id, session_id, agent, created_at, fork_id, parent_fork, _, _) = &rows[i];
-            let messages = self.load_messages(turn_id)?;
+            let messages = Self::load_messages(&db, turn_id)?;
             turns.push(Turn {
                 turn_id: turn_id.clone(),
                 session_id: session_id.clone(),
@@ -644,7 +667,8 @@ impl WorkingMemory {
 
     /// Set the importance score for a turn.
     pub fn set_turn_importance(&self, turn_id: &str, importance: f64) -> Result<(), MemoryError> {
-        let updated = self.db.execute(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let updated = db.execute(
             "UPDATE memory_turns SET importance = ?1 WHERE turn_id = ?2",
             params![importance, turn_id],
         )?;
@@ -656,7 +680,8 @@ impl WorkingMemory {
 
     /// Increment the access count for a turn.
     pub fn increment_access_count(&self, turn_id: &str) -> Result<(), MemoryError> {
-        let updated = self.db.execute(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let updated = db.execute(
             "UPDATE memory_turns SET access_count = access_count + 1 WHERE turn_id = ?1",
             params![turn_id],
         )?;
@@ -668,7 +693,8 @@ impl WorkingMemory {
 
     /// List all distinct session IDs with their turn counts and timestamps.
     pub fn list_sessions(&self) -> Result<Vec<(String, usize, i64, i64)>, MemoryError> {
-        let mut stmt = self.db.prepare(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
             "SELECT session_id, COUNT(*), MIN(created_at), MAX(created_at)
              FROM memory_turns
              WHERE fork_id IS NULL
@@ -690,8 +716,8 @@ impl WorkingMemory {
         Ok(sessions)
     }
 
-    fn load_messages(&self, turn_id: &str) -> Result<Vec<Message>, MemoryError> {
-        let mut stmt = self.db.prepare(
+    fn load_messages(db: &Connection, turn_id: &str) -> Result<Vec<Message>, MemoryError> {
+        let mut stmt = db.prepare(
             "SELECT role, content, timestamp, metadata
              FROM memory_messages
              WHERE turn_id = ?1
@@ -1050,14 +1076,15 @@ mod tests {
         let turn = make_turn_with_id("s1", "dev", 1000, "t1");
         mem.add_turn(&turn).unwrap();
 
-        let (importance, access_count): (f64, i64) = mem
-            .db
+        let db = mem.db.lock().unwrap_or_else(|e| e.into_inner());
+        let (importance, access_count): (f64, i64) = db
             .query_row(
                 "SELECT importance, access_count FROM memory_turns WHERE turn_id = 't1'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
+        drop(db);
         assert!((importance - 0.0).abs() < f64::EPSILON);
         assert_eq!(access_count, 0);
     }
@@ -1070,14 +1097,15 @@ mod tests {
 
         mem.set_turn_importance("t1", 0.9).unwrap();
 
-        let importance: f64 = mem
-            .db
+        let db = mem.db.lock().unwrap_or_else(|e| e.into_inner());
+        let importance: f64 = db
             .query_row(
                 "SELECT importance FROM memory_turns WHERE turn_id = 't1'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
+        drop(db);
         assert!((importance - 0.9).abs() < f64::EPSILON);
     }
 
@@ -1096,14 +1124,15 @@ mod tests {
         mem.increment_access_count("t1").unwrap();
         mem.increment_access_count("t1").unwrap();
 
-        let count: i64 = mem
-            .db
+        let db = mem.db.lock().unwrap_or_else(|e| e.into_inner());
+        let count: i64 = db
             .query_row(
                 "SELECT access_count FROM memory_turns WHERE turn_id = 't1'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
+        drop(db);
         assert_eq!(count, 2);
     }
 
@@ -1258,30 +1287,32 @@ mod tests {
         let mem = WorkingMemory::open_memory().unwrap();
         // Manually insert the pre-existing row (since open_memory creates fresh db,
         // we test the migration path by calling migrate directly)
-        mem.db
-            .execute(
+        {
+            let db = mem.db.lock().unwrap_or_else(|e| e.into_inner());
+            db.execute(
                 "INSERT INTO memory_turns (turn_id, session_id, agent, created_at)
                  VALUES ('pre', 's1', 'dev', 1000)",
                 [],
             )
             .unwrap();
-        mem.db
-            .execute(
+            db.execute(
                 "INSERT INTO memory_messages (turn_id, role, content, timestamp, metadata, sort_order)
                  VALUES ('pre', 'user', 'Hello', 1000, NULL, 0)",
                 [],
             )
             .unwrap();
+        }
 
         // Verify defaults applied
-        let (importance, access_count): (f64, i64) = mem
-            .db
+        let db = mem.db.lock().unwrap_or_else(|e| e.into_inner());
+        let (importance, access_count): (f64, i64) = db
             .query_row(
                 "SELECT importance, access_count FROM memory_turns WHERE turn_id = 'pre'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
+        drop(db);
         assert!((importance - 0.0).abs() < f64::EPSILON);
         assert_eq!(access_count, 0);
 

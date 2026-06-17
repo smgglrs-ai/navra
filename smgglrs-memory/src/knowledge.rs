@@ -4,25 +4,28 @@ use crate::error::MemoryError;
 use crate::types::{DistilledEntry, MemoryEntry, MemoryScope, MemoryType};
 use rusqlite::{params, Connection};
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 
 /// Persistent knowledge memory backed by SQLite with FTS5.
 ///
 /// Stores categorized knowledge entries (user, project, feedback,
 /// reference) with full-text search on title and content.
 pub struct KnowledgeStore {
-    db: Connection,
+    db: Mutex<Connection>,
 }
 
 impl KnowledgeStore {
     /// Borrow the underlying database connection (crate-internal).
-    pub(crate) fn db(&self) -> &Connection {
-        &self.db
+    pub(crate) fn db(&self) -> MutexGuard<'_, Connection> {
+        self.db.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Open knowledge store from a file path.
     pub fn open(path: &Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
-        let store = Self { db };
+        let store = Self {
+            db: Mutex::new(db),
+        };
         store.init_schema()?;
         Ok(store)
     }
@@ -30,13 +33,16 @@ impl KnowledgeStore {
     /// Open in-memory knowledge store (for testing).
     pub fn open_memory() -> Result<Self, MemoryError> {
         let db = Connection::open_in_memory()?;
-        let store = Self { db };
+        let store = Self {
+            db: Mutex::new(db),
+        };
         store.init_schema()?;
         Ok(store)
     }
 
     fn init_schema(&self) -> Result<(), MemoryError> {
-        self.db.execute_batch(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute_batch(
             "CREATE TABLE IF NOT EXISTS memory_knowledge (
                 id TEXT PRIMARY KEY,
                 memory_type TEXT NOT NULL,
@@ -67,13 +73,13 @@ impl KnowledgeStore {
                 VALUES (new.rowid, new.title, new.content);
             END;",
         )?;
-        self.migrate_distillation_columns()?;
-        self.migrate_scope_columns()?;
+        Self::migrate_distillation_columns(&db)?;
+        Self::migrate_scope_columns(&db)?;
         Ok(())
     }
 
     /// Add distillation columns if they don't already exist.
-    fn migrate_distillation_columns(&self) -> Result<(), MemoryError> {
+    fn migrate_distillation_columns(db: &Connection) -> Result<(), MemoryError> {
         let columns = [
             ("content_key", "TEXT"),
             ("importance", "REAL DEFAULT 0.0"),
@@ -89,7 +95,7 @@ impl KnowledgeStore {
         for (name, typ) in &columns {
             // SQLite doesn't support IF NOT EXISTS on ALTER TABLE,
             // so we check the table_info pragma instead.
-            let exists: bool = self.db.query_row(
+            let exists: bool = db.query_row(
                 &format!(
                     "SELECT COUNT(*) > 0 FROM pragma_table_info('memory_knowledge') WHERE name = '{name}'"
                 ),
@@ -97,13 +103,13 @@ impl KnowledgeStore {
                 |row| row.get(0),
             )?;
             if !exists {
-                self.db.execute_batch(&format!(
+                db.execute_batch(&format!(
                     "ALTER TABLE memory_knowledge ADD COLUMN {name} {typ};"
                 ))?;
             }
         }
         // Index for content_key lookups.
-        self.db.execute_batch(
+        db.execute_batch(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_content_key
                 ON memory_knowledge(content_key) WHERE content_key IS NOT NULL;",
         )?;
@@ -112,8 +118,9 @@ impl KnowledgeStore {
 
     /// Store or update a memory entry (upsert by id).
     pub fn store(&self, entry: &MemoryEntry) -> Result<(), MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
-        self.db.execute(
+        db.execute(
             "INSERT INTO memory_knowledge (id, memory_type, title, content, tags_json, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(id) DO UPDATE SET
@@ -136,7 +143,8 @@ impl KnowledgeStore {
 
     /// Get a memory entry by ID.
     pub fn get(&self, id: &str) -> Result<Option<MemoryEntry>, MemoryError> {
-        let mut stmt = self.db.prepare(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
             "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
              FROM memory_knowledge WHERE id = ?1",
         )?;
@@ -149,8 +157,9 @@ impl KnowledgeStore {
 
     /// List entries, optionally filtered by type.
     pub fn list(&self, memory_type: Option<MemoryType>) -> Result<Vec<MemoryEntry>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ref mt) = memory_type {
-            let mut stmt = self.db.prepare(
+            let mut stmt = db.prepare(
                 "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
                  FROM memory_knowledge WHERE memory_type = ?1
                  ORDER BY created_at DESC",
@@ -160,7 +169,7 @@ impl KnowledgeStore {
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(entries)
         } else {
-            let mut stmt = self.db.prepare(
+            let mut stmt = db.prepare(
                 "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
                  FROM memory_knowledge
                  ORDER BY created_at DESC",
@@ -174,7 +183,8 @@ impl KnowledgeStore {
 
     /// Full-text search across title and content.
     pub fn search(&self, query: &str) -> Result<Vec<MemoryEntry>, MemoryError> {
-        let mut stmt = self.db.prepare(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
             "SELECT k.id, k.memory_type, k.title, k.content, k.tags_json, k.created_at, k.updated_at
              FROM memory_knowledge k
              JOIN memory_knowledge_fts f ON k.rowid = f.rowid
@@ -190,17 +200,16 @@ impl KnowledgeStore {
 
     /// Delete an entry by ID. Returns true if an entry was deleted.
     pub fn delete(&self, id: &str) -> Result<bool, MemoryError> {
-        let count = self
-            .db
-            .execute("DELETE FROM memory_knowledge WHERE id = ?1", params![id])?;
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let count = db.execute("DELETE FROM memory_knowledge WHERE id = ?1", params![id])?;
         Ok(count > 0)
     }
 
     /// Count total entries.
     pub fn count(&self) -> Result<usize, MemoryError> {
-        let count: i64 = self
-            .db
-            .query_row("SELECT COUNT(*) FROM memory_knowledge", [], |row| {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let count: i64 =
+            db.query_row("SELECT COUNT(*) FROM memory_knowledge", [], |row| {
                 row.get(0)
             })?;
         Ok(count as usize)
@@ -211,6 +220,7 @@ impl KnowledgeStore {
     /// If an entry with the same content_key exists, its content is updated
     /// and the version is incremented. Otherwise a new entry is inserted.
     pub fn store_distilled(&self, entry: &DistilledEntry) -> Result<(), MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -218,9 +228,7 @@ impl KnowledgeStore {
         let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
 
         // Check if content_key already exists
-        let existing: Option<(String, i64)> = self
-            .db
-            .query_row(
+        let existing: Option<(String, i64)> = db.query_row(
                 "SELECT id, version FROM memory_knowledge WHERE content_key = ?1",
                 params![entry.content_key],
                 |row| Ok((row.get(0)?, row.get(1)?)),
@@ -228,7 +236,7 @@ impl KnowledgeStore {
             .ok();
 
         if let Some((id, version)) = existing {
-            self.db.execute(
+            db.execute(
                 "UPDATE memory_knowledge SET
                     title = ?1,
                     content = ?2,
@@ -251,7 +259,7 @@ impl KnowledgeStore {
             )?;
         } else {
             let id = uuid::Uuid::new_v4().to_string();
-            self.db.execute(
+            db.execute(
                 "INSERT INTO memory_knowledge
                     (id, memory_type, title, content, tags_json, created_at,
                      content_key, version, confidence, source_session,
@@ -275,7 +283,8 @@ impl KnowledgeStore {
 
     /// Look up a memory entry by its content-addressed key.
     pub fn query_by_key(&self, content_key: &str) -> Result<Option<MemoryEntry>, MemoryError> {
-        let mut stmt = self.db.prepare(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
             "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
              FROM memory_knowledge WHERE content_key = ?1",
         )?;
@@ -288,7 +297,8 @@ impl KnowledgeStore {
 
     /// Get the version of an entry by content_key. Returns None if not found.
     pub fn version_of(&self, content_key: &str) -> Result<Option<i64>, MemoryError> {
-        let result = self.db.query_row(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let result = db.query_row(
             "SELECT version FROM memory_knowledge WHERE content_key = ?1",
             params![content_key],
             |row| row.get(0),
@@ -305,8 +315,9 @@ impl KnowledgeStore {
     /// Same as `store`, but also sets `has_pii = 1` on the entry so it
     /// can be efficiently queried during purge/expire operations.
     pub fn store_with_pii(&self, entry: &MemoryEntry, has_pii: bool) -> Result<(), MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
-        self.db.execute(
+        db.execute(
             "INSERT INTO memory_knowledge (id, memory_type, title, content, tags_json, created_at, updated_at, has_pii)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(id) DO UPDATE SET
@@ -331,7 +342,8 @@ impl KnowledgeStore {
 
     /// Set the `has_pii` flag on an existing entry.
     pub fn set_pii_flag(&self, id: &str, has_pii: bool) -> Result<(), MemoryError> {
-        self.db.execute(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        db.execute(
             "UPDATE memory_knowledge SET has_pii = ?1 WHERE id = ?2",
             params![has_pii as i32, id],
         )?;
@@ -340,11 +352,12 @@ impl KnowledgeStore {
 
     /// Update the content of an existing entry in-place (for redaction).
     pub fn update_content(&self, id: &str, title: &str, content: &str) -> Result<(), MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        self.db.execute(
+        db.execute(
             "UPDATE memory_knowledge SET title = ?1, content = ?2, updated_at = ?3 WHERE id = ?4",
             params![title, content, now, id],
         )?;
@@ -354,8 +367,9 @@ impl KnowledgeStore {
     /// Delete entries older than the specified number of days.
     /// Returns the count of deleted entries.
     pub fn expire_older_than(&self, days: u32) -> Result<usize, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let cutoff = Self::days_ago_epoch(days);
-        let count = self.db.execute(
+        let count = db.execute(
             "DELETE FROM memory_knowledge WHERE created_at < ?1",
             params![cutoff],
         )?;
@@ -365,8 +379,9 @@ impl KnowledgeStore {
     /// Delete entries that have `has_pii = 1` and are older than the
     /// specified number of days. Returns the count of deleted entries.
     pub fn expire_pii_older_than(&self, days: u32) -> Result<usize, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let cutoff = Self::days_ago_epoch(days);
-        let count = self.db.execute(
+        let count = db.execute(
             "DELETE FROM memory_knowledge WHERE has_pii = 1 AND created_at < ?1",
             params![cutoff],
         )?;
@@ -378,8 +393,9 @@ impl KnowledgeStore {
         &self,
         kind: Option<MemoryType>,
     ) -> Result<Vec<MemoryEntry>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ref mt) = kind {
-            let mut stmt = self.db.prepare(
+            let mut stmt = db.prepare(
                 "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
                  FROM memory_knowledge WHERE has_pii = 1 AND memory_type = ?1
                  ORDER BY created_at DESC",
@@ -389,7 +405,7 @@ impl KnowledgeStore {
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(entries)
         } else {
-            let mut stmt = self.db.prepare(
+            let mut stmt = db.prepare(
                 "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
                  FROM memory_knowledge WHERE has_pii = 1
                  ORDER BY created_at DESC",
@@ -414,7 +430,8 @@ impl KnowledgeStore {
     /// Valid values: "legitimate_interest", "consent", "legal_obligation",
     /// "vital_interest", "public_task", "not_set".
     pub fn set_consent_basis(&self, id: &str, basis: &str) -> Result<bool, MemoryError> {
-        let count = self.db.execute(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let count = db.execute(
             "UPDATE memory_knowledge SET consent_basis = ?1 WHERE id = ?2",
             params![basis, id],
         )?;
@@ -423,7 +440,8 @@ impl KnowledgeStore {
 
     /// Get the consent basis for an entry. Returns None if the entry does not exist.
     pub fn get_consent_basis(&self, id: &str) -> Result<Option<String>, MemoryError> {
-        let result = self.db.query_row(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let result = db.query_row(
             "SELECT consent_basis FROM memory_knowledge WHERE id = ?1",
             params![id],
             |row| row.get(0),
@@ -437,7 +455,8 @@ impl KnowledgeStore {
 
     /// List entries filtered by consent basis.
     pub fn list_by_consent(&self, basis: &str) -> Result<Vec<MemoryEntry>, MemoryError> {
-        let mut stmt = self.db.prepare(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
             "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
              FROM memory_knowledge WHERE consent_basis = ?1
              ORDER BY created_at DESC",
@@ -450,7 +469,8 @@ impl KnowledgeStore {
 
     /// Count entries flagged as containing PII.
     pub fn count_pii_entries(&self) -> Result<usize, MemoryError> {
-        let count: i64 = self.db.query_row(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let count: i64 = db.query_row(
             "SELECT COUNT(*) FROM memory_knowledge WHERE has_pii = 1",
             [],
             |row| row.get(0),
@@ -477,7 +497,8 @@ impl KnowledgeStore {
 
     /// Get the strategy_generation for an entry by content_key.
     pub fn strategy_generation_of(&self, content_key: &str) -> Result<Option<i64>, MemoryError> {
-        let result = self.db.query_row(
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let result = db.query_row(
             "SELECT strategy_generation FROM memory_knowledge WHERE content_key = ?1",
             params![content_key],
             |row| row.get(0),
@@ -498,15 +519,14 @@ impl KnowledgeStore {
         &self,
         entry: &DistilledEntry,
     ) -> Result<i64, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
         let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
 
-        let existing: Option<(String, i64, i64)> = self
-            .db
-            .query_row(
+        let existing: Option<(String, i64, i64)> = db.query_row(
                 "SELECT id, version, strategy_generation FROM memory_knowledge WHERE content_key = ?1",
                 params![entry.content_key],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
@@ -515,7 +535,7 @@ impl KnowledgeStore {
 
         if let Some((id, version, gen)) = existing {
             let new_gen = gen + 1;
-            self.db.execute(
+            db.execute(
                 "UPDATE memory_knowledge SET
                     title = ?1,
                     content = ?2,
@@ -541,7 +561,7 @@ impl KnowledgeStore {
             Ok(new_gen)
         } else {
             let id = uuid::Uuid::new_v4().to_string();
-            self.db.execute(
+            db.execute(
                 "INSERT INTO memory_knowledge
                     (id, memory_type, title, content, tags_json, created_at,
                      content_key, version, confidence, source_session,
@@ -564,7 +584,7 @@ impl KnowledgeStore {
     }
 
     /// Add entity/process/session scoping and temporal validity columns.
-    fn migrate_scope_columns(&self) -> Result<(), MemoryError> {
+    fn migrate_scope_columns(db: &Connection) -> Result<(), MemoryError> {
         let columns = [
             ("entity_id", "TEXT"),
             ("process_id", "TEXT"),
@@ -573,7 +593,7 @@ impl KnowledgeStore {
             ("valid_until", "INTEGER"),
         ];
         for (name, typ) in &columns {
-            let exists: bool = self.db.query_row(
+            let exists: bool = db.query_row(
                 &format!(
                     "SELECT COUNT(*) > 0 FROM pragma_table_info('memory_knowledge') WHERE name = '{name}'"
                 ),
@@ -581,13 +601,13 @@ impl KnowledgeStore {
                 |row| row.get(0),
             )?;
             if !exists {
-                self.db.execute_batch(&format!(
+                db.execute_batch(&format!(
                     "ALTER TABLE memory_knowledge ADD COLUMN {name} {typ};"
                 ))?;
             }
         }
         // Indexes for scoped lookups.
-        self.db.execute_batch(
+        db.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_knowledge_entity_id
                 ON memory_knowledge(entity_id) WHERE entity_id IS NOT NULL;
              CREATE INDEX IF NOT EXISTS idx_knowledge_process_id
@@ -607,8 +627,9 @@ impl KnowledgeStore {
         scope: &MemoryScope,
         valid_until: Option<i64>,
     ) -> Result<(), MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
-        self.db.execute(
+        db.execute(
             "INSERT INTO memory_knowledge
                 (id, memory_type, title, content, tags_json, created_at, updated_at,
                  entity_id, process_id, session_id, valid_from, valid_until)
@@ -706,9 +727,10 @@ impl KnowledgeStore {
              LIMIT {limit}"
         );
 
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let params_ref: Vec<&dyn rusqlite::types::ToSql> =
             param_values.iter().map(|p| p.as_ref()).collect();
-        let mut stmt = self.db.prepare(&sql)?;
+        let mut stmt = db.prepare(&sql)?;
         let entries = stmt
             .query_map(params_ref.as_slice(), row_to_entry)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -719,8 +741,9 @@ impl KnowledgeStore {
     ///
     /// Returns the number of expired entries deleted.
     pub fn expire_stale(&self) -> Result<usize, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let now = Self::now_epoch();
-        let count = self.db.execute(
+        let count = db.execute(
             "DELETE FROM memory_knowledge WHERE valid_until IS NOT NULL AND valid_until <= ?1",
             params![now],
         )?;
@@ -736,11 +759,12 @@ impl KnowledgeStore {
 
     /// Update access_count and last_accessed timestamp for an entry.
     pub fn touch(&self, id: &str) -> Result<(), MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        self.db.execute(
+        db.execute(
             "UPDATE memory_knowledge SET
                 access_count = access_count + 1,
                 last_accessed = ?1
@@ -976,14 +1000,15 @@ mod tests {
         store.touch("e1").unwrap();
 
         // Verify access_count via raw query
-        let count: i64 = store
-            .db
+        let db = store.db.lock().unwrap_or_else(|e| e.into_inner());
+        let count: i64 = db
             .query_row(
                 "SELECT access_count FROM memory_knowledge WHERE id = 'e1'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
+        drop(db);
         assert_eq!(count, 2);
     }
 
