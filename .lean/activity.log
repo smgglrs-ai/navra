@@ -393,3 +393,10 @@ Breaking API changes + security architecture change require human review before 
     Key findings: ML fail-open, delegation subset missing, non-text
     bypass, hand-rolled crypto, transport DoS, DAG termination.
     Project already has 139 Kani proofs — IFC lattice is fully proven.
+- timestamp: "2026-06-17T10:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-103"
+  summary: "Replaced hand-rolled constant_time_eq with subtle::ConstantTimeEq in mod.rs and oauth.rs"
+  iteration: 1
+  max_iterations: 20

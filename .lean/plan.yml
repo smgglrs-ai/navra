@@ -14,7 +14,7 @@ items:
 
   - id: "NAVRA-103"
     title: "Replace hand-rolled constant_time_eq with subtle crate"
-    status: planned
+    status: done
     priority: critical
     effort: S
     feeds: ['NAVRA-104']

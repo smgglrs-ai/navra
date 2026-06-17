@@ -7,6 +7,7 @@ pub mod openshell;
 pub mod sandbox_profile;
 
 use std::fmt;
+use subtle::ConstantTimeEq;
 
 /// Identity of an authenticated agent.
 #[derive(Debug, Clone)]
@@ -113,14 +114,9 @@ impl TokenAuthenticator {
     }
 }
 
-/// Constant-time byte comparison using XOR-OR accumulation.
-/// Returns true iff all bytes match. Never short-circuits.
-/// Extracted for Kani verification (CWE-208 prevention).
+/// Constant-time byte comparison via the `subtle` crate (CWE-208).
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    a.ct_eq(b).into()
 }
 
 impl Authenticator for TokenAuthenticator {
@@ -295,7 +291,7 @@ mod kani_proofs {
         let a: [u8; 4] = kani::any();
         let b: [u8; 4] = kani::any();
         let result = constant_time_eq(&a, &b);
-        let naive = a.iter().zip(b.iter()).all(|(x, y)| x == y);
+        let naive = a == b;
         assert_eq!(result, naive);
     }
 
