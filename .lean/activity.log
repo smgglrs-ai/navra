@@ -428,3 +428,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Threshold validation (panic on NaN/negative/>1.0) in all filter constructors; NaN scores treated as unsafe everywhere"
   iteration: 5
   max_iterations: 20
+- timestamp: "2026-06-17T11:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-115"
+  summary: "Embedding dimension assertions on insert+search, chunks/embeddings length check, index_document wrapped in SQLite transaction"
+  iteration: 6
+  max_iterations: 20
