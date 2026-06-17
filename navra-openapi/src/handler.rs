@@ -87,8 +87,23 @@ pub async fn execute_operation(
     };
 
     let status = resp.status();
-    let body = match resp.text().await {
-        Ok(b) => b,
+    // Limit response body to prevent OOM on large responses (default 1 MiB).
+    let max_body = max_response_bytes.unwrap_or(1024 * 1024);
+    if let Some(len) = resp.content_length() {
+        if len as usize > max_body {
+            return CallToolResult::error(format!(
+                "Response too large ({len} bytes, limit {max_body})"
+            ));
+        }
+    }
+    let body = match resp.bytes().await {
+        Ok(b) => {
+            if b.len() > max_body {
+                String::from_utf8_lossy(&b[..max_body]).into_owned()
+            } else {
+                String::from_utf8_lossy(&b).into_owned()
+            }
+        }
         Err(e) => return CallToolResult::error(format!("Failed to read response: {e}")),
     };
 

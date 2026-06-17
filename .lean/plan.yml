@@ -185,7 +185,7 @@ items:
 
   - id: "NAVRA-126"
     title: "OpenAPI handler: stream response body, bounded spec download"
-    status: planned
+    status: done
     priority: medium
     effort: S
 

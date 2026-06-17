@@ -147,19 +147,52 @@ impl OpenApiModule {
     }
 }
 
+const MAX_SPEC_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
+
 async fn fetch_spec(source: &str) -> anyhow::Result<String> {
     if source.starts_with("http://") || source.starts_with("https://") {
-        let resp = reqwest::get(source)
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| anyhow::anyhow!("HTTP client error: {e}"))?;
+        let resp = client
+            .get(source)
+            .send()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to fetch OpenAPI spec from {source}: {e}"))?;
         let status = resp.status();
         if !status.is_success() {
             anyhow::bail!("Failed to fetch OpenAPI spec from {source}: HTTP {status}");
         }
-        resp.text()
+        if let Some(len) = resp.content_length() {
+            if len as usize > MAX_SPEC_SIZE {
+                anyhow::bail!(
+                    "OpenAPI spec too large ({len} bytes, max {MAX_SPEC_SIZE})"
+                );
+            }
+        }
+        let bytes = resp
+            .bytes()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to read spec response: {e}"))
+            .map_err(|e| anyhow::anyhow!("Failed to read spec response: {e}"))?;
+        if bytes.len() > MAX_SPEC_SIZE {
+            anyhow::bail!(
+                "OpenAPI spec too large ({} bytes, max {MAX_SPEC_SIZE})",
+                bytes.len()
+            );
+        }
+        String::from_utf8(bytes.to_vec())
+            .map_err(|e| anyhow::anyhow!("Spec is not valid UTF-8: {e}"))
     } else {
+        let meta = tokio::fs::metadata(source).await.ok();
+        if let Some(m) = meta {
+            if m.len() as usize > MAX_SPEC_SIZE {
+                anyhow::bail!(
+                    "OpenAPI spec file too large ({} bytes, max {MAX_SPEC_SIZE})",
+                    m.len()
+                );
+            }
+        }
         tokio::fs::read_to_string(source)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to read OpenAPI spec from {source}: {e}"))
