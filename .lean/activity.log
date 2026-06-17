@@ -400,3 +400,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Replaced hand-rolled constant_time_eq with subtle::ConstantTimeEq in mod.rs and oauth.rs"
   iteration: 1
   max_iterations: 20
+- timestamp: "2026-06-17T10:10:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-104"
+  summary: "Replaced manual Drop zeroing loop with zeroize::Zeroizing wrapper for Secret type"
+  iteration: 2
+  max_iterations: 20

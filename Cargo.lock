@@ -2825,6 +2825,7 @@ dependencies = [
  "url",
  "uuid",
  "zbus 5.15.0",
+ "zeroize",
 ]
 
 [[package]]
