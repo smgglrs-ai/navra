@@ -414,3 +414,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "All 4 ML/NER/privacy filters now fail-closed (return inference_failure finding on error); fixed 3 mutex unwrap() to unwrap_or_else"
   iteration: 3
   max_iterations: 20
+- timestamp: "2026-06-17T10:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-109"
+  summary: "Workspace path now uses Path::starts_with (directory semantics), rejects .. components, enforces minimum 1s timeout"
+  iteration: 4
+  max_iterations: 20

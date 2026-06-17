@@ -1,6 +1,6 @@
 id: "NAVRA-109"
 title: "Exec workspace path: directory-prefix check with canonicalization"
-status: planned
+status: done
 priority: critical
 effort: S
 depends_on: []
