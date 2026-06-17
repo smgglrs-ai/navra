@@ -149,7 +149,7 @@ items:
 
   - id: "NAVRA-120"
     title: "Blackbox: merge mutexes, silence → error propagation"
-    status: planned
+    status: done
     priority: medium
     effort: S
 
