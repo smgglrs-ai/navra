@@ -516,3 +516,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Safety hook now scans ALL string-valued tool argument fields, not just content/new_string/text; configurable SKIP_FIELDS exclusion list"
   iteration: 4
   max_iterations: 20
+- timestamp: "2026-06-17T14:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-105"
+  summary: "Non-text content (Image/Audio) blocked by default in both legacy pipeline and hook path; text resources extracted and filtered"
+  iteration: 5
+  max_iterations: 20

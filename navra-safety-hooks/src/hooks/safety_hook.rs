@@ -145,9 +145,34 @@ impl Hook for SafetyHook {
                         }
                     }
                 }
+                Content::Resource(ref res) => {
+                    if res.resource.mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
+                        if let Some(ref text) = res.resource.text {
+                            let (processed, findings) = pipeline
+                                .process_outbound_with_findings(text, &filter_ctx)
+                                .await;
+                            if findings.iter().any(|f| is_pii_category(&f.category)) {
+                                has_pii = true;
+                            }
+                            match processed {
+                                Ok(t) => filtered_content.push(Content::text(t)),
+                                Err(reason) => {
+                                    return HookDecision::ModifyResult(CallToolResult::error(reason));
+                                }
+                            }
+                        } else {
+                            filtered_content.push(content.clone());
+                        }
+                    } else {
+                        return HookDecision::ModifyResult(CallToolResult::error(
+                            "Non-text resource content blocked by safety pipeline"
+                        ));
+                    }
+                }
                 _ => {
-                    tracing::warn!(tool = tool_name, "Non-text content bypassed safety filter");
-                    filtered_content.push(content.clone());
+                    return HookDecision::ModifyResult(CallToolResult::error(
+                        "Non-text content blocked by safety pipeline (no binary filter configured)"
+                    ));
                 }
             }
         }

@@ -846,13 +846,40 @@ impl McpServer {
                         }
                     }
                 }
-                other => {
+                Content::Resource(ref res) => {
+                    if res.resource.mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
+                        if let Some(ref text) = res.resource.text {
+                            match pipeline.process(text, &filter_ctx) {
+                                Ok(processed) => {
+                                    filtered_content.push(Content::text(processed));
+                                }
+                                Err(reason) => {
+                                    return CallToolResult::error(reason);
+                                }
+                            }
+                        } else {
+                            filtered_content.push(content);
+                        }
+                    } else {
+                        tracing::warn!(
+                            tool = tool_name,
+                            agent = ctx.agent.name,
+                            "Non-text resource blocked by safety pipeline"
+                        );
+                        return CallToolResult::error(
+                            "Non-text resource content blocked by safety pipeline"
+                        );
+                    }
+                }
+                _binary => {
                     tracing::warn!(
                         tool = tool_name,
                         agent = ctx.agent.name,
-                        "Non-text content bypassed safety filter"
+                        "Non-text content (image/audio) blocked by safety pipeline"
                     );
-                    filtered_content.push(other);
+                    return CallToolResult::error(
+                        "Non-text content blocked by safety pipeline (no binary filter configured)"
+                    );
                 }
             }
         }

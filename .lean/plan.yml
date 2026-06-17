@@ -27,7 +27,7 @@ items:
 
   - id: "NAVRA-105"
     title: "Safety pipeline: block or inspect non-text content"
-    status: planned
+    status: done
     priority: critical
     effort: M
     feeds: ['NAVRA-048']
