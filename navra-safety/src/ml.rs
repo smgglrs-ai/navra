@@ -69,8 +69,13 @@ impl ModelFilter for MlFilter {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(error = %e, "ML safety filter inference failed, skipping");
-                    Vec::new()
+                    tracing::warn!(error = %e, "ML safety filter inference failed, blocking (fail-closed)");
+                    vec![Finding {
+                        start: 0,
+                        end: content.len(),
+                        category: "inference_failure".to_string(),
+                        confidence: 1.0,
+                    }]
                 }
             }
         })
@@ -232,8 +237,13 @@ impl ModelFilter for MultiLabelFilter {
                     findings
                 }
                 Err(e) => {
-                    tracing::warn!(error = %e, "Multi-label safety filter inference failed, skipping");
-                    Vec::new()
+                    tracing::warn!(error = %e, "Multi-label safety filter inference failed, blocking (fail-closed)");
+                    vec![Finding {
+                        start: 0,
+                        end: content.len(),
+                        category: "inference_failure".to_string(),
+                        confidence: 1.0,
+                    }]
                 }
             }
         })
@@ -344,11 +354,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ml_filter_inference_failure_skips() {
+    async fn ml_filter_inference_failure_blocks() {
         let model = Arc::new(FailingClassifier);
         let filter = MlFilter::new(model, 0.5, "ml-unsafe");
         let findings = filter.scan("test", &test_ctx()).await;
-        assert!(findings.is_empty());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "inference_failure");
+        assert!((findings[0].confidence - 1.0).abs() < f32::EPSILON);
     }
 
     // --- ClassifyOutput tests ---
@@ -565,11 +577,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn multi_label_inference_failure_skips() {
+    async fn multi_label_inference_failure_blocks() {
         let model = Arc::new(FailingClassifier);
         let filter = MultiLabelFilter::new(model, HashMap::new());
         let findings = filter.scan("test", &test_ctx()).await;
-        assert!(findings.is_empty());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "inference_failure");
+        assert!((findings[0].confidence - 1.0).abs() < f32::EPSILON);
     }
 
     #[tokio::test]
@@ -592,5 +606,25 @@ mod tests {
         let filter = MultiLabelFilter::new(model, policies);
         let findings = filter.scan("content", &test_ctx()).await;
         assert!(findings.is_empty());
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn inference_error_never_passes() {
+        let findings = vec![Finding {
+            start: 0,
+            end: 10,
+            category: "inference_failure".to_string(),
+            confidence: 1.0,
+        }];
+        assert!(!findings.is_empty(), "inference error must produce findings");
+        assert!(
+            findings[0].confidence >= 1.0,
+            "inference_failure finding must have max confidence"
+        );
     }
 }

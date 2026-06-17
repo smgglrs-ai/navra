@@ -619,7 +619,7 @@ impl NerFilter {
         let type_ids_tensor = ort::value::TensorRef::from_array_view(&type_ids_array)
             .map_err(|e| NerError::Inference(format!("token_type_ids tensor: {e}")))?;
 
-        let mut session = self.session.lock().unwrap();
+        let mut session = self.session.lock().unwrap_or_else(|e| e.into_inner());
 
         // Check whether the model expects token_type_ids
         let needs_type_ids = session
@@ -923,8 +923,13 @@ impl ContentFilter for NerFilter {
                 })
                 .collect(),
             Err(e) => {
-                tracing::warn!(error = %e, "NER filter inference failed, skipping");
-                Vec::new()
+                tracing::warn!(error = %e, "NER filter inference failed, blocking (fail-closed)");
+                vec![Finding {
+                    start: 0,
+                    end: content.len(),
+                    category: "inference_failure".to_string(),
+                    confidence: 1.0,
+                }]
             }
         }
     }

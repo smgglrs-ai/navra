@@ -1,6 +1,6 @@
 id: "NAVRA-106"
 title: "ML/NER/Privacy filter: fail-closed on inference error"
-status: planned
+status: done
 priority: critical
 effort: S
 depends_on: []
