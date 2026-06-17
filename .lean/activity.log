@@ -495,3 +495,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "TaintedWritePolicy::from_str returns Result, rejects typos; ReadClearance::from_config validates level; missing IFC policy defaults to Deny"
   iteration: 1
   max_iterations: 20
+- timestamp: "2026-06-17T13:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-110"
+  summary: "Unannotated tools default to write=true; is_external_read_tool defaults all non-gateway tools to untrusted"
+  iteration: 2
+  max_iterations: 20

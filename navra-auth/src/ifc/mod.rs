@@ -211,7 +211,7 @@ impl ReadClearance {
 /// Classify a tool as read-only vs write/action using MCP tool annotations.
 ///
 /// When annotations are available, uses `read_only_hint` (authoritative).
-/// Falls back to name-based heuristic only for tools without annotations.
+/// Unannotated tools default to write=true (deny-by-default).
 pub fn is_write_tool(
     tool_name: &str,
     annotations: Option<&navra_protocol::ToolAnnotations>,
@@ -224,14 +224,22 @@ pub fn is_write_tool(
             return destructive;
         }
     }
-    // Fallback: name-based heuristic for tools without annotations
-    tool_name.contains("write")
-        || tool_name.contains("commit")
-        || tool_name.contains("push")
-        || tool_name.contains("delete")
-        || tool_name.contains("edit")
-        || tool_name.contains("send")
-        || tool_name.contains("exec")
+    // No annotations: default to write (deny-by-default).
+    // Name-based heuristic only used to avoid warning for obvious reads.
+    let obvious_read = tool_name.contains("read")
+        || tool_name.contains("search")
+        || tool_name.contains("list")
+        || tool_name.contains("get")
+        || tool_name.contains("status")
+        || tool_name.contains("diff")
+        || tool_name.contains("log");
+    if !obvious_read {
+        tracing::debug!(
+            tool = %tool_name,
+            "tool has no annotations, defaulting to write=true"
+        );
+    }
+    !obvious_read
 }
 
 /// Check if a file path matches any trusted path pattern.
@@ -294,19 +302,14 @@ fn normalize_path(path: &str) -> String {
 /// as Untrusted — the data may contain prompt injection payloads.
 /// Gateway tools (navra_var_*) are excluded — they return
 /// kernel-managed metadata, not external data.
+///
+/// Unannotated tools default to external=true (untrusted integrity).
 pub fn is_external_read_tool(tool_name: &str) -> bool {
-    if tool_name.starts_with("navra_var_") {
+    if tool_name.starts_with("navra_var_") || tool_name.starts_with("navra_") {
         return false;
     }
-    tool_name.contains("read")
-        || tool_name.contains("search")
-        || tool_name.contains("list")
-        || tool_name.contains("diff")
-        || tool_name.contains("log")
-        || tool_name.contains("status")
-        || tool_name.contains("branch")
-        || tool_name.contains("fetch")
-        || tool_name.contains("pull")
+    // Default: all non-gateway tools that reach outside produce untrusted data
+    true
 }
 
 #[cfg(test)]
@@ -368,7 +371,8 @@ mod tests {
 
     #[test]
     fn write_tool_classification_fallback() {
-        // No annotations: falls back to name-based heuristic
+        // No annotations: defaults to write=true (deny-by-default)
+        // except obvious reads (read, search, list, get, status, diff, log)
         assert!(is_write_tool("file_write", None));
         assert!(is_write_tool("git_commit", None));
         assert!(is_write_tool("git_push", None));
@@ -378,6 +382,10 @@ mod tests {
         assert!(!is_write_tool("file_read", None));
         assert!(!is_write_tool("git_status", None));
         assert!(!is_write_tool("rag_search", None));
+        // Unannotated tools with non-obvious names default to write
+        assert!(is_write_tool("api_call", None));
+        assert!(is_write_tool("update_config", None));
+        assert!(is_write_tool("post_message", None));
     }
 
     #[test]
@@ -414,13 +422,19 @@ mod tests {
 
     #[test]
     fn external_read_classification() {
+        // All non-gateway tools default to external read (untrusted)
         assert!(is_external_read_tool("file_read"));
         assert!(is_external_read_tool("file_search"));
         assert!(is_external_read_tool("file_list"));
         assert!(is_external_read_tool("git_diff"));
         assert!(is_external_read_tool("git_log"));
         assert!(is_external_read_tool("git_status"));
-        assert!(!is_external_read_tool("git_commit"));
+        assert!(is_external_read_tool("git_commit"));
+        assert!(is_external_read_tool("api_call"));
+        // Gateway tools are NOT external
+        assert!(!is_external_read_tool("navra_var_inspect"));
+        assert!(!is_external_read_tool("navra_var_list"));
+        assert!(!is_external_read_tool("navra_metrics"));
     }
 
     #[test]
