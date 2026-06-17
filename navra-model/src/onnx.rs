@@ -199,7 +199,7 @@ impl OnnxBackend {
         input_ids: &[i64],
         attention_mask: &[i64],
     ) -> Result<Vec<Vec<f32>>, ModelError> {
-        let mut session = self.session.lock().unwrap();
+        let mut session = self.session.lock().unwrap_or_else(|e| e.into_inner());
         let seq_len = input_ids.len();
 
         let input_ids_array = ndarray::Array2::from_shape_vec((1, seq_len), input_ids.to_vec())

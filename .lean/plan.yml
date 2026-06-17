@@ -34,7 +34,7 @@ items:
 
   - id: "NAVRA-106"
     title: "ML/NER/Privacy filter: fail-closed on inference error"
-    status: planned
+    status: done
     priority: critical
     effort: S
     feeds: ['NAVRA-048']
