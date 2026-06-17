@@ -555,3 +555,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "JSON-RPC version/method/id validation, stdio MAX_LINE_SIZE (16MiB), session count cap (1000)"
   iteration: 3
   max_iterations: 20
+- timestamp: "2026-06-17T16:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-116"
+  summary: "BackEdgeTracker now has global activation counter (default 1000) that prevents cross-edge cascading cycles"
+  iteration: 4
+  max_iterations: 20
