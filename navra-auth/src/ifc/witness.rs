@@ -2,7 +2,7 @@
 //!
 //! Every `declassify()` call produces a `DeclassificationWitness` that
 //! records the label transition, authority, justification, and an
-//! optional Ed25519 signature over the canonical JSON encoding.
+//! Ed25519 signature over a deterministic CBOR encoding (RFC 7049 §3.9).
 
 use serde::{Deserialize, Serialize};
 
@@ -25,9 +25,35 @@ pub struct DeclassificationWitness {
     pub signature: Option<Vec<u8>>,
 }
 
+/// Canonical payload struct with fields in alphabetical order.
+/// CBOR struct serialization preserves field declaration order,
+/// so alphabetical declaration = deterministic encoding.
+#[derive(Serialize)]
+struct CanonicalPayload<'a> {
+    declassifier: &'a str,
+    justification: &'a str,
+    new_label: &'a DataLabel,
+    original_label: &'a DataLabel,
+    timestamp: i64,
+}
+
 impl DeclassificationWitness {
-    /// Canonical JSON payload for signing (excludes the signature field).
+    /// Deterministic CBOR payload for signing (excludes the signature field).
     fn canonical_payload(&self) -> Vec<u8> {
+        let payload = CanonicalPayload {
+            declassifier: &self.declassifier,
+            justification: &self.justification,
+            new_label: &self.new_label,
+            original_label: &self.original_label,
+            timestamp: self.timestamp,
+        };
+        let mut buf = Vec::new();
+        ciborium::into_writer(&payload, &mut buf).expect("CBOR serialization");
+        buf
+    }
+
+    /// Legacy JSON payload for backward-compatible verification.
+    fn legacy_json_payload(&self) -> Vec<u8> {
         let canonical = serde_json::json!({
             "original_label": self.original_label,
             "new_label": self.new_label,
@@ -35,13 +61,13 @@ impl DeclassificationWitness {
             "timestamp": self.timestamp,
             "justification": self.justification,
         });
-        serde_json::to_vec(&canonical).expect("canonical JSON serialization")
+        serde_json::to_vec(&canonical).expect("JSON serialization")
     }
 
     /// Sign this witness with the given signer.
     ///
-    /// Serializes the non-signature fields to canonical JSON and signs
-    /// the resulting bytes. Replaces any existing signature.
+    /// Serializes the non-signature fields to deterministic CBOR and
+    /// signs the resulting bytes. Replaces any existing signature.
     pub fn sign(&mut self, signer: &dyn CapSigner) {
         let payload = self.canonical_payload();
         self.signature = Some(signer.sign(&payload));
@@ -49,13 +75,19 @@ impl DeclassificationWitness {
 
     /// Verify the witness signature against the given signer's public key.
     ///
+    /// Tries CBOR canonical encoding first, falls back to legacy JSON
+    /// for backward compatibility with pre-CBOR witnesses.
     /// Returns `false` if unsigned or if the signature does not match.
     pub fn verify(&self, signer: &dyn CapSigner) -> bool {
         let Some(ref sig) = self.signature else {
             return false;
         };
-        let payload = self.canonical_payload();
-        signer.verify(&payload, sig)
+        let cbor_payload = self.canonical_payload();
+        if signer.verify(&cbor_payload, sig) {
+            return true;
+        }
+        let json_payload = self.legacy_json_payload();
+        signer.verify(&json_payload, sig)
     }
 }
 
@@ -114,5 +146,24 @@ mod tests {
         witness.sign(&signer);
         witness.justification = "tampered justification".to_string();
         assert!(!witness.verify(&signer));
+    }
+
+    #[test]
+    fn legacy_json_signed_witness_still_verifies() {
+        let signer = Ed25519Signer::generate();
+        let mut witness = sample_witness();
+        // Sign with legacy JSON encoding
+        let payload = witness.legacy_json_payload();
+        witness.signature = Some(signer.sign(&payload));
+        // verify() should fall back to JSON and succeed
+        assert!(witness.verify(&signer));
+    }
+
+    #[test]
+    fn canonical_payload_is_deterministic() {
+        let witness = sample_witness();
+        let p1 = witness.canonical_payload();
+        let p2 = witness.canonical_payload();
+        assert_eq!(p1, p2, "canonical encoding must be deterministic");
     }
 }
