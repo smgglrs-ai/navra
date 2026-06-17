@@ -555,7 +555,25 @@ impl McpServer {
                             "Approval required: '{}'", params.name
                         ));
                     }
-                    _ => {} // Allow or no policy
+                    Some(crate::ifc::TaintedWritePolicy::Allow) => {} // Explicitly allowed
+                    None => {
+                        // Missing policy defaults to Deny (fail-closed)
+                        self.process_table.record_denied(
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
+                        );
+                        tracing::warn!(
+                            agent = %ctx.agent.name,
+                            permissions = %ctx.agent.permissions,
+                            tool = %params.name,
+                            "IFC: no policy configured, defaulting to deny"
+                        );
+                        return CallToolResult::error(format!(
+                            "Permission denied: '{}'", params.name
+                        ));
+                    }
                 }
             }
         }

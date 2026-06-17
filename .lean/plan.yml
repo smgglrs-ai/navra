@@ -47,7 +47,7 @@ items:
 
   - id: "NAVRA-108"
     title: "IFC config hardening: reject unknown strings, default-deny"
-    status: planned
+    status: done
     priority: critical
     effort: S
 
