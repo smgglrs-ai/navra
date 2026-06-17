@@ -393,7 +393,7 @@ impl PrivacyFilterModel {
 
         Ok(spans
             .into_iter()
-            .filter(|s| s.confidence >= self.confidence_threshold)
+            .filter(|s| s.confidence.is_nan() || s.confidence >= self.confidence_threshold)
             .collect())
     }
 }

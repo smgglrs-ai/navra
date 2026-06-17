@@ -1,6 +1,6 @@
 id: "NAVRA-114"
 title: "Safety threshold validation and NaN defense"
-status: planned
+status: done
 priority: high
 effort: S
 depends_on: []
