@@ -66,8 +66,32 @@ impl ModelCache {
     }
 
     /// Store model data in the cache, returning the blob path.
-    pub fn store(&self, uri: &ModelUri, data: &[u8]) -> Result<PathBuf, HubError> {
+    ///
+    /// When `expected_digest` is provided, the computed SHA-256 is verified
+    /// against it before writing. Returns an error on mismatch.
+    pub fn store(
+        &self,
+        uri: &ModelUri,
+        data: &[u8],
+    ) -> Result<PathBuf, HubError> {
         let hash = sha256_hex(data);
+
+        if let Some(ref expected) = uri.digest {
+            if hash != *expected {
+                return Err(HubError::HashMismatch {
+                    expected: expected.clone(),
+                    actual: hash,
+                });
+            }
+            tracing::info!(digest = %hash, "Model digest verified");
+        } else {
+            tracing::warn!(
+                uri = %uri,
+                digest = %hash,
+                "Model pulled without digest verification — pin with @sha256:{hash}"
+            );
+        }
+
         let blob_name = format!("sha256-{hash}");
         let blob_path = self.blobs.join(&blob_name);
 
@@ -234,6 +258,7 @@ mod tests {
         let uri = ModelUri {
             registry: Registry::Ollama,
             path: "test:latest".to_string(),
+            digest: None,
         };
 
         // Not cached yet

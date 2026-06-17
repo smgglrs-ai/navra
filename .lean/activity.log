@@ -605,3 +605,10 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "All planned notify-scope items completed"
     branch: "loop/2026-06-17-3"
     tag: "loop-run/2026-06-17-3-7"
+- timestamp: "2026-06-17T18:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-113"
+  summary: "Model URIs support @sha256:... digest pinning; cache.store() verifies hash before writing; unverified pulls logged as warning"
+  iteration: 1
+  max_iterations: 20
