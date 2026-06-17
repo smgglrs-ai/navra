@@ -1,6 +1,6 @@
 id: "NAVRA-121"
 title: "Memory stores: wrap Connection in Mutex for thread safety"
-status: planned
+status: done
 priority: medium
 effort: S
 depends_on: []
