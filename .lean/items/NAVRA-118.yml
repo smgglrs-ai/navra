@@ -1,6 +1,6 @@
 id: "NAVRA-118"
 title: "Witness canonical encoding: switch to deterministic format"
-status: planned
+status: done
 priority: high
 effort: S
 depends_on: []

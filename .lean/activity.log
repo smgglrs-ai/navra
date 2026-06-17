@@ -435,3 +435,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Embedding dimension assertions on insert+search, chunks/embeddings length check, index_document wrapped in SQLite transaction"
   iteration: 6
   max_iterations: 20
+- timestamp: "2026-06-17T11:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-118"
+  summary: "Witness canonical_payload() switched from serde_json to deterministic CBOR; verify() falls back to legacy JSON for backward compatibility"
+  iteration: 7
+  max_iterations: 20
