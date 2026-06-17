@@ -38,7 +38,7 @@ async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
         .join("navra");
 
     let mut child = Command::new(&navra_bin)
-        .args(["serve", "--config", &config_path, "--no-tray"])
+        .args(["serve", "--config", &config_path, "--no-tray", "--dev-mode"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .env(

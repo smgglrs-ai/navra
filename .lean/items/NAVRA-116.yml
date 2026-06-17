@@ -1,6 +1,6 @@
 id: "NAVRA-116"
 title: "DAG back-edge termination bound"
-status: planned
+status: done
 priority: high
 effort: M
 depends_on: []

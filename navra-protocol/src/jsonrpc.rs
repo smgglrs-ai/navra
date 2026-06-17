@@ -4,6 +4,13 @@ use serde::{Deserialize, Serialize};
 pub const REQUEST_CANCELLED: i32 = -32001;
 pub const CONTENT_TOO_LARGE: i32 = -32002;
 
+/// Maximum length for JSON-RPC method names.
+pub const MAX_METHOD_LENGTH: usize = 256;
+/// Maximum length for string request IDs.
+pub const MAX_REQUEST_ID_LENGTH: usize = 256;
+/// Maximum number of requests in a batch.
+pub const MAX_BATCH_SIZE: usize = 100;
+
 /// JSON-RPC 2.0 request identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -161,6 +168,34 @@ impl JsonRpcResponse {
     }
 }
 
+impl JsonRpcRequest {
+    pub fn validate(&self) -> Result<(), JsonRpcError> {
+        if self.jsonrpc != "2.0" {
+            return Err(JsonRpcError::invalid_request(format!(
+                "unsupported JSON-RPC version '{}' (must be '2.0')",
+                self.jsonrpc
+            )));
+        }
+        if self.method.len() > MAX_METHOD_LENGTH {
+            return Err(JsonRpcError::invalid_request(format!(
+                "method name too long ({} bytes, max {})",
+                self.method.len(),
+                MAX_METHOD_LENGTH
+            )));
+        }
+        if let RequestId::String(ref s) = self.id {
+            if s.len() > MAX_REQUEST_ID_LENGTH {
+                return Err(JsonRpcError::invalid_request(format!(
+                    "request id too long ({} bytes, max {})",
+                    s.len(),
+                    MAX_REQUEST_ID_LENGTH
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// A batch request is an array of individual requests and/or notifications.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -236,5 +271,48 @@ mod tests {
         let json = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
         let notif: JsonRpcNotification = serde_json::from_str(json).unwrap();
         assert_eq!(notif.method, "notifications/initialized");
+    }
+
+    #[test]
+    fn validate_rejects_wrong_version() {
+        let req = JsonRpcRequest {
+            jsonrpc: "1.0".to_string(),
+            method: "test".to_string(),
+            params: None,
+            id: RequestId::Number(1),
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_long_method() {
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "x".repeat(MAX_METHOD_LENGTH + 1),
+            params: None,
+            id: RequestId::Number(1),
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_long_string_id() {
+        let req = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "test".to_string(),
+            params: None,
+            id: RequestId::String("x".repeat(MAX_REQUEST_ID_LENGTH + 1)),
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_valid_request() {
+        let req = JsonRpcRequest::new(
+            "tools/call",
+            None,
+            RequestId::Number(1),
+        );
+        assert!(req.validate().is_ok());
     }
 }

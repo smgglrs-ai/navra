@@ -2,6 +2,9 @@
 
 use super::transport::{Transport, UpstreamNotification};
 use super::UpstreamError;
+
+/// Maximum line size for stdio reads (16 MiB).
+const MAX_LINE_SIZE: usize = 16 * 1024 * 1024;
 use async_trait::async_trait;
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
@@ -169,6 +172,15 @@ impl Transport for StdioTransport {
                 return Err(UpstreamError::Protocol {
                     name: self.name.clone(),
                     message: "upstream closed stdout (EOF)".to_string(),
+                });
+            }
+
+            if n > MAX_LINE_SIZE {
+                return Err(UpstreamError::Protocol {
+                    name: self.name.clone(),
+                    message: format!(
+                        "upstream line too large ({n} bytes, max {MAX_LINE_SIZE})"
+                    ),
                 });
             }
 
