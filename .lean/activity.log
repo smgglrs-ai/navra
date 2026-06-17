@@ -548,3 +548,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "declassify() now requires DeclassificationAuthority (holds CapSigner); witnesses are always signed"
   iteration: 2
   max_iterations: 20
+- timestamp: "2026-06-17T16:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-112"
+  summary: "JSON-RPC version/method/id validation, stdio MAX_LINE_SIZE (16MiB), session count cap (1000)"
+  iteration: 3
+  max_iterations: 20
