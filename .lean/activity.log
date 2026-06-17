@@ -562,3 +562,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "BackEdgeTracker now has global activation counter (default 1000) that prevents cross-edge cascading cycles"
   iteration: 4
   max_iterations: 20
+- timestamp: "2026-06-17T16:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-119"
+  summary: "NoAuthenticator gated behind --dev-mode flag; server refuses to start without configured auth unless explicitly opted in"
+  iteration: 5
+  max_iterations: 20

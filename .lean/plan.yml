@@ -123,7 +123,7 @@ items:
 
   - id: "NAVRA-119"
     title: "Remove NoAuthenticator from production; require OAuth or agents"
-    status: planned
+    status: done
     priority: high
     effort: S
 
