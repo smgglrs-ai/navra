@@ -49,12 +49,13 @@ items:
   - NAVRA-006
 - id: NAVRA-021
   title: ONNX/ort deepening
-  status: planned
+  status: done
   priority: low
   effort: 3-5d
   feeds:
   - NAVRA-022
   gate: ONNX spec
+  progress: 100
 - id: NAVRA-022
   title: KAME tandem voice
   status: planned

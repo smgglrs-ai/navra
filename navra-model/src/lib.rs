@@ -21,7 +21,7 @@ pub mod cli;
 pub(crate) mod http_common;
 mod ogx;
 #[cfg(feature = "onnx")]
-mod onnx;
+pub mod onnx;
 mod openai;
 pub mod refusal;
 pub mod safe_backend;
