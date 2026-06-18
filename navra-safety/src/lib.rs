@@ -32,6 +32,7 @@
 pub mod classifier;
 pub mod confidentiality;
 pub mod ml;
+pub mod projection;
 #[cfg(feature = "onnx")]
 pub mod ner;
 #[cfg(feature = "onnx")]
@@ -40,6 +41,7 @@ pub mod pseudonym;
 mod regex;
 
 pub use self::classifier::{ClassifyError, ClassifyLabel, ClassifyOutput, Classifier};
+pub use self::projection::{ProjectionError, SparseProjectionMatrix};
 pub use self::confidentiality::Confidentiality;
 pub use self::ml::{CategoryPolicy, MlFilter, MultiLabelFilter};
 #[cfg(feature = "onnx")]
