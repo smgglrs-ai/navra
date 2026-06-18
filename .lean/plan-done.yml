@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 101 completed items
+# 102 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -666,4 +666,11 @@ items:
     status: done
     priority: medium
     effort: S
+
+  - id: "NAVRA-128"
+    title: "Remove unwrap() chains in navra-server API handlers"
+    status: done
+    priority: high
+    effort: M
+    progress: 100
 

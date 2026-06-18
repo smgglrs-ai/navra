@@ -188,3 +188,10 @@
   actor: claude
   action: learn
   summary: "Extracted 25, compressed 8, decayed 9, rebalanced 11. CLAUDE.md 233→149 lines. 52 sessions processed."
+- timestamp: "2026-06-18T22:10:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-128"
+  summary: "Replaced 6 unwrap() calls in navra-server/src/main.rs production code with proper error handling: anyhow::Context for schema/worktree, anyhow::bail for audit log fallback, expect() for invariant (chunk store init order, UNIX epoch), if-let for persona lookup."
+  iteration: 1
+  max_iterations: 20

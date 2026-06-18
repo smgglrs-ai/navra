@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 41 active items
+# 40 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -18,12 +18,6 @@ items:
     priority: critical
     effort: M
     depends_on: ['NAVRA-018']
-
-  - id: "NAVRA-128"
-    title: "Remove unwrap() chains in navra-server API handlers"
-    status: planned
-    priority: high
-    effort: M
 
   - id: "NAVRA-129"
     title: "Replace defensive panic in quota.rs with error return"
