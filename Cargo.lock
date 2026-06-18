@@ -3168,6 +3168,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokenizers",
  "tokio",
+ "toml 0.8.23",
  "tracing",
  "uuid",
 ]

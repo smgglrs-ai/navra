@@ -105,6 +105,15 @@ impl StatisticalGuardrailServerConfig {
     }
 }
 
+/// Server-side configuration for the detect-only monitoring agent.
+///
+/// ```toml
+/// [monitoring]
+/// enabled = true
+/// buffer_size = 256
+/// ```
+pub type MonitoringServerConfig = navra_core::hooks::MonitoringConfig;
+
 /// Server-side configuration for temporal behavioral contracts.
 ///
 /// ```toml
