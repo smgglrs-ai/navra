@@ -59,6 +59,7 @@ keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 tonic = "0.12"
 prost = "0.13"
 schemars = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [profile.container]
 inherits = "release"

@@ -21,7 +21,7 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 toml = "0.8"
 serde_yaml = "0.9"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { workspace = true }
 
 [dev-dependencies]
 navra-responses = { path = "../navra-responses" }

@@ -16,7 +16,7 @@ navra-core = { path = "../navra-core" }
 navra-model = { path = "../navra-model" }
 navra-rag = { path = "../navra-rag", optional = true }
 chrono = "0.4"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"

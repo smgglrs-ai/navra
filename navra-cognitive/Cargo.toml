@@ -9,7 +9,7 @@ rust-version.workspace = true
 [dependencies]
 hex = "0.4"
 navra-protocol = { path = "../navra-protocol" }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = "0.9"

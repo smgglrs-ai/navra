@@ -223,3 +223,10 @@
   summary: "Bumped MSRV from 1.75 to 1.91 (matching installed stable toolchain). Updated workspace Cargo.toml + 3 per-crate Cargo.toml + project.yml. Zero MSRV clippy warnings."
   iteration: 5
   max_iterations: 20
+- timestamp: "2026-06-18T23:20:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-135"
+  summary: "Moved rusqlite 0.32 with bundled feature to [workspace.dependencies] in root Cargo.toml. All 7 crates now use { workspace = true }."
+  iteration: 6
+  max_iterations: 20
