@@ -89,11 +89,12 @@ items:
   progress: 100
 - id: NAVRA-030
   title: X-Token Projection for safety model KD
-  status: planned
+  status: done
   priority: low
   effort: 3-5d
   depends_on:
   - NAVRA-007
+  progress: 100
 - id: NAVRA-039
   title: Gemma 4 12B multimodal backend
   status: planned
