@@ -10,7 +10,7 @@ next_item_id: 143
 stack:
   language: rust
   edition: "2021"
-  msrv: "1.75"
+  msrv: "1.91"
   build_system: cargo
   workspace_members: 22
   test_framework: cargo-test

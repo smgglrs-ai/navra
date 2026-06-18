@@ -4,7 +4,7 @@ description = "Open Responses API types for Rust — spec-compliant, no client, 
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-rust-version = "1.75"
+rust-version = "1.91"
 keywords = ["openresponses", "llm", "ai", "api", "types"]
 categories = ["api-bindings", "data-structures"]
 
