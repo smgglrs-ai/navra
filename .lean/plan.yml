@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 37 active items
+# 36 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -48,12 +48,6 @@ items:
 
   - id: "NAVRA-134"
     title: "Pass tool_annotations through leakage hook"
-    status: planned
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-135"
-    title: "Consolidate rusqlite to workspace dependency"
     status: planned
     priority: medium
     effort: S

@@ -38,7 +38,7 @@ uuid = { workspace = true }
 toml = "0.8"
 serde_yaml = "0.9"
 reqwest = { workspace = true, features = ["stream"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { workspace = true }
 futures-util = "0.3"
 async-stream = "0.3"
 async-trait = "0.1"

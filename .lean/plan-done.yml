@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 105 completed items
+# 106 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -690,6 +690,13 @@ items:
 
   - id: "NAVRA-132"
     title: "Bump MSRV from 1.75 to 1.80"
+    status: done
+    priority: medium
+    effort: S
+    progress: 100
+
+  - id: "NAVRA-135"
+    title: "Consolidate rusqlite to workspace dependency"
     status: done
     priority: medium
     effort: S

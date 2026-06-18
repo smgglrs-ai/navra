@@ -31,7 +31,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { workspace = true }
 sqlite-vec = "0.1.6-alpha.2"
 zerocopy = { version = "0.8", features = ["derive"] }
 dirs = "6"
