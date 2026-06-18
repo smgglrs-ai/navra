@@ -386,10 +386,10 @@ fn check_intent_behavior_mismatch(tool: &ToolDefinition) -> Vec<ToolFinding> {
                 }
             }
         }
-        for (name, _) in props {
+        for name in props.keys() {
             let lower = name.to_lowercase();
-            if write_params.iter().any(|w| lower.contains(w)) {
-                if tool
+            if write_params.iter().any(|w| lower.contains(w))
+                && tool
                     .input_schema
                     .required
                     .as_ref()
@@ -397,7 +397,6 @@ fn check_intent_behavior_mismatch(tool: &ToolDefinition) -> Vec<ToolFinding> {
                 {
                     continue; // already reported
                 }
-            }
         }
     }
     findings

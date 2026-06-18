@@ -35,6 +35,7 @@ impl VerifierStats {
 
 /// Configuration for the verifier hook.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct VerifierConfig {
     /// Tool name patterns to verify (empty = all tools).
     pub tool_patterns: Vec<String>,
@@ -46,16 +47,6 @@ pub struct VerifierConfig {
     pub block_on_fail: bool,
 }
 
-impl Default for VerifierConfig {
-    fn default() -> Self {
-        Self {
-            tool_patterns: Vec::new(),
-            rubric_keywords: Vec::new(),
-            max_output_length: 0,
-            block_on_fail: false,
-        }
-    }
-}
 
 /// Post-tool-use hook that verifies results against rubrics and
 /// tracks false-pass-rate metrics per tool.

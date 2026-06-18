@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 103 completed items
+# 104 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -678,6 +678,13 @@ items:
     title: "Log silent event send failures in SSE and WebSocket transports"
     status: done
     priority: high
+    effort: S
+    progress: 100
+
+  - id: "NAVRA-131"
+    title: "Fix clippy warnings across workspace"
+    status: done
+    priority: medium
     effort: S
     progress: 100
 

@@ -12,7 +12,7 @@ pub mod causal;
 pub mod report;
 pub mod semantic;
 
-use navra_core::blackbox::{Blackbox, BlackboxEntry};
+use navra_core::blackbox::BlackboxEntry;
 use serde::{Deserialize, Serialize};
 
 /// A detected taint path from source to sink.

@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 39 active items
+# 38 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -39,12 +39,6 @@ items:
     priority: high
     effort: M
     depends_on: ['NAVRA-018', 'NAVRA-083']
-
-  - id: "NAVRA-131"
-    title: "Fix clippy warnings across workspace"
-    status: planned
-    priority: medium
-    effort: S
 
   - id: "NAVRA-132"
     title: "Bump MSRV from 1.75 to 1.80"

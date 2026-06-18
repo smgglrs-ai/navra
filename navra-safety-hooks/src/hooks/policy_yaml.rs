@@ -119,7 +119,7 @@ impl PolicyYamlHook {
                     .condition
                     .tool_name_matches
                     .as_deref()
-                    .map(|p| Regex::new(p))
+                    .map(Regex::new)
                     .transpose()?;
                 let (arg_field, arg_pattern_re) = match &rule.condition.arg_field_matches {
                     Some(af) => (Some(af.field.clone()), Some(Regex::new(&af.pattern)?)),
@@ -129,7 +129,7 @@ impl PolicyYamlHook {
                     .condition
                     .result_contains
                     .as_deref()
-                    .map(|p| Regex::new(p))
+                    .map(Regex::new)
                     .transpose()?;
                 rules.push(CompiledRule {
                     event: rule.event,

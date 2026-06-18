@@ -126,8 +126,7 @@ impl TraitStore {
     /// Open a trait store at the given path, creating tables if needed.
     pub fn open(path: &Path) -> Result<Self, CognitiveError> {
         let db = Connection::open(path).map_err(|e| {
-            CognitiveError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            CognitiveError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -139,8 +138,7 @@ impl TraitStore {
     /// Open an in-memory trait store (for testing).
     pub fn open_memory() -> Result<Self, CognitiveError> {
         let db = Connection::open_in_memory().map_err(|e| {
-            CognitiveError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            CognitiveError::Io(std::io::Error::other(
                 e.to_string(),
             ))
         })?;
@@ -162,8 +160,7 @@ impl TraitStore {
                 );",
             )
             .map_err(|e| {
-                CognitiveError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                CognitiveError::Io(std::io::Error::other(
                     e.to_string(),
                 ))
             })?;
@@ -222,7 +219,7 @@ impl TraitStore {
                 ],
             )
             .map_err(|e| {
-                CognitiveError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                CognitiveError::Io(std::io::Error::other(e.to_string()))
             })?;
         Ok(())
     }

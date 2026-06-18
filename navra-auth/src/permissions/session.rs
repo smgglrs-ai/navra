@@ -141,7 +141,7 @@ impl SessionPermissionStore {
         let mut map = self.inner.write().unwrap_or_else(|e| e.into_inner());
         let perms = map
             .entry(session_id.to_string())
-            .or_insert_with(SessionPermissions::new);
+            .or_default();
         f(perms)
     }
 

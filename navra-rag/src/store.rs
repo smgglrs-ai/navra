@@ -43,6 +43,7 @@ pub struct SearchFilter {
 /// Each threshold controls whether to skip a more expensive search stage
 /// when a cheaper stage already has strong results.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct CascadeConfig {
     /// Skip vector search if top FTS5 BM25 score (negated rank, higher = better)
     /// exceeds this threshold. `None` = always run vector search.
@@ -52,14 +53,6 @@ pub struct CascadeConfig {
     pub vector_skip_rerank_threshold: Option<f64>,
 }
 
-impl Default for CascadeConfig {
-    fn default() -> Self {
-        Self {
-            bm25_skip_vector_threshold: None,
-            vector_skip_rerank_threshold: None,
-        }
-    }
-}
 
 /// Counters for cascade gate decisions.
 #[derive(Debug, Default)]

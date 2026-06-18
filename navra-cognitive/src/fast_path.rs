@@ -48,11 +48,10 @@ pub fn classify_task(prompt: &str, fast_paths: &[FastPath], threshold: f64) -> C
             .count();
         let score = matched as f64 / fp.keywords.len() as f64;
 
-        if score >= threshold {
-            if best.as_ref().is_none_or(|(_, s)| score > *s) {
+        if score >= threshold
+            && best.as_ref().is_none_or(|(_, s)| score > *s) {
                 best = Some((fp, score));
             }
-        }
     }
 
     match best {
