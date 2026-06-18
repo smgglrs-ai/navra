@@ -1,6 +1,6 @@
 id: NAVRA-099
 title: ADR-style detect-only monitoring agent
-status: planned
+status: done
 priority: medium
 effort: 5-7d
 depends_on: []

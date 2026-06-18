@@ -1,0 +1,26 @@
+id: NAVRA-130
+title: Log silent event send failures in SSE and WebSocket transports
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: []
+description: |
+  navra-core/src/transport/sse.rs (lines 68, 83) and
+  navra-core/src/transport/websocket.rs (lines 61, 73, 102) use
+  `let _ = sender.send(...)` which silently drops errors when clients
+  disconnect. Add warn!-level logging so transport failures are
+  diagnosable.
+
+  Use tracing::warn! consistent with the rest of navra-core logging.
+  Don't log at error level — client disconnects are expected during
+  normal operation.
+acceptance:
+  - "All let _ = sender.send() patterns replaced with if let Err(e) = ... { warn!(...) }"
+  - "Log messages include session ID or client identifier where available"
+  - "Transport tests still pass"
+scope:
+  - navra-core/src/transport/sse.rs
+  - navra-core/src/transport/websocket.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core"

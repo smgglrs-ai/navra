@@ -1,0 +1,37 @@
+id: NAVRA-133
+title: Clean up dead code annotations
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  Investigate and resolve 9 #[allow(dead_code)] annotations in
+  production code:
+
+  1. navra-flow/src/executor.rs:74 — field in executor struct
+  2. navra-server/src/ui.rs:9 — entire module
+  3. navra-server/src/discover.rs:25,93 — two structs/functions
+  4. navra-server/src/ui_agent.rs:51 — field
+  5. navra-auth/src/auth/idjag.rs:78 — field
+  6. navra-auth/src/auth/oauth.rs:159 — struct
+  7. navra-safety/src/regex.rs:607 — field (retained for diagnostics)
+
+  For each: determine if the code is (a) used elsewhere and the
+  annotation is wrong, (b) planned for use and should be feature-gated,
+  or (c) truly dead and should be removed. Prefer removal over
+  suppression.
+acceptance:
+  - "No #[allow(dead_code)] in production code without a comment explaining why"
+  - "Truly unused code removed; feature-gated code uses #[cfg(...)]"
+  - "All tests pass"
+scope:
+  - navra-flow/src/executor.rs
+  - navra-server/src/ui.rs
+  - navra-server/src/discover.rs
+  - navra-server/src/ui_agent.rs
+  - navra-auth/src/auth/idjag.rs
+  - navra-auth/src/auth/oauth.rs
+  - navra-safety/src/regex.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace"

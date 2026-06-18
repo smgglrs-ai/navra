@@ -1,6 +1,6 @@
 id: NAVRA-030
 title: X-Token Projection for safety model KD
-status: planned
+status: done
 priority: low
 effort: 3-5d
 depends_on:

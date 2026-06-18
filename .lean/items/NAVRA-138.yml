@@ -1,0 +1,25 @@
+id: NAVRA-138
+title: Refresh TESTING.md test count table
+status: planned
+priority: low
+effort: S
+depends_on: []
+feeds: []
+description: |
+  TESTING.md reports "2110+ tests" with a per-crate table that sums to
+  2095. After recent loop work (13 items adding features, tests, and
+  refactoring), the counts are stale.
+
+  Run cargo test --workspace and update:
+  1. Per-crate test counts in the table
+  2. Total count in the header
+  3. Any new crates not yet in the table
+  4. The "Known caveats" section if anything changed
+acceptance:
+  - "Test count table matches actual cargo test output"
+  - "Total in header matches sum of table"
+  - "All crates with tests appear in the table"
+scope:
+  - TESTING.md
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace 2>&1 | tail -5"

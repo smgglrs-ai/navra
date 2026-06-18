@@ -1,6 +1,6 @@
 id: NAVRA-083
 title: 'OpenAPI upstream: OAuth2 authorization code flow'
-status: planned
+status: done
 priority: low
 effort: 3-5d
 depends_on:

@@ -1,0 +1,35 @@
+id: NAVRA-136
+title: Add doc comments to navra-agent and navra-cognitive public APIs
+status: planned
+priority: low
+effort: S
+depends_on: []
+feeds: []
+description: |
+  44 missing doc warnings across:
+
+  - navra-agent/src/hibernate.rs — 15 struct fields
+  - navra-agent/src/replay.rs — 11 struct fields
+  - navra-agent/src/quota.rs — 3 struct fields + 1 variant
+  - navra-cognitive/src/fast_path.rs — 7 struct fields
+  - navra-cognitive/src/bridge.rs — 5 struct fields
+
+  Add concise doc comments to all public struct fields and enum
+  variants. Follow existing conventions in the codebase — brief
+  one-line comments, no redundant restating of the field name.
+
+  Also add module-level //! docs to navra-agent/src/lib.rs and
+  navra-safety/src/lib.rs explaining the crate purpose.
+acceptance:
+  - "cargo doc --workspace --no-deps produces zero missing documentation warnings"
+  - "Module-level docs added to navra-agent and navra-safety lib.rs"
+scope:
+  - navra-agent/src/hibernate.rs
+  - navra-agent/src/replay.rs
+  - navra-agent/src/quota.rs
+  - navra-agent/src/lib.rs
+  - navra-cognitive/src/fast_path.rs
+  - navra-cognitive/src/bridge.rs
+  - navra-safety/src/lib.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo doc --workspace --no-deps 2>&1 | grep 'missing documentation' | wc -l"

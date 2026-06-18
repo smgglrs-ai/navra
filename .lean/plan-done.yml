@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 88 completed items
+# 101 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -119,6 +119,35 @@ items:
     effort: 2-3d
     depends_on: ['NAVRA-002']
 
+  - id: "NAVRA-019"
+    title: "Persona paper"
+    status: done
+    priority: low
+    effort: 5-7d
+    depends_on: ['NAVRA-003']
+
+  - id: "NAVRA-020"
+    title: "Review paper"
+    status: done
+    priority: low
+    effort: 3-5d
+    depends_on: ['NAVRA-006']
+
+  - id: "NAVRA-021"
+    title: "ONNX/ort deepening"
+    status: done
+    priority: low
+    effort: 3-5d
+    feeds: ['NAVRA-022']
+    gate: "ONNX spec"
+
+  - id: "NAVRA-023"
+    title: "delta-mem OSAM evaluation"
+    status: done
+    priority: low
+    effort: 1-2d
+    gate: "ONNX integration"
+
   - id: "NAVRA-024"
     title: "IFC adversarial corpus benchmark"
     status: done
@@ -127,11 +156,39 @@ items:
     progress: 100
     feeds: ['NAVRA-025', 'NAVRA-001']
 
+  - id: "NAVRA-025"
+    title: "NeuroTaint offline taint audit"
+    status: done
+    priority: low
+    effort: 5-7d
+    depends_on: ['NAVRA-024']
+    feeds: ['NAVRA-001']
+
+  - id: "NAVRA-027"
+    title: "Kubernetes Agent Sandbox backend"
+    status: done
+    priority: low
+    effort: 3-5d
+    gate: "K8s CRD v1alpha1 stability"
+
+  - id: "NAVRA-028"
+    title: "TurboVec evaluation"
+    status: done
+    priority: low
+    effort: 1-2d
+
   - id: "NAVRA-029"
     title: "Cross-session fact extraction"
     status: done
     priority: medium
     effort: 2-3d
+
+  - id: "NAVRA-030"
+    title: "X-Token Projection for safety model KD"
+    status: done
+    priority: low
+    effort: 3-5d
+    depends_on: ['NAVRA-007']
 
   - id: "NAVRA-031"
     title: "DNS-AID doc update in DISCOVERY.md"
@@ -183,12 +240,26 @@ items:
     priority: medium
     effort: 1-2d
 
+  - id: "NAVRA-039"
+    title: "Gemma 4 12B multimodal backend"
+    status: done
+    priority: low
+    effort: 1-2d
+    gate: "onnxruntime-genai #2062 (ONNX path); Ollama path works now"
+
   - id: "NAVRA-040"
     title: "ASSERT integration for C3 eval"
     status: done
     priority: low
     effort: 1-2d
     feeds: ['NAVRA-020']
+
+  - id: "NAVRA-041"
+    title: "Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice"
+    status: done
+    priority: low
+    effort: 1-2d
+    gate: "Model available on HuggingFace in ONNX format"
 
   - id: "NAVRA-043"
     title: "JSON response compression hook"
@@ -319,6 +390,13 @@ items:
     priority: high
     effort: 3-5d
 
+  - id: "NAVRA-083"
+    title: "OpenAPI upstream: OAuth2 authorization code flow"
+    status: done
+    priority: low
+    effort: 3-5d
+    depends_on: ['NAVRA-082']
+
   - id: "NAVRA-084"
     title: "OpenAPI upstream: response truncation and token budget"
     status: done
@@ -403,6 +481,20 @@ items:
     priority: low
     effort: 3-5d
     depends_on: ['NAVRA-089']
+
+  - id: "NAVRA-099"
+    title: "ADR-style detect-only monitoring agent"
+    status: done
+    priority: medium
+    effort: 5-7d
+    feeds: ['NAVRA-048']
+
+  - id: "NAVRA-100"
+    title: "ASSERT integration for compliance evaluation"
+    status: done
+    priority: medium
+    effort: 3-5d
+    feeds: ['NAVRA-020']
 
   - id: "NAVRA-101"
     title: "Refuse stateless mode when IFC tainted_write_policy is deny/approve"

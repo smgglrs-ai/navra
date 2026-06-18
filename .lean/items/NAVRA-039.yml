@@ -1,6 +1,6 @@
 id: NAVRA-039
 title: Gemma 4 12B multimodal backend
-status: planned
+status: done
 priority: low
 effort: 1-2d
 depends_on: []

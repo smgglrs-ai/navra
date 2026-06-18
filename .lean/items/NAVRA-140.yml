@@ -1,0 +1,38 @@
+id: NAVRA-140
+title: "MCP 2026-07-28: implement SEP-2567 stateless sessions"
+status: planned
+priority: critical
+effort: M
+depends_on:
+  - NAVRA-018
+feeds: []
+description: |
+  SEP-2567 removes MCP sessions entirely. The Mcp-Session-Id header
+  is replaced by explicit application-level state handles in _meta.
+  Any request can land on any server instance (stateless).
+
+  This is the biggest breaking change in the 2026-07-28 spec. navra's
+  SessionStore in navra-core/src/session.rs currently manages sessions
+  with IDs — this needs to be reworked for the new model.
+
+  Changes needed:
+  1. navra-core session management: move from SessionStore keyed by
+     session ID to state-handle-based context lookup
+  2. Stop sending/requiring Mcp-Session-Id header when feature gate
+     mcp-2026-07-28-default is enabled
+  3. Support both modes during transition: session-based (old) and
+     stateless (new) based on client capabilities
+  4. Update e2e tests for new handshake-less flow
+
+  Gated on NAVRA-018 (feature gate infrastructure).
+acceptance:
+  - "With mcp-2026-07-28-default enabled, server does not send Mcp-Session-Id"
+  - "State handles in _meta replace session-based context lookup"
+  - "Backward-compatible: old clients using sessions still work when feature disabled"
+  - "e2e tests pass in both modes"
+scope:
+  - navra-core/src/session.rs
+  - navra-core/src/transport/
+  - navra-server/src/main.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core -p navra-server"

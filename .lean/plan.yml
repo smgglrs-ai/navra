@@ -1,266 +1,273 @@
+# GENERATED — do not edit. Source of truth: .lean/items/*.yml
+# 41 active items
+# Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
+
 version: 1
+
 items:
-- id: NAVRA-018
-  title: MCP 2026-07-28 default flip
-  status: in_progress
-  priority: critical
-  effort: M
-  gate: 2026-07-28 flip default; implement now behind feature gate
-- id: NAVRA-025
-  title: NeuroTaint offline taint audit
-  status: done
-  priority: low
-  effective_priority: high
-  effort: 5-7d
-  depends_on:
-  - NAVRA-024
-  feeds:
-  - NAVRA-001
-  progress: 100
-- id: NAVRA-099
-  title: ADR-style detect-only monitoring agent
-  status: done
-  priority: medium
-  effort: 5-7d
-  feeds:
-  - NAVRA-048
-  progress: 100
-- id: NAVRA-100
-  title: ASSERT integration for compliance evaluation
-  status: done
-  priority: medium
-  effort: 3-5d
-  feeds:
-  - NAVRA-020
-  progress: 100
-- id: NAVRA-019
-  title: Persona paper
-  status: done
-  priority: low
-  effort: 5-7d
-  depends_on:
-  - NAVRA-003
-  progress: 100
-- id: NAVRA-020
-  title: Review paper
-  status: done
-  priority: low
-  effort: 3-5d
-  depends_on:
-  - NAVRA-006
-  progress: 100
-- id: NAVRA-021
-  title: ONNX/ort deepening
-  status: done
-  priority: low
-  effort: 3-5d
-  feeds:
-  - NAVRA-022
-  gate: ONNX spec
-  progress: 100
-- id: NAVRA-022
-  title: KAME tandem voice
-  status: planned
-  priority: low
-  effort: 3-5d
-  depends_on:
-  - NAVRA-021
-  gate: Moshi ONNX export
-- id: NAVRA-023
-  title: delta-mem OSAM evaluation
-  status: done
-  priority: low
-  effort: 1-2d
-  gate: ONNX integration
-  progress: 100
-- id: NAVRA-026
-  title: AG-UI via rendra-ag-ui
-  status: planned
-  priority: low
-  effort: 3-5d
-  depends_on:
-  - NAVRA-004
-- id: NAVRA-027
-  title: Kubernetes Agent Sandbox backend
-  status: done
-  priority: low
-  effort: 3-5d
-  gate: K8s CRD v1alpha1 stability
-  progress: 100
-- id: NAVRA-028
-  title: TurboVec evaluation
-  status: done
-  priority: low
-  effort: 1-2d
-  progress: 100
-- id: NAVRA-030
-  title: X-Token Projection for safety model KD
-  status: done
-  priority: low
-  effort: 3-5d
-  depends_on:
-  - NAVRA-007
-  progress: 100
-- id: NAVRA-039
-  title: Gemma 4 12B multimodal backend
-  status: done
-  priority: low
-  effort: 1-2d
-  gate: 'onnxruntime-genai #2062 (ONNX path); Ollama path works now'
-  progress: 100
-- id: NAVRA-041
-  title: Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice
-  status: done
-  priority: low
-  effort: 1-2d
-  gate: Model available on HuggingFace in ONNX format
-  progress: 100
-- id: NAVRA-042
-  title: DNS-AID discovery support
-  status: planned
-  priority: low
-  effort: 3-5d
-  gate: IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision
-- id: NAVRA-083
-  title: 'OpenAPI upstream: OAuth2 authorization code flow'
-  status: done
-  priority: low
-  effort: 3-5d
-  depends_on:
-  - NAVRA-082
-  progress: 100
-- id: NAVRA-092
-  title: Evaluate LCLM for context compression
-  status: planned
-  priority: low
-  effort: 3-5d
-  gate: LCLM 0.6B encoder available as ONNX export
-- id: NAVRA-093
-  title: Run ADR-Bench against navra
-  status: planned
-  priority: low
-  effort: 3-5d
-  depends_on:
-  - NAVRA-079
-  feeds:
-  - NAVRA-048
-  gate: ADR-Bench dataset publicly available
-- id: NAVRA-051
-  title: Paper significant fixes
-  status: backlog
-  priority: medium
-  effective_priority: high
-  effort: M
-  feeds:
-  - NAVRA-001
-  - NAVRA-019
-  - NAVRA-020
-- id: NAVRA-052
-  title: Missing related work
-  status: backlog
-  priority: medium
-  effective_priority: high
-  effort: M
-  feeds:
-  - NAVRA-001
-  - NAVRA-019
-  - NAVRA-020
-- id: NAVRA-053
-  title: Paper restructuring decisions
-  status: backlog
-  priority: medium
-  effective_priority: high
-  effort: S
-  feeds:
-  - NAVRA-001
-  - NAVRA-019
-  - NAVRA-020
-- id: NAVRA-057
-  title: Lazy-loading tool and persona metadata
-  status: backlog
-  priority: medium
-  effort: M
-- id: NAVRA-064
-  title: Nomic Embed v1.5 evaluation
-  status: backlog
-  priority: medium
-  effort: M
-- id: NAVRA-070
-  title: WebSocket agentic loops
-  status: backlog
-  priority: medium
-  effort: M
-- id: NAVRA-048
-  title: Adversarial safety evaluation
-  status: backlog
-  priority: low
-  effort: L
-- id: NAVRA-049
-  title: PII ONNX classifier
-  status: backlog
-  priority: low
-  effort: M
-- id: NAVRA-050
-  title: Harness-aligned training data generation
-  status: backlog
-  priority: low
-  effort: L
-- id: NAVRA-054
-  title: Interactive flow DAG visualization
-  status: backlog
-  priority: low
-  effort: M
-  depends_on:
-  - NAVRA-005
-- id: NAVRA-055
-  title: Branding and polish
-  status: backlog
-  priority: low
-  effort: M
-- id: NAVRA-056
-  title: Embeddable rendra-ag-ui widget
-  status: backlog
-  priority: low
-  effort: M
-  depends_on:
-  - NAVRA-004
-- id: NAVRA-058
-  title: Negative constraints in persona schema
-  status: backlog
-  priority: low
-  effort: S
-- id: NAVRA-059
-  title: YAML flow definitions
-  status: backlog
-  priority: low
-  effort: M
-- id: NAVRA-060
-  title: Operator libraries
-  status: backlog
-  priority: low
-  effort: M
-- id: NAVRA-061
-  title: Memory type classification
-  status: backlog
-  priority: low
-  effort: S
-- id: NAVRA-062
-  title: NemoClaw MCP bridge
-  status: backlog
-  priority: low
-  effort: M
-- id: NAVRA-063
-  title: Privacy Router coordination
-  status: backlog
-  priority: low
-  effort: M
-- id: NAVRA-069
-  title: Multi-hypothesis tool routing
-  status: backlog
-  priority: low
-  effort: M
-- id: NAVRA-071
-  title: HTML-to-markdown conversion
-  status: backlog
-  priority: low
-  effort: S
+  - id: "NAVRA-018"
+    title: "MCP 2026-07-28 default flip"
+    status: in_progress
+    priority: critical
+    effort: M
+    gate: "2026-07-28 flip default; implement now behind feature gate"
+
+  - id: "NAVRA-140"
+    title: "MCP 2026-07-28: implement SEP-2567 stateless sessions"
+    status: planned
+    priority: critical
+    effort: M
+    depends_on: ['NAVRA-018']
+
+  - id: "NAVRA-128"
+    title: "Remove unwrap() chains in navra-server API handlers"
+    status: planned
+    priority: high
+    effort: M
+
+  - id: "NAVRA-129"
+    title: "Replace defensive panic in quota.rs with error return"
+    status: planned
+    priority: high
+    effort: S
+
+  - id: "NAVRA-130"
+    title: "Log silent event send failures in SSE and WebSocket transports"
+    status: planned
+    priority: high
+    effort: S
+
+  - id: "NAVRA-141"
+    title: "MCP 2026-07-28: implement SEP-2577 deprecation of Roots/Sampling/Logging"
+    status: planned
+    priority: high
+    effort: M
+    depends_on: ['NAVRA-018']
+
+  - id: "NAVRA-142"
+    title: "MCP 2026-07-28: OAuth iss validation and credential binding"
+    status: planned
+    priority: high
+    effort: M
+    depends_on: ['NAVRA-018', 'NAVRA-083']
+
+  - id: "NAVRA-131"
+    title: "Fix clippy warnings across workspace"
+    status: planned
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-132"
+    title: "Bump MSRV from 1.75 to 1.80"
+    status: planned
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-133"
+    title: "Clean up dead code annotations"
+    status: planned
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-134"
+    title: "Pass tool_annotations through leakage hook"
+    status: planned
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-135"
+    title: "Consolidate rusqlite to workspace dependency"
+    status: planned
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-139"
+    title: "Complete WebMCP CDP transport implementation"
+    status: planned
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-022"
+    title: "KAME tandem voice"
+    status: planned
+    priority: low
+    effort: 3-5d
+    depends_on: ['NAVRA-021']
+    gate: "Moshi ONNX export"
+
+  - id: "NAVRA-026"
+    title: "AG-UI via rendra-ag-ui"
+    status: planned
+    priority: low
+    effort: 3-5d
+    depends_on: ['NAVRA-004']
+
+  - id: "NAVRA-042"
+    title: "DNS-AID discovery support"
+    status: planned
+    priority: low
+    effort: 3-5d
+    gate: "IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision"
+
+  - id: "NAVRA-092"
+    title: "Evaluate LCLM for context compression"
+    status: planned
+    priority: low
+    effort: 3-5d
+    gate: "LCLM 0.6B encoder available as ONNX export"
+
+  - id: "NAVRA-093"
+    title: "Run ADR-Bench against navra"
+    status: planned
+    priority: low
+    effort: 3-5d
+    depends_on: ['NAVRA-079']
+    feeds: ['NAVRA-048']
+    gate: "ADR-Bench dataset publicly available"
+
+  - id: "NAVRA-136"
+    title: "Add doc comments to navra-agent and navra-cognitive public APIs"
+    status: planned
+    priority: low
+    effort: S
+
+  - id: "NAVRA-137"
+    title: "Add tests to navra-tools-exec and navra-tools-gitlab"
+    status: planned
+    priority: low
+    effort: M
+
+  - id: "NAVRA-138"
+    title: "Refresh TESTING.md test count table"
+    status: planned
+    priority: low
+    effort: S
+
+  - id: "NAVRA-051"
+    title: "Paper significant fixes"
+    status: backlog
+    priority: medium
+    effective_priority: high
+    effort: M
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-052"
+    title: "Missing related work"
+    status: backlog
+    priority: medium
+    effective_priority: high
+    effort: M
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-053"
+    title: "Paper restructuring decisions"
+    status: backlog
+    priority: medium
+    effective_priority: high
+    effort: S
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-057"
+    title: "Lazy-loading tool and persona metadata"
+    status: backlog
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-064"
+    title: "Nomic Embed v1.5 evaluation"
+    status: backlog
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-070"
+    title: "WebSocket agentic loops"
+    status: backlog
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-048"
+    title: "Adversarial safety evaluation"
+    status: backlog
+    priority: low
+    effort: L
+
+  - id: "NAVRA-049"
+    title: "PII ONNX classifier"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-050"
+    title: "Harness-aligned training data generation"
+    status: backlog
+    priority: low
+    effort: L
+
+  - id: "NAVRA-054"
+    title: "Interactive flow DAG visualization"
+    status: backlog
+    priority: low
+    effort: M
+    depends_on: ['NAVRA-005']
+
+  - id: "NAVRA-055"
+    title: "Branding and polish"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-056"
+    title: "Embeddable rendra-ag-ui widget"
+    status: backlog
+    priority: low
+    effort: M
+    depends_on: ['NAVRA-004']
+
+  - id: "NAVRA-058"
+    title: "Negative constraints in persona schema"
+    status: backlog
+    priority: low
+    effort: S
+
+  - id: "NAVRA-059"
+    title: "YAML flow definitions"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-060"
+    title: "Operator libraries"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-061"
+    title: "Memory type classification"
+    status: backlog
+    priority: low
+    effort: S
+
+  - id: "NAVRA-062"
+    title: "NemoClaw MCP bridge"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-063"
+    title: "Privacy Router coordination"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-069"
+    title: "Multi-hypothesis tool routing"
+    status: backlog
+    priority: low
+    effort: M
+
+  - id: "NAVRA-071"
+    title: "HTML-to-markdown conversion"
+    status: backlog
+    priority: low
+    effort: S
+

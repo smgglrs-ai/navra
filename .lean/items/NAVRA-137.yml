@@ -1,0 +1,30 @@
+id: NAVRA-137
+title: Add tests to navra-tools-exec and navra-tools-gitlab
+status: planned
+priority: low
+effort: M
+depends_on: []
+feeds: []
+description: |
+  Lowest test coverage crates in the workspace:
+  - navra-tools-exec: 6 tests across 2 source files
+  - navra-tools-gitlab: 5 tests across 3 source files
+
+  Add unit tests covering:
+  - navra-tools-exec: command building, argument validation, sandbox
+    config parsing, error paths for invalid commands
+  - navra-tools-gitlab: MR/issue tool argument parsing, glab CLI
+    command construction, error handling for missing glab binary
+
+  Tests should not require external services (no real glab CLI, no
+  real OpenShell). Mock or stub external dependencies.
+acceptance:
+  - "navra-tools-exec has at least 15 tests covering argument validation, config parsing, error paths"
+  - "navra-tools-gitlab has at least 15 tests covering tool argument parsing, command construction"
+  - "No tests require external services to run"
+  - "All existing tests still pass"
+scope:
+  - navra-tools-exec/src/
+  - navra-tools-gitlab/src/
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-tools-exec -p navra-tools-gitlab"

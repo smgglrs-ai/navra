@@ -1,0 +1,23 @@
+id: NAVRA-129
+title: Replace defensive panic in quota.rs with error return
+status: planned
+priority: high
+effort: S
+depends_on: []
+feeds: []
+description: |
+  navra-agent/src/quota.rs:229 has panic!("should be Exceeded") in a
+  match arm. This is a defensive panic that should be an error return.
+  Replace with Result<QuotaStatus> or an explicit unreachable!() with
+  a comment explaining the invariant, depending on whether the arm
+  is truly unreachable or just unexpected.
+
+  Also audit the rest of quota.rs for similar patterns.
+acceptance:
+  - "No panic!() calls in navra-agent/src/quota.rs production code"
+  - "Match arm returns an error or uses unreachable!() with documented invariant"
+  - "All quota tests pass"
+scope:
+  - navra-agent/src/quota.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-agent"

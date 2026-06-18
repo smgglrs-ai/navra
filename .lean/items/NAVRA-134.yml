@@ -1,0 +1,27 @@
+id: NAVRA-134
+title: Pass tool_annotations through leakage hook
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  navra-safety-hooks/src/hooks/leakage.rs:136 has:
+    let tool_annotations = None; // TODO: pass annotations when available
+
+  Thread the ToolDefinition's annotations field through the hook
+  pipeline so the leakage hook can use annotation metadata (e.g.,
+  readOnlyHint, destructiveHint) in its analysis. The annotations
+  are already available on the ToolDefinition in navra-protocol;
+  they just need to be passed through the hook call chain.
+acceptance:
+  - "Leakage hook receives actual tool annotations instead of None"
+  - "Hook pipeline call signature passes annotations from ToolDefinition"
+  - "Existing leakage detection tests pass"
+  - "At least one test verifies annotations are received by the hook"
+scope:
+  - navra-safety-hooks/src/hooks/leakage.rs
+  - navra-safety-hooks/src/lib.rs
+  - navra-core/src/server/hooks.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety-hooks"
