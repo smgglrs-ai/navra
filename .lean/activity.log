@@ -719,3 +719,10 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "No code items remaining in navra workspace"
     branch: "loop/2026-06-18"
     tag: "loop-run/2026-06-18-8"
+- timestamp: "2026-06-18T18:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-023"
+  summary: "delta-mem OSAM evaluation: DEFER. PyTorch-only, no ONNX export. OSAM modifies attention computation at every layer — can't bolt onto frozen ONNX graph. Wrote evaluation doc with re-evaluate conditions."
+  iteration: 9
+  max_iterations: 20
