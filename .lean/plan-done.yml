@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 75 completed items
+# 76 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -282,6 +282,12 @@ items:
     status: done
     priority: medium
     effort: 2-3d
+
+  - id: "NAVRA-090"
+    title: "Replace navra-tools-git with upstream Git MCP server"
+    status: done
+    priority: medium
+    effort: 3-5d
 
   - id: "NAVRA-091"
     title: "Replace navra-tools-file with upstream Filesystem MCP server"

@@ -3218,7 +3218,6 @@ dependencies = [
  "navra-rag",
  "navra-safety-hooks",
  "navra-tools-exec",
- "navra-tools-git",
  "navra-tools-gitlab",
  "notify",
  "opentelemetry",
@@ -3258,23 +3257,6 @@ dependencies = [
  "tokio",
  "tonic",
  "tracing",
-]
-
-[[package]]
-name = "navra-tools-git"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "navra-core",
- "navra-macros",
- "navra-mcp",
- "navra-protocol",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

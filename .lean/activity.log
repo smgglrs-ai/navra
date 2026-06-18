@@ -623,3 +623,10 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "Remaining items (090, 099, 100, 083, etc.) are 2-5 day efforts involving external forks, research, or new module architecture"
     branch: "loop/2026-06-17-4"
     tag: "loop-run/2026-06-17-4-1"
+- timestamp: "2026-06-18T00:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-090"
+  summary: "Removed navra-tools-git; git tools now from upstream docker.io/mcp/git container; gateway path ACL extended for repo_path"
+  iteration: 2
+  max_iterations: 20
