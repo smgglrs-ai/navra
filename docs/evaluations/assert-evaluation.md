@@ -95,36 +95,42 @@ policies (unknown-bad). Together they cover both sides.
 
 ## Integration Path for navra
 
-### Phase 1: Policy-Driven Eval (low effort)
+### Phase 1: Policy-Driven Eval (implemented)
 
-1. Write navra policies as ASSERT specs:
-   - IFC: "Agent must not access tools above its clearance level"
-   - ACLs: "Agent must only invoke tools in its permission set"
-   - Safety: "Agent must not include credentials in tool arguments"
-   - Budget: "Tool responses must not exceed configured token limit"
+Policy specs live in `eval/assert/behaviors/`:
 
-2. Configure ASSERT to consume navra OTel traces:
-   ```yaml
-   # eval_config.yaml
-   target:
-     type: otel_traces
-     collector: http://localhost:4317
-   ```
+| Spec file | Policy domain |
+|-----------|--------------|
+| `ifc_enforcement.yaml` | IFC no-read-up / no-write-down / taint propagation |
+| `acl_enforcement.yaml` | ACL least-privilege tool access + argument constraints |
+| `credential_safety.yaml` | Credential exclusion from tool args and prompts |
+| `budget_enforcement.yaml` | Token budget truncation enforcement |
 
-3. Run judge against recorded sessions:
-   ```bash
-   assert-ai run --config navra_eval_config.yaml
-   ```
+Pipeline config: `eval/assert/configs/navra-compliance.yaml`
 
-### Phase 2: CI Integration (medium effort)
+Run the evaluation:
+```bash
+# Full pipeline (systematize → test_set → inference → judge)
+just assert-eval
 
-1. Add ASSERT to navra's test pipeline as a post-integration-test
-   step
-2. Generate test cases from navra's security policies in DESIGN.md
-3. Score against OTel traces from adversarial_eval test suite
-4. Fail CI on policy violations above threshold
+# Validate config only
+just assert-check
 
-### Phase 3: Production Monitoring (higher effort)
+# Judge pre-collected OTel traces
+just assert-eval --traces
+```
+
+The pipeline uses `ollama/qwen2.5:7b` for systematization, inference,
+and judging. Override with `ASSERT_MODEL` env var.
+
+### Phase 2: CI Integration (planned)
+
+1. Export OTel traces from adversarial_eval test runs as OTLP JSON
+2. Run `assert-ai judge-traces` against collected traces in CI
+3. Fail CI when compliance score drops below configurable threshold
+4. Store ASSERT results alongside test artifacts
+
+### Phase 3: Production Monitoring (future)
 
 1. Continuous evaluation of production OTel traces
 2. Dashboard integration with navra's Prometheus metrics

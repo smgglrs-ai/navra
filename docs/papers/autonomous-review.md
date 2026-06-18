@@ -30,18 +30,15 @@ reuse across domains: a security audit flow cannot review legal
 documents, and a code review flow cannot assess financial models.
 We present a domain-agnostic review architecture where a scout
 agent classifies the project domain, a planner agent dynamically
-selects specialist personas from a catalog, and specialist agents
-execute review tasks with domain-appropriate heuristics. The
-planner's output — a JSON array of task definitions — is parsed
-by a resilient multi-strategy parser that recovers from markdown
-contamination and malformed JSON boundaries. Flow state is
-persisted to SQLite, enabling resumption of timed-out flows
-without re-running completed tasks. We extend the review pattern
-to a self-improvement loop (audit → fix → test → verify) that
-operates on git worktrees to isolate changes until verification
-passes. We compare dynamic persona selection against hardcoded
-specialist assignment on the same Rust codebase and report
-findings on coverage, persona relevance, and token cost.
+selects specialist personas from a 43-persona catalog, and
+specialist agents execute review tasks with domain-appropriate
+heuristics. The key contribution is that the same four-stage
+flow (scout → plan → execute → synthesize) handles code review,
+document review, and multi-domain projects without modification
+— the planner adapts specialist selection to whatever domain the
+scout identifies. We evaluate dynamic persona selection against
+hardcoded specialist assignment across multiple projects and
+domains, reporting coverage, persona relevance, and token cost.
 
 ---
 
@@ -65,14 +62,18 @@ not a design-time decision. The flow should define the *process*
 (scout → plan → execute → synthesize); the planner should
 decide *who reviews what* based on the project's actual domain.
 
-This paper presents three contributions:
+This paper presents one core contribution: a domain-agnostic
+review flow where the planner dynamically selects personas from
+a catalog based on scout classification. The flow defines the
+*process* (scout → plan → execute → synthesize); the planner
+decides *who reviews what* at runtime, enabling the same flow
+to review code, legal contracts, financial models, or scientific
+papers without modification.
 
-1. A domain-agnostic review flow where the planner dynamically
-   selects personas from a catalog based on scout classification.
-2. A resilient JSON parser that recovers planner output from
-   markdown contamination and malformed object boundaries.
-3. A self-improvement loop (audit → fix → test → verify) with
-   flow persistence and git worktree isolation.
+Supporting engineering contributions (resilient JSON parsing of
+planner output, flow persistence with git worktree isolation)
+are described as implementation details in Sections 4–6 but are
+not claimed as research contributions.
 
 ---
 

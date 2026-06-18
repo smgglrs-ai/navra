@@ -1,10 +1,23 @@
+use crate::oauth::OAuthTokenManager;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct AuthConfig {
     pub bearer: Option<String>,
     pub api_key: Option<ApiKeyAuth>,
     pub basic: Option<BasicAuth>,
+    pub oauth: Option<OAuthTokenManager>,
+}
+
+impl std::fmt::Debug for AuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthConfig")
+            .field("bearer", &self.bearer.as_ref().map(|_| "[redacted]"))
+            .field("api_key", &self.api_key)
+            .field("basic", &self.basic.as_ref().map(|_| "[redacted]"))
+            .field("oauth", &self.oauth.is_some())
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +62,30 @@ impl AuthConfig {
             let encoded = base64::engine::general_purpose::STANDARD
                 .encode(format!("{}:{}", basic.username, basic.password));
             if let Ok(val) = HeaderValue::from_str(&format!("Basic {encoded}")) {
+                headers.insert(AUTHORIZATION, val);
+            }
+        }
+        headers
+    }
+
+    pub async fn oauth_bearer(&self) -> Option<String> {
+        if let Some(ref mgr) = self.oauth {
+            match mgr.access_token().await {
+                Ok(token) => Some(token),
+                Err(e) => {
+                    tracing::error!("OAuth token acquisition failed: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub async fn headers_with_oauth(&self) -> HeaderMap {
+        let mut headers = self.headers();
+        if let Some(token) = self.oauth_bearer().await {
+            if let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}")) {
                 headers.insert(AUTHORIZATION, val);
             }
         }

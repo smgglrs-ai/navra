@@ -70,9 +70,55 @@ pub async fn execute_operation(
         Method::Options => reqwest::Method::OPTIONS,
     };
 
-    let mut req = client.request(method, &url);
+    let auth_headers = auth.headers_with_oauth().await;
 
-    req = req.headers(auth.headers());
+    let resp = send_request(client, &method, &url, &auth_headers, meta, args, max_response_bytes).await;
+
+    // On 401/403 with OAuth configured, try one token refresh then retry
+    if let Some(ref mgr) = auth.oauth {
+        if let Ok(ref r) = resp {
+            if r.is_error {
+                let body_text = r.content.first().and_then(|c| match c {
+                    navra_protocol::Content::Text(t) => Some(t.text.as_str()),
+                    _ => None,
+                }).unwrap_or("");
+                if body_text.contains("HTTP 401") || body_text.contains("HTTP 403") {
+                    tracing::info!("OAuth: received 401/403, attempting token refresh");
+                    match mgr.force_refresh().await {
+                        Ok(new_token) => {
+                            let mut retry_headers = auth.headers();
+                            if let Ok(val) = reqwest::header::HeaderValue::from_str(
+                                &format!("Bearer {new_token}"),
+                            ) {
+                                retry_headers.insert(reqwest::header::AUTHORIZATION, val);
+                            }
+                            return send_request(client, &method, &url, &retry_headers, meta, args, max_response_bytes)
+                                .await
+                                .unwrap_or_else(|e| CallToolResult::error(format!("HTTP retry failed: {e}")));
+                        }
+                        Err(e) => {
+                            tracing::warn!("OAuth token refresh failed: {e}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    resp.unwrap_or_else(|e| CallToolResult::error(format!("HTTP request failed: {e}")))
+}
+
+async fn send_request(
+    client: &Client,
+    method: &reqwest::Method,
+    url: &str,
+    headers: &reqwest::header::HeaderMap,
+    meta: &OperationMeta,
+    args: &serde_json::Value,
+    max_response_bytes: Option<usize>,
+) -> Result<CallToolResult, String> {
+    let mut req = client.request(method.clone(), url);
+    req = req.headers(headers.clone());
 
     if meta.has_body {
         if let Some(body) = args.get("body") {
@@ -81,19 +127,15 @@ pub async fn execute_operation(
         }
     }
 
-    let resp = match req.send().await {
-        Ok(r) => r,
-        Err(e) => return CallToolResult::error(format!("HTTP request failed: {e}")),
-    };
+    let resp = req.send().await.map_err(|e| e.to_string())?;
 
     let status = resp.status();
-    // Limit response body to prevent OOM on large responses (default 1 MiB).
     let max_body = max_response_bytes.unwrap_or(1024 * 1024);
     if let Some(len) = resp.content_length() {
         if len as usize > max_body {
-            return CallToolResult::error(format!(
+            return Ok(CallToolResult::error(format!(
                 "Response too large ({len} bytes, limit {max_body})"
-            ));
+            )));
         }
     }
     let body = match resp.bytes().await {
@@ -104,13 +146,13 @@ pub async fn execute_operation(
                 String::from_utf8_lossy(&b).into_owned()
             }
         }
-        Err(e) => return CallToolResult::error(format!("Failed to read response: {e}")),
+        Err(e) => return Ok(CallToolResult::error(format!("Failed to read response: {e}"))),
     };
 
     if status.is_success() {
-        CallToolResult::text(truncate_response(body, max_response_bytes))
+        Ok(CallToolResult::text(truncate_response(body, max_response_bytes)))
     } else {
-        CallToolResult::error(format!("HTTP {status}: {body}"))
+        Ok(CallToolResult::error(format!("HTTP {status}: {body}")))
     }
 }
 
