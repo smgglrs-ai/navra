@@ -8,7 +8,7 @@ items:
   gate: 2026-07-28 flip default; implement now behind feature gate
 - id: NAVRA-025
   title: NeuroTaint offline taint audit
-  status: planned
+  status: done
   priority: low
   effective_priority: high
   effort: 5-7d
@@ -16,6 +16,7 @@ items:
   - NAVRA-024
   feeds:
   - NAVRA-001
+  progress: 100
 - id: NAVRA-099
   title: ADR-style detect-only monitoring agent
   status: done

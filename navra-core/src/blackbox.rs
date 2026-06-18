@@ -379,6 +379,80 @@ impl Blackbox {
         (entries, total)
     }
 
+    /// Retrieve all blackbox entries for a specific session.
+    pub fn query_session(&self, session_id: &str) -> Vec<BlackboxEntry> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db
+            .prepare(
+                "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
+                 tool_name, tool_args, tool_result, outcome, duration_us, \
+                 ifc_label, prev_hash, hash, obo_sub \
+                 FROM blackbox WHERE session_id = ? ORDER BY seq ASC",
+            )
+            .unwrap();
+        stmt.query_map([session_id], |row| {
+            Ok(BlackboxEntry {
+                seq: row.get(0)?,
+                timestamp_ms: row.get(1)?,
+                agent_name: row.get(2)?,
+                agent_permissions: row.get(3)?,
+                session_id: row.get(4)?,
+                tool_name: row.get(5)?,
+                tool_args: row.get(6)?,
+                tool_result: row.get(7)?,
+                outcome: row.get(8)?,
+                duration_us: row.get(9)?,
+                ifc_label: row.get(10)?,
+                prev_hash: row.get(11)?,
+                hash: row.get(12)?,
+                obo_sub: row.get(13)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
+    /// List distinct session IDs in the blackbox, optionally filtered by time range.
+    pub fn list_sessions(
+        &self,
+        since_ms: Option<i64>,
+        until_ms: Option<i64>,
+    ) -> Vec<String> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut sql = "SELECT DISTINCT session_id FROM blackbox".to_string();
+        let mut clauses = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(since) = since_ms {
+            clauses.push("timestamp_ms >= ?");
+            params.push(Box::new(since));
+        }
+        if let Some(until) = until_ms {
+            clauses.push("timestamp_ms <= ?");
+            params.push(Box::new(until));
+        }
+        if !clauses.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&clauses.join(" AND "));
+        }
+        sql.push_str(" ORDER BY MIN(timestamp_ms)");
+
+        // Need GROUP BY for ORDER BY MIN to work
+        sql = sql.replace(
+            "ORDER BY MIN(timestamp_ms)",
+            "GROUP BY session_id ORDER BY MIN(timestamp_ms)",
+        );
+
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = db.prepare(&sql).unwrap();
+        stmt.query_map(params_ref.as_slice(), |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect()
+    }
+
     /// Delete entries older than the specified number of days.
     ///
     /// Note: unlike most blackbox operations, this mutates existing data.
