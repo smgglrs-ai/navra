@@ -26,12 +26,12 @@ items:
   progress: 100
 - id: NAVRA-100
   title: ASSERT integration for compliance evaluation
-  status: in_progress
+  status: done
   priority: medium
   effort: 3-5d
   feeds:
   - NAVRA-020
-  progress: 0
+  progress: 100
 - id: NAVRA-019
   title: Persona paper
   status: planned
@@ -113,11 +113,12 @@ items:
   gate: IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision
 - id: NAVRA-083
   title: 'OpenAPI upstream: OAuth2 authorization code flow'
-  status: planned
+  status: in_progress
   priority: low
   effort: 3-5d
   depends_on:
   - NAVRA-082
+  progress: 0
 - id: NAVRA-092
   title: Evaluate LCLM for context compression
   status: planned
