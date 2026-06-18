@@ -1,6 +1,6 @@
 id: NAVRA-100
 title: ASSERT integration for compliance evaluation
-status: planned
+status: done
 priority: medium
 effort: 3-5d
 depends_on: []

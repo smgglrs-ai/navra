@@ -1,0 +1,31 @@
+id: NAVRA-135
+title: Consolidate rusqlite to workspace dependency
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  rusqlite (with bundled feature) is defined independently in 7 crate
+  Cargo.toml files: navra-agent, navra-cognitive, navra-core, navra-flow,
+  navra-memory, navra-server, navra-rag. Move to [workspace.dependencies]
+  in the root Cargo.toml and use workspace = true in each crate.
+
+  Check that all 7 crates use the same version and features. If any
+  differ, unify to the superset of features needed.
+acceptance:
+  - "rusqlite defined once in [workspace.dependencies] in root Cargo.toml"
+  - "All 7 crates use { workspace = true } for rusqlite"
+  - "cargo build succeeds with no duplicate rusqlite versions"
+  - "All tests pass"
+scope:
+  - Cargo.toml
+  - navra-agent/Cargo.toml
+  - navra-cognitive/Cargo.toml
+  - navra-core/Cargo.toml
+  - navra-flow/Cargo.toml
+  - navra-memory/Cargo.toml
+  - navra-server/Cargo.toml
+  - navra-rag/Cargo.toml
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build"

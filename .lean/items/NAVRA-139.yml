@@ -1,0 +1,38 @@
+id: NAVRA-139
+title: Complete WebMCP CDP transport implementation
+status: planned
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: |
+  navra-protocol/src/upstream/webmcp.rs has the WebMcpTransport struct
+  with 4 TODOs for the actual CDP WebSocket client. The struct
+  implements the Transport trait but all methods are stubs that return
+  placeholder data or errors.
+
+  Complete the implementation:
+  1. Add tokio-tungstenite dependency for WebSocket client
+  2. Connect to Chrome's CDP WebSocket on transport start
+  3. Implement Runtime.evaluate CDP calls for navigator.modelContext
+  4. Parse CDP responses back into MCP JSON-RPC format
+  5. Clean disconnect on transport close
+
+  This enables browser-native MCP tool access (WebMCP spec) — Chrome
+  extensions and web apps can expose tools via navigator.modelContext
+  that navra proxies to AI agents.
+
+  Requires a Chrome/Chromium instance with --remote-debugging-port
+  for testing. Integration tests should use a mock WebSocket server.
+acceptance:
+  - "WebMcpTransport connects to a CDP WebSocket endpoint"
+  - "tools/list returns tools from navigator.modelContext.tools evaluation"
+  - "tools/call executes navigator.modelContext.callTool() and returns result"
+  - "Transport gracefully handles Chrome not running or CDP endpoint unreachable"
+  - "Unit tests with mock WebSocket cover connect, list, call, and error paths"
+  - "No TODOs remain in webmcp.rs"
+scope:
+  - navra-protocol/src/upstream/webmcp.rs
+  - navra-protocol/Cargo.toml
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-protocol"

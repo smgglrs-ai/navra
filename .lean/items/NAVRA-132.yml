@@ -1,0 +1,29 @@
+id: NAVRA-132
+title: Bump MSRV from 1.75 to 1.80
+status: planned
+priority: medium
+effort: S
+depends_on: []
+feeds: []
+description: |
+  The workspace declares MSRV 1.75 but uses APIs stable since 1.80 in
+  navra-safety (regex.rs lines 819, 827 and lib.rs lines 97-98). Since
+  all development happens on recent stable Rust and there are no known
+  downstream consumers pinned to 1.75, bump MSRV to 1.80.
+
+  Update:
+  1. rust-version in all workspace Cargo.toml files
+  2. .lean/project.yml msrv field
+  3. Any CI config that references MSRV
+  4. DESIGN.md if it mentions MSRV
+acceptance:
+  - "All Cargo.toml rust-version fields set to 1.80"
+  - "project.yml msrv updated to 1.80"
+  - "cargo clippy --workspace shows no MSRV warnings"
+  - "All tests pass"
+scope:
+  - Cargo.toml
+  - "*/Cargo.toml"
+  - .lean/project.yml
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo clippy --workspace 2>&1 | grep MSRV | wc -l"

@@ -1,0 +1,38 @@
+id: NAVRA-141
+title: "MCP 2026-07-28: implement SEP-2577 deprecation of Roots/Sampling/Logging"
+status: planned
+priority: high
+effort: M
+depends_on:
+  - NAVRA-018
+feeds: []
+description: |
+  SEP-2577 formally deprecates three MCP capabilities with a 12-month
+  removal window:
+  - Roots → replaced by tool parameters and resource URIs
+  - Sampling → replaced by direct LLM provider APIs
+  - Logging → replaced by stderr and OpenTelemetry
+
+  navra currently uses Roots for filesystem scoping and Logging for
+  structured output. Implement the migration path:
+
+  1. Add deprecation warnings when clients use Roots, Sampling, or
+     Logging capabilities
+  2. Implement tool-parameter-based filesystem scoping as Roots
+     replacement (navra-tools-file already has path ACLs)
+  3. Route Logging calls to OTel spans (navra already has OTel support)
+  4. Document migration path for downstream consumers
+
+  This is lower urgency than SEP-2567 (12-month window) but should
+  start now to avoid a cliff.
+acceptance:
+  - "Deprecation warnings logged when clients negotiate Roots/Sampling/Logging capabilities"
+  - "File tools accept scope parameters directly instead of relying on Roots"
+  - "Logging notifications forwarded to OTel when otel feature is enabled"
+  - "Migration guide added to docs/"
+scope:
+  - navra-core/src/server/
+  - navra-tools-file/src/
+  - navra-server/src/main.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace"

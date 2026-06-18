@@ -1,6 +1,6 @@
 id: NAVRA-041
 title: Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice
-status: planned
+status: done
 priority: low
 effort: 1-2d
 depends_on: []

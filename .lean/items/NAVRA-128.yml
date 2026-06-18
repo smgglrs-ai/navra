@@ -1,0 +1,36 @@
+id: NAVRA-128
+title: Remove unwrap() chains in navra-server API handlers
+status: planned
+priority: high
+effort: M
+depends_on: []
+feeds: []
+description: |
+  Replace dangerous .unwrap() chains in navra-server/src/main.rs
+  production code paths with proper error handling. Focus on the
+  highest-risk sites first:
+
+  1. JSON response parsing chains (~lines 5477-5530): three chained
+     unwraps that crash on any malformed API response
+  2. Audit log initialization (~line 2633): Arc::new(...unwrap())
+     crashes if audit log can't open
+  3. Shared chunk store access (~line 1802): unwrap on Option without
+     validation
+  4. Persona lookup in CLI (~line 4868): assumes persona exists
+
+  Do NOT touch unwrap() in test code or in truly infallible contexts
+  (e.g., regex compilation with known-good patterns, mutex locks in
+  single-threaded init). Focus on code paths reachable at runtime
+  where external input or I/O can cause the unwrap to fire.
+
+  Use anyhow::Context for server startup paths, and
+  CallToolResult::error() for tool-call paths.
+acceptance:
+  - "Zero unwrap() calls in navra-server/src/main.rs API handler functions (routes, tool dispatch)"
+  - "Server startup errors propagate with context instead of panicking"
+  - "CLI subcommands return user-friendly errors for missing personas/configs"
+  - "All existing tests still pass"
+scope:
+  - navra-server/src/main.rs
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --lib"

@@ -1,0 +1,39 @@
+id: NAVRA-142
+title: "MCP 2026-07-28: OAuth iss validation and credential binding"
+status: planned
+priority: high
+effort: M
+depends_on:
+  - NAVRA-018
+  - NAVRA-083
+feeds: []
+description: |
+  Six authorization SEPs in the 2026-07-28 RC harden OAuth handling.
+  The two mandatory changes for navra's upstream proxy:
+
+  1. SEP-2468: Mandatory issuer (iss) validation per RFC 9207.
+     navra-auth must validate the iss claim in OAuth tokens against
+     the authorization server metadata.
+
+  2. SEP-2352: Credential binding to issuing server. Credentials
+     obtained from one authorization server must not be accepted by
+     another. On server migration, re-registration is required.
+
+  Also relevant:
+  - SEP-837: application_type declaration during Dynamic Client
+    Registration (DCR)
+  - SEP-2207/2350/2351: additional OAuth hardening
+
+  NAVRA-083 (OAuth2 authorization code flow) provides the foundation;
+  this item adds the compliance requirements from the new SEPs.
+acceptance:
+  - "OAuth token validation checks iss claim against authorization server metadata"
+  - "Credentials are bound to their issuing server; cross-server use is rejected"
+  - "DCR requests include application_type field"
+  - "Tests cover iss mismatch rejection and credential binding enforcement"
+scope:
+  - navra-auth/src/auth/oauth.rs
+  - navra-auth/src/auth/mod.rs
+  - navra-server/src/config/
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-auth"

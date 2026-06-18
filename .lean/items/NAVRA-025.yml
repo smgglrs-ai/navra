@@ -1,6 +1,6 @@
 id: NAVRA-025
 title: NeuroTaint offline taint audit
-status: planned
+status: done
 priority: low
 effort: 5-7d
 depends_on:
