@@ -371,6 +371,62 @@ mod tests {
     }
 
     #[test]
+    fn gemma4_12b_model_card() {
+        let mut card = ModelCard::new("ollama://gemma4:12b");
+        card.vendor = VendorMeta {
+            source: Some("ollama".into()),
+            family: Some("gemma".into()),
+            parameters: Some("12B".into()),
+            quantization: None,
+            context_window: Some(128_000),
+            format: Some("gguf".into()),
+            tasks: vec![
+                "text-generation".into(),
+                "image-text-to-text".into(),
+                "audio-text-to-text".into(),
+            ],
+            license: Some("Apache-2.0".into()),
+            languages: vec!["en".into(), "fr".into(), "de".into(), "es".into()],
+            runtime: Some("local".into()),
+            custom: HashMap::new(),
+        };
+        card.agentic = AgenticMeta {
+            strengths: vec![
+                "multimodal (text+image+audio)".into(),
+                "encoder-free vision (35M embedder)".into(),
+                "strong agentic performance".into(),
+            ],
+            weaknesses: vec![
+                "no TTS output (understanding only)".into(),
+                "12B too large for CPU tier".into(),
+            ],
+            recommended_tasks: vec![
+                "vision analysis".into(),
+                "code generation".into(),
+                "chat".into(),
+            ],
+            avoid_tasks: vec!["speech synthesis".into()],
+            tool_use: Some("advanced".into()),
+            cost_tier: Some("free".into()),
+            speed_tier: Some("medium".into()),
+            max_agents: Some(4),
+            reasoning: Some("extended".into()),
+            json_compliance: Some("best-effort".into()),
+            locality: Some("local".into()),
+        };
+
+        assert_eq!(card.inference_name(), "gemma4:12b");
+        assert_eq!(card.locality(), "local");
+
+        let json = serde_json::to_string_pretty(&card).unwrap();
+        let restored: ModelCard = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.vendor.parameters, Some("12B".into()));
+        assert_eq!(restored.vendor.license, Some("Apache-2.0".into()));
+        assert!(restored.vendor.tasks.contains(&"image-text-to-text".into()));
+        assert_eq!(restored.agentic.tool_use, Some("advanced".into()));
+    }
+
+    #[test]
     fn deserialize_minimal_json() {
         let json = r#"{
             "schema_version": 1,

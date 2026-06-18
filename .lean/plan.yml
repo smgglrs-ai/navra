@@ -98,10 +98,11 @@ items:
   progress: 100
 - id: NAVRA-039
   title: Gemma 4 12B multimodal backend
-  status: planned
+  status: done
   priority: low
   effort: 1-2d
   gate: 'onnxruntime-genai #2062 (ONNX path); Ollama path works now'
+  progress: 100
 - id: NAVRA-041
   title: Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice
   status: planned
