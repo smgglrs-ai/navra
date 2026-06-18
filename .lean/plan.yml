@@ -83,9 +83,10 @@ items:
   gate: K8s CRD v1alpha1 stability
 - id: NAVRA-028
   title: TurboVec evaluation
-  status: planned
+  status: done
   priority: low
   effort: 1-2d
+  progress: 100
 - id: NAVRA-030
   title: X-Token Projection for safety model KD
   status: planned
