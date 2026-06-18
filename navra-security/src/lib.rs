@@ -1,6 +1,7 @@
-//! navra-security: Facade re-exporting navra-auth and navra-safety.
-//!
-//! New code should depend on `navra-auth` or `navra-safety` directly.
+//! navra-security: Facade re-exporting navra-auth and navra-safety,
+//! plus the taint audit subsystem.
+
+pub mod taint_audit;
 
 pub use navra_auth::auth;
 pub use navra_auth::credentials;
