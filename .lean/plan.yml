@@ -80,10 +80,11 @@ items:
   - NAVRA-004
 - id: NAVRA-027
   title: Kubernetes Agent Sandbox backend
-  status: planned
+  status: done
   priority: low
   effort: 3-5d
   gate: K8s CRD v1alpha1 stability
+  progress: 100
 - id: NAVRA-028
   title: TurboVec evaluation
   status: done

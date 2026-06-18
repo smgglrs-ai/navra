@@ -733,3 +733,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "LFM2.5-Audio ONNX evaluation: REJECT. LFM 1.0 license has $10M revenue cap (Red Hat/IBM incompatible). Also: 5-component orchestration complexity, 1.5GB vs 280MB for Whisper+Kokoro. Current pipeline stays."
   iteration: 10
   max_iterations: 20
+- timestamp: "2026-06-18T19:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-027"
+  summary: "Kubernetes Agent Sandbox backend: Isolation::Kubernetes variant, KubernetesRuntime implementing ModelRuntime trait, CRD manifest generation (agents.x-k8s.io/v1alpha1), resource limits mapping, kubectl-based lifecycle. 9 unit tests + 71 total passing."
+  iteration: 11
+  max_iterations: 20
