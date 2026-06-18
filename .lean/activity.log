@@ -605,3 +605,28 @@ Breaking API changes + security architecture change require human review before 
     exit_reason: "All planned notify-scope items completed"
     branch: "loop/2026-06-17-3"
     tag: "loop-run/2026-06-17-3-7"
+- timestamp: "2026-06-17T18:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-113"
+  summary: "Model URIs support @sha256:... digest pinning; cache.store() verifies hash before writing; unverified pulls logged as warning"
+  iteration: 1
+  max_iterations: 20
+- timestamp: "2026-06-17T18:15:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 1 item completed (NAVRA-113). Exit: remaining items are multi-day efforts requiring external ops"
+  details:
+    iterations: 1
+    max_iterations: 20
+    completed: [NAVRA-113]
+    exit_reason: "Remaining items (090, 099, 100, 083, etc.) are 2-5 day efforts involving external forks, research, or new module architecture"
+    branch: "loop/2026-06-17-4"
+    tag: "loop-run/2026-06-17-4-1"
+- timestamp: "2026-06-18T00:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-090"
+  summary: "Removed navra-tools-git; git tools now from upstream docker.io/mcp/git container; gateway path ACL extended for repo_path"
+  iteration: 2
+  max_iterations: 20

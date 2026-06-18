@@ -17,6 +17,7 @@
 
 use serde_json::json;
 use std::process::Stdio;
+use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 use tokio::process::{Child, Command};
 
@@ -150,6 +151,11 @@ tcp = "127.0.0.1:{port}"
 name = "filesystem"
 transport = "stdio"
 command = ["podman", "run", "--rm", "-i", "--userns=keep-id", "-v", "{project_dir}:{project_dir}:Z", "localhost/mcp-filesystem", "{project_dir}"]
+
+[[upstream]]
+name = "git"
+transport = "stdio"
+command = ["podman", "run", "--rm", "-i", "--userns=keep-id", "-v", "{project_dir}:{project_dir}:Z", "localhost/mcp-git"]
 
 [permissions.default]
 ring = 2
@@ -543,6 +549,8 @@ async fn a8_expired_token_rejected() {
 #[tokio::test]
 async fn a9_readonly_git_commit_blocked() {
     let dir = tempfile::tempdir().unwrap();
+    // Make tempdir accessible to containerized MCP servers
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
 
     // Initialize a git repo in the temp dir
     std::process::Command::new("git")
@@ -582,7 +590,7 @@ async fn a9_readonly_git_commit_blocked() {
         &url,
         &session,
         "git_commit",
-        json!({"path": dir.path().to_string_lossy(), "message": "attacker commit"}),
+        json!({"repo_path": dir.path().to_string_lossy(), "message": "attacker commit"}),
         2,
     )
     .await;

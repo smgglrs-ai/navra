@@ -1686,15 +1686,24 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
         .and_then(|name| models.get(name))
         .cloned();
 
-    // --- Git module ---
+    // --- Git module (upstream MCP server) ---
+    // Git tools are provided by docker.io/mcp/git as an upstream MCP server.
+    // Gateway-level path ACLs enforce repo_path permissions.
     if cfg.git_enabled() {
-        let git = navra_tools_git::GitModule::new(
-            perm_engine.clone(),
-            approvals.clone(),
-            notifier.clone(),
-        );
-        tracing::info!("Module 'git' enabled");
-        builder = builder.module(git);
+        let has_git_upstream = cfg
+            .upstream
+            .iter()
+            .any(|u| u.name == "git" || u.name == "mcp-git");
+        if !has_git_upstream {
+            tracing::warn!(
+                "[modules.git] is enabled but no [[upstream]] named 'git' found. \
+                 Add to config.toml:\n\
+                 [[upstream]]\n\
+                 name = \"git\"\n\
+                 transport = \"stdio\"\n\
+                 command = [\"podman\", \"run\", \"--rm\", \"-i\", \"docker.io/mcp/git\"]"
+            );
+        }
     }
 
     if cfg.gitlab_enabled() {
