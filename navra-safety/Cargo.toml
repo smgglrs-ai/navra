@@ -12,7 +12,7 @@ readme = "README.md"
 
 [features]
 default = []
-onnx = ["dep:dirs", "dep:ort", "dep:ndarray", "dep:tokenizers"]
+onnx = ["dep:dirs", "dep:ort", "dep:ndarray", "dep:tokenizers", "dep:navra-model"]
 
 [dependencies]
 regex-lite = "0.1"
@@ -22,6 +22,7 @@ thiserror = "2"
 tracing = "0.1"
 
 # ONNX-gated
+navra-model = { path = "../navra-model", default-features = false, features = ["onnx"], optional = true }
 dirs = { version = "6", optional = true }
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
 ndarray = { version = "0.17", optional = true }

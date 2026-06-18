@@ -701,3 +701,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Added Gemma 4 12B as GPU-tier alternative: model card test, MODELS.md docs with config examples and Ollama Modelfile, GPU tier table entry."
   iteration: 7
   max_iterations: 20
+- timestamp: "2026-06-18T17:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-021"
+  summary: "ONNX/ort deepening: extracted shared build_onnx_session() into navra-model::onnx, unified EP construction across navra-rag (reranker) and navra-safety (NER, privacy_filter) from deprecated ort::execution_providers to shared builder. 387 tests passing."
+  iteration: 8
+  max_iterations: 20
