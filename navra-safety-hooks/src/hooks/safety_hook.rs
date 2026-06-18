@@ -200,13 +200,10 @@ impl Hook for SafetyHook {
             return HookDecision::ModifyResult(new_result);
         }
         for (new, old) in new_result.content.iter().zip(result.content.iter()) {
-            match (new, old) {
-                (Content::Text(new_t), Content::Text(old_t)) => {
-                    if new_t.text != old_t.text {
-                        return HookDecision::ModifyResult(new_result);
-                    }
+            if let (Content::Text(new_t), Content::Text(old_t)) = (new, old) {
+                if new_t.text != old_t.text {
+                    return HookDecision::ModifyResult(new_result);
                 }
-                _ => {}
             }
         }
         HookDecision::Continue

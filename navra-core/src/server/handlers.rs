@@ -1237,8 +1237,7 @@ impl McpServer {
                 .filter(|uri| {
                     params.argument.value.is_empty() || uri.starts_with(&params.argument.value)
                 })
-                .cloned()
-                .take(100)
+                .take(100).cloned()
                 .collect(),
             _ => Vec::new(),
         };

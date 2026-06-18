@@ -13,20 +13,17 @@ use std::collections::HashMap;
 /// How many verifier agents must approve for the result to pass.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum VerificationThreshold {
     /// At least one verifier must approve.
     Any,
     /// More than half of verifiers must approve.
+    #[default]
     Majority,
     /// All verifiers must approve.
     Unanimous,
 }
 
-impl Default for VerificationThreshold {
-    fn default() -> Self {
-        Self::Majority
-    }
-}
 
 /// Configuration for cross-validation of a task's output.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -51,7 +51,7 @@ impl BudgetHook {
 
 /// Estimate token count from text using the ~4 chars/token heuristic.
 pub fn estimate_tokens(text: &str) -> usize {
-    (text.len() + 3) / 4
+    text.len().div_ceil(4)
 }
 
 /// Convert a token count back to an approximate character count.
@@ -119,7 +119,7 @@ fn find_line_boundary_after(text: &str, pos: usize) -> usize {
     match text[pos..].find('\n') {
         Some(offset) => {
             let nl = pos + offset;
-            if nl + 1 <= text.len() {
+            if nl < text.len() {
                 nl + 1
             } else {
                 text.len()

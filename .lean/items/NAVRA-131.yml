@@ -1,6 +1,6 @@
 id: NAVRA-131
 title: Fix clippy warnings across workspace
-status: planned
+status: done
 priority: medium
 effort: S
 depends_on: []
@@ -38,3 +38,4 @@ scope:
   - navra-server/src/
 verification:
   quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo clippy --workspace 2>&1 | grep -v kani | grep 'warning:' | wc -l"
+progress: 100

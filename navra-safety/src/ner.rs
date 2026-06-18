@@ -769,7 +769,7 @@ fn suppress_technical_names(text: &str, span: &EntitySpan) -> bool {
         "Cargo",
         "Rustc",
     ];
-    if TECHNICAL_TERMS.iter().any(|t| *t == matched) {
+    if TECHNICAL_TERMS.contains(&matched) {
         return true;
     }
 
