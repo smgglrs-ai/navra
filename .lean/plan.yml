@@ -66,10 +66,11 @@ items:
   gate: Moshi ONNX export
 - id: NAVRA-023
   title: delta-mem OSAM evaluation
-  status: planned
+  status: done
   priority: low
   effort: 1-2d
   gate: ONNX integration
+  progress: 100
 - id: NAVRA-026
   title: AG-UI via rendra-ag-ui
   status: planned
