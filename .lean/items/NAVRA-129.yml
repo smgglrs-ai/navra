@@ -21,3 +21,10 @@ scope:
   - navra-agent/src/quota.rs
 verification:
   quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-agent"
+progress: 100
+notes:
+  - date: "2026-06-18"
+    detail: |
+      No-op: the panic!() is inside a #[kani::proof] formal verification
+      harness, not production code. The RwLock::unwrap() calls are idiomatic
+      for poisoned lock handling. No changes needed.
