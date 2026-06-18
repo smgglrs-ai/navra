@@ -504,6 +504,7 @@ impl McpServer {
             .arguments
             .get("path")
             .or_else(|| params.arguments.get("file_path"))
+            .or_else(|| params.arguments.get("repo_path"))
             .and_then(|v| v.as_str())
         {
             if let Some(acl) = self.path_acls.get(&ctx.agent.permissions) {
