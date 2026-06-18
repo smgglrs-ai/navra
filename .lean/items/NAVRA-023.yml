@@ -1,8 +1,28 @@
-id: "NAVRA-023"
-title: "delta-mem OSAM evaluation"
+id: NAVRA-023
+title: delta-mem OSAM evaluation
 status: planned
 priority: low
-effort: 2-2d
+effort: 1-2d
 depends_on: []
 feeds: []
-gate: "ONNX integration"
+gate: ONNX integration
+description: Evaluate delta-mem's Online State of Associative Memory (OSAM) as a working memory mechanism for navra's locally-served
+  small models. OSAM is a fixed-size matrix (0.12% of backbone parameters) that is dynamically updated each turn, acting as
+  compressed intra-session working memory complementary to navra-rag's cross-session retrieval. The evaluation should determine
+  whether OSAM integrates with the ONNX Runtime path, measure quality impact on Granite-3.2-3B and Qwen3-4B multi-turn tool-calling
+  tasks on NPU, and produce a go/no-go recommendation for adding OSAM matrix support to the model serving layer in navra-model-runtime.
+acceptance:
+- OSAM matrix loading and inference works through the ONNX Runtime session in navra-model-runtime
+- Benchmark harness runs multi-turn tool-calling scenarios with and without OSAM on at least one target model (Granite-3.2-3B
+  or Qwen3-4B)
+- Memory overhead measured and confirmed within 1% of backbone parameters on NPU hardware profile
+- Results documented with accuracy delta (frozen baseline vs OSAM-augmented) and latency impact per turn
+- Go/no-go recommendation written with integration path if positive (OSAM matrix persistence, update loop, serving API changes)
+scope:
+- navra-model-runtime/src/engine.rs
+- navra-model-runtime/src/npu.rs
+- navra-model-runtime/src/lib.rs
+- navra-model-runtime/tests/
+- navra-model-hub/
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-model-runtime

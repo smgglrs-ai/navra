@@ -1,6 +1,6 @@
 id: "NAVRA-045"
 title: "GitLab module"
-status: wont_do
+status: done
 priority: medium
 effort: 3-4d
 depends_on: []

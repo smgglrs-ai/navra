@@ -1,11 +1,11 @@
-id: "NAVRA-039"
-title: "Gemma 4 12B multimodal backend"
+id: NAVRA-039
+title: Gemma 4 12B multimodal backend
 status: planned
 priority: low
-effort: 2-3d
+effort: 1-2d
 depends_on: []
 feeds: []
-gate: "onnxruntime-genai #2062 (ONNX path); Ollama path works now"
+gate: 'onnxruntime-genai #2062 (ONNX path); Ollama path works now'
 source: tech-watch-2026-06-05
 description: |
   Add Gemma 4 12B as optional GPU-tier multimodal backend via Ollama/vLLM in navra-model-runtime. Encoder-free architecture (35M vision embedder vs 550M encoder), unified text+vision+audio, Apache 2.0. Can replace ASR + vision input paths with single model but NOT TTS (understanding only). 12B too large for CPU tier. Complementary to Granite (text/tools). ONNX blocked until onnxruntime-genai supports Gemma 4 architecture.
@@ -18,3 +18,24 @@ notes: |
   Without custom Modelfile, Ollama defaults to 4K context which breaks
   agentic workflows. KV cache quantization (OLLAMA_KV_CACHE_TYPE=q8_0)
   helps with memory pressure on constrained hardware.
+acceptance:
+- Gemma 4 12B model card exists in navra-model-hub with correct source URI, license (Apache 2.0), format, and VRAM estimate
+- Config example in MODELS.md shows how to configure Gemma 4 12B as a vision model and as a chat model
+- VisionModule tools (vision_describe, vision_ocr, vision_ask, vision_screen) work with Gemma 4 12B backend configured via
+  config.toml
+- Integration test verifies OpenAiBackend can send multimodal requests (text + image) to a Gemma 4 12B endpoint and receive
+  valid responses
+- MODELS.md GPU tier table updated to include Gemma 4 12B alongside the existing 26B-A4B entry with VRAM comparison
+- Config schema (config.schema.json) regenerated to reflect any new fields or examples
+scope:
+- navra-model-hub/src/ (model card for gemma-4-12b)
+- navra-server/src/config/models.rs (no code change expected, config already supports it)
+- navra-server/src/main.rs (no code change expected, wiring is generic)
+- navra-modal-vision/src/tools.rs (no code change expected, already model-agnostic)
+- navra-model/src/openai.rs (verify multimodal path works for Gemma 4 12B chat template)
+- 'MODELS.md (documentation: GPU tier table, example config, VRAM budget)'
+- config.schema.json (regenerate if needed)
+- examples/ (example config.toml with Gemma 4 12B)
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-model-hub -p navra-modal-vision -p navra-model
+    --lib

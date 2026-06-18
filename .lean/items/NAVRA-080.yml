@@ -1,6 +1,6 @@
 id: "NAVRA-080"
 title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
-status: completed
+status: done
 priority: low
 effort: S
 depends_on: []

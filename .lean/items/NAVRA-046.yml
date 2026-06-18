@@ -1,6 +1,6 @@
 id: "NAVRA-046"
 title: "Jira module"
-status: wont_do
+status: done
 priority: low
 effort: 2-3d
 depends_on: ['NAVRA-045']

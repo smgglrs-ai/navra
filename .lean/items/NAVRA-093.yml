@@ -1,12 +1,14 @@
 id: NAVRA-093
-title: "Run ADR-Bench against navra"
+title: Run ADR-Bench against navra
 status: planned
 priority: low
-effort: 2-3d
-depends_on: ['NAVRA-079']
-feeds: ['NAVRA-048']
+effort: 3-5d
+depends_on:
+- NAVRA-079
+feeds:
+- NAVRA-048
 source: tech-watch-2026-06-13
-gate: "ADR-Bench dataset publicly available"
+gate: ADR-Bench dataset publicly available
 description: |
   Run the full ADR-Bench (302 tasks, 17 attack techniques, 133 MCP
   servers) against navra. Compare detection rates with ADR's published
@@ -28,7 +30,17 @@ description: |
      tasks — no subset selection bias)
   7. Document results in docs/evaluations/adr-bench-results.md
 acceptance:
-  - "Full 302-task benchmark executed"
-  - "Detection and false positive rates computed"
-  - "Direct comparison with ADR/GuardAgent/LlamaFirewall published numbers"
-  - "Results documented"
+- Full 302-task benchmark executed
+- Detection and false positive rates computed
+- Direct comparison with ADR/GuardAgent/LlamaFirewall published numbers
+- Results documented
+scope:
+- navra-server/tests/adversarial_eval.rs
+- navra-server/tests/adr_bench/
+- navra-server/tests/containers/
+- docs/evaluations/adr-bench-mapping.md
+- docs/evaluations/
+- benchmarks/Cargo.toml
+- navra-auth/src/ifc/corpus.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test adversarial_eval -- --test-threads=1

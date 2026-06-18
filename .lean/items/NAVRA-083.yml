@@ -1,9 +1,10 @@
 id: NAVRA-083
-title: "OpenAPI upstream: OAuth2 authorization code flow"
+title: 'OpenAPI upstream: OAuth2 authorization code flow'
 status: planned
 priority: low
 effort: 3-5d
-depends_on: ['NAVRA-082']
+depends_on:
+- NAVRA-082
 description: |
   Extend navra-openapi auth to support OAuth2 authorization code flow
   with PKCE and token refresh. Enables APIs that require user-level auth
@@ -13,3 +14,23 @@ description: |
   navra-auth, possibly a callback endpoint in navra-core's HTTP router.
   Static tokens (bearer, API key, basic) are already supported in
   NAVRA-082.
+acceptance:
+- OAuth2 Authorization Code + PKCE flow acquires an access token via localhost callback (ephemeral port) and injects it as
+  a Bearer header into OpenAPI requests
+- PKCE uses S256 code challenge method per RFC 7636; plain method is rejected
+- Acquired tokens are cached in memory with expiry tracking; expired tokens trigger silent refresh using the refresh_token
+  grant before retrying the request
+- Config fields in UpstreamOAuthConfig (client_id, client_secret, flow, scopes) are validated at startup; missing client_id
+  with flow=code produces a clear error
+- A 401 or 403 response from an OpenAPI upstream triggers exactly one token refresh attempt before surfacing the error to
+  the caller
+- Unit tests cover PKCE challenge/verifier generation, token response parsing, and refresh logic without requiring a real
+  OAuth provider
+scope:
+- navra-openapi/src/auth.rs
+- navra-openapi/src/handler.rs
+- navra-openapi/src/lib.rs
+- navra-server/src/config/agents.rs
+- navra-server/src/main.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-openapi --test-threads=1

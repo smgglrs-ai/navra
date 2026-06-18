@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 51 active items
+# 39 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -53,7 +53,7 @@ items:
     title: "ONNX/ort deepening"
     status: planned
     priority: low
-    effort: 2-3d
+    effort: 3-5d
     feeds: ['NAVRA-022']
     gate: "ONNX spec"
 
@@ -61,7 +61,7 @@ items:
     title: "KAME tandem voice"
     status: planned
     priority: low
-    effort: 2-3d
+    effort: 3-5d
     depends_on: ['NAVRA-021']
     gate: "Moshi ONNX export"
 
@@ -69,14 +69,14 @@ items:
     title: "delta-mem OSAM evaluation"
     status: planned
     priority: low
-    effort: 2-2d
+    effort: 1-2d
     gate: "ONNX integration"
 
   - id: "NAVRA-026"
     title: "AG-UI via rendra-ag-ui"
     status: planned
     priority: low
-    effort: 2-3d
+    effort: 3-5d
     depends_on: ['NAVRA-004']
 
   - id: "NAVRA-027"
@@ -90,7 +90,7 @@ items:
     title: "TurboVec evaluation"
     status: planned
     priority: low
-    effort: 2-3d
+    effort: 1-2d
 
   - id: "NAVRA-030"
     title: "X-Token Projection for safety model KD"
@@ -103,21 +103,21 @@ items:
     title: "Gemma 4 12B multimodal backend"
     status: planned
     priority: low
-    effort: 2-3d
+    effort: 1-2d
     gate: "onnxruntime-genai #2062 (ONNX path); Ollama path works now"
 
   - id: "NAVRA-041"
     title: "Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice"
     status: planned
     priority: low
-    effort: 1d
+    effort: 1-2d
     gate: "Model available on HuggingFace in ONNX format"
 
   - id: "NAVRA-042"
     title: "DNS-AID discovery support"
     status: planned
     priority: low
-    effort: 2-3d
+    effort: 3-5d
     gate: "IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision"
 
   - id: "NAVRA-083"
@@ -131,14 +131,14 @@ items:
     title: "Evaluate LCLM for context compression"
     status: planned
     priority: low
-    effort: 2-3d
+    effort: 3-5d
     gate: "LCLM 0.6B encoder available as ONNX export"
 
   - id: "NAVRA-093"
     title: "Run ADR-Bench against navra"
     status: planned
     priority: low
-    effort: 2-3d
+    effort: 3-5d
     depends_on: ['NAVRA-079']
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
@@ -268,81 +268,6 @@ items:
   - id: "NAVRA-071"
     title: "HTML-to-markdown conversion"
     status: backlog
-    priority: low
-    effort: S
-
-  - id: "NAVRA-047"
-    title: "GraphQL scope escape prevention"
-    status: wont_do
-    priority: high
-    effort: 1-2d
-
-  - id: "NAVRA-080"
-    title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
-    status: completed
-    priority: low
-    effective_priority: high
-    effort: S
-    feeds: ['NAVRA-074']
-
-  - id: "NAVRA-036"
-    title: "VerifierHook with false-pass-rate tracking"
-    status: completed
-    priority: medium
-    effort: 1-2d
-
-  - id: "NAVRA-045"
-    title: "GitLab module"
-    status: wont_do
-    priority: medium
-    effort: 3-4d
-
-  - id: "NAVRA-066"
-    title: "Computer use Actor trait"
-    status: wont_do
-    priority: medium
-    effort: M
-
-  - id: "NAVRA-067"
-    title: "ToolBlock structured output"
-    status: completed
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-068"
-    title: "Intent-based tool grouping"
-    status: wont_do
-    priority: medium
-    effort: M
-
-  - id: "NAVRA-073"
-    title: "Model refusal detection and gateway-level fallback routing"
-    status: completed
-    priority: medium
-    effort: 2-3d
-
-  - id: "NAVRA-085"
-    title: "Handle notifications/tools/list_changed from upstream MCP servers"
-    status: completed
-    priority: medium
-    effort: 2-3d
-
-  - id: "NAVRA-033"
-    title: "ET metric in Prometheus"
-    status: completed
-    priority: low
-    effort: 0.5-0.5d
-
-  - id: "NAVRA-046"
-    title: "Jira module"
-    status: wont_do
-    priority: low
-    effort: 2-3d
-    depends_on: ['NAVRA-045']
-
-  - id: "NAVRA-065"
-    title: "Config schema generation"
-    status: completed
     priority: low
     effort: S
 

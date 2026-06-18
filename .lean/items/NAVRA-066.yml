@@ -1,6 +1,6 @@
 id: NAVRA-066
 title: Computer use Actor trait
-status: wont_do
+status: done
 priority: medium
 effort: M
 depends_on: []
