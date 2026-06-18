@@ -107,10 +107,11 @@ items:
   progress: 100
 - id: NAVRA-041
   title: Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice
-  status: planned
+  status: done
   priority: low
   effort: 1-2d
   gate: Model available on HuggingFace in ONNX format
+  progress: 100
 - id: NAVRA-042
   title: DNS-AID discovery support
   status: planned
