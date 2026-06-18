@@ -726,3 +726,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "delta-mem OSAM evaluation: DEFER. PyTorch-only, no ONNX export. OSAM modifies attention computation at every layer — can't bolt onto frozen ONNX graph. Wrote evaluation doc with re-evaluate conditions."
   iteration: 9
   max_iterations: 20
+- timestamp: "2026-06-18T18:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-041"
+  summary: "LFM2.5-Audio ONNX evaluation: REJECT. LFM 1.0 license has $10M revenue cap (Red Hat/IBM incompatible). Also: 5-component orchestration complexity, 1.5GB vs 280MB for Whisper+Kokoro. Current pipeline stays."
+  iteration: 10
+  max_iterations: 20
