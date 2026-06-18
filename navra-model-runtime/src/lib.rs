@@ -25,6 +25,8 @@ mod npu;
 pub mod direct;
 #[cfg(feature = "openshell")]
 pub mod openshell;
+#[cfg(feature = "kubernetes")]
+pub mod kubernetes;
 #[cfg(feature = "podman")]
 pub mod podman;
 
@@ -101,6 +103,8 @@ pub enum Isolation {
     Podman,
     /// Delegate to OpenShell compute driver via gRPC.
     OpenShell,
+    /// Run in a Kubernetes Agent Sandbox (CRD-based).
+    Kubernetes,
 }
 
 impl fmt::Display for Isolation {
@@ -109,6 +113,7 @@ impl fmt::Display for Isolation {
             Self::Direct => f.write_str("direct"),
             Self::Podman => f.write_str("podman"),
             Self::OpenShell => f.write_str("openshell"),
+            Self::Kubernetes => f.write_str("kubernetes"),
         }
     }
 }
