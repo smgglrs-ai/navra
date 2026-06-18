@@ -747,3 +747,10 @@ Breaking API changes + security architecture change require human review before 
   summary: "Expanded PAPER.md Section 3.4 Cognitive Core from 11 lines to 76 lines: forge pipeline (load/validate/integrity), weaver assembly (cacheable/dynamic split, MCP sandboxing), skill lifecycle (IFC labels, test gates, memory), persona evolution (TraitVector, per-user EMA)."
   iteration: 12
   max_iterations: 20
+- timestamp: "2026-06-18T19:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-020"
+  summary: "Review paper restructured per review notes: dropped contributions 2-3 (JSON parsing, self-improvement) as numbered contributions, focused on dynamic persona selection as core contribution. Updated abstract and introduction."
+  iteration: 13
+  max_iterations: 20
