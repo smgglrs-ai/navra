@@ -216,3 +216,10 @@
   summary: "Applied cargo clippy --fix across 20 files in 12 crates: redundant closures, collapsed if/else, simplified filter_maps, lifetime elisions, suffix stripping, iterator patterns. Remaining warnings are MSRV (NAVRA-132), dead code (NAVRA-133), complex types (API design), and too-many-arguments (would require refactoring)."
   iteration: 4
   max_iterations: 20
+- timestamp: "2026-06-18T23:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-132"
+  summary: "Bumped MSRV from 1.75 to 1.91 (matching installed stable toolchain). Updated workspace Cargo.toml + 3 per-crate Cargo.toml + project.yml. Zero MSRV clippy warnings."
+  iteration: 5
+  max_iterations: 20
