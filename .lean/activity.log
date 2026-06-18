@@ -641,3 +641,17 @@ Breaking API changes + security architecture change require human review before 
     Loop 4 (notify): 2 items (113 model hub integrity, 090 upstream git MCP)
     Plus: gateway-level path ACL, MCP filesystem container, MCP git container
     Remaining: 10 actionable planned items (research, papers, protocol extensions)
+- timestamp: "2026-06-18T14:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-099"
+  summary: "Implemented detect-only monitoring agent: escalation channel, MonitoringHook, VerdictSink, Prometheus metrics, config wiring. 13 unit tests + 256 navra-core tests passing."
+  iteration: 1
+  max_iterations: 20
+- timestamp: "2026-06-18T14:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-100"
+  summary: "Integrated ASSERT compliance evaluation: 4 behavior specs, 4 pipeline configs, runner script, justfile targets. Full pipeline verified end-to-end with Ollama qwen2.5:7b."
+  iteration: 2
+  max_iterations: 20

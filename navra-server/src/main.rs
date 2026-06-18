@@ -5364,6 +5364,7 @@ fn resolve_openapi_auth(
         bearer,
         api_key,
         basic,
+        oauth: None,
     }
 }
 

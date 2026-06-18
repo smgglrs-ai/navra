@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod handler;
+pub mod oauth;
 pub mod parser;
 
 use auth::AuthConfig;
