@@ -4,6 +4,8 @@
 //! integration, and system tray. Composes all navra-* crates into
 //! a running gateway.
 
+use anyhow::Context as _;
+
 mod acp_agent;
 mod agent_bundle;
 mod build_tools;
@@ -180,7 +182,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Schema => {
             let schema = schemars::schema_for!(config::Config);
-            println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&schema)
+                    .context("failed to serialize config schema")?
+            );
         }
         Commands::Install => {
             install_systemd_units()?;
@@ -278,7 +284,9 @@ async fn main() -> anyhow::Result<()> {
                 .args([
                     "worktree",
                     "add",
-                    worktree_path.to_str().unwrap(),
+                    worktree_path
+                        .to_str()
+                        .ok_or_else(|| anyhow::anyhow!("worktree path is not valid UTF-8"))?,
                     "-b",
                     &branch,
                 ])
@@ -817,8 +825,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
                 tracing::error!(permission_set = %name, error = %e, "Invalid IFC config, defaulting to Deny");
                 navra_core::ifc::TaintedWritePolicy::Deny
             });
+        builder = builder.ifc_policy(name.clone(), policy.clone());
         if policy != navra_core::ifc::TaintedWritePolicy::Allow {
-            builder = builder.ifc_policy(name.clone(), policy.clone());
             tracing::info!(
                 permission_set = %name,
                 policy = %pset.tainted_write_policy,
@@ -1799,7 +1807,11 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
                     .with_metrics(metrics.clone());
                     rag_context_retriever =
                         Some(Arc::new(crate::rag_retriever::RagRetriever::new(
-                            Arc::clone(shared_chunk_store.as_ref().unwrap()),
+                            Arc::clone(
+                                shared_chunk_store
+                                    .as_ref()
+                                    .expect("chunk store must be initialized before RAG retriever"),
+                            ),
                             model.clone(),
                             reranker_for_retriever,
                             cascade_for_retriever,
@@ -2630,7 +2642,14 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
             }
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to open audit DB, using in-memory");
-                Arc::new(navra_memory::audit::AuditLog::open_memory().unwrap())
+                match navra_memory::audit::AuditLog::open_memory() {
+                    Ok(log) => Arc::new(log),
+                    Err(e2) => {
+                        anyhow::bail!(
+                            "Failed to open audit DB ({e}) and in-memory fallback ({e2})"
+                        );
+                    }
+                }
             }
         };
     if let Some(days) = cfg.memory_audit_retention_days() {
@@ -4864,8 +4883,7 @@ async fn run_agent(
 
     // Apply persona
     if let Some(ref forge) = forge {
-        if forge.get_persona(persona_name).is_some() {
-            let persona = forge.get_persona(persona_name).unwrap();
+        if let Some(persona) = forge.get_persona(persona_name) {
 
             // Check if this is an MCP-sourced persona
             let has_source = persona.source.is_some();
@@ -5146,7 +5164,7 @@ fn policy_suggest(
     let cutoff_ms = {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("system clock before UNIX epoch")
             .as_millis() as i64;
         now - (hours as i64 * 3600 * 1000)
     };
