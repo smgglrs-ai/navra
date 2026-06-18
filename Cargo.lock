@@ -3100,6 +3100,7 @@ dependencies = [
  "navra-core",
  "navra-macros",
  "navra-mcp",
+ "navra-model",
  "navra-protocol",
  "ndarray",
  "ort",
@@ -3131,6 +3132,7 @@ name = "navra-safety"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "navra-model",
  "ndarray",
  "ort",
  "regex-lite",
@@ -3180,8 +3182,10 @@ dependencies = [
  "async-trait",
  "axum 0.8.9",
  "navra-auth",
+ "navra-core",
  "navra-protocol",
  "navra-safety-hooks",
+ "serde",
  "serde_json",
  "tokio",
 ]
