@@ -1,6 +1,6 @@
 id: NAVRA-090
 title: "Replace navra-tools-git with upstream Git MCP server"
-status: planned
+status: done
 priority: medium
 effort: 3-5d
 depends_on: []

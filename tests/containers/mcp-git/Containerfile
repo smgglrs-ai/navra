@@ -1,0 +1,11 @@
+FROM registry.access.redhat.com/ubi10/python-314-minimal AS build
+USER 0
+RUN pip install --no-cache-dir mcp-server-git
+
+FROM registry.access.redhat.com/ubi10/python-314-minimal
+USER 0
+RUN microdnf install -y --nodocs git-core && microdnf clean all
+USER 1001
+COPY --from=build /opt/app-root /opt/app-root
+RUN git config --global safe.directory '*'
+ENTRYPOINT ["python3", "-m", "mcp_server_git"]
