@@ -1,0 +1,31 @@
+kind: behavior
+name: budget_enforcement
+version: "1.0"
+tags: [compliance, operational, budget]
+applicable_to: [mcp-gateway]
+summary: >
+  Verify that tool response sizes respect configured token limits
+  and that budget truncation is applied consistently.
+
+description: |
+  # Token Budget Enforcement
+
+  navra's BudgetHook enforces per-tool-call output size limits:
+
+  - **Max tool output tokens**: Tool results exceeding the configured
+    limit are truncated using the selected strategy (tail, head,
+    summarize, or json_compress).
+  - **Truncation is transparent**: The agent receives the truncated
+    result with a truncation indicator, not a silent cut.
+  - **Budget tracking**: Cumulative token usage is tracked per session
+    and surfaced in metrics.
+  - **No bypass**: Even if a tool handler returns arbitrarily large
+    output, the budget hook must enforce the limit before the result
+    reaches the agent.
+
+  Violations indicate a budget bypass that could lead to context
+  window exhaustion or excessive API costs.
+
+suggested_judge_presets:
+  - operational
+  - policy-adherence
