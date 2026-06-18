@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 40 active items
+# 39 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -25,12 +25,6 @@ items:
     priority: high
     effort: S
     progress: 100
-
-  - id: "NAVRA-130"
-    title: "Log silent event send failures in SSE and WebSocket transports"
-    status: planned
-    priority: high
-    effort: S
 
   - id: "NAVRA-141"
     title: "MCP 2026-07-28: implement SEP-2577 deprecation of Roots/Sampling/Logging"

@@ -202,3 +202,10 @@
   summary: "No-op: panic!() is inside #[kani::proof] verification harness, not production code. RwLock unwraps are idiomatic."
   iteration: 2
   max_iterations: 20
+- timestamp: "2026-06-18T22:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-130"
+  summary: "WebSocket transport: replaced 3 silent let _ = send() patterns with is_err() checks + debug logging + break on disconnect. SSE broadcaster left unchanged (Err on no receivers is expected lifecycle)."
+  iteration: 3
+  max_iterations: 20
