@@ -35,11 +35,12 @@ items:
   progress: 100
 - id: NAVRA-019
   title: Persona paper
-  status: planned
+  status: done
   priority: low
   effort: 5-7d
   depends_on:
   - NAVRA-003
+  progress: 100
 - id: NAVRA-020
   title: Review paper
   status: planned

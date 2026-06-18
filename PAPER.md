@@ -434,13 +434,78 @@ level per module.
 
 Agent personas are defined declaratively in YAML and compiled
 into structured system prompts by the Forge loader and Weaver
-assembler. 43 personas span 7 domains: engineering, analysis,
-leadership, quality assurance, security, communication, and
-specialized judges. Each persona specifies a core mandate,
-heuristic references, tool restrictions, and per-phase model
-preferences. Personas compose through heuristic references —
-shared reasoning modules (e.g., `systems_thinking.system_dynamics`)
-that multiple personas can include.
+assembler. The cognitive core manages 43 personas across 7
+domains (engineering, analysis, leadership, quality assurance,
+security, communication, specialized judges), 37 heuristic
+modules containing 113 facets, 8 operational directives, and
+3 persona specializations.
+
+**Persona definition.** Each persona specifies: a core mandate
+(the agent's fundamental directive), heuristic references
+(reusable reasoning modules with selectable facets), tool
+restrictions, per-phase model preferences (separate planning
+and execution models), output schema constraints, and MCP
+prompt references for runtime augmentation. Personas compose
+through heuristic references — shared reasoning modules
+(e.g., `systems_thinking.system_dynamics`) that multiple
+personas can include without duplication.
+
+**Forge pipeline.** The ForgeService loads personas from
+`cognitive_core/` in three phases: (1) scan the directory
+tree for persona YAML, heuristic modules, directives, and
+specialization files; (2) validate cross-references (every
+heuristic module and facet referenced by a persona must
+exist, every specialization's base persona must exist);
+(3) verify file integrity via `checksums.sha256` — files
+with mismatched hashes are skipped (fail-closed). The forge
+also auto-discovers personas from upstream MCP servers that
+expose `persona:*` prompts, enabling federated persona
+distribution.
+
+**Weaver assembly.** The Weaver constructs system prompts
+from loaded personas in a cacheable + dynamic split:
+
+1. *Cacheable prefix* (stable within session): core
+   directives, MCP prompts injected at `BeforeMandate`
+   position, the persona's core mandate, resolved
+   heuristic facets, few-shot examples (top 3), and MCP
+   prompts at `AfterHeuristics` and `AfterExamples` positions.
+
+2. *Dynamic context* (changes per invocation): retrieved
+   RAG context and conversation history, truncated to fit
+   the persona's context budget (system prompt is never
+   truncated — context yields first).
+
+MCP prompt injection is sandboxed: individual upstream
+prompts are capped at 8,000 characters, total across all
+positions at 20,000 characters. Oversized prompts are
+truncated at character boundaries with warnings.
+
+**Skill lifecycle.** Skills are task-specific tactical
+modules (80–500 tokens) that attach to personas at runtime
+via keyword matching. Each skill has a lifecycle:
+creation → validation → registration → selection →
+execution → memory. Skills carry IFC integrity labels —
+human-authored YAML skills are `Trusted`, AI-generated
+or downloaded skills are `Untrusted`. The SkillRegistry
+enforces test gates: when `require_tests=true`, untested
+skills are blocked regardless of integrity label. Per-skill
+memory logs execution outcomes (success, failure, partial)
+with notes, enabling experience-based refinement.
+
+**Persona evolution.** TraitVectors provide per-user
+behavioral adaptation. Each (persona, user) pair maintains
+a vector of behavioral scores (verbosity, formality,
+technical depth, caution, creativity) updated via
+momentum-based exponential moving average:
+`trait_new = α × observed + (1 − α) × trait_old`. Traits
+map to prompt modifiers injected at assembly time
+(e.g., `verbosity > 0.7` → "Be detailed"). TraitVectors
+persist in SQLite and can be frozen to lock behavior.
+Different users shape the same persona differently — a
+senior engineer gets terse, technical responses while a
+student gets detailed explanations, without separate
+persona definitions.
 
 #### Orchestration (navra-flow, navra-agent)
 
