@@ -1,9 +1,30 @@
-id: "NAVRA-020"
-title: "Review paper"
+id: NAVRA-020
+title: Review paper
 status: planned
 priority: low
 effort: 3-5d
-depends_on: ['NAVRA-006']
+depends_on:
+- NAVRA-006
 feeds: []
 description: |
   Autonomous multi-domain review. Workshop paper.
+acceptance:
+- Run review.yaml on c-CRAB benchmark and report precision, recall, and token cost with 95% confidence intervals across 3+
+  runs
+- Evaluate on 5+ external OSS projects spanning 3+ languages (not just Rust) and report per-domain persona selection accuracy
+- Compare dynamic persona selection against CodeAgent and Code Broker baselines on shared benchmarks with statistical tests
+- Drop JSON parsing resilience and flow resumability as numbered contributions; keep as engineering sections only
+- Paper passes a self-review flow (review.yaml on the paper itself) with no critical findings
+- Final paper committed to docs/papers/autonomous-review.md with all tables, figures, and references complete
+scope:
+- docs/papers/autonomous-review.md
+- docs/review-flows.md
+- examples/flows/review.yaml
+- examples/flows/comprehensive-review.yaml
+- navra-flow/src/definition.rs
+- navra-flow/src/verification.rs
+- navra-flow/src/iterative.rs
+- navra-cognitive/src/forge.rs
+- cognitive_core/heuristics/code_review_skills.yaml
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-flow -- --test-threads=1

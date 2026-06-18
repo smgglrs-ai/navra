@@ -1,12 +1,12 @@
-id: "NAVRA-041"
-title: "Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice"
+id: NAVRA-041
+title: Evaluate LFM2.5-Audio-1.5B-ONNX for navra-modal-voice
 status: planned
 priority: low
-effort: 1d
+effort: 1-2d
 depends_on: []
 feeds: []
 source: tech-watch-2026-06-02
-gate: "Model available on HuggingFace in ONNX format"
+gate: Model available on HuggingFace in ONNX format
 description: |
   Evaluate whether LFM2.5-Audio-1.5B (hybrid SSM, end-to-end
   speech-to-speech) can replace the separate ASR+TTS pipeline in
@@ -23,6 +23,13 @@ description: |
   Decision outcome: adopt (replace ASR+TTS), defer (wait for smaller
   model), or reject (quality/latency insufficient).
 acceptance:
-  - "Model loaded and running in ONNX Runtime"
-  - "Benchmark numbers documented (latency, memory, quality)"
-  - "Architecture decision documented: adopt, defer, or reject"
+- Model loaded and running in ONNX Runtime
+- Benchmark numbers documented (latency, memory, quality)
+- 'Architecture decision documented: adopt, defer, or reject'
+scope:
+- navra-model-runtime/src/
+- navra-modal-voice/src/tools.rs
+- navra-model/src/lib.rs
+- MODELS.md
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-modal-voice

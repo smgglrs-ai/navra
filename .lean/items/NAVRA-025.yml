@@ -1,7 +1,41 @@
-id: "NAVRA-025"
-title: "NeuroTaint offline taint audit"
+id: NAVRA-025
+title: NeuroTaint offline taint audit
 status: planned
 priority: low
 effort: 5-7d
-depends_on: ['NAVRA-024']
-feeds: ['NAVRA-001']
+depends_on:
+- NAVRA-024
+feeds:
+- NAVRA-001
+description: 'Implement an offline taint audit subsystem inspired by the NeuroTaint paper (2604.23374) that post-hoc analyzes
+  navra''s blackbox audit traces and OTel spans to detect taint propagation missed by inline label-based IFC. The system applies
+  three analysis passes over recorded execution traces: (1) semantic evidence tracking to catch meaning-preserving transformations
+  like paraphrase or summarization that bypass string-level taint, (2) causal influence detection to identify how untrusted
+  data shaped agent decisions without direct content transfer, and (3) cross-session memory contamination detection in navra-memory''s
+  knowledge store. This runs as an offline CLI subcommand (navra audit taint) reading from the existing blackbox SQLite database
+  and navra-memory audit tables, producing a structured report of taint paths with confidence scores.'
+acceptance:
+- navra audit taint subcommand reads blackbox entries and navra-memory audit tables, producing a JSON report of detected taint
+  paths with source, sink, mechanism (semantic/causal/persistent), and confidence score
+- Semantic evidence pass detects taint propagation through meaning-preserving transformations (paraphrase, summarization)
+  by comparing embedding similarity between untrusted inputs and downstream tool arguments
+- Causal influence pass identifies cases where untrusted data influenced agent tool selection or argument construction without
+  appearing verbatim in tool calls
+- Cross-session memory contamination pass scans navra-memory knowledge entries for taint originating from untrusted sources
+  in prior sessions
+- Achieves F1 >= 0.85 on the MVAR adversarial corpus (NAVRA-024 gate) for taint path detection, measured by integration tests
+  comparing audit output against known-tainted scenarios
+- Report includes a per-session taint summary with overall risk rating (clean/low/medium/high) and actionable remediation
+  suggestions for each detected taint path
+scope:
+- navra-server/src/main.rs (add audit taint CLI subcommand)
+- 'navra-security/src/taint_audit.rs (new: offline taint analysis engine)'
+- 'navra-security/src/taint_audit/ (new directory: semantic.rs, causal.rs, persistent.rs for the three analysis passes)'
+- navra-security/src/lib.rs (re-export taint_audit module)
+- navra-core/src/blackbox.rs (add query methods for trace retrieval by session/time range)
+- navra-memory/src/audit.rs (add query methods for cross-session knowledge taint analysis)
+- navra-model-runtime/ (embedding inference for semantic similarity in the semantic evidence pass)
+- 'navra-security/tests/taint_audit_integration.rs (new: integration tests against MVAR corpus scenarios)'
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-security --test taint_audit_integration --
+    --test-threads=1

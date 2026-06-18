@@ -1,8 +1,30 @@
-id: "NAVRA-027"
-title: "Kubernetes Agent Sandbox backend"
+id: NAVRA-027
+title: Kubernetes Agent Sandbox backend
 status: planned
 priority: low
 effort: 3-5d
 depends_on: []
 feeds: []
-gate: "K8s CRD v1alpha1 stability"
+gate: K8s CRD v1alpha1 stability
+description: Add a Kubernetes Agent Sandbox isolation backend to navra-model-runtime alongside the existing Direct, Podman,
+  and OpenShell backends. This backend uses the kubernetes-sigs/agent-sandbox CRDs (Sandbox, SandboxClaim, SandboxTemplate)
+  to provision isolated inference environments on a Kubernetes cluster. It maps navra risk_tier levels to SandboxTemplate
+  security profiles and supports SandboxWarmPool for sub-second provisioning to reduce tool-call latency.
+acceptance:
+- Isolation enum gains a Kubernetes variant and RuntimeBackend displays it correctly
+- New navra-model-runtime/src/kubernetes.rs implements ModelRuntime trait using kube-rs client to create/destroy/monitor Sandbox
+  CRs via the agents.x-k8s.io/v1alpha1 API
+- ServeConfig fields (GPU requirements, model path, hardware target) map to Sandbox labels and SandboxTemplate references
+- Config supports a [models.*.kubernetes] section with cluster context, namespace, template name, and optional warm pool name
+- Unit tests cover CRD serialization, label mapping, and lifecycle state transitions without requiring a live cluster (mock
+  kube-rs client)
+- Feature-gated behind a kubernetes cargo feature flag consistent with the existing direct/podman/openshell pattern
+scope:
+- navra-model-runtime/src/lib.rs (Isolation enum, feature gate)
+- navra-model-runtime/src/kubernetes.rs (new file, ModelRuntime impl)
+- navra-model-runtime/Cargo.toml (kube-rs, k8s-openapi dependencies, kubernetes feature)
+- navra-server/src/config.rs (KubernetesRuntimeConfig struct)
+- navra-server/Cargo.toml (kubernetes feature forward)
+- docs/designs/openshell-sandbox.md (update architecture to reference K8s backend)
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-model-runtime --features kubernetes

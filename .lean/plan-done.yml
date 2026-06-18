@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 76 completed items
+# 88 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -147,6 +147,12 @@ items:
     depends_on: ['NAVRA-016']
     feeds: ['NAVRA-001']
 
+  - id: "NAVRA-033"
+    title: "ET metric in Prometheus"
+    status: done
+    priority: low
+    effort: 0.5-0.5d
+
   - id: "NAVRA-034"
     title: "navra-core crate split (navra-router + navra-mcp)"
     status: done
@@ -158,6 +164,12 @@ items:
     status: done
     priority: high
     effort: S
+
+  - id: "NAVRA-036"
+    title: "VerifierHook with false-pass-rate tracking"
+    status: done
+    priority: medium
+    effort: 1-2d
 
   - id: "NAVRA-037"
     title: "SQLite entity-relationship table for navra-memory"
@@ -190,11 +202,60 @@ items:
     priority: medium
     effort: 1-2d
 
+  - id: "NAVRA-045"
+    title: "GitLab module"
+    status: done
+    priority: medium
+    effort: 3-4d
+
+  - id: "NAVRA-046"
+    title: "Jira module"
+    status: done
+    priority: low
+    effort: 2-3d
+    depends_on: ['NAVRA-045']
+
+  - id: "NAVRA-047"
+    title: "GraphQL scope escape prevention"
+    status: done
+    priority: high
+    effort: 1-2d
+
+  - id: "NAVRA-065"
+    title: "Config schema generation"
+    status: done
+    priority: low
+    effort: S
+
+  - id: "NAVRA-066"
+    title: "Computer use Actor trait"
+    status: done
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-067"
+    title: "ToolBlock structured output"
+    status: done
+    priority: medium
+    effort: S
+
+  - id: "NAVRA-068"
+    title: "Intent-based tool grouping"
+    status: done
+    priority: medium
+    effort: M
+
   - id: "NAVRA-072"
     title: "Remove navra-tools-github crate"
     status: done
     priority: high
     effort: S
+
+  - id: "NAVRA-073"
+    title: "Model refusal detection and gateway-level fallback routing"
+    status: done
+    priority: medium
+    effort: 2-3d
 
   - id: "NAVRA-074"
     title: "Capability/architecture disclosure prevention"
@@ -236,6 +297,13 @@ items:
     effort: 1d
     feeds: ['NAVRA-048']
 
+  - id: "NAVRA-080"
+    title: "Upstream transport hardening (error sanitization, stderr rate-limit)"
+    status: done
+    priority: low
+    effort: S
+    feeds: ['NAVRA-074']
+
   - id: "NAVRA-081"
     title: "Unified semantic permissions for tools, prompts, and resources"
     status: done
@@ -257,6 +325,12 @@ items:
     priority: medium
     effort: 1-2d
     depends_on: ['NAVRA-082']
+
+  - id: "NAVRA-085"
+    title: "Handle notifications/tools/list_changed from upstream MCP servers"
+    status: done
+    priority: medium
+    effort: 2-3d
 
   - id: "NAVRA-086"
     title: "Agent skills for navra adoption (init, policy, flow, diagnose)"

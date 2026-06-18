@@ -1,6 +1,6 @@
 id: "NAVRA-047"
 title: "GraphQL scope escape prevention"
-status: wont_do
+status: done
 priority: high
 effort: 1-2d
 depends_on: []

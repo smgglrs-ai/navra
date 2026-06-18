@@ -1,10 +1,11 @@
-id: "NAVRA-099"
-title: "ADR-style detect-only monitoring agent"
+id: NAVRA-099
+title: ADR-style detect-only monitoring agent
 status: planned
 priority: medium
 effort: 5-7d
 depends_on: []
-feeds: ['NAVRA-048']
+feeds:
+- NAVRA-048
 source: loop/2026-06-16-2
 description: |
   Implement a detect-only monitoring agent inspired by Uber's ADR
@@ -62,9 +63,24 @@ description: |
   - Agent identity is read-only — cannot modify ACLs, hooks, or
     trust scores
 acceptance:
-  - "Tier 1 hooks can escalate events to the monitoring agent"
-  - "Monitoring agent reasons about escalated events using MCP tools"
-  - "Verdicts are structured JSON with ADR-Bench technique classification"
-  - "Verdicts are logged to the audit trail"
-  - "Monitoring agent is detect-only — no policy modification"
-  - "Async processing — does not block the tool-call hot path"
+- Tier 1 hooks can escalate events to the monitoring agent
+- Monitoring agent reasons about escalated events using MCP tools
+- Verdicts are structured JSON with ADR-Bench technique classification
+- Verdicts are logged to the audit trail
+- Monitoring agent is detect-only — no policy modification
+- Async processing — does not block the tool-call hot path
+scope:
+- navra-core/src/server/handlers.rs
+- navra-core/src/server/mod.rs
+- navra-core/src/server/builder.rs
+- navra-core/src/server/types.rs
+- navra-core/src/metrics.rs
+- navra-core/src/module.rs
+- navra-server/src/main.rs
+- navra-server/src/config/mod.rs
+- navra-server/src/config/security.rs
+- navra-server/src/triggers.rs
+- navra-server/src/flow_tools.rs
+- navra-security/src/lib.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core -p navra-server -p navra-security --test-threads=1

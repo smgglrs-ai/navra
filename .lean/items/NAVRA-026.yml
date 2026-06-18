@@ -1,7 +1,32 @@
-id: "NAVRA-026"
-title: "AG-UI via rendra-ag-ui"
+id: NAVRA-026
+title: AG-UI via rendra-ag-ui
 status: planned
 priority: low
-effort: 2-3d
-depends_on: ['NAVRA-004']
+effort: 3-5d
+depends_on:
+- NAVRA-004
 feeds: []
+description: Build the rendra-ag-ui project (sibling repo smgglrs-ai/rendra-ag-ui) as a reusable Web Component that implements
+  the AG-UI open protocol for streaming agent execution events from navra to frontend UIs. The component translates navra's
+  NDJSON streaming events (text, tool_call, tool_result, thinking, done, error) and WebSocket UI events (process_update, tool_call_end)
+  into AG-UI protocol events (RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_START, TOOL_CALL_END, RUN_FINISHED). This provides
+  a standard event-streaming interface that both the rendra desktop app and navra-server's built-in web UI can consume, and
+  unblocks NAVRA-056 (embeddable widget).
+acceptance:
+- rendra-ag-ui Web Component (<rendra-agent>) renders an agent chat with streaming text and tool-call visibility when connected
+  to a navra server endpoint
+- AgentAdapter interface implemented with a NavraAdapter that connects to navra's /api/chat/agent NDJSON endpoint and /ws/ui
+  WebSocket, mapping navra event types to AG-UI EventType enums
+- 'AG-UI event lifecycle complete: RUN_STARTED on session open, TEXT_MESSAGE_CONTENT for streamed text chunks, TOOL_CALL_START/TOOL_CALL_END
+  for tool executions, RUN_FINISHED on done/error'
+- Component supports authentication token passthrough (configurable via attribute or property) for navra's auth-required endpoints
+- Published as a standalone dist artifact (JS bundle) that can be imported by rendra desktop app or embedded in navra-server's
+  ui-dist assets
+- Unit tests cover NavraAdapter event translation for each navra NDJSON event type to corresponding AG-UI event
+scope:
+- sibling repo smgglrs-ai/rendra-ag-ui (new project)
+- 'navra-server/src/ui_events.rs (reference: event types to map)'
+- 'navra-server/src/ui_agent.rs (reference: NDJSON streaming format)'
+- 'navra-server/ui/app.js (reference: existing WebSocket consumption)'
+verification:
+  quick: cd ../rendra-ag-ui && npm test

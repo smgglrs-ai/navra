@@ -1,9 +1,37 @@
-id: "NAVRA-019"
-title: "Persona paper"
+id: NAVRA-019
+title: Persona paper
 status: planned
 priority: low
 effort: 5-7d
-depends_on: ['NAVRA-003']
+depends_on:
+- NAVRA-003
 feeds: []
 description: |
   Persona-driven orchestration paper. 1k (skill lifecycle) already done.
+acceptance:
+- Paper covers persona definition schema (core_mandate, heuristics, MCP prompt sourcing, specializations) with references
+  to navra-cognitive types.rs
+- Paper describes the forge load-validate-index pipeline and weaver prompt assembly with worked examples from the 43-persona
+  corpus
+- 'Paper explains how persona IFC labels (integrity: Trusted vs Untrusted) interact with the capability token and delegation
+  chain security model from PAPER.md Section 4'
+- Paper documents the skill lifecycle (creation, versioning, test status, per-skill memory) and how skills attach to personas,
+  referencing skill_lifecycle.rs and skill_pipeline.rs
+- Paper includes at least one evaluation subsection with quantitative data (e.g., persona load times, prompt assembly latency,
+  skill selection accuracy from weaver benchmarks)
+- 'Paper integrates cleanly with PAPER.md structure: either as new subsections under Section 3.4 Cognitive Core and Section
+  6.3 Agent Lifecycle, or as a clearly cross-referenced companion document'
+scope:
+- PAPER.md
+- navra-cognitive/src/types.rs
+- navra-cognitive/src/forge.rs
+- navra-cognitive/src/weaver.rs
+- navra-cognitive/src/evolution.rs
+- navra-cognitive/src/skill_lifecycle.rs
+- navra-cognitive/src/skill_pipeline.rs
+- navra-cognitive/src/bridge.rs
+- cognitive_core/personas/
+- cognitive_core/heuristics/
+- cognitive_core/persona_specializations/
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-cognitive

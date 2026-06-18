@@ -1,8 +1,32 @@
-id: "NAVRA-022"
-title: "KAME tandem voice"
+id: NAVRA-022
+title: KAME tandem voice
 status: planned
 priority: low
-effort: 2-3d
-depends_on: ['NAVRA-021']
+effort: 3-5d
+depends_on:
+- NAVRA-021
 feeds: []
-gate: "Moshi ONNX export"
+gate: Moshi ONNX export
+description: Evaluate and prototype Moshi/KAME tandem speech-to-speech architecture as a replacement for the current cascaded
+  ASR-to-LLM-to-TTS pipeline in navra-modal-voice. The tandem approach uses a fast speech-to-speech front-end with an oracle
+  stream from the LLM back-end, targeting sub-500ms first-byte latency versus the current ~2s cascaded path. This requires
+  ONNX-exported Moshi encoder/decoder models (gated on NAVRA-021) and a new streaming pipeline that runs alongside the existing
+  cascade as an opt-in alternative.
+acceptance:
+- Moshi encoder and decoder ONNX models load via navra-model-runtime OnnxBackend without errors
+- Tandem pipeline produces intelligible speech output for a basic prompt round-trip on RTX 5090 hardware
+- First-byte audio latency is under 500ms measured end-to-end (mic-in to speaker-out)
+- Existing cascaded ASR/TTS pipeline remains functional and is selected by default; tandem is opt-in via config
+- Integration tests cover tandem pipeline initialization, model loading failure fallback, and a basic transcription-synthesis
+  round-trip
+- Config section [modules.voice] gains a pipeline field accepting cascade (default) or tandem
+scope:
+- navra-modal-voice/src/tools.rs
+- navra-modal-voice/src/lib.rs
+- navra-modal-voice/src/audio.rs
+- navra-modal-voice/tests/
+- navra-server/src/config.rs
+- navra-server/src/main.rs
+- navra-model-hub/ (model registry entry for Moshi ONNX models)
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-modal-voice --test-threads=1

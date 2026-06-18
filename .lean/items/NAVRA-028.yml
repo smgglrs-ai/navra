@@ -1,9 +1,24 @@
-id: "NAVRA-028"
-title: "TurboVec evaluation"
+id: NAVRA-028
+title: TurboVec evaluation
 status: planned
 priority: low
-effort: 2-3d
+effort: 1-2d
 depends_on: []
 feeds: []
 description: |
   Evaluate TurboVec as sqlite-vec replacement.
+acceptance:
+- 'Benchmark harness comparing sqlite-vec vs TurboVec on: insert throughput (1k, 10k, 100k chunks), search latency (p50/p95/p99),
+  recall@10 against brute-force, and peak RSS'
+- Benchmarks run with 384-dim embeddings (Granite embedding model dimension) on both in-memory and WAL-mode on-disk stores
+- Written evaluation document summarizing results, API compatibility gaps, and migration risk
+- 'If TurboVec wins: prototype ChunkStore backend swap behind a feature flag with all existing store tests passing'
+- 'If sqlite-vec wins: document why and close the item as wont-fix with benchmark data'
+scope:
+- navra-rag/Cargo.toml
+- navra-rag/src/store.rs
+- navra-rag/src/lib.rs
+- navra-rag/src/rerank.rs
+- benchmarks/
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-rag

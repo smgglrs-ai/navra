@@ -1,8 +1,39 @@
-id: "NAVRA-021"
-title: "ONNX/ort deepening"
+id: NAVRA-021
+title: ONNX/ort deepening
 status: planned
 priority: low
-effort: 2-3d
+effort: 3-5d
 depends_on: []
-feeds: ['NAVRA-022']
-gate: "ONNX spec"
+feeds:
+- NAVRA-022
+gate: ONNX spec
+description: Consolidate and improve ONNX Runtime (ort) usage across the four crates that load ONNX sessions independently
+  (navra-model, navra-rag, navra-safety, navra-safety-hooks). Currently each crate builds ort sessions with duplicated boilerplate,
+  inconsistent EP construction APIs (ort::ep::CPU vs ort::execution_providers::CPUExecutionProvider), no session options tuning
+  (thread count, graph optimization level, memory pattern), and no support for batch inference or IO binding. Extract shared
+  session-building logic into navra-model, expose configurable session options (intra/inter thread counts, graph optimization
+  level, memory patterns), unify EP construction to the ort::ep module, and add batch inference support for embedding and
+  classification workloads.
+acceptance:
+- Shared session builder in navra-model that accepts Device + SessionOptions (thread counts, graph optimization level, memory
+  pattern) and is used by navra-rag and navra-safety instead of inline ort::session::Session::builder calls
+- All four crates use the same ort::ep module path for execution provider construction (no mixed ort::execution_providers
+  vs ort::ep)
+- Session options (intra_threads, inter_threads, graph_optimization_level) are configurable via config.toml under [models]
+  and have sensible defaults
+- OnnxBackend.embed() supports batch input (Vec of texts) with a single session.run() call using batched tensors
+- Existing tests in navra-model, navra-rag, and navra-safety continue to pass after refactor
+- 'EP fallback behavior is preserved: OpenVINO/CUDA fall back to CPU on failure'
+scope:
+- navra-model/src/onnx.rs
+- navra-model/src/lib.rs
+- navra-model/Cargo.toml
+- navra-rag/src/rerank.rs
+- navra-rag/Cargo.toml
+- navra-safety/src/ner.rs
+- navra-safety/src/privacy_filter.rs
+- navra-safety/Cargo.toml
+- navra-safety-hooks/Cargo.toml
+- navra-server/src/config.rs
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-model -p navra-rag -p navra-safety --test-threads=1

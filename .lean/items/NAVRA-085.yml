@@ -1,6 +1,6 @@
 id: NAVRA-085
 title: "Handle notifications/tools/list_changed from upstream MCP servers"
-status: completed
+status: done
 priority: medium
 effort: 2-3d
 description: |

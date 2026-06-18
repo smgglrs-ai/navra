@@ -1,10 +1,31 @@
-id: "NAVRA-030"
-title: "X-Token Projection for safety model KD"
+id: NAVRA-030
+title: X-Token Projection for safety model KD
 status: planned
 priority: low
 effort: 3-5d
-depends_on: ['NAVRA-007']
+depends_on:
+- NAVRA-007
 feeds: []
 source: tech-watch-2026-06-02
 description: |
   NVIDIA cross-tokenizer KD via sparse projection matrix. Enables distilling from GPT-4/Claude into navra ONNX safety models. TW1 baseline first.
+acceptance:
+- A SparseProjectionMatrix struct in navra-safety loads a precomputed token-mapping matrix (CSR format) from disk and applies
+  it to map teacher logits to student vocabulary space
+- A KdTrainer or distillation pipeline script (Python or Rust) computes the sparse projection matrix from two tokenizer vocabularies
+  using token-piece overlap, persists it as a .safetensors or .onnx artifact
+- The existing Classifier trait is extended with an optional distill_from method that accepts teacher logits and applies the
+  projection before student forward pass, with a default no-op implementation
+- navra-model-hub registers projection matrix artifacts alongside student models (model URI includes projection artifact hash
+  for integrity verification)
+- 'Integration tests verify round-trip: build projection from two known tokenizers, project teacher logits, confirm student
+  receives correctly shaped input and classification output is valid'
+- Projection matrix loading fails gracefully (logged warning, falls back to student-only inference) when the artifact is missing
+  or corrupt
+scope:
+- navra-safety/src/classifier.rs
+- navra-safety/src/ml.rs
+- navra-safety/src/lib.rs
+- navra-model-hub/src/
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety -- --test-threads=1

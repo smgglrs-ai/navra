@@ -1,12 +1,12 @@
 id: NAVRA-092
-title: "Evaluate LCLM for context compression"
+title: Evaluate LCLM for context compression
 status: planned
 priority: low
-effort: 2-3d
+effort: 3-5d
 depends_on: []
 feeds: []
 source: tech-watch-2026-06-12
-gate: "LCLM 0.6B encoder available as ONNX export"
+gate: LCLM 0.6B encoder available as ONNX export
 description: |
   Evaluate Latent Context Language Models (LCLMs) for production-grade
   context compression before agent prompt injection. 0.6B encoder +
@@ -24,5 +24,15 @@ description: |
 
   Reference: huggingface.co/latent-context | github.com/LeonLixyz/LCLM
 acceptance:
-  - "Benchmark comparing LCLM vs truncation on context quality"
-  - "Architecture decision documented"
+- Benchmark comparing LCLM vs truncation on context quality
+- Architecture decision documented
+scope:
+- navra-cognitive/src/budget.rs
+- navra-cognitive/src/weaver.rs
+- navra-model-runtime/src/
+- navra-safety-hooks/src/hooks/safety_hook.rs
+- navra-safety-hooks/src/hooks/json_compress.rs
+- navra-server/tests/adversarial_eval/
+- docs/
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-cognitive -- budget

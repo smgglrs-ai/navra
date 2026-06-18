@@ -1,12 +1,12 @@
-id: "NAVRA-042"
-title: "DNS-AID discovery support"
+id: NAVRA-042
+title: DNS-AID discovery support
 status: planned
 priority: low
-effort: 2-3d
+effort: 3-5d
 depends_on: []
 feeds: []
 source: tech-watch-2026-06-02
-gate: "IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision"
+gate: IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision
 description: |
   Add DNS-based Agent/MCP server discovery via SVCB records (IETF
   draft-mozleywilliams-02). Complements existing mDNS discovery.
@@ -23,7 +23,14 @@ description: |
   The spec is early-stage (38 stars, pre-LF). Gate on spec maturity
   before investing — navra's mDNS discovery already works for LAN.
 acceptance:
-  - "SVCB query resolves MCP server endpoints"
-  - "DNSSEC validation when available"
-  - "Integrated with existing discover config"
-  - "DISCOVERY.md updated"
+- SVCB query resolves MCP server endpoints
+- DNSSEC validation when available
+- Integrated with existing discover config
+- DISCOVERY.md updated
+scope:
+- navra-server/src/discover.rs
+- navra-server/src/main.rs
+- navra-server/src/config.rs
+- navra-server/Cargo.toml
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server discover

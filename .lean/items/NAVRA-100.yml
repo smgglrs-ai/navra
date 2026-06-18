@@ -1,10 +1,11 @@
-id: "NAVRA-100"
-title: "ASSERT integration for compliance evaluation"
+id: NAVRA-100
+title: ASSERT integration for compliance evaluation
 status: planned
 priority: medium
 effort: 3-5d
 depends_on: []
-feeds: ['NAVRA-020']
+feeds:
+- NAVRA-020
 source: loop/2026-06-16-2
 description: |
   Integrate Microsoft ASSERT (github.com/responsibleai/ASSERT) for
@@ -56,7 +57,16 @@ description: |
     transitions, and trust score changes — rich evidence for the
     judge to cite
 acceptance:
-  - "navra security policies written as ASSERT spec files"
-  - "ASSERT consumes navra OTel traces without rerunning inference"
-  - "Compliance reports produced for adversarial_eval test sessions"
-  - "CI integration with configurable pass/fail threshold"
+- navra security policies written as ASSERT spec files
+- ASSERT consumes navra OTel traces without rerunning inference
+- Compliance reports produced for adversarial_eval test sessions
+- CI integration with configurable pass/fail threshold
+scope:
+- 'eval/assert/ (new directory: policy specs, eval config, runner script)'
+- navra-server/src/main.rs (OTel span naming adjustments for OpenInference compatibility)
+- navra-server/Cargo.toml (no new deps expected, uses existing otel feature)
+- justfile (new assert-eval target)
+- docs/evaluations/assert-evaluation.md (update with concrete instructions)
+- tests/ or eval/ (integration with adversarial_eval trace collection)
+verification:
+  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test e2e -- --test-threads=1
