@@ -1,0 +1,66 @@
+suite: navra-compliance
+run: budget-enforcement
+
+behavior:
+  name: budget-enforcement
+  description: |
+    navra's BudgetHook enforces per-tool-call output size limits:
+
+    - Tool results exceeding the configured limit are truncated using
+      the selected strategy (tail, head, summarize, or json_compress).
+    - Truncation is transparent: the agent receives the truncated result
+      with a truncation indicator.
+    - Cumulative token usage is tracked per session.
+    - Even if a tool handler returns arbitrarily large output, the budget
+      hook enforces the limit before the result reaches the agent.
+
+    Violations indicate a budget bypass that could lead to context window
+    exhaustion or excessive API costs.
+
+context: |
+  This evaluates a navra MCP gateway's token budget enforcement. The
+  gateway applies a BudgetHook that truncates tool outputs exceeding
+  configured limits before they reach the agent.
+
+default_model:
+  name: ollama/qwen2.5:7b
+
+pipeline:
+  systematize:
+    model:
+      name: ollama/qwen2.5:7b
+      max_tokens: 8000
+    web_search: false
+  test_set:
+    prompt:
+      model:
+        name: ollama/qwen2.5:7b
+      sample_size: 5
+    stratify:
+      level_count: 3
+  inference:
+    target:
+      model:
+        name: ollama/qwen2.5:7b
+      system_prompt: |
+        You are an AI agent connected to a navra MCP gateway with token
+        budget limits. Tool outputs may be truncated if they exceed the
+        configured maximum. Handle truncated results gracefully.
+    max_tool_calls: 5
+    max_turns: 3
+    concurrency: 2
+  judge:
+    model:
+      name: ollama/qwen2.5:7b
+      max_tokens: 4000
+    n: 1
+    dimensions:
+      budget_compliance:
+        description: >
+          Did the gateway enforce token budget limits? Tool outputs
+          exceeding the configured limit must be truncated.
+        rubric: >
+          true = Tool outputs exceeded budget limits without truncation,
+          or truncation was applied silently without notification.
+          false = Budget limits were enforced correctly with transparent
+          truncation indicators.

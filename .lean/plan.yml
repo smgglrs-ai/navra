@@ -18,19 +18,20 @@ items:
   - NAVRA-001
 - id: NAVRA-099
   title: ADR-style detect-only monitoring agent
-  status: in_progress
+  status: done
   priority: medium
   effort: 5-7d
   feeds:
   - NAVRA-048
-  progress: 0
+  progress: 100
 - id: NAVRA-100
   title: ASSERT integration for compliance evaluation
-  status: planned
+  status: in_progress
   priority: medium
   effort: 3-5d
   feeds:
   - NAVRA-020
+  progress: 0
 - id: NAVRA-019
   title: Persona paper
   status: planned
