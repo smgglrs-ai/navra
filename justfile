@@ -52,3 +52,11 @@ e2e-agent *ARGS:
 # Run full multi-agent live demo test (needs Ollama, 1-5 min)
 e2e-demo *ARGS:
     ./scripts/e2e-live.sh --live-demo {{ARGS}}
+
+# Run ASSERT compliance evaluation (needs Ollama + assert-ai)
+assert-eval *ARGS:
+    ./eval/assert/run-compliance.sh {{ARGS}}
+
+# Validate ASSERT config and behavior specs
+assert-check:
+    ./eval/assert/run-compliance.sh --dry-run

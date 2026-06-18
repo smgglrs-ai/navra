@@ -223,19 +223,8 @@ impl PrivacyFilterModel {
         let config_path = model_dir.join("config.json");
         let id2label = load_id2label(&config_path)?;
 
-        let session = ort::session::Session::builder()
-            .map_err(|e| PrivacyFilterError::Load(format!("session builder: {e}")))?
-            .with_execution_providers([
-                ort::execution_providers::CPUExecutionProvider::default().build()
-            ])
-            .map_err(|e| PrivacyFilterError::Load(format!("execution provider: {e}")))?
-            .commit_from_file(&model_path)
-            .map_err(|e| {
-                PrivacyFilterError::Load(format!(
-                    "failed to load model from {}: {e}",
-                    model_path.display()
-                ))
-            })?;
+        let session = navra_model::onnx::build_onnx_session(&model_path, &navra_model::onnx::Device::Cpu)
+            .map_err(|e| PrivacyFilterError::Load(format!("{e}")))?;
 
         let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path).map_err(|e| {
             PrivacyFilterError::Load(format!(

@@ -359,19 +359,8 @@ impl NerFilter {
         tokenizer_path: &Path,
         label_map_path: &Path,
     ) -> Result<Self, NerError> {
-        let session = ort::session::Session::builder()
-            .map_err(|e| NerError::Load(format!("session builder: {e}")))?
-            .with_execution_providers([
-                ort::execution_providers::CPUExecutionProvider::default().build()
-            ])
-            .map_err(|e| NerError::Load(format!("execution provider: {e}")))?
-            .commit_from_file(model_path)
-            .map_err(|e| {
-                NerError::Load(format!(
-                    "failed to load NER model from {}: {e}",
-                    model_path.display()
-                ))
-            })?;
+        let session = navra_model::onnx::build_onnx_session(model_path, &navra_model::onnx::Device::Cpu)
+            .map_err(|e| NerError::Load(format!("{e}")))?;
 
         let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path).map_err(|e| {
             NerError::Load(format!(
@@ -426,19 +415,8 @@ impl NerFilter {
             )));
         }
 
-        let mut session = ort::session::Session::builder()
-            .map_err(|e| NerError::Load(format!("session builder: {e}")))?
-            .with_execution_providers([
-                ort::execution_providers::CPUExecutionProvider::default().build()
-            ])
-            .map_err(|e| NerError::Load(format!("execution provider: {e}")))?
-            .commit_from_file(&model_path)
-            .map_err(|e| {
-                NerError::Load(format!(
-                    "failed to load NER model from {}: {e}",
-                    model_path.display()
-                ))
-            })?;
+        let mut session = navra_model::onnx::build_onnx_session(&model_path, &navra_model::onnx::Device::Cpu)
+            .map_err(|e| NerError::Load(format!("{e}")))?;
 
         let label_map_path = model_dir.join("label_map.json");
         let config_path = model_dir.join("config.json");

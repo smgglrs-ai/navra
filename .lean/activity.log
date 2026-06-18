@@ -641,3 +641,127 @@ Breaking API changes + security architecture change require human review before 
     Loop 4 (notify): 2 items (113 model hub integrity, 090 upstream git MCP)
     Plus: gateway-level path ACL, MCP filesystem container, MCP git container
     Remaining: 10 actionable planned items (research, papers, protocol extensions)
+- timestamp: "2026-06-18T14:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-099"
+  summary: "Implemented detect-only monitoring agent: escalation channel, MonitoringHook, VerdictSink, Prometheus metrics, config wiring. 13 unit tests + 256 navra-core tests passing."
+  iteration: 1
+  max_iterations: 20
+- timestamp: "2026-06-18T14:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-100"
+  summary: "Integrated ASSERT compliance evaluation: 4 behavior specs, 4 pipeline configs, runner script, justfile targets. Full pipeline verified end-to-end with Ollama qwen2.5:7b."
+  iteration: 2
+  max_iterations: 20
+- timestamp: "2026-06-18T15:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-083"
+  summary: "Implemented OAuth2 Authorization Code + PKCE for navra-openapi: OAuthTokenManager, AuthConfig extension, 401/403 retry handler. 49 tests passing."
+  iteration: 3
+  max_iterations: 20
+- timestamp: "2026-06-18T15:10:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 3 items completed (NAVRA-099, NAVRA-100, NAVRA-083). Exit: remaining items are evaluations or large features outside loop scope."
+  details:
+    iterations: 3
+    max_iterations: 20
+    completed: [NAVRA-099, NAVRA-100, NAVRA-083]
+    exit_reason: "No tractable items remaining in notify scope"
+    branch: "loop/2026-06-18"
+    tag: "loop-run/2026-06-18-3"
+- timestamp: "2026-06-18T15:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-028"
+  summary: "TurboVec evaluation: REJECT. Architectural mismatch — pure vector index loses navra-rag hybrid search (FTS5+vector RRF). sqlite-vec already has int8/binary quantization built in. Wrote evaluation doc."
+  iteration: 4
+  max_iterations: 20
+- timestamp: "2026-06-18T16:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-030"
+  summary: "Implemented SparseProjectionMatrix for cross-tokenizer KD: CSR format, vocabulary-based construction via n-gram overlap, binary save/load, project() method. 11 tests + 139 total passing."
+  iteration: 5
+  max_iterations: 20
+- timestamp: "2026-06-18T16:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-025"
+  summary: "Implemented NeuroTaint offline taint audit: 3-pass analysis (semantic, causal, persistent), structured TaintPath/Verdict types, report generation, blackbox query_session/list_sessions APIs. 17 taint_audit tests + 14 blackbox tests passing."
+  iteration: 6
+  max_iterations: 20
+- timestamp: "2026-06-18T17:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-039"
+  summary: "Added Gemma 4 12B as GPU-tier alternative: model card test, MODELS.md docs with config examples and Ollama Modelfile, GPU tier table entry."
+  iteration: 7
+  max_iterations: 20
+- timestamp: "2026-06-18T17:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-021"
+  summary: "ONNX/ort deepening: extracted shared build_onnx_session() into navra-model::onnx, unified EP construction across navra-rag (reranker) and navra-safety (NER, privacy_filter) from deprecated ort::execution_providers to shared builder. 387 tests passing."
+  iteration: 8
+  max_iterations: 20
+- timestamp: "2026-06-18T18:00:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 8 items completed (NAVRA-099, NAVRA-100, NAVRA-083, NAVRA-028, NAVRA-030, NAVRA-025, NAVRA-039, NAVRA-021). Exit: no code items remaining — 2 papers, 1 sibling repo, 7 gated."
+  details:
+    iterations: 8
+    max_iterations: 20
+    completed: [NAVRA-099, NAVRA-100, NAVRA-083, NAVRA-028, NAVRA-030, NAVRA-025, NAVRA-039, NAVRA-021]
+    exit_reason: "No code items remaining in navra workspace"
+    branch: "loop/2026-06-18"
+    tag: "loop-run/2026-06-18-8"
+- timestamp: "2026-06-18T18:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-023"
+  summary: "delta-mem OSAM evaluation: DEFER. PyTorch-only, no ONNX export. OSAM modifies attention computation at every layer — can't bolt onto frozen ONNX graph. Wrote evaluation doc with re-evaluate conditions."
+  iteration: 9
+  max_iterations: 20
+- timestamp: "2026-06-18T18:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-041"
+  summary: "LFM2.5-Audio ONNX evaluation: REJECT. LFM 1.0 license has $10M revenue cap (Red Hat/IBM incompatible). Also: 5-component orchestration complexity, 1.5GB vs 280MB for Whisper+Kokoro. Current pipeline stays."
+  iteration: 10
+  max_iterations: 20
+- timestamp: "2026-06-18T19:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-027"
+  summary: "Kubernetes Agent Sandbox backend: Isolation::Kubernetes variant, KubernetesRuntime implementing ModelRuntime trait, CRD manifest generation (agents.x-k8s.io/v1alpha1), resource limits mapping, kubectl-based lifecycle. 9 unit tests + 71 total passing."
+  iteration: 11
+  max_iterations: 20
+- timestamp: "2026-06-18T19:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-019"
+  summary: "Expanded PAPER.md Section 3.4 Cognitive Core from 11 lines to 76 lines: forge pipeline (load/validate/integrity), weaver assembly (cacheable/dynamic split, MCP sandboxing), skill lifecycle (IFC labels, test gates, memory), persona evolution (TraitVector, per-user EMA)."
+  iteration: 12
+  max_iterations: 20
+- timestamp: "2026-06-18T19:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-020"
+  summary: "Review paper restructured per review notes: dropped contributions 2-3 (JSON parsing, self-improvement) as numbered contributions, focused on dynamic persona selection as core contribution. Updated abstract and introduction."
+  iteration: 13
+  max_iterations: 20
+- timestamp: "2026-06-18T20:00:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 13 items completed. Exit: remaining 5 items are genuinely gated on external dependencies (ONNX exports, IETF drafts, benchmark datasets) or in a sibling repo."
+  details:
+    iterations: 13
+    max_iterations: 20
+    completed: [NAVRA-099, NAVRA-100, NAVRA-083, NAVRA-028, NAVRA-030, NAVRA-025, NAVRA-039, NAVRA-021, NAVRA-023, NAVRA-041, NAVRA-027, NAVRA-019, NAVRA-020]
+    exit_reason: "All remaining items gated on external dependencies"
+    branch: "loop/2026-06-18"
+    tag: "loop-run/2026-06-18-13"

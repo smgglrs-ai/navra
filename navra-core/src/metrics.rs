@@ -48,6 +48,9 @@ pub struct Metrics {
     pub input_tokens_total: AtomicU64,
     pub output_tokens_total: AtomicU64,
     pub cached_tokens_total: AtomicU64,
+    pub monitoring_escalations_total: AtomicU64,
+    pub monitoring_verdicts_total: AtomicU64,
+    pub monitoring_verdicts_confirmed_total: AtomicU64,
 }
 
 impl Metrics {
@@ -94,6 +97,9 @@ impl Metrics {
             input_tokens_total: AtomicU64::new(0),
             output_tokens_total: AtomicU64::new(0),
             cached_tokens_total: AtomicU64::new(0),
+            monitoring_escalations_total: AtomicU64::new(0),
+            monitoring_verdicts_total: AtomicU64::new(0),
+            monitoring_verdicts_confirmed_total: AtomicU64::new(0),
         }
     }
 
@@ -379,6 +385,26 @@ impl Metrics {
             self.effective_tokens(),
         );
 
+        prom_counter(
+            &mut out,
+            "navra_monitoring_escalations_total",
+            "Events escalated to monitoring agent",
+            self.monitoring_escalations_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_monitoring_verdicts_total",
+            "Monitoring verdicts produced",
+            self.monitoring_verdicts_total.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_monitoring_verdicts_confirmed_total",
+            "Monitoring verdicts confirming a threat",
+            self.monitoring_verdicts_confirmed_total
+                .load(Ordering::Relaxed),
+        );
+
         out
     }
 }
@@ -457,6 +483,9 @@ mod tests {
         assert!(output.contains("navra_output_tokens_total"));
         assert!(output.contains("navra_cached_tokens_total"));
         assert!(output.contains("navra_effective_tokens_total"));
+        assert!(output.contains("navra_monitoring_escalations_total"));
+        assert!(output.contains("navra_monitoring_verdicts_total"));
+        assert!(output.contains("navra_monitoring_verdicts_confirmed_total"));
     }
 
     #[test]

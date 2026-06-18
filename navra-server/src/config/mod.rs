@@ -16,7 +16,9 @@ pub use modules::{ApprovalConfig, ModulesConfig};
 pub use permissions::{DomainRuleConfig, PermissionSet, PiiPatternConfig, ToolRuleConfig};
 pub use server::{RegistryEntry, ServerConfig};
 
-pub use security::{StatisticalGuardrailServerConfig, TemporalContractServerConfig};
+pub use security::{
+    MonitoringServerConfig, StatisticalGuardrailServerConfig, TemporalContractServerConfig,
+};
 mod security;
 
 fn default_true() -> bool {
@@ -74,6 +76,9 @@ pub struct Config {
     /// Out-of-process gRPC modules.
     #[serde(default)]
     pub grpc_modules: Vec<GrpcModuleConfig>,
+    /// Detect-only monitoring agent configuration.
+    #[serde(default)]
+    pub monitoring: MonitoringServerConfig,
     /// Statistical guardrail configuration for anomaly detection.
     #[serde(default)]
     pub statistical: StatisticalGuardrailServerConfig,
@@ -305,6 +310,7 @@ impl Default for Config {
             budget: BudgetConfig::default(),
             pii_patterns: Vec::new(),
             grpc_modules: Vec::new(),
+            monitoring: MonitoringServerConfig::default(),
             statistical: StatisticalGuardrailServerConfig::default(),
             temporal_contracts: TemporalContractServerConfig::default(),
             routing: navra_core::hooks::RoutingConfig::default(),

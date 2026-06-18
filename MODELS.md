@@ -49,6 +49,7 @@ accuracy loss, and halves VRAM vs Q4 integer quantization.
 | Role | Model | Params | Runtime | License | VRAM (NVFP4) |
 |------|-------|--------|---------|---------|--------------|
 | Reasoning + vision | Gemma 4 26B-A4B | 25.2B total / 3.8B active (MoE) | vLLM | Apache 2.0 | ~7GB |
+| ↳ _alternative_ | _Gemma 4 12B_ | _12B dense_ | _Ollama / vLLM_ | _Apache 2.0_ | _~5GB_ |
 | ASR (upgrade) | Granite 4.0 1B Speech | 1B | vLLM | Apache 2.0 | ~1GB |
 | TTS (upgrade) | Voxtral TTS 4B | 4B | vLLM-Omni | CC BY-NC | ~3GB |
 | Safety (deep) | Granite Guardian 3.3 8B | 8B | vLLM / ollama | Apache 2.0 | ~3GB |
@@ -82,6 +83,45 @@ The 26B-A4B also handles vision natively (image + video input),
 reducing dependence on Granite Vision 3.3 2B for general visual QA.
 Granite Vision stays for specialized OCR/document understanding
 where it ranks #2 on OCRBench.
+
+#### Gemma 4 12B — Dense Alternative
+
+Gemma 4 12B is a dense (non-MoE) multimodal model. Compared to
+26B-A4B:
+
+- **All parameters active**: 12B params, no MoE routing overhead
+- **Encoder-free vision**: 35M vision embedder (vs 550M encoder)
+- **Same capabilities**: text, image, audio understanding (not TTS)
+- **Simpler serving**: no MoE expert scheduling, works well on Ollama
+- **5GB VRAM** with NVFP4 quantization
+
+Use 12B when you need simpler deployment (single Ollama instance)
+or when the 26B-A4B MoE overhead isn't worth the benchmark gains.
+
+Config example:
+```toml
+[models.vision]
+type = "generate"
+backend = "openai"
+endpoint = "http://localhost:11434/v1"
+model = "gemma4:12b"
+
+[models.chat]
+type = "generate"
+backend = "openai"
+endpoint = "http://localhost:11434/v1"
+model = "gemma4:12b"
+```
+
+Ollama Modelfile for agentic use:
+```
+FROM gemma4:12b
+PARAMETER num_ctx 65536
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.15
+PARAMETER num_predict 4096
+```
 
 #### Granite 4.0 3B Vision — Upgrade Path
 

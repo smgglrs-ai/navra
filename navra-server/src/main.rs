@@ -4004,6 +4004,62 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
         }
     }
 
+    // Detect-only monitoring agent (NAVRA-099)
+    if cfg.monitoring.enabled {
+        let (escalation_tx, escalation_rx) =
+            navra_core::hooks::escalation_channel(cfg.monitoring.buffer_size);
+
+        builder = builder.hook(navra_core::hooks::MonitoringHook::new(escalation_tx));
+
+        let monitoring_metrics =
+            std::sync::Arc::new(navra_core::hooks::MonitoringMetrics::new());
+
+        // Bridge VerdictSink to the gateway blackbox
+        struct BlackboxVerdictSink(Arc<navra_core::blackbox::Blackbox>);
+        impl navra_core::hooks::VerdictSink for BlackboxVerdictSink {
+            fn record_verdict(
+                &self,
+                event: &navra_core::hooks::EscalationEvent,
+                verdict: &navra_core::hooks::Verdict,
+            ) {
+                let verdict_json = serde_json::to_string(verdict).unwrap_or_default();
+                let event_json = serde_json::to_string(event).unwrap_or_default();
+                self.0.record(
+                    "monitoring-agent",
+                    "read-only",
+                    &event.session_id,
+                    "monitor_verdict",
+                    &event_json,
+                    &verdict_json,
+                    "verdict",
+                    0,
+                    "Trusted",
+                );
+            }
+        }
+
+        // Get blackbox reference if available (builder stores it internally)
+        let bb_path = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("navra/blackbox.db");
+        let verdict_sink: Option<Arc<dyn navra_core::hooks::VerdictSink>> =
+            navra_core::blackbox::Blackbox::open(&bb_path)
+                .ok()
+                .map(|bb| Arc::new(BlackboxVerdictSink(Arc::new(bb))) as _);
+
+        let mm = monitoring_metrics.clone();
+        tokio::spawn(navra_core::hooks::monitoring_loop(
+            escalation_rx,
+            mm,
+            verdict_sink,
+        ));
+
+        tracing::info!(
+            buffer_size = cfg.monitoring.buffer_size,
+            "Monitoring agent enabled (detect-only, async)"
+        );
+    }
+
     // Tool usage pruning filter (TW16)
     let usage_tracker = std::sync::Arc::new(navra_core::ToolUsageTracker::new(5));
     builder = builder.tool_filter(navra_core::UsagePruningFilter::new(usage_tracker.clone()));
@@ -5308,6 +5364,7 @@ fn resolve_openapi_auth(
         bearer,
         api_key,
         basic,
+        oauth: None,
     }
 }
 

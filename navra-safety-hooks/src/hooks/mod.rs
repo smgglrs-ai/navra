@@ -18,6 +18,7 @@ pub mod provenance_hook;
 mod routing;
 mod safety_hook;
 mod sandbox_hook;
+pub mod monitoring;
 pub mod skill_hook;
 pub mod statistical;
 pub mod temporal_contract;
@@ -29,6 +30,10 @@ pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
 pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
 pub use json_compress::{JsonCompressConfig, JsonCompressHook};
+pub use monitoring::{
+    EscalationEvent, EscalationSender, EscalationSource, MonitoringConfig, MonitoringHook,
+    MonitoringMetrics, Severity, Verdict, VerdictSink, escalation_channel, monitoring_loop,
+};
 pub use leakage::{
     SemanticLeakageConfig, SemanticLeakageJudge, SimilarityLeakageConfig, SimilarityLeakageHook,
 };

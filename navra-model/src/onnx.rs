@@ -100,21 +100,8 @@ impl OnnxBackend {
         task: ModelTask,
         device: Device,
     ) -> Result<Self, ModelError> {
-        let eps = build_execution_providers(&device);
         let ep_desc = describe_device(&device);
-
-        let mut builder = ort::session::Session::builder()
-            .map_err(|e| ModelError::Inference(format!("session builder error: {e}")))?
-            .with_execution_providers(eps)
-            .map_err(|e| ModelError::Inference(format!("execution provider error: {e}")))?;
-
-        let session = builder.commit_from_file(model_path).map_err(|e| {
-            ModelError::Inference(format!(
-                "failed to load '{}' from {}: {e}",
-                name,
-                model_path.display()
-            ))
-        })?;
+        let session = build_onnx_session(model_path, &device)?;
 
         // Load tokenizer if provided
         let tokenizer = match tokenizer_path {
@@ -335,7 +322,30 @@ impl OnnxBackend {
     }
 }
 
-fn build_execution_providers(device: &Device) -> Vec<ort::ep::ExecutionProviderDispatch> {
+/// Build an ONNX Runtime session from a model file with the specified device.
+///
+/// Shared entry point for all crates that load ONNX models. Handles EP
+/// construction, fallback, and error mapping.
+pub fn build_onnx_session(
+    model_path: &Path,
+    device: &Device,
+) -> Result<ort::session::Session, ModelError> {
+    let eps = build_execution_providers(device);
+    let mut builder = ort::session::Session::builder()
+        .map_err(|e| ModelError::Inference(format!("session builder error: {e}")))?
+        .with_execution_providers(eps)
+        .map_err(|e| ModelError::Inference(format!("execution provider error: {e}")))?;
+
+    builder.commit_from_file(model_path).map_err(|e| {
+        ModelError::Inference(format!(
+            "failed to load model from {}: {e}",
+            model_path.display()
+        ))
+    })
+}
+
+/// Build execution providers for the given device target.
+pub fn build_execution_providers(device: &Device) -> Vec<ort::ep::ExecutionProviderDispatch> {
     match device {
         Device::Cpu => vec![ort::ep::CPU::default().build()],
         Device::OpenVino(ov_device) => {

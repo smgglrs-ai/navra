@@ -22,6 +22,7 @@ tracing-subscriber = { workspace = true, optional = true }
 anyhow = { version = "1", optional = true }
 navra-mcp = { path = "../navra-mcp" }
 navra-core = { path = "../navra-core" }
+navra-model = { path = "../navra-model", default-features = false, features = ["onnx"] }
 navra-macros = { path = "../navra-macros" }
 navra-protocol = { path = "../navra-protocol" }
 serde = { workspace = true }
