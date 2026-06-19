@@ -61,6 +61,8 @@ pub struct DistillationPipeline<'a> {
     working: &'a WorkingMemory,
     knowledge: &'a KnowledgeStore,
     model: Option<Arc<dyn ModelBackend>>,
+    /// Optional ONNX classifier for memory type classification.
+    classifier: Option<Arc<dyn ModelBackend>>,
     /// Optional content sanitizer applied before writing output.
     sanitizer: Option<ContentSanitizer>,
 }
@@ -71,6 +73,7 @@ impl<'a> DistillationPipeline<'a> {
             working,
             knowledge,
             model: None,
+            classifier: None,
             sanitizer: None,
         }
     }
@@ -78,6 +81,15 @@ impl<'a> DistillationPipeline<'a> {
     /// Set a model backend for LLM-based knowledge extraction.
     pub fn with_model(mut self, model: Arc<dyn ModelBackend>) -> Self {
         self.model = Some(model);
+        self
+    }
+
+    /// Set an ONNX classifier for memory type classification.
+    ///
+    /// When set, `synthesize_stub()` uses the classifier to assign
+    /// `MemoryType` and confidence instead of defaulting to `Fact`.
+    pub fn with_classifier(mut self, classifier: Arc<dyn ModelBackend>) -> Self {
+        self.classifier = Some(classifier);
         self
     }
 
@@ -201,6 +213,10 @@ impl<'a> DistillationPipeline<'a> {
     }
 
     /// Stub synthesis: extract user messages as low-confidence facts.
+    ///
+    /// When a classifier is configured via [`with_classifier`], uses it
+    /// to assign `MemoryType` and confidence. Otherwise defaults to `Fact`
+    /// with confidence 0.5.
     fn synthesize_stub(&self, segment: &Segment) -> Result<Vec<DistilledEntry>, MemoryError> {
         let mut entries = Vec::new();
 
@@ -218,7 +234,7 @@ impl<'a> DistillationPipeline<'a> {
                         title,
                         msg.content.clone(),
                         vec![],
-                        0.5, // Low confidence: stub, not LLM-synthesized
+                        0.5,
                         segment.session_id.clone(),
                     ));
                 }
@@ -226,6 +242,43 @@ impl<'a> DistillationPipeline<'a> {
         }
 
         Ok(entries)
+    }
+
+    /// Classify a single text into a MemoryType using the ONNX classifier.
+    ///
+    /// Returns `(MemoryType, confidence)`. Falls back to `(Fact, 0.5)` if
+    /// no classifier is configured or classification fails.
+    pub async fn classify_text(&self, text: &str) -> (MemoryType, f32) {
+        let Some(ref classifier) = self.classifier else {
+            return (MemoryType::Fact, 0.5);
+        };
+
+        let request = navra_model::ClassifyRequest {
+            text: text.to_string(),
+        };
+
+        match classifier.classify(&request).await {
+            Ok(response) => {
+                if let Some(top) = response.top_label() {
+                    let kind = match top.label.as_str() {
+                        "fact" => MemoryType::Fact,
+                        "event" => MemoryType::Event,
+                        "instruction" => MemoryType::Instruction,
+                        "insight" => MemoryType::Insight,
+                        "user" => MemoryType::User,
+                        "project" => MemoryType::Project,
+                        _ => MemoryType::Fact,
+                    };
+                    (kind, top.score)
+                } else {
+                    (MemoryType::Fact, 0.5)
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "memory type classification failed, defaulting to Fact");
+                (MemoryType::Fact, 0.5)
+            }
+        }
     }
 
     /// Stage 3: Reconcile entries against existing knowledge.

@@ -63,9 +63,10 @@ items:
 
   - id: "NAVRA-061"
     title: "Memory type classification"
-    status: planned
+    status: done
     priority: low
     effort: S
+    progress: 100
 
   - id: "NAVRA-069"
     title: "Multi-hypothesis tool routing"
