@@ -14,9 +14,10 @@ items:
 
   - id: "NAVRA-070"
     title: "WebSocket agentic loops"
-    status: planned
+    status: done
     priority: medium
     effort: M
+    progress: 100
 
   - id: "NAVRA-147"
     title: "MCP Enterprise-Managed Authorization (ID-JAG)"
