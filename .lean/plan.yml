@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 30 active items
+# 29 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -20,12 +20,6 @@ items:
 
   - id: "NAVRA-139"
     title: "Complete WebMCP CDP transport implementation"
-    status: planned
-    priority: medium
-    effort: M
-
-  - id: "NAVRA-144"
-    title: "Replace navra-tools-exec with upstream OpenShell MCP server"
     status: planned
     priority: medium
     effort: M

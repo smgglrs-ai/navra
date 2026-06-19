@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 115 completed items
+# 116 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -768,4 +768,10 @@ items:
     priority: medium
     effort: M
     progress: 100
+
+  - id: "NAVRA-144"
+    title: "Replace navra-tools-exec with upstream OpenShell MCP server"
+    status: done
+    priority: medium
+    effort: M
 
