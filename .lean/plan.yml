@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 36 active items
+# 34 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -52,12 +52,6 @@ items:
     priority: medium
     effort: M
 
-  - id: "NAVRA-143"
-    title: "Replace navra-tools-gitlab with upstream GitLab MCP server"
-    status: planned
-    priority: medium
-    effort: M
-
   - id: "NAVRA-144"
     title: "Replace navra-tools-exec with upstream OpenShell MCP server"
     status: planned
@@ -101,12 +95,6 @@ items:
     depends_on: ['NAVRA-079']
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
-
-  - id: "NAVRA-136"
-    title: "Add doc comments to navra-agent and navra-cognitive public APIs"
-    status: planned
-    priority: low
-    effort: S
 
   - id: "NAVRA-137"
     title: "Add tests to navra-tools-exec and navra-tools-gitlab"

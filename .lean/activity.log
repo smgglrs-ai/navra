@@ -251,3 +251,17 @@
   summary: "Added annotations parameter to Hook::pre_tool_use trait (5th param), threaded through HookPipeline::run_pre and server handlers. Leakage hook now receives actual tool annotations instead of None. Updated 18 impl sites and 67 test call sites. Fixed discover.rs tests broken by NAVRA-133 function removal."
   iteration: 9
   max_iterations: 20
+- timestamp: "2026-06-19T08:35:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-136"
+  summary: "Doc-writer agent added 44 doc comments across 5 files (navra-agent hibernate/replay/quota, navra-cognitive fast_path/bridge). Zero missing-doc warnings."
+  iteration: 10
+  max_iterations: 20
+- timestamp: "2026-06-19T08:40:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-143"
+  summary: "Removed navra-tools-gitlab crate from workspace. Removed [modules.gitlab] config, GitlabModuleConfig, and gitlab_enabled(). GitLab is now a standard upstream MCP server configured via [[upstream]] with 'glab mcp serve'."
+  iteration: 11
+  max_iterations: 20

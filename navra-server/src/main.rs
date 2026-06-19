@@ -1714,10 +1714,6 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
         }
     }
 
-    if cfg.gitlab_enabled() {
-        tracing::info!("Module 'gitlab' enabled");
-        builder = builder.module(navra_tools_gitlab::GitlabModule);
-    }
 
     // --- Exec module (OpenShell agent sandboxing) ---
     let exec_module: Option<Arc<navra_tools_exec::ExecModule>> =

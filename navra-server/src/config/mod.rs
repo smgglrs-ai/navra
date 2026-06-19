@@ -123,13 +123,6 @@ impl Config {
             .unwrap_or(false)
     }
 
-    pub fn gitlab_enabled(&self) -> bool {
-        self.modules
-            .gitlab
-            .as_ref()
-            .map(|g| g.enabled)
-            .unwrap_or(false)
-    }
 
     pub fn rag_enabled(&self) -> bool {
         self.modules

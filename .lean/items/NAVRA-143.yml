@@ -1,6 +1,6 @@
 id: NAVRA-143
 title: Replace navra-tools-gitlab with upstream GitLab MCP server
-status: planned
+status: done
 priority: medium
 effort: M
 depends_on: []
@@ -32,3 +32,4 @@ scope:
   - navra-tools-gitlab/
   - navra-server/src/main.rs
   - Cargo.toml
+progress: 100
