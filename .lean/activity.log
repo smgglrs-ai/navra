@@ -409,3 +409,11 @@
   summary: "MCP Enterprise-Managed Auth — capabilities extension, JWKS auto-fetch, enterprise_auth config, mock IdP test"
   iteration: 3
   max_iterations: 20
+
+- timestamp: "2026-06-19T19:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-058"
+  summary: "Negative constraints in persona schema — constraints field, weaver rendering, forge validation"
+  iteration: 4
+  max_iterations: 20
