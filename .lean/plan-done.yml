@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 135 completed items
+# 136 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -348,6 +348,12 @@ items:
 
   - id: "NAVRA-059"
     title: "YAML flow definitions"
+    status: done
+    priority: low
+    effort: M
+
+  - id: "NAVRA-060"
+    title: "Operator libraries"
     status: done
     priority: low
     effort: M

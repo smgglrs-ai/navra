@@ -501,3 +501,11 @@
   summary: "Lazy-loading specialization YAML — SpecializationPartial for metadata-only parse, Mutex cache for on-demand loading, validate() uses catalog. Also fixed navra-protocol TLS feature gating."
   iteration: 4
   max_iterations: 20
+
+- timestamp: "2026-06-19T22:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-060"
+  summary: "Operator libraries — scan_libraries, merge_libraries with main-wins + conflict detection, CLI list-libraries subcommand, 10 unit tests"
+  iteration: 5
+  max_iterations: 20

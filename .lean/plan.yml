@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 13 active items
+# 12 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -19,12 +19,6 @@ items:
     priority: low
     effort: 3-5d
     gate: "IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision"
-
-  - id: "NAVRA-060"
-    title: "Operator libraries"
-    status: planned
-    priority: low
-    effort: M
 
   - id: "NAVRA-063"
     title: "Privacy Router coordination"
