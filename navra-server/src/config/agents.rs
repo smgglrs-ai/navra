@@ -176,6 +176,7 @@ impl UpstreamConfig {
         }
         Some(config)
     }
+
 }
 
 fn default_transport() -> String {

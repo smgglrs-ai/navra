@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 109 completed items
+# 111 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -716,10 +716,24 @@ items:
     effort: S
     progress: 100
 
+  - id: "NAVRA-136"
+    title: "Add doc comments to navra-agent and navra-cognitive public APIs"
+    status: done
+    priority: low
+    effort: S
+    progress: 100
+
   - id: "NAVRA-138"
     title: "Refresh TESTING.md test count table"
     status: done
     priority: low
     effort: S
+    progress: 100
+
+  - id: "NAVRA-143"
+    title: "Replace navra-tools-gitlab with upstream GitLab MCP server"
+    status: done
+    priority: medium
+    effort: M
     progress: 100
 
