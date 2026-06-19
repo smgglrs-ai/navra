@@ -7,9 +7,10 @@ version: 1
 items:
   - id: "NAVRA-064"
     title: "Nomic Embed v1.5 evaluation"
-    status: planned
+    status: done
     priority: medium
     effort: M
+    progress: 100
 
   - id: "NAVRA-070"
     title: "WebSocket agentic loops"

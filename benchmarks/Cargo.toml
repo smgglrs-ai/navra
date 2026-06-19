@@ -12,6 +12,7 @@ navra-model = { path = "../navra-model" }
 navra-cognitive = { path = "../navra-cognitive" }
 navra-responses = { path = "../navra-responses" }
 navra-memory = { path = "../navra-memory" }
+navra-rag = { path = "../navra-rag" }
 criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -23,4 +24,8 @@ harness = false
 
 [[bench]]
 name = "memory_temporal"
+harness = false
+
+[[bench]]
+name = "embedding_retrieval"
 harness = false
