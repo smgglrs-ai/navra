@@ -265,3 +265,10 @@
   summary: "Removed navra-tools-gitlab crate from workspace. Removed [modules.gitlab] config, GitlabModuleConfig, and gitlab_enabled(). GitLab is now a standard upstream MCP server configured via [[upstream]] with 'glab mcp serve'."
   iteration: 11
   max_iterations: 20
+- timestamp: "2026-06-19T08:50:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-144"
+  summary: "Blocked: exec module is deeply integrated with flow_tools and team_tools for sandbox lifecycle (not just a tool wrapper). Needs design work to separate sandbox orchestration from tool surface."
+  iteration: 12
+  max_iterations: 20
