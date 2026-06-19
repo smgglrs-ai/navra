@@ -1,6 +1,6 @@
 id: NAVRA-139
 title: Complete WebMCP CDP transport implementation
-status: planned
+status: done
 priority: medium
 effort: M
 depends_on: []
