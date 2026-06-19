@@ -1,0 +1,49 @@
+id: "NAVRA-145"
+title: "Expose knowledge pipeline as MCP tools for lean-claude consumption"
+status: planned
+priority: high
+effort: M
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-18
+scope:
+  - navra-memory/src/
+  - navra-rag/src/
+  - navra-core/src/server/
+acceptance:
+  - "knowledge_search MCP tool returns ranked results from FTS5+vector with RRF fusion"
+  - "entity_graph_query MCP tool traverses 1-2 hops and returns relationships"
+  - "decay_score MCP tool returns effective score for a knowledge entry"
+  - "distill MCP tool accepts raw text and returns structured knowledge entries"
+  - "lean-learn running against navra uses the MCP tools when navra is serving"
+  - "lean-learn falls back to agent-based analysis when navra is not serving"
+description: |
+  Expose navra-memory and navra-rag capabilities as MCP tools so that
+  lean-claude commands (lean-learn, lean-watch, lean-refine) can use
+  navra's knowledge pipeline for semantic analysis when available.
+
+  navra already has the full stack: FTS5+vector search (navra-rag),
+  entity-relationship graph with temporal validity (navra-memory
+  entity_graph.rs), distillation pipeline (pipeline.rs), and
+  exponential decay scoring (decay.rs). These are internal APIs —
+  this item wraps them as MCP tools.
+
+  Four tools:
+  - knowledge_search(query, limit) — hybrid FTS5+vector with RRF,
+    returns ranked entries with scores
+  - entity_graph_query(entity, hops) — traverse relationships,
+    return connected entities with relation types and confidence
+  - decay_score(entry_ids) — batch score entries by staleness,
+    return effective scores with decay parameters
+  - distill(text, source) — run the synthesize stage of the
+    distillation pipeline on raw text, return structured entries
+
+  lean-claude integration: project.yml gets a knowledge.mcp field
+  pointing to navra's socket. lean-learn checks if the endpoint
+  is reachable and uses the tools if available, agent fallback
+  otherwise. First real consumer = dogfooding on navra's own
+  project data (76+ items, 45 memories, tech watch records).
+notes: |
+  Validated by tech-watch-2026-06-18: "Claude Second Brain Levels"
+  article describes exactly this 5-level architecture. navra already
+  implements all 5 levels — this item exposes them for external use.

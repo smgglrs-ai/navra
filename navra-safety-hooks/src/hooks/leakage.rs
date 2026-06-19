@@ -128,13 +128,13 @@ impl Hook for SimilarityLeakageHook {
         tool_name: &str,
         arguments: &serde_json::Value,
         ctx: &CallContext,
+        annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         if !self.config.enabled {
             return HookDecision::Continue;
         }
 
-        let tool_annotations = None; // TODO: pass annotations when available
-        if !navra_auth::ifc::is_write_tool(tool_name, tool_annotations) {
+        if !navra_auth::ifc::is_write_tool(tool_name, annotations) {
             return HookDecision::Continue;
         }
 
@@ -284,12 +284,13 @@ impl Hook for SemanticLeakageJudge {
         tool_name: &str,
         arguments: &serde_json::Value,
         ctx: &CallContext,
+        annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         if !self.config.enabled {
             return HookDecision::Continue;
         }
 
-        let tool_annotations = None;
+        let tool_annotations = annotations;
         if !navra_auth::ifc::is_write_tool(tool_name, tool_annotations) {
             return HookDecision::Continue;
         }
@@ -424,6 +425,7 @@ mod tests {
                 "file_write",
                 &json!({"path": "/tmp/out", "content": "API_KEY=sk-secret-abc123"}),
                 &ctx,
+                None,
             )
             .await;
 
@@ -447,6 +449,7 @@ mod tests {
                 "file_write",
                 &json!({"path": "/tmp/out", "content": "The weather is nice today and the sun is shining brightly"}),
                 &ctx,
+                None,
             )
             .await;
 
@@ -469,6 +472,7 @@ mod tests {
                 "file_read",
                 &json!({"path": "API_KEY=sk-secret-abc123"}),
                 &ctx,
+                None,
             )
             .await;
 
@@ -488,6 +492,7 @@ mod tests {
                 "file_write",
                 &json!({"path": "/tmp/out", "content": "hi"}),
                 &ctx,
+                None,
             )
             .await;
 
@@ -505,6 +510,7 @@ mod tests {
                 "file_write",
                 &json!({"path": "/tmp/out", "content": "API_KEY=sk-secret-abc123"}),
                 &ctx,
+                None,
             )
             .await;
 
@@ -531,6 +537,7 @@ mod tests {
                 "file_write",
                 &json!({"path": "/tmp/out", "content": "API_KEY=sk-secret-abc123"}),
                 &ctx,
+                None,
             )
             .await;
 

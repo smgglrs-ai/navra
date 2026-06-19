@@ -655,7 +655,7 @@ impl McpServer {
         let arguments = if self.hooks.has_hooks() {
             match self
                 .hooks
-                .run_pre(&params.name, resolved.arguments, &ctx)
+                .run_pre(&params.name, resolved.arguments, &ctx, tool_annotations)
                 .await
             {
                 crate::hooks::PreHookOutcome::Proceed(args) => args,

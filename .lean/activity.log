@@ -244,3 +244,10 @@
   summary: "Resolved 8 #[allow(dead_code)] annotations: removed 2 unused convenience wrappers (discover.rs), prefixed 2 planned-but-unread fields with _ (executor.rs, ui_agent.rs), re-annotated 3 with justification comments (serde deserialization, Debug formatting, HashMap lookups). Removed ui.rs module-level suppression."
   iteration: 8
   max_iterations: 20
+- timestamp: "2026-06-19T00:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-134"
+  summary: "Added annotations parameter to Hook::pre_tool_use trait (5th param), threaded through HookPipeline::run_pre and server handlers. Leakage hook now receives actual tool annotations instead of None. Updated 18 impl sites and 67 test call sites. Fixed discover.rs tests broken by NAVRA-133 function removal."
+  iteration: 9
+  max_iterations: 20
