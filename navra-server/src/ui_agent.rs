@@ -48,8 +48,7 @@ pub(crate) struct AgentChatState {
     pub model: Arc<dyn ModelBackend>,
     pub forge: Arc<ForgeService>,
     pub memory: Arc<SharedMemory>,
-    #[allow(dead_code)]
-    pub listen_addr: String,
+    pub _listen_addr: String,
     pub context_retriever: Option<Arc<dyn navra_agent::ContextRetriever>>,
 }
 
@@ -550,7 +549,7 @@ mod tests {
             model,
             forge,
             memory,
-            listen_addr: "127.0.0.1:0".to_string(),
+            _listen_addr: "127.0.0.1:0".to_string(),
             context_retriever: None,
         })
     }
