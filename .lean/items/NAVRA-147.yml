@@ -1,0 +1,45 @@
+id: NAVRA-147
+title: MCP Enterprise-Managed Authorization (ID-JAG)
+status: planned
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+source: tech-watch-2026-06-19
+scope:
+  - navra-auth/src/auth/
+  - navra-core/src/transport/
+  - navra-protocol/src/
+description: |
+  Support the MCP Enterprise-Managed Authorization extension
+  (io.modelcontextprotocol/enterprise-managed-authorization) for
+  centralized IdP-controlled access to navra.
+
+  The extension defines an ID-JAG (Identity Assertion JWT Authorization
+  Grant) flow where:
+  1. Client authenticates to corporate IdP (Okta, Azure AD, etc.)
+  2. IdP issues ID Token
+  3. Client exchanges ID Token for ID-JAG from IdP
+  4. Client exchanges ID-JAG for MCP access token from navra
+
+  Implementation:
+  - Declare extension support in initialize response capabilities
+  - Validate ID-JAG JWTs against IdP JWKS endpoint
+  - Map IdP claims (scope, resource) to navra permission sets
+  - Support centralized revocation via IdP
+  - Add enterprise_auth config section to config.toml
+
+  navra already has OAuth + capability tokens. This extends the auth
+  layer with the enterprise delegation pattern from the MCP spec.
+acceptance:
+  - "navra declares enterprise-managed-authorization in capabilities"
+  - "ID-JAG JWTs validated against configurable JWKS endpoint"
+  - "IdP claims mapped to navra permission sets via config"
+  - "Enterprise auth flow works end-to-end with mock IdP in tests"
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-auth -p navra-core"
+notes:
+  - date: "2026-06-19"
+    detail: |
+      Source: https://modelcontextprotocol.io/extensions/auth/enterprise-managed-authorization
+      SEP-990 proposal. Draft spec in ext-auth repo.
