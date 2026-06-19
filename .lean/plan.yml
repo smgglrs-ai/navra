@@ -21,9 +21,10 @@ items:
 
   - id: "NAVRA-147"
     title: "MCP Enterprise-Managed Authorization (ID-JAG)"
-    status: planned
+    status: done
     priority: medium
     effort: M
+    progress: 100
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"

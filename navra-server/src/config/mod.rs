@@ -91,6 +91,10 @@ pub struct Config {
     /// Event-driven triggers that start flows automatically.
     #[serde(default)]
     pub triggers: Vec<crate::triggers::TriggerConfig>,
+    /// Enterprise-managed authorization (MCP extension).
+    /// Configures ID-JAG authenticator for corporate IdP integration.
+    #[serde(default)]
+    pub enterprise_auth: Option<navra_core::auth::idjag::IdJagConfig>,
 }
 
 impl Config {
@@ -310,6 +314,7 @@ impl Default for Config {
             temporal_contracts: TemporalContractServerConfig::default(),
             routing: navra_core::hooks::RoutingConfig::default(),
             triggers: Vec::new(),
+            enterprise_auth: None,
         }
     }
 }
