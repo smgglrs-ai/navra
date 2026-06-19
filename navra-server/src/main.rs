@@ -245,6 +245,27 @@ async fn main() -> anyhow::Result<()> {
                     import_mcp_file(p, redact)?;
                 }
             }
+            ConfigAction::ListLibraries { config: cfg_path } => {
+                let cfg = config::Config::load(cfg_path.as_deref())
+                    .unwrap_or_else(|_| config::Config::default());
+                let dirs = config::libraries::resolve_dirs(&cfg.libraries.library_dirs);
+                let libs = config::libraries::scan_libraries(&dirs)?;
+                if libs.is_empty() {
+                    println!("No operator libraries found.");
+                    println!("Library directories:");
+                    for d in &dirs {
+                        println!("  {}", d.display());
+                    }
+                } else {
+                    let summaries = config::libraries::summarize_libraries(&libs);
+                    for s in &summaries {
+                        println!("{}:", s.path.display());
+                        for key in &s.keys {
+                            println!("  {key}");
+                        }
+                    }
+                }
+            }
         },
         Commands::Improve {
             target,
