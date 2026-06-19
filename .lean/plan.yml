@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 36 active items
+# 35 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -107,12 +107,6 @@ items:
     status: planned
     priority: low
     effort: M
-
-  - id: "NAVRA-138"
-    title: "Refresh TESTING.md test count table"
-    status: planned
-    priority: low
-    effort: S
 
   - id: "NAVRA-051"
     title: "Paper significant fixes"
