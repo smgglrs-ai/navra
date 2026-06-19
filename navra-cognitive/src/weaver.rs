@@ -242,6 +242,15 @@ fn build_cacheable_prefix(
         &InjectPosition::AfterMandate,
     );
 
+    // 4b. Constraints (negative instructions)
+    if !persona.constraints.is_empty() {
+        let mut constraints_text = String::from("## Constraints\n");
+        for c in &persona.constraints {
+            constraints_text.push_str(&format!("\n- {c}"));
+        }
+        sections.push(constraints_text);
+    }
+
     // 5. Resolved heuristics
     let heuristic_text = resolve_heuristics(forge, &persona.heuristics);
     if !heuristic_text.is_empty() {

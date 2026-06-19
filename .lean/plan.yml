@@ -7,21 +7,24 @@ version: 1
 items:
   - id: "NAVRA-064"
     title: "Nomic Embed v1.5 evaluation"
-    status: planned
+    status: done
     priority: medium
     effort: M
+    progress: 100
 
   - id: "NAVRA-070"
     title: "WebSocket agentic loops"
-    status: planned
+    status: done
     priority: medium
     effort: M
+    progress: 100
 
   - id: "NAVRA-147"
     title: "MCP Enterprise-Managed Authorization (ID-JAG)"
-    status: planned
+    status: done
     priority: medium
     effort: M
+    progress: 100
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"
@@ -40,39 +43,45 @@ items:
 
   - id: "NAVRA-049"
     title: "PII ONNX classifier"
-    status: planned
+    status: done
     priority: low
     effort: M
+    progress: 100
 
   - id: "NAVRA-058"
     title: "Negative constraints in persona schema"
-    status: planned
+    status: done
     priority: low
     effort: S
+    progress: 100
 
   - id: "NAVRA-059"
     title: "YAML flow definitions"
-    status: planned
+    status: done
     priority: low
     effort: M
+    progress: 100
 
   - id: "NAVRA-061"
     title: "Memory type classification"
-    status: planned
+    status: done
     priority: low
     effort: S
+    progress: 100
 
   - id: "NAVRA-069"
     title: "Multi-hypothesis tool routing"
-    status: planned
+    status: done
     priority: low
     effort: M
+    progress: 100
 
   - id: "NAVRA-071"
     title: "HTML-to-markdown conversion"
-    status: planned
+    status: done
     priority: low
     effort: S
+    progress: 100
 
   - id: "NAVRA-092"
     title: "Evaluate LCLM for context compression"

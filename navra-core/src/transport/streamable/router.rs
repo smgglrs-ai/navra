@@ -24,6 +24,10 @@ pub(crate) struct AppState {
     pub oauth: Option<Arc<navra_auth::auth::oauth::OAuthProvider>>,
     /// Prometheus metrics registry.
     pub metrics: Arc<crate::metrics::Metrics>,
+    /// WebSocket ping interval in seconds (default: 30).
+    pub ws_ping_interval_secs: u64,
+    /// WebSocket idle timeout in seconds (default: 600).
+    pub ws_idle_timeout_secs: u64,
 }
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
@@ -38,6 +42,8 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
         root_did: None,
         oauth: None,
         metrics,
+        ws_ping_interval_secs: 30,
+        ws_idle_timeout_secs: 600,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -64,6 +70,8 @@ pub fn build_router_with_broadcaster(
         root_did: None,
         oauth: None,
         metrics,
+        ws_ping_interval_secs: 30,
+        ws_idle_timeout_secs: 600,
     };
     Router::new()
         .route("/mcp", post(handle_post))
@@ -106,6 +114,8 @@ pub fn build_router_with_discovery(
         root_did,
         oauth: None,
         metrics,
+        ws_ping_interval_secs: 30,
+        ws_idle_timeout_secs: 600,
     };
 
     let mut router = Router::new()

@@ -121,6 +121,9 @@ pub struct ServerCapabilities {
     /// Permission negotiation extension (navra extension to MCP).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permissions: Option<crate::permissions::PermissionsCapability>,
+    /// MCP specification extensions (e.g., enterprise-managed-authorization).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub extensions: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -686,6 +689,7 @@ mod tests {
                 }),
                 prompts: None,
                 permissions: None,
+                extensions: HashMap::new(),
             },
             server_info: ServerInfo {
                 name: "navra-docs".to_string(),
@@ -867,6 +871,7 @@ mod tests {
             resources: None,
             prompts: Some(PromptsCapability { list_changed: true }),
             permissions: None,
+            extensions: HashMap::new(),
         };
         let json = serde_json::to_value(&caps).unwrap();
         assert!(json["prompts"]["listChanged"].as_bool().unwrap());
@@ -1227,6 +1232,7 @@ mod tests {
                 }),
                 prompts: Some(PromptsCapability { list_changed: true }),
                 permissions: None,
+                extensions: HashMap::new(),
             },
             server_info: ServerInfo {
                 name: "navra".to_string(),

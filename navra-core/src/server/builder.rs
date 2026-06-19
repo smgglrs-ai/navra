@@ -47,6 +47,8 @@ pub struct McpServerBuilder {
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     mcp_version: String,
+    enterprise_auth: bool,
+    tool_routing: super::routing::ToolRoutingConfig,
     metrics: Option<Arc<crate::metrics::Metrics>>,
 }
 
@@ -82,6 +84,8 @@ impl McpServerBuilder {
             dynamic_filters: Vec::new(),
             path_acls: HashMap::new(),
             mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
+            enterprise_auth: false,
+            tool_routing: super::routing::ToolRoutingConfig::default(),
             metrics: None,
         }
     }
@@ -97,6 +101,16 @@ impl McpServerBuilder {
 
     pub fn mcp_version(mut self, version: &str) -> Self {
         self.mcp_version = version.to_string();
+        self
+    }
+
+    pub fn enterprise_auth(mut self, enabled: bool) -> Self {
+        self.enterprise_auth = enabled;
+        self
+    }
+
+    pub fn tool_routing(mut self, config: super::routing::ToolRoutingConfig) -> Self {
+        self.tool_routing = config;
         self
     }
 
@@ -921,6 +935,8 @@ impl McpServerBuilder {
                 .metrics
                 .unwrap_or_else(|| std::sync::Arc::new(crate::metrics::Metrics::new())),
             mcp_version: self.mcp_version,
+            enterprise_auth: self.enterprise_auth,
+            tool_routing: self.tool_routing,
         }
     }
 }

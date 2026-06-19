@@ -64,6 +64,14 @@ pub struct ServerConfig {
     /// verification. Default: "warn".
     #[serde(default = "default_agent_signature_policy")]
     pub agent_signature_policy: String,
+    /// WebSocket ping interval in seconds (default: 30).
+    /// Server sends ping frames at this interval; closes after 3 missed pongs.
+    #[serde(default = "default_ws_ping_interval")]
+    pub ws_ping_interval_secs: u64,
+    /// WebSocket idle timeout in seconds (default: 600 = 10 minutes).
+    /// Connections with no activity are closed after this duration.
+    #[serde(default = "default_ws_idle_timeout")]
+    pub ws_idle_timeout_secs: u64,
     /// Watch the config file for changes and hot-reload.
     #[serde(default)]
     pub config_watch: bool,
@@ -102,6 +110,14 @@ fn default_container_pids() -> u32 {
 
 fn default_hook_timeout() -> u64 {
     10
+}
+
+fn default_ws_ping_interval() -> u64 {
+    30
+}
+
+fn default_ws_idle_timeout() -> u64 {
+    600
 }
 
 fn default_agent_signature_policy() -> String {

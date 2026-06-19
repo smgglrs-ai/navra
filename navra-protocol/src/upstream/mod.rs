@@ -13,6 +13,7 @@ pub mod tls;
 mod transport;
 #[cfg(feature = "webmcp")]
 pub mod webmcp;
+pub mod ws;
 
 pub use auth::{StaticTokenProvider, TokenProvider};
 pub use retry::{RetryConfig, TransportFactory};
@@ -189,6 +190,17 @@ impl Upstream {
         let factory = retry::HttpTransportFactory::with_tls(name, url, tls);
         let transport =
             retry::ResilientTransport::from_factory(name, Box::new(factory), config).await?;
+        Self::connect(name, transport).await
+    }
+
+    /// Connect via WebSocket and initialize.
+    ///
+    /// The `url` should be the MCP WebSocket endpoint, e.g.,
+    /// `ws://127.0.0.1:9315/ws`.
+    #[cfg(feature = "webmcp")]
+    pub async fn websocket(name: &str, url: &str) -> Result<Self, UpstreamError> {
+        let mut transport = ws::WebSocketTransport::new(name, url);
+        transport.connect().await?;
         Self::connect(name, transport).await
     }
 

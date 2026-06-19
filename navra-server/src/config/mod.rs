@@ -91,6 +91,10 @@ pub struct Config {
     /// Event-driven triggers that start flows automatically.
     #[serde(default)]
     pub triggers: Vec<crate::triggers::TriggerConfig>,
+    /// Enterprise-managed authorization (MCP extension).
+    /// Configures ID-JAG authenticator for corporate IdP integration.
+    #[serde(default)]
+    pub enterprise_auth: Option<navra_core::auth::idjag::IdJagConfig>,
 }
 
 impl Config {
@@ -286,6 +290,8 @@ impl Default for Config {
                 container_pids: 256,
                 mcp_version: "2026-07-28".to_string(),
                 agent_signature_policy: "warn".to_string(),
+                ws_ping_interval_secs: 30,
+                ws_idle_timeout_secs: 600,
                 config_watch: false,
                 config_watch_debounce_ms: 50,
             },
@@ -308,6 +314,7 @@ impl Default for Config {
             temporal_contracts: TemporalContractServerConfig::default(),
             routing: navra_core::hooks::RoutingConfig::default(),
             triggers: Vec::new(),
+            enterprise_auth: None,
         }
     }
 }

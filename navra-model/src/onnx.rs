@@ -217,11 +217,16 @@ impl OnnxBackend {
     }
 
     /// Mean-pool hidden states to produce an embedding vector.
+    ///
+    /// Supports Matryoshka dimension truncation: if `target_dimensions` is
+    /// smaller than the model's native hidden size, mean-pools at native
+    /// dimensions first, then truncates and re-normalizes. This produces
+    /// valid lower-dimensional embeddings from Matryoshka-trained models.
     fn compute_embedding(
         &self,
         input_ids: &[i64],
         attention_mask: &[i64],
-        dimensions: usize,
+        target_dimensions: usize,
     ) -> Result<EmbedResponse, ModelError> {
         let seq_len = input_ids.len();
         let outputs = self.run_inference(input_ids, attention_mask)?;
@@ -231,14 +236,21 @@ impl OnnxBackend {
         }
 
         let hidden_states = &outputs[0];
-        let mut embedding = vec![0.0f32; dimensions];
+        let hidden_dim = if seq_len > 0 {
+            hidden_states.len() / seq_len
+        } else {
+            target_dimensions
+        };
+
+        let pool_dim = hidden_dim.max(target_dimensions);
+        let mut embedding = vec![0.0f32; pool_dim];
         let mut mask_sum = 0.0f32;
 
         for pos in 0..seq_len {
             let m = attention_mask[pos] as f32;
             mask_sum += m;
-            for dim in 0..dimensions {
-                let idx = pos * dimensions + dim;
+            for dim in 0..pool_dim {
+                let idx = pos * hidden_dim + dim;
                 if idx < hidden_states.len() {
                     embedding[dim] += hidden_states[idx] * m;
                 }
@@ -251,7 +263,10 @@ impl OnnxBackend {
             }
         }
 
-        // L2 normalize
+        // Matryoshka truncation: take first target_dimensions elements
+        embedding.truncate(target_dimensions);
+
+        // L2 normalize (re-normalize after truncation for Matryoshka)
         let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 0.0 {
             for v in &mut embedding {
@@ -261,7 +276,7 @@ impl OnnxBackend {
 
         Ok(EmbedResponse {
             embedding,
-            dimensions,
+            dimensions: target_dimensions,
         })
     }
 
@@ -480,6 +495,80 @@ mod tests {
         let long_text = "a".repeat(1000);
         let ids = simple_tokenize(&long_text);
         assert_eq!(ids.len(), 514); // CLS + 512 + SEP
+    }
+
+    #[test]
+    fn matryoshka_truncation_logic() {
+        // Simulate hidden_states for 2 tokens, 4 dims each
+        // Token 0: [1.0, 2.0, 3.0, 4.0], Token 1: [2.0, 4.0, 6.0, 8.0]
+        let hidden_states: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 2.0, 4.0, 6.0, 8.0];
+        let attention_mask: Vec<i64> = vec![1, 1];
+        let seq_len = 2;
+        let hidden_dim = 4;
+        let target_dimensions = 2; // Matryoshka: truncate 4d -> 2d
+
+        let pool_dim = hidden_dim.max(target_dimensions);
+        let mut embedding = vec![0.0f32; pool_dim];
+        let mut mask_sum = 0.0f32;
+
+        for pos in 0..seq_len {
+            let m = attention_mask[pos] as f32;
+            mask_sum += m;
+            for dim in 0..pool_dim {
+                let idx = pos * hidden_dim + dim;
+                if idx < hidden_states.len() {
+                    embedding[dim] += hidden_states[idx] * m;
+                }
+            }
+        }
+
+        for v in &mut embedding {
+            *v /= mask_sum;
+        }
+
+        // Mean-pooled full: [(1+2)/2, (2+4)/2, (3+6)/2, (4+8)/2] = [1.5, 3.0, 4.5, 6.0]
+        assert!((embedding[0] - 1.5).abs() < 1e-6);
+        assert!((embedding[1] - 3.0).abs() < 1e-6);
+        assert!((embedding[2] - 4.5).abs() < 1e-6);
+        assert!((embedding[3] - 6.0).abs() < 1e-6);
+
+        // Truncate to target_dimensions
+        embedding.truncate(target_dimensions);
+        assert_eq!(embedding.len(), 2);
+        assert!((embedding[0] - 1.5).abs() < 1e-6);
+        assert!((embedding[1] - 3.0).abs() < 1e-6);
+
+        // Re-normalize
+        let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+        for v in &mut embedding {
+            *v /= norm;
+        }
+        let norm_check: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!((norm_check - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn matryoshka_full_dimensions_passthrough() {
+        // When target_dimensions == hidden_dim, truncation is a no-op
+        let hidden_states: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let seq_len = 1;
+        let hidden_dim = 4;
+        let target_dimensions = 4;
+
+        let pool_dim = hidden_dim.max(target_dimensions);
+        let mut embedding = vec![0.0f32; pool_dim];
+
+        for dim in 0..pool_dim {
+            let idx = dim;
+            if idx < hidden_states.len() {
+                embedding[dim] += hidden_states[idx];
+            }
+        }
+
+        embedding.truncate(target_dimensions);
+        assert_eq!(embedding.len(), 4);
+        assert!((embedding[0] - 1.0).abs() < 1e-6);
+        assert!((embedding[3] - 4.0).abs() < 1e-6);
     }
 
     #[test]
