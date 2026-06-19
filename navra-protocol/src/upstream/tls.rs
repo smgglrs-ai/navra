@@ -26,7 +26,19 @@ impl TlsConfig {
     ///
     /// Certificate files are read at call time, not at config parse time,
     /// so missing files produce errors only when a connection is attempted.
+    ///
+    /// Requires the `native-tls` or `rustls` feature on `navra-protocol`.
+    /// Without either feature, returns a plain client and logs a warning
+    /// if TLS options were specified.
     pub fn build_client(&self, upstream_name: &str) -> Result<reqwest::Client, UpstreamError> {
+        self.build_client_inner(upstream_name)
+    }
+
+    #[cfg(any(feature = "native-tls", feature = "rustls"))]
+    fn build_client_inner(
+        &self,
+        upstream_name: &str,
+    ) -> Result<reqwest::Client, UpstreamError> {
         let mut builder = reqwest::Client::builder();
 
         if self.danger_skip_verify {
@@ -88,6 +100,26 @@ impl TlsConfig {
             name: upstream_name.to_string(),
             message: format!("failed to build TLS client: {}", e),
         })
+    }
+
+    #[cfg(not(any(feature = "native-tls", feature = "rustls")))]
+    fn build_client_inner(
+        &self,
+        upstream_name: &str,
+    ) -> Result<reqwest::Client, UpstreamError> {
+        if self.ca_cert.is_some() || self.client_cert.is_some() || self.danger_skip_verify {
+            tracing::warn!(
+                upstream = %upstream_name,
+                "TLS options specified but no TLS backend enabled — \
+                 enable native-tls or rustls feature on navra-protocol"
+            );
+        }
+        reqwest::Client::builder()
+            .build()
+            .map_err(|e| UpstreamError::Protocol {
+                name: upstream_name.to_string(),
+                message: format!("failed to build client: {}", e),
+            })
     }
 }
 
