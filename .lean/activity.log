@@ -433,3 +433,11 @@
   summary: "YAML flow definitions — LoadedFlow enum, handoff YAML loading, schema validation, parameter substitution"
   iteration: 6
   max_iterations: 20
+
+- timestamp: "2026-06-19T20:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-061"
+  summary: "Memory type classification — with_classifier builder, classify_text method, memory_type=auto in distill tool"
+  iteration: 7
+  max_iterations: 20
