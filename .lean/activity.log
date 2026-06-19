@@ -401,3 +401,11 @@
   summary: "WebSocket agentic loops — ping/keepalive, idle timeout, metrics, concurrent dispatch, WebSocketTransport"
   iteration: 2
   max_iterations: 20
+
+- timestamp: "2026-06-19T19:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-147"
+  summary: "MCP Enterprise-Managed Auth — capabilities extension, JWKS auto-fetch, enterprise_auth config, mock IdP test"
+  iteration: 3
+  max_iterations: 20

@@ -157,6 +157,14 @@ impl McpServer {
     }
 
     pub fn capabilities(&self) -> crate::protocol::ServerCapabilities {
+        let mut extensions = std::collections::HashMap::new();
+        if self.enterprise_auth {
+            extensions.insert(
+                "io.modelcontextprotocol/enterprise-managed-authorization".to_string(),
+                serde_json::json!({}),
+            );
+        }
+
         crate::protocol::ServerCapabilities {
             tools: if self.tools.is_empty() {
                 None
@@ -179,6 +187,7 @@ impl McpServer {
                 })
             },
             permissions: Some(navra_protocol::permissions::PermissionsCapability {}),
+            extensions,
         }
     }
 

@@ -87,6 +87,8 @@ pub struct McpServer {
     path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     /// MCP protocol version — "2025-03-26" (default) or "2026-07-28" (stateless).
     mcp_version: String,
+    /// Enterprise-managed authorization extension enabled.
+    enterprise_auth: bool,
 }
 
 /// A pending permission request awaiting grant or deny.
