@@ -8,6 +8,7 @@
 pub mod approval_gate;
 mod budget;
 pub mod egress;
+mod html_markdown;
 mod json_compress;
 pub mod field_filter;
 pub mod leakage;
@@ -29,6 +30,7 @@ pub use approval_gate::{ApprovalGateConfig, ApprovalGateHook, ApprovalStatus, Pe
 pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
 pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
+pub use html_markdown::{HtmlToMarkdownConfig, HtmlToMarkdownHook};
 pub use json_compress::{JsonCompressConfig, JsonCompressHook};
 pub use monitoring::{
     EscalationEvent, EscalationSender, EscalationSource, MonitoringConfig, MonitoringHook,

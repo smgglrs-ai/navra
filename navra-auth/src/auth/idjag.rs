@@ -20,14 +20,14 @@ use super::{AgentIdentity, AuthError, Authenticator};
 use crate::identity::CapSigner;
 
 /// Configuration for the ID-JAG authenticator.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct IdJagConfig {
     pub enabled: bool,
     pub trusted_providers: Vec<TrustedProvider>,
 }
 
 /// A provider whose agent JWTs are trusted by this gateway.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TrustedProvider {
     /// Short name: "openai", "anthropic", "cursor".
     pub name: String,
@@ -97,10 +97,16 @@ impl IdJagAudience {
 }
 
 /// ID-JAG authenticator: verifies provider-minted JWT assertions.
+///
+/// Supports the MCP Enterprise-Managed Authorization extension
+/// (`io.modelcontextprotocol/enterprise-managed-authorization`).
+/// Validates ID-JAG JWTs from corporate IdPs against configurable
+/// JWKS endpoints, mapping IdP claims to navra permission sets.
 pub struct IdJagAuthenticator {
     config: IdJagConfig,
     /// Cached JWKS keys per issuer.
     cached_keys: RwLock<HashMap<String, Vec<JwkKey>>>,
+    http_client: reqwest::Client,
 }
 
 impl IdJagAuthenticator {
@@ -108,6 +114,10 @@ impl IdJagAuthenticator {
         Self {
             config,
             cached_keys: RwLock::new(HashMap::new()),
+            http_client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap_or_default(),
         }
     }
 
@@ -115,6 +125,76 @@ impl IdJagAuthenticator {
     pub fn register_keys(&self, issuer: &str, keys: Vec<JwkKey>) {
         let mut cache = self.cached_keys.write().unwrap_or_else(|e| e.into_inner());
         cache.insert(issuer.to_string(), keys);
+    }
+
+    /// Fetch JWKS keys from a provider's endpoint and cache them.
+    pub async fn fetch_jwks(&self, provider: &TrustedProvider) -> Result<(), AuthError> {
+        let resp = self
+            .http_client
+            .get(&provider.jwks_uri)
+            .send()
+            .await
+            .map_err(|_| AuthError::InvalidToken)?;
+
+        let body: serde_json::Value = resp.json().await.map_err(|_| AuthError::InvalidToken)?;
+
+        let jwks_keys = body
+            .get("keys")
+            .and_then(|k| k.as_array())
+            .ok_or(AuthError::InvalidToken)?;
+
+        let mut keys = Vec::new();
+        for key_json in jwks_keys {
+            let kty = key_json.get("kty").and_then(|v| v.as_str()).unwrap_or("");
+            let alg = key_json
+                .get("alg")
+                .and_then(|v| v.as_str())
+                .unwrap_or("EdDSA");
+            let kid = key_json
+                .get("kid")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            if kty == "OKP" {
+                // Ed25519 key: decode the "x" parameter (base64url, 32 bytes)
+                if let Some(x) = key_json.get("x").and_then(|v| v.as_str()) {
+                    if let Ok(pk_bytes) = URL_SAFE_NO_PAD.decode(x) {
+                        keys.push(JwkKey {
+                            kid,
+                            algorithm: alg.to_string(),
+                            public_key_bytes: pk_bytes,
+                        });
+                    }
+                }
+            }
+        }
+
+        if keys.is_empty() {
+            return Err(AuthError::InvalidToken);
+        }
+
+        self.register_keys(&provider.issuer, keys);
+        tracing::info!(
+            provider = %provider.name,
+            issuer = %provider.issuer,
+            "Fetched JWKS keys"
+        );
+        Ok(())
+    }
+
+    /// Fetch JWKS keys for all configured providers.
+    pub async fn fetch_all_jwks(&self) {
+        for provider in &self.config.trusted_providers {
+            if let Err(e) = self.fetch_jwks(provider).await {
+                tracing::warn!(
+                    provider = %provider.name,
+                    jwks_uri = %provider.jwks_uri,
+                    error = ?e,
+                    "Failed to fetch JWKS"
+                );
+            }
+        }
     }
 
     /// Verify an ID-JAG assertion token.
@@ -628,6 +708,97 @@ mod tests {
 
         let identity = auth.verify_assertion(&token).unwrap();
         assert_eq!(identity.name, "test-provider:agent-1");
+    }
+
+    #[tokio::test]
+    async fn idjag_fetch_jwks_from_mock_idp() {
+        let signer = Ed25519Signer::generate();
+        let pk_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(signer.public_key_bytes());
+
+        let jwks_json = serde_json::json!({
+            "keys": [{
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "alg": "EdDSA",
+                "kid": "idp-key-1",
+                "x": pk_b64,
+                "use": "sig"
+            }]
+        });
+
+        // Start mock JWKS endpoint using axum
+        let jwks_body = serde_json::to_string(&jwks_json).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let body = jwks_body.clone();
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut buf = vec![0u8; 4096];
+                    let _ = stream.read(&mut buf).await;
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = stream.write_all(response.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+
+        // Give the server a moment to bind
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let config = IdJagConfig {
+            enabled: true,
+            trusted_providers: vec![TrustedProvider {
+                name: "mock-idp".to_string(),
+                issuer: "https://idp.example.com".to_string(),
+                jwks_uri: format!("http://127.0.0.1:{port}/.well-known/jwks.json"),
+                audience: "navra".to_string(),
+                default_permissions: "enterprise-agent".to_string(),
+            }],
+        };
+
+        let auth = IdJagAuthenticator::new(config);
+        auth.fetch_jwks(&auth.config.trusted_providers[0]).await.unwrap();
+
+        // Now verify a JWT signed by the mock IdP
+        let header = r#"{"alg":"EdDSA","kid":"idp-key-1"}"#;
+        let claims = format!(
+            r#"{{"iss":"https://idp.example.com","sub":"employee@corp.com","aud":"navra","exp":{}}}"#,
+            future_exp()
+        );
+        let token = build_test_jwt(header, &claims, &signer);
+
+        let identity = auth.verify_assertion(&token).unwrap();
+        assert_eq!(identity.name, "mock-idp:employee@corp.com");
+        assert_eq!(identity.permissions, "enterprise-agent");
+    }
+
+    #[test]
+    fn enterprise_auth_capabilities_extension() {
+        let caps = navra_protocol::ServerCapabilities {
+            extensions: {
+                let mut m = std::collections::HashMap::new();
+                m.insert(
+                    "io.modelcontextprotocol/enterprise-managed-authorization".to_string(),
+                    serde_json::json!({}),
+                );
+                m
+            },
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(&caps).unwrap();
+        assert!(json["extensions"]
+            .get("io.modelcontextprotocol/enterprise-managed-authorization")
+            .is_some());
     }
 
     #[test]

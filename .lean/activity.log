@@ -385,3 +385,87 @@
   actor: claude
   action: tech-watch
   summary: "11 sources, 1 new item (NAVRA-147 Enterprise Auth), 1 enriched (NAVRA-145), 1 investigate, 3 watch, 5 dismissed"
+
+- timestamp: "2026-06-19T18:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-064"
+  summary: "Nomic Embed v1.5 evaluation — registry entry, Matryoshka truncation in OnnxBackend, retrieval benchmark"
+  iteration: 1
+  max_iterations: 20
+
+- timestamp: "2026-06-19T18:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-070"
+  summary: "WebSocket agentic loops — ping/keepalive, idle timeout, metrics, concurrent dispatch, WebSocketTransport"
+  iteration: 2
+  max_iterations: 20
+
+- timestamp: "2026-06-19T19:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-147"
+  summary: "MCP Enterprise-Managed Auth — capabilities extension, JWKS auto-fetch, enterprise_auth config, mock IdP test"
+  iteration: 3
+  max_iterations: 20
+
+- timestamp: "2026-06-19T19:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-058"
+  summary: "Negative constraints in persona schema — constraints field, weaver rendering, forge validation"
+  iteration: 4
+  max_iterations: 20
+
+- timestamp: "2026-06-19T19:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-071"
+  summary: "HTML-to-markdown conversion hook — htmd-based post-hook, HTML detection heuristic, tool allowlist"
+  iteration: 5
+  max_iterations: 20
+
+- timestamp: "2026-06-19T19:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-059"
+  summary: "YAML flow definitions — LoadedFlow enum, handoff YAML loading, schema validation, parameter substitution"
+  iteration: 6
+  max_iterations: 20
+
+- timestamp: "2026-06-19T20:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-061"
+  summary: "Memory type classification — with_classifier builder, classify_text method, memory_type=auto in distill tool"
+  iteration: 7
+  max_iterations: 20
+
+- timestamp: "2026-06-19T20:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-069"
+  summary: "Multi-hypothesis tool routing — edit distance + argument Jaccard scoring, auto-route and suggestions"
+  iteration: 8
+  max_iterations: 20
+
+- timestamp: "2026-06-19T20:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-049"
+  summary: "PII ONNX classifier — sequence classification pre-filter, softmax, configurable threshold, graceful degradation"
+  iteration: 9
+  max_iterations: 20
+
+- timestamp: "2026-06-19T20:35:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 9 items completed (NAVRA-064, NAVRA-070, NAVRA-147, NAVRA-058, NAVRA-071, NAVRA-059, NAVRA-061, NAVRA-069, NAVRA-049). Exit: No unblocked items remaining in approve scope"
+  details:
+    iterations: 9
+    max_iterations: 20
+    completed: [NAVRA-064, NAVRA-070, NAVRA-147, NAVRA-058, NAVRA-071, NAVRA-059, NAVRA-061, NAVRA-069, NAVRA-049]
+    exit_reason: "No unblocked items remaining in approve scope"
+    branch: "loop/2026-06-19-3"
+    tag: "loop-run/2026-06-19-3-9"

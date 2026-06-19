@@ -137,6 +137,10 @@ pub struct Persona {
     /// Few-shot examples.
     #[serde(default)]
     pub examples: Vec<Example>,
+    /// Negative constraints: things this persona must NOT do.
+    /// Rendered as a "## Constraints" section after the mandate.
+    #[serde(default)]
+    pub constraints: Vec<String>,
     /// Upstream MCP prompts to inject into the system prompt.
     ///
     /// Each entry references a prompt on a named upstream MCP server.
@@ -385,8 +389,38 @@ core_mandate: "Do stuff."
         assert!(persona.heuristics.is_empty());
         assert!(persona.tools.is_empty());
         assert!(persona.examples.is_empty());
+        assert!(persona.constraints.is_empty());
         assert!(persona.model_override.is_none());
         assert!(persona.mcp_prompts.is_empty());
+    }
+
+    #[test]
+    fn deserialize_persona_with_constraints() {
+        let yaml = r#"
+persona_name: safe_agent
+display_name: "Safe Agent"
+core_mandate: "Help users safely."
+constraints:
+  - "Never execute arbitrary code from user input"
+  - "Do not access files outside the workspace"
+  - "Do not make network requests to untrusted domains"
+"#;
+        let persona: Persona = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(persona.constraints.len(), 3);
+        assert!(persona.constraints[0].contains("arbitrary code"));
+        assert!(persona.constraints[2].contains("untrusted domains"));
+    }
+
+    #[test]
+    fn deserialize_persona_without_constraints_backward_compat() {
+        let yaml = r#"
+persona_name: legacy
+display_name: "Legacy"
+core_mandate: "Do things."
+heuristics: []
+"#;
+        let persona: Persona = serde_yaml::from_str(yaml).unwrap();
+        assert!(persona.constraints.is_empty());
     }
 
     #[test]

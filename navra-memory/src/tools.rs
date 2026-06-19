@@ -30,6 +30,7 @@ struct KnowledgeState {
     #[cfg(feature = "rag")]
     embedding_model: Option<Arc<dyn ModelBackend>>,
     distill_model: Option<Arc<dyn ModelBackend>>,
+    classifier_model: Option<Arc<dyn ModelBackend>>,
 }
 
 impl KnowledgeModule {
@@ -43,6 +44,7 @@ impl KnowledgeModule {
                 #[cfg(feature = "rag")]
                 embedding_model: None,
                 distill_model: None,
+                classifier_model: None,
             }),
         }
     }
@@ -61,6 +63,11 @@ impl KnowledgeModule {
 
     pub fn with_distill_model(mut self, model: Arc<dyn ModelBackend>) -> Self {
         Arc::get_mut(&mut self.state).unwrap().distill_model = Some(model);
+        self
+    }
+
+    pub fn with_classifier(mut self, model: Arc<dyn ModelBackend>) -> Self {
+        Arc::get_mut(&mut self.state).unwrap().classifier_model = Some(model);
         self
     }
 }
@@ -334,12 +341,16 @@ async fn handle_decay_score(
 
 #[tool(
     name = "distill",
-    description = "Extract structured knowledge entries from raw text. Classifies content as Fact, Event, Instruction, or Insight with confidence scores and tags."
+    description = "Extract structured knowledge entries from raw text. Classifies content as Fact, Event, Instruction, Insight, User, or Project with confidence scores and tags. Set memory_type to 'auto' to use the ONNX classifier."
 )]
 async fn handle_distill(
     #[arg(description = "Raw text to distill into knowledge entries")] text: String,
     #[arg(description = "Source identifier (e.g. session ID, URL, filename)")]
     source: Option<String>,
+    #[arg(
+        description = "Memory type: 'auto' to classify with ONNX model, or explicit type (fact, event, instruction, insight, user, project)"
+    )]
+    memory_type: Option<String>,
     _ctx: CallContext,
     #[state] state: Arc<KnowledgeState>,
 ) -> CallToolResult {
@@ -348,6 +359,53 @@ async fn handle_distill(
     }
 
     let source = source.unwrap_or_default();
+
+    // If memory_type=auto, use the classifier if available
+    if memory_type.as_deref() == Some("auto") {
+        if let Some(ref classifier) = state.classifier_model {
+            let entries: Vec<serde_json::Value> = {
+                let mut results = Vec::new();
+                for paragraph in text.split("\n\n").filter(|p| !p.trim().is_empty()).take(20) {
+                    let trimmed = paragraph.trim();
+                    let request = navra_mcp::models::ClassifyRequest {
+                        text: trimmed.to_string(),
+                    };
+                    let (kind, confidence) = match classifier.classify(&request).await {
+                        Ok(response) => {
+                            if let Some(top) = response.top_label() {
+                                (top.label.clone(), top.score)
+                            } else {
+                                ("fact".to_string(), 0.5)
+                            }
+                        }
+                        Err(_) => ("fact".to_string(), 0.5),
+                    };
+                    let title = if trimmed.len() > 80 {
+                        format!("{}...", &trimmed[..77])
+                    } else {
+                        trimmed.to_string()
+                    };
+                    results.push(serde_json::json!({
+                        "kind": kind,
+                        "title": title,
+                        "content": trimmed,
+                        "tags": [],
+                        "confidence": confidence,
+                    }));
+                }
+                results
+            };
+
+            let result = serde_json::json!({
+                "method": "classifier",
+                "source": source,
+                "entries": entries,
+            });
+            return CallToolResult::text(
+                serde_json::to_string_pretty(&result).unwrap_or_default(),
+            );
+        }
+    }
 
     // Try LLM-based extraction if a model is available
     if let Some(ref model) = state.distill_model {
@@ -505,6 +563,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_search_handler(state);
@@ -535,6 +594,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_search_handler(state);
@@ -554,6 +614,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_search_handler(state);
@@ -583,6 +644,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_graph_query_handler(state);
@@ -616,6 +678,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_graph_query_handler(state);
@@ -649,6 +712,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_graph_query_handler(state);
@@ -668,6 +732,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_decay_score_handler(state);
@@ -700,6 +765,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_decay_score_handler(state);
@@ -731,6 +797,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_decay_score_handler(state);
@@ -761,6 +828,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_distill_handler(state);
@@ -799,6 +867,7 @@ mod tests {
             #[cfg(feature = "rag")]
             embedding_model: None,
             distill_model: None,
+            classifier_model: None,
         });
 
         let (_, handler) = handle_distill_handler(state);
