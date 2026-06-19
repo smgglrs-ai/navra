@@ -417,3 +417,11 @@
   summary: "Negative constraints in persona schema — constraints field, weaver rendering, forge validation"
   iteration: 4
   max_iterations: 20
+
+- timestamp: "2026-06-19T19:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-071"
+  summary: "HTML-to-markdown conversion hook — htmd-based post-hook, HTML detection heuristic, tool allowlist"
+  iteration: 5
+  max_iterations: 20
