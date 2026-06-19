@@ -15,6 +15,7 @@ mod config_watcher;
 mod demo;
 mod direct_transport;
 mod discover;
+mod exec_tools;
 mod flow_tools;
 mod grpc_manager;
 mod mdns;
@@ -39,25 +40,6 @@ use navra_core::Module;
 use std::sync::Arc;
 
 use cli::{AgentAction, Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
-
-/// Wrapper to register an `Arc<ExecModule>` as a `Module`.
-/// Allows sharing the same ExecState between the module (tool handlers)
-/// and the spawn context (sandbox registration).
-struct ExecModuleRef(Arc<navra_tools_exec::ExecModule>);
-
-impl Module for ExecModuleRef {
-    fn name(&self) -> &str {
-        self.0.name()
-    }
-    fn tools(
-        &self,
-    ) -> Vec<(
-        navra_core::protocol::ToolDefinition,
-        navra_core::ToolHandler,
-    )> {
-        self.0.tools()
-    }
-}
 
 /// Wrapper around `Arc<CustomPiiFilter>` that implements `ContentFilter`.
 ///
@@ -1716,16 +1698,20 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
 
 
     // --- Exec module (OpenShell agent sandboxing) ---
-    let exec_module: Option<Arc<navra_tools_exec::ExecModule>> =
+    let exec_module: Option<Arc<exec_tools::ExecState>> =
         if let Some(ref gateway) = cfg.server.openshell_gateway {
             let channel = tonic::transport::Channel::from_shared(gateway.clone())
                 .expect("valid OpenShell gateway URL")
                 .connect_lazy();
             let client = navra_model_runtime::openshell::ComputeDriverClient::new(channel);
-            let module = Arc::new(navra_tools_exec::ExecModule::new(client));
-            tracing::info!(gateway = %gateway, "Module 'exec' enabled (OpenShell)");
-            builder = builder.module(ExecModuleRef(Arc::clone(&module)));
-            Some(module)
+            let state = Arc::new(exec_tools::ExecState::new(client));
+            tracing::info!(gateway = %gateway, "Tool 'exec_run' enabled (OpenShell)");
+            let (def, handler) = exec_tools::exec_run_tool(Arc::clone(&state));
+            builder = builder.tool(def, move |args, ctx| {
+                let h = Arc::clone(&handler);
+                Box::pin(async move { h(args, ctx).await })
+            });
+            Some(state)
         } else {
             None
         };

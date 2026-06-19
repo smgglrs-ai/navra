@@ -14,7 +14,6 @@ members = [
     "navra-agent",
     "navra-flow",
     "navra-core",
-    "navra-tools-exec",
     "navra-rag",
     "navra-modal-voice",
     "navra-modal-vision",

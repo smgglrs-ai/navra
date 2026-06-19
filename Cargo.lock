@@ -3213,6 +3213,8 @@ dependencies = [
  "navra-cognitive",
  "navra-core",
  "navra-flow",
+ "navra-macros",
+ "navra-mcp",
  "navra-memory",
  "navra-modal-vision",
  "navra-modal-voice",
@@ -3220,9 +3222,9 @@ dependencies = [
  "navra-model-hub",
  "navra-model-runtime",
  "navra-openapi",
+ "navra-protocol",
  "navra-rag",
  "navra-safety-hooks",
- "navra-tools-exec",
  "notify",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -3246,21 +3248,6 @@ dependencies = [
  "tracing-subscriber",
  "urlencoding",
  "uuid",
-]
-
-[[package]]
-name = "navra-tools-exec"
-version = "0.1.0"
-dependencies = [
- "navra-macros",
- "navra-mcp",
- "navra-model-runtime",
- "navra-protocol",
- "serde",
- "serde_json",
- "tokio",
- "tonic",
- "tracing",
 ]
 
 [[package]]

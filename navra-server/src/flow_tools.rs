@@ -654,7 +654,7 @@ pub struct FlowContext {
     /// OpenShell compute driver gRPC endpoint.
     pub openshell_gateway: Option<String>,
     /// Shared exec state for routing exec_run calls to sandboxes.
-    pub exec_state: Option<std::sync::Arc<navra_tools_exec::ExecModule>>,
+    pub exec_state: Option<std::sync::Arc<crate::exec_tools::ExecState>>,
     /// Workspace provider for populating agent sandbox workspaces.
     pub workspace_provider: Option<std::sync::Arc<dyn crate::workspace::WorkspaceProvider>>,
     /// Optional SQLite checkpoint store for DAG crash resilience.
