@@ -425,3 +425,11 @@
   summary: "HTML-to-markdown conversion hook — htmd-based post-hook, HTML detection heuristic, tool allowlist"
   iteration: 5
   max_iterations: 20
+
+- timestamp: "2026-06-19T19:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-059"
+  summary: "YAML flow definitions — LoadedFlow enum, handoff YAML loading, schema validation, parameter substitution"
+  iteration: 6
+  max_iterations: 20

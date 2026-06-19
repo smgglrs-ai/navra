@@ -44,6 +44,7 @@ pub mod verification;
 pub mod yaml_loader;
 
 pub use backedge::{BackEdgeTracker, ConditionalEdge, EdgeCondition};
+pub use yaml_loader::{LoadedFlow, YamlLoadError};
 pub use blackboard::{Blackboard, BlackboardEntry};
 pub use builder::FlowBuilder;
 pub use checkpoint::{CheckpointState, DagCheckpoint};
