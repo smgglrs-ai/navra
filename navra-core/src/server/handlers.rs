@@ -713,22 +713,92 @@ impl McpServer {
         let mut result = match self.tools.get(&params.name) {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => {
-                self.process_table
-                    .complete_call(&ctx.agent.name, &params.name);
-                if let Some(ref bb) = self.blackbox {
-                    bb.record(
-                        &ctx.agent.name,
-                        &ctx.agent.permissions,
-                        &ctx.session_id,
-                        &params.name,
-                        &arguments.to_string(),
-                        "Unknown tool",
-                        "error",
-                        0,
-                        "N/A",
-                    );
+                // Multi-hypothesis tool routing: try fuzzy matching
+                let registered_names: Vec<&str> =
+                    self.tools.keys().map(|s| s.as_str()).collect();
+                let tool_schemas: std::collections::HashMap<String, Option<Vec<String>>> = self
+                    .tools
+                    .iter()
+                    .map(|(name, tool)| {
+                        let props = tool
+                            .definition
+                            .input_schema
+                            .properties
+                            .as_ref()
+                            .map(|p| p.keys().cloned().collect());
+                        (name.clone(), props)
+                    })
+                    .collect();
+
+                let candidates = super::routing::find_candidates(
+                    &params.name,
+                    &registered_names,
+                    &arguments,
+                    &tool_schemas,
+                    &self.tool_routing,
+                );
+
+                // Auto-route if top candidate exceeds threshold and edit distance <= 2
+                if let Some(top) = candidates.first() {
+                    if top.score >= self.tool_routing.auto_route_threshold
+                        && top.edit_distance <= 2
+                        && self.tool_routing.auto_route_threshold > 0.0
+                    {
+                        tracing::info!(
+                            requested = %params.name,
+                            routed_to = %top.name,
+                            score = top.score,
+                            edit_distance = top.edit_distance,
+                            "Auto-routing tool call"
+                        );
+                        self.metrics
+                            .routing_decisions
+                            .fetch_add(1, Ordering::Relaxed);
+
+                        if let Some(tool) = self.tools.get(&top.name) {
+                            (tool.handler)(arguments.clone(), ctx.clone()).await
+                        } else {
+                            CallToolResult::error(format!("Unknown tool: {}", params.name))
+                        }
+                    } else if !candidates.is_empty() {
+                        // Suggest candidates below auto-route threshold
+                        let suggestions: Vec<String> = candidates
+                            .iter()
+                            .map(|c| format!("  - {} (score: {:.2})", c.name, c.score))
+                            .collect();
+                        self.process_table
+                            .complete_call(&ctx.agent.name, &params.name);
+                        return CallToolResult::error(format!(
+                            "Unknown tool: {}. Did you mean:\n{}",
+                            params.name,
+                            suggestions.join("\n")
+                        ));
+                    } else {
+                        self.process_table
+                            .complete_call(&ctx.agent.name, &params.name);
+                        return CallToolResult::error(format!(
+                            "Unknown tool: {}",
+                            params.name
+                        ));
+                    }
+                } else {
+                    self.process_table
+                        .complete_call(&ctx.agent.name, &params.name);
+                    if let Some(ref bb) = self.blackbox {
+                        bb.record(
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            &ctx.session_id,
+                            &params.name,
+                            &arguments.to_string(),
+                            "Unknown tool",
+                            "error",
+                            0,
+                            "N/A",
+                        );
+                    }
+                    return CallToolResult::error(format!("Unknown tool: {}", params.name));
                 }
-                return CallToolResult::error(format!("Unknown tool: {}", params.name));
             }
         };
         let tool_duration_us = tool_start.elapsed().as_micros() as u64;
