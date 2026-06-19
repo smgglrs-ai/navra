@@ -49,9 +49,10 @@ items:
 
   - id: "NAVRA-058"
     title: "Negative constraints in persona schema"
-    status: planned
+    status: done
     priority: low
     effort: S
+    progress: 100
 
   - id: "NAVRA-059"
     title: "YAML flow definitions"

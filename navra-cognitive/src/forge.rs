@@ -329,6 +329,16 @@ impl ForgeService {
                 });
             }
 
+            // Check constraint entries
+            for constraint in &persona.constraints {
+                if constraint.trim().is_empty() {
+                    findings.push(ValidationFinding {
+                        severity: Severity::Warning,
+                        message: format!("persona '{}' has an empty constraint entry", name),
+                    });
+                }
+            }
+
             // Check skill entries
             for skill in &persona.skills {
                 if skill.trim().is_empty() {
@@ -410,6 +420,7 @@ impl ForgeService {
             output_schema: None,
             output_json_schema: None,
             examples: Vec::new(),
+            constraints: Vec::new(),
             mcp_prompts: Vec::new(),
             skills: Vec::new(),
             planning_context_limit: None,
