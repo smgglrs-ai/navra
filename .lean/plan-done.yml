@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 106 completed items
+# 107 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -699,6 +699,13 @@ items:
     title: "Consolidate rusqlite to workspace dependency"
     status: done
     priority: medium
+    effort: S
+    progress: 100
+
+  - id: "NAVRA-138"
+    title: "Refresh TESTING.md test count table"
+    status: done
+    priority: low
     effort: S
     progress: 100
 

@@ -230,3 +230,10 @@
   summary: "Moved rusqlite 0.32 with bundled feature to [workspace.dependencies] in root Cargo.toml. All 7 crates now use { workspace = true }."
   iteration: 6
   max_iterations: 20
+- timestamp: "2026-06-18T23:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-138"
+  summary: "Refreshed TESTING.md: 2110+ → 2750+ tests, updated per-crate table (22 crates), noted crate additions/removals (navra-auth, navra-safety-hooks, navra-openapi added; navra-tools-file, navra-tools-git removed). Updated MSRV reference to 1.91."
+  iteration: 7
+  max_iterations: 20

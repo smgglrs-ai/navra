@@ -1,6 +1,6 @@
 id: NAVRA-138
 title: Refresh TESTING.md test count table
-status: planned
+status: done
 priority: low
 effort: S
 depends_on: []
@@ -23,3 +23,4 @@ scope:
   - TESTING.md
 verification:
   quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace 2>&1 | tail -5"
+progress: 100
