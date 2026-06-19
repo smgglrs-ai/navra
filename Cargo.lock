@@ -2953,8 +2953,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "navra-core",
+ "navra-macros",
  "navra-mcp",
  "navra-model",
+ "navra-protocol",
  "navra-rag",
  "rusqlite",
  "serde",
