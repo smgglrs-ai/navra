@@ -6,7 +6,6 @@ use crate::config;
 use crate::expand_tilde;
 use crate::ui_events::UiBroadcaster;
 
-#[allow(dead_code)]
 #[path = "ui_assets_gen.rs"]
 mod ui_assets_gen;
 use ui_assets_gen::UI_DIST_AVAILABLE;
@@ -401,7 +400,7 @@ pub(crate) fn attach_ui_routes(
             model: Arc::clone(backend),
             forge: forge.clone(),
             memory,
-            listen_addr: cfg.server.listen_addr(),
+            _listen_addr: cfg.server.listen_addr(),
             context_retriever: context_retriever.clone(),
         });
         Some(

@@ -1,6 +1,7 @@
 id: NAVRA-140
 title: "MCP 2026-07-28: implement SEP-2567 stateless sessions"
-status: planned
+status: done
+progress: 100
 priority: critical
 effort: M
 depends_on:
@@ -36,3 +37,11 @@ scope:
   - navra-server/src/main.rs
 verification:
   quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core -p navra-server"
+notes:
+  - date: "2026-06-19"
+    detail: |
+      Already implemented. dispatch_stateless() in
+      navra-core/src/transport/streamable/dispatch.rs handles all
+      2026-07-28 requests. Server doesn't send Mcp-Session-Id.
+      Agent identity serves as implicit state handle (stateless:{name}).
+      12/12 e2e tests pass in stateless mode.

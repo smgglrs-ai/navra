@@ -1,6 +1,6 @@
 id: NAVRA-128
 title: Remove unwrap() chains in navra-server API handlers
-status: planned
+status: done
 priority: high
 effort: M
 depends_on: []
@@ -34,3 +34,4 @@ scope:
   - navra-server/src/main.rs
 verification:
   quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --lib"
+progress: 100

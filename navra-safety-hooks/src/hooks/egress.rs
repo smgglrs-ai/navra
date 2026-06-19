@@ -61,6 +61,7 @@ impl Hook for EgressFilterHook {
         tool_name: &str,
         arguments: &serde_json::Value,
         ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         if !self.config.enabled {
             return HookDecision::Continue;
@@ -247,7 +248,7 @@ mod tests {
     async fn blocks_non_allowlisted_url_when_deny_all() {
         let hook = deny_all_hook();
         let args = serde_json::json!({"url": "https://evil.com/exfil"});
-        let decision = hook.pre_tool_use("http_request", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("http_request", &args, &test_ctx(), None).await;
         match decision {
             HookDecision::Block(reason) => {
                 assert!(reason.contains("evil.com"));
@@ -268,7 +269,7 @@ mod tests {
             block_tainted_egress: false,
         });
         let args = serde_json::json!({"url": "https://github.com/repo"});
-        let decision = hook.pre_tool_use("http_request", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("http_request", &args, &test_ctx(), None).await;
         assert!(matches!(decision, HookDecision::Continue));
     }
 
@@ -283,7 +284,7 @@ mod tests {
             block_tainted_egress: false,
         });
         let args = serde_json::json!({"url": "https://evil.com/data"});
-        let decision = hook.pre_tool_use("http_request", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("http_request", &args, &test_ctx(), None).await;
         match decision {
             HookDecision::Block(reason) => {
                 assert!(reason.contains("evil.com"));
@@ -308,12 +309,12 @@ mod tests {
             block_tainted_egress: false,
         });
         let args = serde_json::json!({"url": "https://api.example.com/v1"});
-        let decision = hook.pre_tool_use("http_request", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("http_request", &args, &test_ctx(), None).await;
         assert!(matches!(decision, HookDecision::Continue));
 
         // Bare domain should NOT match wildcard
         let args2 = serde_json::json!({"url": "https://example.com/v1"});
-        let decision2 = hook.pre_tool_use("http_request", &args2, &test_ctx()).await;
+        let decision2 = hook.pre_tool_use("http_request", &args2, &test_ctx(), None).await;
         assert!(matches!(decision2, HookDecision::Block(_)));
     }
 
@@ -323,7 +324,7 @@ mod tests {
         let hook = deny_all_hook();
         let args = serde_json::json!({"url": "https://anything.com/data"});
         let decision = hook
-            .pre_tool_use("http_request", &args, &tainted_ctx())
+            .pre_tool_use("http_request", &args, &tainted_ctx(), None)
             .await;
         match decision {
             HookDecision::Block(reason) => {
@@ -338,7 +339,7 @@ mod tests {
     async fn allows_internal_tool_without_urls() {
         let hook = deny_all_hook();
         let args = serde_json::json!({"path": "/home/user/file.txt", "content": "hello"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
         assert!(matches!(decision, HookDecision::Continue));
     }
 
@@ -350,7 +351,7 @@ mod tests {
             "headers": {"referer": "https://attacker.com/track"},
             "body": {"links": ["https://evil.org/exfil"]},
         });
-        let decision = hook.pre_tool_use("http_request", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("http_request", &args, &test_ctx(), None).await;
         match decision {
             HookDecision::Block(reason) => {
                 assert!(
@@ -370,7 +371,7 @@ mod tests {
             ..Default::default()
         });
         let args = serde_json::json!({"url": "https://evil.com/exfil"});
-        let decision = hook.pre_tool_use("http_request", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("http_request", &args, &test_ctx(), None).await;
         assert!(matches!(decision, HookDecision::Continue));
     }
 

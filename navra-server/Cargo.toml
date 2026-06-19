@@ -21,8 +21,9 @@ navra-memory = { path = "../navra-memory" }
 navra-model = { path = "../navra-model" }
 navra-model-hub = { path = "../navra-model-hub" }
 navra-model-runtime = { path = "../navra-model-runtime", features = ["openshell"] }
-navra-tools-gitlab = { path = "../navra-tools-gitlab" }
-navra-tools-exec = { path = "../navra-tools-exec" }
+navra-macros = { path = "../navra-macros" }
+navra-mcp = { path = "../navra-mcp" }
+navra-protocol = { path = "../navra-protocol" }
 navra-rag = { path = "../navra-rag" }
 navra-modal-vision = { path = "../navra-modal-vision" }
 navra-modal-voice = { path = "../navra-modal-voice" }
@@ -38,7 +39,7 @@ uuid = { workspace = true }
 toml = "0.8"
 serde_yaml = "0.9"
 reqwest = { workspace = true, features = ["stream"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { workspace = true }
 futures-util = "0.3"
 async-stream = "0.3"
 async-trait = "0.1"

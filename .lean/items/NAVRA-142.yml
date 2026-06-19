@@ -1,6 +1,7 @@
 id: NAVRA-142
 title: "MCP 2026-07-28: OAuth iss validation and credential binding"
-status: planned
+status: done
+progress: 100
 priority: high
 effort: M
 depends_on:

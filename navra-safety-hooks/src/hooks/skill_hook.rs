@@ -80,6 +80,7 @@ impl Hook for SkillHook {
         tool_name: &str,
         arguments: &serde_json::Value,
         _ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         for rule in &self.rules {
             if !Self::matches_tool(&rule.tool_pattern, tool_name) {
@@ -158,7 +159,7 @@ mod tests {
         }]);
 
         let decision = hook
-            .pre_tool_use("file_write", &json!({"path": "/etc/passwd"}), &test_ctx())
+            .pre_tool_use("file_write", &json!({"path": "/etc/passwd"}), &test_ctx(), None)
             .await;
 
         assert!(matches!(decision, HookDecision::Block(_)));
@@ -180,6 +181,7 @@ mod tests {
                 "file_write",
                 &json!({"path": "/home/user/file.txt"}),
                 &test_ctx(),
+                None,
             )
             .await;
 
@@ -198,7 +200,7 @@ mod tests {
         }]);
 
         let decision = hook
-            .pre_tool_use("file_write", &json!({"path": "/tmp/test"}), &test_ctx())
+            .pre_tool_use("file_write", &json!({"path": "/tmp/test"}), &test_ctx(), None)
             .await;
 
         match decision {
@@ -225,7 +227,7 @@ mod tests {
         }]);
 
         let decision = hook
-            .pre_tool_use("file_read", &json!({"path": "/src"}), &test_ctx())
+            .pre_tool_use("file_read", &json!({"path": "/src"}), &test_ctx(), None)
             .await;
 
         match decision {
@@ -246,7 +248,7 @@ mod tests {
             intervention: Intervention::Noop,
         }]);
 
-        let decision = hook.pre_tool_use("anything", &json!({}), &test_ctx()).await;
+        let decision = hook.pre_tool_use("anything", &json!({}), &test_ctx(), None).await;
 
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -263,10 +265,10 @@ mod tests {
         }]);
 
         let d1 = hook
-            .pre_tool_use("file_read", &json!({}), &test_ctx())
+            .pre_tool_use("file_read", &json!({}), &test_ctx(), None)
             .await;
         let d2 = hook
-            .pre_tool_use("git_commit", &json!({}), &test_ctx())
+            .pre_tool_use("git_commit", &json!({}), &test_ctx(), None)
             .await;
 
         assert!(matches!(d1, HookDecision::Block(_)));
@@ -285,7 +287,7 @@ mod tests {
         }]);
 
         let decision = hook
-            .pre_tool_use("file_read", &json!({}), &test_ctx())
+            .pre_tool_use("file_read", &json!({}), &test_ctx(), None)
             .await;
 
         assert!(matches!(decision, HookDecision::Continue));

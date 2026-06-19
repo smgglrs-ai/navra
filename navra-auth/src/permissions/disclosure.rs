@@ -40,9 +40,9 @@ impl ToolDisclosure {
     }
 
     /// Filter a list of tool names, returning only visible ones.
-    pub fn filter<'a>(
+    pub fn filter(
         &self,
-        tools: &'a [navra_protocol::ToolDefinition],
+        tools: &[navra_protocol::ToolDefinition],
     ) -> Vec<navra_protocol::ToolDefinition> {
         if self.include.is_empty() && self.exclude.is_empty() {
             return tools.to_vec();

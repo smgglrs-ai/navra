@@ -105,6 +105,7 @@ impl Hook for RoutingHook {
         tool_name: &str,
         arguments: &serde_json::Value,
         _ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         let tier_name = self.classify(tool_name, arguments);
         let model = self.model_for_tier(tier_name).unwrap_or("unknown");
@@ -252,7 +253,7 @@ mod tests {
     async fn pre_hook_injects_routing_metadata() {
         let hook = test_hook();
         let args = serde_json::json!({"path": "/tmp/test"});
-        let decision = hook.pre_tool_use("file_read", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("file_read", &args, &test_ctx(), None).await;
 
         match decision {
             HookDecision::ModifyArgs(modified) => {
@@ -270,7 +271,7 @@ mod tests {
         let hook = test_hook();
         let args = serde_json::json!({"pr": 42});
         let decision = hook
-            .pre_tool_use("github_pr_review", &args, &test_ctx())
+            .pre_tool_use("github_pr_review", &args, &test_ctx(), None)
             .await;
 
         match decision {
@@ -288,7 +289,7 @@ mod tests {
         let hook = test_hook();
         let args = serde_json::json!({"query": "hello"});
         let decision = hook
-            .pre_tool_use("some_unknown_tool", &args, &test_ctx())
+            .pre_tool_use("some_unknown_tool", &args, &test_ctx(), None)
             .await;
 
         match decision {

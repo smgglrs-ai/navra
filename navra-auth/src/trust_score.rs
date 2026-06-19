@@ -4,7 +4,7 @@
 //! bounded tool calls) increase trust; negative signals (denials, safety
 //! triggers) decrease it. Score decays by 1 point per minute of inactivity.
 
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Instant;
 
 /// Trust score for a session.

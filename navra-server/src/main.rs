@@ -4,6 +4,8 @@
 //! integration, and system tray. Composes all navra-* crates into
 //! a running gateway.
 
+use anyhow::Context as _;
+
 mod acp_agent;
 mod agent_bundle;
 mod build_tools;
@@ -13,6 +15,7 @@ mod config_watcher;
 mod demo;
 mod direct_transport;
 mod discover;
+mod exec_tools;
 mod flow_tools;
 mod grpc_manager;
 mod mdns;
@@ -37,25 +40,6 @@ use navra_core::Module;
 use std::sync::Arc;
 
 use cli::{AgentAction, Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
-
-/// Wrapper to register an `Arc<ExecModule>` as a `Module`.
-/// Allows sharing the same ExecState between the module (tool handlers)
-/// and the spawn context (sandbox registration).
-struct ExecModuleRef(Arc<navra_tools_exec::ExecModule>);
-
-impl Module for ExecModuleRef {
-    fn name(&self) -> &str {
-        self.0.name()
-    }
-    fn tools(
-        &self,
-    ) -> Vec<(
-        navra_core::protocol::ToolDefinition,
-        navra_core::ToolHandler,
-    )> {
-        self.0.tools()
-    }
-}
 
 /// Wrapper around `Arc<CustomPiiFilter>` that implements `ContentFilter`.
 ///
@@ -180,7 +164,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Schema => {
             let schema = schemars::schema_for!(config::Config);
-            println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&schema)
+                    .context("failed to serialize config schema")?
+            );
         }
         Commands::Install => {
             install_systemd_units()?;
@@ -278,7 +266,9 @@ async fn main() -> anyhow::Result<()> {
                 .args([
                     "worktree",
                     "add",
-                    worktree_path.to_str().unwrap(),
+                    worktree_path
+                        .to_str()
+                        .ok_or_else(|| anyhow::anyhow!("worktree path is not valid UTF-8"))?,
                     "-b",
                     &branch,
                 ])
@@ -817,8 +807,8 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
                 tracing::error!(permission_set = %name, error = %e, "Invalid IFC config, defaulting to Deny");
                 navra_core::ifc::TaintedWritePolicy::Deny
             });
+        builder = builder.ifc_policy(name.clone(), policy.clone());
         if policy != navra_core::ifc::TaintedWritePolicy::Allow {
-            builder = builder.ifc_policy(name.clone(), policy.clone());
             tracing::info!(
                 permission_set = %name,
                 policy = %pset.tainted_write_policy,
@@ -1706,22 +1696,22 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
         }
     }
 
-    if cfg.gitlab_enabled() {
-        tracing::info!("Module 'gitlab' enabled");
-        builder = builder.module(navra_tools_gitlab::GitlabModule);
-    }
 
     // --- Exec module (OpenShell agent sandboxing) ---
-    let exec_module: Option<Arc<navra_tools_exec::ExecModule>> =
+    let exec_module: Option<Arc<exec_tools::ExecState>> =
         if let Some(ref gateway) = cfg.server.openshell_gateway {
             let channel = tonic::transport::Channel::from_shared(gateway.clone())
                 .expect("valid OpenShell gateway URL")
                 .connect_lazy();
             let client = navra_model_runtime::openshell::ComputeDriverClient::new(channel);
-            let module = Arc::new(navra_tools_exec::ExecModule::new(client));
-            tracing::info!(gateway = %gateway, "Module 'exec' enabled (OpenShell)");
-            builder = builder.module(ExecModuleRef(Arc::clone(&module)));
-            Some(module)
+            let state = Arc::new(exec_tools::ExecState::new(client));
+            tracing::info!(gateway = %gateway, "Tool 'exec_run' enabled (OpenShell)");
+            let (def, handler) = exec_tools::exec_run_tool(Arc::clone(&state));
+            builder = builder.tool(def, move |args, ctx| {
+                let h = Arc::clone(&handler);
+                Box::pin(async move { h(args, ctx).await })
+            });
+            Some(state)
         } else {
             None
         };
@@ -1799,7 +1789,11 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
                     .with_metrics(metrics.clone());
                     rag_context_retriever =
                         Some(Arc::new(crate::rag_retriever::RagRetriever::new(
-                            Arc::clone(shared_chunk_store.as_ref().unwrap()),
+                            Arc::clone(
+                                shared_chunk_store
+                                    .as_ref()
+                                    .expect("chunk store must be initialized before RAG retriever"),
+                            ),
                             model.clone(),
                             reranker_for_retriever,
                             cascade_for_retriever,
@@ -2630,7 +2624,14 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
             }
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to open audit DB, using in-memory");
-                Arc::new(navra_memory::audit::AuditLog::open_memory().unwrap())
+                match navra_memory::audit::AuditLog::open_memory() {
+                    Ok(log) => Arc::new(log),
+                    Err(e2) => {
+                        anyhow::bail!(
+                            "Failed to open audit DB ({e}) and in-memory fallback ({e2})"
+                        );
+                    }
+                }
             }
         };
     if let Some(days) = cfg.memory_audit_retention_days() {
@@ -4864,8 +4865,7 @@ async fn run_agent(
 
     // Apply persona
     if let Some(ref forge) = forge {
-        if forge.get_persona(persona_name).is_some() {
-            let persona = forge.get_persona(persona_name).unwrap();
+        if let Some(persona) = forge.get_persona(persona_name) {
 
             // Check if this is an MCP-sourced persona
             let has_source = persona.source.is_some();
@@ -5146,7 +5146,7 @@ fn policy_suggest(
     let cutoff_ms = {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("system clock before UNIX epoch")
             .as_millis() as i64;
         now - (hours as i64 * 3600 * 1000)
     };

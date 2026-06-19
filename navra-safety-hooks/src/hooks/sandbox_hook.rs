@@ -107,6 +107,7 @@ impl Hook for SandboxHook {
         tool_name: &str,
         arguments: &serde_json::Value,
         ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         let sandbox = match &ctx.sandbox {
             Some(s) => s,
@@ -206,7 +207,7 @@ mod tests {
         let hook = SandboxHook::new();
         let ctx = CallContext::new(AgentIdentity::new("test", "dev"), "s1");
         let decision = hook
-            .pre_tool_use("file_read", &serde_json::json!({}), &ctx)
+            .pre_tool_use("file_read", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -217,7 +218,7 @@ mod tests {
         let ctx = test_ctx_with_sandbox(profile);
         let hook = SandboxHook::new();
         let decision = hook
-            .pre_tool_use("file_read", &serde_json::json!({}), &ctx)
+            .pre_tool_use("file_read", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -241,6 +242,7 @@ mod tests {
                 "file_write",
                 &serde_json::json!({"path": "/etc/passwd"}),
                 &ctx,
+                None,
             )
             .await;
         match decision {
@@ -271,14 +273,14 @@ mod tests {
 
         for _ in 0..3 {
             let decision = hook
-                .pre_tool_use("file_read", &serde_json::json!({}), &ctx)
+                .pre_tool_use("file_read", &serde_json::json!({}), &ctx, None)
                 .await;
             assert!(matches!(decision, HookDecision::Continue));
         }
 
         // 4th call should be blocked
         let decision = hook
-            .pre_tool_use("file_read", &serde_json::json!({}), &ctx)
+            .pre_tool_use("file_read", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Block(_)));
     }
@@ -299,7 +301,7 @@ mod tests {
         let hook = SandboxHook::new();
 
         let args = serde_json::json!({"path": "/home/user/secret.txt"});
-        let decision = hook.pre_tool_use("file_read", &args, &ctx).await;
+        let decision = hook.pre_tool_use("file_read", &args, &ctx, None).await;
 
         match decision {
             HookDecision::ModifyArgs(new_args) => {
@@ -328,7 +330,7 @@ mod tests {
         let hook = SandboxHook::new();
 
         let args = serde_json::json!({"path": "/tmp/file.txt"});
-        let decision = hook.pre_tool_use("file_read", &args, &ctx).await;
+        let decision = hook.pre_tool_use("file_read", &args, &ctx, None).await;
 
         match decision {
             HookDecision::ModifyArgs(new_args) => {
@@ -387,7 +389,7 @@ mod tests {
 
         // Redact should not trigger in pre-hook
         let decision = hook
-            .pre_tool_use("file_read", &serde_json::json!({}), &ctx)
+            .pre_tool_use("file_read", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -407,18 +409,18 @@ mod tests {
         let hook = SandboxHook::new();
 
         let decision = hook
-            .pre_tool_use("git_commit", &serde_json::json!({}), &ctx)
+            .pre_tool_use("git_commit", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Simulate(_)));
 
         let decision = hook
-            .pre_tool_use("git_push", &serde_json::json!({}), &ctx)
+            .pre_tool_use("git_push", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Simulate(_)));
 
         // Non-git tool should not match
         let decision = hook
-            .pre_tool_use("file_read", &serde_json::json!({}), &ctx)
+            .pre_tool_use("file_read", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }

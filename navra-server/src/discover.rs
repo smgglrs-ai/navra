@@ -18,15 +18,6 @@ pub struct DiscoveredEndpoint {
     pub auth: Option<String>,
 }
 
-/// Query a domain's `.well-known/agent` endpoint for AID discovery.
-///
-/// Returns `None` if the domain doesn't serve AID, the record isn't
-/// MCP, or the request fails. Uses a default 10-second timeout.
-#[allow(dead_code)]
-pub async fn lookup_domain(domain: &str) -> Option<DiscoveredEndpoint> {
-    lookup_domain_with_timeout(domain, std::time::Duration::from_secs(10)).await
-}
-
 /// Query a domain's `.well-known/agent` endpoint with a custom timeout.
 pub async fn lookup_domain_with_timeout(
     domain: &str,
@@ -86,15 +77,6 @@ pub async fn lookup_domain_with_timeout(
     })
 }
 
-/// Discover MCP endpoints from a list of domains.
-///
-/// Queries all domains concurrently and returns discovered endpoints.
-/// Uses a default 10-second timeout.
-#[allow(dead_code)]
-pub async fn discover_all(domains: &[String]) -> Vec<DiscoveredEndpoint> {
-    discover_all_with_timeout(domains, std::time::Duration::from_secs(10)).await
-}
-
 /// Discover MCP endpoints from a list of domains with a custom timeout.
 pub async fn discover_all_with_timeout(
     domains: &[String],
@@ -128,14 +110,18 @@ mod tests {
 
     #[tokio::test]
     async fn discover_empty_domains() {
-        let results = discover_all(&[]).await;
+        let results =
+            discover_all_with_timeout(&[], std::time::Duration::from_secs(5)).await;
         assert!(results.is_empty());
     }
 
     #[tokio::test]
     async fn lookup_nonexistent_domain() {
-        // This domain should not resolve or serve AID
-        let result = lookup_domain("this-domain-does-not-exist-navra-test.invalid").await;
+        let result = lookup_domain_with_timeout(
+            "this-domain-does-not-exist-navra-test.invalid",
+            std::time::Duration::from_secs(5),
+        )
+        .await;
         assert!(result.is_none());
     }
 }

@@ -604,7 +604,7 @@ pub struct CustomPiiFilter {
 
 #[derive(Debug)]
 struct CustomPiiPattern {
-    #[allow(dead_code)] // retained for diagnostic logging
+    #[allow(dead_code)] // visible via Debug formatting in diagnostic logs
     name: String,
     category: String,
     regex: regex_lite::Regex,
