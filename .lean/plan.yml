@@ -56,9 +56,10 @@ items:
 
   - id: "NAVRA-059"
     title: "YAML flow definitions"
-    status: planned
+    status: done
     priority: low
     effort: M
+    progress: 100
 
   - id: "NAVRA-061"
     title: "Memory type classification"
