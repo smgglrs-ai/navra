@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 136 completed items
+# 137 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -363,6 +363,12 @@ items:
     status: done
     priority: low
     effort: S
+
+  - id: "NAVRA-063"
+    title: "Privacy Router coordination"
+    status: done
+    priority: low
+    effort: M
 
   - id: "NAVRA-064"
     title: "Nomic Embed v1.5 evaluation"
