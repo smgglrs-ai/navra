@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 120 completed items
+# 121 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -799,5 +799,11 @@ items:
     title: "Expose knowledge pipeline as MCP tools for lean-claude consumption"
     status: done
     priority: high
+    effort: M
+
+  - id: "NAVRA-146"
+    title: "A2UI declarative UI support in tool results"
+    status: done
+    priority: medium
     effort: M
 

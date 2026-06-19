@@ -17,6 +17,7 @@
 
 pub mod a2a;
 pub mod a2a_client;
+pub mod a2ui;
 pub mod label;
 pub mod permissions;
 pub mod upstream;
