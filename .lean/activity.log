@@ -493,3 +493,11 @@
   summary: "Paper restructuring decisions — all 5 papers standalone, venue targets assigned, submission ordering defined, review notes updated, contribution list finalized for review paper"
   iteration: 3
   max_iterations: 20
+
+- timestamp: "2026-06-19T22:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-057"
+  summary: "Lazy-loading specialization YAML — SpecializationPartial for metadata-only parse, Mutex cache for on-demand loading, validate() uses catalog. Also fixed navra-protocol TLS feature gating."
+  iteration: 4
+  max_iterations: 20
