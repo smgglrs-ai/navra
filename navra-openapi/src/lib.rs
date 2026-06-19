@@ -167,9 +167,7 @@ async fn fetch_spec(source: &str) -> anyhow::Result<String> {
         }
         if let Some(len) = resp.content_length() {
             if len as usize > MAX_SPEC_SIZE {
-                anyhow::bail!(
-                    "OpenAPI spec too large ({len} bytes, max {MAX_SPEC_SIZE})"
-                );
+                anyhow::bail!("OpenAPI spec too large ({len} bytes, max {MAX_SPEC_SIZE})");
             }
         }
         let bytes = resp

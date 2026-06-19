@@ -106,8 +106,10 @@ impl Metrics {
     /// Atomically increment all three token counters.
     pub fn record_tokens(&self, input: u64, output: u64, cached: u64) {
         self.input_tokens_total.fetch_add(input, Ordering::Relaxed);
-        self.output_tokens_total.fetch_add(output, Ordering::Relaxed);
-        self.cached_tokens_total.fetch_add(cached, Ordering::Relaxed);
+        self.output_tokens_total
+            .fetch_add(output, Ordering::Relaxed);
+        self.cached_tokens_total
+            .fetch_add(cached, Ordering::Relaxed);
     }
 
     /// Compute effective tokens (GitHub billing formula).

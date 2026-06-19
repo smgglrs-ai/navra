@@ -178,7 +178,10 @@ mod tests {
 
     #[test]
     fn display_formatting() {
-        assert_eq!(ExecutionRing::SreWitnessed.to_string(), "Ring 0 (SreWitnessed)");
+        assert_eq!(
+            ExecutionRing::SreWitnessed.to_string(),
+            "Ring 0 (SreWitnessed)"
+        );
         assert_eq!(ExecutionRing::OpenShell.to_string(), "Ring 1 (OpenShell)");
         assert_eq!(ExecutionRing::Podman.to_string(), "Ring 2 (Podman)");
         assert_eq!(ExecutionRing::Direct.to_string(), "Ring 3 (Direct)");

@@ -69,11 +69,7 @@ impl ModelCache {
     ///
     /// When `expected_digest` is provided, the computed SHA-256 is verified
     /// against it before writing. Returns an error on mismatch.
-    pub fn store(
-        &self,
-        uri: &ModelUri,
-        data: &[u8],
-    ) -> Result<PathBuf, HubError> {
+    pub fn store(&self, uri: &ModelUri, data: &[u8]) -> Result<PathBuf, HubError> {
         let hash = sha256_hex(data);
 
         if let Some(ref expected) = uri.digest {

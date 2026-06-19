@@ -127,7 +127,6 @@ impl Config {
             .unwrap_or(false)
     }
 
-
     pub fn rag_enabled(&self) -> bool {
         self.modules
             .rag

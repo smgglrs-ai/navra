@@ -126,7 +126,6 @@ pub fn navra_corpus() -> Vec<BenchmarkVector> {
             invariant: Invariant::Inv4TaintPropagation,
             defense_layer: DefenseLayer::Ifc,
         },
-
         // ── B-series: planner-trust gap ────────────────────────────
         BenchmarkVector {
             id: "B1",
@@ -205,7 +204,6 @@ pub fn navra_corpus() -> Vec<BenchmarkVector> {
             invariant: Invariant::Inv1TaintMonotonicity,
             defense_layer: DefenseLayer::Ifc,
         },
-
         // ── C-series: real-world attacks ───────────────────────────
         BenchmarkVector {
             id: "C1",
@@ -235,7 +233,6 @@ pub fn navra_corpus() -> Vec<BenchmarkVector> {
             invariant: Invariant::Inv4TaintPropagation,
             defense_layer: DefenseLayer::Ifc,
         },
-
         // ── D-series: encoding evasion (honest gaps) ───────────────
         BenchmarkVector {
             id: "D1",
@@ -276,8 +273,14 @@ pub fn mvar_corpus() -> Vec<BenchmarkVector> {
         ("M01", "Original OpenClaw RCE: pipe remote script into bash"),
         ("M02", "Metadata field injection: rm -rf disguised as title"),
         ("M03", "Delimiter character escaping: wget binary download"),
-        ("M04", "Resource link poisoning: curl exfiltrates auth tokens"),
-        ("M05", "Document title escape: break quotes, download backdoor"),
+        (
+            "M04",
+            "Resource link poisoning: curl exfiltrates auth tokens",
+        ),
+        (
+            "M05",
+            "Document title escape: break quotes, download backdoor",
+        ),
         ("M06", "URL field command injection via $() substitution"),
     ];
     for (id, desc) in cat1_descriptions {
@@ -409,7 +412,10 @@ pub fn mvar_corpus() -> Vec<BenchmarkVector> {
         ("M34", "Log file replay: read attacker log, pipe to sh"),
         ("M35", "Temp file roundtrip: write payload, then execute"),
         ("M36", "Symbolic link confusion: symlink into trusted PATH"),
-        ("M37", "Stale cache exploitation: long cache-control headers"),
+        (
+            "M37",
+            "Stale cache exploitation: long cache-control headers",
+        ),
     ];
     for (id, desc) in cat6_descriptions {
         vectors.push(BenchmarkVector {

@@ -11,10 +11,7 @@ use navra_core::blackbox::BlackboxEntry;
 use std::collections::HashSet;
 
 /// Analyze causal influence of untrusted inputs on agent behavior.
-pub fn analyze(
-    all_entries: &[BlackboxEntry],
-    untrusted: &[&BlackboxEntry],
-) -> Vec<TaintPath> {
+pub fn analyze(all_entries: &[BlackboxEntry], untrusted: &[&BlackboxEntry]) -> Vec<TaintPath> {
     let mut paths = Vec::new();
 
     for source in untrusted {
@@ -57,8 +54,16 @@ pub fn analyze(
 
 fn is_sensitive_tool(name: &str) -> bool {
     let sensitive = [
-        "write", "delete", "exec", "run", "shell", "send", "deploy",
-        "credential", "secret", "token",
+        "write",
+        "delete",
+        "exec",
+        "run",
+        "shell",
+        "send",
+        "deploy",
+        "credential",
+        "secret",
+        "token",
     ];
     let lower = name.to_lowercase();
     sensitive.iter().any(|s| lower.contains(s))
@@ -95,7 +100,10 @@ mod tests {
             entry(2, "web_fetch", "allowed", "Untrusted"),
             entry(3, "shell_exec", "allowed", "Trusted"),
         ];
-        let untrusted: Vec<&BlackboxEntry> = entries.iter().filter(|e| e.ifc_label == "Untrusted").collect();
+        let untrusted: Vec<&BlackboxEntry> = entries
+            .iter()
+            .filter(|e| e.ifc_label == "Untrusted")
+            .collect();
         let paths = analyze(&entries, &untrusted);
         assert!(!paths.is_empty());
         assert_eq!(paths[0].sink_tool, "shell_exec");
@@ -110,7 +118,10 @@ mod tests {
             entry(3, "web_fetch", "allowed", "Untrusted"),
             entry(4, "shell_exec", "allowed", "Trusted"),
         ];
-        let untrusted: Vec<&BlackboxEntry> = entries.iter().filter(|e| e.ifc_label == "Untrusted").collect();
+        let untrusted: Vec<&BlackboxEntry> = entries
+            .iter()
+            .filter(|e| e.ifc_label == "Untrusted")
+            .collect();
         let paths = analyze(&entries, &untrusted);
         // shell_exec was used before the untrusted input, so no causal signal
         assert!(paths.is_empty());
@@ -122,7 +133,10 @@ mod tests {
             entry(1, "web_fetch", "allowed", "Untrusted"),
             entry(2, "credential_read", "allowed", "Trusted"),
         ];
-        let untrusted: Vec<&BlackboxEntry> = entries.iter().filter(|e| e.ifc_label == "Untrusted").collect();
+        let untrusted: Vec<&BlackboxEntry> = entries
+            .iter()
+            .filter(|e| e.ifc_label == "Untrusted")
+            .collect();
         let paths = analyze(&entries, &untrusted);
         assert!(!paths.is_empty());
         assert!(paths[0].confidence >= 0.7);

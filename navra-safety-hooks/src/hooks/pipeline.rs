@@ -55,17 +55,19 @@ impl HookPipeline {
         annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> PreHookOutcome {
         for hook in &self.hooks {
-            let decision =
-                tokio::time::timeout(self.timeout, hook.pre_tool_use(tool_name, &arguments, ctx, annotations))
-                    .await
-                    .unwrap_or_else(|_| {
-                        tracing::error!(
-                            hook = hook.name(),
-                            tool = tool_name,
-                            "Pre-hook timed out — blocking (fail-closed)"
-                        );
-                        HookDecision::Block("hook timed out: security check failed".into())
-                    });
+            let decision = tokio::time::timeout(
+                self.timeout,
+                hook.pre_tool_use(tool_name, &arguments, ctx, annotations),
+            )
+            .await
+            .unwrap_or_else(|_| {
+                tracing::error!(
+                    hook = hook.name(),
+                    tool = tool_name,
+                    "Pre-hook timed out — blocking (fail-closed)"
+                );
+                HookDecision::Block("hook timed out: security check failed".into())
+            });
 
             match decision {
                 HookDecision::Continue => {}
@@ -274,12 +276,7 @@ impl HookPipeline {
     ///
     /// Errors are logged but never propagate — session cleanup always
     /// proceeds regardless of hook outcomes.
-    pub async fn run_session_end(
-        &self,
-        session_id: &str,
-        agent_name: &str,
-        tool_count: usize,
-    ) {
+    pub async fn run_session_end(&self, session_id: &str, agent_name: &str, tool_count: usize) {
         for hook in &self.hooks {
             let result = tokio::time::timeout(
                 self.timeout,
@@ -287,11 +284,7 @@ impl HookPipeline {
             )
             .await;
             if result.is_err() {
-                tracing::warn!(
-                    hook = hook.name(),
-                    session_id,
-                    "Session-end hook timed out"
-                );
+                tracing::warn!(hook = hook.name(), session_id, "Session-end hook timed out");
             }
         }
     }
@@ -322,7 +315,7 @@ mod tests {
             tool_name: &str,
             _arguments: &serde_json::Value,
             _ctx: &CallContext,
-        _annotations: Option<&navra_protocol::ToolAnnotations>,
+            _annotations: Option<&navra_protocol::ToolAnnotations>,
         ) -> HookDecision {
             if tool_name == self.block_tool {
                 HookDecision::Block(format!("blocked by policy: {tool_name}"))
@@ -346,7 +339,7 @@ mod tests {
             _tool_name: &str,
             arguments: &serde_json::Value,
             _ctx: &CallContext,
-        _annotations: Option<&navra_protocol::ToolAnnotations>,
+            _annotations: Option<&navra_protocol::ToolAnnotations>,
         ) -> HookDecision {
             let mut args = arguments.clone();
             args["injected"] = serde_json::json!(true);
@@ -394,7 +387,7 @@ mod tests {
             _tool_name: &str,
             _arguments: &serde_json::Value,
             _ctx: &CallContext,
-        _annotations: Option<&navra_protocol::ToolAnnotations>,
+            _annotations: Option<&navra_protocol::ToolAnnotations>,
         ) -> HookDecision {
             tokio::time::sleep(Duration::from_secs(10)).await;
             HookDecision::Block("should not reach".to_string())
@@ -406,7 +399,9 @@ mod tests {
         let pipeline = HookPipeline::new(Duration::from_secs(5));
         let args = serde_json::json!({"key": "value"});
 
-        let outcome = pipeline.run_pre("echo", args.clone(), &test_ctx(), None).await;
+        let outcome = pipeline
+            .run_pre("echo", args.clone(), &test_ctx(), None)
+            .await;
         match outcome {
             PreHookOutcome::Proceed(result_args) => assert_eq!(result_args, args),
             other => panic!("expected Proceed, got {:?}", other),
@@ -448,7 +443,12 @@ mod tests {
         pipeline.add(ArgModifyHook);
 
         let outcome = pipeline
-            .run_pre("echo", serde_json::json!({"original": true}), &test_ctx(), None)
+            .run_pre(
+                "echo",
+                serde_json::json!({"original": true}),
+                &test_ctx(),
+                None,
+            )
             .await;
 
         match outcome {
@@ -774,7 +774,7 @@ mod tests {
                 _tool_name: &str,
                 _arguments: &serde_json::Value,
                 _ctx: &CallContext,
-        _annotations: Option<&navra_protocol::ToolAnnotations>,
+                _annotations: Option<&navra_protocol::ToolAnnotations>,
             ) -> HookDecision {
                 HookDecision::Simulate(CallToolResult::text("simulated response"))
             }

@@ -1859,7 +1859,7 @@ mod tests {
             label: Default::default(),
         };
         result.compress(10); // 40 bytes budget, well within the CJK string
-        // Should not panic
+                             // Should not panic
         if let Content::Text(t) = &result.content[0] {
             assert!(t.text.contains("[compressed"));
         }

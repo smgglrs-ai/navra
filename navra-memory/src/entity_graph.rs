@@ -113,7 +113,8 @@ impl EntityGraph {
                 source: row.get(7)?,
             })
         })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(MemoryError::from)
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(MemoryError::from)
     }
 
     pub fn relations_of_active(
@@ -141,7 +142,8 @@ impl EntityGraph {
                 source: row.get(7)?,
             })
         })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(MemoryError::from)
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(MemoryError::from)
     }
 
     pub fn find(
@@ -184,7 +186,8 @@ impl EntityGraph {
         );
 
         let mut stmt = self.db.prepare(&sql)?;
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            values.iter().map(|v| v.as_ref()).collect();
         let rows = stmt.query_map(params_ref.as_slice(), |row| {
             Ok(Relationship {
                 id: row.get(0)?,
@@ -197,7 +200,8 @@ impl EntityGraph {
                 source: row.get(7)?,
             })
         })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(MemoryError::from)
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(MemoryError::from)
     }
 
     /// 2-hop traversal: find entities reachable from `start` within 2 hops.
@@ -225,7 +229,8 @@ impl EntityGraph {
                 row.get::<_, String>(3)?,
             ))
         })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(MemoryError::from)
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(MemoryError::from)
     }
 
     pub fn count(&self) -> Result<usize, MemoryError> {

@@ -59,19 +59,13 @@ mod tests {
 
     #[test]
     fn test_refusal_detection_heuristic_i_cannot() {
-        let resp = make_response(
-            "I cannot help with that request.",
-            FinishReason::Stop,
-        );
+        let resp = make_response("I cannot help with that request.", FinishReason::Stop);
         assert!(detect_refusal(&resp));
     }
 
     #[test]
     fn test_refusal_detection_heuristic_as_an_ai() {
-        let resp = make_response(
-            "As an AI, I'm not able to do that.",
-            FinishReason::Stop,
-        );
+        let resp = make_response("As an AI, I'm not able to do that.", FinishReason::Stop);
         assert!(detect_refusal(&resp));
     }
 

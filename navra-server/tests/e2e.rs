@@ -460,8 +460,9 @@ async fn memory_store_and_query_roundtrip() {
     let result_text = json["result"]["content"][0]["text"]
         .as_str()
         .unwrap_or_else(|| panic!("expected text from memory_query, got: {json}"));
-    let results: Vec<serde_json::Value> = serde_json::from_str(result_text)
-        .unwrap_or_else(|e| panic!("memory_query returned non-JSON text: {e}\ntext: {result_text}\nfull: {json}"));
+    let results: Vec<serde_json::Value> = serde_json::from_str(result_text).unwrap_or_else(|e| {
+        panic!("memory_query returned non-JSON text: {e}\ntext: {result_text}\nfull: {json}")
+    });
     assert!(!results.is_empty(), "query should return the stored entry");
     assert!(results.iter().any(|r| r["id"] == entry_id));
 

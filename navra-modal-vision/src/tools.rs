@@ -11,11 +11,11 @@
 
 use crate::screenshot;
 use navra_auth::auth::CallContext;
+use navra_macros::tool;
 use navra_mcp::models::{GenerateRequest, ImageInput, ModelBackend};
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_mcp::{Module, ToolHandler};
-use navra_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

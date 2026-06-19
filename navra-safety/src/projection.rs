@@ -46,10 +46,7 @@ impl SparseProjectionMatrix {
     /// For each teacher token, finds student tokens that share at least
     /// one character n-gram (n=3). The weight is the fraction of shared
     /// n-grams relative to the union.
-    pub fn from_vocabularies(
-        teacher_vocab: &[String],
-        student_vocab: &[String],
-    ) -> Self {
+    pub fn from_vocabularies(teacher_vocab: &[String], student_vocab: &[String]) -> Self {
         let student_ngrams: Vec<std::collections::HashSet<String>> = student_vocab
             .iter()
             .map(|token| char_ngrams(token, 3))
@@ -146,9 +143,10 @@ impl SparseProjectionMatrix {
         use std::io::Write;
         let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
 
-        let write_u32 = |f: &mut std::io::BufWriter<std::fs::File>, v: u32| -> Result<(), ProjectionError> {
-            f.write_all(&v.to_le_bytes()).map_err(ProjectionError::Io)
-        };
+        let write_u32 =
+            |f: &mut std::io::BufWriter<std::fs::File>, v: u32| -> Result<(), ProjectionError> {
+                f.write_all(&v.to_le_bytes()).map_err(ProjectionError::Io)
+            };
 
         write_u32(&mut file, self.teacher_vocab_size as u32)?;
         write_u32(&mut file, self.student_vocab_size as u32)?;
@@ -161,7 +159,8 @@ impl SparseProjectionMatrix {
             write_u32(&mut file, col as u32)?;
         }
         for &val in &self.values {
-            file.write_all(&val.to_le_bytes()).map_err(ProjectionError::Io)?;
+            file.write_all(&val.to_le_bytes())
+                .map_err(ProjectionError::Io)?;
         }
 
         Ok(())
@@ -175,7 +174,12 @@ impl SparseProjectionMatrix {
         }
 
         let read_u32 = |offset: usize| -> u32 {
-            u32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])
+            u32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ])
         };
 
         let teacher_vocab_size = read_u32(0) as usize;
@@ -208,7 +212,12 @@ impl SparseProjectionMatrix {
         let mut values = Vec::with_capacity(nnz);
         for i in 0..nnz {
             let offset = val_start + i * 4;
-            let val = f32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]);
+            let val = f32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]);
             values.push(val);
         }
 

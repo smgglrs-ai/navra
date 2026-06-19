@@ -621,15 +621,14 @@ fn pii_benchmark_three_layer_pipeline() {
 
     let ner_filter = load_ner_filter(&ner_dir).expect("NER filter should load");
 
-    let pf_filter =
-        match navra_safety_hooks::safety::PrivacyFilterModel::load_from_dir(&pf_dir) {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("Skipping: privacy-filter failed to load: {e}");
-                eprintln!("(requires ORT >= 1.26 for MoE contrib ops)");
-                return;
-            }
-        };
+    let pf_filter = match navra_safety_hooks::safety::PrivacyFilterModel::load_from_dir(&pf_dir) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Skipping: privacy-filter failed to load: {e}");
+            eprintln!("(requires ORT >= 1.26 for MoE contrib ops)");
+            return;
+        }
+    };
 
     let cases = unified_test_cases();
 

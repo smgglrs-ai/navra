@@ -38,12 +38,7 @@ impl Hook for SessionDistillationHook {
         "session-distillation"
     }
 
-    async fn on_session_end(
-        &self,
-        session_id: &str,
-        agent_name: &str,
-        tool_count: usize,
-    ) {
+    async fn on_session_end(&self, session_id: &str, agent_name: &str, tool_count: usize) {
         if tool_count == 0 {
             tracing::debug!(session_id, "Skipping distillation: no tool calls");
             return;
@@ -210,9 +205,10 @@ mod tests {
         hook.on_session_end("session-1", "claude", 5).await;
 
         let tree = TemporalTree::open(&tree_path).unwrap();
-        let nodes = tree
-            .browse_tree(TreeType::Session, "session-1")
-            .unwrap();
-        assert!(!nodes.is_empty(), "Expected temporal tree entry for session");
+        let nodes = tree.browse_tree(TreeType::Session, "session-1").unwrap();
+        assert!(
+            !nodes.is_empty(),
+            "Expected temporal tree entry for session"
+        );
     }
 }

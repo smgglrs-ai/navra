@@ -77,8 +77,7 @@ impl StdioTransport {
                             }
 
                             let now = tokio::time::Instant::now();
-                            if now.duration_since(window_start)
-                                >= std::time::Duration::from_secs(1)
+                            if now.duration_since(window_start) >= std::time::Duration::from_secs(1)
                             {
                                 if suppressed > 0 {
                                     tracing::warn!(
@@ -178,9 +177,7 @@ impl Transport for StdioTransport {
             if n > MAX_LINE_SIZE {
                 return Err(UpstreamError::Protocol {
                     name: self.name.clone(),
-                    message: format!(
-                        "upstream line too large ({n} bytes, max {MAX_LINE_SIZE})"
-                    ),
+                    message: format!("upstream line too large ({n} bytes, max {MAX_LINE_SIZE})"),
                 });
             }
 

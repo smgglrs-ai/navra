@@ -78,8 +78,17 @@ impl Hook for SafetyHook {
         // Scan ALL string-valued fields, not just hardcoded names.
         // Skip known-safe fields that contain paths/identifiers, not content.
         const SKIP_FIELDS: &[&str] = &[
-            "path", "repo", "branch", "source_branch", "target_branch",
-            "ref", "working_dir", "command", "id", "name", "key",
+            "path",
+            "repo",
+            "branch",
+            "source_branch",
+            "target_branch",
+            "ref",
+            "working_dir",
+            "command",
+            "id",
+            "name",
+            "key",
         ];
 
         if let Some(obj) = arguments.as_object() {
@@ -95,7 +104,8 @@ impl Hook for SafetyHook {
                         Ok(_) => {}
                         Err(reason) => {
                             return HookDecision::Block(format!(
-                                "blocked in field '{}': {}", field, reason
+                                "blocked in field '{}': {}",
+                                field, reason
                             ));
                         }
                     }
@@ -147,7 +157,12 @@ impl Hook for SafetyHook {
                     }
                 }
                 Content::Resource(ref res) => {
-                    if res.resource.mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
+                    if res
+                        .resource
+                        .mime_type
+                        .as_deref()
+                        .is_some_and(|m| m.starts_with("text/"))
+                    {
                         if let Some(ref text) = res.resource.text {
                             let (processed, findings) = pipeline
                                 .process_outbound_with_findings(text, &filter_ctx)
@@ -158,7 +173,9 @@ impl Hook for SafetyHook {
                             match processed {
                                 Ok(t) => filtered_content.push(Content::text(t)),
                                 Err(reason) => {
-                                    return HookDecision::ModifyResult(CallToolResult::error(reason));
+                                    return HookDecision::ModifyResult(CallToolResult::error(
+                                        reason,
+                                    ));
                                 }
                             }
                         } else {
@@ -166,13 +183,13 @@ impl Hook for SafetyHook {
                         }
                     } else {
                         return HookDecision::ModifyResult(CallToolResult::error(
-                            "Non-text resource content blocked by safety pipeline"
+                            "Non-text resource content blocked by safety pipeline",
                         ));
                     }
                 }
                 _ => {
                     return HookDecision::ModifyResult(CallToolResult::error(
-                        "Non-text content blocked by safety pipeline (no binary filter configured)"
+                        "Non-text content blocked by safety pipeline (no binary filter configured)",
                     ));
                 }
             }
@@ -380,7 +397,9 @@ mod tests {
         let hook = SafetyHook::single("dev", crate::safety::build_pipeline("block"));
 
         let args = serde_json::json!({"path": "/tmp/test", "content": "SSN: 123-45-6789"});
-        let decision = hook.pre_tool_use("file_read", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_read", &args, &test_ctx(), None)
+            .await;
 
         // file_read is not a write-path tool, so inbound filtering skips it
         assert!(matches!(decision, HookDecision::Continue));
@@ -392,7 +411,9 @@ mod tests {
 
         // "body" and "payload" are non-standard field names that should now be scanned
         let args = serde_json::json!({"path": "/tmp/test", "body": "SSN: 123-45-6789"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_write", &args, &test_ctx(), None)
+            .await;
 
         assert!(
             matches!(decision, HookDecision::Block(_)),
@@ -406,7 +427,9 @@ mod tests {
 
         // "path" is in the skip list, so its content should not trigger blocking
         let args = serde_json::json!({"path": "AKIAIOSFODNN7EXAMPLE", "content": "clean"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_write", &args, &test_ctx(), None)
+            .await;
 
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -416,7 +439,9 @@ mod tests {
         let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
 
         let args = serde_json::json!({"path": "/tmp/test", "content": "Hello, world!"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_write", &args, &test_ctx(), None)
+            .await;
 
         assert!(matches!(decision, HookDecision::Continue));
     }

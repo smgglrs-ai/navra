@@ -73,7 +73,10 @@ async fn handle_exec_run(
     let working_dir = working_dir.unwrap_or_else(|| "/workspace".to_string());
     let working_path = Path::new(&working_dir);
 
-    if working_path.components().any(|c| c == std::path::Component::ParentDir) {
+    if working_path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
         return CallToolResult::error(
             "working_dir must not contain '..' components (path traversal denied)",
         );
@@ -311,9 +314,7 @@ mod kani_proofs {
 
     fn is_workspace_safe(path: &str) -> bool {
         let p = Path::new(path);
-        !p.components()
-            .any(|c| c == std::path::Component::ParentDir)
-            && p.starts_with("/workspace")
+        !p.components().any(|c| c == std::path::Component::ParentDir) && p.starts_with("/workspace")
     }
 
     #[kani::proof]

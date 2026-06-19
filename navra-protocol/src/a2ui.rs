@@ -83,8 +83,8 @@ impl std::fmt::Display for A2uiValidationError {
 /// - Each element has `createSurface` or `updateSurface`
 /// - Surface actions have `surfaceId`
 pub fn validate(payload: &str) -> Result<Vec<A2uiMessage>, A2uiValidationError> {
-    let value: serde_json::Value =
-        serde_json::from_str(payload).map_err(|e| A2uiValidationError::InvalidJson(e.to_string()))?;
+    let value: serde_json::Value = serde_json::from_str(payload)
+        .map_err(|e| A2uiValidationError::InvalidJson(e.to_string()))?;
 
     let arr = value.as_array().ok_or(A2uiValidationError::NotArray)?;
     if arr.is_empty() {
@@ -291,7 +291,10 @@ mod tests {
         .to_string();
 
         let err = validate(&payload).unwrap_err();
-        assert!(matches!(err, A2uiValidationError::MissingVersion { index: 0 }));
+        assert!(matches!(
+            err,
+            A2uiValidationError::MissingVersion { index: 0 }
+        ));
     }
 
     #[test]
@@ -313,7 +316,10 @@ mod tests {
     fn validate_no_surface_action() {
         let payload = serde_json::json!([{"version": "v0.9"}]).to_string();
         let err = validate(&payload).unwrap_err();
-        assert!(matches!(err, A2uiValidationError::NoSurfaceAction { index: 0 }));
+        assert!(matches!(
+            err,
+            A2uiValidationError::NoSurfaceAction { index: 0 }
+        ));
     }
 
     #[test]
@@ -406,10 +412,7 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: A2uiMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.version, "v0.9");
-        assert_eq!(
-            parsed.create_surface.unwrap().surface_id,
-            "test"
-        );
+        assert_eq!(parsed.create_surface.unwrap().surface_id, "test");
     }
 
     #[test]

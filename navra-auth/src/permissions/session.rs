@@ -139,9 +139,7 @@ impl SessionPermissionStore {
         F: FnOnce(&mut SessionPermissions) -> R,
     {
         let mut map = self.inner.write().unwrap_or_else(|e| e.into_inner());
-        let perms = map
-            .entry(session_id.to_string())
-            .or_default();
+        let perms = map.entry(session_id.to_string()).or_default();
         f(perms)
     }
 

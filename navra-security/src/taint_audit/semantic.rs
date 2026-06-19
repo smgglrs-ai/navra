@@ -8,10 +8,7 @@ use super::{TaintMechanism, TaintPath};
 use navra_core::blackbox::BlackboxEntry;
 
 /// Analyze semantic similarity between untrusted outputs and trusted sink args.
-pub fn analyze(
-    untrusted: &[&BlackboxEntry],
-    trusted_sinks: &[&BlackboxEntry],
-) -> Vec<TaintPath> {
+pub fn analyze(untrusted: &[&BlackboxEntry], trusted_sinks: &[&BlackboxEntry]) -> Vec<TaintPath> {
     let mut paths = Vec::new();
 
     for source in untrusted {
@@ -64,7 +61,11 @@ fn extract_text_content(entry: &BlackboxEntry) -> String {
 
 fn word_set(text: &str) -> std::collections::HashSet<String> {
     text.split_whitespace()
-        .map(|w| w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+        .map(|w| {
+            w.to_lowercase()
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_string()
+        })
         .filter(|w| w.len() >= 3)
         .collect()
 }

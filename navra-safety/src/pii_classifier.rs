@@ -75,15 +75,11 @@ impl PiiClassifier {
             .collect();
 
         let seq_len = input_ids.len();
-        let input_ids_array =
-            ndarray::Array2::from_shape_vec((1, seq_len), input_ids).ok()?;
-        let mask_array =
-            ndarray::Array2::from_shape_vec((1, seq_len), attention_mask).ok()?;
+        let input_ids_array = ndarray::Array2::from_shape_vec((1, seq_len), input_ids).ok()?;
+        let mask_array = ndarray::Array2::from_shape_vec((1, seq_len), attention_mask).ok()?;
 
-        let input_ids_tensor =
-            ort::value::TensorRef::from_array_view(&input_ids_array).ok()?;
-        let mask_tensor =
-            ort::value::TensorRef::from_array_view(&mask_array).ok()?;
+        let input_ids_tensor = ort::value::TensorRef::from_array_view(&input_ids_array).ok()?;
+        let mask_tensor = ort::value::TensorRef::from_array_view(&mask_array).ok()?;
 
         let mut session = self.session.lock().unwrap_or_else(|e| e.into_inner());
         let outputs = session

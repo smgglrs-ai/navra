@@ -263,7 +263,12 @@ mod tests {
     async fn approve_resolves() {
         let hook = ApprovalGateHook::new(test_config(vec!["exec"]));
         let decision = hook
-            .pre_tool_use("shell_exec", &serde_json::json!({"cmd": "ls"}), &test_ctx(), None)
+            .pre_tool_use(
+                "shell_exec",
+                &serde_json::json!({"cmd": "ls"}),
+                &test_ctx(),
+                None,
+            )
             .await;
         let id = match decision {
             HookDecision::Pending(id) => id,

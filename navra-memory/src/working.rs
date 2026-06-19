@@ -20,9 +20,7 @@ impl WorkingMemory {
     pub fn open(path: &Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
-        let mem = Self {
-            db: Mutex::new(db),
-        };
+        let mem = Self { db: Mutex::new(db) };
         mem.init_schema()?;
         Ok(mem)
     }
@@ -30,9 +28,7 @@ impl WorkingMemory {
     /// Open in-memory working memory (for testing).
     pub fn open_memory() -> Result<Self, MemoryError> {
         let db = Connection::open_in_memory()?;
-        let mem = Self {
-            db: Mutex::new(db),
-        };
+        let mem = Self { db: Mutex::new(db) };
         mem.init_schema()?;
         Ok(mem)
     }

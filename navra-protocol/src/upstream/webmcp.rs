@@ -71,12 +71,13 @@ impl WebMcpTransport {
     pub async fn connect(&mut self) -> Result<(), UpstreamError> {
         use tokio_tungstenite::connect_async;
 
-        let (ws_stream, _) = connect_async(&self.cdp_url).await.map_err(|e| {
-            UpstreamError::Protocol {
-                name: self.name.clone(),
-                message: format!("CDP WebSocket connection failed: {e}"),
-            }
-        })?;
+        let (ws_stream, _) =
+            connect_async(&self.cdp_url)
+                .await
+                .map_err(|e| UpstreamError::Protocol {
+                    name: self.name.clone(),
+                    message: format!("CDP WebSocket connection failed: {e}"),
+                })?;
 
         let (write, mut read) = ws_stream.split();
         let (write_tx, mut write_rx) = mpsc::unbounded_channel::<String>();
@@ -140,12 +141,13 @@ impl WebMcpTransport {
 
         #[cfg(feature = "webmcp")]
         {
-            let conn = self.connection.as_ref().ok_or_else(|| {
-                UpstreamError::Protocol {
+            let conn = self
+                .connection
+                .as_ref()
+                .ok_or_else(|| UpstreamError::Protocol {
                     name: self.name.clone(),
                     message: "CDP WebSocket not connected. Call connect() first.".to_string(),
-                }
-            })?;
+                })?;
 
             let (tx, rx) = oneshot::channel();
             {
@@ -153,17 +155,17 @@ impl WebMcpTransport {
                 pending.insert(cdp_id, tx);
             }
 
-            let msg = serde_json::to_string(&cdp_request).map_err(|e| {
-                UpstreamError::Protocol {
-                    name: self.name.clone(),
-                    message: format!("Failed to serialize CDP request: {e}"),
-                }
+            let msg = serde_json::to_string(&cdp_request).map_err(|e| UpstreamError::Protocol {
+                name: self.name.clone(),
+                message: format!("Failed to serialize CDP request: {e}"),
             })?;
 
-            conn.write_tx.send(msg).map_err(|_| UpstreamError::Protocol {
-                name: self.name.clone(),
-                message: "CDP WebSocket writer closed".to_string(),
-            })?;
+            conn.write_tx
+                .send(msg)
+                .map_err(|_| UpstreamError::Protocol {
+                    name: self.name.clone(),
+                    message: "CDP WebSocket writer closed".to_string(),
+                })?;
 
             let response = tokio::time::timeout(std::time::Duration::from_secs(30), rx)
                 .await
@@ -412,8 +414,7 @@ mod tests {
         match err {
             UpstreamError::Protocol { message, .. } => {
                 assert!(
-                    message.contains("not connected")
-                        || message.contains("not enabled"),
+                    message.contains("not connected") || message.contains("not enabled"),
                     "unexpected error: {message}"
                 );
             }
@@ -438,8 +439,7 @@ mod tests {
         match err {
             UpstreamError::Protocol { message, .. } => {
                 assert!(
-                    message.contains("not connected")
-                        || message.contains("not enabled"),
+                    message.contains("not connected") || message.contains("not enabled"),
                     "unexpected error: {message}"
                 );
             }
@@ -524,8 +524,7 @@ mod tests {
 
             let handle = tokio::spawn(async move {
                 while let Ok((stream, _)) = listener.accept().await {
-                    let ws_stream =
-                        tokio_tungstenite::accept_async(stream).await.unwrap();
+                    let ws_stream = tokio_tungstenite::accept_async(stream).await.unwrap();
                     let (mut write, mut read) = ws_stream.split();
 
                     while let Some(Ok(msg)) = read.next().await {

@@ -393,9 +393,7 @@ impl Upstream {
     /// `ToolsListChanged` when the upstream server sends them.
     /// The notification sender is forwarded to the transport so it
     /// can detect and forward server-initiated JSON-RPC notifications.
-    pub fn subscribe_notifications(
-        &mut self,
-    ) -> mpsc::UnboundedReceiver<UpstreamNotification> {
+    pub fn subscribe_notifications(&mut self) -> mpsc::UnboundedReceiver<UpstreamNotification> {
         let (tx, rx) = mpsc::unbounded_channel();
         self.transport.set_notification_sender(tx);
         rx
@@ -547,7 +545,10 @@ mod tests {
         });
         assert!(msg.get("method").is_some());
         assert!(msg.get("id").is_none());
-        assert_eq!(msg["method"].as_str().unwrap(), "notifications/tools/list_changed");
+        assert_eq!(
+            msg["method"].as_str().unwrap(),
+            "notifications/tools/list_changed"
+        );
     }
 
     #[test]

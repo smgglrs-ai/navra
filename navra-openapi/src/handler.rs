@@ -72,29 +72,52 @@ pub async fn execute_operation(
 
     let auth_headers = auth.headers_with_oauth().await;
 
-    let resp = send_request(client, &method, &url, &auth_headers, meta, args, max_response_bytes).await;
+    let resp = send_request(
+        client,
+        &method,
+        &url,
+        &auth_headers,
+        meta,
+        args,
+        max_response_bytes,
+    )
+    .await;
 
     // On 401/403 with OAuth configured, try one token refresh then retry
     if let Some(ref mgr) = auth.oauth {
         if let Ok(ref r) = resp {
             if r.is_error {
-                let body_text = r.content.first().and_then(|c| match c {
-                    navra_protocol::Content::Text(t) => Some(t.text.as_str()),
-                    _ => None,
-                }).unwrap_or("");
+                let body_text = r
+                    .content
+                    .first()
+                    .and_then(|c| match c {
+                        navra_protocol::Content::Text(t) => Some(t.text.as_str()),
+                        _ => None,
+                    })
+                    .unwrap_or("");
                 if body_text.contains("HTTP 401") || body_text.contains("HTTP 403") {
                     tracing::info!("OAuth: received 401/403, attempting token refresh");
                     match mgr.force_refresh().await {
                         Ok(new_token) => {
                             let mut retry_headers = auth.headers();
-                            if let Ok(val) = reqwest::header::HeaderValue::from_str(
-                                &format!("Bearer {new_token}"),
-                            ) {
+                            if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!(
+                                "Bearer {new_token}"
+                            )) {
                                 retry_headers.insert(reqwest::header::AUTHORIZATION, val);
                             }
-                            return send_request(client, &method, &url, &retry_headers, meta, args, max_response_bytes)
-                                .await
-                                .unwrap_or_else(|e| CallToolResult::error(format!("HTTP retry failed: {e}")));
+                            return send_request(
+                                client,
+                                &method,
+                                &url,
+                                &retry_headers,
+                                meta,
+                                args,
+                                max_response_bytes,
+                            )
+                            .await
+                            .unwrap_or_else(|e| {
+                                CallToolResult::error(format!("HTTP retry failed: {e}"))
+                            });
                         }
                         Err(e) => {
                             tracing::warn!("OAuth token refresh failed: {e}");
@@ -146,11 +169,18 @@ async fn send_request(
                 String::from_utf8_lossy(&b).into_owned()
             }
         }
-        Err(e) => return Ok(CallToolResult::error(format!("Failed to read response: {e}"))),
+        Err(e) => {
+            return Ok(CallToolResult::error(format!(
+                "Failed to read response: {e}"
+            )))
+        }
     };
 
     if status.is_success() {
-        Ok(CallToolResult::text(truncate_response(body, max_response_bytes)))
+        Ok(CallToolResult::text(truncate_response(
+            body,
+            max_response_bytes,
+        )))
     } else {
         Ok(CallToolResult::error(format!("HTTP {status}: {body}")))
     }

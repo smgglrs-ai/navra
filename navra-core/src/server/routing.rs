@@ -210,8 +210,7 @@ mod tests {
             auto_route_threshold: 0.8,
         };
         let names = vec!["file_read", "file_write", "git_commit", "git_status"];
-        let candidates =
-            find_candidates("file_raed", &names, &json!({}), &HashMap::new(), &config);
+        let candidates = find_candidates("file_raed", &names, &json!({}), &HashMap::new(), &config);
         assert!(!candidates.is_empty());
         assert_eq!(candidates[0].name, "file_read");
         assert!(candidates[0].score > 0.5);
@@ -260,8 +259,7 @@ mod tests {
                 _ => "zzz",
             })
             .collect();
-        let candidates =
-            find_candidates("tool_x", &names, &json!({}), &HashMap::new(), &config);
+        let candidates = find_candidates("tool_x", &names, &json!({}), &HashMap::new(), &config);
         assert!(candidates.len() <= 5);
     }
 

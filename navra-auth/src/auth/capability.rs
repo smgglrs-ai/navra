@@ -703,7 +703,10 @@ mod tests {
         // Wrong audience fails
         let result = decode_token_with_audience(&token, &signer, "https://server-b.example.com");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("audience mismatch"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("audience mismatch"));
     }
 
     #[test]

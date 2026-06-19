@@ -24,9 +24,7 @@ impl KnowledgeStore {
     pub fn open(path: &Path) -> Result<Self, MemoryError> {
         let db = Connection::open(path)?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
-        let store = Self {
-            db: Mutex::new(db),
-        };
+        let store = Self { db: Mutex::new(db) };
         store.init_schema()?;
         Ok(store)
     }
@@ -34,9 +32,7 @@ impl KnowledgeStore {
     /// Open in-memory knowledge store (for testing).
     pub fn open_memory() -> Result<Self, MemoryError> {
         let db = Connection::open_in_memory()?;
-        let store = Self {
-            db: Mutex::new(db),
-        };
+        let store = Self { db: Mutex::new(db) };
         store.init_schema()?;
         Ok(store)
     }
@@ -209,10 +205,9 @@ impl KnowledgeStore {
     /// Count total entries.
     pub fn count(&self) -> Result<usize, MemoryError> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        let count: i64 =
-            db.query_row("SELECT COUNT(*) FROM memory_knowledge", [], |row| {
-                row.get(0)
-            })?;
+        let count: i64 = db.query_row("SELECT COUNT(*) FROM memory_knowledge", [], |row| {
+            row.get(0)
+        })?;
         Ok(count as usize)
     }
 
@@ -229,7 +224,8 @@ impl KnowledgeStore {
         let tags_json = serde_json::to_string(&entry.tags).unwrap_or_else(|_| "[]".to_string());
 
         // Check if content_key already exists
-        let existing: Option<(String, i64)> = db.query_row(
+        let existing: Option<(String, i64)> = db
+            .query_row(
                 "SELECT id, version FROM memory_knowledge WHERE content_key = ?1",
                 params![entry.content_key],
                 |row| Ok((row.get(0)?, row.get(1)?)),

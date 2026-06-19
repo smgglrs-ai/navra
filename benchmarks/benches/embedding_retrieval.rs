@@ -53,7 +53,10 @@ fn try_load_model(
     let tokenizer_path = base.join("tokenizer.json");
 
     if !model_path.exists() {
-        eprintln!("Skipping {name}: model not found at {}", model_path.display());
+        eprintln!(
+            "Skipping {name}: model not found at {}",
+            model_path.display()
+        );
         return None;
     }
 
@@ -137,11 +140,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
-fn recall_at_k(
-    rt: &tokio::runtime::Runtime,
-    model: &navra_model::OnnxBackend,
-    k: usize,
-) -> f64 {
+fn recall_at_k(rt: &tokio::runtime::Runtime, model: &navra_model::OnnxBackend, k: usize) -> f64 {
     let corpus_embeddings: Vec<Vec<f32>> = CORPUS
         .iter()
         .map(|text| embed_text(rt, model, text))
@@ -188,7 +187,13 @@ fn bench_embedding_latency(c: &mut Criterion) {
         };
 
         group.bench_with_input(BenchmarkId::new("short_text", name), &model, |b, model| {
-            b.iter(|| embed_text(&rt, model, black_box("Rust is a systems programming language.")))
+            b.iter(|| {
+                embed_text(
+                    &rt,
+                    model,
+                    black_box("Rust is a systems programming language."),
+                )
+            })
         });
 
         group.bench_with_input(BenchmarkId::new("medium_text", name), &model, |b, model| {
@@ -302,7 +307,9 @@ fn bench_store_search(c: &mut Criterion) {
             .map(|text| embed_text(&rt, &model, text))
             .collect();
 
-        store.index_document("bench.txt", &chunks, &embeddings).unwrap();
+        store
+            .index_document("bench.txt", &chunks, &embeddings)
+            .unwrap();
 
         group.bench_with_input(BenchmarkId::new("search", label), &store, |b, store| {
             let query_emb = embed_text(&rt, &model, "systems programming safety");

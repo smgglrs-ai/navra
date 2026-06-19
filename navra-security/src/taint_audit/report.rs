@@ -36,10 +36,22 @@ impl AuditReport {
     pub fn from_sessions(sessions: Vec<SessionReport>) -> Self {
         let summary = AuditSummary {
             sessions_analyzed: sessions.len(),
-            sessions_clean: sessions.iter().filter(|s| s.risk == RiskRating::Clean).count(),
-            sessions_low: sessions.iter().filter(|s| s.risk == RiskRating::Low).count(),
-            sessions_medium: sessions.iter().filter(|s| s.risk == RiskRating::Medium).count(),
-            sessions_high: sessions.iter().filter(|s| s.risk == RiskRating::High).count(),
+            sessions_clean: sessions
+                .iter()
+                .filter(|s| s.risk == RiskRating::Clean)
+                .count(),
+            sessions_low: sessions
+                .iter()
+                .filter(|s| s.risk == RiskRating::Low)
+                .count(),
+            sessions_medium: sessions
+                .iter()
+                .filter(|s| s.risk == RiskRating::Medium)
+                .count(),
+            sessions_high: sessions
+                .iter()
+                .filter(|s| s.risk == RiskRating::High)
+                .count(),
             total_taint_paths: sessions.iter().map(|s| s.taint_paths.len()).sum(),
         };
 

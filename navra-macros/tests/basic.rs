@@ -1,5 +1,5 @@
-use navra_mcp::auth::CallContext;
 use navra_macros::tool;
+use navra_mcp::auth::CallContext;
 use navra_protocol::{CallToolResult, Content, TextContent};
 
 // --- Basic tool: single required arg ---

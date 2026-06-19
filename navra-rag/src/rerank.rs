@@ -71,8 +71,9 @@ impl CrossEncoderReranker {
         model_path: &Path,
         tokenizer_path: &Path,
     ) -> Result<Self, CrossEncoderError> {
-        let session = navra_model::onnx::build_onnx_session(model_path, &navra_model::onnx::Device::Cpu)
-            .map_err(|e| CrossEncoderError::Load(format!("{e}")))?;
+        let session =
+            navra_model::onnx::build_onnx_session(model_path, &navra_model::onnx::Device::Cpu)
+                .map_err(|e| CrossEncoderError::Load(format!("{e}")))?;
 
         let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path).map_err(|e| {
             CrossEncoderError::Load(format!(

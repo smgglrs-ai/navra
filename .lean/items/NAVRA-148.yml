@@ -1,0 +1,36 @@
+id: NAVRA-148
+title: Visual flow editor in navra-react
+status: backlog
+priority: low
+effort: L
+depends_on:
+  - NAVRA-059
+feeds: []
+description: |
+  Add a visual flow editor to the navra-react dashboard that lets users
+  author and edit YAML flow definitions through a drag-and-drop graph UI
+  with live validation. The editor reads and writes the same YAML format
+  defined by NAVRA-059, so flows created visually are identical to
+  hand-written ones.
+
+  Key capabilities:
+  - Graph canvas (xyflow/React Flow) for composing DAG and handoff flows
+  - Node palette listing available tools (fetched from navra's tool registry)
+  - Edge creation with parameter wiring between tool outputs and inputs
+  - Live validation: schema errors, missing required fields, cycle detection
+    (for DAG kind), unreachable nodes, and permission feasibility checks
+  - YAML source view with bidirectional sync (edit graph ↔ edit YAML)
+  - Save flows to the navra flows directory; load existing YAML flows
+  - Parameter form per node for defaults and substitution variables
+acceptance:
+  - "Users can create a new DAG flow by dragging tool nodes onto a canvas and connecting them"
+  - "Users can create a new handoff flow with the same editor"
+  - "Validation errors (missing fields, cycles, unknown tools) appear inline on the canvas in real time"
+  - "YAML source panel stays in sync with graph edits and vice versa"
+  - "Saved flows are valid YAML loadable by navra's yaml_loader without modification"
+  - "Existing YAML flows can be opened and rendered as a graph"
+  - "Permission feasibility check warns when a flow uses tools the current user cannot access"
+scope:
+  - navra-react/src/components/FlowEditor/
+  - navra-react/src/utils/flowValidation.ts
+  - navra-react/src/utils/yamlSync.ts

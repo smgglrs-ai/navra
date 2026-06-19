@@ -284,7 +284,9 @@ mod tests {
             &'a self,
             _text: &'a str,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a>,
+            Box<
+                dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a,
+            >,
         > {
             let labels = self.labels.clone();
             Box::pin(async move { Ok(ClassifyOutput { labels }) })
@@ -298,7 +300,9 @@ mod tests {
             &'a self,
             _text: &'a str,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a>,
+            Box<
+                dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a,
+            >,
         > {
             Box::pin(async { Err(ClassifyError::Inference("test failure".into())) })
         }
@@ -656,7 +660,10 @@ mod kani_proofs {
             category: "inference_failure".to_string(),
             confidence: 1.0,
         }];
-        assert!(!findings.is_empty(), "inference error must produce findings");
+        assert!(
+            !findings.is_empty(),
+            "inference error must produce findings"
+        );
         assert!(
             findings[0].confidence >= 1.0,
             "inference_failure finding must have max confidence"

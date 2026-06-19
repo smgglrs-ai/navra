@@ -394,9 +394,9 @@ fn check_intent_behavior_mismatch(tool: &ToolDefinition) -> Vec<ToolFinding> {
                     .required
                     .as_ref()
                     .is_some_and(|r| r.contains(name))
-                {
-                    continue; // already reported
-                }
+            {
+                continue; // already reported
+            }
         }
     }
     findings

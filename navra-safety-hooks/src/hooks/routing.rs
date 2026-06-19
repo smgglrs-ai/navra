@@ -253,7 +253,9 @@ mod tests {
     async fn pre_hook_injects_routing_metadata() {
         let hook = test_hook();
         let args = serde_json::json!({"path": "/tmp/test"});
-        let decision = hook.pre_tool_use("file_read", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_read", &args, &test_ctx(), None)
+            .await;
 
         match decision {
             HookDecision::ModifyArgs(modified) => {

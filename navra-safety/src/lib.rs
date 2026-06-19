@@ -32,18 +32,17 @@
 pub mod classifier;
 pub mod confidentiality;
 pub mod ml;
-pub mod projection;
 #[cfg(feature = "onnx")]
 pub mod ner;
 #[cfg(feature = "onnx")]
 pub mod pii_classifier;
 #[cfg(feature = "onnx")]
 pub mod privacy_filter;
+pub mod projection;
 pub mod pseudonym;
 mod regex;
 
-pub use self::classifier::{ClassifyError, ClassifyLabel, ClassifyOutput, Classifier};
-pub use self::projection::{ProjectionError, SparseProjectionMatrix};
+pub use self::classifier::{Classifier, ClassifyError, ClassifyLabel, ClassifyOutput};
 pub use self::confidentiality::Confidentiality;
 pub use self::ml::{CategoryPolicy, MlFilter, MultiLabelFilter};
 #[cfg(feature = "onnx")]
@@ -54,6 +53,7 @@ pub use self::ner::{
 pub use self::privacy_filter::{
     default_privacy_filter_model_dir, load_privacy_filter, PrivacyFilterModel,
 };
+pub use self::projection::{ProjectionError, SparseProjectionMatrix};
 pub use self::pseudonym::{PseudonymMap, PseudonymReverser};
 pub use self::regex::{
     CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, PromptInjectionFilter, SecretFilter,
@@ -799,8 +799,18 @@ mod tests {
     #[test]
     fn redact_handles_adjacent_findings() {
         let mut findings = vec![
-            Finding { start: 0, end: 3, category: "a".to_string(), confidence: 1.0 },
-            Finding { start: 4, end: 7, category: "b".to_string(), confidence: 1.0 },
+            Finding {
+                start: 0,
+                end: 3,
+                category: "a".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 4,
+                end: 7,
+                category: "b".to_string(),
+                confidence: 1.0,
+            },
         ];
         let result = redact("AAA BBB CCC", &mut findings);
         assert_eq!(result, "[REDACTED:a] [REDACTED:b] CCC");
@@ -809,8 +819,18 @@ mod tests {
     #[test]
     fn redact_handles_overlapping_findings() {
         let mut findings = vec![
-            Finding { start: 0, end: 5, category: "wide".to_string(), confidence: 1.0 },
-            Finding { start: 2, end: 4, category: "narrow".to_string(), confidence: 1.0 },
+            Finding {
+                start: 0,
+                end: 5,
+                category: "wide".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 2,
+                end: 4,
+                category: "narrow".to_string(),
+                confidence: 1.0,
+            },
         ];
         let result = redact("ABCDEFGH", &mut findings);
         assert_eq!(result, "[REDACTED:wide]FGH");
@@ -980,7 +1000,10 @@ mod tests {
     fn pseudonymize_replaces_findings() {
         let map = PseudonymMap::new();
         let mut findings = vec![Finding {
-            start: 4, end: 15, category: "email".to_string(), confidence: 1.0,
+            start: 4,
+            end: 15,
+            category: "email".to_string(),
+            confidence: 1.0,
         }];
         let result = pseudonymize("Hi, a@b.example here", &mut findings, &map);
         assert_eq!(result, "Hi, Email_A here");
@@ -990,11 +1013,17 @@ mod tests {
     fn pseudonymize_consistent_across_calls() {
         let map = PseudonymMap::new();
         let mut findings1 = vec![Finding {
-            start: 0, end: 11, category: "person".to_string(), confidence: 1.0,
+            start: 0,
+            end: 11,
+            category: "person".to_string(),
+            confidence: 1.0,
         }];
         let result1 = pseudonymize("Jean Dupont said hello", &mut findings1, &map);
         let mut findings2 = vec![Finding {
-            start: 9, end: 20, category: "person".to_string(), confidence: 1.0,
+            start: 9,
+            end: 20,
+            category: "person".to_string(),
+            confidence: 1.0,
         }];
         let result2 = pseudonymize("Reply to Jean Dupont please", &mut findings2, &map);
         assert_eq!(result1, "Person_A said hello");
@@ -1012,7 +1041,10 @@ mod tests {
     async fn pseudonymize_pipeline_process_outbound() {
         let mut pipeline = FilterPipeline::new(FilterAction::Pseudonymize);
         pipeline.add_filter(PiiFilter::new());
-        let result = pipeline.process_outbound("SSN: 123-45-6789", &ctx()).await.unwrap();
+        let result = pipeline
+            .process_outbound("SSN: 123-45-6789", &ctx())
+            .await
+            .unwrap();
         assert!(!result.contains("123-45-6789"));
         assert!(result.contains("ID_A"));
     }
@@ -1030,9 +1062,24 @@ mod tests {
     fn pii_metrics_counting() {
         let metrics = PiiMetrics::new();
         let findings = vec![
-            Finding { start: 0, end: 5, category: "email".to_string(), confidence: 1.0 },
-            Finding { start: 10, end: 15, category: "phone".to_string(), confidence: 1.0 },
-            Finding { start: 20, end: 30, category: "aws-key".to_string(), confidence: 1.0 },
+            Finding {
+                start: 0,
+                end: 5,
+                category: "email".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 10,
+                end: 15,
+                category: "phone".to_string(),
+                confidence: 1.0,
+            },
+            Finding {
+                start: 20,
+                end: 30,
+                category: "aws-key".to_string(),
+                confidence: 1.0,
+            },
         ];
         metrics.record(&findings, &FilterAction::Redact);
         let snap = metrics.snapshot();
@@ -1049,7 +1096,10 @@ mod tests {
     fn pii_metrics_reset() {
         let metrics = PiiMetrics::new();
         let findings = vec![Finding {
-            start: 0, end: 5, category: "email".to_string(), confidence: 1.0,
+            start: 0,
+            end: 5,
+            category: "email".to_string(),
+            confidence: 1.0,
         }];
         metrics.record(&findings, &FilterAction::Redact);
         assert_eq!(metrics.snapshot().total_scans, 1);

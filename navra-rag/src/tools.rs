@@ -10,12 +10,12 @@
 use crate::chunk::{chunk_text, predict_chunk_value, ChunkConfig};
 use crate::rerank::{NoopReranker, Reranker};
 use crate::store::{CascadeConfig, ChunkStore};
+use navra_macros::tool;
 use navra_mcp::auth::CallContext;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_mcp::Module;
-use navra_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -120,12 +120,7 @@ impl Module for RagModule {
         "rag"
     }
 
-    fn tools(
-        &self,
-    ) -> Vec<(
-        navra_mcp::protocol::ToolDefinition,
-        navra_mcp::ToolHandler,
-    )> {
+    fn tools(&self) -> Vec<(navra_mcp::protocol::ToolDefinition, navra_mcp::ToolHandler)> {
         let s = self.state.clone();
         vec![
             handle_index_handler(s.clone()),

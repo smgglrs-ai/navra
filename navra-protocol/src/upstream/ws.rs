@@ -50,12 +50,13 @@ impl WebSocketTransport {
     pub async fn connect(&mut self) -> Result<(), UpstreamError> {
         use tokio_tungstenite::connect_async;
 
-        let (ws_stream, _) = connect_async(&self.url).await.map_err(|e| {
-            UpstreamError::Protocol {
-                name: self.name.clone(),
-                message: format!("WebSocket connection failed: {e}"),
-            }
-        })?;
+        let (ws_stream, _) =
+            connect_async(&self.url)
+                .await
+                .map_err(|e| UpstreamError::Protocol {
+                    name: self.name.clone(),
+                    message: format!("WebSocket connection failed: {e}"),
+                })?;
 
         let (write, mut read) = ws_stream.split();
         let (write_tx, mut write_rx) = mpsc::unbounded_channel::<String>();
@@ -88,8 +89,7 @@ impl WebSocketTransport {
                                 if let Some(ref tx) = notif_tx {
                                     if let Some(method) = json["method"].as_str() {
                                         if method == "notifications/tools/list_changed" {
-                                            let _ =
-                                                tx.send(UpstreamNotification::ToolsListChanged);
+                                            let _ = tx.send(UpstreamNotification::ToolsListChanged);
                                         }
                                     }
                                 }
@@ -134,17 +134,15 @@ impl Transport for WebSocketTransport {
     ) -> Result<serde_json::Value, UpstreamError> {
         #[cfg(feature = "webmcp")]
         {
-            let conn = self.connection.as_ref().ok_or_else(|| {
-                UpstreamError::Protocol {
+            let conn = self
+                .connection
+                .as_ref()
+                .ok_or_else(|| UpstreamError::Protocol {
                     name: self.name.clone(),
                     message: "WebSocket not connected. Call connect() first.".to_string(),
-                }
-            })?;
+                })?;
 
-            let id = body
-                .get("id")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            let id = body.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
 
             let (tx, rx) = oneshot::channel();
             {
@@ -157,10 +155,12 @@ impl Transport for WebSocketTransport {
                 source: e,
             })?;
 
-            conn.write_tx.send(msg).map_err(|_| UpstreamError::Protocol {
-                name: self.name.clone(),
-                message: "WebSocket writer closed".to_string(),
-            })?;
+            conn.write_tx
+                .send(msg)
+                .map_err(|_| UpstreamError::Protocol {
+                    name: self.name.clone(),
+                    message: "WebSocket writer closed".to_string(),
+                })?;
 
             tokio::time::timeout(std::time::Duration::from_secs(30), rx)
                 .await

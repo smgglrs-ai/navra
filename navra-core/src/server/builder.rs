@@ -302,10 +302,7 @@ impl McpServerBuilder {
     }
 
     /// Merge upstream tool operation classifications into the server.
-    pub fn merge_tool_operations(
-        mut self,
-        ops: HashMap<String, navra_mcp::ToolOperation>,
-    ) -> Self {
+    pub fn merge_tool_operations(mut self, ops: HashMap<String, navra_mcp::ToolOperation>) -> Self {
         self.tool_operations.extend(ops);
         self
     }

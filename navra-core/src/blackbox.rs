@@ -414,11 +414,7 @@ impl Blackbox {
     }
 
     /// List distinct session IDs in the blackbox, optionally filtered by time range.
-    pub fn list_sessions(
-        &self,
-        since_ms: Option<i64>,
-        until_ms: Option<i64>,
-    ) -> Vec<String> {
+    pub fn list_sessions(&self, since_ms: Option<i64>, until_ms: Option<i64>) -> Vec<String> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let mut sql = "SELECT DISTINCT session_id FROM blackbox".to_string();
         let mut clauses = Vec::new();
