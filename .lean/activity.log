@@ -441,3 +441,11 @@
   summary: "Memory type classification — with_classifier builder, classify_text method, memory_type=auto in distill tool"
   iteration: 7
   max_iterations: 20
+
+- timestamp: "2026-06-19T20:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-069"
+  summary: "Multi-hypothesis tool routing — edit distance + argument Jaccard scoring, auto-route and suggestions"
+  iteration: 8
+  max_iterations: 20
