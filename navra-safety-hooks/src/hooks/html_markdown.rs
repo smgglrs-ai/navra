@@ -50,9 +50,12 @@ fn looks_like_html(text: &str) -> bool {
     }
     // Count HTML tag patterns vs plain angle brackets
     let tag_count = trimmed.matches("</").count() + trimmed.matches("/>").count();
-    let has_block_tags = ["<div", "<p>", "<p ", "<table", "<ul", "<ol", "<h1", "<h2", "<h3", "<body", "<head", "<section", "<article", "<nav", "<main", "<header", "<footer"]
-        .iter()
-        .any(|tag| trimmed.contains(tag));
+    let has_block_tags = [
+        "<div", "<p>", "<p ", "<table", "<ul", "<ol", "<h1", "<h2", "<h3", "<body", "<head",
+        "<section", "<article", "<nav", "<main", "<header", "<footer",
+    ]
+    .iter()
+    .any(|tag| trimmed.contains(tag));
 
     tag_count >= 2 && has_block_tags
 }
@@ -161,12 +164,16 @@ mod tests {
     fn detects_html_with_block_tags() {
         assert!(looks_like_html("<html><body><p>Hello</p></body></html>"));
         assert!(looks_like_html("<div class=\"content\"><p>Text</p></div>"));
-        assert!(looks_like_html("<!DOCTYPE html><html><head></head><body></body></html>"));
+        assert!(looks_like_html(
+            "<!DOCTYPE html><html><head></head><body></body></html>"
+        ));
     }
 
     #[test]
     fn rejects_non_html() {
-        assert!(!looks_like_html("This is plain text with <emphasis> but not HTML"));
+        assert!(!looks_like_html(
+            "This is plain text with <emphasis> but not HTML"
+        ));
         assert!(!looks_like_html("short"));
         assert!(!looks_like_html(r#"{"json": "value"}"#));
         assert!(!looks_like_html("x < 5 && y > 3 are common comparisons"));

@@ -410,12 +410,9 @@ pub async fn register_client(
     redirect_uri: &str,
     client_name: Option<&str>,
 ) -> Result<DcrResponse, OAuthClientError> {
-    let registration_url = as_metadata
-        .registration_endpoint
-        .as_ref()
-        .ok_or_else(|| {
-            OAuthClientError::RegistrationFailed("AS has no registration_endpoint".to_string())
-        })?;
+    let registration_url = as_metadata.registration_endpoint.as_ref().ok_or_else(|| {
+        OAuthClientError::RegistrationFailed("AS has no registration_endpoint".to_string())
+    })?;
 
     let request = DcrRequest {
         redirect_uris: vec![redirect_uri.to_string()],
@@ -469,12 +466,9 @@ pub fn build_auth_url(
     redirect_uri: &str,
     scopes: &[String],
 ) -> Result<PendingAuthorization, OAuthClientError> {
-    let auth_endpoint = as_metadata
-        .authorization_endpoint
-        .as_ref()
-        .ok_or_else(|| {
-            OAuthClientError::AuthorizationFailed("AS has no authorization_endpoint".to_string())
-        })?;
+    let auth_endpoint = as_metadata.authorization_endpoint.as_ref().ok_or_else(|| {
+        OAuthClientError::AuthorizationFailed("AS has no authorization_endpoint".to_string())
+    })?;
     let token_endpoint = as_metadata.token_endpoint.as_ref().ok_or_else(|| {
         OAuthClientError::AuthorizationFailed("AS has no token_endpoint".to_string())
     })?;
@@ -788,9 +782,7 @@ async fn accept_callback(
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-fn build_oauth_http_client(
-    base: &reqwest::Client,
-) -> reqwest::Client {
+fn build_oauth_http_client(base: &reqwest::Client) -> reqwest::Client {
     // The oauth2 crate requires redirects disabled to prevent SSRF.
     // Build a new client with the same TLS but no redirect following.
     reqwest::ClientBuilder::new()
@@ -800,13 +792,14 @@ fn build_oauth_http_client(
 }
 
 fn token_result_to_set(
-    result: &oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>,
+    result: &oauth2::StandardTokenResponse<
+        oauth2::EmptyExtraTokenFields,
+        oauth2::basic::BasicTokenType,
+    >,
 ) -> TokenSet {
     use oauth2::TokenResponse;
 
-    let expires_at = result
-        .expires_in()
-        .map(|d| std::time::Instant::now() + d);
+    let expires_at = result.expires_in().map(|d| std::time::Instant::now() + d);
 
     let scopes = result
         .scopes()
@@ -857,10 +850,7 @@ mod tests {
             token_endpoint: Some("https://auth.example.com/token".to_string()),
             registration_endpoint: Some("https://auth.example.com/register".to_string()),
             device_authorization_endpoint: Some("https://auth.example.com/device".to_string()),
-            scopes_supported: Some(vec![
-                "openid".to_string(),
-                "offline_access".to_string(),
-            ]),
+            scopes_supported: Some(vec!["openid".to_string(), "offline_access".to_string()]),
             response_types_supported: Some(vec!["code".to_string()]),
             grant_types_supported: Some(vec![
                 "authorization_code".to_string(),
@@ -1147,8 +1137,7 @@ mod tests {
 
     #[test]
     fn parse_www_authenticate_scope_with_error() {
-        let header =
-            r#"Bearer realm="example", scope="mcp:tools mcp:resources", error="insufficient_scope""#;
+        let header = r#"Bearer realm="example", scope="mcp:tools mcp:resources", error="insufficient_scope""#;
         assert_eq!(
             parse_www_authenticate_scope(header),
             vec!["mcp:tools", "mcp:resources"]
@@ -1229,9 +1218,7 @@ mod tests {
 
     #[tokio::test]
     async fn callback_server_captures_params() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
 
         let server_handle = tokio::spawn(async move { accept_callback(&listener).await });

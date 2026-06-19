@@ -125,11 +125,8 @@ pub struct TraitStore {
 impl TraitStore {
     /// Open a trait store at the given path, creating tables if needed.
     pub fn open(path: &Path) -> Result<Self, CognitiveError> {
-        let db = Connection::open(path).map_err(|e| {
-            CognitiveError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        let db = Connection::open(path)
+            .map_err(|e| CognitiveError::Io(std::io::Error::other(e.to_string())))?;
         let store = Self { db };
         store.init_schema()?;
         Ok(store)
@@ -137,11 +134,8 @@ impl TraitStore {
 
     /// Open an in-memory trait store (for testing).
     pub fn open_memory() -> Result<Self, CognitiveError> {
-        let db = Connection::open_in_memory().map_err(|e| {
-            CognitiveError::Io(std::io::Error::other(
-                e.to_string(),
-            ))
-        })?;
+        let db = Connection::open_in_memory()
+            .map_err(|e| CognitiveError::Io(std::io::Error::other(e.to_string())))?;
         let store = Self { db };
         store.init_schema()?;
         Ok(store)
@@ -159,11 +153,7 @@ impl TraitStore {
                     PRIMARY KEY (persona_name, user_id)
                 );",
             )
-            .map_err(|e| {
-                CognitiveError::Io(std::io::Error::other(
-                    e.to_string(),
-                ))
-            })?;
+            .map_err(|e| CognitiveError::Io(std::io::Error::other(e.to_string())))?;
         Ok(())
     }
 

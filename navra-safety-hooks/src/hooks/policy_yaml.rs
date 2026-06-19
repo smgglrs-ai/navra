@@ -319,7 +319,9 @@ policies:
     async fn blocks_on_tool_name_match() {
         let h = hook();
         let args = serde_json::json!({});
-        let decision = h.pre_tool_use("file_delete", &args, &test_ctx(), None).await;
+        let decision = h
+            .pre_tool_use("file_delete", &args, &test_ctx(), None)
+            .await;
         match decision {
             HookDecision::Block(msg) => assert_eq!(msg, "Tool blocked by policy"),
             other => panic!("Expected Block, got {other:?}"),
@@ -390,7 +392,9 @@ policies:
     async fn escalates_dangerous_tool() {
         let h = hook();
         let args = serde_json::json!({});
-        let decision = h.pre_tool_use("dangerous_tool", &args, &test_ctx(), None).await;
+        let decision = h
+            .pre_tool_use("dangerous_tool", &args, &test_ctx(), None)
+            .await;
         match decision {
             HookDecision::Pending(msg) => assert_eq!(msg, "Requires human approval"),
             other => panic!("Expected Pending, got {other:?}"),

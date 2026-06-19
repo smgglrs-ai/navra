@@ -110,8 +110,7 @@ mod tests {
 
     #[tokio::test]
     async fn discover_empty_domains() {
-        let results =
-            discover_all_with_timeout(&[], std::time::Duration::from_secs(5)).await;
+        let results = discover_all_with_timeout(&[], std::time::Duration::from_secs(5)).await;
         assert!(results.is_empty());
     }
 

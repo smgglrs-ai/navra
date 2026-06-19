@@ -34,8 +34,7 @@ impl VerifierStats {
 }
 
 /// Configuration for the verifier hook.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct VerifierConfig {
     /// Tool name patterns to verify (empty = all tools).
     pub tool_patterns: Vec<String>,
@@ -46,7 +45,6 @@ pub struct VerifierConfig {
     /// Whether to block suspicious results or just track them.
     pub block_on_fail: bool,
 }
-
 
 /// Post-tool-use hook that verifies results against rubrics and
 /// tracks false-pass-rate metrics per tool.

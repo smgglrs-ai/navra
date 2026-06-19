@@ -221,8 +221,9 @@ impl PrivacyFilterModel {
         let config_path = model_dir.join("config.json");
         let id2label = load_id2label(&config_path)?;
 
-        let session = navra_model::onnx::build_onnx_session(&model_path, &navra_model::onnx::Device::Cpu)
-            .map_err(|e| PrivacyFilterError::Load(format!("{e}")))?;
+        let session =
+            navra_model::onnx::build_onnx_session(&model_path, &navra_model::onnx::Device::Cpu)
+                .map_err(|e| PrivacyFilterError::Load(format!("{e}")))?;
 
         let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path).map_err(|e| {
             PrivacyFilterError::Load(format!(

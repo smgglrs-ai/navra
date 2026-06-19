@@ -110,7 +110,9 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let cfg = config::Config::load(config_path.as_deref())?;
             if dev_mode {
-                tracing::warn!("--dev-mode enabled: anonymous access allowed without authentication");
+                tracing::warn!(
+                    "--dev-mode enabled: anonymous access allowed without authentication"
+                );
             }
             serve(cfg, no_tray, dev_mode).await?;
         }
@@ -651,7 +653,11 @@ async fn serve(cfg: config::Config, no_tray: bool, dev_mode: bool) -> anyhow::Re
     serve_inner(cfg, TransportMode::Http { no_tray }, dev_mode).await
 }
 
-async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -> anyhow::Result<()> {
+async fn serve_inner(
+    cfg: config::Config,
+    mode: TransportMode,
+    dev_mode: bool,
+) -> anyhow::Result<()> {
     tracing::info!("Starting navra");
 
     // Bootstrap root identity (DID:key from Ed25519)
@@ -1424,7 +1430,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
             if model_cfg.task == "classification" {
                 if let Some(model) = models.get(model_name) {
                     let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
-                        std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(model.clone()));
+                        std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
+                            model.clone(),
+                        ));
                     if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
                         // Multi-label filter with per-category thresholds
                         pipeline.add_model_filter(
@@ -1695,7 +1703,6 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
             );
         }
     }
-
 
     // --- Exec module (OpenShell agent sandboxing) ---
     let exec_module: Option<Arc<exec_tools::ExecState>> =
@@ -3839,7 +3846,9 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
                 if model_cfg.task == "classification" {
                     if let Some(model) = models.get(model_name) {
                         let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
-                            std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(model.clone()));
+                            std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
+                                model.clone(),
+                            ));
                         if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
                             pipeline.add_model_filter(
                                 navra_core::safety::MultiLabelFilter::from_thresholds(
@@ -4012,8 +4021,7 @@ async fn serve_inner(cfg: config::Config, mode: TransportMode, dev_mode: bool) -
 
         builder = builder.hook(navra_core::hooks::MonitoringHook::new(escalation_tx));
 
-        let monitoring_metrics =
-            std::sync::Arc::new(navra_core::hooks::MonitoringMetrics::new());
+        let monitoring_metrics = std::sync::Arc::new(navra_core::hooks::MonitoringMetrics::new());
 
         // Bridge VerdictSink to the gateway blackbox
         struct BlackboxVerdictSink(Arc<navra_core::blackbox::Blackbox>);
@@ -4866,7 +4874,6 @@ async fn run_agent(
     // Apply persona
     if let Some(ref forge) = forge {
         if let Some(persona) = forge.get_persona(persona_name) {
-
             // Check if this is an MCP-sourced persona
             let has_source = persona.source.is_some();
 

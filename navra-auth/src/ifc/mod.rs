@@ -634,7 +634,11 @@ mod tests {
         // Can step DOWN
         assert!(
             tracker
-                .declassify(Confidentiality::Sensitive, &test_authority("test"), "reason")
+                .declassify(
+                    Confidentiality::Sensitive,
+                    &test_authority("test"),
+                    "reason"
+                )
                 .is_some(),
             "INV-5: declassify should allow stepping DOWN"
         );
@@ -646,7 +650,11 @@ mod tests {
         let mut tracker = TaintTracker::new();
         tracker.absorb(DataLabel::UNTRUSTED_PII);
         let w = tracker
-            .declassify(Confidentiality::Public, &test_authority("pii-filter"), "full redaction")
+            .declassify(
+                Confidentiality::Public,
+                &test_authority("pii-filter"),
+                "full redaction",
+            )
             .unwrap();
         assert_eq!(w.original_label.confidentiality, Confidentiality::Pii);
         assert_eq!(w.new_label.confidentiality, Confidentiality::Public);
@@ -659,7 +667,11 @@ mod tests {
     fn declassify_step_up_rejected() {
         let mut tracker = TaintTracker::new();
         assert!(tracker
-            .declassify(Confidentiality::Pii, &test_authority("attacker"), "no reason")
+            .declassify(
+                Confidentiality::Pii,
+                &test_authority("attacker"),
+                "no reason"
+            )
             .is_none());
     }
 
@@ -678,7 +690,11 @@ mod tests {
     fn declassify_preserves_monotonicity() {
         let mut tracker = TaintTracker::new();
         tracker.absorb(DataLabel::UNTRUSTED_PII);
-        tracker.declassify(Confidentiality::Public, &test_authority("filter"), "redacted");
+        tracker.declassify(
+            Confidentiality::Public,
+            &test_authority("filter"),
+            "redacted",
+        );
         assert_eq!(tracker.level().confidentiality, Confidentiality::Public);
         // Re-absorb raises taint back up
         tracker.absorb(DataLabel::UNTRUSTED_SENSITIVE);
@@ -687,16 +703,34 @@ mod tests {
 
     #[test]
     fn tainted_write_policy_accepts_valid_strings() {
-        assert_eq!(TaintedWritePolicy::from_str("allow").unwrap(), TaintedWritePolicy::Allow);
-        assert_eq!(TaintedWritePolicy::from_str("approve").unwrap(), TaintedWritePolicy::Approve);
-        assert_eq!(TaintedWritePolicy::from_str("deny").unwrap(), TaintedWritePolicy::Deny);
+        assert_eq!(
+            TaintedWritePolicy::from_str("allow").unwrap(),
+            TaintedWritePolicy::Allow
+        );
+        assert_eq!(
+            TaintedWritePolicy::from_str("approve").unwrap(),
+            TaintedWritePolicy::Approve
+        );
+        assert_eq!(
+            TaintedWritePolicy::from_str("deny").unwrap(),
+            TaintedWritePolicy::Deny
+        );
     }
 
     #[test]
     fn tainted_write_policy_case_insensitive() {
-        assert_eq!(TaintedWritePolicy::from_str("DENY").unwrap(), TaintedWritePolicy::Deny);
-        assert_eq!(TaintedWritePolicy::from_str("Allow").unwrap(), TaintedWritePolicy::Allow);
-        assert_eq!(TaintedWritePolicy::from_str("Approve").unwrap(), TaintedWritePolicy::Approve);
+        assert_eq!(
+            TaintedWritePolicy::from_str("DENY").unwrap(),
+            TaintedWritePolicy::Deny
+        );
+        assert_eq!(
+            TaintedWritePolicy::from_str("Allow").unwrap(),
+            TaintedWritePolicy::Allow
+        );
+        assert_eq!(
+            TaintedWritePolicy::from_str("Approve").unwrap(),
+            TaintedWritePolicy::Approve
+        );
     }
 
     #[test]

@@ -23,10 +23,10 @@ mod npu;
 
 #[cfg(feature = "direct")]
 pub mod direct;
-#[cfg(feature = "openshell")]
-pub mod openshell;
 #[cfg(feature = "kubernetes")]
 pub mod kubernetes;
+#[cfg(feature = "openshell")]
+pub mod openshell;
 #[cfg(feature = "podman")]
 pub mod podman;
 

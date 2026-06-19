@@ -155,7 +155,7 @@ tainted_write_policy = "allow"
     )
 }
 
-async fn spawn_navra(config_template: &str) -> (Child, u16, String) {
+async fn spawn_navra(config_template: &str) -> (Child, u16, String, tempfile::TempDir) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     drop(listener);
@@ -172,8 +172,9 @@ async fn spawn_navra(config_template: &str) -> (Child, u16, String) {
         .unwrap()
         .join("navra");
 
+    let data_dir = tempfile::TempDir::new().expect("failed to create temp data dir");
     let mut child = Command::new(&navra_bin)
-        .args(["serve", "--config", &config_path, "--no-tray"])
+        .args(["serve", "--config", &config_path, "--no-tray", "--dev-mode"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .env(
@@ -181,6 +182,7 @@ async fn spawn_navra(config_template: &str) -> (Child, u16, String) {
             std::env::var("ORT_LIB_PATH").unwrap_or_default(),
         )
         .env("ORT_PREFER_DYNAMIC_LINK", "1")
+        .env("XDG_DATA_HOME", data_dir.path())
         .spawn()
         .expect("failed to spawn navra");
 
@@ -204,7 +206,7 @@ async fn spawn_navra(config_template: &str) -> (Child, u16, String) {
         }
     }
 
-    (child, port, url)
+    (child, port, url, data_dir)
 }
 
 async fn init_session(client: &reqwest::Client, url: &str) -> String {
@@ -419,10 +421,7 @@ async fn run_attack_vectors(
     results
 }
 
-async fn run_benign_vectors(
-    client: &reqwest::Client,
-    url: &str,
-) -> Vec<BenchResult> {
+async fn run_benign_vectors(client: &reqwest::Client, url: &str) -> Vec<BenchResult> {
     let mut results = Vec::new();
 
     // Benign 1: Write without prior read — session clean, should be allowed
@@ -488,10 +487,7 @@ async fn run_benign_vectors(
     results
 }
 
-async fn run_benign_allow_policy(
-    client: &reqwest::Client,
-    url: &str,
-) -> Vec<BenchResult> {
+async fn run_benign_allow_policy(client: &reqwest::Client, url: &str) -> Vec<BenchResult> {
     let mut results = Vec::new();
 
     // Read then write with Allow policy — should succeed even though tainted
@@ -538,16 +534,40 @@ fn print_report(results: &[BenchResult]) {
     for r in results {
         let entry = by_category.entry(r.category).or_default();
         match (r.expected_blocked, r.blocked) {
-            (true, true) => { tp += 1; entry.0 += 1; }
-            (true, false) => { fn_ += 1; entry.3 += 1; }
-            (false, true) => { fp += 1; entry.1 += 1; }
-            (false, false) => { tn += 1; entry.2 += 1; }
+            (true, true) => {
+                tp += 1;
+                entry.0 += 1;
+            }
+            (true, false) => {
+                fn_ += 1;
+                entry.3 += 1;
+            }
+            (false, true) => {
+                fp += 1;
+                entry.1 += 1;
+            }
+            (false, false) => {
+                tn += 1;
+                entry.2 += 1;
+            }
         }
     }
 
-    let precision = if tp + fp > 0 { tp as f64 / (tp + fp) as f64 } else { 1.0 };
-    let recall = if tp + fn_ > 0 { tp as f64 / (tp + fn_) as f64 } else { 1.0 };
-    let f1 = if precision + recall > 0.0 { 2.0 * precision * recall / (precision + recall) } else { 0.0 };
+    let precision = if tp + fp > 0 {
+        tp as f64 / (tp + fp) as f64
+    } else {
+        1.0
+    };
+    let recall = if tp + fn_ > 0 {
+        tp as f64 / (tp + fn_) as f64
+    } else {
+        1.0
+    };
+    let f1 = if precision + recall > 0.0 {
+        2.0 * precision * recall / (precision + recall)
+    } else {
+        0.0
+    };
 
     eprintln!("\nE2e IFC Adversarial Benchmark Report");
     eprintln!("====================================\n");
@@ -558,9 +578,21 @@ fn print_report(results: &[BenchResult]) {
     eprintln!("{}", "-".repeat(72));
 
     for (cat, (ctp, cfp, ctn, cfn)) in &by_category {
-        let cp = if ctp + cfp > 0 { *ctp as f64 / (ctp + cfp) as f64 } else { 1.0 };
-        let cr = if ctp + cfn > 0 { *ctp as f64 / (ctp + cfn) as f64 } else { 1.0 };
-        let cf = if cp + cr > 0.0 { 2.0 * cp * cr / (cp + cr) } else { 0.0 };
+        let cp = if ctp + cfp > 0 {
+            *ctp as f64 / (ctp + cfp) as f64
+        } else {
+            1.0
+        };
+        let cr = if ctp + cfn > 0 {
+            *ctp as f64 / (ctp + cfn) as f64
+        } else {
+            1.0
+        };
+        let cf = if cp + cr > 0.0 {
+            2.0 * cp * cr / (cp + cr)
+        } else {
+            0.0
+        };
         eprintln!(
             "{:<24} {:>4} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
             cat, ctp, cfp, ctn, cfn, cp, cr, cf
@@ -572,10 +604,18 @@ fn print_report(results: &[BenchResult]) {
         "{:<24} {:>4} {:>4} {:>4} {:>4} {:>8.3} {:>8.3} {:>8.3}",
         "OVERALL", tp, fp, tn, fn_, precision, recall, f1
     );
-    eprintln!("\nTotal vectors: {} ({} attack, {} benign)", results.len(), tp + fn_, tn + fp);
+    eprintln!(
+        "\nTotal vectors: {} ({} attack, {} benign)",
+        results.len(),
+        tp + fn_,
+        tn + fp
+    );
 
     // Print failures
-    let failures: Vec<_> = results.iter().filter(|r| r.blocked != r.expected_blocked).collect();
+    let failures: Vec<_> = results
+        .iter()
+        .filter(|r| r.blocked != r.expected_blocked)
+        .collect();
     if !failures.is_empty() {
         eprintln!("\nFAILURES:");
         for f in &failures {
@@ -583,7 +623,11 @@ fn print_report(results: &[BenchResult]) {
                 "  {} [{}]: expected {}, got {}",
                 f.id,
                 f.category,
-                if f.expected_blocked { "blocked" } else { "allowed" },
+                if f.expected_blocked {
+                    "blocked"
+                } else {
+                    "allowed"
+                },
                 if f.blocked { "blocked" } else { "allowed" },
             );
         }
@@ -595,7 +639,7 @@ fn print_report(results: &[BenchResult]) {
 #[tokio::test]
 async fn ifc_e2e_benchmark() {
     let config = benchmark_config();
-    let (mut child, _port, url) = spawn_navra(&config).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(&config).await;
     let client = reqwest::Client::new();
 
     let mut all_results = Vec::new();
@@ -616,7 +660,7 @@ async fn ifc_e2e_benchmark() {
 
     // Run benign vectors with Allow policy (separate server)
     let allow_config = allow_policy_config();
-    let (mut child2, _port2, url2) = spawn_navra(&allow_config).await;
+    let (mut child2, _port2, url2, _data_dir2) = spawn_navra(&allow_config).await;
     let allow_results = run_benign_allow_policy(&client, &url2).await;
     all_results.extend(allow_results);
     child2.kill().await.ok();
@@ -635,9 +679,19 @@ async fn ifc_e2e_benchmark() {
         failures.len()
     );
 
-    let tp: u32 = all_results.iter().filter(|r| r.expected_blocked && r.blocked).count() as u32;
-    let fn_: u32 = all_results.iter().filter(|r| r.expected_blocked && !r.blocked).count() as u32;
-    let recall = if tp + fn_ > 0 { tp as f64 / (tp + fn_) as f64 } else { 1.0 };
+    let tp: u32 = all_results
+        .iter()
+        .filter(|r| r.expected_blocked && r.blocked)
+        .count() as u32;
+    let fn_: u32 = all_results
+        .iter()
+        .filter(|r| r.expected_blocked && !r.blocked)
+        .count() as u32;
+    let recall = if tp + fn_ > 0 {
+        tp as f64 / (tp + fn_) as f64
+    } else {
+        1.0
+    };
 
     assert!(
         recall >= 0.8,
@@ -660,7 +714,7 @@ async fn ifc_e2e_benchmark_stateless() {
     // Attack vectors on server with Deny policy
     {
         let config = stateless_deny_config();
-        let (mut child, _port, url) = spawn_navra(&config).await;
+        let (mut child, _port, url, _data_dir) = spawn_navra(&config).await;
 
         let mvar_results = run_attack_vectors(&client, &url, &mvar_attack_vectors()).await;
         all_results.extend(mvar_results);
@@ -674,7 +728,7 @@ async fn ifc_e2e_benchmark_stateless() {
     // Benign vectors on fresh server (clean taint)
     {
         let config = stateless_deny_config();
-        let (mut child, _port, url) = spawn_navra(&config).await;
+        let (mut child, _port, url, _data_dir) = spawn_navra(&config).await;
 
         let benign_results = run_benign_vectors(&client, &url).await;
         all_results.extend(benign_results);
@@ -685,7 +739,7 @@ async fn ifc_e2e_benchmark_stateless() {
     // Benign with Allow policy on fresh server
     {
         let config = stateless_allow_config();
-        let (mut child, _port, url) = spawn_navra(&config).await;
+        let (mut child, _port, url, _data_dir) = spawn_navra(&config).await;
 
         let allow_results = run_benign_allow_policy(&client, &url).await;
         all_results.extend(allow_results);

@@ -77,12 +77,7 @@ impl Module for KnowledgeModule {
         "knowledge"
     }
 
-    fn tools(
-        &self,
-    ) -> Vec<(
-        navra_mcp::protocol::ToolDefinition,
-        navra_mcp::ToolHandler,
-    )> {
+    fn tools(&self) -> Vec<(navra_mcp::protocol::ToolDefinition, navra_mcp::ToolHandler)> {
         let s = self.state.clone();
         vec![
             handle_search_handler(s.clone()),
@@ -119,8 +114,8 @@ async fn handle_search(
         };
         match embed_model.embed(&embed_req).await {
             Ok(response) => {
-                let retriever = MemoryRetriever::new(&state.knowledge)
-                    .with_chunk_store(chunk_store.clone());
+                let retriever =
+                    MemoryRetriever::new(&state.knowledge).with_chunk_store(chunk_store.clone());
                 match retriever.retrieve_with_embedding(&query, &response.embedding, limit) {
                     Ok(results) => return format_search_results(&results),
                     Err(e) => {
@@ -242,9 +237,7 @@ async fn handle_graph_query(
     description = "Compute effective memory scores for knowledge entries using exponential decay with importance modulation. Returns current scores indicating how 'alive' each memory is."
 )]
 async fn handle_decay_score(
-    #[arg(
-        description = "Comma-separated entry IDs to score, or 'all' for all entries (max 100)"
-    )]
+    #[arg(description = "Comma-separated entry IDs to score, or 'all' for all entries (max 100)")]
     entry_ids: String,
     _ctx: CallContext,
     #[state] state: Arc<KnowledgeState>,
@@ -345,8 +338,9 @@ async fn handle_decay_score(
 )]
 async fn handle_distill(
     #[arg(description = "Raw text to distill into knowledge entries")] text: String,
-    #[arg(description = "Source identifier (e.g. session ID, URL, filename)")]
-    source: Option<String>,
+    #[arg(description = "Source identifier (e.g. session ID, URL, filename)")] source: Option<
+        String,
+    >,
     #[arg(
         description = "Memory type: 'auto' to classify with ONNX model, or explicit type (fact, event, instruction, insight, user, project)"
     )]
@@ -401,9 +395,7 @@ async fn handle_distill(
                 "source": source,
                 "entries": entries,
             });
-            return CallToolResult::text(
-                serde_json::to_string_pretty(&result).unwrap_or_default(),
-            );
+            return CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default());
         }
     }
 
@@ -419,23 +411,21 @@ async fn handle_distill(
         };
 
         match model.generate(&request).await {
-            Ok(response) => {
-                match serde_json::from_str::<Vec<serde_json::Value>>(&response.text) {
-                    Ok(entries) => {
-                        let result = serde_json::json!({
-                            "method": "llm",
-                            "source": source,
-                            "entries": entries,
-                        });
-                        return CallToolResult::text(
-                            serde_json::to_string_pretty(&result).unwrap_or_default(),
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!("Model returned unparseable JSON, falling back to stub: {e}");
-                    }
+            Ok(response) => match serde_json::from_str::<Vec<serde_json::Value>>(&response.text) {
+                Ok(entries) => {
+                    let result = serde_json::json!({
+                        "method": "llm",
+                        "source": source,
+                        "entries": entries,
+                    });
+                    return CallToolResult::text(
+                        serde_json::to_string_pretty(&result).unwrap_or_default(),
+                    );
                 }
-            }
+                Err(e) => {
+                    tracing::warn!("Model returned unparseable JSON, falling back to stub: {e}");
+                }
+            },
             Err(e) => {
                 tracing::warn!("Model distillation failed, falling back to stub: {e}");
             }
@@ -524,7 +514,15 @@ mod tests {
     fn test_graph() -> Arc<Mutex<EntityGraph>> {
         let graph = EntityGraph::open_memory().unwrap();
         graph
-            .add("Alice", "works_at", "Acme", None, None, 0.95, Some("session-1"))
+            .add(
+                "Alice",
+                "works_at",
+                "Acme",
+                None,
+                None,
+                0.95,
+                Some("session-1"),
+            )
             .unwrap();
         graph
             .add("Acme", "located_in", "Paris", None, None, 0.9, None)
@@ -567,11 +565,7 @@ mod tests {
         });
 
         let (_, handler) = handle_search_handler(state);
-        let result = handler(
-            serde_json::json!({"query": "Rust safety"}),
-            test_ctx(),
-        )
-        .await;
+        let result = handler(serde_json::json!({"query": "Rust safety"}), test_ctx()).await;
 
         assert!(!result.is_error, "search should succeed");
         match &result.content[0] {
@@ -618,11 +612,7 @@ mod tests {
         });
 
         let (_, handler) = handle_search_handler(state);
-        let result = handler(
-            serde_json::json!({"query": "xyznonexistent"}),
-            test_ctx(),
-        )
-        .await;
+        let result = handler(serde_json::json!({"query": "xyznonexistent"}), test_ctx()).await;
         assert!(!result.is_error);
         match &result.content[0] {
             navra_mcp::protocol::Content::Text(t) => {
@@ -648,11 +638,7 @@ mod tests {
         });
 
         let (_, handler) = handle_graph_query_handler(state);
-        let result = handler(
-            serde_json::json!({"entity": "Alice"}),
-            test_ctx(),
-        )
-        .await;
+        let result = handler(serde_json::json!({"entity": "Alice"}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -736,11 +722,7 @@ mod tests {
         });
 
         let (_, handler) = handle_decay_score_handler(state);
-        let result = handler(
-            serde_json::json!({"entry_ids": "e1, e2"}),
-            test_ctx(),
-        )
-        .await;
+        let result = handler(serde_json::json!({"entry_ids": "e1, e2"}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -769,11 +751,7 @@ mod tests {
         });
 
         let (_, handler) = handle_decay_score_handler(state);
-        let result = handler(
-            serde_json::json!({"entry_ids": "all"}),
-            test_ctx(),
-        )
-        .await;
+        let result = handler(serde_json::json!({"entry_ids": "all"}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {
@@ -801,11 +779,7 @@ mod tests {
         });
 
         let (_, handler) = handle_decay_score_handler(state);
-        let result = handler(
-            serde_json::json!({"entry_ids": "nonexistent"}),
-            test_ctx(),
-        )
-        .await;
+        let result = handler(serde_json::json!({"entry_ids": "nonexistent"}), test_ctx()).await;
 
         assert!(!result.is_error);
         match &result.content[0] {

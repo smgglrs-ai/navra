@@ -1786,7 +1786,7 @@ async fn hook_blocks_tool_call() {
             _tool_name: &str,
             _arguments: &serde_json::Value,
             _ctx: &CallContext,
-        _annotations: Option<&navra_protocol::ToolAnnotations>,
+            _annotations: Option<&navra_protocol::ToolAnnotations>,
         ) -> crate::hooks::HookDecision {
             crate::hooks::HookDecision::Block("blocked by test hook".to_string())
         }
@@ -1813,8 +1813,11 @@ async fn hook_blocks_tool_call() {
     assert!(result.is_error);
     match &result.content[0] {
         crate::protocol::Content::Text(t) => {
-            assert!(t.text.contains("Permission denied"),
-                "Expected sanitized denial, got: {}", t.text);
+            assert!(
+                t.text.contains("Permission denied"),
+                "Expected sanitized denial, got: {}",
+                t.text
+            );
         }
         _ => panic!("expected text content"),
     }

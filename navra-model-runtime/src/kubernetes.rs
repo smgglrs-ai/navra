@@ -213,15 +213,14 @@ impl ModelRuntime for KubernetesRuntime {
                 &format!("sandbox/{name}"),
                 "--timeout=120s",
             ]);
-            let wait_output = cmd.output().await.map_err(|e| {
-                RuntimeError::Start(format!("kubectl wait: {e}"))
-            })?;
+            let wait_output = cmd
+                .output()
+                .await
+                .map_err(|e| RuntimeError::Start(format!("kubectl wait: {e}")))?;
 
             if !wait_output.status.success() {
                 let stderr = String::from_utf8_lossy(&wait_output.stderr);
-                return Err(RuntimeError::Start(format!(
-                    "sandbox not ready: {stderr}"
-                )));
+                return Err(RuntimeError::Start(format!("sandbox not ready: {stderr}")));
             }
 
             // Get the sandbox endpoint
@@ -232,13 +231,17 @@ impl ModelRuntime for KubernetesRuntime {
                 "-o",
                 "jsonpath={.status.endpoint}",
             ]);
-            let ep_output = cmd.output().await.map_err(|e| {
-                RuntimeError::Start(format!("kubectl get endpoint: {e}"))
-            })?;
+            let ep_output = cmd
+                .output()
+                .await
+                .map_err(|e| RuntimeError::Start(format!("kubectl get endpoint: {e}")))?;
 
             let endpoint_url = String::from_utf8_lossy(&ep_output.stdout).to_string();
             let url = if endpoint_url.is_empty() {
-                format!("http://{name}.{}.svc.cluster.local:{port}", self.config.namespace)
+                format!(
+                    "http://{name}.{}.svc.cluster.local:{port}",
+                    self.config.namespace
+                )
             } else {
                 endpoint_url
             };
@@ -265,9 +268,10 @@ impl ModelRuntime for KubernetesRuntime {
         Box::pin(async move {
             let mut cmd = self.kubectl_base();
             cmd.args(["delete", "sandbox", &name, "--ignore-not-found"]);
-            let output = cmd.output().await.map_err(|e| {
-                RuntimeError::Stop(format!("kubectl delete: {e}"))
-            })?;
+            let output = cmd
+                .output()
+                .await
+                .map_err(|e| RuntimeError::Stop(format!("kubectl delete: {e}")))?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -344,7 +348,9 @@ mod tests {
     fn sandbox_labels_cpu() {
         let config = test_config();
         let labels = KubernetesRuntime::sandbox_labels(&config);
-        assert!(labels.iter().any(|(k, v)| k == "navra.io/hardware" && v == "cpu"));
+        assert!(labels
+            .iter()
+            .any(|(k, v)| k == "navra.io/hardware" && v == "cpu"));
     }
 
     #[test]
@@ -352,7 +358,9 @@ mod tests {
         let mut config = test_config();
         config.target = HardwareTarget::Nvidia;
         let labels = KubernetesRuntime::sandbox_labels(&config);
-        assert!(labels.iter().any(|(k, v)| k == "navra.io/hardware" && v == "nvidia"));
+        assert!(labels
+            .iter()
+            .any(|(k, v)| k == "navra.io/hardware" && v == "nvidia"));
     }
 
     #[test]
@@ -377,8 +385,12 @@ mod tests {
         assert_eq!(manifest["spec"]["templateRef"]["name"], "inference-default");
 
         let env = manifest["spec"]["env"].as_array().unwrap();
-        assert!(env.iter().any(|e| e["name"] == "PORT" && e["value"] == "8080"));
-        assert!(env.iter().any(|e| e["name"] == "CONTEXT_SIZE" && e["value"] == "4096"));
+        assert!(env
+            .iter()
+            .any(|e| e["name"] == "PORT" && e["value"] == "8080"));
+        assert!(env
+            .iter()
+            .any(|e| e["name"] == "CONTEXT_SIZE" && e["value"] == "4096"));
     }
 
     #[test]

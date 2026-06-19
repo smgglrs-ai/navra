@@ -98,7 +98,9 @@ impl EscalationSender {
 /// `buffer_size` controls backpressure — events beyond this count
 /// are dropped (the monitoring path must never block the tool-call
 /// hot path).
-pub fn escalation_channel(buffer_size: usize) -> (EscalationSender, mpsc::Receiver<EscalationEvent>) {
+pub fn escalation_channel(
+    buffer_size: usize,
+) -> (EscalationSender, mpsc::Receiver<EscalationEvent>) {
     let (tx, rx) = mpsc::channel(buffer_size);
     (EscalationSender { tx }, rx)
 }
@@ -195,9 +197,16 @@ impl Hook for MonitoringHook {
 
 fn classify_error(reason: &str) -> (EscalationSource, Severity) {
     let lower = reason.to_lowercase();
-    if lower.contains("ifc") || lower.contains("taint") || lower.contains("no-write-down") || lower.contains("no-read-up") {
+    if lower.contains("ifc")
+        || lower.contains("taint")
+        || lower.contains("no-write-down")
+        || lower.contains("no-read-up")
+    {
         (EscalationSource::IFCDenial, Severity::High)
-    } else if lower.contains("acl") || lower.contains("permission denied") || lower.contains("cedar") {
+    } else if lower.contains("acl")
+        || lower.contains("permission denied")
+        || lower.contains("cedar")
+    {
         (EscalationSource::AclDenial, Severity::Medium)
     } else if lower.contains("safety") || lower.contains("content filter") {
         (EscalationSource::SafetyHook, Severity::High)
@@ -207,7 +216,8 @@ fn classify_error(reason: &str) -> (EscalationSource, Severity) {
         (EscalationSource::EgressFilter, Severity::Medium)
     } else if lower.contains("anomal") || lower.contains("drift") || lower.contains("entropy") {
         (EscalationSource::StatisticalGuardrail, Severity::Medium)
-    } else if lower.contains("contract") || lower.contains("escalat") || lower.contains("temporal") {
+    } else if lower.contains("contract") || lower.contains("escalat") || lower.contains("temporal")
+    {
         (EscalationSource::TemporalContract, Severity::Medium)
     } else if lower.contains("tool_guard") || lower.contains("malicious") {
         (EscalationSource::ToolGuard, Severity::High)
@@ -229,9 +239,7 @@ pub async fn monitoring_loop(
     tracing::info!("Monitoring agent started (detect-only, async)");
 
     while let Some(event) = rx.recv().await {
-        metrics
-            .escalations_received
-            .fetch_add(1, Ordering::Relaxed);
+        metrics.escalations_received.fetch_add(1, Ordering::Relaxed);
 
         let verdict = analyze_event(&event);
 
@@ -270,39 +278,30 @@ fn analyze_event(event: &EscalationEvent) -> Verdict {
             Some("information_flow_violation".to_string()),
             event.severity as u8 >= Severity::High as u8,
         ),
-        EscalationSource::LeakageDetection => (
-            Some("data_exfiltration".to_string()),
-            true,
-        ),
+        EscalationSource::LeakageDetection => (Some("data_exfiltration".to_string()), true),
         EscalationSource::SafetyHook => (
             Some("content_policy_violation".to_string()),
             event.severity as u8 >= Severity::High as u8,
         ),
-        EscalationSource::ToolGuard => (
-            Some("malicious_tool_definition".to_string()),
-            true,
-        ),
-        EscalationSource::StatisticalGuardrail => (
-            Some("behavioral_anomaly".to_string()),
-            false,
-        ),
-        EscalationSource::TemporalContract => (
-            Some("temporal_contract_violation".to_string()),
-            false,
-        ),
+        EscalationSource::ToolGuard => (Some("malicious_tool_definition".to_string()), true),
+        EscalationSource::StatisticalGuardrail => (Some("behavioral_anomaly".to_string()), false),
+        EscalationSource::TemporalContract => {
+            (Some("temporal_contract_violation".to_string()), false)
+        }
         EscalationSource::EgressFilter => (
             Some("unauthorized_egress".to_string()),
             event.severity as u8 >= Severity::High as u8,
         ),
-        EscalationSource::AclDenial => (
-            Some("privilege_escalation_attempt".to_string()),
-            false,
-        ),
+        EscalationSource::AclDenial => (Some("privilege_escalation_attempt".to_string()), false),
         EscalationSource::Other(_) => (None, false),
     };
 
     let recommendation = if is_threat {
-        format!("Review session {} for {} activity", event.session_id, technique.as_deref().unwrap_or("suspicious"))
+        format!(
+            "Review session {} for {} activity",
+            event.session_id,
+            technique.as_deref().unwrap_or("suspicious")
+        )
     } else {
         "No action required — logged for audit".to_string()
     };
@@ -429,7 +428,10 @@ mod tests {
         };
         let verdict = analyze_event(&event);
         assert!(verdict.is_confirmed_threat);
-        assert_eq!(verdict.technique.as_deref(), Some("information_flow_violation"));
+        assert_eq!(
+            verdict.technique.as_deref(),
+            Some("information_flow_violation")
+        );
     }
 
     #[test]

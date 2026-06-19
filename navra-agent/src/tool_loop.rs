@@ -15,7 +15,9 @@ use navra_model::{
 };
 use navra_protocol::label::DataLabel;
 use navra_protocol::{CallToolResult, Content};
-use navra_safety_hooks::hooks::{HookPipeline, ModelCallContext, PostModelOutcome, PreModelOutcome};
+use navra_safety_hooks::hooks::{
+    HookPipeline, ModelCallContext, PostModelOutcome, PreModelOutcome,
+};
 use navra_safety_hooks::safety::{FilterContext, FilterPipeline};
 use std::sync::Arc;
 /// Transparent context retriever injected before each model call.
@@ -786,9 +788,7 @@ pub async fn run_tool_loop(
             if available > 100 {
                 let context = retriever.retrieve(user_prompt, available).await;
                 if !context.is_empty() {
-                    input.push(InputItem::system(format!(
-                        "[Retrieved context]\n{context}"
-                    )));
+                    input.push(InputItem::system(format!("[Retrieved context]\n{context}")));
                 }
             }
         }
@@ -1091,8 +1091,8 @@ pub async fn run_tool_loop(
                 let error_msg =
                     format!("Unknown tool '{}'. Available tools: {}", fc.name, available);
                 tracing::warn!(tool = %fc.name, "Model hallucinated tool name");
-                let args_value = serde_json::from_str(&fc.arguments)
-                    .unwrap_or(serde_json::json!({}));
+                let args_value =
+                    serde_json::from_str(&fc.arguments).unwrap_or(serde_json::json!({}));
                 let mut block = ToolBlock::new(&fc.name, args_value);
                 block.complete(&error_msg, true);
                 blocks.push(block);
@@ -2703,7 +2703,11 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         assert!(matches!(block.status, crate::block::BlockStatus::Completed));
         assert!(!block.is_error);
         assert!(block.duration_ms.is_some());
-        assert!(block.result_preview.as_deref().unwrap().contains("nothing to commit"));
+        assert!(block
+            .result_preview
+            .as_deref()
+            .unwrap()
+            .contains("nothing to commit"));
     }
 
     #[tokio::test]
@@ -2723,7 +2727,11 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         assert_eq!(block.tool_name, "nonexistent_tool");
         assert!(matches!(block.status, crate::block::BlockStatus::Failed));
         assert!(block.is_error);
-        assert!(block.result_preview.as_deref().unwrap().contains("Unknown tool"));
+        assert!(block
+            .result_preview
+            .as_deref()
+            .unwrap()
+            .contains("Unknown tool"));
     }
 
     #[tokio::test]

@@ -42,8 +42,7 @@ async fn handle_ws_connection(
     let (ws_sender, mut ws_receiver) = socket.split();
     let ws_sender = Arc::new(Mutex::new(ws_sender));
     let session_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let notify_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> =
-        Arc::new(Mutex::new(None));
+    let notify_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
 
     let last_activity = Arc::new(tokio::sync::Notify::new());
     let missed_pongs = Arc::new(std::sync::atomic::AtomicU32::new(0));
@@ -79,7 +78,10 @@ async fn handle_ws_connection(
         loop {
             let timed_out = tokio::time::timeout(idle_timeout, idle_notify.notified()).await;
             if timed_out.is_err() {
-                tracing::info!(timeout_secs = idle_timeout.as_secs(), "WebSocket closing: idle timeout");
+                tracing::info!(
+                    timeout_secs = idle_timeout.as_secs(),
+                    "WebSocket closing: idle timeout"
+                );
                 let mut sender = idle_sender.lock().await;
                 let _ = sender.send(Message::Close(None)).await;
                 break;

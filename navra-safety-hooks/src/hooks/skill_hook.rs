@@ -159,7 +159,12 @@ mod tests {
         }]);
 
         let decision = hook
-            .pre_tool_use("file_write", &json!({"path": "/etc/passwd"}), &test_ctx(), None)
+            .pre_tool_use(
+                "file_write",
+                &json!({"path": "/etc/passwd"}),
+                &test_ctx(),
+                None,
+            )
             .await;
 
         assert!(matches!(decision, HookDecision::Block(_)));
@@ -200,7 +205,12 @@ mod tests {
         }]);
 
         let decision = hook
-            .pre_tool_use("file_write", &json!({"path": "/tmp/test"}), &test_ctx(), None)
+            .pre_tool_use(
+                "file_write",
+                &json!({"path": "/tmp/test"}),
+                &test_ctx(),
+                None,
+            )
             .await;
 
         match decision {
@@ -248,7 +258,9 @@ mod tests {
             intervention: Intervention::Noop,
         }]);
 
-        let decision = hook.pre_tool_use("anything", &json!({}), &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("anything", &json!({}), &test_ctx(), None)
+            .await;
 
         assert!(matches!(decision, HookDecision::Continue));
     }

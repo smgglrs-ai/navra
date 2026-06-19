@@ -246,13 +246,13 @@ impl OnnxBackend {
         let mut embedding = vec![0.0f32; pool_dim];
         let mut mask_sum = 0.0f32;
 
-        for pos in 0..seq_len {
-            let m = attention_mask[pos] as f32;
+        for (pos, &mask_val) in attention_mask.iter().enumerate().take(seq_len) {
+            let m = mask_val as f32;
             mask_sum += m;
-            for dim in 0..pool_dim {
+            for (dim, emb_val) in embedding.iter_mut().enumerate().take(pool_dim) {
                 let idx = pos * hidden_dim + dim;
                 if idx < hidden_states.len() {
-                    embedding[dim] += hidden_states[idx] * m;
+                    *emb_val += hidden_states[idx] * m;
                 }
             }
         }

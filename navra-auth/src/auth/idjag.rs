@@ -713,8 +713,8 @@ mod tests {
     #[tokio::test]
     async fn idjag_fetch_jwks_from_mock_idp() {
         let signer = Ed25519Signer::generate();
-        let pk_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(signer.public_key_bytes());
+        let pk_b64 =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signer.public_key_bytes());
 
         let jwks_json = serde_json::json!({
             "keys": [{
@@ -766,7 +766,9 @@ mod tests {
         };
 
         let auth = IdJagAuthenticator::new(config);
-        auth.fetch_jwks(&auth.config.trusted_providers[0]).await.unwrap();
+        auth.fetch_jwks(&auth.config.trusted_providers[0])
+            .await
+            .unwrap();
 
         // Now verify a JWT signed by the mock IdP
         let header = r#"{"alg":"EdDSA","kid":"idp-key-1"}"#;

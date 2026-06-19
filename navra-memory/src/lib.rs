@@ -38,9 +38,9 @@ pub use pipeline::{
     extract_failure_insight, extract_success_insight, ContentSanitizer, DistillationPipeline,
 };
 pub use retrieval::{MemoryRetriever, ScoredEntry};
-pub use tools::KnowledgeModule;
 pub use session_store::SqliteSessionBackend;
 pub use temporal::{TemporalTree, TreeNode, TreeType};
+pub use tools::KnowledgeModule;
 pub use types::{
     DistilledEntry, MemoryEntry, MemoryScope, MemoryType, MergeStrategy, Message, Role, Turn,
 };

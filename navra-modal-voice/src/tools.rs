@@ -9,12 +9,12 @@
 //! - `voice_status` — show audio device info and model availability
 
 use crate::audio;
+use navra_macros::tool;
 use navra_mcp::auth::CallContext;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_mcp::Module;
-use navra_macros::tool;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -88,12 +88,7 @@ impl Module for VoiceModule {
         "voice"
     }
 
-    fn tools(
-        &self,
-    ) -> Vec<(
-        navra_mcp::protocol::ToolDefinition,
-        navra_mcp::ToolHandler,
-    )> {
+    fn tools(&self) -> Vec<(navra_mcp::protocol::ToolDefinition, navra_mcp::ToolHandler)> {
         let s = self.state.clone();
         vec![
             handle_listen_handler(s.clone()),

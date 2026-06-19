@@ -5,12 +5,12 @@
 //! module. This lets the server builder, dispatch, and safety filtering
 //! work unchanged.
 
-use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperation};
 use crate::protocol::{
     CallToolParams, CallToolResult, GetPromptParams, PromptDefinition, ReadResourceParams,
     ResourceDefinition, ToolDefinition,
 };
 use crate::upstream::{Upstream, UpstreamError};
+use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperation};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;

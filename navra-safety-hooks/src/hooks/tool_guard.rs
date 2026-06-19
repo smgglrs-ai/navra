@@ -101,7 +101,9 @@ mod tests {
         let hook = ToolGuardHook;
         // Use a file that definitely exists
         let args = serde_json::json!({"path": "/etc/hosts", "content": "test"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_write", &args, &test_ctx(), None)
+            .await;
         match decision {
             HookDecision::ModifyArgs(modified) => {
                 assert!(modified["_guard_warning"]
@@ -120,7 +122,9 @@ mod tests {
             "path": "/tmp/definitely_does_not_exist_navra_test_1234567890.txt",
             "content": "test"
         });
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_write", &args, &test_ctx(), None)
+            .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
 
@@ -128,7 +132,9 @@ mod tests {
     async fn blocks_file_delete_root() {
         let hook = ToolGuardHook;
         let args = serde_json::json!({"path": "/"});
-        let decision = hook.pre_tool_use("file_delete", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_delete", &args, &test_ctx(), None)
+            .await;
         match decision {
             HookDecision::Block(reason) => {
                 assert!(reason.contains("destructive"));
@@ -141,7 +147,9 @@ mod tests {
     async fn blocks_empty_path_on_write() {
         let hook = ToolGuardHook;
         let args = serde_json::json!({"path": "", "content": "test"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("file_write", &args, &test_ctx(), None)
+            .await;
         match decision {
             HookDecision::Block(reason) => {
                 assert!(reason.contains("empty"));
@@ -154,7 +162,9 @@ mod tests {
     async fn continues_on_unrelated_tool() {
         let hook = ToolGuardHook;
         let args = serde_json::json!({"query": "hello"});
-        let decision = hook.pre_tool_use("git_status", &args, &test_ctx(), None).await;
+        let decision = hook
+            .pre_tool_use("git_status", &args, &test_ctx(), None)
+            .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
 }

@@ -16,8 +16,8 @@
 //!   podman build -t localhost/mcp-filesystem tests/containers/mcp-filesystem/
 
 use serde_json::json;
-use std::process::Stdio;
 use std::os::unix::fs::PermissionsExt;
+use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::{Child, Command};
 

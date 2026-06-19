@@ -133,13 +133,12 @@ impl Transport for HttpTransport {
                             message: format!("HTTP {retry_status} (after auth): {body_text}"),
                         });
                     }
-                    return retry_resp
-                        .json::<serde_json::Value>()
-                        .await
-                        .map_err(|e| UpstreamError::Protocol {
+                    return retry_resp.json::<serde_json::Value>().await.map_err(|e| {
+                        UpstreamError::Protocol {
                             name: self.name.clone(),
                             message: format!("failed to parse response JSON: {e}"),
-                        });
+                        }
+                    });
                 }
                 Err(e) => return Err(e),
             }
@@ -156,8 +155,7 @@ impl Transport for HttpTransport {
                         .await
                     {
                         Ok(new_token) => {
-                            let retry_resp =
-                                self.send_request(&body, Some(&new_token)).await?;
+                            let retry_resp = self.send_request(&body, Some(&new_token)).await?;
                             self.capture_session_id(&retry_resp);
                             let retry_status = retry_resp.status();
                             if !retry_status.is_success() {
@@ -169,13 +167,12 @@ impl Transport for HttpTransport {
                                     ),
                                 });
                             }
-                            return retry_resp
-                                .json::<serde_json::Value>()
-                                .await
-                                .map_err(|e| UpstreamError::Protocol {
+                            return retry_resp.json::<serde_json::Value>().await.map_err(|e| {
+                                UpstreamError::Protocol {
                                     name: self.name.clone(),
                                     message: format!("failed to parse response JSON: {e}"),
-                                });
+                                }
+                            });
                         }
                         Err(e) => return Err(e),
                     }

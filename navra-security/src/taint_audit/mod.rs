@@ -51,10 +51,7 @@ impl RiskRating {
         if paths.is_empty() {
             return Self::Clean;
         }
-        let max_conf = paths
-            .iter()
-            .map(|p| p.confidence)
-            .fold(0.0f32, f32::max);
+        let max_conf = paths.iter().map(|p| p.confidence).fold(0.0f32, f32::max);
         if max_conf >= 0.8 {
             Self::High
         } else if max_conf >= 0.5 {
@@ -79,9 +76,7 @@ pub fn analyze_session(entries: &[BlackboxEntry]) -> Vec<TaintPath> {
     let trusted_sinks: Vec<&BlackboxEntry> = entries
         .iter()
         .filter(|e| {
-            e.ifc_label == "Trusted"
-                && e.outcome == "allowed"
-                && is_write_tool(&e.tool_name)
+            e.ifc_label == "Trusted" && e.outcome == "allowed" && is_write_tool(&e.tool_name)
         })
         .collect();
 
@@ -96,8 +91,8 @@ pub fn analyze_session(entries: &[BlackboxEntry]) -> Vec<TaintPath> {
 
 fn is_write_tool(name: &str) -> bool {
     let write_patterns = [
-        "write", "create", "delete", "update", "put", "post",
-        "send", "push", "upload", "modify", "set",
+        "write", "create", "delete", "update", "put", "post", "send", "push", "upload", "modify",
+        "set",
     ];
     let lower = name.to_lowercase();
     write_patterns.iter().any(|p| lower.contains(p))

@@ -42,8 +42,7 @@ pub struct SearchFilter {
 ///
 /// Each threshold controls whether to skip a more expensive search stage
 /// when a cheaper stage already has strong results.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct CascadeConfig {
     /// Skip vector search if top FTS5 BM25 score (negated rank, higher = better)
     /// exceeds this threshold. `None` = always run vector search.
@@ -52,7 +51,6 @@ pub struct CascadeConfig {
     /// is below this threshold. `None` = always rerank.
     pub vector_skip_rerank_threshold: Option<f64>,
 }
-
 
 /// Counters for cascade gate decisions.
 #[derive(Debug, Default)]
@@ -1453,7 +1451,9 @@ mod tests {
         let store = test_store();
         let chunks = sample_chunks(); // 2 chunks
         let embeddings = vec![vec![1.0, 0.0, 0.0, 0.0]]; // 1 embedding
-        store.index_document("/doc.md", &chunks, &embeddings).unwrap();
+        store
+            .index_document("/doc.md", &chunks, &embeddings)
+            .unwrap();
     }
 
     #[test]
@@ -1470,14 +1470,18 @@ mod tests {
             section_end_byte: None,
         }];
         let embeddings = vec![vec![1.0, 0.0]]; // 2 dimensions, expected 4
-        store.index_document("/doc.md", &chunks, &embeddings).unwrap();
+        store
+            .index_document("/doc.md", &chunks, &embeddings)
+            .unwrap();
     }
 
     #[test]
     #[should_panic(expected = "dimensions, expected 4")]
     fn rejects_wrong_query_dimension_on_search() {
         let store = test_store(); // dimensions = 4
-        store.index_document("/doc.md", &sample_chunks(), &sample_embeddings()).unwrap();
+        store
+            .index_document("/doc.md", &sample_chunks(), &sample_embeddings())
+            .unwrap();
         let query = vec![1.0, 0.0]; // 2 dimensions, expected 4
         store.search(&query, 5).unwrap();
     }

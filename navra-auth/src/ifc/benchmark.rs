@@ -147,13 +147,7 @@ impl fmt::Display for BenchmarkReport {
         writeln!(f)?;
         writeln!(f, "By invariant:")?;
         for (inv, m) in &self.by_invariant {
-            writeln!(
-                f,
-                "  {:<32} F1={:.3} ({} vectors)",
-                inv,
-                m.f1(),
-                m.total()
-            )?;
+            writeln!(f, "  {:<32} F1={:.3} ({} vectors)", inv, m.f1(), m.total())?;
         }
 
         Ok(())
@@ -268,10 +262,7 @@ mod tests {
         let mut corpus = corpus::navra_corpus();
         corpus.extend(corpus::mvar_corpus());
         let report = run_benchmark(&corpus);
-        assert_eq!(
-            report.overall.fn_, 0,
-            "no attack vectors should be missed"
-        );
+        assert_eq!(report.overall.fn_, 0, "no attack vectors should be missed");
     }
 
     #[test]

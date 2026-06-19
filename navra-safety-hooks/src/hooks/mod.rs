@@ -8,23 +8,23 @@
 pub mod approval_gate;
 mod budget;
 pub mod egress;
+pub mod field_filter;
 mod html_markdown;
 mod json_compress;
-pub mod field_filter;
 pub mod leakage;
 mod memory_extraction;
+pub mod monitoring;
 mod pipeline;
 mod policy_yaml;
 pub mod provenance_hook;
 mod routing;
 mod safety_hook;
 mod sandbox_hook;
-pub mod monitoring;
 pub mod skill_hook;
 pub mod statistical;
 pub mod temporal_contract;
-pub mod verifier;
 mod tool_guard;
+pub mod verifier;
 
 pub use approval_gate::{ApprovalGateConfig, ApprovalGateHook, ApprovalStatus, PendingApproval};
 pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
@@ -32,14 +32,14 @@ pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
 pub use html_markdown::{HtmlToMarkdownConfig, HtmlToMarkdownHook};
 pub use json_compress::{JsonCompressConfig, JsonCompressHook};
-pub use monitoring::{
-    EscalationEvent, EscalationSender, EscalationSource, MonitoringConfig, MonitoringHook,
-    MonitoringMetrics, Severity, Verdict, VerdictSink, escalation_channel, monitoring_loop,
-};
 pub use leakage::{
     SemanticLeakageConfig, SemanticLeakageJudge, SimilarityLeakageConfig, SimilarityLeakageHook,
 };
 pub use memory_extraction::{ExtractionStore, MemoryExtractionConfig, MemoryExtractionHook};
+pub use monitoring::{
+    escalation_channel, monitoring_loop, EscalationEvent, EscalationSender, EscalationSource,
+    MonitoringConfig, MonitoringHook, MonitoringMetrics, Severity, Verdict, VerdictSink,
+};
 pub use pipeline::HookPipeline;
 pub use policy_yaml::PolicyYamlHook;
 pub use provenance_hook::{CausalSink, ProvenanceHook};
@@ -196,11 +196,5 @@ pub trait Hook: Send + Sync + 'static {
     /// Runs before session state is removed. Use for cross-session
     /// fact extraction, audit summarization, or cleanup.
     /// Returning `Block` is a no-op — session cleanup always proceeds.
-    async fn on_session_end(
-        &self,
-        _session_id: &str,
-        _agent_name: &str,
-        _tool_count: usize,
-    ) {
-    }
+    async fn on_session_end(&self, _session_id: &str, _agent_name: &str, _tool_count: usize) {}
 }

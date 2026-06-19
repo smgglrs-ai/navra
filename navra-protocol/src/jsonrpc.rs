@@ -308,11 +308,7 @@ mod tests {
 
     #[test]
     fn validate_accepts_valid_request() {
-        let req = JsonRpcRequest::new(
-            "tools/call",
-            None,
-            RequestId::Number(1),
-        );
+        let req = JsonRpcRequest::new("tools/call", None, RequestId::Number(1));
         assert!(req.validate().is_ok());
     }
 }

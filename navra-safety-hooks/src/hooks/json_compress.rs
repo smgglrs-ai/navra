@@ -87,11 +87,13 @@ impl Hook for JsonCompressHook {
                             annotations.push(format!("{stripped} keys stripped"));
                         }
                         for (path, kept, total) in &truncated {
-                            annotations
-                                .push(format!("array {path}: {kept}/{total} elements kept"));
+                            annotations.push(format!("array {path}: {kept}/{total} elements kept"));
                         }
                         if flattened > 0 {
-                            annotations.push(format!("{flattened} subtrees flattened at depth {}", self.max_depth));
+                            annotations.push(format!(
+                                "{flattened} subtrees flattened at depth {}",
+                                self.max_depth
+                            ));
                         }
                     }
 
@@ -434,7 +436,9 @@ mod tests {
         };
         let hook = JsonCompressHook::new(config);
 
-        let items: Vec<Value> = (0..25).map(|i| json!({"id": i, "val": format!("item-{i}")})).collect();
+        let items: Vec<Value> = (0..25)
+            .map(|i| json!({"id": i, "val": format!("item-{i}")}))
+            .collect();
         let json_str = serde_json::to_string(&items).unwrap();
         let result = make_result(&json_str);
 

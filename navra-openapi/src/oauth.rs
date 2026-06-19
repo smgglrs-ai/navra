@@ -3,9 +3,7 @@
 //! Wraps `navra_auth::auth::oauth_client` with automatic token refresh
 //! and 401/403 retry logic.
 
-use navra_auth::auth::oauth_client::{
-    self, AsMetadata, OAuthClientError, TokenSet,
-};
+use navra_auth::auth::oauth_client::{self, AsMetadata, OAuthClientError, TokenSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -136,11 +134,8 @@ impl OAuthTokenManager {
                     "OAuth2: open this URL in your browser to authorize"
                 );
 
-                let callback = oauth_client::await_callback(
-                    port,
-                    std::time::Duration::from_secs(120),
-                )
-                .await?;
+                let callback =
+                    oauth_client::await_callback(port, std::time::Duration::from_secs(120)).await?;
 
                 if callback.state != *pending.csrf_token.secret() {
                     return Err(OAuthClientError::AuthorizationFailed(

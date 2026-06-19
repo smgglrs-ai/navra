@@ -405,7 +405,8 @@ impl McpServer {
                             "Tool requires approval"
                         );
                         return CallToolResult::error(format!(
-                            "Approval required: '{}'", params.name
+                            "Approval required: '{}'",
+                            params.name
                         ));
                     }
                     tracing::info!(
@@ -437,12 +438,14 @@ impl McpServer {
                             "Write operation denied by permission set"
                         );
                         return CallToolResult::error(format!(
-                            "Permission denied: '{}'", params.name
+                            "Permission denied: '{}'",
+                            params.name
                         ));
                     }
                     navra_mcp::ToolOperation::Deny => {
                         return CallToolResult::error(format!(
-                            "Permission denied: '{}'", params.name
+                            "Permission denied: '{}'",
+                            params.name
                         ));
                     }
                     _ => {}
@@ -471,9 +474,7 @@ impl McpServer {
                         permission_set = %ctx.agent.permissions,
                         "Domain classification denied"
                     );
-                    return CallToolResult::error(format!(
-                        "Permission denied: '{}'", params.name
-                    ));
+                    return CallToolResult::error(format!("Permission denied: '{}'", params.name));
                 }
             }
         }
@@ -507,9 +508,7 @@ impl McpServer {
                         cedar_reason = %reason,
                         "Cedar policy denied"
                     );
-                    return CallToolResult::error(format!(
-                        "Permission denied: '{}'", params.name
-                    ));
+                    return CallToolResult::error(format!("Permission denied: '{}'", params.name));
                 }
             }
         }
@@ -615,7 +614,8 @@ impl McpServer {
                             "IFC: tainted write denied"
                         );
                         return CallToolResult::error(format!(
-                            "Permission denied: '{}'", params.name
+                            "Permission denied: '{}'",
+                            params.name
                         ));
                     }
                     Some(crate::ifc::TaintedWritePolicy::Approve) => {
@@ -626,7 +626,8 @@ impl McpServer {
                             agent_ring,
                         );
                         return CallToolResult::error(format!(
-                            "Approval required: '{}'", params.name
+                            "Approval required: '{}'",
+                            params.name
                         ));
                     }
                     Some(crate::ifc::TaintedWritePolicy::Allow) => {} // Explicitly allowed
@@ -645,7 +646,8 @@ impl McpServer {
                             "IFC: no policy configured, defaulting to deny"
                         );
                         return CallToolResult::error(format!(
-                            "Permission denied: '{}'", params.name
+                            "Permission denied: '{}'",
+                            params.name
                         ));
                     }
                 }
@@ -689,9 +691,7 @@ impl McpServer {
                         reason = %reason,
                         "Tool blocked by pre-hook"
                     );
-                    return CallToolResult::error(format!(
-                        "Permission denied: '{}'", params.name
-                    ));
+                    return CallToolResult::error(format!("Permission denied: '{}'", params.name));
                 }
                 crate::hooks::PreHookOutcome::Pending { request_id, reason } => {
                     tracing::info!(
@@ -701,7 +701,8 @@ impl McpServer {
                         "Tool pending approval"
                     );
                     return CallToolResult::error(format!(
-                        "Approval required: '{}' (request: {})", params.name, request_id
+                        "Approval required: '{}' (request: {})",
+                        params.name, request_id
                     ));
                 }
             }
@@ -714,8 +715,7 @@ impl McpServer {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => {
                 // Multi-hypothesis tool routing: try fuzzy matching
-                let registered_names: Vec<&str> =
-                    self.tools.keys().map(|s| s.as_str()).collect();
+                let registered_names: Vec<&str> = self.tools.keys().map(|s| s.as_str()).collect();
                 let tool_schemas: std::collections::HashMap<String, Option<Vec<String>>> = self
                     .tools
                     .iter()
@@ -776,10 +776,7 @@ impl McpServer {
                     } else {
                         self.process_table
                             .complete_call(&ctx.agent.name, &params.name);
-                        return CallToolResult::error(format!(
-                            "Unknown tool: {}",
-                            params.name
-                        ));
+                        return CallToolResult::error(format!("Unknown tool: {}", params.name));
                     }
                 } else {
                     self.process_table
@@ -868,7 +865,8 @@ impl McpServer {
                                 "IFC: read blocked — classification exceeds clearance"
                             );
                             return CallToolResult::error(format!(
-                                "Access denied: insufficient clearance for '{}'", params.name
+                                "Access denied: insufficient clearance for '{}'",
+                                params.name
                             ));
                         }
                         crate::ifc::TaintedWritePolicy::Approve => {
@@ -991,7 +989,12 @@ impl McpServer {
                     }
                 }
                 Content::Resource(ref res) => {
-                    if res.resource.mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
+                    if res
+                        .resource
+                        .mime_type
+                        .as_deref()
+                        .is_some_and(|m| m.starts_with("text/"))
+                    {
                         if let Some(ref text) = res.resource.text {
                             match pipeline.process(text, &filter_ctx) {
                                 Ok(processed) => {
@@ -1011,7 +1014,7 @@ impl McpServer {
                             "Non-text resource blocked by safety pipeline"
                         );
                         return CallToolResult::error(
-                            "Non-text resource content blocked by safety pipeline"
+                            "Non-text resource content blocked by safety pipeline",
                         );
                     }
                 }
@@ -1022,7 +1025,7 @@ impl McpServer {
                         "Non-text content (image/audio) blocked by safety pipeline"
                     );
                     return CallToolResult::error(
-                        "Non-text content blocked by safety pipeline (no binary filter configured)"
+                        "Non-text content blocked by safety pipeline (no binary filter configured)",
                     );
                 }
             }
@@ -1324,7 +1327,8 @@ impl McpServer {
                 .filter(|uri| {
                     params.argument.value.is_empty() || uri.starts_with(&params.argument.value)
                 })
-                .take(100).cloned()
+                .take(100)
+                .cloned()
                 .collect(),
             _ => Vec::new(),
         };
@@ -1414,8 +1418,10 @@ impl McpServer {
     ) {
         // SEP-2577: dual-write to OTel for clients migrating from MCP logging
         match level {
-            crate::protocol::LoggingLevel::Error | crate::protocol::LoggingLevel::Critical
-            | crate::protocol::LoggingLevel::Alert | crate::protocol::LoggingLevel::Emergency => {
+            crate::protocol::LoggingLevel::Error
+            | crate::protocol::LoggingLevel::Critical
+            | crate::protocol::LoggingLevel::Alert
+            | crate::protocol::LoggingLevel::Emergency => {
                 tracing::error!(mcp_logger = ?logger, mcp_log = %data, "mcp.logging");
             }
             crate::protocol::LoggingLevel::Warning => {

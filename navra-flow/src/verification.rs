@@ -24,7 +24,6 @@ pub enum VerificationThreshold {
     Unanimous,
 }
 
-
 /// Configuration for cross-validation of a task's output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerificationConfig {
