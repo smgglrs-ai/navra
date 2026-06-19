@@ -1,30 +1,57 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 25 active items
+# 26 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
-  - id: "NAVRA-064"
-    title: "Nomic Embed v1.5 evaluation"
-    status: done
+  - id: "NAVRA-051"
+    title: "Paper significant fixes"
+    status: planned
+    priority: medium
+    effective_priority: high
+    effort: M
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-052"
+    title: "Missing related work"
+    status: planned
+    priority: medium
+    effective_priority: high
+    effort: M
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-053"
+    title: "Paper restructuring decisions"
+    status: planned
+    priority: medium
+    effective_priority: high
+    effort: S
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-057"
+    title: "Lazy-loading tool and persona metadata"
+    status: planned
     priority: medium
     effort: M
-    progress: 100
+
+  - id: "NAVRA-064"
+    title: "Nomic Embed v1.5 evaluation"
+    status: planned
+    priority: medium
+    effort: M
 
   - id: "NAVRA-070"
     title: "WebSocket agentic loops"
-    status: done
+    status: planned
     priority: medium
     effort: M
-    progress: 100
 
   - id: "NAVRA-147"
     title: "MCP Enterprise-Managed Authorization (ID-JAG)"
-    status: done
+    status: planned
     priority: medium
     effort: M
-    progress: 100
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"
@@ -43,45 +70,51 @@ items:
 
   - id: "NAVRA-049"
     title: "PII ONNX classifier"
-    status: done
+    status: planned
     priority: low
     effort: M
-    progress: 100
 
   - id: "NAVRA-058"
     title: "Negative constraints in persona schema"
-    status: done
+    status: planned
     priority: low
     effort: S
-    progress: 100
 
   - id: "NAVRA-059"
     title: "YAML flow definitions"
-    status: done
+    status: planned
     priority: low
     effort: M
-    progress: 100
+
+  - id: "NAVRA-060"
+    title: "Operator libraries"
+    status: planned
+    priority: low
+    effort: M
 
   - id: "NAVRA-061"
     title: "Memory type classification"
-    status: done
+    status: planned
     priority: low
     effort: S
-    progress: 100
+
+  - id: "NAVRA-063"
+    title: "Privacy Router coordination"
+    status: planned
+    priority: low
+    effort: M
 
   - id: "NAVRA-069"
     title: "Multi-hypothesis tool routing"
-    status: done
+    status: planned
     priority: low
     effort: M
-    progress: 100
 
   - id: "NAVRA-071"
     title: "HTML-to-markdown conversion"
-    status: done
+    status: planned
     priority: low
     effort: S
-    progress: 100
 
   - id: "NAVRA-092"
     title: "Evaluate LCLM for context compression"
@@ -98,36 +131,6 @@ items:
     depends_on: ['NAVRA-079']
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
-
-  - id: "NAVRA-051"
-    title: "Paper significant fixes"
-    status: backlog
-    priority: medium
-    effective_priority: high
-    effort: M
-    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
-
-  - id: "NAVRA-052"
-    title: "Missing related work"
-    status: backlog
-    priority: medium
-    effective_priority: high
-    effort: M
-    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
-
-  - id: "NAVRA-053"
-    title: "Paper restructuring decisions"
-    status: backlog
-    priority: medium
-    effective_priority: high
-    effort: S
-    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
-
-  - id: "NAVRA-057"
-    title: "Lazy-loading tool and persona metadata"
-    status: backlog
-    priority: medium
-    effort: M
 
   - id: "NAVRA-048"
     title: "Adversarial safety evaluation"
@@ -161,21 +164,16 @@ items:
     effort: M
     depends_on: ['NAVRA-004']
 
-  - id: "NAVRA-060"
-    title: "Operator libraries"
-    status: backlog
-    priority: low
-    effort: M
-
   - id: "NAVRA-062"
     title: "NemoClaw MCP bridge"
     status: backlog
     priority: low
     effort: M
 
-  - id: "NAVRA-063"
-    title: "Privacy Router coordination"
+  - id: "NAVRA-148"
+    title: "Visual flow editor in navra-react"
     status: backlog
     priority: low
-    effort: M
+    effort: L
+    depends_on: ['NAVRA-059']
 
