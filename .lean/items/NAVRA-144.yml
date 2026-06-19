@@ -1,42 +1,53 @@
 id: NAVRA-144
 title: Replace navra-tools-exec with upstream OpenShell MCP server
-status: blocked
+status: planned
 priority: medium
 effort: M
 depends_on: []
 feeds: []
 description: |
-  navra-tools-exec wraps OpenShell gRPC calls to execute commands in
-  sandboxed containers. With the agent running in a scratch image and
-  the pattern of migrating built-in tools to upstream MCP servers
-  (file, git already migrated), exec should follow the same path.
+  Split navra-tools-exec into tool-surface (exec_run handler + path
+  validation + Kani proofs → navra-server inline or navra-model-runtime)
+  and infrastructure (DID↔sandbox_id registry → ExecState in
+  navra-server/src/team_tools.rs). Delete the crate after extraction.
+  OpenShell has no MCP interface, so this is a refactor, not an upstream
+  migration.
 
-  Options:
-  1. OpenShell may expose an MCP interface directly — check if the
-     OpenShell gateway supports MCP or has a sidecar MCP server
-  2. If not, build a thin MCP server that wraps the OpenShell gRPC
-     API (separate binary, not built into navra)
-  3. If the agent runs in its own sandbox, shell access is direct
-     and exec tools become standard shell MCP tools
+  The exec_run tool wraps a single gRPC call
+  (ComputeDriverClient::exec_command) and includes path traversal
+  validation with Kani proofs. The ExecModule struct also maintains a
+  HashMap<String, String> mapping agent DIDs to sandbox IDs, used by
+  team_tools::spawn_openshell_agent() for sandbox lifecycle.
 
-  The exec module is also used for agent sandbox lifecycle (create,
-  destroy, connect) — that orchestration may stay in navra-server
-  even if the tool-call surface moves upstream.
+  Refactoring steps:
+  1. Extract ExecState (DID→sandbox_id HashMap + register/remove
+     methods) into navra-server/src/team_tools.rs
+  2. Move exec_run tool handler + path validation + Kani proofs into
+     navra-server (inline tool) or navra-model-runtime
+  3. Update main.rs wiring: create ExecState directly, register
+     exec_run as a standalone tool without ExecModule wrapper
+  4. Update flow_tools.rs and team_tools.rs type annotations
+     (Option<Arc<ExecModule>> → Option<Arc<ExecState>>)
+  5. Delete navra-tools-exec crate
 acceptance:
-  - "Command execution in sandboxes available through upstream MCP or direct shell"
+  - "exec_run tool still available and routes commands to correct sandbox"
+  - "Sandbox lifecycle (create/register/destroy) unchanged in team_tools"
   - "navra-tools-exec crate removed from workspace"
-  - "Agent sandbox lifecycle management preserved in navra-server"
+  - "ExecState reduced to HashMap<String,String> — no gRPC client"
+  - "Path traversal Kani proofs preserved"
+  - "All e2e and unit tests pass"
 scope:
   - navra-tools-exec/
   - navra-server/src/main.rs
+  - navra-server/src/team_tools.rs
+  - navra-server/src/flow_tools.rs
+  - navra-server/Cargo.toml
   - Cargo.toml
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --bin navra -- --test-threads=1"
 notes:
   - date: "2026-06-19"
     detail: |
-      Blocked: navra-tools-exec is not just a tool wrapper. It's used
-      by flow_tools.rs and team_tools.rs for sandbox lifecycle
-      management (creating/destroying OpenShell sandboxes for agent
-      execution). Removing the crate requires refactoring the sandbox
-      orchestration in flow and team tools first — either moving the
-      gRPC client into navra-server directly or extracting it into
-      navra-model-runtime.
+      Unblocked after analysis: the split is clean. exec_run is pure
+      tool-layer logic (portable). Sandbox lifecycle coordination is
+      navra-server-specific (stays). No external dependencies.
