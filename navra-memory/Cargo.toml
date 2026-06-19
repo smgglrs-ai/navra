@@ -12,8 +12,10 @@ rag = ["navra-rag"]
 
 [dependencies]
 navra-mcp = { path = "../navra-mcp" }
+navra-protocol = { path = "../navra-protocol" }
 navra-core = { path = "../navra-core" }
 navra-model = { path = "../navra-model" }
+navra-macros = { path = "../navra-macros" }
 navra-rag = { path = "../navra-rag", optional = true }
 chrono = "0.4"
 rusqlite = { workspace = true }
