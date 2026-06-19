@@ -1,17 +1,10 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 33 active items
+# 32 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
-  - id: "NAVRA-140"
-    title: "MCP 2026-07-28: implement SEP-2567 stateless sessions"
-    status: planned
-    priority: critical
-    effort: M
-    depends_on: ['NAVRA-018']
-
   - id: "NAVRA-129"
     title: "Replace defensive panic in quota.rs with error return"
     status: planned
