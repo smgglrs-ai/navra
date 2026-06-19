@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 114 completed items
+# 115 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -753,6 +753,14 @@ items:
     effort: M
     progress: 100
     depends_on: ['NAVRA-018']
+
+  - id: "NAVRA-142"
+    title: "MCP 2026-07-28: OAuth iss validation and credential binding"
+    status: done
+    priority: high
+    effort: M
+    progress: 100
+    depends_on: ['NAVRA-018', 'NAVRA-083']
 
   - id: "NAVRA-143"
     title: "Replace navra-tools-gitlab with upstream GitLab MCP server"

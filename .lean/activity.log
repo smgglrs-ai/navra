@@ -298,3 +298,10 @@
   summary: "Added roots capability deprecation warning in handle_initialize (SEP-2577). Added OTel dual-write in send_log_message so MCP logging notifications also emit tracing events. File tools criterion N/A (navra-tools-file removed). Migration guide deferred to docs item."
   iteration: 14
   max_iterations: 20
+- timestamp: "2026-06-19T10:40:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-142"
+  summary: "Already implemented: iss validation (line 436), credential binding via iss check, application_type in DCR (line 243). Tests exist at line 860."
+  iteration: 15
+  max_iterations: 20
