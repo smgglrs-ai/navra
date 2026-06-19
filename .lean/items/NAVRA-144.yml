@@ -1,6 +1,6 @@
 id: NAVRA-144
 title: Replace navra-tools-exec with upstream OpenShell MCP server
-status: planned
+status: blocked
 priority: medium
 effort: M
 depends_on: []
@@ -30,3 +30,13 @@ scope:
   - navra-tools-exec/
   - navra-server/src/main.rs
   - Cargo.toml
+notes:
+  - date: "2026-06-19"
+    detail: |
+      Blocked: navra-tools-exec is not just a tool wrapper. It's used
+      by flow_tools.rs and team_tools.rs for sandbox lifecycle
+      management (creating/destroying OpenShell sandboxes for agent
+      execution). Removing the crate requires refactoring the sandbox
+      orchestration in flow and team tools first — either moving the
+      gRPC client into navra-server directly or extracting it into
+      navra-model-runtime.
