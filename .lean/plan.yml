@@ -1,16 +1,10 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 26 active items
+# 25 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
-  - id: "NAVRA-139"
-    title: "Complete WebMCP CDP transport implementation"
-    status: planned
-    priority: medium
-    effort: M
-
   - id: "NAVRA-022"
     title: "KAME tandem voice"
     status: planned

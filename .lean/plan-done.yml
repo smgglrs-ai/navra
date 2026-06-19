@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 119 completed items
+# 120 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -751,6 +751,12 @@ items:
     priority: low
     effort: S
     progress: 100
+
+  - id: "NAVRA-139"
+    title: "Complete WebMCP CDP transport implementation"
+    status: done
+    priority: medium
+    effort: M
 
   - id: "NAVRA-140"
     title: "MCP 2026-07-28: implement SEP-2567 stateless sessions"
