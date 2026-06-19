@@ -286,6 +286,8 @@ impl Default for Config {
                 container_pids: 256,
                 mcp_version: "2026-07-28".to_string(),
                 agent_signature_policy: "warn".to_string(),
+                ws_ping_interval_secs: 30,
+                ws_idle_timeout_secs: 600,
                 config_watch: false,
                 config_watch_debounce_ms: 50,
             },

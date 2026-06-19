@@ -393,3 +393,11 @@
   summary: "Nomic Embed v1.5 evaluation — registry entry, Matryoshka truncation in OnnxBackend, retrieval benchmark"
   iteration: 1
   max_iterations: 20
+
+- timestamp: "2026-06-19T18:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-070"
+  summary: "WebSocket agentic loops — ping/keepalive, idle timeout, metrics, concurrent dispatch, WebSocketTransport"
+  iteration: 2
+  max_iterations: 20
