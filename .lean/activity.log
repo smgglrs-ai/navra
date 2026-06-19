@@ -237,3 +237,10 @@
   summary: "Refreshed TESTING.md: 2110+ → 2750+ tests, updated per-crate table (22 crates), noted crate additions/removals (navra-auth, navra-safety-hooks, navra-openapi added; navra-tools-file, navra-tools-git removed). Updated MSRV reference to 1.91."
   iteration: 7
   max_iterations: 20
+- timestamp: "2026-06-18T23:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-133"
+  summary: "Resolved 8 #[allow(dead_code)] annotations: removed 2 unused convenience wrappers (discover.rs), prefixed 2 planned-but-unread fields with _ (executor.rs, ui_agent.rs), re-annotated 3 with justification comments (serde deserialization, Debug formatting, HashMap lookups). Removed ui.rs module-level suppression."
+  iteration: 8
+  max_iterations: 20
