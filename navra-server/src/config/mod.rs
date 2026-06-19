@@ -1,5 +1,6 @@
 mod agents;
 pub mod import;
+pub mod libraries;
 mod models;
 mod modules;
 mod permissions;
@@ -14,6 +15,7 @@ pub use agents::{AgentConfig, OpenApiAuthConfig, UpstreamConfig};
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
 pub use permissions::{DomainRuleConfig, PermissionSet, PiiPatternConfig, ToolRuleConfig};
+pub use libraries::LibraryConfig;
 pub use server::{RegistryEntry, ServerConfig};
 
 pub use security::{
@@ -95,6 +97,9 @@ pub struct Config {
     /// Configures ID-JAG authenticator for corporate IdP integration.
     #[serde(default)]
     pub enterprise_auth: Option<navra_core::auth::idjag::IdJagConfig>,
+    /// Operator library directories for conf.d-style config composition.
+    #[serde(default)]
+    pub libraries: LibraryConfig,
 }
 
 impl Config {
@@ -106,7 +111,28 @@ impl Config {
 
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
-            let config: Config = toml::from_str(&content)?;
+            let mut value: toml::Value = toml::from_str(&content)?;
+
+            // Resolve library dirs from the raw TOML (before full deserialization)
+            // so library fragments participate in the final Config struct.
+            let lib_dirs = value
+                .get("libraries")
+                .and_then(|v| v.get("library_dirs"))
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_else(|| vec!["~/.config/navra/libraries".to_string()]);
+
+            let resolved = libraries::resolve_dirs(&lib_dirs);
+            let libs = libraries::scan_libraries(&resolved)?;
+            if !libs.is_empty() {
+                libraries::merge_libraries(&mut value, libs)?;
+            }
+
+            let config: Config = value.try_into()?;
             Ok(config)
         } else {
             Ok(Self::default())
@@ -314,6 +340,7 @@ impl Default for Config {
             routing: navra_core::hooks::RoutingConfig::default(),
             triggers: Vec::new(),
             enterprise_auth: None,
+            libraries: LibraryConfig::default(),
         }
     }
 }

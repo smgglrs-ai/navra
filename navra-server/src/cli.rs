@@ -194,6 +194,12 @@ pub(crate) enum ConfigAction {
         #[arg(long)]
         no_redact: bool,
     },
+    /// List installed operator libraries and what they provide
+    ListLibraries {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
