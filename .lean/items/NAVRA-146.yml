@@ -1,0 +1,56 @@
+id: NAVRA-146
+title: A2UI declarative UI support in tool results
+status: planned
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+source: google-blog-2026-06-17
+scope:
+  - navra-protocol/src/
+  - navra-core/src/server/
+  - navra-server/src/
+description: |
+  Add support for Google's A2UI (Agent-to-User Interface) protocol in
+  navra tool results. A2UI uses declarative JSON payloads
+  (application/a2ui+json) to describe UI components that host
+  applications render natively, instead of streaming raw HTML or
+  requiring iframes.
+
+  Two delivery mechanisms (matching the MCP integration patterns from
+  Google's June 2026 blog post):
+
+  1. Static A2UI via MCP Resources: tools register A2UI resources
+     with URI scheme a2ui:// and MIME type application/a2ui+json.
+     Clients fetch via resources/read.
+
+  2. Dynamic A2UI via tool call results: tools return CallToolResult
+     with embedded resource content of type application/a2ui+json.
+     The JSON payload contains A2UI v0.9 component definitions that
+     the client renders natively.
+
+  Server-side changes:
+  - Parse and validate A2UI JSON payloads in tool results
+  - Pass through application/a2ui+json MIME type in resource content
+  - IFC labeling: A2UI payloads inherit the tool result's data label
+  - Safety filtering: scan A2UI text content fields for PII
+
+  This is complementary to AG-UI (NAVRA-026): AG-UI handles real-time
+  streaming during agent execution; A2UI handles structured UI
+  rendering in tool outputs.
+acceptance:
+  - "Tools can return CallToolResult with embedded a2ui+json resource content"
+  - "MCP resources with URI scheme a2ui:// and MIME type application/a2ui+json are served correctly"
+  - "A2UI JSON payloads are validated against the v0.9 schema (version, createSurface required)"
+  - "IFC labels propagate to A2UI content (tainted tool output taints the UI payload)"
+  - "Safety pipeline scans text fields within A2UI component definitions"
+  - "Unit tests cover A2UI payload validation, resource delivery, and safety filtering"
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-protocol -p navra-core"
+notes:
+  - date: "2026-06-19"
+    detail: |
+      Source: https://developers.googleblog.com/a2ui-and-mcp-apps/
+      A2UI v0.9, Google-backed. Three integration patterns with MCP.
+      Complementary to AG-UI (streaming events vs declarative payloads).
+      Google considering MCP extension proposal (github discussion #1676).

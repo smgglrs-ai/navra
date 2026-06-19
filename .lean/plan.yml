@@ -1,10 +1,16 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 25 active items
+# 26 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
+  - id: "NAVRA-146"
+    title: "A2UI declarative UI support in tool results"
+    status: planned
+    priority: medium
+    effort: M
+
   - id: "NAVRA-022"
     title: "KAME tandem voice"
     status: planned
