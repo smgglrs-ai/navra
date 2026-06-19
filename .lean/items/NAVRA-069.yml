@@ -1,6 +1,6 @@
 id: NAVRA-069
 title: Multi-hypothesis tool routing
-status: planned
+status: done
 priority: low
 effort: M
 depends_on: []

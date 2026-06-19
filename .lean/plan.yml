@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 26 active items
+# 17 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -35,24 +35,6 @@ items:
     priority: medium
     effort: M
 
-  - id: "NAVRA-064"
-    title: "Nomic Embed v1.5 evaluation"
-    status: planned
-    priority: medium
-    effort: M
-
-  - id: "NAVRA-070"
-    title: "WebSocket agentic loops"
-    status: planned
-    priority: medium
-    effort: M
-
-  - id: "NAVRA-147"
-    title: "MCP Enterprise-Managed Authorization (ID-JAG)"
-    status: planned
-    priority: medium
-    effort: M
-
   - id: "NAVRA-022"
     title: "KAME tandem voice"
     status: planned
@@ -68,53 +50,17 @@ items:
     effort: 3-5d
     gate: "IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision"
 
-  - id: "NAVRA-049"
-    title: "PII ONNX classifier"
-    status: planned
-    priority: low
-    effort: M
-
-  - id: "NAVRA-058"
-    title: "Negative constraints in persona schema"
-    status: planned
-    priority: low
-    effort: S
-
-  - id: "NAVRA-059"
-    title: "YAML flow definitions"
-    status: planned
-    priority: low
-    effort: M
-
   - id: "NAVRA-060"
     title: "Operator libraries"
     status: planned
     priority: low
     effort: M
 
-  - id: "NAVRA-061"
-    title: "Memory type classification"
-    status: planned
-    priority: low
-    effort: S
-
   - id: "NAVRA-063"
     title: "Privacy Router coordination"
     status: planned
     priority: low
     effort: M
-
-  - id: "NAVRA-069"
-    title: "Multi-hypothesis tool routing"
-    status: planned
-    priority: low
-    effort: M
-
-  - id: "NAVRA-071"
-    title: "HTML-to-markdown conversion"
-    status: planned
-    priority: low
-    effort: S
 
   - id: "NAVRA-092"
     title: "Evaluate LCLM for context compression"

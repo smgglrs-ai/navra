@@ -1,6 +1,6 @@
 id: NAVRA-071
 title: HTML-to-markdown conversion
-status: planned
+status: done
 priority: low
 effort: S
 depends_on: []
