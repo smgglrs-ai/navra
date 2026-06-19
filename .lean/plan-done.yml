@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 116 completed items
+# 120 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -682,6 +682,13 @@ items:
     effort: M
     progress: 100
 
+  - id: "NAVRA-129"
+    title: "Replace defensive panic in quota.rs with error return"
+    status: done
+    priority: high
+    effort: S
+    progress: 100
+
   - id: "NAVRA-130"
     title: "Log silent event send failures in SSE and WebSocket transports"
     status: done
@@ -731,12 +738,25 @@ items:
     effort: S
     progress: 100
 
+  - id: "NAVRA-137"
+    title: "Add tests to navra-tools-exec and navra-tools-gitlab"
+    status: done
+    priority: low
+    effort: M
+    progress: 100
+
   - id: "NAVRA-138"
     title: "Refresh TESTING.md test count table"
     status: done
     priority: low
     effort: S
     progress: 100
+
+  - id: "NAVRA-139"
+    title: "Complete WebMCP CDP transport implementation"
+    status: done
+    priority: medium
+    effort: M
 
   - id: "NAVRA-140"
     title: "MCP 2026-07-28: implement SEP-2567 stateless sessions"
@@ -773,5 +793,11 @@ items:
     title: "Replace navra-tools-exec with upstream OpenShell MCP server"
     status: done
     priority: medium
+    effort: M
+
+  - id: "NAVRA-145"
+    title: "Expose knowledge pipeline as MCP tools for lean-claude consumption"
+    status: done
+    priority: high
     effort: M
 

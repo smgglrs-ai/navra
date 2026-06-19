@@ -1,6 +1,6 @@
 id: NAVRA-129
 title: Replace defensive panic in quota.rs with error return
-status: planned
+status: done
 priority: high
 effort: S
 depends_on: []
