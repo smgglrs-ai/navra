@@ -1,18 +1,10 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 15 active items
+# 14 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
-  - id: "NAVRA-053"
-    title: "Paper restructuring decisions"
-    status: planned
-    priority: medium
-    effective_priority: high
-    effort: S
-    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
-
   - id: "NAVRA-057"
     title: "Lazy-loading tool and persona metadata"
     status: planned
