@@ -1,6 +1,7 @@
 id: NAVRA-141
 title: "MCP 2026-07-28: implement SEP-2577 deprecation of Roots/Sampling/Logging"
-status: planned
+status: done
+progress: 100
 priority: high
 effort: M
 depends_on:
