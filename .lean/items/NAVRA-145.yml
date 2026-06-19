@@ -47,3 +47,9 @@ notes: |
   Validated by tech-watch-2026-06-18: "Claude Second Brain Levels"
   article describes exactly this 5-level architecture. navra already
   implements all 5 levels — this item exposes them for external use.
+
+  tech-watch-2026-06-19: Arbor (arXiv:2606.11926) uses a Hypothesis
+  Tree Refinement (HTR) structure that propagates lessons across
+  iterations — similar to navra-memory's distillation pipeline.
+  Consider HTR-style structured knowledge trees as an enhancement
+  to the current flat entry model.

@@ -1,0 +1,124 @@
+date: "2026-06-19"
+mode: reactive
+sources:
+  - url: "https://modelcontextprotocol.io/extensions/auth/enterprise-managed-authorization"
+    title: "MCP Enterprise-Managed Authorization"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://vercel.com/changelog/introducing-eve-an-open-source-agent-framework"
+    title: "Vercel Eve agent framework"
+    impact: LOW
+    relationship: validates
+
+  - url: "https://arxiv.org/abs/2606.11926"
+    title: "Arbor: Hypothesis-Tree Refinement for Autonomous Research"
+    impact: MEDIUM
+    relationship: validates
+
+  - url: "https://understand-anything.com/"
+    title: "Understand Anything — codebase knowledge graph"
+    impact: LOW
+    relationship: irrelevant
+
+  - url: "https://www.marktechpost.com/2026/06/16/hermes-agent-adds-asynchronous-subagents-so-delegated-work-no-longer-blocks-the-parent-chat/"
+    title: "Hermes Agent async subagents"
+    impact: MEDIUM
+    relationship: threatens
+
+  - url: "https://pub.towardsai.net/build-your-own-claude-code-using-langchin-a-deepdive-into-langchains-deep-agents-9ef98d98a69a"
+    title: "LangChain Deep Agents (paywalled)"
+    impact: SKIPPED
+    relationship: irrelevant
+
+  - url: "https://towardsdatascience.com/a-harness-for-every-task-putting-a-team-of-claudes-on-one-job/"
+    title: "Dynamic Workflows — Team of Claudes"
+    impact: MEDIUM
+    relationship: validates
+
+  - url: "https://theneuralmaze.substack.com/p/building-a-local-ambient-agent-that"
+    title: "Building a Local Ambient Agent"
+    impact: MEDIUM
+    relationship: validates
+
+  - url: "https://www.kdnuggets.com/pairing-claude-code-with-local-models"
+    title: "Pairing Claude Code with Local Models"
+    impact: LOW
+    relationship: validates
+
+  - url: "https://www.marktechpost.com/2026/06/18/the-kv-cache-compression-race-turboquant-vs-oscar-vs-epicache/"
+    title: "KV Cache Compression: TurboQuant vs OSCAR vs EpiCache"
+    impact: MEDIUM
+    relationship: complements
+
+  - url: "https://huggingface.co/blog/peft-beyond-lora"
+    title: "PEFT Beyond LoRA"
+    impact: LOW
+    relationship: enriches
+
+findings:
+  - source: "https://modelcontextprotocol.io/extensions/auth/enterprise-managed-authorization"
+    title: "Enterprise-managed auth via ID-JAG"
+    action: plan
+    item_id: "NAVRA-147"
+    detail: "ID-JAG flow for centralized IdP control of MCP access"
+
+  - source: "https://arxiv.org/abs/2606.11926"
+    title: "Arbor HTR pattern enriches distillation pipeline"
+    action: enrich
+    item_id: "NAVRA-145"
+    detail: "HTR tree structure for cross-iteration knowledge propagation"
+
+  - source: "https://www.marktechpost.com/2026/06/16/hermes-agent-adds-asynchronous-subagents-so-delegated-work-no-longer-blocks-the-parent-chat/"
+    title: "Async subagent orchestration with steer/check/cancel"
+    action: investigate
+    questions:
+      - "Would async agent steering be an MCP tool or a flow primitive?"
+      - "How does Hermes handle context isolation vs navra's session model?"
+    detail: "Hermes adds steer_task mid-flight injection — navra lacks this"
+
+  - source: "https://www.marktechpost.com/2026/06/18/the-kv-cache-compression-race-turboquant-vs-oscar-vs-epicache/"
+    title: "OSCAR INT2 compression for Qwen3/GLM"
+    action: watch
+    detail: "Monitor for Ollama integration; 7.8x throughput at INT2"
+
+  - source: "https://www.marktechpost.com/2026/06/18/the-kv-cache-compression-race-turboquant-vs-oscar-vs-epicache/"
+    title: "EpiCache episodic token selection"
+    action: watch
+    detail: "Multi-turn conversation memory management — relevant to navra-memory decay"
+
+  - source: "https://huggingface.co/blog/peft-beyond-lora"
+    title: "OFT and rs-LoRA outperform vanilla LoRA"
+    action: watch
+    detail: "Reference for future safety classifier fine-tuning"
+
+  - source: "https://vercel.com/changelog/introducing-eve-an-open-source-agent-framework"
+    title: "Eve filesystem-first agents"
+    action: dismiss
+    detail: "App framework, not gateway — different layer"
+
+  - source: "https://understand-anything.com/"
+    title: "Codebase knowledge graph tool"
+    action: dismiss
+    detail: "Developer tooling, not relevant to navra"
+
+  - source: "https://towardsdatascience.com/a-harness-for-every-task-putting-a-team-of-claudes-on-one-job/"
+    title: "Dynamic Workflows patterns"
+    action: dismiss
+    detail: "Validates existing flow patterns, no new work"
+
+  - source: "https://www.kdnuggets.com/pairing-claude-code-with-local-models"
+    title: "Ollama/LM Studio pairing with Claude Code"
+    action: dismiss
+    detail: "Validates navra's existing Ollama support"
+
+  - source: "https://pub.towardsai.net/build-your-own-claude-code-using-langchin-a-deepdive-into-langchains-deep-agents-9ef98d98a69a"
+    title: "LangChain Deep Agents"
+    action: dismiss
+    detail: "Paywalled, inaccessible"
+
+summary: |
+  11 sources analyzed, 1 new plan item (NAVRA-147: Enterprise Auth),
+  1 existing item enriched (NAVRA-145: Arbor HTR reference),
+  1 item to investigate (Hermes async subagents),
+  3 items to watch (OSCAR, EpiCache, PEFT), 5 dismissed.

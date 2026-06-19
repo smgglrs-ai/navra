@@ -1,0 +1,54 @@
+date: "2026-06-18"
+mode: reactive
+sources:
+  - url: "https://arxiv.org/abs/2606.11926"
+    title: "Toward Generalist Autonomous Research via Hypothesis-Tree Refinement (Arbor)"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://understand-anything.com/"
+    title: "Understand Anything — code to interactive knowledge graph"
+    impact: LOW
+    relationship: complements
+
+  - url: "https://developer.microsoft.com/blog/spec-driven-development-ai-native-engineering"
+    title: "Spec-Driven Development: AI-Native Engineering (Microsoft)"
+    impact: MEDIUM
+    relationship: validates
+
+findings:
+  - source: "https://arxiv.org/abs/2606.11926"
+    title: "Intra-loop lesson propagation for lean-loop"
+    action: investigate
+    questions:
+      - "Can lean-loop maintain a lightweight lessons-learned context within a run?"
+      - "Should each iteration read a running log of what worked/failed in prior iterations?"
+      - "How much context overhead does this add vs the quality improvement?"
+    detail: "Arbor's 2.5x improvement comes from carrying knowledge across iterations via HTR. lean-loop currently treats iterations independently."
+
+  - source: "https://understand-anything.com/"
+    title: "Interactive knowledge graph for codebases"
+    action: dismiss
+    detail: "Claude Code plugin for code visualization. Useful for docs/onboarding but tangential to lean-claude workflow and navra architecture."
+
+  - source: "https://developer.microsoft.com/blog/spec-driven-development-ai-native-engineering"
+    title: "Parameterized spec templates for lean-refine"
+    action: investigate
+    questions:
+      - "When refining a batch of similar items, can lean-refine generate from a template?"
+      - "What's the template format? YAML with placeholder fields?"
+      - "Which navra item clusters would benefit (e.g., 8 ML safety items, 5 paper items)?"
+    detail: "Microsoft SDD uses parameterized specs for repeated patterns — onboarding time dropped from 2-3 weeks to days."
+
+  - source: "https://developer.microsoft.com/blog/spec-driven-development-ai-native-engineering"
+    title: "Constitution concept — separate governance from reference in CLAUDE.md"
+    action: watch
+    detail: "SDD distinguishes constitution (principles all specs must follow) from project reference. Monitor whether CLAUDE.md's dual role causes problems before splitting."
+
+summary: |
+  3 sources analyzed, 0 new plan items, 0 enriched.
+  2 investigate items for follow-up (intra-loop lessons, parameterized templates).
+  1 watch item (constitution concept).
+  1 dismissed (Understand Anything — tangential).
+  Microsoft SDD validates lean-claude's 7-step lifecycle end-to-end.
+  Arbor's HTR is the most actionable finding — could meaningfully improve lean-loop quality.
