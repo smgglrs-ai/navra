@@ -74,9 +74,10 @@ items:
 
   - id: "NAVRA-071"
     title: "HTML-to-markdown conversion"
-    status: planned
+    status: done
     priority: low
     effort: S
+    progress: 100
 
   - id: "NAVRA-092"
     title: "Evaluate LCLM for context compression"
