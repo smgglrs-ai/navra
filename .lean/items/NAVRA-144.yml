@@ -1,6 +1,6 @@
 id: NAVRA-144
 title: Replace navra-tools-exec with upstream OpenShell MCP server
-status: planned
+status: done
 priority: medium
 effort: M
 depends_on: []
