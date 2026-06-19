@@ -5,6 +5,13 @@
 version: 1
 
 items:
+  - id: "NAVRA-026"
+    title: "AG-UI React dashboard with PatternFly"
+    status: planned
+    priority: medium
+    effort: M
+    depends_on: ['NAVRA-004']
+
   - id: "NAVRA-146"
     title: "A2UI declarative UI support in tool results"
     status: planned
@@ -18,13 +25,6 @@ items:
     effort: 3-5d
     depends_on: ['NAVRA-021']
     gate: "Moshi ONNX export"
-
-  - id: "NAVRA-026"
-    title: "AG-UI via rendra-ag-ui"
-    status: planned
-    priority: low
-    effort: 3-5d
-    depends_on: ['NAVRA-004']
 
   - id: "NAVRA-042"
     title: "DNS-AID discovery support"
