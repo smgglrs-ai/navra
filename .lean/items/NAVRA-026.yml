@@ -1,32 +1,52 @@
 id: NAVRA-026
-title: AG-UI via rendra-ag-ui
+title: AG-UI React dashboard with PatternFly
 status: planned
-priority: low
-effort: 3-5d
+priority: medium
+effort: M
 depends_on:
 - NAVRA-004
 feeds: []
-description: Build the rendra-ag-ui project (sibling repo smgglrs-ai/rendra-ag-ui) as a reusable Web Component that implements
-  the AG-UI open protocol for streaming agent execution events from navra to frontend UIs. The component translates navra's
-  NDJSON streaming events (text, tool_call, tool_result, thinking, done, error) and WebSocket UI events (process_update, tool_call_end)
-  into AG-UI protocol events (RUN_STARTED, TEXT_MESSAGE_CONTENT, TOOL_CALL_START, TOOL_CALL_END, RUN_FINISHED). This provides
-  a standard event-streaming interface that both the rendra desktop app and navra-server's built-in web UI can consume, and
-  unblocks NAVRA-056 (embeddable widget).
+description: |
+  Add AG-UI protocol support to navra's React frontend using navra-react
+  PatternFly components. This creates a NavraAgentAdapter that connects
+  to navra's existing streaming endpoints and translates events into
+  AG-UI protocol events, plus React components that consume them.
+
+  navra already emits:
+  - NDJSON via /api/chat/agent: text, tool_call, tool_result, thinking, done, error
+  - WebSocket via /ws/ui: process_update, tool_call_end
+
+  The adapter translates these into AG-UI events:
+  - text → TEXT_MESSAGE_CONTENT
+  - tool_call → TOOL_CALL_START + TOOL_CALL_ARGS
+  - tool_result → TOOL_CALL_END
+  - thinking → REASONING_MESSAGE_CONTENT
+  - done → RUN_FINISHED
+  - error → RUN_ERROR
+
+  React components (using navra-react PatternFly library):
+  - AgentChatPanel: streaming text with markdown, tool call cards
+  - useNavraAgent hook: connects adapter, manages AG-UI state
+  - Integration with existing AgentActivity and ApprovalQueue components
+
+  This is separate from rendra-ag-ui (vanilla Web Component for embedding).
+  See NEXT_STEPS.md in that repo for its own roadmap.
 acceptance:
-- rendra-ag-ui Web Component (<rendra-agent>) renders an agent chat with streaming text and tool-call visibility when connected
-  to a navra server endpoint
-- AgentAdapter interface implemented with a NavraAdapter that connects to navra's /api/chat/agent NDJSON endpoint and /ws/ui
-  WebSocket, mapping navra event types to AG-UI EventType enums
-- 'AG-UI event lifecycle complete: RUN_STARTED on session open, TEXT_MESSAGE_CONTENT for streamed text chunks, TOOL_CALL_START/TOOL_CALL_END
-  for tool executions, RUN_FINISHED on done/error'
-- Component supports authentication token passthrough (configurable via attribute or property) for navra's auth-required endpoints
-- Published as a standalone dist artifact (JS bundle) that can be imported by rendra desktop app or embedded in navra-server's
-  ui-dist assets
-- Unit tests cover NavraAdapter event translation for each navra NDJSON event type to corresponding AG-UI event
+  - "NavraAgentAdapter connects to /api/chat/agent NDJSON and /ws/ui WebSocket"
+  - "Adapter maps all 6 navra event types to corresponding AG-UI events"
+  - "useNavraAgent React hook manages connection lifecycle and AG-UI state"
+  - "AgentChatPanel renders streaming text, tool calls, and reasoning with PatternFly components"
+  - "Authentication token passed via hook configuration"
+  - "Unit tests cover adapter event translation for each navra event type"
 scope:
-- sibling repo smgglrs-ai/rendra-ag-ui (new project)
-- 'navra-server/src/ui_events.rs (reference: event types to map)'
-- 'navra-server/src/ui_agent.rs (reference: NDJSON streaming format)'
-- 'navra-server/ui/app.js (reference: existing WebSocket consumption)'
+  - navra-react/packages/react/src/
+  - navra-ui/src/
 verification:
-  quick: cd ../rendra-ag-ui && npm test
+  quick: "cd navra-react && pnpm test"
+notes:
+  - date: "2026-06-19"
+    detail: |
+      Revised from Web Component approach to React+PatternFly. The vanilla
+      rendra-ag-ui widget continues separately for Rendra desktop embedding.
+      navra-react already has AgentActivity, ApprovalQueue, FlowVisualizer
+      PatternFly components that can be composed with the new AG-UI adapter.
