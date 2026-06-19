@@ -43,9 +43,10 @@ items:
 
   - id: "NAVRA-049"
     title: "PII ONNX classifier"
-    status: planned
+    status: done
     priority: low
     effort: M
+    progress: 100
 
   - id: "NAVRA-058"
     title: "Negative constraints in persona schema"

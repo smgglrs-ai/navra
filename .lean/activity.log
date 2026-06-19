@@ -449,3 +449,11 @@
   summary: "Multi-hypothesis tool routing — edit distance + argument Jaccard scoring, auto-route and suggestions"
   iteration: 8
   max_iterations: 20
+
+- timestamp: "2026-06-19T20:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-049"
+  summary: "PII ONNX classifier — sequence classification pre-filter, softmax, configurable threshold, graceful degradation"
+  iteration: 9
+  max_iterations: 20
