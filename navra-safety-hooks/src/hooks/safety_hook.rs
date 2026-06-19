@@ -58,6 +58,7 @@ impl Hook for SafetyHook {
         tool_name: &str,
         arguments: &serde_json::Value,
         ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         if !is_write_tool(tool_name, None) {
             return HookDecision::Continue;
@@ -379,7 +380,7 @@ mod tests {
         let hook = SafetyHook::single("dev", crate::safety::build_pipeline("block"));
 
         let args = serde_json::json!({"path": "/tmp/test", "content": "SSN: 123-45-6789"});
-        let decision = hook.pre_tool_use("file_read", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("file_read", &args, &test_ctx(), None).await;
 
         // file_read is not a write-path tool, so inbound filtering skips it
         assert!(matches!(decision, HookDecision::Continue));
@@ -391,7 +392,7 @@ mod tests {
 
         // "body" and "payload" are non-standard field names that should now be scanned
         let args = serde_json::json!({"path": "/tmp/test", "body": "SSN: 123-45-6789"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
 
         assert!(
             matches!(decision, HookDecision::Block(_)),
@@ -405,7 +406,7 @@ mod tests {
 
         // "path" is in the skip list, so its content should not trigger blocking
         let args = serde_json::json!({"path": "AKIAIOSFODNN7EXAMPLE", "content": "clean"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
 
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -415,7 +416,7 @@ mod tests {
         let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
 
         let args = serde_json::json!({"path": "/tmp/test", "content": "Hello, world!"});
-        let decision = hook.pre_tool_use("file_write", &args, &test_ctx()).await;
+        let decision = hook.pre_tool_use("file_write", &args, &test_ctx(), None).await;
 
         assert!(matches!(decision, HookDecision::Continue));
     }

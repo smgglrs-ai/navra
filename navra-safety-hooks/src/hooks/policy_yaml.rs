@@ -221,6 +221,7 @@ impl Hook for PolicyYamlHook {
         tool_name: &str,
         arguments: &serde_json::Value,
         _ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         for rule in &self.rules {
             if rule.event != RuleEvent::PreToolCall {
@@ -318,7 +319,7 @@ policies:
     async fn blocks_on_tool_name_match() {
         let h = hook();
         let args = serde_json::json!({});
-        let decision = h.pre_tool_use("file_delete", &args, &test_ctx()).await;
+        let decision = h.pre_tool_use("file_delete", &args, &test_ctx(), None).await;
         match decision {
             HookDecision::Block(msg) => assert_eq!(msg, "Tool blocked by policy"),
             other => panic!("Expected Block, got {other:?}"),
@@ -329,7 +330,7 @@ policies:
     async fn blocks_exec_run() {
         let h = hook();
         let args = serde_json::json!({});
-        let decision = h.pre_tool_use("exec_run", &args, &test_ctx()).await;
+        let decision = h.pre_tool_use("exec_run", &args, &test_ctx(), None).await;
         assert!(matches!(decision, HookDecision::Block(_)));
     }
 
@@ -337,7 +338,7 @@ policies:
     async fn blocks_on_arg_field_match() {
         let h = hook();
         let args = serde_json::json!({"path": "/etc/shadow"});
-        let decision = h.pre_tool_use("file_read", &args, &test_ctx()).await;
+        let decision = h.pre_tool_use("file_read", &args, &test_ctx(), None).await;
         match decision {
             HookDecision::Block(msg) => {
                 assert!(msg.contains("sensitive files"));
@@ -350,7 +351,7 @@ policies:
     async fn continues_when_no_rules_match() {
         let h = hook();
         let args = serde_json::json!({"query": "hello"});
-        let decision = h.pre_tool_use("git_status", &args, &test_ctx()).await;
+        let decision = h.pre_tool_use("git_status", &args, &test_ctx(), None).await;
         assert!(matches!(decision, HookDecision::Continue));
     }
 
@@ -389,7 +390,7 @@ policies:
     async fn escalates_dangerous_tool() {
         let h = hook();
         let args = serde_json::json!({});
-        let decision = h.pre_tool_use("dangerous_tool", &args, &test_ctx()).await;
+        let decision = h.pre_tool_use("dangerous_tool", &args, &test_ctx(), None).await;
         match decision {
             HookDecision::Pending(msg) => assert_eq!(msg, "Requires human approval"),
             other => panic!("Expected Pending, got {other:?}"),
@@ -441,19 +442,19 @@ policies:
         let args = serde_json::json!({});
         let ctx = test_ctx();
 
-        let d1 = h.pre_tool_use("tool_a", &args, &ctx).await;
+        let d1 = h.pre_tool_use("tool_a", &args, &ctx, None).await;
         match d1 {
             HookDecision::Block(msg) => assert_eq!(msg, "blocked by A"),
             other => panic!("Expected Block A, got {other:?}"),
         }
 
-        let d2 = h.pre_tool_use("tool_b", &args, &ctx).await;
+        let d2 = h.pre_tool_use("tool_b", &args, &ctx, None).await;
         match d2 {
             HookDecision::Block(msg) => assert_eq!(msg, "blocked by B"),
             other => panic!("Expected Block B, got {other:?}"),
         }
 
-        let d3 = h.pre_tool_use("tool_c", &args, &ctx).await;
+        let d3 = h.pre_tool_use("tool_c", &args, &ctx, None).await;
         assert!(matches!(d3, HookDecision::Continue));
     }
 }

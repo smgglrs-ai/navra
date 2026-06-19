@@ -1786,6 +1786,7 @@ async fn hook_blocks_tool_call() {
             _tool_name: &str,
             _arguments: &serde_json::Value,
             _ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
         ) -> crate::hooks::HookDecision {
             crate::hooks::HookDecision::Block("blocked by test hook".to_string())
         }

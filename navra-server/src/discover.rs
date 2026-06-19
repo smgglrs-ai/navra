@@ -110,14 +110,18 @@ mod tests {
 
     #[tokio::test]
     async fn discover_empty_domains() {
-        let results = discover_all(&[]).await;
+        let results =
+            discover_all_with_timeout(&[], std::time::Duration::from_secs(5)).await;
         assert!(results.is_empty());
     }
 
     #[tokio::test]
     async fn lookup_nonexistent_domain() {
-        // This domain should not resolve or serve AID
-        let result = lookup_domain("this-domain-does-not-exist-navra-test.invalid").await;
+        let result = lookup_domain_with_timeout(
+            "this-domain-does-not-exist-navra-test.invalid",
+            std::time::Duration::from_secs(5),
+        )
+        .await;
         assert!(result.is_none());
     }
 }

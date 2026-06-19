@@ -154,6 +154,7 @@ pub trait Hook: Send + Sync + 'static {
         _tool_name: &str,
         _arguments: &serde_json::Value,
         _ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         HookDecision::Continue
     }

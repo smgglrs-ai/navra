@@ -176,6 +176,7 @@ impl Hook for ApprovalGateHook {
         tool_name: &str,
         arguments: &serde_json::Value,
         ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         if !self.config.enabled {
             return HookDecision::Continue;
@@ -234,7 +235,7 @@ mod tests {
     async fn low_risk_auto_approved() {
         let hook = ApprovalGateHook::new(test_config(vec!["delete", "exec"]));
         let decision = hook
-            .pre_tool_use("file_read", &serde_json::json!({}), &test_ctx())
+            .pre_tool_use("file_read", &serde_json::json!({}), &test_ctx(), None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -247,6 +248,7 @@ mod tests {
                 "file_delete",
                 &serde_json::json!({"path": "/tmp/x"}),
                 &test_ctx(),
+                None,
             )
             .await;
         match decision {
@@ -261,7 +263,7 @@ mod tests {
     async fn approve_resolves() {
         let hook = ApprovalGateHook::new(test_config(vec!["exec"]));
         let decision = hook
-            .pre_tool_use("shell_exec", &serde_json::json!({"cmd": "ls"}), &test_ctx())
+            .pre_tool_use("shell_exec", &serde_json::json!({"cmd": "ls"}), &test_ctx(), None)
             .await;
         let id = match decision {
             HookDecision::Pending(id) => id,
@@ -282,6 +284,7 @@ mod tests {
                 "shell_exec",
                 &serde_json::json!({"cmd": "rm -rf /"}),
                 &test_ctx(),
+                None,
             )
             .await;
         let id = match decision {
@@ -304,7 +307,7 @@ mod tests {
         let hook = ApprovalGateHook::new(config);
 
         let decision = hook
-            .pre_tool_use("shell_exec", &serde_json::json!({}), &test_ctx())
+            .pre_tool_use("shell_exec", &serde_json::json!({}), &test_ctx(), None)
             .await;
         assert!(matches!(decision, HookDecision::Pending(_)));
 
@@ -326,7 +329,7 @@ mod tests {
         let hook = ApprovalGateHook::new(config);
 
         let decision = hook
-            .pre_tool_use("file_delete", &serde_json::json!({}), &test_ctx())
+            .pre_tool_use("file_delete", &serde_json::json!({}), &test_ctx(), None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -339,9 +342,9 @@ mod tests {
         assert!(hook.pending_requests().is_empty());
 
         // Create two pending requests.
-        hook.pre_tool_use("shell_exec", &serde_json::json!({}), &test_ctx())
+        hook.pre_tool_use("shell_exec", &serde_json::json!({}), &test_ctx(), None)
             .await;
-        hook.pre_tool_use("cmd_exec", &serde_json::json!({}), &test_ctx())
+        hook.pre_tool_use("cmd_exec", &serde_json::json!({}), &test_ctx(), None)
             .await;
 
         let pending = hook.pending_requests();
@@ -358,9 +361,9 @@ mod tests {
         config.timeout_secs = 0;
         let hook = ApprovalGateHook::new(config);
 
-        hook.pre_tool_use("shell_exec", &serde_json::json!({}), &test_ctx())
+        hook.pre_tool_use("shell_exec", &serde_json::json!({}), &test_ctx(), None)
             .await;
-        hook.pre_tool_use("cmd_exec", &serde_json::json!({}), &test_ctx())
+        hook.pre_tool_use("cmd_exec", &serde_json::json!({}), &test_ctx(), None)
             .await;
 
         tokio::time::sleep(Duration::from_millis(10)).await;

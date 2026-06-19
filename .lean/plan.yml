@@ -40,11 +40,11 @@ items:
     effort: M
     depends_on: ['NAVRA-018', 'NAVRA-083']
 
-  - id: "NAVRA-134"
-    title: "Pass tool_annotations through leakage hook"
+  - id: "NAVRA-145"
+    title: "Expose knowledge pipeline as MCP tools for lean-claude consumption"
     status: planned
-    priority: medium
-    effort: S
+    priority: high
+    effort: M
 
   - id: "NAVRA-139"
     title: "Complete WebMCP CDP transport implementation"

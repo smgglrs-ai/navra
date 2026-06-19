@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 108 completed items
+# 109 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -697,6 +697,13 @@ items:
 
   - id: "NAVRA-133"
     title: "Clean up dead code annotations"
+    status: done
+    priority: medium
+    effort: S
+    progress: 100
+
+  - id: "NAVRA-134"
+    title: "Pass tool_annotations through leakage hook"
     status: done
     priority: medium
     effort: S
