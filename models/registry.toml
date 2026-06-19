@@ -46,6 +46,21 @@ task = "embedding"
 dimensions = 768
 """
 
+[[models]]
+name = "nomic-embed"
+description = "Nomic Embed v1.5 — text embeddings, 768-dim, Matryoshka (64-768)"
+repo = "nomic-ai/nomic-embed-text-v1.5"
+model_file = "onnx/model.onnx"
+license = "Apache-2.0"
+tokenizer = "tokenizer.json"
+config = """
+[models.nomic-embed]
+model_path = "{model_dir}/model.onnx"
+tokenizer_path = "{model_dir}/tokenizer.json"
+task = "embedding"
+dimensions = 768
+"""
+
 # --- PII NER models (ONNX, in-process) ---
 
 [[models]]

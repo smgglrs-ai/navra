@@ -385,3 +385,11 @@
   actor: claude
   action: tech-watch
   summary: "11 sources, 1 new item (NAVRA-147 Enterprise Auth), 1 enriched (NAVRA-145), 1 investigate, 3 watch, 5 dismissed"
+
+- timestamp: "2026-06-19T18:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-064"
+  summary: "Nomic Embed v1.5 evaluation — registry entry, Matryoshka truncation in OnnxBackend, retrieval benchmark"
+  iteration: 1
+  max_iterations: 20
