@@ -1414,7 +1414,7 @@ pub struct TeammateSpawnContext {
     /// When set, agents are spawned via OpenShell instead of Podman.
     pub openshell_gateway: Option<String>,
     /// Shared exec state for routing exec_run calls to the correct sandbox.
-    pub exec_state: Option<std::sync::Arc<navra_tools_exec::ExecModule>>,
+    pub exec_state: Option<std::sync::Arc<crate::exec_tools::ExecState>>,
     /// Workspace provider for populating agent sandbox workspaces.
     pub workspace_provider: Option<std::sync::Arc<dyn crate::workspace::WorkspaceProvider>>,
 }
@@ -2078,8 +2078,7 @@ fn spawn_openshell_agent(
 
             // Register sandbox for exec_run routing
             if let Some(ref exec) = exec_state {
-                exec.state()
-                    .register_sandbox(did.clone(), sandbox_id.clone());
+                exec.register_sandbox(did.clone(), sandbox_id.clone());
             }
 
             // Wait for sandbox to be running
@@ -2191,7 +2190,7 @@ fn spawn_openshell_agent(
                 })
                 .await;
             if let Some(ref exec) = exec_state {
-                exec.state().remove_sandbox(&did);
+                exec.remove_sandbox(&did);
             }
         })
         .await;
