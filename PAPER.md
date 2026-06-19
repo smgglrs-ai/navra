@@ -35,7 +35,7 @@ attenuated, cryptographically signed capability tokens to
 specialist agents, each scoped to the tools, paths, and
 credentials required for its task. We evaluate token overhead
 (14 μs verification, 375--773 byte tokens), delegation validation
-cost, and the security properties verified by 138 Kani proofs and
+cost, and the security properties verified by 146 Kani proofs and
 6 TLA+ specifications. We discuss limitations, notably that
 capability tokens constrain but do not prevent prompt injection
 attacks, and identify information flow control as a complementary
@@ -545,11 +545,11 @@ kernel; if it requires intelligence, it's userland.**
 
 | Concern | Layer | Crate | Why |
 |---|---|---|---|
-| Token verification | Kernel | navra-security | Must not be bypassable |
-| Tool permission check | Kernel | navra-security | Agent cannot grant itself access |
-| Credential injection | Kernel | navra-security | Agent must never see raw secrets |
-| Content safety filtering | Kernel | navra-security | Mandatory access control |
-| IFC taint tracking | Kernel | navra-security | Bell-LaPadula enforcement |
+| Token verification | Kernel | navra-auth | Must not be bypassable |
+| Tool permission check | Kernel | navra-auth | Agent cannot grant itself access |
+| Credential injection | Kernel | navra-auth | Agent must never see raw secrets |
+| Content safety filtering | Kernel | navra-safety | Mandatory access control |
+| IFC taint tracking | Kernel | navra-safety | Bell-LaPadula enforcement |
 | Rate limiting | Kernel | navra-core | Agent cannot increase its quota |
 | Audit blackbox | Kernel | navra-core | Append-only, hash-chained |
 | File operations | Userland | navra-tools-file | Module trait boundary |
@@ -573,7 +573,7 @@ planning in the same trust domain as security enforcement. The
 microkernel separation addresses three concerns:
 
 1. **Trusted computing base isolation** — The security kernel
-   (navra-security, navra-core) is a small, auditable surface.
+   (navra-auth, navra-safety, navra-core) is a small, auditable surface.
    A bug in a tool module (e.g., path handling in file tools)
    cannot bypass the kernel's security checks because the
    `Module` trait boundary prevents direct access to kernel
@@ -967,7 +967,7 @@ and approval UI.
 
 ### 7.1 Implementation
 
-- **Language:** Rust (22 workspace crates, ~126K lines of code)
+- **Language:** Rust (22 workspace crates, ~150K lines of code)
 - **Transport:** Axum (async HTTP), SSE, stdio, WebSocket,
   Unix sockets
 - **Cryptography:** `ed25519-dalek` (signing), BLAKE3 (legacy
@@ -975,10 +975,10 @@ and approval UI.
 - **Credential store:** `keyring` crate (cross-platform)
 - **Safety models:** ONNX Runtime (in-process ML inference)
 - **Discovery:** `mdns-sd` crate, custom AID implementation
-- **Formal verification:** 138 Kani proofs (property-level
+- **Formal verification:** 146 Kani proofs (property-level
   verification of security invariants), 6 TLA+ specifications
   (protocol-level model checking)
-- **Tests:** 2,400+ (unit, integration, security evaluation)
+- **Tests:** 2,800+ (unit, integration, security evaluation)
 
 ### 7.2 Crate Architecture
 
@@ -987,30 +987,25 @@ The 22 crates are layered by dependency:
 | Layer | Crates | Role |
 |---|---|---|
 | Protocol | navra-protocol, navra-responses | MCP/A2A/JSON-RPC types, transports |
-| Security | navra-security | Auth, ACLs, IFC, safety, hooks |
+| Security | navra-auth, navra-safety, navra-safety-hooks, navra-security (facade) | Auth, ACLs, IFC, safety, hooks |
 | Kernel | navra-core | Server, module trait, session, metrics |
 | Models | navra-model, navra-model-hub, navra-model-runtime | Backends, registry, serving |
 | Cognitive | navra-cognitive | 43 personas, prompt weaving |
 | Agent | navra-agent | ReAct loop, typed actions, replay |
 | Orchestration | navra-flow | DAG, handoff, mesh, back-edges |
 | Memory | navra-memory | Working memory, FTS5, decay |
-| Tools | navra-tools-{file,git,exec,github,gitlab} | Module implementations |
+| Tools | navra-mcp, navra-openapi | Upstream MCP bridge, OpenAPI tool gen |
 | Modalities | navra-modal-{voice,vision} | Speech, image understanding |
 | RAG | navra-rag | Hybrid search, chunking, reranking |
 | Binary | navra-server | CLI, config, module wiring |
 
-Tool crates (file, git, github, gitlab) include standalone
-binary targets that serve the module over MCP stdio transport.
-Operators can run them as independent processes:
-
-```bash
-navra-git        # standalone git MCP server
-navra-github     # standalone GitHub MCP server
-```
-
-The gateway connects to standalone modules via `[[upstream]]`
-configuration, applying the full security pipeline on the
-proxy layer.
+External tool servers (any MCP-compliant server) connect via
+`[[upstream]]` configuration. The gateway proxies their tools
+through the full security pipeline, applying ACLs, content
+filtering, and audit logging transparently. The `navra-mcp`
+crate handles upstream lifecycle (spawn, reconnect, health
+checks) and the `navra-openapi` crate generates MCP tool
+definitions from OpenAPI specifications.
 
 ### 7.3 Module Architecture
 
@@ -1249,7 +1244,7 @@ hashing provides.
 ### 9.1 Limitations
 
 - **Property-level, not design-level verification** — The
-  implementation includes 138 Kani proofs verifying specific
+  implementation includes 146 Kani proofs verifying specific
   properties (IFC lattice monotonicity, capability attenuation,
   token roundtrip correctness) and 6 TLA+ specifications for
   protocol-level model checking. However, unlike seL4 [15], there
@@ -1369,7 +1364,7 @@ adaptive attacks is needed for our specific implementation.
   (Ed25519 + ML-DSA-65) and the v2 token format with embedded
   composite signatures.
 
-- **End-to-end formal verification** — The current 138 Kani proofs
+- **End-to-end formal verification** — The current 146 Kani proofs
   verify individual properties. A Coq/Lean proof of the full
   capability model's security guarantees would close the gap with
   seL4-class verification.
@@ -1406,7 +1401,7 @@ driver isolation.
 Our capability token model targets five security properties:
 no privilege escalation, credential isolation, attenuation-only
 delegation, audit trail, and tamper evidence. These properties
-are verified by 28 security evaluation tests, 138 Kani proofs,
+are verified by 28 security evaluation tests, 146 Kani proofs,
 and 6 TLA+ specifications — property-level verification, though
 not an end-to-end design proof. The system is algorithm-agile,
 with a migration path to post-quantum cryptography.
@@ -1419,7 +1414,7 @@ complementary directions. Key management [28] and administrative
 scalability [10] are practical challenges that grow with agent
 populations.
 
-The implementation — 22 Rust crates, ~126K lines of code, 2,400+
+The implementation — 22 Rust crates, ~150K lines of code, 2,800+
 tests — runs on commodity Linux desktops and demonstrates that
 classical OS security principles — capabilities, rings, mandatory
 access control, credential mediation — can be applied to AI agent
