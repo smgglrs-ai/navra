@@ -4,20 +4,16 @@
 
 **Target venue**: USENIX Security / IEEE S&P workshop track (ArtSec 2026 realistic)
 
-### Review notes (2026-05-07, updated after formal verification)
+### Review notes (2026-05-07, updated 2026-06-19)
 
-- **DONE — Microkernel framing**: Keep "security microkernel." Cite
-  AIOS as prior art, differentiate on enforcement boundaries (MCP
-  protocol boundary = isolation, IFC on IPC channels, 138 Kani proofs).
-  navra has process table, IPC (mailbox + blackboard), memory
-  management, scheduler, MAC — a real microkernel, not just analogy.
-  Anderson's reference monitor conditions satisfied as a subset.
+- **DECIDED — Standalone, priority 2 for submission** (see
+  `restructuring-decisions.md`). Flagship workshop paper.
+- **DONE — Microkernel framing**: Security microkernel with 146 Kani
+  proofs, process table, IPC, memory management, scheduler, MAC.
 - **DONE — Narrow to 3 contributions**: (1) gateway-enforced IFC, (2)
   capability delegation with attenuation, (3) hash-chained audit.
-- **DONE — FIDES differentiation**: Expanded in §10, gateway-enforced
-  vs planner-enforced. Formal verification comparison included.
-- **DONE — MCP gateway landscape**: §10 acknowledges 10+ gateways,
-  positions on IFC + capability tokens.
+- **DONE — FIDES differentiation**: §10, gateway vs planner enforcement.
+- **DONE — MCP gateway landscape**: §10 acknowledges 10+ gateways.
 - **DONE — Compliance reframing**: "compliance infrastructure" in
   §7.4, EU AI Act Art 12+14 language corrected.
 - **DONE — Formal verification**: 138 Kani proofs + 6 TLA+ specs

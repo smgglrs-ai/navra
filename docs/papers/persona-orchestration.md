@@ -1,21 +1,18 @@
 # Persona-Driven Multi-Agent Orchestration: A General-Purpose Cognitive Framework for AI Agent Teams
 
-### Review notes (2026-05-07)
+### Review notes (2026-05-07, updated 2026-06-19)
 
-- **Consider folding into Paper 1** as the persona-driven security
-  policy mechanism. Standalone space is crowded (PersonaVLM CVPR 2026
-  Highlight, MTL, SemaClaw, MorphAgent all overlap).
-- **If standalone**: Must evaluate on 3-5 external OSS projects, not
-  own codebase. Need ablation: does persona selection actually matter
-  vs naive prompts on identical models?
-- **Missing related work**: MorphAgent (arXiv:2410.15048, self-evolving
-  profiles), c-CRAB (arXiv:2603.23448, code review benchmark), FadeMem
-  (arXiv:2601.18642, differential memory decay), Mem0 (graph+vector+KV
-  hybrid memory), FIDES (arXiv:2505.23643, IFC enforcement layer).
-- **Memory decay**: Flat rate is behind state of the art. FadeMem and
-  YourMemory use importance-modulated rates.
-- **HyDE channel**: Listed as feature but is a stub returning empty.
-  Fix or remove from claims.
+- **DECIDED — Standalone** (see `restructuring-decisions.md`).
+  Genotype/phenotype separation and model-card-driven selection are
+  distinct from the security paper's enforcement focus.
+- **TODO — External evaluation**: 3-5 external OSS projects, 2+
+  languages. Ablation: persona selection vs naive prompts.
+- **DONE — Missing related work**: MorphAgent, c-CRAB, FadeMem,
+  Mem0, FIDES all cited in Section 2 and References [18]-[22].
+- **TODO — Memory decay**: Upgrade to importance-modulated or
+  explicitly position flat decay as simplicity tradeoff.
+- **TODO — HyDE channel**: Fix or remove from claims.
+- **Venue**: AAAI 2027 or AAMAS 2027 workshop.
 
 ## Abstract (~200 words)
 
