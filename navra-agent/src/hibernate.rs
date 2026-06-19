@@ -16,20 +16,35 @@ use std::path::{Path, PathBuf};
 /// Serializable snapshot of agent conversation state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationSnapshot {
+    /// Unique identifier for the agent being hibernated.
     pub agent_id: String,
+    /// Identifier for the current run within the agent's lifecycle.
     pub run_id: String,
+    /// System prompt used to initialize the agent, if any.
     pub system_prompt: Option<String>,
+    /// Full conversation history as model input items.
     pub conversation: Vec<InputItem>,
+    /// Number of tool-loop iterations completed before hibernation.
     pub iteration_count: usize,
+    /// Cumulative input tokens consumed across all iterations.
     pub input_tokens: u32,
+    /// Cumulative output tokens generated across all iterations.
     pub output_tokens: u32,
+    /// IFC taint label accumulated during the conversation.
     pub taint: DataLabel,
+    /// Name of the model used for inference.
     pub model_name: String,
+    /// MCP server endpoint the agent was connected to.
     pub mcp_endpoint: String,
+    /// Unix timestamp (seconds) when the snapshot was captured.
     pub created_at: i64,
+    /// Maximum tool-loop iterations allowed for the agent.
     pub max_iterations: usize,
+    /// Sampling temperature override, if configured.
     pub temperature: Option<f32>,
+    /// Maximum output tokens per inference call, if configured.
     pub max_tokens: Option<u32>,
+    /// Restrict the agent to this tool subset, if set.
     pub allowed_tools: Option<Vec<String>>,
 }
 
@@ -144,7 +159,9 @@ impl Drop for KvCacheCheckpoint {
 
 /// Complete hibernation state: conversation + optional KV cache.
 pub struct HibernationState {
+    /// Serialized conversation and agent configuration.
     pub conversation: ConversationSnapshot,
+    /// Optional KV cache checkpoint for faster model warm-up on restore.
     pub kv_cache: Option<KvCacheCheckpoint>,
 }
 

@@ -1,85 +1,22 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 41 active items
+# 29 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
-  - id: "NAVRA-018"
-    title: "MCP 2026-07-28 default flip"
-    status: in_progress
-    priority: critical
-    effort: M
-    gate: "2026-07-28 flip default; implement now behind feature gate"
-
-  - id: "NAVRA-140"
-    title: "MCP 2026-07-28: implement SEP-2567 stateless sessions"
-    status: planned
-    priority: critical
-    effort: M
-    depends_on: ['NAVRA-018']
-
-  - id: "NAVRA-128"
-    title: "Remove unwrap() chains in navra-server API handlers"
-    status: planned
-    priority: high
-    effort: M
-
   - id: "NAVRA-129"
     title: "Replace defensive panic in quota.rs with error return"
     status: planned
     priority: high
     effort: S
+    progress: 100
 
-  - id: "NAVRA-130"
-    title: "Log silent event send failures in SSE and WebSocket transports"
-    status: planned
-    priority: high
-    effort: S
-
-  - id: "NAVRA-141"
-    title: "MCP 2026-07-28: implement SEP-2577 deprecation of Roots/Sampling/Logging"
+  - id: "NAVRA-145"
+    title: "Expose knowledge pipeline as MCP tools for lean-claude consumption"
     status: planned
     priority: high
     effort: M
-    depends_on: ['NAVRA-018']
-
-  - id: "NAVRA-142"
-    title: "MCP 2026-07-28: OAuth iss validation and credential binding"
-    status: planned
-    priority: high
-    effort: M
-    depends_on: ['NAVRA-018', 'NAVRA-083']
-
-  - id: "NAVRA-131"
-    title: "Fix clippy warnings across workspace"
-    status: planned
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-132"
-    title: "Bump MSRV from 1.75 to 1.80"
-    status: planned
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-133"
-    title: "Clean up dead code annotations"
-    status: planned
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-134"
-    title: "Pass tool_annotations through leakage hook"
-    status: planned
-    priority: medium
-    effort: S
-
-  - id: "NAVRA-135"
-    title: "Consolidate rusqlite to workspace dependency"
-    status: planned
-    priority: medium
-    effort: S
 
   - id: "NAVRA-139"
     title: "Complete WebMCP CDP transport implementation"
@@ -125,23 +62,11 @@ items:
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
 
-  - id: "NAVRA-136"
-    title: "Add doc comments to navra-agent and navra-cognitive public APIs"
-    status: planned
-    priority: low
-    effort: S
-
   - id: "NAVRA-137"
     title: "Add tests to navra-tools-exec and navra-tools-gitlab"
     status: planned
     priority: low
     effort: M
-
-  - id: "NAVRA-138"
-    title: "Refresh TESTING.md test count table"
-    status: planned
-    priority: low
-    effort: S
 
   - id: "NAVRA-051"
     title: "Paper significant fixes"

@@ -5,12 +5,12 @@ repository: git@github.com:smgglrs-ai/navra.git
 type: monorepo
 license: Apache-2.0
 item_prefix: NAVRA
-next_item_id: 143
+next_item_id: 145
 
 stack:
   language: rust
   edition: "2021"
-  msrv: "1.75"
+  msrv: "1.91"
   build_system: cargo
   workspace_members: 22
   test_framework: cargo-test

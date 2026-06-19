@@ -209,6 +209,14 @@ impl McpServer {
             ));
         }
 
+        if params.capabilities.roots.is_some() {
+            tracing::warn!(
+                client = %params.client_info.name,
+                "Client negotiated deprecated 'roots' capability (SEP-2577). \
+                 Roots will be removed in a future version — use tool parameters instead."
+            );
+        }
+
         let session_id = uuid::Uuid::new_v4().to_string();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -655,7 +663,7 @@ impl McpServer {
         let arguments = if self.hooks.has_hooks() {
             match self
                 .hooks
-                .run_pre(&params.name, resolved.arguments, &ctx)
+                .run_pre(&params.name, resolved.arguments, &ctx, tool_annotations)
                 .await
             {
                 crate::hooks::PreHookOutcome::Proceed(args) => args,
@@ -1237,8 +1245,7 @@ impl McpServer {
                 .filter(|uri| {
                     params.argument.value.is_empty() || uri.starts_with(&params.argument.value)
                 })
-                .cloned()
-                .take(100)
+                .take(100).cloned()
                 .collect(),
             _ => Vec::new(),
         };
@@ -1326,6 +1333,23 @@ impl McpServer {
         logger: Option<&str>,
         data: serde_json::Value,
     ) {
+        // SEP-2577: dual-write to OTel for clients migrating from MCP logging
+        match level {
+            crate::protocol::LoggingLevel::Error | crate::protocol::LoggingLevel::Critical
+            | crate::protocol::LoggingLevel::Alert | crate::protocol::LoggingLevel::Emergency => {
+                tracing::error!(mcp_logger = ?logger, mcp_log = %data, "mcp.logging");
+            }
+            crate::protocol::LoggingLevel::Warning => {
+                tracing::warn!(mcp_logger = ?logger, mcp_log = %data, "mcp.logging");
+            }
+            crate::protocol::LoggingLevel::Info | crate::protocol::LoggingLevel::Notice => {
+                tracing::info!(mcp_logger = ?logger, mcp_log = %data, "mcp.logging");
+            }
+            crate::protocol::LoggingLevel::Debug => {
+                tracing::debug!(mcp_logger = ?logger, mcp_log = %data, "mcp.logging");
+            }
+        }
+
         let levels = self.session_log_levels.read().unwrap_or_else(|e| {
             tracing::warn!("session_log_levels RwLock poisoned, recovering");
             e.into_inner()

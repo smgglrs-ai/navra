@@ -102,9 +102,7 @@ fn guess_mime(path: &str) -> String {
 
 fn path_to_const(path: &str) -> String {
     let name = path
-        .replace('/', "_")
-        .replace('.', "_")
-        .replace('-', "_")
+        .replace(['/', '.', '-'], "_")
         .to_uppercase();
     format!("ASSET_{name}")
 }

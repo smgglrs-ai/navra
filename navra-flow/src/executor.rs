@@ -71,8 +71,7 @@ pub struct DagResult {
 pub struct DagExecutor {
     agents: HashMap<String, Agent>,
     signal_handles: HashMap<String, SignalHandle>,
-    #[allow(dead_code)]
-    max_concurrent: usize,
+    _max_concurrent: usize,
     blackboard: Option<Blackboard>,
     insight_callback: Option<InsightCallback>,
     insight_retriever: Option<InsightRetriever>,
@@ -100,7 +99,7 @@ impl DagExecutor {
         Self {
             agents: HashMap::new(),
             signal_handles: HashMap::new(),
-            max_concurrent: 4,
+            _max_concurrent: 4,
             blackboard: None,
             max_hops: 0,
             insight_callback: None,
@@ -144,7 +143,7 @@ impl DagExecutor {
 
     /// Set the maximum number of concurrent tasks (default: 4).
     pub fn max_concurrent(mut self, n: usize) -> Self {
-        self.max_concurrent = n;
+        self._max_concurrent = n;
         self
     }
 

@@ -12,7 +12,7 @@ use std::time::Duration;
 use tokio::process::{Child, Command};
 
 /// Spawn a navra server with a given config, wait for it to be ready.
-async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
+async fn spawn_navra(config_toml: &str) -> (Child, u16, String, tempfile::TempDir) {
     // Pick a free port
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -32,8 +32,10 @@ async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
         .unwrap()
         .join("navra");
 
+    let data_dir = tempfile::tempdir().expect("failed to create temp data dir");
+
     let mut child = Command::new(&navra_bin)
-        .args(["serve", "--config", &config_path, "--no-tray"])
+        .args(["serve", "--config", &config_path, "--no-tray", "--dev-mode"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .env(
@@ -41,6 +43,7 @@ async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
             std::env::var("ORT_LIB_PATH").unwrap_or_default(),
         )
         .env("ORT_PREFER_DYNAMIC_LINK", "1")
+        .env("XDG_DATA_HOME", data_dir.path())
         .spawn()
         .expect("failed to spawn navra");
 
@@ -67,7 +70,7 @@ async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
         }
     }
 
-    (child, port, url)
+    (child, port, url, data_dir)
 }
 
 const BASIC_CONFIG: &str = r#"
@@ -78,6 +81,9 @@ tcp = "127.0.0.1:{port}"
 
 [modules.file]
 enabled = false
+
+[permissions.readonly]
+operations = ["read", "write", "list", "search", "store", "scan"]
 "#;
 
 const DOCS_CONFIG: &str = r#"
@@ -88,6 +94,9 @@ tcp = "127.0.0.1:{port}"
 
 [modules.file]
 enabled = true
+
+[permissions.readonly]
+operations = ["read", "write", "list", "search", "store", "scan"]
 "#;
 
 /// Initialize an MCP session, return the session ID.
@@ -141,14 +150,22 @@ async fn call_tool(
         .await
         .unwrap();
 
-    resp.json().await.unwrap()
+    let status = resp.status();
+    let body = resp.text().await.unwrap();
+    assert!(
+        !body.is_empty(),
+        "tool call '{tool_name}' returned empty body (HTTP {status})"
+    );
+    serde_json::from_str(&body).unwrap_or_else(|e| {
+        panic!("tool call '{tool_name}' returned invalid JSON (HTTP {status}): {e}\nbody: {body}")
+    })
 }
 
 // --- MCP Protocol Tests ---
 
 #[tokio::test]
 async fn mcp_initialize_returns_capabilities() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
 
     let client = reqwest::Client::new();
     let resp = client
@@ -177,7 +194,7 @@ async fn mcp_initialize_returns_capabilities() {
 
 #[tokio::test]
 async fn mcp_tools_list_requires_session() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
 
     let client = reqwest::Client::new();
     let resp = client
@@ -203,7 +220,7 @@ async fn mcp_tools_list_requires_session() {
 
 #[tokio::test]
 async fn mcp_full_session_list_tools() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
 
     // Initialize — get session ID from response header
@@ -257,7 +274,7 @@ async fn mcp_full_session_list_tools() {
 
 #[tokio::test]
 async fn v1_chat_completions_returns_openai_format() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
 
     let resp = client
@@ -285,7 +302,7 @@ async fn v1_chat_completions_returns_openai_format() {
 
 #[tokio::test]
 async fn api_status_returns_server_info() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
 
     let resp = client
@@ -304,7 +321,7 @@ async fn api_status_returns_server_info() {
 
 #[tokio::test]
 async fn static_index_html_served() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
 
     let resp = client.get(&url).send().await.unwrap();
@@ -320,7 +337,7 @@ async fn static_index_html_served() {
 
 #[tokio::test]
 async fn tool_call_recorded_in_blackbox() {
-    let (mut child, _port, url) = spawn_navra(DOCS_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(DOCS_CONFIG).await;
     let client = reqwest::Client::new();
 
     // Initialize
@@ -397,7 +414,7 @@ async fn tool_call_recorded_in_blackbox() {
 
 #[tokio::test]
 async fn memory_store_and_query_roundtrip() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
     let session_id = init_session(&client, &url).await;
 
@@ -442,8 +459,9 @@ async fn memory_store_and_query_roundtrip() {
 
     let result_text = json["result"]["content"][0]["text"]
         .as_str()
-        .expect("expected text result from memory_query");
-    let results: Vec<serde_json::Value> = serde_json::from_str(result_text).unwrap();
+        .unwrap_or_else(|| panic!("expected text from memory_query, got: {json}"));
+    let results: Vec<serde_json::Value> = serde_json::from_str(result_text)
+        .unwrap_or_else(|e| panic!("memory_query returned non-JSON text: {e}\ntext: {result_text}\nfull: {json}"));
     assert!(!results.is_empty(), "query should return the stored entry");
     assert!(results.iter().any(|r| r["id"] == entry_id));
 
@@ -465,7 +483,7 @@ async fn memory_store_and_query_roundtrip() {
 
 #[tokio::test]
 async fn memory_store_query_forget_lifecycle() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
     let session_id = init_session(&client, &url).await;
 
@@ -536,7 +554,7 @@ async fn memory_store_query_forget_lifecycle() {
 
 #[tokio::test]
 async fn memory_query_with_kind_filter() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
     let session_id = init_session(&client, &url).await;
 
@@ -595,7 +613,7 @@ async fn memory_query_with_kind_filter() {
 
 #[tokio::test]
 async fn memory_forget_nonexistent_returns_error() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
     let session_id = init_session(&client, &url).await;
 
@@ -624,7 +642,7 @@ async fn memory_forget_nonexistent_returns_error() {
 
 #[tokio::test]
 async fn memory_tools_visible_in_tools_list() {
-    let (mut child, _port, url) = spawn_navra(BASIC_CONFIG).await;
+    let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
     let client = reqwest::Client::new();
     let session_id = init_session(&client, &url).await;
 

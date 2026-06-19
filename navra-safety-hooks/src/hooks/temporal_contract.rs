@@ -301,6 +301,7 @@ impl Hook for TemporalContractHook {
         tool_name: &str,
         _arguments: &serde_json::Value,
         ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         let history = self.log.get(&ctx.session_id);
         let current_label = ctx.taint.level();
@@ -628,7 +629,7 @@ mod tests {
         let ctx = test_ctx();
 
         let decision = hook
-            .pre_tool_use("file_write", &serde_json::json!({}), &ctx)
+            .pre_tool_use("file_write", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Block(_)));
     }
@@ -660,7 +661,7 @@ mod tests {
         );
 
         let decision = hook
-            .pre_tool_use("file_write", &serde_json::json!({}), &ctx)
+            .pre_tool_use("file_write", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }
@@ -709,7 +710,7 @@ mod tests {
         let ctx = _test_ctx_with_perms("admin");
 
         let decision = hook
-            .pre_tool_use("file_write", &serde_json::json!({}), &ctx)
+            .pre_tool_use("file_write", &serde_json::json!({}), &ctx, None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
     }

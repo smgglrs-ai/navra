@@ -188,3 +188,138 @@
   actor: claude
   action: learn
   summary: "Extracted 25, compressed 8, decayed 9, rebalanced 11. CLAUDE.md 233→149 lines. 52 sessions processed."
+- timestamp: "2026-06-18T22:10:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-128"
+  summary: "Replaced 6 unwrap() calls in navra-server/src/main.rs production code with proper error handling: anyhow::Context for schema/worktree, anyhow::bail for audit log fallback, expect() for invariant (chunk store init order, UNIX epoch), if-let for persona lookup."
+  iteration: 1
+  max_iterations: 20
+- timestamp: "2026-06-18T22:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-129"
+  summary: "No-op: panic!() is inside #[kani::proof] verification harness, not production code. RwLock unwraps are idiomatic."
+  iteration: 2
+  max_iterations: 20
+- timestamp: "2026-06-18T22:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-130"
+  summary: "WebSocket transport: replaced 3 silent let _ = send() patterns with is_err() checks + debug logging + break on disconnect. SSE broadcaster left unchanged (Err on no receivers is expected lifecycle)."
+  iteration: 3
+  max_iterations: 20
+- timestamp: "2026-06-18T23:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-131"
+  summary: "Applied cargo clippy --fix across 20 files in 12 crates: redundant closures, collapsed if/else, simplified filter_maps, lifetime elisions, suffix stripping, iterator patterns. Remaining warnings are MSRV (NAVRA-132), dead code (NAVRA-133), complex types (API design), and too-many-arguments (would require refactoring)."
+  iteration: 4
+  max_iterations: 20
+- timestamp: "2026-06-18T23:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-132"
+  summary: "Bumped MSRV from 1.75 to 1.91 (matching installed stable toolchain). Updated workspace Cargo.toml + 3 per-crate Cargo.toml + project.yml. Zero MSRV clippy warnings."
+  iteration: 5
+  max_iterations: 20
+- timestamp: "2026-06-18T23:20:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-135"
+  summary: "Moved rusqlite 0.32 with bundled feature to [workspace.dependencies] in root Cargo.toml. All 7 crates now use { workspace = true }."
+  iteration: 6
+  max_iterations: 20
+- timestamp: "2026-06-18T23:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-138"
+  summary: "Refreshed TESTING.md: 2110+ → 2750+ tests, updated per-crate table (22 crates), noted crate additions/removals (navra-auth, navra-safety-hooks, navra-openapi added; navra-tools-file, navra-tools-git removed). Updated MSRV reference to 1.91."
+  iteration: 7
+  max_iterations: 20
+- timestamp: "2026-06-18T23:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-133"
+  summary: "Resolved 8 #[allow(dead_code)] annotations: removed 2 unused convenience wrappers (discover.rs), prefixed 2 planned-but-unread fields with _ (executor.rs, ui_agent.rs), re-annotated 3 with justification comments (serde deserialization, Debug formatting, HashMap lookups). Removed ui.rs module-level suppression."
+  iteration: 8
+  max_iterations: 20
+- timestamp: "2026-06-19T00:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-134"
+  summary: "Added annotations parameter to Hook::pre_tool_use trait (5th param), threaded through HookPipeline::run_pre and server handlers. Leakage hook now receives actual tool annotations instead of None. Updated 18 impl sites and 67 test call sites. Fixed discover.rs tests broken by NAVRA-133 function removal."
+  iteration: 9
+  max_iterations: 20
+- timestamp: "2026-06-19T08:35:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-136"
+  summary: "Doc-writer agent added 44 doc comments across 5 files (navra-agent hibernate/replay/quota, navra-cognitive fast_path/bridge). Zero missing-doc warnings."
+  iteration: 10
+  max_iterations: 20
+- timestamp: "2026-06-19T08:40:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-143"
+  summary: "Removed navra-tools-gitlab crate from workspace. Removed [modules.gitlab] config, GitlabModuleConfig, and gitlab_enabled(). GitLab is now a standard upstream MCP server configured via [[upstream]] with 'glab mcp serve'."
+  iteration: 11
+  max_iterations: 20
+- timestamp: "2026-06-19T08:50:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-144"
+  summary: "Blocked: exec module is deeply integrated with flow_tools and team_tools for sandbox lifecycle (not just a tool wrapper). Needs design work to separate sandbox orchestration from tool surface."
+  iteration: 12
+  max_iterations: 20
+- timestamp: "2026-06-19T09:00:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 11 items completed (10 done + 1 blocked). Exit: no unblocked items remaining in autonomous scope."
+  details:
+    iterations: 12
+    max_iterations: 20
+    completed: [NAVRA-128, NAVRA-129, NAVRA-130, NAVRA-131, NAVRA-132, NAVRA-133, NAVRA-134, NAVRA-135, NAVRA-136, NAVRA-138, NAVRA-143]
+    blocked: [NAVRA-144]
+    exit_reason: "No unblocked items remaining in autonomous scope"
+    branch: "loop/2026-06-18-2"
+    tag: "loop-run/2026-06-18-2-12"
+- timestamp: "2026-06-19T10:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-140"
+  summary: "Already implemented: dispatch_stateless() handles all 2026-07-28 requests, server doesn't send Mcp-Session-Id, agent identity as implicit state handle, 12/12 e2e tests pass."
+  iteration: 13
+  max_iterations: 20
+- timestamp: "2026-06-19T10:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-141"
+  summary: "Added roots capability deprecation warning in handle_initialize (SEP-2577). Added OTel dual-write in send_log_message so MCP logging notifications also emit tracing events. File tools criterion N/A (navra-tools-file removed). Migration guide deferred to docs item."
+  iteration: 14
+  max_iterations: 20
+- timestamp: "2026-06-19T10:40:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-142"
+  summary: "Already implemented: iss validation (line 436), credential binding via iss check, application_type in DCR (line 243). Tests exist at line 860."
+  iteration: 15
+  max_iterations: 20
+- timestamp: "2026-06-19T10:55:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-144"
+  summary: "Extracted ExecState into navra-server/src/exec_tools.rs. Inlined exec_run tool with path validation and Kani proofs. Removed navra-tools-exec from workspace. Updated flow_tools.rs and team_tools.rs references. 227 tests pass (8 migrated exec tests)."
+  iteration: 16
+  max_iterations: 20
+- timestamp: "2026-06-19T11:00:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 15 items completed (13 done + 2 already-done). Exit: remaining items are feature work beyond loop scope."
+  details:
+    iterations: 16
+    max_iterations: 20
+    completed: [NAVRA-128, NAVRA-129, NAVRA-130, NAVRA-131, NAVRA-132, NAVRA-133, NAVRA-134, NAVRA-135, NAVRA-136, NAVRA-138, NAVRA-143, NAVRA-018, NAVRA-140, NAVRA-141, NAVRA-142, NAVRA-144]
+    exit_reason: "Remaining items (NAVRA-145, NAVRA-139) are feature work"
+    branch: "loop/2026-06-18-2"
+    tag: "loop-run/2026-06-18-2-16"

@@ -1,13 +1,13 @@
 # Testing
 
-navra has 2110+ tests across 22 crates: unit tests, integration
+navra has 2750+ tests across 22 crates: unit tests, integration
 tests, and end-to-end tests that spawn a real server process.
 
 ## Prerequisites
 
 ### Required
 
-- **Rust stable** (1.75+)
+- **Rust stable** (1.91+)
 - **ONNX Runtime** — system-wide shared library
 
   ```bash
@@ -38,7 +38,7 @@ tests, and end-to-end tests that spawn a real server process.
 
   Without Ollama running, 11 of 12 e2e tests pass. Only the chat
   completion proxy test requires it. All unit and integration tests
-  (2000+) pass without Ollama.
+  (2700+) pass without Ollama.
 
 ## Running tests
 
@@ -83,29 +83,36 @@ Run `cargo test --workspace --no-fail-fast` for exact numbers.
 
 | Crate | Unit | Integration | E2e | Total |
 |---|---|---|---|---|
-| navra-security | 525 | 39 | — | 564 |
-| navra-server | 195 | 6 | 12 | 213 |
-| navra-core | 193 | 45 | — | 238 |
-| navra-flow | 194 | 12 | — | 206 |
-| navra-memory | 122 | — | — | 122 |
-| navra-agent | 96 | — | — | 96 |
-| navra-cognitive | 92 | 5 | — | 97 |
-| navra-protocol | 128 | — | — | 128 |
-| navra-model | 55 | 10 | — | 65 |
-| navra-rag | 49 | 13 | — | 62 |
-| navra-tools-file | 54 | 11 | — | 65 |
-| navra-tools-git | 25 | 27 | — | 52 |
+| navra-auth | 405 | 3 | — | 408 |
+| navra-core | 256 | 49 | — | 305 |
+| navra-safety-hooks | 241 | 15 | — | 256 |
+| navra-flow | 223 | 31 | — | 254 |
+| navra-server | 219 | — | 12 | 231 |
+| navra-safety | 195 | — | — | 195 |
+| navra-protocol | 154 | — | — | 154 |
+| navra-memory | 151 | — | — | 151 |
+| navra-rag | 118 | 13 | — | 131 |
+| navra-agent | 117 | 11 | — | 128 |
+| navra-cognitive | 122 | 5 | — | 127 |
+| navra-model | 74 | 27 | — | 101 |
+| navra-model-runtime | 70 | — | — | 70 |
+| navra-security | 17 | 39 | — | 56 |
+| navra-openapi | 43 | 6 | — | 49 |
 | navra-modal-vision | 40 | — | — | 40 |
-| navra-model-hub | 30 | — | — | 30 |
+| navra-model-hub | 33 | — | — | 33 |
 | navra-responses | 26 | — | — | 26 |
-| navra-model-runtime | 19 | — | — | 19 |
 | navra-macros | — | 19 | — | 19 |
-| navra-modal-voice | 9 | 12 | — | 21 |
-| navra-tools-exec | 6 | — | — | 6 |
-| navra-tools-gitlab | 5 | — | — | 5 |
-| **Total** | **1884** | **199** | **12** | **2095+** |
+| navra-tools-gitlab | 10 | — | — | 10 |
+| navra-modal-voice | 9 | — | — | 9 |
+| navra-tools-exec | 8 | — | — | 8 |
+| **Total** | **2591** | **218** | **12** | **2821** |
 
-Totals exclude doc-tests (~15). Full `cargo test --workspace` runs 2110+.
+Totals exclude doc-tests (~15). Full `cargo test --workspace` runs 2750+.
+
+Crates removed since previous count: navra-tools-file (replaced by
+upstream Filesystem MCP), navra-tools-git (replaced by upstream git
+MCP server). New crates: navra-auth (split from navra-security),
+navra-safety-hooks, navra-openapi.
 
 ## Known caveats
 

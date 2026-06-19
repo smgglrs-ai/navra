@@ -1,6 +1,6 @@
 id: NAVRA-136
 title: Add doc comments to navra-agent and navra-cognitive public APIs
-status: planned
+status: done
 priority: low
 effort: S
 depends_on: []
@@ -33,3 +33,4 @@ scope:
   - navra-safety/src/lib.rs
 verification:
   quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo doc --workspace --no-deps 2>&1 | grep 'missing documentation' | wc -l"
+progress: 100

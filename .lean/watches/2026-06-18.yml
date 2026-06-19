@@ -1,0 +1,24 @@
+date: "2026-06-18"
+mode: reactive
+sources:
+  - url: "https://www.geeky-gadgets.com/claude-second-brain-levels/"
+    title: "Claude Second Brain Levels — 5-level maturity model for AI knowledge persistence"
+    impact: MEDIUM
+    relationship: validates
+
+findings:
+  - source: "https://www.geeky-gadgets.com/claude-second-brain-levels/"
+    title: "5-level knowledge architecture validates navra's memory stack"
+    action: plan
+    item_id: "NAVRA-145"
+    detail: "Expose navra's knowledge pipeline (FTS5+vector, entity graph, distillation, decay) as MCP tools for lean-claude consumption"
+
+  - source: "https://www.geeky-gadgets.com/claude-second-brain-levels/"
+    title: "navra implements all 5 levels already"
+    action: dismiss
+    detail: "L1=working.rs, L2=knowledge.rs+FTS5, L3=sqlite-vec+RRF, L4=entity_graph.rs, L5=pipeline.rs+decay.rs. No gap — article validates existing architecture."
+
+summary: |
+  1 source analyzed, 1 new plan item (NAVRA-145), 1 dismissed (validation only).
+  Article's 5-level maturity model maps exactly to navra's navra-memory + navra-rag crate stack.
+  Key insight: lean-claude can dogfood navra's knowledge tools via MCP.

@@ -156,7 +156,7 @@ pub struct OAuthConfig {
 
 /// Registered OAuth client (in-memory).
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // fields read via HashMap lookups in validate_client/authenticate
 struct RegisteredClient {
     client_id: String,
     client_secret: String,

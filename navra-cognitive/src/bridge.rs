@@ -9,10 +9,15 @@ use std::path::Path;
 /// A portable persona representation for cross-framework exchange.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PortablePersona {
+    /// Machine-readable persona name (typically the directory name).
     pub name: String,
+    /// One-line human-readable summary of the persona's purpose.
     pub description: String,
+    /// Full system prompt text imported from the source framework.
     pub system_prompt: String,
+    /// Tool/skill names declared by the persona.
     pub tools: Vec<String>,
+    /// Origin format identifier (e.g. `"anthropic-agent"`).
     pub source_format: String,
 }
 

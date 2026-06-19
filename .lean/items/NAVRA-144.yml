@@ -1,0 +1,53 @@
+id: NAVRA-144
+title: Replace navra-tools-exec with upstream OpenShell MCP server
+status: done
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: |
+  Split navra-tools-exec into tool-surface (exec_run handler + path
+  validation + Kani proofs → navra-server inline or navra-model-runtime)
+  and infrastructure (DID↔sandbox_id registry → ExecState in
+  navra-server/src/team_tools.rs). Delete the crate after extraction.
+  OpenShell has no MCP interface, so this is a refactor, not an upstream
+  migration.
+
+  The exec_run tool wraps a single gRPC call
+  (ComputeDriverClient::exec_command) and includes path traversal
+  validation with Kani proofs. The ExecModule struct also maintains a
+  HashMap<String, String> mapping agent DIDs to sandbox IDs, used by
+  team_tools::spawn_openshell_agent() for sandbox lifecycle.
+
+  Refactoring steps:
+  1. Extract ExecState (DID→sandbox_id HashMap + register/remove
+     methods) into navra-server/src/team_tools.rs
+  2. Move exec_run tool handler + path validation + Kani proofs into
+     navra-server (inline tool) or navra-model-runtime
+  3. Update main.rs wiring: create ExecState directly, register
+     exec_run as a standalone tool without ExecModule wrapper
+  4. Update flow_tools.rs and team_tools.rs type annotations
+     (Option<Arc<ExecModule>> → Option<Arc<ExecState>>)
+  5. Delete navra-tools-exec crate
+acceptance:
+  - "exec_run tool still available and routes commands to correct sandbox"
+  - "Sandbox lifecycle (create/register/destroy) unchanged in team_tools"
+  - "navra-tools-exec crate removed from workspace"
+  - "ExecState reduced to HashMap<String,String> — no gRPC client"
+  - "Path traversal Kani proofs preserved"
+  - "All e2e and unit tests pass"
+scope:
+  - navra-tools-exec/
+  - navra-server/src/main.rs
+  - navra-server/src/team_tools.rs
+  - navra-server/src/flow_tools.rs
+  - navra-server/Cargo.toml
+  - Cargo.toml
+verification:
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --bin navra -- --test-threads=1"
+notes:
+  - date: "2026-06-19"
+    detail: |
+      Unblocked after analysis: the split is clean. exec_run is pure
+      tool-layer logic (portable). Sandbox lifecycle coordination is
+      navra-server-specific (stays). No external dependencies.

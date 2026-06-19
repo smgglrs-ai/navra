@@ -145,16 +145,14 @@ fn group_bioes_tags(tokens: &[(String, f32, Option<(usize, usize)>)]) -> Vec<Spa
                         category: cat,
                         confidence: current_conf.max(*confidence),
                     });
-                } else {
-                    if let Some(cat) = current_cat.take() {
-                        if current_end > current_start {
-                            spans.push(Span {
-                                start: current_start,
-                                end: current_end,
-                                category: cat,
-                                confidence: current_conf,
-                            });
-                        }
+                } else if let Some(cat) = current_cat.take() {
+                    if current_end > current_start {
+                        spans.push(Span {
+                            start: current_start,
+                            end: current_end,
+                            category: cat,
+                            confidence: current_conf,
+                        });
                     }
                 }
             }

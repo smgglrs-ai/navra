@@ -58,7 +58,10 @@ async fn handle_ws_connection(
                         );
                         let json = serde_json::to_string(&resp).unwrap_or_default();
                         let mut sender = ws_sender.lock().await;
-                        let _ = sender.send(Message::Text(json.into())).await;
+                        if sender.send(Message::Text(json.into())).await.is_err() {
+                            tracing::debug!("WebSocket client disconnected during parse-error response");
+                            break;
+                        }
                         continue;
                     }
                 };
@@ -70,7 +73,10 @@ async fn handle_ws_connection(
                     );
                     let json = serde_json::to_string(&resp).unwrap_or_default();
                     let mut sender = ws_sender.lock().await;
-                    let _ = sender.send(Message::Text(json.into())).await;
+                    if sender.send(Message::Text(json.into())).await.is_err() {
+                        tracing::debug!("WebSocket client disconnected during invalid-request response");
+                        break;
+                    }
                     continue;
                 }
 
@@ -99,7 +105,10 @@ async fn handle_ws_connection(
             }
             Message::Ping(data) => {
                 let mut sender = ws_sender.lock().await;
-                let _ = sender.send(Message::Pong(data)).await;
+                if sender.send(Message::Pong(data)).await.is_err() {
+                    tracing::debug!("WebSocket client disconnected during pong");
+                    break;
+                }
             }
             Message::Close(_) => break,
             _ => {}

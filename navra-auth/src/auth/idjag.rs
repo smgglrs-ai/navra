@@ -75,7 +75,7 @@ struct IdJagClaims {
     exp: u64,
     /// Issued-at (Unix timestamp).
     #[serde(default)]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // deserialized from JWT, not read programmatically
     iat: Option<u64>,
 }
 

@@ -229,6 +229,7 @@ impl Hook for TestBlockHook {
         tool_name: &str,
         _arguments: &serde_json::Value,
         _ctx: &CallContext,
+        _annotations: Option<&navra_protocol::ToolAnnotations>,
     ) -> HookDecision {
         if tool_name == self.blocked {
             HookDecision::Block(format!("blocked: {tool_name}"))
@@ -279,7 +280,7 @@ async fn hook_pipeline_pre_blocks_dangerous_tool() {
     });
 
     let outcome = pipeline
-        .run_pre("shell_exec", serde_json::json!({}), &test_ctx())
+        .run_pre("shell_exec", serde_json::json!({}), &test_ctx(), None)
         .await;
     match outcome {
         navra_security::hooks::PreHookOutcome::Blocked(reason) => {
@@ -297,7 +298,7 @@ async fn hook_pipeline_pre_allows_safe_tool() {
     });
 
     let outcome = pipeline
-        .run_pre("file_read", serde_json::json!({}), &test_ctx())
+        .run_pre("file_read", serde_json::json!({}), &test_ctx(), None)
         .await;
     assert!(matches!(
         outcome,

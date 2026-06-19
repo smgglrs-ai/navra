@@ -257,6 +257,7 @@ pub fn is_write_tool(
         || tool_name.contains("search")
         || tool_name.contains("list")
         || tool_name.contains("get")
+        || tool_name.contains("query")
         || tool_name.contains("status")
         || tool_name.contains("diff")
         || tool_name.contains("log");

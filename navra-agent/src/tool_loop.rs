@@ -786,7 +786,7 @@ pub async fn run_tool_loop(
             if available > 100 {
                 let context = retriever.retrieve(user_prompt, available).await;
                 if !context.is_empty() {
-                    input.push(InputItem::system(&format!(
+                    input.push(InputItem::system(format!(
                         "[Retrieved context]\n{context}"
                     )));
                 }
@@ -795,7 +795,7 @@ pub async fn run_tool_loop(
 
         // Move input into request instead of cloning — avoids doubling
         // memory. We take it back from the request after the model call.
-        let mut request = CreateResponseRequest {
+        let request = CreateResponseRequest {
             model: String::new(),
             input: std::mem::take(&mut input),
             instructions: None,
