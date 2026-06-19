@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 32 active items
+# 31 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -11,13 +11,6 @@ items:
     priority: high
     effort: S
     progress: 100
-
-  - id: "NAVRA-141"
-    title: "MCP 2026-07-28: implement SEP-2577 deprecation of Roots/Sampling/Logging"
-    status: planned
-    priority: high
-    effort: M
-    depends_on: ['NAVRA-018']
 
   - id: "NAVRA-142"
     title: "MCP 2026-07-28: OAuth iss validation and credential binding"

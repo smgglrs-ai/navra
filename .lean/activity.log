@@ -291,3 +291,10 @@
   summary: "Already implemented: dispatch_stateless() handles all 2026-07-28 requests, server doesn't send Mcp-Session-Id, agent identity as implicit state handle, 12/12 e2e tests pass."
   iteration: 13
   max_iterations: 20
+- timestamp: "2026-06-19T10:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-141"
+  summary: "Added roots capability deprecation warning in handle_initialize (SEP-2577). Added OTel dual-write in send_log_message so MCP logging notifications also emit tracing events. File tools criterion N/A (navra-tools-file removed). Migration guide deferred to docs item."
+  iteration: 14
+  max_iterations: 20
