@@ -1,0 +1,32 @@
+id: NAVRA-144
+title: Replace navra-tools-exec with upstream OpenShell MCP server
+status: planned
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: |
+  navra-tools-exec wraps OpenShell gRPC calls to execute commands in
+  sandboxed containers. With the agent running in a scratch image and
+  the pattern of migrating built-in tools to upstream MCP servers
+  (file, git already migrated), exec should follow the same path.
+
+  Options:
+  1. OpenShell may expose an MCP interface directly — check if the
+     OpenShell gateway supports MCP or has a sidecar MCP server
+  2. If not, build a thin MCP server that wraps the OpenShell gRPC
+     API (separate binary, not built into navra)
+  3. If the agent runs in its own sandbox, shell access is direct
+     and exec tools become standard shell MCP tools
+
+  The exec module is also used for agent sandbox lifecycle (create,
+  destroy, connect) — that orchestration may stay in navra-server
+  even if the tool-call surface moves upstream.
+acceptance:
+  - "Command execution in sandboxes available through upstream MCP or direct shell"
+  - "navra-tools-exec crate removed from workspace"
+  - "Agent sandbox lifecycle management preserved in navra-server"
+scope:
+  - navra-tools-exec/
+  - navra-server/src/main.rs
+  - Cargo.toml
