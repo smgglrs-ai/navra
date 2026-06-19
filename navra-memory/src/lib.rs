@@ -23,6 +23,7 @@ pub mod pipeline;
 pub mod retrieval;
 pub mod session_store;
 pub mod temporal;
+pub mod tools;
 mod types;
 mod working;
 
@@ -37,6 +38,7 @@ pub use pipeline::{
     extract_failure_insight, extract_success_insight, ContentSanitizer, DistillationPipeline,
 };
 pub use retrieval::{MemoryRetriever, ScoredEntry};
+pub use tools::KnowledgeModule;
 pub use session_store::SqliteSessionBackend;
 pub use temporal::{TemporalTree, TreeNode, TreeType};
 pub use types::{

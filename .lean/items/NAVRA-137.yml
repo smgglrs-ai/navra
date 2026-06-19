@@ -1,6 +1,6 @@
 id: NAVRA-137
 title: Add tests to navra-tools-exec and navra-tools-gitlab
-status: planned
+status: done
 priority: low
 effort: M
 depends_on: []
@@ -28,3 +28,9 @@ scope:
   - navra-tools-gitlab/src/
 verification:
   quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-tools-exec -p navra-tools-gitlab"
+progress: 100
+notes:
+  - date: "2026-06-19"
+    detail: |
+      Obsolete: navra-tools-exec was inlined into navra-server (NAVRA-144)
+      and navra-tools-gitlab was removed. Neither crate is a workspace member.

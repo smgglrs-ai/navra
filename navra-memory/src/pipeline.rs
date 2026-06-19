@@ -18,7 +18,7 @@ use crate::types::{DistilledEntry, MemoryType, Turn};
 use crate::working::WorkingMemory;
 
 /// System prompt sent to the model during the synthesize stage.
-const SYNTHESIZE_PROMPT: &str = "\
+pub const SYNTHESIZE_PROMPT: &str = "\
 Extract structured knowledge from this conversation segment. \
 For each piece of knowledge, classify it as Fact, Event, Instruction, or Insight. \
 Return a JSON array with objects: \

@@ -9,15 +9,17 @@ rust-version.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 base64 = { workspace = true }
+futures-util = { version = "0.3", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tokio-tungstenite = { version = "0.24", optional = true }
 tracing = { workspace = true }
 
 [features]
-webmcp = []
+webmcp = ["tokio-tungstenite", "futures-util"]
 native-tls = ["reqwest/native-tls"]
 rustls = ["reqwest/rustls-tls"]
 
