@@ -11,7 +11,9 @@ use std::time::Instant;
 /// Token quota configuration for an agent.
 #[derive(Debug, Clone)]
 pub struct TokenQuota {
+    /// Maximum tokens allowed within a single time window.
     pub max_tokens_per_window: u64,
+    /// Duration of the sliding time window in seconds.
     pub window_secs: u64,
 }
 
@@ -44,7 +46,10 @@ pub enum QuotaStatus {
     /// Agent is within quota.
     WithinBudget,
     /// Agent has exceeded quota and should be deprioritized.
-    Exceeded { tokens_over: u64 },
+    Exceeded {
+        /// Number of tokens consumed beyond the quota limit.
+        tokens_over: u64,
+    },
 }
 
 impl TokenQuotaTracker {
