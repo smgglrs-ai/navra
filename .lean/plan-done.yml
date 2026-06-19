@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 121 completed items
+# 122 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -171,6 +171,13 @@ items:
     effort: 5-7d
     depends_on: ['NAVRA-024']
     feeds: ['NAVRA-001']
+
+  - id: "NAVRA-026"
+    title: "AG-UI React dashboard with PatternFly"
+    status: done
+    priority: medium
+    effort: M
+    depends_on: ['NAVRA-004']
 
   - id: "NAVRA-027"
     title: "Kubernetes Agent Sandbox backend"

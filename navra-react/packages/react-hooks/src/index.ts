@@ -38,6 +38,19 @@ export {
 } from "./useMetricsHistory";
 
 export {
+  useNavraAgent,
+  mapNavraToAgUi,
+  reduceAgentState,
+  type AgUiEvent,
+  type AgUiEventType,
+  type AgentState,
+  type AgentRunStatus,
+  type ToolCallState,
+  type UseNavraAgentOptions,
+  type UseNavraAgentResult,
+} from "./useNavraAgent";
+
+export {
   useFlowEvents,
   type FlowTask,
   type FlowTaskStatus,

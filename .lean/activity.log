@@ -360,3 +360,11 @@
   summary: "Added a2ui.rs module to navra-protocol with validation, helpers, text extraction. 18 tests."
   iteration: 1
   max_iterations: 20
+
+- timestamp: "2026-06-19T16:10:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-026"
+  summary: "AG-UI React adapter: useNavraAgent hook, mapNavraToAgUi, reduceAgentState, AgentChatPanel with PatternFly. 14 tests."
+  iteration: 2
+  max_iterations: 20
