@@ -1,0 +1,34 @@
+id: NAVRA-143
+title: Replace navra-tools-gitlab with upstream GitLab MCP server
+status: planned
+priority: medium
+effort: M
+depends_on: []
+feeds: []
+description: |
+  Follow the same pattern as NAVRA-091 (navra-tools-file → upstream
+  Filesystem MCP) and the git migration (navra-tools-git → upstream
+  git MCP server): replace the built-in navra-tools-gitlab crate with
+  an upstream GitLab MCP server proxied through navra.
+
+  navra-tools-gitlab currently wraps the glab CLI for MR and issue
+  operations. An upstream MCP server (either glab's own or a
+  community GitLab MCP server) would provide the same tools without
+  navra maintaining the wrapper.
+
+  Steps:
+  1. Identify a suitable upstream GitLab MCP server (check glab CLI
+     for native MCP support, or community servers)
+  2. Configure it as an upstream in navra config
+  3. Remove navra-tools-gitlab module registration from main.rs
+  4. Remove navra-tools-gitlab from workspace members
+  5. Verify gitlab tools still appear via upstream proxy
+acceptance:
+  - "GitLab MR and issue tools available through upstream MCP proxy"
+  - "navra-tools-gitlab crate removed from workspace"
+  - "No glab CLI dependency in navra binary"
+  - "Existing GitLab tool names preserved for backward compatibility"
+scope:
+  - navra-tools-gitlab/
+  - navra-server/src/main.rs
+  - Cargo.toml
