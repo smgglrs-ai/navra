@@ -9,17 +9,24 @@ use serde::{Deserialize, Serialize};
 /// A fast path definition: recognized task pattern with constraints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FastPath {
+    /// Short identifier for this fast path (e.g. `"code-review"`).
     pub name: String,
+    /// Keywords that trigger this fast path when found in the prompt.
     pub keywords: Vec<String>,
+    /// Tool subset the agent is restricted to when this path matches.
     pub constrained_tools: Vec<String>,
+    /// Maximum tool-loop iterations allowed under this fast path.
     pub max_iterations: usize,
+    /// Sampling temperature override, if any.
     pub temperature: Option<f32>,
 }
 
 /// Result of task classification against fast paths.
 #[derive(Debug, Clone)]
 pub enum ClassifyResult {
+    /// Task matched a known pattern; use the attached constraints.
     FastPath(FastPath),
+    /// No fast path matched; fall through to full LLM reasoning.
     FullReasoning,
 }
 

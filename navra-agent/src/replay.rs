@@ -14,16 +14,22 @@ use std::path::{Path, PathBuf};
 /// A compiled recipe from a successful tool loop trace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Recipe {
+    /// Unique identifier for this recipe (UUID v4).
     pub id: String,
+    /// Human-readable description of the task this recipe automates.
     pub task_description: String,
+    /// Ordered sequence of tool calls to replay.
     pub steps: Vec<RecipeStep>,
+    /// Unix timestamp (seconds) when the recipe was compiled.
     pub created_at: i64,
 }
 
 /// A single step in a replay recipe.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecipeStep {
+    /// Fully-qualified tool name (e.g. `file_read`, `git_status`).
     pub tool_name: String,
+    /// JSON arguments to pass to the tool, may contain `{{key}}` templates.
     pub arguments: serde_json::Value,
 }
 
@@ -68,7 +74,9 @@ pub fn compile_recipe(task_description: &str, actions: &[ActionRecord]) -> Optio
 /// A matched recipe with its similarity score.
 #[derive(Debug, Clone)]
 pub struct ReplayMatch {
+    /// The matched recipe.
     pub recipe: Recipe,
+    /// Jaccard similarity score between the query and recipe description (0.0--1.0).
     pub similarity: f64,
 }
 
@@ -94,6 +102,7 @@ pub struct RecipeStore {
 }
 
 impl RecipeStore {
+    /// Create a new store backed by the given directory, creating it if needed.
     pub fn new(dir: &Path) -> Self {
         std::fs::create_dir_all(dir).ok();
         Self {
@@ -101,6 +110,7 @@ impl RecipeStore {
         }
     }
 
+    /// Persist a recipe to disk as a JSON file named by its ID.
     pub fn save(&self, recipe: &Recipe) -> std::io::Result<()> {
         let path = self.dir.join(format!("{}.json", recipe.id));
         let json = serde_json::to_string_pretty(recipe)
@@ -108,6 +118,7 @@ impl RecipeStore {
         std::fs::write(path, json)
     }
 
+    /// Load a recipe by its ID from disk.
     pub fn load(&self, id: &str) -> std::io::Result<Recipe> {
         let path = self.dir.join(format!("{id}.json"));
         let json = std::fs::read_to_string(path)?;
@@ -115,6 +126,7 @@ impl RecipeStore {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
 
+    /// List all recipes stored in the directory.
     pub fn list(&self) -> Vec<Recipe> {
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
             return Vec::new();
