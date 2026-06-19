@@ -5,6 +5,18 @@
 version: 1
 
 items:
+  - id: "NAVRA-064"
+    title: "Nomic Embed v1.5 evaluation"
+    status: planned
+    priority: medium
+    effort: M
+
+  - id: "NAVRA-070"
+    title: "WebSocket agentic loops"
+    status: planned
+    priority: medium
+    effort: M
+
   - id: "NAVRA-147"
     title: "MCP Enterprise-Managed Authorization (ID-JAG)"
     status: planned
@@ -25,6 +37,42 @@ items:
     priority: low
     effort: 3-5d
     gate: "IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision"
+
+  - id: "NAVRA-049"
+    title: "PII ONNX classifier"
+    status: planned
+    priority: low
+    effort: M
+
+  - id: "NAVRA-058"
+    title: "Negative constraints in persona schema"
+    status: planned
+    priority: low
+    effort: S
+
+  - id: "NAVRA-059"
+    title: "YAML flow definitions"
+    status: planned
+    priority: low
+    effort: M
+
+  - id: "NAVRA-061"
+    title: "Memory type classification"
+    status: planned
+    priority: low
+    effort: S
+
+  - id: "NAVRA-069"
+    title: "Multi-hypothesis tool routing"
+    status: planned
+    priority: low
+    effort: M
+
+  - id: "NAVRA-071"
+    title: "HTML-to-markdown conversion"
+    status: planned
+    priority: low
+    effort: S
 
   - id: "NAVRA-092"
     title: "Evaluate LCLM for context compression"
@@ -72,29 +120,11 @@ items:
     priority: medium
     effort: M
 
-  - id: "NAVRA-064"
-    title: "Nomic Embed v1.5 evaluation"
-    status: backlog
-    priority: medium
-    effort: M
-
-  - id: "NAVRA-070"
-    title: "WebSocket agentic loops"
-    status: backlog
-    priority: medium
-    effort: M
-
   - id: "NAVRA-048"
     title: "Adversarial safety evaluation"
     status: backlog
     priority: low
     effort: L
-
-  - id: "NAVRA-049"
-    title: "PII ONNX classifier"
-    status: backlog
-    priority: low
-    effort: M
 
   - id: "NAVRA-050"
     title: "Harness-aligned training data generation"
@@ -122,29 +152,11 @@ items:
     effort: M
     depends_on: ['NAVRA-004']
 
-  - id: "NAVRA-058"
-    title: "Negative constraints in persona schema"
-    status: backlog
-    priority: low
-    effort: S
-
-  - id: "NAVRA-059"
-    title: "YAML flow definitions"
-    status: backlog
-    priority: low
-    effort: M
-
   - id: "NAVRA-060"
     title: "Operator libraries"
     status: backlog
     priority: low
     effort: M
-
-  - id: "NAVRA-061"
-    title: "Memory type classification"
-    status: backlog
-    priority: low
-    effort: S
 
   - id: "NAVRA-062"
     title: "NemoClaw MCP bridge"
@@ -157,16 +169,4 @@ items:
     status: backlog
     priority: low
     effort: M
-
-  - id: "NAVRA-069"
-    title: "Multi-hypothesis tool routing"
-    status: backlog
-    priority: low
-    effort: M
-
-  - id: "NAVRA-071"
-    title: "HTML-to-markdown conversion"
-    status: backlog
-    priority: low
-    effort: S
 

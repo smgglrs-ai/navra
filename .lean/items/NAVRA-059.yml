@@ -1,34 +1,22 @@
 id: NAVRA-059
 title: YAML flow definitions
-status: backlog
+status: planned
 priority: low
 effort: M
 depends_on: []
 feeds: []
-description: 'Extend the YAML flow definition format and loader to support all three flow kinds (dag, handoff, iterative)
-  with full schema validation. Currently `yaml_loader.rs` only produces `DagConfig` regardless of `kind`, the `FlowFile` struct
-  lacks `nodes`/`edges` fields needed for handoff flows, there is no `kind: iterative` mapping to `IterativeConfig`, and there
-  is no upfront validation beyond serde deserialization (e.g., cycle detection in DAG deps, dangling depends_on references,
-  unknown specialist names). This item adds a proper YAML schema layer so flow authors get clear errors at load time and can
-  define all three flow types from a single YAML format.'
+description: |
+  Extend yaml_loader.rs to support handoff-kind flows. Currently only produces DagConfig; add LoadedFlow enum returning Dag or Handoff. Wire into flow_run tool so handoff flows from YAML files execute via FlowConfig. Add schema validation per kind.
 acceptance:
-- yaml_loader::load_flow_yaml returns FlowConfig (handoff) when kind is handoff, parsing nodes and edges from YAML with the
-  same fields as the TOML FlowDefinition struct
-- 'yaml_loader supports kind: iterative, producing IterativeConfig with scout_specialist, map_specialist, reduce_specialist,
-  max_rounds, min_delta, scout_mode fields from YAML'
-- FlowFile struct includes optional nodes, edges, and iterative-specific fields alongside the existing tasks field, with serde
-  validation that the correct fields are present for each kind
-- 'A validate_flow_yaml function checks structural invariants at load time: no cycles in DAG depends_on, no dangling depends_on
-  references, no duplicate task/node IDs, at least one task/node defined, and handoff flows have a valid entry node'
-- At least one example YAML file exists under examples/flows/ for each of the three kinds (dag already exists, add handoff
-  and iterative examples)
-- All new code has unit tests in yaml_loader.rs covering valid loads, validation errors, and parameter substitution for all
-  three kinds
+  - "Loader returns LoadedFlow::Dag or LoadedFlow::Handoff based on YAML kind field"
+  - "Handoff YAML files listed by flow_list with nodes, edges, parameters"
+  - "flow_run executes handoff flows loaded from YAML by name"
+  - "Missing required fields produce clear YamlLoadError variants"
+  - "Parameter substitution works for both dag and handoff flows"
+  - "Unit tests cover valid handoff YAML, missing-field errors, roundtrip"
 scope:
-- navra-flow/src/yaml_loader.rs
-- navra-flow/src/definition.rs
-- navra-flow/src/lib.rs
-- navra-server/src/flow_tools.rs
-- examples/flows/
+  - navra-flow/src/yaml_loader.rs
+  - navra-flow/src/lib.rs
+  - navra-server/src/flow_tools.rs
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-flow yaml_loader
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-flow yaml_loader"

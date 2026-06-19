@@ -1,36 +1,24 @@
 id: NAVRA-069
 title: Multi-hypothesis tool routing
-status: backlog
+status: planned
 priority: low
 effort: M
 depends_on: []
 feeds: []
-description: Add a multi-hypothesis tool routing layer to the navra-agent tool loop that scores multiple candidate tools before
-  executing the best one. Currently, the ReAct loop in navra-agent/src/tool_loop.rs blindly executes whichever tool the model
-  selects. When an agent has access to 30+ tools (built-in modules plus upstream MCP servers), small models frequently pick
-  the wrong tool on the first attempt, wasting an iteration and context window tokens. Multi-hypothesis routing would let
-  the agent (or the gateway) generate N candidate tool calls, score each by schema fit and semantic relevance using the embedding
-  model already available in ToolLoopConfig, then execute only the top-ranked candidate -- reducing iteration waste and improving
-  tool selection accuracy for small local models.
+description: |
+  Add multi-hypothesis tool routing to handle_call_tool. When exact name misses (handlers.rs:704), score registered tools on edit distance, argument schema overlap, and optional description similarity. Auto-route above threshold, suggest below. Configurable via [server.tool_routing].
 acceptance:
-- When the model returns a single function call and multi-hypothesis is disabled (default), the tool loop behaves identically
-  to today with no added latency
-- When multi-hypothesis routing is enabled via ToolLoopConfig, the agent requests multiple candidate tool calls from the model
-  (via tool_choice or temperature sampling) and ranks them by schema validation score and embedding similarity before executing
-  the top candidate
-- 'A ToolRoutingStrategy trait is defined in navra-agent with at least two implementations: PassThrough (current behavior)
-  and ScoredHypothesis (embedding-based ranking)'
-- Candidates that fail JSON schema validation against the tool's input_schema are demoted or discarded before ranking
-- The routing decision (candidates considered, scores, winner) is logged via tracing at debug level and recorded in the audit
-  sink when configured
-- 'Unit tests cover: passthrough mode unchanged behavior, schema-invalid candidates rejected, highest-scored candidate selected
-  from multiple options'
+  - "Unknown tool within edit-distance 2 auto-routes to closest match with _routed_from metadata"
+  - "Below auto-route threshold, error includes ranked suggestions (up to 5)"
+  - "Config: auto_route_threshold, suggestion_threshold, enabled (default false)"
+  - "Scoring uses edit distance + argument Jaccard + optional embedding similarity"
+  - "Auto-routing logged at info level for audit"
+  - "Tests cover exact match passthrough, misspelling auto-route, distant name suggestions, disabled config"
 scope:
-- navra-agent/src/tool_loop.rs
-- navra-agent/src/lib.rs
-- navra-agent/src/routing.rs
-- navra-model/src/lib.rs
-- navra-responses/src/tool.rs
-- navra-core/src/server/handlers.rs
+  - navra-core/src/server/handlers.rs
+  - navra-core/src/server/mod.rs
+  - navra-core/src/server/builder.rs
+  - navra-core/src/server/routing.rs
+  - navra-protocol/src/mcp.rs
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-agent -- routing
+  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core -- routing"
