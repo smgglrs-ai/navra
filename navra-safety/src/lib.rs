@@ -36,6 +36,8 @@ pub mod projection;
 #[cfg(feature = "onnx")]
 pub mod ner;
 #[cfg(feature = "onnx")]
+pub mod pii_classifier;
+#[cfg(feature = "onnx")]
 pub mod privacy_filter;
 pub mod pseudonym;
 mod regex;
