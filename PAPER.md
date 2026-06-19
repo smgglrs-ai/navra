@@ -259,6 +259,22 @@ leak information through microarchitectural side channels [37].
 Our safety filtering addresses content-level exfiltration but not
 covert channels through timing or resource consumption patterns.
 
+The May-June 2026 landscape has seen rapid convergence on gateway-
+based agent security. IBM ContextForge [86] combines Cedar RBAC
+policies with A2A support and 40+ tool plugins, but lacks IFC and
+in-process ML safety — its security model is policy-based, not
+capability-based. NeuroTaint [87] introduces semantic and causal
+taint tracking (F1=0.928) that goes beyond our label-based IFC by
+detecting implicit information flows through model reasoning — a
+capability our architecture deliberately defers (Section 9.1).
+MVAR [88] proposes dual-lattice IFC with cryptographic provenance
+and an execution firewall paradigm; its crypto-witnessed
+declassification addresses a gap in our model where declassification
+is policy-based. A2ASECBENCH [89] provides the first systematic
+security benchmark for agent-to-agent protocol implementations,
+evaluating auth bypass and cross-agent privilege escalation — attack
+vectors our capability delegation model is designed to prevent.
+
 No existing system combines:
 - Kernel-enforced security for AI agents
 - Cryptographic capability tokens with delegation
@@ -1788,3 +1804,20 @@ problem.
 
 [85] GitHub. "Copilot Cloud Agent Commit Signing." April 2026.
      https://github.blog/changelog/2026-04-03-copilot-cloud-agent-signs-its-commits/
+
+[86] IBM. "ContextForge: Enterprise Agent Context Management."
+     2026. Cedar RBAC policies, A2A protocol support, 40+ tool
+     plugins. https://github.com/ibm/contextforge
+
+[87] NeuroTaint. arXiv 2604.23374. "Semantic and Causal Taint
+     Tracking for LLM Agent Pipelines." 2026. Persistent taint
+     tracking with F1=0.928 on cross-agent information flow.
+
+[88] MVAR. "Multi-Vector Attack Resilience: Dual-Lattice Information
+     Flow Control with Cryptographic Provenance." 2026. Execution
+     firewall paradigm with crypto-witnessed declassification.
+     https://github.com/mvar-security/mvar
+
+[89] A2ASECBENCH. "Security Benchmark for Agent-to-Agent Protocol
+     Implementations." 2026. Evaluates auth bypass, message
+     tampering, and cross-agent privilege escalation vectors.

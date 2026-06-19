@@ -389,7 +389,7 @@ cycle's verified fixes.
 
 We ran both `comprehensive-review.yaml` (hardcoded) and
 `review.yaml` (dynamic) on the navra codebase (22 crates,
-~126K LoC Rust).
+~150K LoC Rust).
 
 | Metric | Hardcoded | Dynamic |
 |---|---|---|
@@ -542,24 +542,33 @@ personas — the flow infrastructure remains unchanged.
 
 ## References
 
-- Anthropic, "Claude Code Review: Multi-Agent Architecture,"
-  2026.
-- SemaClaw, arXiv 2604.11548, "SemaClaw: A Two-Layer Open-Source
-  Agent Framework," 2026.
-- LangChain, "Agentic Engineering: The Emerging Discipline of
-  Building AI Agent Systems," 2026.
-- Google, "Agent Development Kit (ADK) 2.0," 2026.
-- CodeAct, arXiv 2402.01030, "Executable Code Actions Elicit
-  Better LLM Agents," Wang et al., 2024.
-- Varma, N., "The Agent Tier," InfoWorld, 2026.
-- ZeroClaw, Rust agent runtime with trait-based architecture,
-  2026.
-- OWASP, "OWASP Top 10 for Agentic Applications for 2026,"
-  December 2025.
-- c-CRAB, arXiv 2603.23448, "Code Review Agent Benchmark," 2026.
-- CodeAgent, arXiv 2402.02172, "CodeAgent: Enhancing Code Generation
-  with Tool-Integrated Agent," EMNLP 2024.
-- Code Broker, arXiv 2604.23088, "Code Broker: A Multi-Agent
-  Hierarchical Code Review Framework," April 2026.
-- Graph Harness, arXiv 2604.11378, "Scheduler-Theoretic Framework
-  for LLM Agent Workflows," 2026.
+[1] Anthropic, "Claude Code Review: Multi-Agent Architecture," 2026.
+
+[2] SemaClaw, arXiv 2604.11548, "SemaClaw: A Two-Layer Open-Source
+Agent Framework," 2026.
+
+[3] LangChain, "Agentic Engineering: The Emerging Discipline of
+Building AI Agent Systems," 2026.
+
+[4] Google, "Agent Development Kit (ADK) 2.0," 2026.
+
+[5] CodeAct, arXiv 2402.01030, "Executable Code Actions Elicit
+Better LLM Agents," Wang et al., 2024.
+
+[6] Varma, N., "The Agent Tier," InfoWorld, 2026.
+
+[7] ZeroClaw, Rust agent runtime with trait-based architecture, 2026.
+
+[8] OWASP, "OWASP Top 10 for Agentic Applications for 2026,"
+December 2025.
+
+[9] c-CRAB, arXiv 2603.23448, "Code Review Agent Benchmark," 2026.
+
+[10] CodeAgent, arXiv 2402.02172, "CodeAgent: Enhancing Code
+Generation with Tool-Integrated Agent," EMNLP 2024.
+
+[11] Code Broker, arXiv 2604.23088, "Code Broker: A Multi-Agent
+Hierarchical Code Review Framework," April 2026.
+
+[12] Graph Harness, arXiv 2604.11378, "Scheduler-Theoretic Framework
+for LLM Agent Workflows," 2026.

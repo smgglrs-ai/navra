@@ -122,6 +122,29 @@ tool composition. ZeroClaw targets embedded/IoT (< 5 MB memory,
 (ReadOnly/Supervised/Full). Flat runtime architecture — no gateway
 layer, no persona system, no team orchestration.
 
+**MorphAgent** [18] introduces self-evolving multi-agent collaboration
+networks where agent profiles adapt through interaction. While
+MorphAgent profiles evolve implicitly via reinforcement signals, our
+personas are explicit YAML artifacts with version-controlled genotypes
+— enabling human audit and rollback that implicit evolution cannot.
+
+**c-CRAB** [19] provides a code review agent benchmark for evaluating
+multi-agent review systems. We use c-CRAB as an evaluation target
+(see review notes) rather than defining a new benchmark.
+
+**Memory systems.** FadeMem [20] introduces differential memory decay
+where importance modulates forgetting rates — our flat exponential
+decay (Section 6.1) is simpler but behind this state of the art.
+Mem0 [21] combines graph, vector, and KV stores in a hybrid memory
+architecture. Our working memory uses a single SQLite store with
+decay scoring, trading architectural sophistication for deployment
+simplicity.
+
+**FIDES** [22] enforces information-flow control (IFC) for AI agents
+at the planner level. Our gateway enforces IFC at the infrastructure
+level — complementary approaches. FIDES requires planner cooperation;
+our enforcement is mandatory and agent-transparent.
+
 **Gap.** None of these systems separate agent identity (genotype) from
 runtime behavior (phenotype) through structured, version-controlled
 persona artifacts. None provide model-card-driven teammate selection
@@ -460,7 +483,7 @@ execution without full trajectory replay.
 
 ### 7.1 Self-Analysis
 
-The framework analyzed its own codebase (22 crates, ~126K LoC)
+The framework analyzed its own codebase (22 crates, ~150K LoC)
 through its own gateway. Initial persona coverage scored 28/100
 (engineering-only). After adding 5 general-purpose personas and
 the 12-judge panel, coverage rose to 45/100. The framework
@@ -634,37 +657,58 @@ budget approach provides a reference implementation.
 
 ## References
 
-- LangChain, "Agentic Engineering: The Emerging Discipline of
-  Building AI Agent Systems," 2026.
-- SemaClaw, arXiv 2604.11548, "SemaClaw: A Two-Layer Open-Source
-  Agent Framework," 2026.
-- PersonaVLM, arXiv 2604.13074, "PersonaVLM: Personality Evolving
-  Mechanism for Vision-Language Models," 2026.
-- Memory Transfer Learning, arXiv 2604.14004, "Memory Transfer
-  Learning for Agent Systems," KAIST/NYU, 2026.
-- Varma, N., "The Agent Tier," InfoWorld, 2026.
-- Anthropic, "Claude Code Review: Multi-Agent Architecture," 2026.
-- AgentSwing, arXiv 2603.27490, Alibaba, 2026.
-- Cloudflare, "Agent Memory Architecture," 2026.
-- CodeAct, arXiv 2402.01030, "Executable Code Actions Elicit
-  Better LLM Agents," Wang et al., 2024.
-- Strands Agents, "Token Budget Management for Agent Tool Calls,"
-  AWS, 2026.
-- RTK (Retrieval Toolkit), "Context Window Compression for
-  Agentic RAG," 2026.
-- BLD, arXiv 2604.07466, "Building Language-Driven Agents," 2026.
-- Kubeflow Model Registry, https://github.com/kubeflow/model-registry
-- OCI Distribution Spec v1.1, Referrers API,
-  https://github.com/opencontainers/distribution-spec/
-- HuggingFace Model Cards, https://huggingface.co/docs/hub/model-cards
-- Ollama API, https://github.com/ollama/ollama/blob/main/docs/api.md
-- Hermes Agent Reasoning Traces,
-  https://huggingface.co/datasets/lambda/hermes-agent-reasoning-traces
-- MorphAgent, arXiv 2410.15048, "Self-Evolving Multi-Agent Collaboration
-  Networks," Lu et al., 2024.
-- c-CRAB, arXiv 2603.23448, "Code Review Agent Benchmark," 2026.
-- FadeMem, arXiv 2601.18642, "Differential Memory Decay for Agents,"
-  Alibaba, 2026.
-- Mem0, "Graph + Vector + KV Hybrid Memory," 2026.
-- FIDES, arXiv 2505.23643, "Securing AI Agents with Information-Flow
-  Control," Microsoft Research, 2025.
+[1] LangChain, "Agentic Engineering: The Emerging Discipline of
+Building AI Agent Systems," 2026.
+
+[2] SemaClaw, arXiv 2604.11548, "SemaClaw: A Two-Layer Open-Source
+Agent Framework," 2026.
+
+[3] PersonaVLM, arXiv 2604.13074, "PersonaVLM: Personality Evolving
+Mechanism for Vision-Language Models," CVPR 2026 Highlight.
+
+[4] Memory Transfer Learning, arXiv 2604.14004, "Memory Transfer
+Learning for Agent Systems," KAIST/NYU, 2026.
+
+[5] Varma, N., "The Agent Tier," InfoWorld, 2026.
+
+[6] Anthropic, "Claude Code Review: Multi-Agent Architecture," 2026.
+
+[7] AgentSwing, arXiv 2603.27490, Alibaba, 2026.
+
+[8] Cloudflare, "Agent Memory Architecture," 2026.
+
+[9] CodeAct, arXiv 2402.01030, "Executable Code Actions Elicit
+Better LLM Agents," Wang et al., 2024.
+
+[10] Strands Agents, "Token Budget Management for Agent Tool Calls,"
+AWS, 2026.
+
+[11] RTK (Retrieval Toolkit), "Context Window Compression for
+Agentic RAG," 2026.
+
+[12] BLD, arXiv 2604.07466, "Building Language-Driven Agents," 2026.
+
+[13] Kubeflow Model Registry, https://github.com/kubeflow/model-registry
+
+[14] OCI Distribution Spec v1.1, Referrers API,
+https://github.com/opencontainers/distribution-spec/
+
+[15] HuggingFace Model Cards, https://huggingface.co/docs/hub/model-cards
+
+[16] Ollama API, https://github.com/ollama/ollama/blob/main/docs/api.md
+
+[17] Hermes Agent Reasoning Traces,
+https://huggingface.co/datasets/lambda/hermes-agent-reasoning-traces
+
+[18] MorphAgent, arXiv 2410.15048, "Self-Evolving Multi-Agent
+Collaboration Networks," Lu et al., 2024.
+
+[19] c-CRAB, arXiv 2603.23448, "Code Review Agent Benchmark," 2026.
+
+[20] FadeMem, arXiv 2601.18642, "Differential Memory Decay for
+Agents," Alibaba, 2026.
+
+[21] Mem0, "Graph + Vector + KV Hybrid Memory," 2026.
+
+[22] FIDES, arXiv 2505.23643, "Securing AI Agents with Information-
+Flow Control," Microsoft Research, 2025.

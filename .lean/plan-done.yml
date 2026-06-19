@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 132 completed items
+# 133 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -315,6 +315,13 @@ items:
 
   - id: "NAVRA-051"
     title: "Paper significant fixes"
+    status: done
+    priority: medium
+    effort: M
+    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-052"
+    title: "Missing related work"
     status: done
     priority: medium
     effort: M
