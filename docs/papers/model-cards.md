@@ -284,3 +284,19 @@ https://cloud.google.com/vertex-ai/docs/start/explore-models
 
 [7] Red Hat, "OpenShift AI Model Registry,"
 https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/
+
+[8] Mitchell, M. et al., "Model Cards for Model Reporting,"
+FAT* 2019. Introduced standardized documentation for ML models
+covering intended use, performance metrics, and ethical considerations.
+
+[9] Gebru, T. et al., "Datasheets for Datasets," Communications
+of the ACM, 64(12), 2021. Companion framework to model cards
+for documenting dataset provenance and characteristics.
+
+[10] NVIDIA, "NGC Catalog," https://catalog.ngc.nvidia.com/.
+Enterprise model registry with per-model performance benchmarks
+and deployment configurations, but no agentic capability metadata.
+
+[11] MLflow Model Registry, https://mlflow.org/docs/latest/model-registry.html.
+Experiment-centric model lifecycle with versioning and stage
+transitions, but no runtime capability fields for agent selection.
