@@ -1,6 +1,6 @@
 id: NAVRA-146
 title: A2UI declarative UI support in tool results
-status: planned
+status: done
 priority: medium
 effort: M
 depends_on: []

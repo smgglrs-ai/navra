@@ -1,4 +1,5 @@
 export * from "@navra/react-hooks";
+export { AgentChatPanel, type AgentChatPanelProps } from "./AgentChat";
 export { ApprovalQueue, type ApprovalQueueProps } from "./ApprovalQueue";
 export { AgentActivity, type AgentActivityProps } from "./AgentActivity";
 export {
