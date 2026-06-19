@@ -1,6 +1,7 @@
 id: "NAVRA-018"
 title: "MCP 2026-07-28 default flip"
-status: in_progress
+status: done
+progress: 100
 priority: critical
 effort: M
 depends_on: []
