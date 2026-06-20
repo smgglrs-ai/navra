@@ -20,7 +20,7 @@ include_content = true
 [markdown]
 
 [markdown.highlighting]
-theme = "github-light"
+theme = "catppuccin-frappe"
 
 [extra]
 title_separator = "|"

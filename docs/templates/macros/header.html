@@ -45,9 +45,10 @@
 			</ul>
 			<div class="break order-6 d-md-none"></div>
 			{% if config.build_search_index %}
-				<form class="navbar-form flex-grow-1 order-7 order-md-3">
+				<form class="navbar-form flex-grow-1 order-7 order-md-3" role="search">
 					<input id="userinput" class="form-control is-search" type="search" placeholder="Search docs..."
 						aria-label="Search docs..." autocomplete="off">
+					<button type="submit" class="visually-hidden">Search</button>
 					<div id="suggestions" class="shadow bg-white rounded"></div>
 				</form>
 			{% endif %}
