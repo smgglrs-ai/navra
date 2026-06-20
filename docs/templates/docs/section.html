@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 
+{% block seo %}
+  <title>{{ section.title }} | {{ config.title }}</title>
+  <meta name="description" content="{{ section.description | default(value=config.description) }}">
+{% endblock seo %}
+
 {% block body %}
   {% set page_class = "docs list" %}
 {% endblock body %}

@@ -46,5 +46,6 @@
   {% endblock footer %}
 
   {{ macros_js::javascript() }}
+  <script>document.querySelectorAll('pre > code').forEach(function(el){el.setAttribute('tabindex','0');el.setAttribute('role','region');el.setAttribute('aria-label','Code block')})</script>
 </body>
 </html>
