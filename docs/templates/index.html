@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block seo %}
+  {{ super() }}
+  {% if config.title %}
+    {% set title = config.title %}
+  {% else %}
+    {% set title = "" %}
+  {% endif %}
+  {% if config.extra.title_addition and title %}
+    {% set title_addition = title_separator ~ config.extra.title_addition %}
+  {% elif config.extra.title_addition %}
+    {% set title_addition = config.extra.title_addition %}
+  {% else %}
+    {% set title_addition = "" %}
+  {% endif %}
+  {% set description = config.description %}
+  {{ macros_head::seo(title=title, title_addition=title_addition, description=description, is_home=true) }}
+{% endblock seo %}
+
+{% block content %}
+
+{# ── Hero ── #}
+<section class="hero-section" aria-labelledby="hero-heading">
+  <div class="hero-inner">
+    <div class="hero-logo-wrap">
+      <img src="{{ get_url(path='logo.svg') }}" alt="navra — armored narwhal logo" class="hero-logo" width="280" height="280">
+    </div>
+    <div class="hero-text">
+      <h1 id="hero-heading" class="hero-title">navra</h1>
+      <p class="hero-tagline">Secure MCP gateway, built in Rust.</p>
+      <p class="hero-lead">{{ section.extra.lead | default(value="") | safe }}</p>
+      <div class="hero-actions" role="group" aria-label="Get started">
+        <a class="btn-cta" href="{{ get_url(path=section.extra.url | default(value='/')) | safe }}">
+          Get started
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn-secondary-outline" href="{{ section.extra.repo_url | default(value='#') | safe }}" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+          GitHub
+        </a>
+      </div>
+      <p class="hero-meta">{{ section.extra.repo_license | default(value="") }}</p>
+    </div>
+  </div>
+</section>
+
+{# ── Feature grid ── #}
+<section id="features" class="section-features" aria-label="Key features">
+  <div class="container">
+    <div class="row justify-content-center">
+      {% if section.extra.list %}
+        {% for val in section.extra.list %}
+        <div class="col-lg-5">
+          <article class="feature-card">
+            <h2>{{ val.title }}</h2>
+            <p>{{ val.content | safe }}</p>
+          </article>
+        </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{# ── Deep-dive showcase sections ── #}
+{% if section.extra.showcase %}
+  {% for showcase in section.extra.showcase %}
+  <section class="section-showcase {% if loop.index is odd %}showcase-light{% else %}showcase-dark{% endif %}" aria-labelledby="showcase-{{ loop.index }}">
+    <div class="container">
+      <div class="showcase-header">
+        <span class="showcase-eyebrow">{{ showcase.subtitle }}</span>
+        <h2 id="showcase-{{ loop.index }}" class="showcase-title">{{ showcase.title }}</h2>
+        <p class="showcase-description">{{ showcase.description }}</p>
+      </div>
+      <div class="showcase-grid">
+        {% for item in showcase.items %}
+        <article class="showcase-card">
+          <div class="showcase-card-number" aria-hidden="true">{{ loop.index }}</div>
+          <h3>{{ item.title }}</h3>
+          <p>{{ item.text | safe }}</p>
+        </article>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+{% endif %}
+
+{# ── Final CTA ── #}
+<section class="section-cta" aria-label="Call to action">
+  <div class="container">
+    <div class="cta-inner">
+      <h2 class="cta-title">Ready to secure your agents?</h2>
+      <p class="cta-lead">Install navra, connect your MCP clients, enforce least privilege from day one.</p>
+      <div class="hero-actions" role="group" aria-label="Get started">
+        <a class="btn-cta" href="{{ get_url(path=section.extra.url | default(value='/')) | safe }}">
+          Read the docs
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn-secondary-outline" href="{{ section.extra.repo_url | default(value='#') | safe }}" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock content %}

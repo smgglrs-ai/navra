@@ -33,3 +33,4 @@ ONBOARDING.md
 *.safetensors
 *.bin
 !build.rs
+docs/public/

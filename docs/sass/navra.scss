@@ -1,0 +1,168 @@
+// navra brand palette — arctic blues and oxidized steel
+// WCAG 2.1 AA contrast ratios noted
+
+$navra-steel:      #3D5A80;  // primary — headings, nav (7.42:1 on white)
+$navra-ice:        #98C1D9;  // accent — links, highlights
+$navra-deep:       #1A2D4A;  // dark — code backgrounds, footer (13.2:1 on white)
+$navra-rust:       #8B4513;  // warm accent — oxidized metal (5.8:1 on white)
+$navra-light:      #E0EBFF;  // light fill — card backgrounds
+$navra-slate:      #4A5568;  // body text (7.15:1 on white)
+$navra-dark-bg:    #0D1B2A;  // dark mode background
+$navra-dark-text:  #C8DDF0;  // dark mode text (12.1:1 on dark bg)
+$warm-white:       #F8FAFF;  // page background
+
+// Skip link (accessibility)
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  z-index: 9999;
+  padding: 0.5rem 1rem;
+  background: $navra-deep;
+  color: white;
+  text-decoration: none;
+  &:focus {
+    top: 0;
+  }
+}
+
+// Focus outlines
+*:focus-visible {
+  outline: 3px solid $navra-ice;
+  outline-offset: 2px;
+}
+
+// Body
+body {
+  background: $warm-white;
+  color: $navra-slate;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+// Headings
+h1, h2, h3, h4, h5, h6 {
+  color: $navra-deep;
+  font-weight: 600;
+}
+
+// Links
+a {
+  color: $navra-steel;
+  text-decoration: underline;
+  text-decoration-color: $navra-ice;
+  text-underline-offset: 2px;
+  &:hover {
+    color: $navra-deep;
+    text-decoration-color: $navra-steel;
+  }
+}
+
+// Navbar
+.navbar {
+  background: $navra-deep !important;
+  border-bottom: 2px solid $navra-steel;
+  .navbar-brand {
+    color: white !important;
+    img {
+      max-height: 32px;
+      width: auto;
+    }
+  }
+  .nav-link {
+    color: $navra-ice !important;
+    &:hover { color: white !important; }
+  }
+  .form-control {
+    background: rgba(white, 0.1);
+    border-color: $navra-steel;
+    color: white;
+    &::placeholder { color: rgba(white, 0.5); }
+  }
+}
+
+// Hero section
+.hero {
+  background: linear-gradient(135deg, $navra-deep 0%, $navra-steel 100%);
+  color: white;
+  padding: 4rem 0;
+  h1 { color: white; }
+  .lead { color: $navra-ice; }
+}
+
+// Feature cards
+.feature-card {
+  border-left: 4px solid $navra-steel;
+  background: $navra-light;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border-radius: 0 8px 8px 0;
+  h3 { color: $navra-steel; margin-top: 0; }
+}
+
+// Code blocks
+pre, code {
+  background: $navra-deep;
+  color: $navra-dark-text;
+  border-radius: 4px;
+}
+code { padding: 0.15em 0.3em; }
+pre {
+  padding: 1rem;
+  overflow-x: auto;
+  code { padding: 0; }
+}
+
+// Tables
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  th {
+    background: $navra-steel;
+    color: white;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+  }
+  td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid $navra-light;
+  }
+  tr:nth-child(even) { background: $navra-light; }
+}
+
+// Sidebar
+.docs-sidebar {
+  border-right: 1px solid $navra-light;
+  h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: $navra-steel; }
+  .docs-link {
+    color: $navra-slate;
+    text-decoration: none;
+    display: block;
+    padding: 0.2rem 0.5rem;
+    &:hover { color: $navra-steel; }
+    &.active {
+      color: $navra-deep;
+      font-weight: 600;
+      border-left: 3px solid $navra-steel;
+      padding-left: calc(0.5rem - 3px);
+    }
+  }
+}
+
+// Dark mode
+body.dark {
+  background: $navra-dark-bg;
+  color: $navra-dark-text;
+  h1, h2, h3, h4, h5, h6 { color: $navra-ice; }
+  a { color: $navra-ice; }
+  .navbar { background: darken($navra-dark-bg, 3%); }
+  table th { background: $navra-steel; }
+  table td { border-color: rgba($navra-ice, 0.15); }
+  tr:nth-child(even) { background: rgba($navra-steel, 0.1); }
+  .feature-card { background: rgba($navra-steel, 0.1); }
+}
+
+// Responsive
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
