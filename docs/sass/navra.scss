@@ -81,22 +81,99 @@ a {
 }
 
 // Hero section
-.hero {
-  background: linear-gradient(135deg, $navra-deep 0%, $navra-steel 100%);
-  color: white;
-  padding: 4rem 0;
-  h1 { color: white; }
-  .lead { color: $navra-ice; }
+.hero-section {
+  background: linear-gradient(135deg, $navra-deep 0%, darken($navra-steel, 10%) 100%);
+  padding: 3rem 0 4rem;
+  .hero-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 3rem;
+    @media (max-width: 768px) { flex-direction: column; text-align: center; }
+  }
+  .hero-logo { max-width: 240px; height: auto; filter: drop-shadow(0 4px 20px rgba(0,0,0,0.4)); }
+  .hero-title { color: white; font-size: 3rem; margin: 0 0 0.25rem; }
+  .hero-tagline { color: $navra-ice; font-size: 1.1rem; margin: 0 0 1rem; }
+  .hero-lead { color: rgba(white, 0.85); font-size: 1rem; line-height: 1.6; margin: 0 0 1.5rem; }
+  .hero-meta { color: rgba(white, 0.5); font-size: 0.85rem; margin-top: 0.75rem; }
+  .hero-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    @media (max-width: 768px) { justify-content: center; }
+  }
+  .btn-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.5rem;
+    background: white;
+    color: $navra-deep;
+    font-weight: 600;
+    border-radius: 6px;
+    text-decoration: none;
+    &:hover { background: $navra-ice; color: $navra-deep; }
+  }
+  .btn-secondary-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.5rem;
+    border: 1.5px solid rgba(white, 0.4);
+    color: white;
+    border-radius: 6px;
+    text-decoration: none;
+    &:hover { border-color: white; background: rgba(white, 0.1); }
+  }
 }
 
 // Feature cards
+.section-features {
+  padding: 3rem 0;
+}
 .feature-card {
   border-left: 4px solid $navra-steel;
   background: $navra-light;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
   border-radius: 0 8px 8px 0;
-  h3 { color: $navra-steel; margin-top: 0; }
+  h2 { color: $navra-steel; font-size: 1.25rem; margin-top: 0; }
+  p { color: $navra-slate; margin-bottom: 0; }
+}
+
+// CTA section
+.section-cta {
+  background: $navra-deep;
+  padding: 3rem 0;
+  text-align: center;
+  .cta-title { color: white; }
+  .cta-lead { color: $navra-ice; margin-bottom: 1.5rem; }
+  .hero-actions { justify-content: center; }
+  .btn-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.5rem;
+    background: white;
+    color: $navra-deep;
+    font-weight: 600;
+    border-radius: 6px;
+    text-decoration: none;
+    &:hover { background: $navra-ice; }
+  }
+  .btn-secondary-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.5rem;
+    border: 1.5px solid rgba(white, 0.4);
+    color: white;
+    border-radius: 6px;
+    text-decoration: none;
+    &:hover { border-color: white; }
+  }
 }
 
 // Code blocks
@@ -149,20 +226,42 @@ table {
   }
 }
 
+// Footer
+.footer {
+  background: $navra-deep;
+  color: rgba(white, 0.5);
+  padding: 1.5rem 0;
+  font-size: 0.85rem;
+  a { color: $navra-ice; }
+}
+
 // Dark mode
 body.dark {
   background: $navra-dark-bg;
   color: $navra-dark-text;
   h1, h2, h3, h4, h5, h6 { color: $navra-ice; }
-  a { color: $navra-ice; }
-  .navbar { background: darken($navra-dark-bg, 3%); }
+  a { color: $navra-ice; &:hover { color: white; } }
+  .navbar { background: darken($navra-dark-bg, 5%) !important; }
+  pre, code { background: darken($navra-dark-bg, 3%); }
   table th { background: $navra-steel; }
   table td { border-color: rgba($navra-ice, 0.15); }
   tr:nth-child(even) { background: rgba($navra-steel, 0.1); }
-  .feature-card { background: rgba($navra-steel, 0.1); }
+  .feature-card { background: rgba($navra-steel, 0.15); border-left-color: $navra-ice; }
+  .feature-card h2 { color: $navra-ice; }
+  .docs-sidebar {
+    border-right-color: rgba($navra-ice, 0.15);
+    h3 { color: $navra-ice; }
+    .docs-link { color: $navra-dark-text; &:hover { color: white; } &.active { color: white; border-left-color: $navra-ice; } }
+  }
+  .card { background: rgba($navra-steel, 0.15); border-color: rgba($navra-ice, 0.15); }
+  .card a { color: $navra-ice; }
+  .section-cta { background: darken($navra-dark-bg, 3%); }
 }
 
 // Responsive
+@media (max-width: 991px) {
+  .docs-sidebar { border-right: none; border-bottom: 1px solid $navra-light; padding-bottom: 1rem; margin-bottom: 2rem; }
+}
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
