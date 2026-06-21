@@ -7,19 +7,32 @@
 			{% if index.subsections %}
 				{% for s in index.subsections %}
 				{% set subsection = get_section(path=s) %}
-				<h3>{{ subsection.title }}</h3>
-				<ul class="list-unstyled">
-					<li><a class="docs-link{% if current_url == subsection.permalink %} active{% endif %}" href="{{ subsection.permalink | safe }}">Overview</a></li>
-					{% for page in subsection.pages %}
-						<li><a class="docs-link{% if current_url == page.permalink %} active{% endif %}" href="{{ page.permalink | safe }}">{{ page.title }}</a></li>
+				{% if subsection.extra.sidebar_parts %}
+					{% for part in subsection.extra.sidebar_parts %}
+						<h3>{{ part.title }}</h3>
+						<ul class="list-unstyled">
+						{% for page in subsection.pages %}
+							{% if page.extra.part and page.extra.part == part.id %}
+								<li><a class="docs-link{% if current_url == page.permalink %} active{% endif %}" href="{{ page.permalink | safe }}">{{ page.title }}</a></li>
+							{% endif %}
+						{% endfor %}
+						</ul>
 					{% endfor %}
-					{% for sub2 in subsection.subsections %}
-						{% set sub2section = get_section(path=sub2) %}
-						{% for page in sub2section.pages %}
+				{% else %}
+					<h3>{{ subsection.title }}</h3>
+					<ul class="list-unstyled">
+						<li><a class="docs-link{% if current_url == subsection.permalink %} active{% endif %}" href="{{ subsection.permalink | safe }}">Overview</a></li>
+						{% for page in subsection.pages %}
 							<li><a class="docs-link{% if current_url == page.permalink %} active{% endif %}" href="{{ page.permalink | safe }}">{{ page.title }}</a></li>
 						{% endfor %}
-					{% endfor %}
-				</ul>
+						{% for sub2 in subsection.subsections %}
+							{% set sub2section = get_section(path=sub2) %}
+							{% for page in sub2section.pages %}
+								<li><a class="docs-link{% if current_url == page.permalink %} active{% endif %}" href="{{ page.permalink | safe }}">{{ page.title }}</a></li>
+							{% endfor %}
+						{% endfor %}
+					</ul>
+				{% endif %}
 				{% endfor %}
 			{% endif %}
 	</nav>
