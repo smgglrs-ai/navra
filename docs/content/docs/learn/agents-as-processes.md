@@ -94,6 +94,30 @@ Agent calls: tools/call { name: "file_write", arguments: { path: "~/.ssh/id_rsa"
 A process that tries to `open("/etc/shadow")` hits one check — file permissions. An agent that tries to `file_write("~/.ssh/id_rsa")` hits eight checks before the handler even runs. This is not an accident. AI agents are less trustworthy than compiled programs, so the enforcement is denser.
 
 
+## Credential lifecycle
+
+In an OS, credentials follow a strict lifecycle. They are assigned at process creation, inherited by child processes (potentially reduced), and destroyed when the process exits. At no point does the process choose its own credentials.
+
+navra follows the same pattern:
+
+**Creation.** The operator registers an agent in `config.toml`:
+
+```toml
+[[agents]]
+name = "claude-code"
+token_hash = "20a8c34a..."  # BLAKE3 hash of the agent's bearer token
+permissions = "developer"
+```
+
+The agent's token is generated offline via `navra token generate`. The gateway stores only the hash. When the agent connects, it sends the raw token in the `Authorization` header. The gateway hashes the incoming token with BLAKE3 and compares it to the stored hash. If it matches, the agent gets the `developer` permission set.
+
+**Inheritance.** When a leader agent spawns a specialist, it delegates a capability token. The specialist inherits a subset of the leader's permissions — fewer tools, narrower paths, shorter TTL. It cannot inherit more than the parent has. This is covered in detail in Chapter 6.
+
+**Termination.** When the agent disconnects or the session times out, the session state is destroyed. The taint tracker, value store, and all per-session state are cleaned up. Any capability tokens the agent delegated continue to exist independently (they have their own TTLs), but the session that created them is gone.
+
+This lifecycle prevents a class of bugs where stale credentials accumulate. A long-running agent does not build up permissions over time. Each session starts fresh with exactly the permissions configured by the operator.
+
+
 ## Isolation between agents
 
 Two processes on the same Linux machine cannot read each other's memory. The MMU (memory management unit) hardware enforces this — there is no software workaround.
@@ -107,6 +131,30 @@ Two agents connected to navra get a similar guarantee, enforced in software:
 - **Capability tokens are non-transferable.** Agent A's token grants `file_*` tools on `~/Code/**`. Even if Agent A somehow communicated the token string to Agent B, Agent B's session would not inherit Agent A's grants — the token is bound to the session.
 
 The one place agents can interact is through shared tools — if Agent A writes a file and Agent B reads it, information flows between them. This is exactly analogous to two processes sharing a file on disk. navra handles this case with information flow control, covered in Chapter 8.
+
+
+## What happens on a denied call
+
+When an OS process makes a system call that fails a permission check, the kernel returns an error code and the process continues running. It does not crash. It does not get more permissions. It just gets told "no."
+
+navra works the same way. When a tool call is denied, the agent receives an error response:
+
+```json
+{
+  "content": [
+    { "type": "text", "text": "Permission denied: tool 'git_push' is blocked" }
+  ],
+  "isError": true
+}
+```
+
+The agent can decide what to do with this information. Most LLM-based agents will try an alternative approach, ask the user for help, or report that they cannot complete the task. The denied call is also recorded in the blackbox audit log with the agent name, tool name, arguments, and timestamp.
+
+This non-fatal denial pattern is important for two reasons:
+
+1. **Graceful degradation.** An agent that encounters a permission boundary does not crash. It can still use the tools it is allowed to use. A coding agent denied `git_push` can still write code, run tests, and commit locally.
+
+2. **Audit trail.** Every denied call is evidence of either a misconfiguration (the agent needs a permission it does not have) or a security event (the agent is trying something it should not). The operator can review the blackbox to distinguish between the two.
 
 
 ## The untrusted process model
@@ -142,6 +190,8 @@ The OS analogy is not just a teaching device. It is a design framework. Each of 
 These are not analogies bolted on after the fact. navra was designed around these concepts from the beginning. The `CapabilityPayload` struct has a `ring` field. The `TaintTracker` implements a formal lattice join. The crate boundary between `navra-auth` and `navra-tools-file` mirrors the kernel/userland split.
 
 Understanding the OS model gives you a mental framework for reasoning about agent security that extends far beyond navra. Every AI security system will eventually reinvent these concepts, because the problem — constraining untrusted code running on shared infrastructure — is the same problem operating systems have been solving since the 1960s.
+
+The difference is maturity. Operating systems have had fifty years to refine these patterns. AI agent platforms are just starting. By mapping the well-understood OS concepts directly to agent security, navra avoids reinventing solutions to problems that were solved before most of us were born.
 
 
 ## What's next
