@@ -77,11 +77,6 @@ section = "docs"
 url = "/docs/learn/"
 weight = 20
 
-[[extra.menu.main]]
-name = "GitHub"
-section = "github"
-url = "https://github.com/smgglrs-ai/navra"
-weight = 90
 
 [[extra.menu.social]]
 name = "GitHub"
