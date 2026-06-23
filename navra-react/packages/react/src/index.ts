@@ -13,6 +13,19 @@ export {
   type TaskNodeData,
 } from "./FlowVisualizer";
 export {
+  FlowEditor,
+  type FlowEditorProps,
+  EditorNode,
+  type EditorNodeData,
+  NodePalette,
+  type NodePaletteProps,
+  type PaletteItem,
+  NodeConfigPanel,
+  type NodeConfigPanelProps,
+  FlowEditorToolbar,
+  type FlowEditorToolbarProps,
+} from "./FlowEditor";
+export {
   PermissionEditor,
   type PermissionEditorProps,
   type PermissionSet as PermissionSetConfig,
