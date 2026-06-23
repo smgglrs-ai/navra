@@ -84,9 +84,9 @@ fn tool_result_to_parts(result: &crate::protocol::CallToolResult) -> Vec<Part> {
     result
         .content
         .iter()
-        .map(|c| match c {
-            crate::protocol::Content::Text(tc) => Part::text(&tc.text),
-            _ => Part::text("[unsupported content type]"),
+        .map(|c| match c.raw.as_text() {
+            Some(tc) => Part::text(&tc.text),
+            None => Part::text("[unsupported content type]"),
         })
         .collect()
 }
@@ -147,15 +147,15 @@ pub async fn handle_message_send(
 
     // Call the MCP tool
     let ctx = CallContext::new(agent, format!("a2a-{}", task_id));
+    let call_params = {
+        let mut p = CallToolParams::new(tool_name.clone());
+        if let Some(obj) = arguments.as_object() {
+            p = p.with_arguments(obj.clone());
+        }
+        p
+    };
     let tool_result = server
-        .handle_call_tool(
-            CallToolParams {
-                name: tool_name.clone(),
-                arguments,
-                meta: None,
-            },
-            ctx,
-        )
+        .handle_call_tool(call_params, ctx)
         .await;
 
     // Build artifact from result
@@ -169,7 +169,7 @@ pub async fn handle_message_send(
     task_store.add_artifact(&task_id, artifact);
 
     // Transition to terminal state
-    let final_state = if tool_result.is_error {
+    let final_state = if tool_result.is_error == Some(true) {
         TaskState::Failed
     } else {
         TaskState::Completed
@@ -348,15 +348,15 @@ pub async fn handle_message_stream(
 
     // Execute the tool
     let ctx = CallContext::new(agent, format!("a2a-{}", task_id));
+    let call_params = {
+        let mut p = CallToolParams::new(tool_name.clone());
+        if let Some(obj) = arguments.as_object() {
+            p = p.with_arguments(obj.clone());
+        }
+        p
+    };
     let tool_result = server
-        .handle_call_tool(
-            CallToolParams {
-                name: tool_name.clone(),
-                arguments,
-                meta: None,
-            },
-            ctx,
-        )
+        .handle_call_tool(call_params, ctx)
         .await;
 
     // Event 3: Artifact update
@@ -384,12 +384,13 @@ pub async fn handle_message_stream(
     ));
 
     // Event 4: Final status update
-    let final_state = if tool_result.is_error {
+    let is_err = tool_result.is_error == Some(true);
+    let final_state = if is_err {
         "failed"
     } else {
         "completed"
     };
-    let final_task_state = if tool_result.is_error {
+    let final_task_state = if is_err {
         TaskState::Failed
     } else {
         TaskState::Completed

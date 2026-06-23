@@ -9,7 +9,8 @@
 //! pipeline from navra-security. The filter profile is controlled
 //! by `[modules.memory] pii_filter` in config (default: "standard").
 
-use navra_core::protocol::{ToolDefinition, ToolInputSchema};
+use navra_core::protocol::{ToolDefinition};
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use navra_core::safety::{FilterContext, FilterPipeline, PiiMetrics};
 use navra_rag::ChunkStore;
 use std::collections::HashMap;
@@ -67,17 +68,13 @@ pub fn sanitize_for_storage_sync(content: &str, sanitizer: &PiiSanitizer) -> Str
 }
 
 pub fn memory_store_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "memory_store".to_string(),
-        description: Some(
-            "Store a knowledge entry in persistent memory. Entries are \
-             categorized by kind and searchable by title, content, and tags. \
-             If an entry with the same ID already exists, it is updated."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "memory_store",
+        "Store a knowledge entry in persistent memory. Entries are \
+         categorized by kind and searchable by title, content, and tags. \
+         If an entry with the same ID already exists, it is updated.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "kind".to_string(),
                     serde_json::json!({
@@ -137,30 +134,23 @@ pub fn memory_store_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec![
+            Some(vec![
                 "kind".to_string(),
                 "title".to_string(),
                 "content".to_string(),
             ]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+        ),
+    )
 }
 
 pub fn memory_query_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "memory_query".to_string(),
-        description: Some(
-            "Search stored knowledge entries using full-text search. \
-             Returns matching entries ranked by relevance. Optionally \
-             filter by kind and limit the number of results."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "memory_query",
+        "Search stored knowledge entries using full-text search. \
+         Returns matching entries ranked by relevance. Optionally \
+         filter by kind and limit the number of results.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "query".to_string(),
                     serde_json::json!({
@@ -205,12 +195,9 @@ pub fn memory_query_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["query".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["query".to_string()]),
+        ),
+    )
 }
 
 // --- Handler functions ---
@@ -228,21 +215,21 @@ pub async fn handle_memory_store(
 
     let kind_str = match args.get("kind").and_then(|v| v.as_str()) {
         Some(k) => k,
-        None => return CallToolResult::error("Missing required parameter: kind"),
+        None => return CallToolResult::error_msg("Missing required parameter: kind"),
     };
     let title = match args.get("title").and_then(|v| v.as_str()) {
         Some(t) => t,
-        None => return CallToolResult::error("Missing required parameter: title"),
+        None => return CallToolResult::error_msg("Missing required parameter: title"),
     };
     let content = match args.get("content").and_then(|v| v.as_str()) {
         Some(c) => c,
-        None => return CallToolResult::error("Missing required parameter: content"),
+        None => return CallToolResult::error_msg("Missing required parameter: content"),
     };
 
     let memory_type = match navra_memory::MemoryType::from_str(kind_str) {
         Ok(mt) => mt,
         Err(_) => {
-            return CallToolResult::error(format!(
+            return CallToolResult::error_msg(format!(
                 "Invalid kind: {kind_str}. Use: fact, event, instruction, insight"
             ))
         }
@@ -321,7 +308,7 @@ pub async fn handle_memory_store(
         Ok(()) => CallToolResult::text(
             serde_json::json!({"id": id, "status": "stored", "has_pii": has_pii}).to_string(),
         ),
-        Err(e) => CallToolResult::error(format!("Failed to store entry: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Failed to store entry: {e}")),
     }
 }
 
@@ -334,7 +321,7 @@ pub async fn handle_memory_query(
 
     let query = match args.get("query").and_then(|v| v.as_str()) {
         Some(q) => q,
-        None => return CallToolResult::error("Missing required parameter: query"),
+        None => return CallToolResult::error_msg("Missing required parameter: query"),
     };
 
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
@@ -393,7 +380,7 @@ pub async fn handle_memory_query(
 
             CallToolResult::text(serde_json::to_string_pretty(&output).unwrap_or_default())
         }
-        Err(e) => CallToolResult::error(format!("Search failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Search failed: {e}")),
     }
 }
 
@@ -411,7 +398,7 @@ pub async fn handle_memory_forget(
 
     let id = match args.get("id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing required parameter: id"),
+        None => return CallToolResult::error_msg("Missing required parameter: id"),
     };
 
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
@@ -427,8 +414,8 @@ pub async fn handle_memory_forget(
                 .to_string(),
             )
         }
-        Ok(false) => CallToolResult::error(format!("No entry found with id: {id}")),
-        Err(e) => CallToolResult::error(format!("Failed to delete entry: {e}")),
+        Ok(false) => CallToolResult::error_msg(format!("No entry found with id: {id}")),
+        Err(e) => CallToolResult::error_msg(format!("Failed to delete entry: {e}")),
     }
 }
 
@@ -462,18 +449,14 @@ pub fn content_has_pii(content: &str, sanitizer: &PiiSanitizer) -> bool {
 }
 
 pub fn memory_purge_pii_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "memory_purge_pii".to_string(),
-        description: Some(
-            "Scan stored knowledge entries for PII and either redact or delete them. \
-             Supports GDPR compliance by finding and removing personal data from \
-             persistent memory. Use action 'redact' to replace PII in-place, or \
-             'delete' to remove entries containing PII entirely."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "memory_purge_pii",
+        "Scan stored knowledge entries for PII and either redact or delete them. \
+         Supports GDPR compliance by finding and removing personal data from \
+         persistent memory. Use action 'redact' to replace PII in-place, or \
+         'delete' to remove entries containing PII entirely.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "action".to_string(),
                     serde_json::json!({
@@ -498,12 +481,9 @@ pub fn memory_purge_pii_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["action".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["action".to_string()]),
+        ),
+    )
 }
 
 /// Handle memory_purge_pii tool call.
@@ -522,7 +502,7 @@ pub async fn handle_memory_purge_pii(
     let action = match args.get("action").and_then(|v| v.as_str()) {
         Some(a @ ("redact" | "delete")) => a.to_string(),
         _ => {
-            return CallToolResult::error(
+            return CallToolResult::error_msg(
                 "Missing or invalid parameter: action (must be 'redact' or 'delete')",
             )
         }
@@ -541,12 +521,12 @@ pub async fn handle_memory_purge_pii(
     let entries = if let Some(ref q) = query_filter {
         match store.search(q) {
             Ok(e) => e,
-            Err(e) => return CallToolResult::error(format!("Search failed: {e}")),
+            Err(e) => return CallToolResult::error_msg(format!("Search failed: {e}")),
         }
     } else {
         match store.list(kind_filter.clone()) {
             Ok(e) => e,
-            Err(e) => return CallToolResult::error(format!("List failed: {e}")),
+            Err(e) => return CallToolResult::error_msg(format!("List failed: {e}")),
         }
     };
 
@@ -607,17 +587,13 @@ pub async fn handle_memory_purge_pii(
 }
 
 pub fn memory_forget_by_content_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "memory_forget_by_content".to_string(),
-        description: Some(
-            "Find and delete all knowledge entries containing specific content. \
-             Enables GDPR Article 17 right-to-erasure: 'delete all data related \
-             to Jean Dupont'. Set confirm=false for a dry-run preview."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "memory_forget_by_content",
+        "Find and delete all knowledge entries containing specific content. \
+         Enables GDPR Article 17 right-to-erasure: 'delete all data related \
+         to Jean Dupont'. Set confirm=false for a dry-run preview.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "query".to_string(),
                     serde_json::json!({
@@ -633,12 +609,9 @@ pub fn memory_forget_by_content_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["query".to_string(), "confirm".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["query".to_string(), "confirm".to_string()]),
+        ),
+    )
 }
 
 /// Handle memory_forget_by_content tool call.
@@ -655,7 +628,7 @@ pub async fn handle_memory_forget_by_content(
 
     let query = match args.get("query").and_then(|v| v.as_str()) {
         Some(q) => q,
-        None => return CallToolResult::error("Missing required parameter: query"),
+        None => return CallToolResult::error_msg("Missing required parameter: query"),
     };
 
     let confirm = args
@@ -667,7 +640,7 @@ pub async fn handle_memory_forget_by_content(
 
     let mut entries = match store.search(query) {
         Ok(e) => e,
-        Err(e) => return CallToolResult::error(format!("Search failed: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Search failed: {e}")),
     };
     let total_matches = entries.len();
     entries.truncate(1000);
@@ -725,24 +698,20 @@ pub async fn handle_memory_forget_by_content(
 }
 
 pub fn memory_forget_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "memory_forget".to_string(),
-        description: Some("Delete a knowledge entry from persistent memory by its ID.".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
+    ToolDefinition::new(
+        "memory_forget",
+        "Delete a knowledge entry from persistent memory by its ID.",
+        tool_input_schema(
+            Some(HashMap::from([(
                 "id".to_string(),
                 serde_json::json!({
                     "type": "string",
                     "description": "ID of the entry to delete"
                 }),
             )])),
-            required: Some(vec!["id".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["id".to_string()]),
+        ),
+    )
 }
 
 /// Cascade-delete chunks by source ID from the chunk store.
@@ -796,24 +765,17 @@ fn cascade_delete_content(chunk_store: &Option<Arc<ChunkStore>>, query: &str) ->
 // --- pii_report tool ---
 
 pub fn pii_report_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "pii_report".to_string(),
-        description: Some(
-            "Generate a GDPR compliance report showing PII detection metrics, \
-             retention policies, and current state of PII-flagged entries. \
-             Provides data needed for Data Protection Impact Assessments \
-             (GDPR Article 35)."
-                .to_string(),
+    ToolDefinition::new(
+        "pii_report",
+        "Generate a GDPR compliance report showing PII detection metrics, \
+         retention policies, and current state of PII-flagged entries. \
+         Provides data needed for Data Protection Impact Assessments \
+         (GDPR Article 35).",
+        tool_input_schema(
+            Some(HashMap::new()),
+            None,
         ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::new()),
-            required: None,
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+    )
 }
 
 /// Handle pii_report tool call.
@@ -863,19 +825,15 @@ pub async fn handle_pii_report(
 // --- memory_consent tool ---
 
 pub fn memory_consent_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "memory_consent".to_string(),
-        description: Some(
-            "Set or query the GDPR consent basis for stored knowledge entries. \
-             Valid bases: legitimate_interest, consent, legal_obligation, \
-             vital_interest, public_task, not_set. Use mode 'set' to assign \
-             a basis to an entry, 'get' to query an entry's basis, or 'list' \
-             to find all entries with a given basis."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "memory_consent",
+        "Set or query the GDPR consent basis for stored knowledge entries. \
+         Valid bases: legitimate_interest, consent, legal_obligation, \
+         vital_interest, public_task, not_set. Use mode 'set' to assign \
+         a basis to an entry, 'get' to query an entry's basis, or 'list' \
+         to find all entries with a given basis.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "mode".to_string(),
                     serde_json::json!({
@@ -900,12 +858,9 @@ pub fn memory_consent_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["mode".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["mode".to_string()]),
+        ),
+    )
 }
 
 /// Handle memory_consent tool call.
@@ -917,7 +872,7 @@ pub async fn handle_memory_consent(
 
     let mode = match args.get("mode").and_then(|v| v.as_str()) {
         Some(m) => m,
-        None => return CallToolResult::error("Missing required parameter: mode"),
+        None => return CallToolResult::error_msg("Missing required parameter: mode"),
     };
 
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
@@ -927,12 +882,12 @@ pub async fn handle_memory_consent(
             let id = match args.get("id").and_then(|v| v.as_str()) {
                 Some(id) => id,
                 None => {
-                    return CallToolResult::error("Missing required parameter: id (for 'set' mode)")
+                    return CallToolResult::error_msg("Missing required parameter: id (for 'set' mode)")
                 }
             };
             let basis = match args.get("basis").and_then(|v| v.as_str()) {
                 Some(b @ ("legitimate_interest" | "consent" | "legal_obligation" | "vital_interest" | "public_task" | "not_set")) => b,
-                _ => return CallToolResult::error(
+                _ => return CallToolResult::error_msg(
                     "Missing or invalid parameter: basis (must be one of: legitimate_interest, consent, legal_obligation, vital_interest, public_task, not_set)"
                 ),
             };
@@ -942,15 +897,15 @@ pub async fn handle_memory_consent(
                     serde_json::json!({"id": id, "consent_basis": basis, "status": "updated"})
                         .to_string(),
                 ),
-                Ok(false) => CallToolResult::error(format!("No entry found with id: {id}")),
-                Err(e) => CallToolResult::error(format!("Failed to set consent basis: {e}")),
+                Ok(false) => CallToolResult::error_msg(format!("No entry found with id: {id}")),
+                Err(e) => CallToolResult::error_msg(format!("Failed to set consent basis: {e}")),
             }
         }
         "get" => {
             let id = match args.get("id").and_then(|v| v.as_str()) {
                 Some(id) => id,
                 None => {
-                    return CallToolResult::error("Missing required parameter: id (for 'get' mode)")
+                    return CallToolResult::error_msg("Missing required parameter: id (for 'get' mode)")
                 }
             };
 
@@ -958,15 +913,15 @@ pub async fn handle_memory_consent(
                 Ok(Some(basis)) => CallToolResult::text(
                     serde_json::json!({"id": id, "consent_basis": basis}).to_string(),
                 ),
-                Ok(None) => CallToolResult::error(format!("No entry found with id: {id}")),
-                Err(e) => CallToolResult::error(format!("Failed to get consent basis: {e}")),
+                Ok(None) => CallToolResult::error_msg(format!("No entry found with id: {id}")),
+                Err(e) => CallToolResult::error_msg(format!("Failed to get consent basis: {e}")),
             }
         }
         "list" => {
             let basis = match args.get("basis").and_then(|v| v.as_str()) {
                 Some(b) => b,
                 None => {
-                    return CallToolResult::error(
+                    return CallToolResult::error_msg(
                         "Missing required parameter: basis (for 'list' mode)",
                     )
                 }
@@ -995,10 +950,10 @@ pub async fn handle_memory_consent(
                         .to_string(),
                     )
                 }
-                Err(e) => CallToolResult::error(format!("Failed to list by consent: {e}")),
+                Err(e) => CallToolResult::error_msg(format!("Failed to list by consent: {e}")),
             }
         }
-        _ => CallToolResult::error(format!(
+        _ => CallToolResult::error_msg(format!(
             "Invalid mode: {mode}. Use 'set', 'get', or 'list'."
         )),
     }
@@ -1027,10 +982,8 @@ mod tests {
         let result = handle_memory_store(store_args(content), ks.clone(), sanitizer).await;
 
         // Should succeed
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["status"], "stored");
 
@@ -1128,10 +1081,8 @@ mod tests {
         let content = "Contact john.doe@example.com";
         let result = handle_memory_store(store_args(content), ks.clone(), sanitizer).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["has_pii"], true);
 
@@ -1166,10 +1117,8 @@ mod tests {
         let args = serde_json::json!({"action": "redact"});
         let result = handle_memory_purge_pii(args, ks.clone(), sanitizer, None).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["scanned"], 1);
         assert_eq!(response["affected"], 1);
@@ -1218,10 +1167,8 @@ mod tests {
         let args = serde_json::json!({"action": "delete"});
         let result = handle_memory_purge_pii(args, ks.clone(), sanitizer, None).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["scanned"], 2);
         assert_eq!(response["affected"], 1);
@@ -1255,10 +1202,8 @@ mod tests {
         let args = serde_json::json!({"query": "Jean", "confirm": false});
         let result = handle_memory_forget_by_content(args, ks.clone(), None).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["mode"], "dry_run");
         assert_eq!(response["would_delete"], 1);
@@ -1291,10 +1236,8 @@ mod tests {
         let args = serde_json::json!({"query": "Jean", "confirm": true});
         let result = handle_memory_forget_by_content(args, ks.clone(), None).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["mode"], "confirmed");
         assert_eq!(response["deleted"], 1);
@@ -1354,10 +1297,8 @@ mod tests {
         let args = serde_json::json!({"id": "entry1"});
         let result = handle_memory_forget(args, ks.clone(), Some(Arc::clone(&cs))).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["status"], "deleted");
         assert_eq!(response["chunks_deleted"], 1);
@@ -1389,10 +1330,8 @@ mod tests {
         let args = serde_json::json!({"id": "entry1"});
         let result = handle_memory_forget(args, ks.clone(), None).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["status"], "deleted");
         assert_eq!(response["chunks_deleted"], 0);
@@ -1427,10 +1366,8 @@ mod tests {
         let result =
             handle_memory_purge_pii(args, ks.clone(), sanitizer, Some(Arc::clone(&cs))).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["affected"], 1);
         assert_eq!(response["chunks_deleted"], 1);
@@ -1469,10 +1406,8 @@ mod tests {
         let args = serde_json::json!({"query": "Jean", "confirm": true});
         let result = handle_memory_forget_by_content(args, ks.clone(), Some(Arc::clone(&cs))).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["mode"], "confirmed");
         assert_eq!(response["deleted"], 1);
@@ -1517,10 +1452,8 @@ mod tests {
         )
         .await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let report: serde_json::Value = serde_json::from_str(text).unwrap();
 
         assert!(report.get("metrics").is_some());
@@ -1538,10 +1471,8 @@ mod tests {
 
         let result = handle_pii_report(serde_json::json!({}), ks, None, None, None, None).await;
 
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let report: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(report["metrics"], "not_configured");
     }
@@ -1572,10 +1503,8 @@ mod tests {
         // Set consent basis
         let args = serde_json::json!({"mode": "set", "id": "e1", "basis": "consent"});
         let result = handle_memory_consent(args, ks.clone()).await;
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["status"], "updated");
         assert_eq!(response["consent_basis"], "consent");
@@ -1583,10 +1512,8 @@ mod tests {
         // Get consent basis
         let args = serde_json::json!({"mode": "get", "id": "e1"});
         let result = handle_memory_consent(args, ks.clone()).await;
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["consent_basis"], "consent");
     }
@@ -1617,10 +1544,8 @@ mod tests {
 
         let args = serde_json::json!({"mode": "list", "basis": "consent"});
         let result = handle_memory_consent(args, ks.clone()).await;
-        let text = match result.content.first().unwrap() {
-            navra_core::protocol::Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
+            .expect("expected text content");
         let response: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(response["count"], 2);
         assert_eq!(response["basis"], "consent");
@@ -1634,6 +1559,6 @@ mod tests {
 
         let args = serde_json::json!({"mode": "set", "id": "e1", "basis": "invalid"});
         let result = handle_memory_consent(args, ks).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 }

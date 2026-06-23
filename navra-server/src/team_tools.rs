@@ -13,7 +13,8 @@
 
 use navra_agent::AuditSink;
 use navra_core::identity::CapSigner;
-use navra_core::protocol::{ToolDefinition, ToolInputSchema};
+use navra_core::protocol::{ToolDefinition};
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
@@ -673,18 +674,14 @@ impl TeamRegistry {
 // --- Tool definitions ---
 
 pub fn team_create_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_create".to_string(),
-        description: Some(
-            "Create a team of agent teammates with a shared blackboard. \
+    ToolDefinition::new(
+        "team_create",
+        "Create a team of agent teammates with a shared blackboard. \
              Returns a team_id. Teammates can communicate via blackboard \
              (team_bb_publish/team_bb_read) and can create subteams \
-             for recursive decomposition (bounded by max_depth)."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             for recursive decomposition (bounded by max_depth).",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "name".to_string(),
                     serde_json::json!({"type": "string", "description": "Team name"}),
@@ -714,19 +711,15 @@ pub fn team_create_def() -> ToolDefinition {
                     serde_json::json!({"type": "integer", "description": "Max ReAct iterations per teammate (default: 50)"}),
                 ),
             ])),
-            required: Some(vec!["name".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["name".to_string()]),
+        ),
+    )
 }
 
 pub fn team_add_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_add".to_string(),
-        description: Some(
-            "Add a teammate to a team. Teammates are full agents with \
+    ToolDefinition::new(
+        "team_add",
+        "Add a teammate to a team. Teammates are full agents with \
              scoped tool access and can publish findings to the shared \
              blackboard. Specify locality: 'local' for sensitive data \
              (on-device model), 'remote' for complex reasoning (cloud API), \
@@ -735,12 +728,9 @@ pub fn team_add_def() -> ToolDefinition {
              can do. Operations are capability-level permissions (e.g. \
              'read', 'search', 'list', 'write', 'git.commit'). Tools \
              are the specific MCP tools the teammate can call. Both \
-             default to a safe read-only set if omitted."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             default to a safe read-only set if omitted.",
+        tool_input_schema(
+            Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
                 (
                     "name".to_string(),
@@ -767,27 +757,20 @@ pub fn team_add_def() -> ToolDefinition {
                     serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: ['file_tree', 'file_grep', 'file_read', 'team_bb_publish'])"}),
                 ),
             ])),
-            required: Some(vec!["team_id".to_string(), "name".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["team_id".to_string(), "name".to_string()]),
+        ),
+    )
 }
 
 pub fn team_message_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_message".to_string(),
-        description: Some(
-            "Send a task to a teammate. The teammate runs asynchronously \
+    ToolDefinition::new(
+        "team_message",
+        "Send a task to a teammate. The teammate runs asynchronously \
              with full tool access (file_tree, file_grep, file_read) and \
              can publish findings to the team's shared blackboard. \
-             Use team_status to check progress, team_result to read output."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             Use team_status to check progress, team_result to read output.",
+        tool_input_schema(
+            Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
                 (
                     "to".to_string(),
@@ -798,73 +781,55 @@ pub fn team_message_def() -> ToolDefinition {
                     serde_json::json!({"type": "string", "description": "Task description"}),
                 ),
             ])),
-            required: Some(vec![
+            Some(vec![
                 "team_id".to_string(),
                 "to".to_string(),
                 "message".to_string(),
             ]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+        ),
+    )
 }
 
 pub fn team_status_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_status".to_string(),
-        description: Some(
-            "Check team status: teammate progress, blackboard keys, \
-             token usage, and budget remaining."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
+    ToolDefinition::new(
+        "team_status",
+        "Check team status: teammate progress, blackboard keys, \
+             token usage, and budget remaining.",
+        tool_input_schema(
+            Some(HashMap::from([(
                 "team_id".to_string(),
                 serde_json::json!({"type": "string"}),
             )])),
-            required: Some(vec!["team_id".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["team_id".to_string()]),
+        ),
+    )
 }
 
 pub fn team_result_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_result".to_string(),
-        description: Some("Read a teammate's output.".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "team_result",
+        "Read a teammate's output.",
+        tool_input_schema(
+            Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
                 (
                     "teammate".to_string(),
                     serde_json::json!({"type": "string"}),
                 ),
             ])),
-            required: Some(vec!["team_id".to_string(), "teammate".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["team_id".to_string(), "teammate".to_string()]),
+        ),
+    )
 }
 
 pub fn team_bb_publish_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_bb_publish".to_string(),
-        description: Some(
-            "Publish a finding or data to the team's shared blackboard. \
+    ToolDefinition::new(
+        "team_bb_publish",
+        "Publish a finding or data to the team's shared blackboard. \
              Other teammates can read it via team_bb_read. The lead can \
-             read all entries via team_status (shows keys) and team_bb_read."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             read all entries via team_status (shows keys) and team_bb_read.",
+        tool_input_schema(
+            Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
                 (
                     "key".to_string(),
@@ -875,99 +840,74 @@ pub fn team_bb_publish_def() -> ToolDefinition {
                     serde_json::json!({"type": "string", "description": "Entry value (findings, data, etc.)"}),
                 ),
             ])),
-            required: Some(vec![
+            Some(vec![
                 "team_id".to_string(),
                 "key".to_string(),
                 "value".to_string(),
             ]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+        ),
+    )
 }
 
 pub fn team_bb_read_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_bb_read".to_string(),
-        description: Some("Read an entry from the team's shared blackboard.".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "team_bb_read",
+        "Read an entry from the team's shared blackboard.",
+        tool_input_schema(
+            Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
                 (
                     "key".to_string(),
                     serde_json::json!({"type": "string", "description": "Entry key to read"}),
                 ),
             ])),
-            required: Some(vec!["team_id".to_string(), "key".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["team_id".to_string(), "key".to_string()]),
+        ),
+    )
 }
 
 pub fn team_bb_notifications_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_bb_notifications".to_string(),
-        description: Some(
-            "Check for new blackboard entries published by other teammates \
+    ToolDefinition::new(
+        "team_bb_notifications",
+        "Check for new blackboard entries published by other teammates \
              since your last check. Returns key, author, and timestamp for \
              each new entry (not the content). Call team_bb_read on \
-             interesting keys to retrieve the full value."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
+             interesting keys to retrieve the full value.",
+        tool_input_schema(
+            Some(HashMap::from([(
                 "team_id".to_string(),
                 serde_json::json!({"type": "string"}),
             )])),
-            required: Some(vec!["team_id".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["team_id".to_string()]),
+        ),
+    )
 }
 
 pub fn team_shutdown_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "team_shutdown".to_string(),
-        description: Some(
-            "Shut down a team. Shows final stats (tokens used, findings count). \
-             You MUST call this before producing your final response."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
+    ToolDefinition::new(
+        "team_shutdown",
+        "Shut down a team. Shows final stats (tokens used, findings count). \
+             You MUST call this before producing your final response.",
+        tool_input_schema(
+            Some(HashMap::from([(
                 "team_id".to_string(),
                 serde_json::json!({"type": "string"}),
             )])),
-            required: Some(vec!["team_id".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["team_id".to_string()]),
+        ),
+    )
 }
 
 pub fn agent_signal_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "agent_signal".to_string(),
-        description: Some(
-            "Send a cooperative signal to a running teammate agent. \
+    ToolDefinition::new(
+        "agent_signal",
+        "Send a cooperative signal to a running teammate agent. \
              Signals: 'interrupt' (cancel and return partial result), \
              'terminate' (graceful shutdown after current iteration), \
              'pause' (stop until resumed), 'resume' (continue after pause). \
-             Only works for in-process agents."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             Only works for in-process agents.",
+        tool_input_schema(
+            Some(HashMap::from([
                 ("team_id".to_string(), serde_json::json!({"type": "string"})),
                 (
                     "agent_id".to_string(),
@@ -982,16 +922,13 @@ pub fn agent_signal_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec![
+            Some(vec![
                 "team_id".to_string(),
                 "agent_id".to_string(),
                 "signal".to_string(),
             ]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+        ),
+    )
 }
 
 /// Handle agent_signal tool call.
@@ -1003,15 +940,15 @@ pub async fn handle_agent_signal(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     let agent_id = match args.get("agent_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing agent_id"),
+        None => return CallToolResult::error_msg("Missing agent_id"),
     };
     let signal_str = match args.get("signal").and_then(|v| v.as_str()) {
         Some(s) => s,
-        None => return CallToolResult::error("Missing signal"),
+        None => return CallToolResult::error_msg("Missing signal"),
     };
 
     let signal = match signal_str {
@@ -1019,7 +956,7 @@ pub async fn handle_agent_signal(
         "terminate" => navra_agent::AgentSignal::Terminate,
         "pause" => navra_agent::AgentSignal::Pause,
         "resume" => navra_agent::AgentSignal::Resume,
-        other => return CallToolResult::error(format!("Unknown signal: {other}")),
+        other => return CallToolResult::error_msg(format!("Unknown signal: {other}")),
     };
 
     match registry.send_signal(team_id, agent_id, signal) {
@@ -1034,15 +971,14 @@ pub async fn handle_agent_signal(
                 "Signal '{signal_str}' delivered to {agent_id}"
             ))])
         }
-        Err(e) => CallToolResult::error(e),
+        Err(e) => CallToolResult::error_msg(e),
     }
 }
 
 pub fn models_list_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "models_list".to_string(),
-        description: Some(
-            "List available models with composite model cards. Each card has three layers:\n\
+    ToolDefinition::new(
+        "models_list",
+        "List available models with composite model cards. Each card has three layers:\n\
              \n\
              **vendor**: Auto-populated from registry (family, parameters, quantization, \
              context_window, tasks, license, format). Technical facts about the model.\n\
@@ -1066,39 +1002,26 @@ pub fn models_list_def() -> ToolDefinition {
              - For sensitive data: MUST use locality='local' (data stays on device)\n\
              - For simple tasks: prefer speed_tier='fast' and cost_tier='free'\n\
              - Minimize use of cost_tier='high' models — use only when task requires it\n\
-             - Check runtime.by_task if available — real data beats operator assumptions"
-                .to_string(),
+             - Check runtime.by_task if available — real data beats operator assumptions",
+        tool_input_schema(
+            None,
+            None,
         ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: None,
-            required: None,
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+    )
 }
 
 pub fn personas_list_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "personas_list".to_string(),
-        description: Some(
-            "List available specialist personas from the cognitive core. \
+    ToolDefinition::new(
+        "personas_list",
+        "List available specialist personas from the cognitive core. \
              Each persona has a name, display name, core mandate, and \
              heuristic modules. Use persona names in the `persona` field \
-             of team_add to assign specialist behavior to teammates."
-                .to_string(),
+             of team_add to assign specialist behavior to teammates.",
+        tool_input_schema(
+            None,
+            None,
         ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: None,
-            required: None,
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+    )
 }
 
 // --- Handler functions ---
@@ -1144,7 +1067,7 @@ pub async fn handle_team_create(
             tracing::info!(team_id = %team_id, name = name, lead = %agent_name, "Team created");
             CallToolResult::text(format!("Team created.\nteam_id: {team_id}\nname: {name}"))
         }
-        Err(e) => CallToolResult::error(e),
+        Err(e) => CallToolResult::error_msg(e),
     }
 }
 
@@ -1157,11 +1080,11 @@ pub async fn handle_team_add(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     let name = match args.get("name").and_then(|v| v.as_str()) {
         Some(n) => n,
-        None => return CallToolResult::error("Missing name"),
+        None => return CallToolResult::error_msg("Missing name"),
     };
     let persona = args.get("persona").and_then(|v| v.as_str());
     let model = args.get("model").and_then(|v| v.as_str()).unwrap_or("auto");
@@ -1206,7 +1129,7 @@ pub async fn handle_team_add(
                 persona.unwrap_or("default"),
             ))
         }
-        Err(e) => CallToolResult::error(e),
+        Err(e) => CallToolResult::error_msg(e),
     }
 }
 
@@ -1219,13 +1142,13 @@ pub async fn handle_team_status(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     match reg.get_status(team_id) {
         Some(status) => {
             CallToolResult::text(serde_json::to_string_pretty(&status).unwrap_or_default())
         }
-        None => CallToolResult::error(format!("Unknown team: {team_id}")),
+        None => CallToolResult::error_msg(format!("Unknown team: {team_id}")),
     }
 }
 
@@ -1238,17 +1161,17 @@ pub async fn handle_team_result(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     let teammate = match args.get("teammate").and_then(|v| v.as_str()) {
         Some(t) => t,
-        None => return CallToolResult::error("Missing teammate"),
+        None => return CallToolResult::error_msg("Missing teammate"),
     };
     match reg.get_result(team_id, teammate) {
         Some(result) => {
             CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default())
         }
-        None => CallToolResult::error(format!("No result from '{teammate}'")),
+        None => CallToolResult::error_msg(format!("No result from '{teammate}'")),
     }
 }
 
@@ -1261,14 +1184,14 @@ pub async fn handle_team_shutdown(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     match reg.shutdown(team_id) {
         Ok(info) => {
             tracing::info!(team = team_id, "Team shut down");
             CallToolResult::text(serde_json::to_string_pretty(&info).unwrap_or_default())
         }
-        Err(e) => CallToolResult::error(e),
+        Err(e) => CallToolResult::error_msg(e),
     }
 }
 
@@ -1283,15 +1206,15 @@ pub async fn handle_team_bb_publish(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     let key = match args.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
-        None => return CallToolResult::error("Missing key"),
+        None => return CallToolResult::error_msg("Missing key"),
     };
     let value = match args.get("value").and_then(|v| v.as_str()) {
         Some(v) => v,
-        None => return CallToolResult::error("Missing value"),
+        None => return CallToolResult::error_msg("Missing value"),
     };
     reg.bb_publish(team_id, key, value, agent_name, label);
     CallToolResult::text(format!("Published '{key}' to team blackboard"))
@@ -1306,17 +1229,17 @@ pub async fn handle_team_bb_read(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     let key = match args.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
-        None => return CallToolResult::error("Missing key"),
+        None => return CallToolResult::error_msg("Missing key"),
     };
     match reg.bb_read(team_id, key) {
         Some(entry) => {
             CallToolResult::text(serde_json::to_string_pretty(&entry).unwrap_or_default())
         }
-        None => CallToolResult::error(format!("No blackboard entry: {key}")),
+        None => CallToolResult::error_msg(format!("No blackboard entry: {key}")),
     }
 }
 
@@ -1330,7 +1253,7 @@ pub async fn handle_team_bb_notifications(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     match reg.bb_notifications(team_id, agent_name) {
         Ok(notifications) => {
@@ -1342,7 +1265,7 @@ pub async fn handle_team_bb_notifications(
                 )
             }
         }
-        Err(e) => CallToolResult::error(e),
+        Err(e) => CallToolResult::error_msg(e),
     }
 }
 
@@ -2583,22 +2506,22 @@ pub async fn handle_team_message(
 
     let team_id = match args.get("team_id").and_then(|v| v.as_str()) {
         Some(id) => id.to_string(),
-        None => return CallToolResult::error("Missing team_id"),
+        None => return CallToolResult::error_msg("Missing team_id"),
     };
     let to = match args.get("to").and_then(|v| v.as_str()) {
         Some(t) => t.to_string(),
-        None => return CallToolResult::error("Missing to"),
+        None => return CallToolResult::error_msg("Missing to"),
     };
     let message = match args.get("message").and_then(|v| v.as_str()) {
         Some(m) => m.to_string(),
-        None => return CallToolResult::error("Missing message"),
+        None => return CallToolResult::error_msg("Missing message"),
     };
 
     if let Err(e) = spawn_ctx
         .team_registry
         .send_message(&team_id, &to, &message)
     {
-        return CallToolResult::error(e);
+        return CallToolResult::error_msg(e);
     }
 
     // Get the team's timeout and iteration budget

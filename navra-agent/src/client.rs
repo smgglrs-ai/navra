@@ -2,11 +2,12 @@
 
 use crate::error::AgentError;
 use navra_auth::ifc::{is_external_read_tool, TaintTracker};
-use navra_protocol::label::{DataLabel, Integrity};
+use navra_protocol::label::DataLabel;
 use navra_protocol::{
     CallToolParams, CallToolResult, GetPromptParams, GetPromptResult, PromptDefinition,
     ReadResourceParams, ReadResourceResult, ResourceDefinition, ToolDefinition, Upstream,
 };
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// MCP client wrapping [`Upstream`] with authentication and IFC taint tracking.
@@ -51,20 +52,20 @@ impl McpClient {
         name: &str,
         arguments: serde_json::Value,
     ) -> Result<CallToolResult, AgentError> {
-        let params = CallToolParams {
-            name: name.to_string(),
-            arguments,
-            meta: None,
-        };
-        let mut result = self.upstream.call_tool(params).await?;
+        let mut params = CallToolParams::new(Cow::Owned(name.to_string()));
+        params.arguments = Some(
+            serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(arguments)
+                .unwrap_or_default(),
+        );
+        let result = self.upstream.call_tool(params).await?;
 
-        // CallToolResult.label is #[serde(skip)] so it deserializes as default
-        // (TRUSTED_PUBLIC). Apply client-side classification to mirror server behavior.
-        if is_external_read_tool(name) && result.label.integrity == Integrity::Trusted {
-            result.label = DataLabel::UNTRUSTED_PUBLIC;
+        // Client-side IFC classification: external read tools produce
+        // untrusted data. Without the label field on CallToolResult,
+        // we track taint purely through the TaintTracker.
+        if is_external_read_tool(name) {
+            self.taint.absorb(DataLabel::UNTRUSTED_PUBLIC);
         }
 
-        self.taint.absorb(result.label);
         Ok(result)
     }
 
@@ -79,10 +80,14 @@ impl McpClient {
         name: &str,
         arguments: HashMap<String, String>,
     ) -> Result<GetPromptResult, AgentError> {
-        let params = GetPromptParams {
-            name: name.to_string(),
-            arguments,
-        };
+        let mut params = GetPromptParams::new(name);
+        if !arguments.is_empty() {
+            let map: serde_json::Map<String, serde_json::Value> = arguments
+                .into_iter()
+                .map(|(k, v)| (k, serde_json::Value::String(v)))
+                .collect();
+            params.arguments = Some(map);
+        }
         Ok(self.upstream.get_prompt(params).await?)
     }
 
@@ -93,9 +98,7 @@ impl McpClient {
 
     /// Read a resource by URI.
     pub async fn read_resource(&mut self, uri: &str) -> Result<ReadResourceResult, AgentError> {
-        let params = ReadResourceParams {
-            uri: uri.to_string(),
-        };
+        let params = ReadResourceParams::new(uri);
         Ok(self.upstream.read_resource(params).await?)
     }
 

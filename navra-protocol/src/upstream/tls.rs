@@ -189,6 +189,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(feature = "native-tls", feature = "rustls"))]
     fn missing_ca_cert_file_errors() {
         let cfg = TlsConfig {
             ca_cert: Some("/nonexistent/ca.pem".to_string()),
@@ -199,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(feature = "native-tls", feature = "rustls"))]
     fn client_cert_without_key_errors() {
         let cfg = TlsConfig {
             client_cert: Some("/some/cert.pem".to_string()),
@@ -210,6 +212,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(feature = "native-tls", feature = "rustls"))]
     fn missing_client_cert_file_errors() {
         let cfg = TlsConfig {
             client_cert: Some("/nonexistent/cert.pem".to_string()),

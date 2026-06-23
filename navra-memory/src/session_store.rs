@@ -115,10 +115,10 @@ impl SessionBackend for SqliteSessionBackend {
                         did: row.get(4)?,
                         capabilities: None,
                     },
-                    client_info: ClientInfo {
-                        name: row.get(5)?,
-                        version: row.get(6)?,
-                    },
+                    client_info: ClientInfo::new(
+                        row.get::<_, String>(5)?,
+                        row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                    ),
                     initialized: row.get::<_, i32>(7)? != 0,
                     context_label: DataLabel {
                         integrity: if integrity_str == "Untrusted" {
@@ -214,10 +214,10 @@ impl SessionBackend for SqliteSessionBackend {
                     did: row.get(4)?,
                     capabilities: None,
                 },
-                client_info: ClientInfo {
-                    name: row.get(5)?,
-                    version: row.get(6)?,
-                },
+                client_info: ClientInfo::new(
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                ),
                 initialized: row.get::<_, i32>(7)? != 0,
                 context_label: DataLabel {
                     integrity: if integrity_str == "Untrusted" {
@@ -249,10 +249,7 @@ mod tests {
         Session {
             id: id.to_string(),
             agent: AgentIdentity::new("tester", "dev"),
-            client_info: ClientInfo {
-                name: "test-client".to_string(),
-                version: Some("1.0".to_string()),
-            },
+            client_info: ClientInfo::new("test-client", "1.0"),
             initialized: true,
             context_label: DataLabel::TRUSTED_PUBLIC,
             created_at: now,
@@ -268,7 +265,7 @@ mod tests {
         assert_eq!(s.id, "s1");
         assert_eq!(s.agent.name, "tester");
         assert_eq!(s.client_info.name, "test-client");
-        assert_eq!(s.client_info.version.as_deref(), Some("1.0"));
+        assert_eq!(s.client_info.version.as_str(), "1.0");
         assert!(s.initialized);
     }
 

@@ -166,12 +166,12 @@ impl Hook for MonitoringHook {
     ) -> HookDecision {
         // Observe error results — these indicate a prior hook blocked
         // the call or the tool itself failed. We escalate blocked calls.
-        if result.is_error {
+        if result.is_error == Some(true) {
             let reason = result
                 .content
                 .first()
-                .and_then(|c| match c {
-                    navra_protocol::Content::Text(t) => Some(t.text.clone()),
+                .and_then(|c| match &c.raw {
+                    navra_protocol::RawContent::Text(t) => Some(t.text.clone()),
                     _ => None,
                 })
                 .unwrap_or_default();
@@ -347,6 +347,7 @@ impl Default for MonitoringConfig {
 mod tests {
     use super::*;
     use navra_auth::auth::{AgentIdentity, CallContext};
+    use navra_protocol::compat::CallToolResultExt;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("test-agent", "dev"), "test-session")
@@ -486,7 +487,7 @@ mod tests {
         let (sender, mut rx) = escalation_channel(16);
         let hook = MonitoringHook::new(sender);
 
-        let result = CallToolResult::error("IFC no-write-down violation");
+        let result = CallToolResult::error_msg("IFC no-write-down violation");
         let decision = hook
             .post_tool_use("file_write", &serde_json::json!({}), &result, &test_ctx())
             .await;

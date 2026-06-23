@@ -142,7 +142,7 @@ async fn openapi_module_lists_tools() {
     let tools = module.tools();
     assert_eq!(tools.len(), 4);
 
-    let names: Vec<&str> = tools.iter().map(|t| t.0.name.as_str()).collect();
+    let names: Vec<&str> = tools.iter().map(|t| &*t.0.name).collect();
     assert!(names.contains(&"test_api_listitems"));
     assert!(names.contains(&"test_api_createitem"));
     assert!(names.contains(&"test_api_getitem"));
@@ -170,7 +170,7 @@ async fn call_get_tool() {
         .unwrap();
 
     let result = handler(json!({}), dummy_ctx()).await;
-    assert!(!result.is_error);
+    assert!(result.is_error != Some(true));
 
     tokio::fs::remove_file(&tmpfile).await.ok();
 }
@@ -191,7 +191,7 @@ async fn call_get_with_path_param() {
     let (_, handler) = tools.iter().find(|(d, _)| d.name == "api_getitem").unwrap();
 
     let result = handler(json!({"itemId": "42"}), dummy_ctx()).await;
-    assert!(!result.is_error);
+    assert!(result.is_error != Some(true));
 
     tokio::fs::remove_file(&tmpfile).await.ok();
 }
@@ -215,7 +215,7 @@ async fn call_post_with_body() {
         .unwrap();
 
     let result = handler(json!({"body": {"name": "fish"}}), dummy_ctx()).await;
-    assert!(!result.is_error);
+    assert!(result.is_error != Some(true));
 
     tokio::fs::remove_file(&tmpfile).await.ok();
 }
@@ -236,7 +236,7 @@ async fn missing_path_param_returns_error() {
     let (_, handler) = tools.iter().find(|(d, _)| d.name == "api_getitem").unwrap();
 
     let result = handler(json!({}), dummy_ctx()).await;
-    assert!(result.is_error);
+    assert!(result.is_error == Some(true));
 
     tokio::fs::remove_file(&tmpfile).await.ok();
 }
@@ -259,7 +259,7 @@ async fn tool_filter_limits_exposed_tools() {
 
     assert_eq!(module.tool_count(), 2);
     let tools = module.tools();
-    let names: Vec<&str> = tools.iter().map(|t| t.0.name.as_str()).collect();
+    let names: Vec<&str> = tools.iter().map(|t| &*t.0.name).collect();
     assert!(names.contains(&"api_listitems"));
     assert!(names.contains(&"api_getitem"));
     assert!(!names.contains(&"api_createitem"));

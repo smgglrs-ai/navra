@@ -564,26 +564,14 @@ mod tests {
 
     #[test]
     fn heuristic_operation_annotations_override() {
-        let read_only = navra_protocol::ToolAnnotations {
-            read_only_hint: Some(true),
-            destructive_hint: None,
-            idempotent_hint: None,
-            open_world_hint: None,
-            title: None,
-        };
+        let read_only = navra_protocol::ToolAnnotations::new().read_only(true);
         // Name says "write" but annotation says read-only
         assert_eq!(
             infer_operation_heuristic("file_write", Some(&read_only)),
             Operation::Read
         );
 
-        let destructive = navra_protocol::ToolAnnotations {
-            read_only_hint: None,
-            destructive_hint: Some(true),
-            idempotent_hint: None,
-            open_world_hint: None,
-            title: None,
-        };
+        let destructive = navra_protocol::ToolAnnotations::new().destructive(true);
         // Name says "read" but annotation says destructive
         assert_eq!(
             infer_operation_heuristic("file_read", Some(&destructive)),

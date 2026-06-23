@@ -37,6 +37,7 @@ use navra_core::auth::{AgentIdentity, TokenAuthenticator};
 use navra_core::identity::{self, CapSigner, Ed25519Signer};
 use navra_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use navra_core::Module;
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::sync::Arc;
 
 use cli::{AgentAction, Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
@@ -2342,16 +2343,12 @@ async fn serve_inner(
             .unwrap_or(3600);
 
         builder = builder.tool(
-            navra_core::protocol::ToolDefinition {
-                name: "cap_delegate".to_string(),
-                description: Some(
-                    "Issue an attenuated capability token for a sub-agent. \
-                     The new token grants a subset of the caller's capabilities."
-                        .to_string(),
-                ),
-                input_schema: navra_core::protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: {
+            navra_core::protocol::ToolDefinition::new(
+                                      "cap_delegate",
+                                      "Issue an attenuated capability token for a sub-agent. \
+                     The new token grants a subset of the caller's capabilities.",
+                                      navra_protocol::compat::tool_input_schema(
+                    {
                         let mut props = std::collections::HashMap::new();
                         props.insert(
                             "subject_did".to_string(),
@@ -2404,12 +2401,9 @@ async fn serve_inner(
                         );
                         Some(props)
                     },
-                    required: Some(vec!["subject_did".to_string()]),
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+                    Some(vec!["subject_did".to_string()]),
+                ),
+                                  ),
             move |args, ctx| {
                 let signer = Arc::clone(&delegate_signer);
                 let permissions = delegate_permissions.clone();
@@ -2427,7 +2421,7 @@ async fn serve_inner(
                     let parent_caps = match &ctx.agent.capabilities {
                         Some(caps) => {
                             if !caps.tools.iter().any(|t| t == "cap_delegate") {
-                                return CallToolResult::error(
+                                return CallToolResult::error_msg(
                                     "Permission denied: cap_delegate must be explicitly \
                                      listed in capability token tools (wildcard not accepted)",
                                 );
@@ -2442,12 +2436,12 @@ async fn serve_inner(
                                 .map(|ps| ps.can_delegate)
                                 .unwrap_or(false);
                             if !can_delegate {
-                                return CallToolResult::error(
+                                return CallToolResult::error_msg(
                                     "Permission denied: delegation not allowed for this agent",
                                 );
                             }
                             // Build a pseudo-parent from permission set for validation
-                            return CallToolResult::error(
+                            return CallToolResult::error_msg(
                                 "Delegation requires a capability token. \
                                  Use a capability-token-authenticated session.",
                             );
@@ -2460,7 +2454,7 @@ async fn serve_inner(
                         .unwrap_or("")
                         .to_string();
                     if subject_did.is_empty() {
-                        return CallToolResult::error("subject_did is required");
+                        return CallToolResult::error_msg("subject_did is required");
                     }
 
                     let ring = args
@@ -2556,7 +2550,7 @@ async fn serve_inner(
                     // Validate attenuation
                     if let Err(e) = validate_delegation(&parent_payload, &child_payload, max_depth)
                     {
-                        return CallToolResult::error(format!("Delegation denied: {e}"));
+                        return CallToolResult::error_msg(format!("Delegation denied: {e}"));
                     }
 
                     // Sign with root key (navra signs all tokens)
@@ -2570,7 +2564,7 @@ async fn serve_inner(
                             );
                             CallToolResult::text(token)
                         }
-                        Err(e) => CallToolResult::error(format!("Failed to sign token: {e}")),
+                        Err(e) => CallToolResult::error_msg(format!("Failed to sign token: {e}")),
                     }
                 })
             },
@@ -2581,22 +2575,15 @@ async fn serve_inner(
     // Register sys_status tool (process table viewer)
     {
         builder = builder.tool(
-            navra_core::protocol::ToolDefinition {
-                name: "sys_status".to_string(),
-                description: Some(
-                    "Show AI OS process table: active agents, their rings, \
-                     call counts, and active tool calls."
-                        .to_string(),
+            navra_core::protocol::ToolDefinition::new(
+                                      "sys_status",
+                                      "Show AI OS process table: active agents, their rings, \
+                     call counts, and active tool calls.",
+                                      navra_protocol::compat::tool_input_schema(
+                    None,
+                    None,
                 ),
-                input_schema: navra_core::protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: None,
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+                                  ),
             |_args, _ctx| {
                 // The actual data comes from the server's process table,
                 // but the handler doesn't have access to &self.
@@ -3426,18 +3413,14 @@ async fn serve_inner(
     {
         let audit = Arc::clone(&audit_log);
         builder = builder.tool(
-            navra_core::protocol::ToolDefinition {
-                name: "audit_query".to_string(),
-                description: Some(
-                    "Query the structured audit log. Returns tool calls, model calls, \
+            navra_core::protocol::ToolDefinition::new(
+                                      "audit_query",
+                                      "Query the structured audit log. Returns tool calls, model calls, \
                      and run summaries from past agent executions. Use to inspect \
                      what tools were called, with what arguments, and what results \
-                     were returned."
-                        .to_string(),
-                ),
-                input_schema: navra_core::protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: {
+                     were returned.",
+                                      navra_protocol::compat::tool_input_schema(
+                    {
                         let mut props = std::collections::HashMap::new();
                         props.insert(
                             "run_id".to_string(),
@@ -3452,12 +3435,9 @@ async fn serve_inner(
                         }));
                         Some(props)
                     },
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+                    None,
+                ),
+                                  ),
             move |args, _ctx| {
                 let audit = Arc::clone(&audit);
                 Box::pin(async move {
@@ -3475,14 +3455,14 @@ async fn serve_inner(
                                 Ok(s) => CallToolResult::text(
                                     serde_json::to_string_pretty(&s).unwrap_or_default(),
                                 ),
-                                Err(e) => CallToolResult::error(format!("Audit query failed: {e}")),
+                                Err(e) => CallToolResult::error_msg(format!("Audit query failed: {e}")),
                             }
                         } else {
                             match audit.get_tool_calls(rid) {
                                 Ok(calls) => CallToolResult::text(
                                     serde_json::to_string_pretty(&calls).unwrap_or_default(),
                                 ),
-                                Err(e) => CallToolResult::error(format!("Audit query failed: {e}")),
+                                Err(e) => CallToolResult::error_msg(format!("Audit query failed: {e}")),
                             }
                         }
                     } else {
@@ -3516,7 +3496,7 @@ async fn serve_inner(
                         plan_execute::handle_plan_execute(args, server, ctx, allow_direct).await
                     }
                     None => {
-                        navra_core::protocol::CallToolResult::error("Server not yet initialized")
+                        navra_core::protocol::CallToolResult::error_msg("Server not yet initialized")
                     }
                 }
             })
@@ -3540,18 +3520,14 @@ async fn serve_inner(
     {
         let flow_audit = Arc::clone(&audit_log);
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "flow://".to_string(),
-                name: "Flow task results".to_string(),
-                description: Some(
-                    "Read flow task outputs. Use flow://list for all flows, \
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("flow://", "Flow task results")
+                    .with_description("Read flow task outputs. Use flow://list for all flows, \
                      flow://<flow_id>/tasks for task list, \
-                     flow://<flow_id>/task/<task_id> for a specific output."
-                        .to_string(),
-                ),
-                mime_type: Some("text/plain".to_string()),
-                size: None,
-            },
+                     flow://<flow_id>/task/<task_id> for a specific output.")
+                    .with_mime_type("text/plain"),
+                None,
+            ),
             std::sync::Arc::new(move |uri: String, _ctx| {
                 let audit = Arc::clone(&flow_audit);
                 Box::pin(async move {
@@ -3597,14 +3573,14 @@ async fn serve_inner(
                     } else {
                         format!("Invalid URI: {uri}")
                     };
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(
+                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("text/plain".to_string()),
-                            text: Some(text),
-                            blob: None,
+                            text,
+                            meta: None,
                         }],
-                    }
+                    )
                 })
             }),
         );
@@ -3619,26 +3595,25 @@ async fn serve_inner(
     {
         let pt = process_table.clone();
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://proc".to_string(),
-                name: "Process Table".to_string(),
-                description: Some("Active agent sessions and call counts".to_string()),
-                mime_type: Some("application/json".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://proc", "Process Table")
+                    .with_description("Active agent sessions and call counts")
+                    .with_mime_type("application/json"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 let pt = pt.clone();
                 Box::pin(async move {
                     let agents = pt.snapshot();
                     let json = serde_json::json!({ "agents": agents });
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(
+                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
-                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                            blob: None,
+                            text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            meta: None,
                         }],
-                    }
+                    )
                 })
             }),
         );
@@ -3648,13 +3623,12 @@ async fn serve_inner(
     {
         let ss = session_store.clone();
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://sessions".to_string(),
-                name: "Active Sessions".to_string(),
-                description: Some("List of active MCP sessions".to_string()),
-                mime_type: Some("application/json".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://sessions", "Active Sessions")
+                    .with_description("List of active MCP sessions")
+                    .with_mime_type("application/json"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 let ss = ss.clone();
                 Box::pin(async move {
@@ -3674,14 +3648,14 @@ async fn serve_inner(
                         "count": count,
                         "sessions": session_list,
                     });
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(
+                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
-                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                            blob: None,
+                            text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            meta: None,
                         }],
-                    }
+                    )
                 })
             }),
         );
@@ -3693,13 +3667,12 @@ async fn serve_inner(
         let ss = session_store.clone();
         let boot = boot_instant;
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://metrics".to_string(),
-                name: "Gateway Metrics".to_string(),
-                description: Some("Gateway metrics: call counts, sessions, uptime".to_string()),
-                mime_type: Some("text/plain".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://metrics", "Gateway Metrics")
+                    .with_description("Gateway metrics: call counts, sessions, uptime")
+                    .with_mime_type("text/plain"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 let pt = pt.clone();
                 let ss = ss.clone();
@@ -3718,14 +3691,14 @@ async fn serve_inner(
                          navra_tool_calls_denied_total {total_denied}\n",
                         snapshot.len(),
                     );
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(
+                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("text/plain".to_string()),
-                            text: Some(text),
-                            blob: None,
+                            text,
+                            meta: None,
                         }],
-                    }
+                    )
                 })
             }),
         );
@@ -3735,13 +3708,12 @@ async fn serve_inner(
     {
         let cell = Arc::clone(&server_cell);
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://tools".to_string(),
-                name: "Registered Tools".to_string(),
-                description: Some("List of all registered MCP tools".to_string()),
-                mime_type: Some("application/json".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://tools", "Registered Tools")
+                    .with_description("List of all registered MCP tools")
+                    .with_mime_type("application/json"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 let cell = Arc::clone(&cell);
                 Box::pin(async move {
@@ -3756,14 +3728,14 @@ async fn serve_inner(
                         "count": count,
                         "tools": tools,
                     });
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(
+                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
-                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                            blob: None,
+                            text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            meta: None,
                         }],
-                    }
+                    )
                 })
             }),
         );
@@ -3773,13 +3745,12 @@ async fn serve_inner(
     {
         let boot = boot_instant;
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://version".to_string(),
-                name: "Server Version".to_string(),
-                description: Some("Server name, version, protocol version, uptime".to_string()),
-                mime_type: Some("application/json".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://version", "Server Version")
+                    .with_description("Server name, version, protocol version, uptime")
+                    .with_mime_type("application/json"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 Box::pin(async move {
                     let json = serde_json::json!({
@@ -3789,14 +3760,14 @@ async fn serve_inner(
                         "crates": 20,
                         "uptime_secs": boot.elapsed().as_secs(),
                     });
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(
+                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
-                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                            blob: None,
+                            text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            meta: None,
                         }],
-                    }
+                    )
                 })
             }),
         );
@@ -4125,8 +4096,7 @@ async fn serve_inner(
 
     match mode {
         TransportMode::Stdio => {
-            let agent = navra_core::auth::AgentIdentity::new("stdio", "readonly");
-            navra_core::transport::run_stdio_server(server, agent)
+            navra_core::transport::run_stdio_server(server)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
         }
@@ -5408,6 +5378,14 @@ fn resolve_env_vars(s: &str) -> String {
 mod tests {
     use super::*;
     use navra_core::protocol::{ReadResourceResult, ResourceContent};
+    use navra_protocol::compat::CallToolResultExt;
+
+    fn extract_resource_text(rc: &ResourceContent) -> String {
+        match rc {
+            ResourceContent::TextResourceContents { text, .. } => text.clone(),
+            ResourceContent::BlobResourceContents { blob, .. } => blob.clone(),
+        }
+    }
 
     /// Helper: build a resource handler closure for navra://proc.
     fn proc_handler(pt: &navra_core::process::ProcessTable) -> navra_core::ResourceHandler {
@@ -5417,14 +5395,14 @@ mod tests {
             Box::pin(async move {
                 let agents = pt.snapshot();
                 let json = serde_json::json!({ "agents": agents });
-                ReadResourceResult {
-                    contents: vec![ResourceContent {
+                ReadResourceResult::new(
+                    vec![ResourceContent::TextResourceContents {
                         uri,
                         mime_type: Some("application/json".to_string()),
-                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                        blob: None,
+                        text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                        meta: None,
                     }],
-                }
+                )
             })
         })
     }
@@ -5451,14 +5429,14 @@ mod tests {
                     "count": count,
                     "sessions": session_list,
                 });
-                ReadResourceResult {
-                    contents: vec![ResourceContent {
+                ReadResourceResult::new(
+                    vec![ResourceContent::TextResourceContents {
                         uri,
                         mime_type: Some("application/json".to_string()),
-                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                        blob: None,
+                        text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                        meta: None,
                     }],
-                }
+                )
             })
         })
     }
@@ -5475,14 +5453,14 @@ mod tests {
                     "crates": 20,
                     "uptime_secs": boot.elapsed().as_secs(),
                 });
-                ReadResourceResult {
-                    contents: vec![ResourceContent {
+                ReadResourceResult::new(
+                    vec![ResourceContent::TextResourceContents {
                         uri,
                         mime_type: Some("application/json".to_string()),
-                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                        blob: None,
+                        text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                        meta: None,
                     }],
-                }
+                )
             })
         })
     }
@@ -5502,8 +5480,8 @@ mod tests {
         let result = handler("navra://proc".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
-        let text = result.contents[0].text.as_deref().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let text = extract_resource_text(&result.contents[0]);
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         let agents = parsed["agents"].as_array().unwrap();
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0]["name"], "claude");
@@ -5517,10 +5495,7 @@ mod tests {
         ss.create(navra_core::session::Session {
             id: "abc-123".to_string(),
             agent: navra_core::auth::AgentIdentity::new("claude", "dev"),
-            client_info: navra_core::protocol::ClientInfo {
-                name: "test".to_string(),
-                version: None,
-            },
+            client_info: navra_core::protocol::ClientInfo::new("test", ""),
             initialized: true,
             context_label: navra_core::ifc::DataLabel::TRUSTED_PUBLIC,
             created_at: 1715000000,
@@ -5535,8 +5510,8 @@ mod tests {
         let result = handler("navra://sessions".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
-        let text = result.contents[0].text.as_deref().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let text = extract_resource_text(&result.contents[0]);
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["count"], 1);
         let sessions = parsed["sessions"].as_array().unwrap();
         assert_eq!(sessions[0]["id"], "abc-123");
@@ -5554,8 +5529,8 @@ mod tests {
         let result = handler("navra://version".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
-        let text = result.contents[0].text.as_deref().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let text = extract_resource_text(&result.contents[0]);
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["name"], "navra");
         assert!(parsed["version"].is_string());
         assert_eq!(
@@ -5570,40 +5545,32 @@ mod tests {
     async fn kernel_tools_via_server() {
         // Build a minimal server with a couple of tools, then verify
         // the tool_names() method that navra://tools relies on.
-        use navra_core::protocol::{ToolDefinition, ToolInputSchema};
+        use navra_core::protocol::{ToolDefinition};
 
         let server = navra_core::McpServer::builder()
             .name("test")
             .version("0.1.0")
             .allow_anonymous()
             .tool(
-                ToolDefinition {
-                    name: "file_read".to_string(),
-                    description: Some("Read a file".to_string()),
-                    input_schema: ToolInputSchema {
-                        schema_type: "object".to_string(),
-                        properties: None,
-                        required: None,
-                    },
-                    annotations: None,
-                    ttl_ms: None,
-                    cache_scope: None,
-                },
+                ToolDefinition::new(
+                    "file_read",
+                    "Read a file",
+                    tool_input_schema(
+            None,
+            None,
+        ),
+                ),
                 |_args, _ctx| Box::pin(async { navra_core::protocol::CallToolResult::text("ok") }),
             )
             .tool(
-                ToolDefinition {
-                    name: "git_status".to_string(),
-                    description: Some("Git status".to_string()),
-                    input_schema: ToolInputSchema {
-                        schema_type: "object".to_string(),
-                        properties: None,
-                        required: None,
-                    },
-                    annotations: None,
-                    ttl_ms: None,
-                    cache_scope: None,
-                },
+                ToolDefinition::new(
+                    "git_status",
+                    "Git status",
+                    tool_input_schema(
+            None,
+            None,
+        ),
+                ),
                 |_args, _ctx| Box::pin(async { navra_core::protocol::CallToolResult::text("ok") }),
             )
             .build();

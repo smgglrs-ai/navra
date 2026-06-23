@@ -593,7 +593,7 @@ impl Hook for StatisticalGuardrailHook {
             .content
             .iter()
             .filter_map(|c| match c {
-                navra_protocol::Content::Text(t) => Some(t.text.as_str()),
+                navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => Some(t.text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -642,6 +642,7 @@ impl Hook for StatisticalGuardrailHook {
 mod tests {
     use super::*;
     use navra_auth::auth::AgentIdentity;
+    use navra_protocol::compat::CallToolResultExt;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")

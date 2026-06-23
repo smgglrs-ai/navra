@@ -46,7 +46,7 @@ impl Hook for FieldFilterHook {
 
         let mut filtered = result.clone();
         for content in &mut filtered.content {
-            if let navra_protocol::Content::Text(ref mut text) = content {
+            if let navra_protocol::Content { raw: navra_protocol::RawContent::Text(ref mut text), .. } = content {
                 if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&text.text) {
                     filter_json(&mut json, retain_fields);
                     if let Ok(compact) = serde_json::to_string(&json) {
@@ -99,11 +99,8 @@ mod tests {
     }
 
     fn make_result(json_text: &str) -> CallToolResult {
-        CallToolResult {
-            content: vec![navra_protocol::Content::text(json_text.to_string())],
-            is_error: false,
-            label: navra_protocol::label::DataLabel::TRUSTED_PUBLIC,
-        }
+        use navra_protocol::compat::CallToolResultExt;
+        CallToolResult::text(json_text.to_string())
     }
 
     #[tokio::test]
@@ -124,7 +121,7 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    navra_protocol::Content::Text(t) => &t.text,
+                    navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => &t.text,
                     _ => panic!("expected text"),
                 };
                 let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
@@ -169,7 +166,7 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    navra_protocol::Content::Text(t) => &t.text,
+                    navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => &t.text,
                     _ => panic!("expected text"),
                 };
                 let parsed: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
@@ -195,7 +192,7 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    navra_protocol::Content::Text(t) => &t.text,
+                    navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert_eq!(text, "This is plain text, not JSON");

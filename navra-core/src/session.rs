@@ -253,10 +253,7 @@ mod tests {
         Session {
             id: id.to_string(),
             agent: AgentIdentity::new("agent", "dev"),
-            client_info: ClientInfo {
-                name: "test".to_string(),
-                version: None,
-            },
+            client_info: ClientInfo::new("test", ""),
             initialized: true,
             context_label: DataLabel::TRUSTED_PUBLIC,
             created_at: now,

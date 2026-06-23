@@ -425,27 +425,9 @@ mod tests {
     fn write_tool_classification_annotations() {
         use navra_protocol::ToolAnnotations;
 
-        let read_only = ToolAnnotations {
-            read_only_hint: Some(true),
-            destructive_hint: None,
-            idempotent_hint: None,
-            open_world_hint: None,
-            title: None,
-        };
-        let writable = ToolAnnotations {
-            read_only_hint: Some(false),
-            destructive_hint: None,
-            idempotent_hint: None,
-            open_world_hint: None,
-            title: None,
-        };
-        let destructive = ToolAnnotations {
-            read_only_hint: None,
-            destructive_hint: Some(true),
-            idempotent_hint: None,
-            open_world_hint: None,
-            title: None,
-        };
+        let read_only = ToolAnnotations::new().read_only(true);
+        let writable = ToolAnnotations::new().read_only(false);
+        let destructive = ToolAnnotations::new().destructive(true);
 
         // Annotations override name heuristic
         assert!(!is_write_tool("file_write", Some(&read_only)));

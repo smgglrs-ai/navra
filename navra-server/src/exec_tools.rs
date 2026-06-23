@@ -5,6 +5,7 @@
 
 use navra_core::auth::CallContext;
 use navra_core::protocol::{CallToolResult, Content};
+use navra_protocol::compat::CallToolResultExt;
 use navra_macros::tool;
 use navra_model_runtime::openshell::{ComputeDriverClient, ExecCommandRequest};
 use std::collections::HashMap;
@@ -67,7 +68,7 @@ async fn handle_exec_run(
     #[state] state: Arc<ExecState>,
 ) -> CallToolResult {
     if command.is_empty() {
-        return CallToolResult::error("exec_run requires a non-empty 'command' array");
+        return CallToolResult::error_msg("exec_run requires a non-empty 'command' array");
     }
 
     let working_dir = working_dir.unwrap_or_else(|| "/workspace".to_string());
@@ -77,13 +78,13 @@ async fn handle_exec_run(
         .components()
         .any(|c| c == std::path::Component::ParentDir)
     {
-        return CallToolResult::error(
+        return CallToolResult::error_msg(
             "working_dir must not contain '..' components (path traversal denied)",
         );
     }
 
     if !working_path.starts_with("/workspace") {
-        return CallToolResult::error(
+        return CallToolResult::error_msg(
             "working_dir must be within /workspace (path traversal denied)",
         );
     }
@@ -93,14 +94,14 @@ async fn handle_exec_run(
 
     let did = match &ctx.agent.did {
         Some(d) => d.clone(),
-        None => return CallToolResult::error("exec_run requires agent DID to identify sandbox"),
+        None => return CallToolResult::error_msg("exec_run requires agent DID to identify sandbox"),
     };
 
     let sandbox_id = {
         let sandboxes = state.sandboxes.lock().unwrap_or_else(|e| e.into_inner());
         match sandboxes.get(&did) {
             Some(id) => id.clone(),
-            None => return CallToolResult::error(format!("no sandbox registered for agent {did}")),
+            None => return CallToolResult::error_msg(format!("no sandbox registered for agent {did}")),
         }
     };
 
@@ -141,13 +142,13 @@ async fn handle_exec_run(
             }
             output.push_str(&format!("\n\nexit code: {}", r.exit_code));
 
-            CallToolResult {
-                content: vec![Content::text(output)],
-                is_error: r.exit_code != 0,
-                label: Default::default(),
+            if r.exit_code != 0 {
+                CallToolResult::error(vec![Content::text(output)])
+            } else {
+                CallToolResult::success(vec![Content::text(output)])
             }
         }
-        Err(e) => CallToolResult::error(format!("exec_run failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("exec_run failed: {e}")),
     }
 }
 
@@ -182,11 +183,8 @@ mod tests {
 
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
 
-        assert!(result.is_error);
-        let text = match &result.content[0] {
-            Content::Text(t) => t.text.as_str(),
-            _ => panic!("expected text content"),
-        };
+        assert!(result.is_err());
+        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
         assert!(text.contains("path traversal denied"));
     }
 
@@ -202,11 +200,8 @@ mod tests {
         });
 
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
-        assert!(result.is_error);
-        let text = match &result.content[0] {
-            Content::Text(t) => t.text.as_str(),
-            _ => panic!("expected text content"),
-        };
+        assert!(result.is_err());
+        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
         assert!(text.contains("path traversal denied"));
     }
 
@@ -222,11 +217,8 @@ mod tests {
         });
 
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
-        assert!(result.is_error);
-        let text = match &result.content[0] {
-            Content::Text(t) => t.text.as_str(),
-            _ => panic!("expected text content"),
-        };
+        assert!(result.is_err());
+        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
         assert!(text.contains("path traversal denied"));
     }
 
@@ -239,11 +231,8 @@ mod tests {
         let args = serde_json::json!({"command": ["ls"]});
         let result = handler(args, test_ctx(None)).await;
 
-        assert!(result.is_error);
-        let text = match &result.content[0] {
-            Content::Text(t) => t.text.as_str(),
-            _ => panic!("expected text content"),
-        };
+        assert!(result.is_err());
+        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
         assert!(text.contains("requires agent DID"));
     }
 
@@ -256,11 +245,8 @@ mod tests {
         let args = serde_json::json!({"command": ["ls"]});
         let result = handler(args, test_ctx(Some("did:test:unknown"))).await;
 
-        assert!(result.is_error);
-        let text = match &result.content[0] {
-            Content::Text(t) => t.text.as_str(),
-            _ => panic!("expected text content"),
-        };
+        assert!(result.is_err());
+        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
         assert!(text.contains("no sandbox registered"));
     }
 
@@ -273,11 +259,8 @@ mod tests {
         let args = serde_json::json!({"command": []});
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
 
-        assert!(result.is_error);
-        let text = match &result.content[0] {
-            Content::Text(t) => t.text.as_str(),
-            _ => panic!("expected text content"),
-        };
+        assert!(result.is_err());
+        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
         assert!(text.contains("non-empty"));
     }
 

@@ -191,18 +191,21 @@ fn collect_strings(value: &serde_json::Value, out: &mut Vec<String>) {
 
 /// Create an A2UI resource content entry for embedding in tool results.
 pub fn resource_content(surface_id: &str, payload: &str) -> crate::ResourceContent {
-    crate::ResourceContent {
+    crate::ResourceContent::TextResourceContents {
         uri: format!("{A2UI_URI_SCHEME}dynamic-ui/{surface_id}"),
         mime_type: Some(A2UI_MIME_TYPE.to_string()),
-        text: Some(payload.to_string()),
-        blob: None,
+        text: payload.to_string(),
+        meta: None,
     }
 }
 
 /// Create a Content::Resource entry containing an A2UI payload.
 pub fn embedded_content(surface_id: &str, payload: &str) -> crate::Content {
-    crate::Content::Resource(crate::mcp::EmbeddedResourceContent {
-        resource: resource_content(surface_id, payload),
+    crate::Content::resource(crate::ResourceContent::TextResourceContents {
+        uri: format!("{A2UI_URI_SCHEME}dynamic-ui/{surface_id}"),
+        mime_type: Some(A2UI_MIME_TYPE.to_string()),
+        text: payload.to_string(),
+        meta: None,
     })
 }
 
@@ -378,23 +381,38 @@ mod tests {
     #[test]
     fn resource_content_creates_correct_uri() {
         let rc = resource_content("recipe-card", "[{}]");
-        assert_eq!(rc.uri, "a2ui://dynamic-ui/recipe-card");
-        assert_eq!(rc.mime_type.as_deref(), Some("application/a2ui+json"));
-        assert_eq!(rc.text.as_deref(), Some("[{}]"));
+        match rc {
+            crate::ResourceContent::TextResourceContents {
+                ref uri,
+                ref mime_type,
+                ref text,
+                ..
+            } => {
+                assert_eq!(uri, "a2ui://dynamic-ui/recipe-card");
+                assert_eq!(mime_type.as_deref(), Some("application/a2ui+json"));
+                assert_eq!(text, "[{}]");
+            }
+            _ => panic!("expected TextResourceContents"),
+        }
     }
 
     #[test]
     fn embedded_content_wraps_in_resource() {
         let content = embedded_content("my-surface", "[{}]");
-        match content {
-            crate::Content::Resource(ref rc) => {
-                assert_eq!(rc.resource.uri, "a2ui://dynamic-ui/my-surface");
-                assert_eq!(
-                    rc.resource.mime_type.as_deref(),
-                    Some("application/a2ui+json")
-                );
+        if let Some(res) = content.raw.as_resource() {
+            match &res.resource {
+                crate::ResourceContent::TextResourceContents {
+                    ref uri,
+                    ref mime_type,
+                    ..
+                } => {
+                    assert_eq!(uri, "a2ui://dynamic-ui/my-surface");
+                    assert_eq!(mime_type.as_deref(), Some("application/a2ui+json"));
+                }
+                _ => panic!("expected TextResourceContents"),
             }
-            _ => panic!("expected Resource content"),
+        } else {
+            panic!("expected Resource content");
         }
     }
 

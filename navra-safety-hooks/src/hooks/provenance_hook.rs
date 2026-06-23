@@ -71,6 +71,7 @@ impl Hook for ProvenanceHook {
 mod tests {
     use super::*;
     use navra_auth::auth::AgentIdentity;
+    use navra_protocol::compat::CallToolResultExt;
     use std::sync::Mutex;
 
     struct TestSink {
@@ -158,7 +159,7 @@ mod tests {
     async fn hook_records_errors_too() {
         let sink = Arc::new(TestSink::new());
         let hook = ProvenanceHook::new(Arc::clone(&sink) as Arc<dyn CausalSink>);
-        let result = CallToolResult::error("permission denied");
+        let result = CallToolResult::error_msg("permission denied");
         let ctx = test_ctx();
 
         hook.post_tool_use("file_write", &serde_json::json!({}), &result, &ctx)

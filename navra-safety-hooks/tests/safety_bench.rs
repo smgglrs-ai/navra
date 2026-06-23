@@ -194,16 +194,15 @@ fn schema_abuse_variants() -> Vec<(String, serde_json::Value)> {
     ];
     let mut variants = Vec::new();
     for field in &sensitive_fields {
-        let schema = navra_protocol::ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(
+        let schema = navra_protocol::compat::tool_input_schema(
+            Some(
                 [(field.to_string(), serde_json::json!({"type": "string"}))]
                     .into_iter()
                     .collect(),
             ),
-            required: None,
-        };
-        variants.push((field.to_string(), serde_json::to_value(&schema).unwrap()));
+            None,
+        );
+        variants.push((field.to_string(), serde_json::to_value(&*schema).unwrap()));
     }
     variants
 }
@@ -215,15 +214,14 @@ fn schema_abuse_detection_rate() {
     let mut detected = 0;
 
     for (field_name, _) in &variants {
-        let schema = navra_protocol::ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(
+        let schema = navra_protocol::compat::tool_input_schema(
+            Some(
                 [(field_name.clone(), serde_json::json!({"type": "string"}))]
                     .into_iter()
                     .collect(),
             ),
-            required: None,
-        };
+            None,
+        );
         let findings = check_schema_abuse(&schema, &config.sensitive_schema_fields);
         if !findings.is_empty() {
             detected += 1;
