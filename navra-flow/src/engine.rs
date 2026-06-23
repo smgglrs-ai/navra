@@ -515,13 +515,10 @@ async fn run_node_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use navra_model::{
         CreateResponseRequest, FunctionCallItem, ItemStatus, MessageItem, ModelBackend, ModelError,
         ModelResponse, OutputItem, ResponseStatus,
     };
-    use navra_protocol::upstream::{Transport, UpstreamError};
-    use navra_protocol::Upstream;
     use std::future::Future;
     use std::pin::Pin;
     use std::sync::Mutex;
@@ -556,69 +553,40 @@ mod tests {
         }
     }
 
-    struct MockTransport {
-        responses: Mutex<Vec<serde_json::Value>>,
-    }
-
-    impl MockTransport {
-        fn new(responses: Vec<serde_json::Value>) -> Self {
-            Self {
-                responses: Mutex::new(responses),
-            }
+    struct EmptyServer;
+    impl rmcp::ServerHandler for EmptyServer {
+        fn get_info(&self) -> rmcp::model::ServerInfo {
+            rmcp::model::InitializeResult::new(Default::default())
+                .with_server_info(rmcp::model::Implementation::new("test", "0.1.0"))
         }
     }
 
-    #[async_trait]
-    impl Transport for MockTransport {
-        async fn request(
-            &mut self,
-            _body: serde_json::Value,
-        ) -> Result<serde_json::Value, UpstreamError> {
-            let mut responses = self.responses.lock().unwrap();
-            if responses.is_empty() {
-                Ok(serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 1}))
-            } else {
-                Ok(responses.remove(0))
+    async fn mock_peer() -> (rmcp::Peer<rmcp::RoleClient>, tokio::task::JoinHandle<()>) {
+        let (server_io, client_io) = tokio::io::duplex(65536);
+        tokio::spawn(async move {
+            if let Ok(svc) = rmcp::service::ServiceExt::<rmcp::RoleServer>::serve(
+                EmptyServer, server_io,
+            ).await {
+                let _ = svc.waiting().await;
             }
-        }
-
-        fn shutdown(&mut self) {}
-    }
-
-    fn init_responses() -> Vec<serde_json::Value> {
-        vec![
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "result": {
-                    "protocolVersion": "2025-03-26",
-                    "capabilities": {},
-                    "serverInfo": {"name": "test", "version": "0.1.0"}
-                },
-                "id": 1
-            }),
-            serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 2}),
-        ]
+        });
+        let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), client_io)
+            .await
+            .unwrap();
+        let peer = client.peer().clone();
+        let handle = tokio::spawn(async move { let _ = client.waiting().await; });
+        (peer, handle)
     }
 
     async fn mock_agent(
         model_responses: Vec<ModelResponse>,
-        tool_responses: Vec<serde_json::Value>,
+        _tool_responses: Vec<serde_json::Value>,
     ) -> Agent {
-        let mut transport_responses = init_responses();
-        // list_tools response
-        transport_responses.push(serde_json::json!({
-            "jsonrpc": "2.0",
-            "result": {"tools": []},
-            "id": 3
-        }));
-        transport_responses.extend(tool_responses);
-
-        let transport = MockTransport::new(transport_responses);
-        let upstream = Upstream::connect("test", transport).await.unwrap();
+        let (peer, _keep) = mock_peer().await;
         let model = MockModel::new(model_responses);
 
         Agent::builder()
-            .upstream(upstream)
+            .with_peer(peer)
             .model(model)
             .build()
             .await
@@ -715,23 +683,12 @@ mod tests {
         assert_eq!(result.completion_tokens, 10);
     }
 
-    async fn mock_agent_multi(model_responses: Vec<ModelResponse>, visits: usize) -> Agent {
-        let mut transport_responses = init_responses();
-        // Add list_tools responses for each visit
-        for _ in 0..visits {
-            transport_responses.push(serde_json::json!({
-                "jsonrpc": "2.0",
-                "result": {"tools": []},
-                "id": 3
-            }));
-        }
-
-        let transport = MockTransport::new(transport_responses);
-        let upstream = Upstream::connect("test", transport).await.unwrap();
+    async fn mock_agent_multi(model_responses: Vec<ModelResponse>, _visits: usize) -> Agent {
+        let (peer, _keep) = mock_peer().await;
         let model = MockModel::new(model_responses);
 
         Agent::builder()
-            .upstream(upstream)
+            .with_peer(peer)
             .model(model)
             .build()
             .await

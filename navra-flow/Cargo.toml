@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 navra-agent = { path = "../navra-agent" }
+rmcp = { workspace = true }
 navra-cognitive = { path = "../navra-cognitive" }
 navra-protocol = { path = "../navra-protocol" }
 navra-model = { path = "../navra-model" }

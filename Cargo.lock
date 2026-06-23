@@ -3014,6 +3014,7 @@ dependencies = [
  "navra-protocol",
  "navra-responses",
  "navra-safety-hooks",
+ "rmcp",
  "rusqlite",
  "serde",
  "serde_json",
