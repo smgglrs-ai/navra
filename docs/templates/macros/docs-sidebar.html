@@ -4,20 +4,29 @@
 			{% set index_path = current_section ~ "/_index.md" | trim_start_matches(pat="/") %}
 			{% set index = get_section(path=index_path) %}
 
+			{% set in_learn = current_url is containing("/docs/learn/") %}
+
 			{% if index.subsections %}
 				{% for s in index.subsections %}
 				{% set subsection = get_section(path=s) %}
 				{% if subsection.extra.sidebar_parts %}
-					{% for part in subsection.extra.sidebar_parts %}
-						<h3>{{ part.title }}</h3>
-						<ul class="list-unstyled">
-						{% for page in subsection.pages %}
-							{% if page.extra.part and page.extra.part == part.id %}
-								<li><a class="docs-link{% if current_url == page.permalink %} active{% endif %}" href="{{ page.permalink | safe }}">{{ page.title }}</a></li>
-							{% endif %}
+					{% if in_learn %}
+						{% for part in subsection.extra.sidebar_parts %}
+							<h3>{{ part.title }}</h3>
+							<ul class="list-unstyled">
+							{% for page in subsection.pages %}
+								{% if page.extra.part and page.extra.part == part.id %}
+									<li><a class="docs-link{% if current_url == page.permalink %} active{% endif %}" href="{{ page.permalink | safe }}">{{ page.title }}</a></li>
+								{% endif %}
+							{% endfor %}
+							</ul>
 						{% endfor %}
+					{% else %}
+						<h3>{{ subsection.title }}</h3>
+						<ul class="list-unstyled">
+							<li><a class="docs-link{% if current_url == subsection.permalink %} active{% endif %}" href="{{ subsection.permalink | safe }}">Overview (30 chapters)</a></li>
 						</ul>
-					{% endfor %}
+					{% endif %}
 				{% else %}
 					<h3>{{ subsection.title }}</h3>
 					<ul class="list-unstyled">
