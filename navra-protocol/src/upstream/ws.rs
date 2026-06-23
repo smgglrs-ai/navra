@@ -7,9 +7,13 @@
 use super::transport::{Transport, UpstreamNotification};
 use super::UpstreamError;
 use async_trait::async_trait;
+#[cfg(feature = "webmcp")]
 use std::collections::HashMap;
+#[cfg(feature = "webmcp")]
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::mpsc;
+#[cfg(feature = "webmcp")]
+use tokio::sync::{oneshot, Mutex};
 
 #[cfg(feature = "webmcp")]
 use {

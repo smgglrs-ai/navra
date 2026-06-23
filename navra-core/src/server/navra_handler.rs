@@ -8,17 +8,15 @@
 
 use std::sync::Arc;
 
-use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::{
-    CallToolResult, Content, InitializeResult, ListPromptsResult, ListResourcesResult,
-    ListToolsResult, PaginatedRequest,
+    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequest,
 };
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
     CallToolRequestParams, ErrorData, GetPromptRequestParams, GetPromptResult,
-    ListResourceTemplatesResult, ReadResourceRequestParams, ReadResourceResult,
+    ReadResourceRequestParams, ReadResourceResult,
 };
-use rmcp::service::{NotificationContext, RequestContext, RoleServer};
+use rmcp::service::{RequestContext, RoleServer};
 
 use super::McpServer;
 use crate::auth::{AgentIdentity, CallContext};

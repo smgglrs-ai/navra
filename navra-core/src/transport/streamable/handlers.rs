@@ -1,122 +1,9 @@
-use crate::protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
-use futures_util::stream::Stream;
-use std::convert::Infallible;
 
-use super::dispatch::dispatch;
 use super::router::AppState;
-
-pub(super) const SESSION_HEADER: &str = "mcp-session-id";
-pub(super) const METHOD_HEADER: &str = "mcp-method";
-pub(super) const NAME_HEADER: &str = "mcp-name";
-
-pub(super) async fn handle_post(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<JsonRpcRequest>,
-) -> impl IntoResponse {
-    let server = &state.server;
-    // Authenticate
-    let agent = match server.authenticator().authenticate(&headers) {
-        Ok(agent) => agent,
-        Err(_) => {
-            state
-                .metrics
-                .auth_failures
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(JsonRpcResponse::error(
-                    request.id,
-                    JsonRpcError::new(
-                        crate::protocol::ErrorCode::Custom(-32000),
-                        "Authentication failed",
-                    ),
-                )),
-            )
-                .into_response();
-        }
-    };
-
-    // Validate jsonrpc version
-    if request.jsonrpc != "2.0" {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(JsonRpcResponse::error(
-                request.id,
-                JsonRpcError::invalid_request("Expected jsonrpc: \"2.0\""),
-            )),
-        )
-            .into_response();
-    }
-
-    // Extract session ID from request header (for non-initialize requests)
-    let session_id = headers
-        .get(SESSION_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .map(String::from);
-
-    // MCP 2026-07-28: parse routing headers (read-only, no routing changes yet)
-    let mcp_method = headers.get(METHOD_HEADER).and_then(|v| v.to_str().ok());
-    let mcp_name = headers.get(NAME_HEADER).and_then(|v| v.to_str().ok());
-    if let Some(method) = mcp_method {
-        tracing::debug!(mcp_method = %method, mcp_name = ?mcp_name, "MCP routing headers");
-    }
-
-    let (response, new_session_id) =
-        dispatch(state.server.clone(), request, agent, session_id).await;
-
-    let mut resp = Json(&response).into_response();
-    // Include session ID in response header (set on initialize, echoed otherwise)
-    if let Some(sid) = new_session_id {
-        if let Ok(val) = sid.parse() {
-            resp.headers_mut().insert(SESSION_HEADER, val);
-        }
-    }
-
-    resp
-}
-
-pub(super) async fn handle_get(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
-    // Authenticate before session lookup
-    if state.server.authenticator().authenticate(&headers).is_err() {
-        return (StatusCode::UNAUTHORIZED, "Authentication failed").into_response();
-    }
-
-    // GET is used for SSE streaming (server-to-client).
-    // Requires a valid session.
-    let session_id = match headers.get(SESSION_HEADER) {
-        Some(v) => match v.to_str() {
-            Ok(s) if !s.is_empty() => s.to_string(),
-            _ => {
-                return (StatusCode::BAD_REQUEST, "Invalid session header").into_response();
-            }
-        },
-        None => {
-            return (StatusCode::BAD_REQUEST, "Missing mcp-session-id header").into_response();
-        }
-    };
-
-    // Validate session exists
-    if state.server.sessions().get(&session_id).is_none() {
-        return (StatusCode::NOT_FOUND, "Unknown session").into_response();
-    }
-
-    // Subscribe to the session's SSE channel
-    let rx = state.broadcaster.subscribe(&session_id);
-
-    let stream = make_sse_stream(rx);
-    Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response()
-}
 
 /// Serve the MCP Server Card — static metadata about this server.
 ///
@@ -255,31 +142,6 @@ pub(super) async fn handle_metrics(State(state): State<AppState>) -> impl IntoRe
         )],
         state.metrics.render(),
     )
-}
-
-/// Convert a broadcast receiver into an SSE event stream.
-fn make_sse_stream(
-    mut rx: tokio::sync::broadcast::Receiver<crate::transport::sse::SseEvent>,
-) -> impl Stream<Item = Result<Event, Infallible>> {
-    async_stream::stream! {
-        loop {
-            match rx.recv().await {
-                Ok(sse_event) => {
-                    let event = Event::default()
-                        .event(sse_event.event)
-                        .data(sse_event.data);
-                    yield Ok(event);
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::warn!(skipped = n, "SSE client lagged, dropped events");
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    break;
-                }
-            }
-        }
-    }
 }
 
 // --- OAuth 2.0 endpoints ---
