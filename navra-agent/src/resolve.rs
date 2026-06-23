@@ -56,7 +56,7 @@ pub async fn resolve_mcp_prompts(
                     .messages
                     .iter()
                     .filter_map(|m| match &m.content {
-                        navra_protocol::Content::Text(tc) => Some(tc.text.as_str()),
+                        navra_protocol::PromptMessageContent::Text { text } => Some(text.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()
@@ -124,7 +124,7 @@ pub async fn resolve_persona_source(
         .messages
         .iter()
         .filter_map(|m| match &m.content {
-            navra_protocol::Content::Text(tc) => Some(tc.text.as_str()),
+            navra_protocol::PromptMessageContent::Text { text } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()

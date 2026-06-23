@@ -9,8 +9,8 @@ use crate::module::{Module, PromptHandler, ResourceHandler};
 use crate::protocol::{
     CallToolResult, Content, GetPromptResult, PromptArgument, PromptDefinition, PromptMessage,
     PromptRole, ReadResourceResult, ResourceContent, ResourceDefinition, ToolDefinition,
-    ToolInputSchema,
 };
+use navra_protocol::compat::CallToolResultExt;
 use navra_mcp::ToolHandler;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -190,25 +190,23 @@ impl Module for GrpcModule {
         self.cached_tools
             .iter()
             .map(|def| {
-                let input_schema: ToolInputSchema = serde_json::from_slice(&def.input_schema_json)
-                    .unwrap_or(ToolInputSchema {
-                        schema_type: "object".to_string(),
-                        properties: None,
-                        required: None,
-                    });
+                let input_schema: Arc<serde_json::Map<String, serde_json::Value>> =
+                    serde_json::from_slice(&def.input_schema_json)
+                        .map(Arc::new)
+                        .unwrap_or_else(|_| navra_protocol::compat::empty_input_schema());
 
-                let tool_def = ToolDefinition {
-                    name: def.name.clone(),
-                    description: if def.description.is_empty() {
+                let description: Option<std::borrow::Cow<'static, str>> =
+                    if def.description.is_empty() {
                         None
                     } else {
-                        Some(def.description.clone())
-                    },
+                        Some(def.description.clone().into())
+                    };
+
+                let tool_def = ToolDefinition::new_with_raw(
+                    def.name.clone(),
+                    description,
                     input_schema,
-                    annotations: None,
-                    ttl_ms: None,
-                    cache_scope: None,
-                };
+                );
 
                 let client = self.client.clone();
                 let tool_name = def.name.clone();
@@ -235,24 +233,24 @@ impl Module for GrpcModule {
                         match client.call_tool(req).await {
                             Ok(resp) => {
                                 let inner = resp.into_inner();
-                                let label = parse_data_label(&inner.result_data_label);
+                                let _label = parse_data_label(&inner.result_data_label);
                                 if inner.is_error {
                                     let msg = inner
                                         .content
                                         .first()
                                         .map(|c| c.text.clone())
                                         .unwrap_or_default();
-                                    CallToolResult::error(msg).with_label(label)
+                                    CallToolResult::error_msg(msg)
                                 } else {
                                     let content: Vec<Content> = inner
                                         .content
                                         .iter()
                                         .map(|c| Content::text(c.text.clone()))
                                         .collect();
-                                    CallToolResult::success(content).with_label(label)
+                                    CallToolResult::success(content)
                                 }
                             }
-                            Err(e) => CallToolResult::error(format!("grpc: {e}")),
+                            Err(e) => CallToolResult::error_msg(format!("grpc: {e}")),
                         }
                     })
                 });
@@ -266,27 +264,27 @@ impl Module for GrpcModule {
         self.cached_prompts
             .iter()
             .map(|def| {
-                let prompt_def = PromptDefinition {
-                    name: def.name.clone(),
-                    description: if def.description.is_empty() {
-                        None
+                let prompt_def = PromptDefinition::new(
+                    def.name.clone(),
+                    if def.description.is_empty() {
+                        None::<String>
                     } else {
                         Some(def.description.clone())
                     },
-                    arguments: def
-                        .arguments
-                        .iter()
-                        .map(|a| PromptArgument {
-                            name: a.name.clone(),
-                            description: if a.description.is_empty() {
-                                None
-                            } else {
-                                Some(a.description.clone())
-                            },
-                            required: a.required,
-                        })
-                        .collect(),
-                };
+                    Some(
+                        def.arguments
+                            .iter()
+                            .map(|a| {
+                                let mut arg = PromptArgument::new(a.name.clone());
+                                if !a.description.is_empty() {
+                                    arg = arg.with_description(a.description.clone());
+                                }
+                                arg = arg.with_required(a.required);
+                                arg
+                            })
+                            .collect(),
+                    ),
+                );
 
                 let client = self.client.clone();
                 let prompt_name = def.name.clone();
@@ -303,29 +301,30 @@ impl Module for GrpcModule {
                             match client.get_prompt(req).await {
                                 Ok(resp) => {
                                     let inner = resp.into_inner();
-                                    GetPromptResult {
-                                        description: if inner.description.is_empty() {
-                                            None
-                                        } else {
-                                            Some(inner.description)
-                                        },
-                                        messages: inner
+                                    let mut result = GetPromptResult::new(
+                                        inner
                                             .messages
                                             .into_iter()
-                                            .map(|m| PromptMessage {
-                                                role: match m.role.as_str() {
+                                            .map(|m| {
+                                                let role = match m.role.as_str() {
                                                     "assistant" => PromptRole::Assistant,
                                                     _ => PromptRole::User,
-                                                },
-                                                content: Content::text(m.content),
+                                                };
+                                                PromptMessage::new_text(role, m.content)
                                             })
                                             .collect(),
+                                    );
+                                    if !inner.description.is_empty() {
+                                        result.description = Some(inner.description);
                                     }
+                                    result
                                 }
-                                Err(e) => GetPromptResult {
-                                    description: Some(format!("grpc error: {e}")),
-                                    messages: vec![],
-                                },
+                                Err(e) => {
+                                    let mut result = GetPromptResult::new(vec![]);
+                                    result.description =
+                                        Some(format!("grpc error: {e}"));
+                                    result
+                                }
                             }
                         })
                     });
@@ -339,21 +338,16 @@ impl Module for GrpcModule {
         self.cached_resources
             .iter()
             .map(|def| {
-                let resource_def = ResourceDefinition {
-                    uri: def.uri.clone(),
-                    name: def.name.clone(),
-                    description: if def.description.is_empty() {
-                        None
-                    } else {
-                        Some(def.description.clone())
-                    },
-                    mime_type: if def.mime_type.is_empty() {
-                        None
-                    } else {
-                        Some(def.mime_type.clone())
-                    },
-                    size: None,
-                };
+                let mut raw_resource =
+                    navra_protocol::RawResource::new(def.uri.clone(), def.name.clone());
+                if !def.description.is_empty() {
+                    raw_resource = raw_resource.with_description(def.description.clone());
+                }
+                if !def.mime_type.is_empty() {
+                    raw_resource = raw_resource.with_mime_type(def.mime_type.clone());
+                }
+                let resource_def =
+                    ResourceDefinition { raw: raw_resource, annotations: None };
 
                 let client = self.client.clone();
 
@@ -364,39 +358,43 @@ impl Module for GrpcModule {
                         match client.read_resource(req).await {
                             Ok(resp) => {
                                 let inner = resp.into_inner();
-                                ReadResourceResult {
-                                    contents: inner
+                                ReadResourceResult::new(
+                                    inner
                                         .contents
                                         .into_iter()
-                                        .map(|c| ResourceContent {
-                                            uri: c.uri,
-                                            mime_type: if c.mime_type.is_empty() {
+                                        .map(|c| {
+                                            let mime = if c.mime_type.is_empty() {
                                                 None
                                             } else {
                                                 Some(c.mime_type)
-                                            },
-                                            text: if c.text.is_empty() {
-                                                None
+                                            };
+                                            if !c.blob.is_empty() {
+                                                ResourceContent::BlobResourceContents {
+                                                    uri: c.uri,
+                                                    mime_type: mime,
+                                                    blob: base64_encode(&c.blob),
+                                                    meta: None,
+                                                }
                                             } else {
-                                                Some(c.text)
-                                            },
-                                            blob: if c.blob.is_empty() {
-                                                None
-                                            } else {
-                                                Some(base64_encode(&c.blob))
-                                            },
+                                                ResourceContent::TextResourceContents {
+                                                    uri: c.uri,
+                                                    mime_type: mime,
+                                                    text: c.text,
+                                                    meta: None,
+                                                }
+                                            }
                                         })
                                         .collect(),
-                                }
+                                )
                             }
-                            Err(e) => ReadResourceResult {
-                                contents: vec![ResourceContent {
+                            Err(e) => ReadResourceResult::new(vec![
+                                ResourceContent::TextResourceContents {
                                     uri,
                                     mime_type: Some("text/plain".to_string()),
-                                    text: Some(format!("grpc error: {e}")),
-                                    blob: None,
-                                }],
-                            },
+                                    text: format!("grpc error: {e}"),
+                                    meta: None,
+                                },
+                            ]),
                         }
                     })
                 });
@@ -511,12 +509,15 @@ mod tests {
             .unwrap(),
         };
 
-        let input_schema: ToolInputSchema =
+        let input_schema: serde_json::Map<String, serde_json::Value> =
             serde_json::from_slice(&proto_def.input_schema_json).unwrap();
 
-        assert_eq!(input_schema.schema_type, "object");
-        assert!(input_schema.properties.is_some());
-        assert_eq!(input_schema.required, Some(vec!["path".to_string()]));
+        assert_eq!(input_schema.get("type").and_then(|v| v.as_str()), Some("object"));
+        assert!(input_schema.contains_key("properties"));
+        let required: Vec<String> = serde_json::from_value(
+            input_schema.get("required").cloned().unwrap()
+        ).unwrap();
+        assert_eq!(required, vec!["path".to_string()]);
     }
 
     #[test]
@@ -531,23 +532,21 @@ mod tests {
             }],
         };
 
-        let prompt_def = PromptDefinition {
-            name: proto_def.name.clone(),
-            description: Some(proto_def.description.clone()),
-            arguments: proto_def
+        let prompt_def = PromptDefinition::new(
+            proto_def.name.clone(),
+            Some(proto_def.description.clone()),
+            Some(proto_def
                 .arguments
                 .iter()
-                .map(|a| PromptArgument {
-                    name: a.name.clone(),
-                    description: Some(a.description.clone()),
-                    required: a.required,
-                })
-                .collect(),
-        };
+                .map(|a| PromptArgument::new(a.name.clone())
+                    .with_description(a.description.clone())
+                    .with_required(a.required))
+                .collect()),
+        );
 
         assert_eq!(prompt_def.name, "test_prompt");
-        assert_eq!(prompt_def.arguments.len(), 1);
-        assert!(prompt_def.arguments[0].required);
+        assert_eq!(prompt_def.arguments.as_ref().unwrap().len(), 1);
+        assert_eq!(prompt_def.arguments.as_ref().unwrap()[0].required, Some(true));
     }
 
     #[test]
@@ -559,13 +558,19 @@ mod tests {
             mime_type: "text/markdown".to_string(),
         };
 
-        let resource_def = ResourceDefinition {
-            uri: proto_def.uri.clone(),
-            name: proto_def.name.clone(),
-            description: Some(proto_def.description.clone()),
-            mime_type: Some(proto_def.mime_type.clone()),
-            size: None,
-        };
+        let resource_def = navra_protocol::Annotated::new(
+            navra_protocol::RawResource {
+                uri: proto_def.uri.clone(),
+                name: proto_def.name.clone(),
+                title: None,
+                description: Some(proto_def.description.clone()),
+                mime_type: Some(proto_def.mime_type.clone()),
+                size: None,
+                icons: None,
+                meta: None,
+            },
+            None,
+        );
 
         assert_eq!(resource_def.uri, "file:///workspace/readme.md");
         assert_eq!(resource_def.mime_type, Some("text/markdown".to_string()));

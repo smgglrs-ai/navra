@@ -10,6 +10,7 @@ use navra_agent::{
     OutputItem, ResponseStatus, ToolLoopConfig,
 };
 use navra_model::ModelError;
+use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::upstream::{Transport, UpstreamError};
 use navra_protocol::Upstream;
 use navra_responses::response::Usage;
@@ -323,7 +324,7 @@ fn extract_text_success() {
 
 #[test]
 fn extract_text_error() {
-    let result = CallToolResult::error("something failed");
+    let result = CallToolResult::error_msg("something failed");
     assert_eq!(extract_text(&result), "Error: something failed");
 }
 

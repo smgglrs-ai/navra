@@ -14,6 +14,7 @@ use navra_mcp::auth::CallContext;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
+use navra_protocol::compat::CallToolResultExt;
 use navra_mcp::Module;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -131,7 +132,7 @@ async fn handle_listen(
     .await
     {
         Ok(samples) => samples,
-        Err(e) => return CallToolResult::error(format!("Recording failed: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Recording failed: {e}")),
     };
 
     if audio.is_empty() {
@@ -151,7 +152,7 @@ async fn handle_listen(
             }
             CallToolResult::text(output)
         }
-        Err(e) => CallToolResult::error(format!("Transcription failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Transcription failed: {e}")),
     }
 }
 
@@ -171,7 +172,7 @@ async fn handle_speak(
     }
 
     if text.is_empty() {
-        return CallToolResult::error("Missing required parameter: text");
+        return CallToolResult::error_msg("Missing required parameter: text");
     }
     let voice = voice.or_else(|| state.default_voice.clone());
 
@@ -182,18 +183,18 @@ async fn handle_speak(
     };
     let response = match state.tts_model.synthesize(&request).await {
         Ok(r) => r,
-        Err(e) => return CallToolResult::error(format!("Speech synthesis failed: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Speech synthesis failed: {e}")),
     };
 
     if response.audio.is_empty() {
-        return CallToolResult::error("TTS produced no audio");
+        return CallToolResult::error_msg("TTS produced no audio");
     }
 
     let duration_secs = response.audio.len() as f64 / response.sample_rate as f64;
 
     // Play audio
     if let Err(e) = audio::play(response.audio, response.sample_rate).await {
-        return CallToolResult::error(format!("Playback failed: {e}"));
+        return CallToolResult::error_msg(format!("Playback failed: {e}"));
     }
 
     CallToolResult::text(format!("Spoke {:.1}s of audio.", duration_secs))
@@ -213,7 +214,7 @@ async fn handle_transcribe(
 ) -> CallToolResult {
     let resolved = match resolve_path(&path) {
         Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
@@ -223,11 +224,11 @@ async fn handle_transcribe(
     // Read WAV file
     let audio = match read_wav_file(&resolved) {
         Ok(samples) => samples,
-        Err(e) => return CallToolResult::error(format!("Failed to read audio file: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Failed to read audio file: {e}")),
     };
 
     if audio.is_empty() {
-        return CallToolResult::error("Audio file is empty");
+        return CallToolResult::error_msg("Audio file is empty");
     }
 
     let duration_secs = audio.len() as f64 / 16000.0;
@@ -242,7 +243,7 @@ async fn handle_transcribe(
             }
             CallToolResult::text(output)
         }
-        Err(e) => CallToolResult::error(format!("Transcription failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Transcription failed: {e}")),
     }
 }
 
@@ -315,11 +316,11 @@ fn check_perm(
         PermissionResult::Allowed => Ok(()),
         PermissionResult::NeedsApproval => {
             tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, "Approval required");
-            Err(CallToolResult::error("Approval required".to_string()))
+            Err(CallToolResult::error_msg("Approval required".to_string()))
         }
         other => {
             tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, result = ?other, "Permission denied");
-            Err(CallToolResult::error("Permission denied".to_string()))
+            Err(CallToolResult::error_msg("Permission denied".to_string()))
         }
     }
 }
@@ -513,7 +514,7 @@ mod tests {
 
         assert_eq!(module.name(), "voice");
         let tools = module.tools();
-        let names: Vec<_> = tools.iter().map(|(def, _)| def.name.as_str()).collect();
+        let names: Vec<_> = tools.iter().map(|(def, _)| &*def.name).collect();
         assert!(names.contains(&"voice_listen"));
         assert!(names.contains(&"voice_speak"));
         assert!(names.contains(&"voice_transcribe"));
@@ -526,14 +527,10 @@ mod tests {
         let state = test_state();
         let (_, handler) = handle_status_handler(state);
         let result = handler(serde_json::json!({}), test_ctx()).await;
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                assert!(t.text.contains("Voice Module Status"));
-                assert!(t.text.contains("Audio host"));
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(result.is_error != Some(true));
+        let t = result.content[0].raw.as_text().expect("expected text content");
+        assert!(t.text.contains("Voice Module Status"));
+        assert!(t.text.contains("Audio host"));
     }
 
     #[tokio::test]
@@ -541,7 +538,7 @@ mod tests {
         let state = test_state();
         let (_, handler) = handle_transcribe_handler(state);
         let result = handler(serde_json::json!({}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     #[tokio::test]
@@ -549,6 +546,6 @@ mod tests {
         let state = test_state();
         let (_, handler) = handle_speak_handler(state);
         let result = handler(serde_json::json!({}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 }

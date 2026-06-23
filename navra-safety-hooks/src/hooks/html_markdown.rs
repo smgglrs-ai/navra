@@ -7,7 +7,8 @@
 use super::{Hook, HookDecision};
 use async_trait::async_trait;
 use navra_auth::auth::CallContext;
-use navra_protocol::{CallToolResult, Content};
+use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::{CallToolResult, Content, RawContent};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
@@ -77,7 +78,7 @@ impl Hook for HtmlToMarkdownHook {
         result: &CallToolResult,
         _ctx: &CallContext,
     ) -> HookDecision {
-        if !self.enabled || result.is_error {
+        if !self.enabled || result.is_err() {
             return HookDecision::Continue;
         }
 
@@ -92,7 +93,7 @@ impl Hook for HtmlToMarkdownHook {
 
         for content in &result.content {
             match content {
-                Content::Text(t) => {
+                Content { raw: RawContent::Text(t), .. } => {
                     if looks_like_html(&t.text) {
                         let markdown = convert_html_to_markdown(&t.text);
                         let orig_len = t.text.len();
@@ -123,11 +124,9 @@ impl Hook for HtmlToMarkdownHook {
             "[html_markdown: converted {total_original} → {total_converted} chars ({reduction}% reduction)]"
         )));
 
-        HookDecision::ModifyResult(CallToolResult {
-            content: converted_content,
-            is_error: result.is_error,
-            label: result.label,
-        })
+        let mut new_result = CallToolResult::success(converted_content);
+        new_result.is_error = result.is_error;
+        HookDecision::ModifyResult(new_result)
     }
 }
 
@@ -153,11 +152,7 @@ mod tests {
     }
 
     fn make_result(text: &str) -> CallToolResult {
-        CallToolResult {
-            content: vec![Content::text(text.to_string())],
-            is_error: false,
-            label: navra_protocol::label::DataLabel::TRUSTED_PUBLIC,
-        }
+        CallToolResult::text(text.to_string())
     }
 
     #[test]
@@ -208,7 +203,7 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content::Text(t) => &t.text,
+                    Content { raw: RawContent::Text(t), .. } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(text.contains("Page Title"));
@@ -216,7 +211,7 @@ mod tests {
                 assert!(text.len() < html.len());
 
                 let annotation = match r.content.last() {
-                    Some(Content::Text(t)) => &t.text,
+                    Some(Content { raw: RawContent::Text(t), .. }) => &t.text,
                     _ => panic!("expected annotation"),
                 };
                 assert!(annotation.contains("html_markdown"));
@@ -231,7 +226,7 @@ mod tests {
         let hook = HtmlToMarkdownHook::new(HtmlToMarkdownConfig::default());
         let html = "<html><body><p>Error page</p></body></html>";
         let mut result = make_result(html);
-        result.is_error = true;
+        result.is_error = Some(true);
         let decision = hook
             .post_tool_use("fetch", &json!({}), &result, &test_ctx())
             .await;
@@ -308,13 +303,13 @@ println!("{}", w.id);</code></pre>
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content::Text(t) => &t.text,
+                    Content { raw: RawContent::Text(t), .. } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(text.contains("API Reference"));
                 // At least 40% reduction
                 let annotation = match r.content.last() {
-                    Some(Content::Text(t)) => &t.text,
+                    Some(Content { raw: RawContent::Text(t), .. }) => &t.text,
                     _ => panic!("expected annotation"),
                 };
                 assert!(annotation.contains("reduction"));

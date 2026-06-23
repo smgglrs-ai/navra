@@ -4,6 +4,7 @@
 
 use axum::http::HeaderMap;
 use navra_protocol::Content;
+use navra_protocol::compat::CallToolResultExt;
 use navra_security::auth::capability::{
     build_delegated_payload, build_payload, decode_token, encode_token, resolve_capabilities,
     validate_delegation, CapabilitySet,
@@ -257,13 +258,10 @@ impl Hook for TestResultHook {
         result: &navra_protocol::CallToolResult,
         _ctx: &CallContext,
     ) -> HookDecision {
-        let text = match &result.content[0] {
-            Content::Text(t) => &t.text,
-            _ => panic!("expected text content"),
-        };
+        let text = result.content[0].raw.as_text().expect("expected text content");
         HookDecision::ModifyResult(navra_protocol::CallToolResult::text(format!(
             "{}{}",
-            text, self.suffix
+            text.text, self.suffix
         )))
     }
 }
@@ -318,10 +316,8 @@ async fn hook_pipeline_post_modifies_result() {
         .run_post("file_read", &serde_json::json!({}), original, &test_ctx())
         .await;
 
-    match &result.content[0] {
-        Content::Text(t) => assert_eq!(t.text, "output [audited]"),
-        _ => panic!("expected text content"),
-    }
+    let t = result.content[0].raw.as_text().expect("expected text content");
+    assert_eq!(t.text, "output [audited]");
 }
 
 // =====================================================================

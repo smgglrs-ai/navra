@@ -83,7 +83,7 @@ fn module_registers_four_tools() {
 fn module_registers_expected_tool_names() {
     let module = build_voice_module();
     let tools = module.tools();
-    let names: Vec<&str> = tools.iter().map(|(def, _)| def.name.as_str()).collect();
+    let names: Vec<&str> = tools.iter().map(|(def, _)| &*def.name).collect();
 
     let expected = [
         "voice_listen",
@@ -123,7 +123,7 @@ fn all_tools_have_descriptions_and_object_schema() {
             "Tool '{}' missing description",
             def.name
         );
-        assert_eq!(def.input_schema.schema_type, "object");
+        assert_eq!(def.input_schema.get("type").and_then(|v| v.as_str()), Some("object"));
     }
 }
 
@@ -132,7 +132,9 @@ fn speak_tool_requires_text() {
     let module = build_voice_module();
     let tools = module.tools();
     let speak = tools.iter().find(|(d, _)| d.name == "voice_speak").unwrap();
-    let required = speak.0.input_schema.required.as_ref().unwrap();
+    let required: Vec<String> = serde_json::from_value(
+        speak.0.input_schema.get("required").cloned().unwrap()
+    ).unwrap();
     assert!(required.contains(&"text".to_string()));
 }
 
@@ -144,7 +146,9 @@ fn transcribe_tool_requires_path() {
         .iter()
         .find(|(d, _)| d.name == "voice_transcribe")
         .unwrap();
-    let required = transcribe.0.input_schema.required.as_ref().unwrap();
+    let required: Vec<String> = serde_json::from_value(
+        transcribe.0.input_schema.get("required").cloned().unwrap()
+    ).unwrap();
     assert!(required.contains(&"path".to_string()));
 }
 
@@ -156,7 +160,7 @@ fn listen_tool_has_no_required_params() {
         .iter()
         .find(|(d, _)| d.name == "voice_listen")
         .unwrap();
-    assert!(listen.0.input_schema.required.is_none());
+    assert!(!listen.0.input_schema.contains_key("required"));
 }
 
 // =====================================================================

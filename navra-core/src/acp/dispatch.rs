@@ -120,10 +120,10 @@ pub fn create_run(
             let session = crate::session::Session {
                 id: sid.clone(),
                 agent: agent.clone(),
-                client_info: crate::protocol::ClientInfo {
-                    name: format!("acp-{}", agent_name),
-                    version: None,
-                },
+                client_info: crate::protocol::ClientInfo::new(
+                    format!("acp-{}", agent_name),
+                    "0.0.0",
+                ),
                 initialized: true,
                 context_label: crate::ifc::DataLabel::TRUSTED_PUBLIC,
                 created_at: now,
@@ -178,10 +178,12 @@ pub async fn execute_run(
             let content = part.content.as_deref().unwrap_or("");
             if let Some(tool_call) = parse_tool_call(content) {
                 let ctx = CallContext::new(agent.clone(), session_id.clone());
-                let call_params = CallToolParams {
-                    name: tool_call.tool_name.clone(),
-                    arguments: tool_call.arguments.clone(),
-                    meta: None,
+                let call_params = {
+                    let mut p = CallToolParams::new(tool_call.tool_name.clone());
+                    if let Some(obj) = tool_call.arguments.as_object() {
+                        p = p.with_arguments(obj.clone());
+                    }
+                    p
                 };
 
                 let trajectory_input = MessagePart {
@@ -210,10 +212,7 @@ pub async fn execute_run(
                 let result_text: String = result
                     .content
                     .iter()
-                    .filter_map(|c| match c {
-                        Content::Text(t) => Some(t.text.clone()),
-                        _ => None,
-                    })
+                    .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
                     .collect::<Vec<_>>()
                     .join("\n");
 
@@ -325,10 +324,12 @@ pub fn execute_run_stream(
                 let content = part.content.as_deref().unwrap_or("");
                 if let Some(tool_call) = parse_tool_call(content) {
                     let ctx = CallContext::new(agent.clone(), session_id.clone());
-                    let call_params = CallToolParams {
-                        name: tool_call.tool_name.clone(),
-                        arguments: tool_call.arguments.clone(),
-                        meta: None,
+                    let call_params = {
+                        let mut p = CallToolParams::new(tool_call.tool_name.clone());
+                        if let Some(obj) = tool_call.arguments.as_object() {
+                            p = p.with_arguments(obj.clone());
+                        }
+                        p
                     };
 
                     let trajectory_part = MessagePart {
@@ -354,10 +355,7 @@ pub fn execute_run_stream(
                     let result_text: String = result
                         .content
                         .iter()
-                        .filter_map(|c| match c {
-                            Content::Text(t) => Some(t.text.clone()),
-                            _ => None,
-                        })
+                        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
                         .collect::<Vec<_>>()
                         .join("\n");
 

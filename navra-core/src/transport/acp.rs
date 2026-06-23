@@ -335,19 +335,15 @@ async fn handle_resume_run(
 
         if !pending_tool.is_empty() {
             let ctx = crate::auth::CallContext::new(agent, run_id.clone());
-            let call_params = crate::protocol::CallToolParams {
-                name: pending_tool,
-                arguments: pending_args,
-                meta: None,
-            };
+            let mut call_params = crate::protocol::CallToolParams::new(pending_tool);
+            if let Some(obj) = pending_args.as_object() {
+                call_params = call_params.with_arguments(obj.clone());
+            }
             let result = state.server.handle_call_tool(call_params, ctx).await;
             let result_text: String = result
                 .content
                 .iter()
-                .filter_map(|c| match c {
-                    crate::protocol::Content::Text(t) => Some(t.text.clone()),
-                    _ => None,
-                })
+                .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
                 .collect::<Vec<_>>()
                 .join("\n");
 
@@ -476,8 +472,10 @@ async fn handle_get_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use navra_protocol::compat::empty_input_schema;
+    use navra_protocol::compat::CallToolResultExt;
     use crate::auth::{AgentIdentity, NoAuthenticator};
-    use crate::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
+    use crate::protocol::{CallToolResult, ToolDefinition};
     use axum::body::Body;
     use axum::http::Request;
     use http_body_util::BodyExt;
@@ -492,18 +490,7 @@ mod tests {
                     default_identity: AgentIdentity::new("tester", "dev"),
                 })
                 .tool(
-                    ToolDefinition {
-                        name: "ping".to_string(),
-                        description: Some("Returns pong".to_string()),
-                        input_schema: ToolInputSchema {
-                            schema_type: "object".to_string(),
-                            properties: None,
-                            required: None,
-                        },
-                        annotations: None,
-                        ttl_ms: None,
-                        cache_scope: None,
-                    },
+                    ToolDefinition::new("ping", "Returns pong", empty_input_schema()),
                     |_args, _ctx| Box::pin(async { CallToolResult::text("pong") }),
                 )
                 .build(),

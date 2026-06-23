@@ -76,7 +76,7 @@ impl VerifierHook {
             .content
             .iter()
             .filter_map(|c| match c {
-                navra_protocol::Content::Text(t) => Some(t.text.as_str()),
+                navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => Some(t.text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
@@ -189,7 +189,7 @@ impl Hook for VerifierHook {
             let entry = stats.entry(tool_name.to_string()).or_default();
             entry.total += 1;
 
-            if result.is_error {
+            if result.is_error == Some(true) {
                 entry.failed += 1;
             } else if let Some(ref _reason) = flag_reason {
                 entry.flagged += 1;
@@ -219,6 +219,7 @@ impl Hook for VerifierHook {
 mod tests {
     use super::*;
     use navra_auth::auth::AgentIdentity;
+    use navra_protocol::compat::CallToolResultExt;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")
@@ -343,7 +344,7 @@ mod tests {
         let hook = VerifierHook::new(VerifierConfig::default());
         let ctx = test_ctx();
 
-        let error_result = CallToolResult::error("something went wrong");
+        let error_result = CallToolResult::error_msg("something went wrong");
         hook.post_tool_use("tool_a", &serde_json::json!({}), &error_result, &ctx)
             .await;
 

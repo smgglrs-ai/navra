@@ -86,9 +86,9 @@ async fn upstream_call_tool_through_module() {
     );
 
     let result = handler(serde_json::json!({"message": "hello"}), ctx).await;
-    assert!(!result.is_error);
+    assert!(result.is_error != Some(true));
     match &result.content[0] {
-        navra_core::protocol::Content::Text(t) => assert_eq!(t.text, "echo: hello"),
+        c if c.raw.as_text().is_some() => assert_eq!(c.raw.as_text().unwrap().text, "echo: hello"),
         _ => panic!("expected text content"),
     }
 }
@@ -121,8 +121,8 @@ async fn upstream_get_prompt_through_module() {
     assert_eq!(result.description, Some("Greeting".to_string()));
     assert_eq!(result.messages.len(), 1);
     match &result.messages[0].content {
-        navra_core::protocol::Content::Text(t) => {
-            assert_eq!(t.text, "Hello from upstream!");
+        navra_protocol::PromptMessageContent::Text { text } => {
+            assert_eq!(text, "Hello from upstream!");
         }
         _ => panic!("expected text content"),
     }
@@ -220,23 +220,16 @@ async fn domain_rules_block_write_tool() {
 
     let result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "echo".to_string(),
-                arguments: serde_json::json!({"message": "test"}),
-                meta: None,
-            },
+            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "test"}).as_object().unwrap().clone()); p },
             ctx,
         )
         .await;
 
     assert!(
-        result.is_error,
+        result.is_error == Some(true),
         "shell:execute should be denied for readonly"
     );
-    let text = match &result.content[0] {
-        navra_core::protocol::Content::Text(t) => &t.text,
-        _ => panic!("expected text"),
-    };
+    let text = &result.content[0].raw.as_text().expect("expected text").text;
     assert!(
         text.contains("Permission denied"),
         "error should mention permission denied, got: {text}"
@@ -279,17 +272,13 @@ async fn domain_rules_allow_read_tool() {
 
     let result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "echo".to_string(),
-                arguments: serde_json::json!({"message": "test"}),
-                meta: None,
-            },
+            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "test"}).as_object().unwrap().clone()); p },
             ctx,
         )
         .await;
 
     assert!(
-        !result.is_error,
+        result.is_error != Some(true),
         "unknown:read should be allowed for readonly"
     );
 }
@@ -329,10 +318,7 @@ async fn domain_rules_block_prompts() {
     // get_prompt should be denied
     let result = server
         .handle_get_prompt(
-            GetPromptParams {
-                name: "greeting".to_string(),
-                arguments: Default::default(),
-            },
+            GetPromptParams::new("greeting"),
             &agent,
             "test-session",
         )
@@ -373,15 +359,11 @@ async fn no_domain_rules_allows_everything() {
     // Tool call should work
     let result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "echo".to_string(),
-                arguments: serde_json::json!({"message": "test"}),
-                meta: None,
-            },
+            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "test"}).as_object().unwrap().clone()); p },
             ctx,
         )
         .await;
-    assert!(!result.is_error, "no domain_rules = no enforcement");
+    assert!(result.is_error != Some(true), "no domain_rules = no enforcement");
 
     // Prompts should be visible
     let prompts = server.handle_list_prompts(&agent, &Default::default());

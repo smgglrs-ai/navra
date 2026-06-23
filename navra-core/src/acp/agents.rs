@@ -56,12 +56,16 @@ pub fn build_manifest(server: &McpServer) -> AgentManifest {
     let capabilities: Vec<AgentCapability> = tools
         .iter()
         .map(|t| AgentCapability {
-            name: t.name.clone(),
-            description: t.description.clone().unwrap_or_default(),
+            name: t.name.to_string(),
+            description: t.description.as_deref().unwrap_or_default().to_string(),
         })
         .collect();
 
-    let version = info.version.unwrap_or_else(|| "0.0.0".to_string());
+    let version = if info.version.is_empty() {
+        "0.0.0".to_string()
+    } else {
+        info.version.clone()
+    };
 
     AgentManifest {
         name: agent_name,

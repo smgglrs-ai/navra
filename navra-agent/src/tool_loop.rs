@@ -14,7 +14,7 @@ use navra_model::{
     ResponseTool,
 };
 use navra_protocol::label::DataLabel;
-use navra_protocol::{CallToolResult, Content};
+use navra_protocol::CallToolResult;
 use navra_safety_hooks::hooks::{
     HookPipeline, ModelCallContext, PostModelOutcome, PreModelOutcome,
 };
@@ -237,13 +237,14 @@ pub struct ToolLoopResult {
 
 /// Extract text content from a [`CallToolResult`].
 pub fn extract_text(result: &CallToolResult) -> String {
+    use navra_protocol::compat::content_as_text;
     let mut parts = Vec::new();
-    if result.is_error {
+    if result.is_error == Some(true) {
         parts.push("Error: ".to_string());
     }
     for content in &result.content {
-        if let Content::Text(tc) = content {
-            parts.push(tc.text.clone());
+        if let Some(text) = content_as_text(content) {
+            parts.push(text.to_string());
         }
     }
     parts.join("")
@@ -654,7 +655,7 @@ pub async fn run_tool_loop(
             config
                 .allowed_tools
                 .as_ref()
-                .map_or(true, |allowed| allowed.contains(&t.name))
+                .map_or(true, |allowed| allowed.contains(&t.name.to_string()))
         })
         .map(crate::convert::tool_def_to_response)
         .collect();
@@ -1161,7 +1162,7 @@ pub async fn run_tool_loop(
             let mut block = ToolBlock::new(&fc.name, args.clone());
             let result = client.call_tool(&fc.name, args).await?;
             let raw_text = extract_text(&result);
-            block.complete(&raw_text, result.is_error);
+            block.complete(&raw_text, result.is_error == Some(true));
             let duration_ms = block.duration_ms.unwrap_or(0);
             blocks.push(block);
 
@@ -1211,7 +1212,7 @@ pub async fn run_tool_loop(
 
             actions.push(ActionRecord {
                 action,
-                success: !result.is_error,
+                success: result.is_error != Some(true),
                 duration_ms,
                 output_preview: text.chars().take(200).collect(),
             });
@@ -1296,6 +1297,7 @@ mod tests {
     use navra_model::{
         MessageItem, ModelBackend, ModelError, ModelResponse, OutputItem, ResponseStatus,
     };
+    use navra_protocol::compat::CallToolResultExt;
     use navra_protocol::upstream::{Transport, UpstreamError};
     use std::future::Future;
     use std::pin::Pin;
@@ -1652,7 +1654,7 @@ mod tests {
 
     #[test]
     fn extract_text_from_error_result() {
-        let result = CallToolResult::error("something failed");
+        let result = CallToolResult::error_msg("something failed");
         assert_eq!(extract_text(&result), "Error: something failed");
     }
 

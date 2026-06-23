@@ -4,20 +4,17 @@
 //! directory and returns structured results. Used by the self-improve
 //! flow to verify fixes don't break the build.
 
-use navra_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
+use navra_core::protocol::{CallToolResult, ToolDefinition};
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::collections::HashMap;
 
 pub fn build_test_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "build_test".to_string(),
-        description: Some(
-            "Run cargo build, test, or clippy on a Rust project. \
-             Returns structured results with pass/fail counts."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "build_test",
+        "Run cargo build, test, or clippy on a Rust project. \
+         Returns structured results with pass/fail counts.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "path".to_string(),
                     serde_json::json!({
@@ -42,12 +39,9 @@ pub fn build_test_tool_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["path".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["path".to_string()]),
+        ),
+    )
 }
 
 const BUILD_TIMEOUT_SECS: u64 = 300;
@@ -59,7 +53,7 @@ pub async fn handle_build_test(
 ) -> CallToolResult {
     let path = match args.get("path").and_then(|v| v.as_str()) {
         Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: path"),
+        None => return CallToolResult::error_msg("Missing required parameter: path"),
     };
 
     let command = args
@@ -72,20 +66,20 @@ pub async fn handle_build_test(
     // Permission check
     let canon = match std::path::Path::new(path).canonicalize() {
         Ok(p) => p,
-        Err(e) => return CallToolResult::error(format!("Cannot resolve path: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Cannot resolve path: {e}")),
     };
 
     match perm_engine.check(&ctx.agent.permissions, "build", &canon) {
         navra_core::permissions::PermissionResult::Allowed => {}
         other => {
             tracing::info!(path = %canon.display(), result = ?other, "Permission denied for build");
-            return CallToolResult::error("Permission denied".to_string());
+            return CallToolResult::error_msg("Permission denied".to_string());
         }
     }
 
     // Verify Cargo.toml exists
     if !canon.join("Cargo.toml").exists() {
-        return CallToolResult::error(format!("No Cargo.toml at {}", canon.display()));
+        return CallToolResult::error_msg(format!("No Cargo.toml at {}", canon.display()));
     }
 
     // Build the command
@@ -119,10 +113,10 @@ pub async fn handle_build_test(
     {
         Ok(Ok(output)) => output,
         Ok(Err(e)) => {
-            return CallToolResult::error(format!("Failed to execute cargo: {e}"));
+            return CallToolResult::error_msg(format!("Failed to execute cargo: {e}"));
         }
         Err(_) => {
-            return CallToolResult::error(format!("Build timed out after {BUILD_TIMEOUT_SECS}s"));
+            return CallToolResult::error_msg(format!("Build timed out after {BUILD_TIMEOUT_SECS}s"));
         }
     };
 
@@ -172,7 +166,7 @@ pub async fn handle_build_test(
     if success {
         CallToolResult::text(result.to_string())
     } else {
-        CallToolResult::error(result.to_string())
+        CallToolResult::error_msg(result.to_string())
     }
 }
 
@@ -241,11 +235,10 @@ test result: ok. 20 passed; 1 failed; 3 ignored; 0 measured; 0 filtered out";
     fn tool_def_has_required_path() {
         let def = build_test_tool_def();
         assert_eq!(def.name, "build_test");
-        assert!(def
-            .input_schema
-            .required
-            .as_ref()
+        let schema_val = serde_json::to_value(&*def.input_schema).unwrap();
+        assert!(schema_val["required"]
+            .as_array()
             .unwrap()
-            .contains(&"path".to_string()));
+            .contains(&serde_json::json!("path")));
     }
 }

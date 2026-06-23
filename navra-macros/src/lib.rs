@@ -427,9 +427,12 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
                         .and_then(|v| serde_json::from_value(v.clone()).ok())
                     {
                         Some(v) => v,
-                        None => return navra_protocol::CallToolResult::error(
-                            format!("Missing required parameter: {}", #field)
-                        ),
+                        None => return {
+                            use navra_protocol::compat::CallToolResultExt;
+                            navra_protocol::CallToolResult::error_msg(
+                                format!("Missing required parameter: {}", #field)
+                            )
+                        },
                     };
                 }
             }
@@ -472,18 +475,14 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
             let mut properties = std::collections::HashMap::new();
             #(#property_inserts)*
 
-            navra_protocol::ToolDefinition {
-                name: #tool_name.to_string(),
-                description: Some(#tool_desc.to_string()),
-                input_schema: navra_protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: if properties.is_empty() { None } else { Some(properties) },
-                    required: #required_tokens,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            }
+            navra_protocol::ToolDefinition::new(
+                #tool_name,
+                #tool_desc,
+                navra_protocol::compat::tool_input_schema(
+                    if properties.is_empty() { None } else { Some(properties) },
+                    #required_tokens,
+                ),
+            )
         }
 
         #vis fn #handler_fn(#(#state_params),*) -> (navra_protocol::ToolDefinition, std::sync::Arc<

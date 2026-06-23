@@ -1,6 +1,7 @@
 use crate::auth::AuthConfig;
 use crate::parser::{Method, OperationMeta};
 use navra_mcp::protocol::CallToolResult;
+use navra_protocol::compat::CallToolResultExt;
 use reqwest::Client;
 
 pub fn truncate_response(body: String, max_bytes: Option<usize>) -> String {
@@ -57,7 +58,7 @@ pub async fn execute_operation(
 ) -> CallToolResult {
     let url = match build_url(base_url, meta, args, auth) {
         Ok(u) => u,
-        Err(e) => return CallToolResult::error(format!("Failed to build URL: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Failed to build URL: {e}")),
     };
 
     let method = match &meta.method {
@@ -86,14 +87,12 @@ pub async fn execute_operation(
     // On 401/403 with OAuth configured, try one token refresh then retry
     if let Some(ref mgr) = auth.oauth {
         if let Ok(ref r) = resp {
-            if r.is_error {
+            if r.is_error == Some(true) {
                 let body_text = r
                     .content
                     .first()
-                    .and_then(|c| match c {
-                        navra_protocol::Content::Text(t) => Some(t.text.as_str()),
-                        _ => None,
-                    })
+                    .and_then(|c| c.raw.as_text())
+                    .map(|t| t.text.as_str())
                     .unwrap_or("");
                 if body_text.contains("HTTP 401") || body_text.contains("HTTP 403") {
                     tracing::info!("OAuth: received 401/403, attempting token refresh");
@@ -116,7 +115,7 @@ pub async fn execute_operation(
                             )
                             .await
                             .unwrap_or_else(|e| {
-                                CallToolResult::error(format!("HTTP retry failed: {e}"))
+                                CallToolResult::error_msg(format!("HTTP retry failed: {e}"))
                             });
                         }
                         Err(e) => {
@@ -128,7 +127,7 @@ pub async fn execute_operation(
         }
     }
 
-    resp.unwrap_or_else(|e| CallToolResult::error(format!("HTTP request failed: {e}")))
+    resp.unwrap_or_else(|e| CallToolResult::error_msg(format!("HTTP request failed: {e}")))
 }
 
 async fn send_request(
@@ -156,7 +155,7 @@ async fn send_request(
     let max_body = max_response_bytes.unwrap_or(1024 * 1024);
     if let Some(len) = resp.content_length() {
         if len as usize > max_body {
-            return Ok(CallToolResult::error(format!(
+            return Ok(CallToolResult::error_msg(format!(
                 "Response too large ({len} bytes, limit {max_body})"
             )));
         }
@@ -170,7 +169,7 @@ async fn send_request(
             }
         }
         Err(e) => {
-            return Ok(CallToolResult::error(format!(
+            return Ok(CallToolResult::error_msg(format!(
                 "Failed to read response: {e}"
             )))
         }
@@ -182,7 +181,7 @@ async fn send_request(
             max_response_bytes,
         )))
     } else {
-        Ok(CallToolResult::error(format!("HTTP {status}: {body}")))
+        Ok(CallToolResult::error_msg(format!("HTTP {status}: {body}")))
     }
 }
 

@@ -6,8 +6,9 @@
 
 use navra_core::auth::CallContext;
 use navra_core::protocol::{
-    CallToolParams, CallToolResult, Content, ToolDefinition, ToolInputSchema,
+    CallToolParams, CallToolResult, ToolDefinition,
 };
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use navra_core::McpServer;
 use std::collections::HashMap;
 
@@ -400,11 +401,11 @@ async fn execute_tool_step(
     };
 
     // Build CallToolParams
-    let params = CallToolParams {
-        name: step.tool.clone(),
-        arguments: resolved_args,
-        meta: None,
+    let args_map = match resolved_args.as_object() {
+        Some(m) => m.clone(),
+        None => serde_json::Map::new(),
     };
+    let params = CallToolParams::new(step.tool.clone()).with_arguments(args_map);
 
     // Call the tool through the server's dispatch
     let result = server.handle_call_tool(params, ctx.clone()).await;
@@ -413,14 +414,11 @@ async fn execute_tool_step(
     let result_text: String = result
         .content
         .iter()
-        .filter_map(|c| match c {
-            Content::Text(t) => Some(t.text.as_str()),
-            _ => None,
-        })
+        .filter_map(|c| navra_protocol::compat::content_as_text(c))
         .collect::<Vec<_>>()
         .join("");
 
-    let sr = if result.is_error {
+    let sr = if result.is_err() {
         apply_on_error(
             &step_name,
             &step.tool,
@@ -754,7 +752,7 @@ pub async fn execute_python(
     let backend = match detect_sandbox_backend(allow_direct).await {
         Some(b) => b,
         None => {
-            return CallToolResult::error(
+            return CallToolResult::error_msg(
                 "Python mode requires a sandbox (OpenShell or Podman) but none is \
                  available. Install Podman for container isolation, or set \
                  allow_direct_execution=true in [budget] config (or \
@@ -773,12 +771,12 @@ pub async fn execute_python(
     // Prepare working directory with bridge + user script
     let work_dir = match tempfile::tempdir() {
         Ok(d) => d,
-        Err(e) => return CallToolResult::error(format!("Failed to create temp dir: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Failed to create temp dir: {e}")),
     };
 
     let bridge_path = work_dir.path().join("navra_bridge.py");
     if let Err(e) = std::fs::write(&bridge_path, BRIDGE_PY) {
-        return CallToolResult::error(format!("Failed to write navra_bridge.py: {e}"));
+        return CallToolResult::error_msg(format!("Failed to write navra_bridge.py: {e}"));
     }
 
     // Build user script: import bridge, then run user code
@@ -790,7 +788,7 @@ pub async fn execute_python(
 
     let script_path = work_dir.path().join("script.py");
     if let Err(e) = std::fs::write(&script_path, &full_script) {
-        return CallToolResult::error(format!("Failed to write script.py: {e}"));
+        return CallToolResult::error_msg(format!("Failed to write script.py: {e}"));
     }
 
     // Environment variables for the bridge
@@ -844,7 +842,7 @@ pub async fn execute_python(
 
     match result {
         Ok(output) => output,
-        Err(e) => CallToolResult::error(format!("Python execution failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Python execution failed: {e}")),
     }
 }
 
@@ -997,7 +995,7 @@ async fn run_with_timeout(
                 if !stdout.is_empty() {
                     msg.push_str(&format!("\nstdout:\n{stdout}"));
                 }
-                Ok(CallToolResult::error(msg))
+                Ok(CallToolResult::error_msg(msg))
             }
         }
         Ok(Err(e)) => Err(format!("Process I/O error: {e}")),
@@ -1032,7 +1030,7 @@ pub async fn handle_plan_execute(
 
     let plan_str = match args.get("plan").and_then(|v| v.as_str()) {
         Some(p) => p,
-        None => return CallToolResult::error("Missing required parameter: plan"),
+        None => return CallToolResult::error_msg("Missing required parameter: plan"),
     };
 
     let stop_on_error = args
@@ -1045,12 +1043,12 @@ pub async fn handle_plan_execute(
             let plan: YamlPlan = match serde_yaml::from_str(plan_str) {
                 Ok(p) => p,
                 Err(e) => {
-                    return CallToolResult::error(format!("Invalid YAML plan: {}", e));
+                    return CallToolResult::error_msg(format!("Invalid YAML plan: {}", e));
                 }
             };
 
             if plan.steps.is_empty() {
-                return CallToolResult::error("Plan has no steps");
+                return CallToolResult::error_msg("Plan has no steps");
             }
 
             let results = execute_yaml_plan(&plan, server, &ctx, stop_on_error).await;
@@ -1062,7 +1060,7 @@ pub async fn handle_plan_execute(
 
             execute_python(plan_str, server, &ctx, timeout_secs, allow_direct).await
         }
-        other => CallToolResult::error(format!(
+        other => CallToolResult::error_msg(format!(
             "Unknown format: '{}'. Supported: yaml, python",
             other
         )),
@@ -1074,18 +1072,14 @@ pub async fn handle_plan_execute(
 // ---------------------------------------------------------------------------
 
 pub fn plan_execute_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "plan_execute".to_string(),
-        description: Some(
-            "Execute a multi-step plan in a single turn. Supports YAML \
+    ToolDefinition::new(
+        "plan_execute",
+        "Execute a multi-step plan in a single turn. Supports YAML \
              (declarative, no sandbox) and Python (CodeAct, sandboxed) \
              formats. YAML plans define sequential tool calls with \
-             variable passing between steps."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             variable passing between steps.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "format".to_string(),
                     serde_json::json!({
@@ -1118,12 +1112,9 @@ pub fn plan_execute_tool_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["format".to_string(), "plan".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["format".to_string(), "plan".to_string()]),
+        ),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1402,7 +1393,7 @@ steps:
             .build();
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -1418,7 +1409,7 @@ steps:
             .build();
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -1434,7 +1425,7 @@ steps:
             .build();
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -1450,14 +1441,11 @@ steps:
             .build();
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         assert!(text.contains("Unknown format"));
@@ -1481,10 +1469,7 @@ steps:
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -1510,10 +1495,7 @@ steps:
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -1524,21 +1506,16 @@ steps:
 
     #[tokio::test]
     async fn test_sequential_execution_with_echo_tool() {
-        use navra_core::protocol::ToolInputSchema;
-
+        
         // Register an echo tool that returns its args as text
-        let echo_def = ToolDefinition {
-            name: "echo".to_string(),
-            description: Some("Echo args".to_string()),
-            input_schema: ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: None,
-                required: None,
-            },
-            annotations: None,
-            ttl_ms: None,
-            cache_scope: None,
-        };
+        let echo_def = ToolDefinition::new(
+                           "echo",
+                           "Echo args",
+                           tool_input_schema(
+            None,
+            None,
+        ),
+                       );
         let server = navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -1568,15 +1545,12 @@ steps:
         });
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(!result.is_error);
+        assert!(!result.is_err());
 
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -1591,18 +1565,14 @@ steps:
 
     #[tokio::test]
     async fn test_when_conditional_skip() {
-        let echo_def = ToolDefinition {
-            name: "echo".to_string(),
-            description: Some("Echo".to_string()),
-            input_schema: ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: None,
-                required: None,
-            },
-            annotations: None,
-            ttl_ms: None,
-            cache_scope: None,
-        };
+        let echo_def = ToolDefinition::new(
+                           "echo",
+                           "Echo",
+                           tool_input_schema(
+            None,
+            None,
+        ),
+                       );
         let server = navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -1637,10 +1607,7 @@ steps:
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -1666,13 +1633,10 @@ steps:
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
-        if result.is_error {
+        if result.is_err() {
             // Acceptable errors: no sandbox, container failed, etc.
             // The important thing is we get a coherent error, not a panic.
             assert!(!text.is_empty(), "Error result should have a message");
@@ -1698,14 +1662,11 @@ steps:
             .build();
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, true).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         assert!(text.contains("exited with code 1"), "Got: {text}");
@@ -1728,14 +1689,11 @@ steps:
         let code = "import time; time.sleep(60)";
         // Use a short timeout directly
         let result = execute_python(code, &server, &ctx, Some(1), true).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         // May time out or hit a Podman/container error — both are acceptable
@@ -1824,14 +1782,11 @@ steps:
         .await;
 
         let result = result.unwrap();
-        assert!(result.is_error);
+        assert!(result.is_err());
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         assert!(text.contains("error msg"), "Got: {text}");
@@ -1867,18 +1822,14 @@ steps:
     /// Build a test server with an "echo" tool that returns the "msg" field
     /// as plain text (not JSON-wrapped args).
     fn build_echo_server() -> navra_core::McpServer {
-        let echo_def = ToolDefinition {
-            name: "echo".to_string(),
-            description: Some("Echo msg field".to_string()),
-            input_schema: ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: None,
-                required: None,
-            },
-            annotations: None,
-            ttl_ms: None,
-            cache_scope: None,
-        };
+        let echo_def = ToolDefinition::new(
+                           "echo",
+                           "Echo msg field",
+                           tool_input_schema(
+            None,
+            None,
+        ),
+                       );
         navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -1940,15 +1891,12 @@ steps:
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(!result.is_error);
+        assert!(!result.is_err());
 
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -1982,15 +1930,12 @@ steps:
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(!result.is_error);
+        assert!(!result.is_err());
 
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -2022,15 +1967,12 @@ steps:
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(!result.is_error);
+        assert!(!result.is_err());
 
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -2062,15 +2004,12 @@ steps:
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(!result.is_error);
+        assert!(!result.is_err());
 
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -2111,10 +2050,7 @@ steps:
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -2149,10 +2085,7 @@ steps:
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -2163,18 +2096,14 @@ steps:
 
     #[tokio::test]
     async fn test_on_error_stop_halts_on_failure() {
-        let echo_def = ToolDefinition {
-            name: "echo".to_string(),
-            description: Some("Echo".to_string()),
-            input_schema: ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: None,
-                required: None,
-            },
-            annotations: None,
-            ttl_ms: None,
-            cache_scope: None,
-        };
+        let echo_def = ToolDefinition::new(
+                           "echo",
+                           "Echo",
+                           tool_input_schema(
+            None,
+            None,
+        ),
+                       );
         let server = navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -2207,10 +2136,7 @@ steps:
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -2221,30 +2147,22 @@ steps:
 
     #[tokio::test]
     async fn test_for_each_with_on_error_continue() {
-        let echo_def = ToolDefinition {
-            name: "echo".to_string(),
-            description: Some("Echo msg".to_string()),
-            input_schema: ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: None,
-                required: None,
-            },
-            annotations: None,
-            ttl_ms: None,
-            cache_scope: None,
-        };
-        let fail_def = ToolDefinition {
-            name: "maybe_fail".to_string(),
-            description: Some("Fails on certain input".to_string()),
-            input_schema: ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: None,
-                required: None,
-            },
-            annotations: None,
-            ttl_ms: None,
-            cache_scope: None,
-        };
+        let echo_def = ToolDefinition::new(
+                           "echo",
+                           "Echo msg",
+                           tool_input_schema(
+            None,
+            None,
+        ),
+                       );
+        let fail_def = ToolDefinition::new(
+                           "maybe_fail",
+                           "Fails on certain input",
+                           tool_input_schema(
+            None,
+            None,
+        ),
+                       );
         let server = navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -2259,7 +2177,7 @@ steps:
                 Box::pin(async move {
                     let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
                     if path.contains("bad") {
-                        CallToolResult::error(format!("Cannot read: {}", path))
+                        CallToolResult::error_msg(format!("Cannot read: {}", path))
                     } else {
                         CallToolResult::text(format!("content of {}", path))
                     }
@@ -2285,15 +2203,12 @@ steps:
         let args = serde_json::json!({"format": "yaml", "plan": plan_yaml});
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(!result.is_error);
+        assert!(!result.is_err());
 
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         let steps: Vec<StepResult> = serde_json::from_str(&text).unwrap();
@@ -2329,14 +2244,11 @@ steps:
             .build();
         let ctx = test_ctx();
         let result = handle_plan_execute(args, &server, ctx, false).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
         let text = result
             .content
             .iter()
-            .map(|c| match c {
-                Content::Text(t) => t.text.as_str(),
-                _ => "",
-            })
+            .filter_map(|c| navra_protocol::compat::content_as_text(c))
             .collect::<Vec<_>>()
             .join("");
         assert!(

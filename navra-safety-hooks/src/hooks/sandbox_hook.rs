@@ -8,8 +8,11 @@
 //! - PathRewrite: rewrite path arguments before execution
 
 use crate::hooks::{Hook, HookDecision};
-use navra_auth::auth::sandbox_profile::{SandboxAction, SandboxProfile};
+use navra_auth::auth::sandbox_profile::SandboxAction;
+#[cfg(test)]
+use navra_auth::auth::sandbox_profile::SandboxProfile;
 use navra_auth::auth::CallContext;
+use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::CallToolResult;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -173,15 +176,14 @@ impl Hook for SandboxHook {
                 let mut new_content = Vec::new();
                 for content in &result.content {
                     match content {
-                        navra_protocol::Content::Text(t) => {
+                        navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => {
                             let redacted = Self::redact_text(&t.text, patterns, replacement);
                             new_content.push(navra_protocol::Content::text(redacted));
                         }
                         other => new_content.push(other.clone()),
                     }
                 }
-                let mut new_result = CallToolResult::text("");
-                new_result.content = new_content;
+                let mut new_result = CallToolResult::success(new_content);
                 new_result.is_error = result.is_error;
                 HookDecision::ModifyResult(new_result)
             }
@@ -247,8 +249,8 @@ mod tests {
             .await;
         match decision {
             HookDecision::Simulate(result) => match &result.content[0] {
-                navra_protocol::Content::Text(t) => {
-                    assert_eq!(t.text, "write simulated OK");
+                c if c.raw.as_text().is_some() => {
+                    assert_eq!(c.raw.as_text().unwrap().text, "write simulated OK");
                 }
                 _ => panic!("expected text"),
             },
@@ -361,13 +363,11 @@ mod tests {
             .await;
 
         match decision {
-            HookDecision::ModifyResult(new_result) => match &new_result.content[0] {
-                navra_protocol::Content::Text(t) => {
-                    assert_eq!(t.text, "SSN: [SSN] is sensitive");
-                    assert!(!t.text.contains("123-45-6789"));
-                }
-                _ => panic!("expected text"),
-            },
+            HookDecision::ModifyResult(new_result) => {
+                let t = new_result.content[0].raw.as_text().expect("expected text");
+                assert_eq!(t.text, "SSN: [SSN] is sensitive");
+                assert!(!t.text.contains("123-45-6789"));
+            }
             other => panic!("expected ModifyResult, got {:?}", other),
         }
     }
@@ -459,7 +459,7 @@ mod kani_proofs {
     #[kani::proof]
     fn simulated_result_is_not_error() {
         let result = CallToolResult::text("simulated output");
-        assert!(!result.is_error);
+        assert!(result.is_error != Some(true));
         assert!(!result.content.is_empty());
     }
 }

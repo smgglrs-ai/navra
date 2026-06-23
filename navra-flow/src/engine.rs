@@ -299,13 +299,9 @@ async fn run_node_loop(
         .iter()
         .map(|t| ResponseTool {
             kind: "function".to_string(),
-            name: t.name.clone(),
-            description: t.description.clone(),
-            parameters: Some(serde_json::json!({
-                "type": t.input_schema.schema_type,
-                "properties": t.input_schema.properties,
-                "required": t.input_schema.required,
-            })),
+            name: t.name.to_string(),
+            description: t.description.as_ref().map(|d| d.to_string()),
+            parameters: Some(serde_json::Value::Object((*t.input_schema).clone())),
             strict: None,
         })
         .collect();

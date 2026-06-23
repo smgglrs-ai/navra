@@ -36,14 +36,13 @@ impl Transport for DirectTransport {
 
         match method {
             "initialize" => {
-                let init_params = navra_core::protocol::InitializeParams {
-                    protocol_version: navra_core::protocol::PROTOCOL_VERSION.to_string(),
-                    capabilities: Default::default(),
-                    client_info: navra_core::protocol::ClientInfo {
-                        name: format!("navra-{}", self.agent.name),
-                        version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                    },
-                };
+                let init_params = navra_core::protocol::InitializeParams::new(
+                    Default::default(),
+                    navra_core::protocol::ClientInfo::new(
+                        format!("navra-{}", self.agent.name),
+                        env!("CARGO_PKG_VERSION"),
+                    ),
+                );
                 match self
                     .server
                     .handle_initialize(init_params, self.agent.clone())

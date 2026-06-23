@@ -1,12 +1,14 @@
 use super::dispatch::{extract_arguments, resolve_tool};
 use super::*;
+    use navra_protocol::compat::empty_input_schema;
+    use navra_protocol::compat::CallToolResultExt;
 use crate::auth::{AgentIdentity, NoAuthenticator};
 use crate::protocol::a2a::{
     Artifact, Message, MessageKind, MessageRole, MessageSendParams, Part, Task, TaskIdParams,
     TaskQueryParams, TaskState, TaskStatus, TASK_NOT_CANCELABLE, TASK_NOT_FOUND,
     UNSUPPORTED_OPERATION,
 };
-use crate::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
+use crate::protocol::{CallToolResult, ToolDefinition};
 use crate::server::McpServer;
 use std::collections::HashMap;
 
@@ -18,33 +20,11 @@ fn test_server() -> McpServer {
             default_identity: AgentIdentity::new("tester", "dev"),
         })
         .tool(
-            ToolDefinition {
-                name: "ping".to_string(),
-                description: Some("Returns pong".to_string()),
-                input_schema: ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: None,
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+            ToolDefinition::new("ping", "Returns pong", empty_input_schema()),
             |_args, _ctx| Box::pin(async { CallToolResult::text("pong") }),
         )
         .tool(
-            ToolDefinition {
-                name: "echo".to_string(),
-                description: Some("Echoes text".to_string()),
-                input_schema: ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: None,
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+            ToolDefinition::new("echo", "Echoes text", empty_input_schema()),
             |args, _ctx| {
                 Box::pin(async move {
                     let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("nil");
