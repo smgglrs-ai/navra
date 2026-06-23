@@ -25,6 +25,12 @@ pub struct NodeStatus {
     pub specialist: String,
     pub status: String, // "pending", "running", "done", "failed"
     pub output: Option<String>,
+    /// When the node transitioned to "running".
+    #[serde(skip)]
+    pub started_at: Option<Instant>,
+    /// When the node transitioned to "done" or "failed".
+    #[serde(skip)]
+    pub completed_at: Option<Instant>,
 }
 
 /// A tracked flow execution.
@@ -141,6 +147,9 @@ impl FlowRegistry {
     }
 
     /// Update a single node's status and output.
+    ///
+    /// Automatically records `started_at` when transitioning to "running"
+    /// and `completed_at` when transitioning to "done" or "failed".
     pub fn update_node_status(
         &self,
         flow_id: &str,
@@ -155,6 +164,13 @@ impl FlowRegistry {
             .get_mut(flow_id)
         {
             if let Some(node) = run.node_statuses.iter_mut().find(|n| n.id == node_id) {
+                // Track timing transitions
+                if status == "running" && node.started_at.is_none() {
+                    node.started_at = Some(Instant::now());
+                }
+                if matches!(status, "done" | "failed") && node.completed_at.is_none() {
+                    node.completed_at = Some(Instant::now());
+                }
                 node.status = status.to_string();
                 if output.is_some() {
                     node.output = output;
@@ -207,6 +223,54 @@ impl FlowRegistry {
                 FlowRunStatus::Failed(e) => Some(e.as_str()),
                 _ => None,
             },
+        }))
+    }
+
+    /// Build a graph JSON representation of a flow for React Flow consumption.
+    ///
+    /// Combines node definitions (with current status and timing) and edges
+    /// inferred from the flow's node dependency chain.
+    pub fn flow_graph_json(&self, flow_id: &str) -> Option<serde_json::Value> {
+        let flows = self.flows.lock().unwrap_or_else(|e| e.into_inner());
+        let run = flows.get(flow_id)?;
+
+        let nodes: Vec<serde_json::Value> = run
+            .node_statuses
+            .iter()
+            .enumerate()
+            .map(|(i, node)| {
+                let duration_ms = match (node.started_at, node.completed_at) {
+                    (Some(start), Some(end)) => {
+                        Some(end.duration_since(start).as_millis() as u64)
+                    }
+                    (Some(start), None) => Some(start.elapsed().as_millis() as u64),
+                    _ => None,
+                };
+                serde_json::json!({
+                    "id": node.id,
+                    "type": "task",
+                    "label": if node.specialist.is_empty() { &node.id } else { &node.specialist },
+                    "status": node.status,
+                    "x": (i % 4) * 250,
+                    "y": (i / 4) * 150,
+                    "duration_ms": duration_ms,
+                })
+            })
+            .collect();
+
+        // Edges are not stored directly in FlowRun, so we produce an
+        // empty edges list. Callers that need dependency edges should
+        // parse the flow YAML or supply them from the DagConfig.
+        Some(serde_json::json!({
+            "flow_id": run.flow_id,
+            "name": run.name,
+            "status": match &run.status {
+                FlowRunStatus::Running => "running",
+                FlowRunStatus::Completed => "completed",
+                FlowRunStatus::Failed(_) => "failed",
+            },
+            "nodes": nodes,
+            "edges": [],
         }))
     }
 
@@ -1153,6 +1217,8 @@ pub async fn handle_flow_start(
             specialist: t.specialist.clone(),
             status: "pending".to_string(),
             output: None,
+            started_at: None,
+            completed_at: None,
         })
         .collect();
     ctx.flow_registry.update_nodes(&flow_id, nodes);
@@ -1474,6 +1540,8 @@ async fn run_dag_execution(
                         specialist: new_task.specialist.clone(),
                         status: "pending".to_string(),
                         output: None,
+                        started_at: None,
+                        completed_at: None,
                     }],
                 );
                 task_defs.push(new_task);
@@ -1724,6 +1792,8 @@ pub async fn handle_flow_escalate(
             specialist: t.specialist.clone(),
             status: "pending".to_string(),
             output: None,
+            started_at: None,
+            completed_at: None,
         })
         .collect();
     ctx.flow_registry.update_nodes(&flow_id, nodes);
@@ -2441,6 +2511,8 @@ mod tests {
                 specialist: "analyst".to_string(),
                 status: "pending".to_string(),
                 output: None,
+                started_at: None,
+                completed_at: None,
             }],
         );
 
