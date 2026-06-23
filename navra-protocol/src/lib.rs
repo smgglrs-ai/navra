@@ -45,7 +45,7 @@ pub use mcp::{
     NOTIFY_RESOURCES_UPDATED, NOTIFY_TOOLS_LIST_CHANGED, PROTOCOL_VERSION, PROTOCOL_VERSION_2026,
     encode_cursor, paginate,
 };
-pub use upstream::{RetryConfig, TlsConfig, Upstream, UpstreamNotification};
+pub use upstream::{RetryConfig, TlsConfig};
 
 // Re-export rmcp for downstream crates that need direct access.
 pub use rmcp;
