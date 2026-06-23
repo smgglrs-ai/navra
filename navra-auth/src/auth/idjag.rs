@@ -386,7 +386,7 @@ mod tests {
     use super::*;
     use crate::auth::chain::ChainAuthenticator;
     use crate::auth::TokenAuthenticator;
-    use crate::identity::Ed25519Signer;
+    use crate::identity::{CapSigner, Ed25519Signer};
     use axum::http::HeaderMap;
 
     fn test_provider_config(issuer: &str, audience: &str) -> TrustedProvider {
