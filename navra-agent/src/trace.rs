@@ -10,7 +10,17 @@
 //! `<tool_call>...</tool_call>` blocks. Tool messages contain
 //! `<tool_response>...</tool_response>` blocks.
 
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
+
+use crate::block::ToolBlock;
+
+/// Synchronous content sanitizer for PII removal.
+///
+/// Same type as `navra_memory::pipeline::ContentSanitizer` — a
+/// closure that accepts content and returns sanitized content.
+pub type ContentSanitizer = std::sync::Arc<dyn Fn(&str) -> String + Send + Sync>;
 
 /// A single message in Hermes format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +47,71 @@ impl HermesTrace {
     }
 }
 
+/// Metadata for a trace record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceMetadata {
+    /// Unique run identifier.
+    pub run_id: String,
+    /// Agent name (if known).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
+    /// Safety profile name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub safety_profile: Option<String>,
+    /// Permission set name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission_set: Option<String>,
+    /// Model used for inference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_name: Option<String>,
+    /// Number of tool-call iterations.
+    pub iteration_count: usize,
+    /// Total input tokens consumed.
+    pub input_tokens: u32,
+    /// Total output tokens consumed.
+    pub output_tokens: u32,
+    /// ISO 8601 timestamp.
+    pub timestamp: String,
+    /// Whether the run completed successfully.
+    pub success: bool,
+}
+
+/// A complete trace record: Hermes messages plus run metadata.
+///
+/// Serialized as a single JSON object per line (JSONL) with
+/// `metadata` and `messages` fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceRecord {
+    /// Run metadata.
+    pub metadata: TraceMetadata,
+    /// Hermes-format conversation messages.
+    pub messages: Vec<HermesMessage>,
+}
+
+impl TraceRecord {
+    /// Serialize as a single JSONL line (no trailing newline).
+    pub fn to_jsonl(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    /// Apply a content sanitizer to all message text.
+    pub fn sanitize(&mut self, sanitizer: &ContentSanitizer) {
+        for msg in &mut self.messages {
+            msg.content = sanitizer(&msg.content);
+        }
+    }
+
+    /// Write this record to a JSONL file at `{dir}/{run_id}.jsonl`.
+    ///
+    /// Creates the directory if it does not exist.
+    pub fn write_to_dir(&self, dir: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(dir)?;
+        let path = dir.join(format!("{}.jsonl", self.metadata.run_id));
+        let line = self.to_jsonl();
+        std::fs::write(&path, format!("{line}\n"))
+    }
+}
+
 /// A tool call entry for building assistant messages.
 #[derive(Debug, Clone)]
 pub struct ToolCallEntry {
@@ -53,10 +128,65 @@ pub struct ToolResponseEntry {
     pub result: String,
 }
 
-/// Converts agent conversation context into a [`HermesTrace`].
+/// Converts agent conversation context into a [`HermesTrace`] or [`TraceRecord`].
 pub struct TraceExporter;
 
 impl TraceExporter {
+    /// Build a [`TraceRecord`] from tool loop results.
+    ///
+    /// Reconstructs Hermes-format messages from the tool blocks and
+    /// final response, attaching run metadata.
+    pub fn build_record(
+        system_prompt: Option<&str>,
+        user_prompt: &str,
+        blocks: &[ToolBlock],
+        final_response: &str,
+        run_id: &str,
+        iteration_count: usize,
+        input_tokens: u32,
+        output_tokens: u32,
+        success: bool,
+    ) -> TraceRecord {
+        let tool_calls: Vec<ToolCallEntry> = blocks
+            .iter()
+            .map(|b| ToolCallEntry {
+                name: b.tool_name.clone(),
+                arguments: serde_json::to_string(&b.arguments).unwrap_or_default(),
+            })
+            .collect();
+        let tool_responses: Vec<ToolResponseEntry> = blocks
+            .iter()
+            .map(|b| ToolResponseEntry {
+                result: b.result_preview.clone().unwrap_or_default(),
+            })
+            .collect();
+
+        let trace = Self::build(
+            system_prompt,
+            user_prompt,
+            None,
+            &tool_calls,
+            &tool_responses,
+            final_response,
+        );
+
+        TraceRecord {
+            metadata: TraceMetadata {
+                run_id: run_id.to_string(),
+                agent_name: None,
+                safety_profile: None,
+                permission_set: None,
+                model_name: None,
+                iteration_count,
+                input_tokens,
+                output_tokens,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                success,
+            },
+            messages: trace.conversations,
+        }
+    }
+
     /// Build a Hermes trace from conversation parts.
     ///
     /// # Arguments
@@ -368,5 +498,152 @@ mod tests {
         assert_eq!(parsed.conversations.len(), trace.conversations.len());
         assert_eq!(parsed.conversations[0].role, "system");
         assert_eq!(parsed.conversations[0].content, "System prompt.");
+    }
+
+    // --- TraceRecord tests ---
+
+    fn sample_blocks() -> Vec<ToolBlock> {
+        let mut b = ToolBlock::new("git_status", serde_json::json!({"repo": "."}));
+        b.complete("nothing to commit", false);
+        vec![b]
+    }
+
+    #[test]
+    fn trace_record_serialization_roundtrip() {
+        let record = TraceExporter::build_record(
+            Some("System."),
+            "What is the status?",
+            &sample_blocks(),
+            "All clean.",
+            "run-123",
+            1,
+            100,
+            50,
+            true,
+        );
+
+        let jsonl = record.to_jsonl();
+        let parsed: TraceRecord =
+            serde_json::from_str(&jsonl).expect("TraceRecord should roundtrip");
+
+        assert_eq!(parsed.metadata.run_id, "run-123");
+        assert_eq!(parsed.metadata.iteration_count, 1);
+        assert_eq!(parsed.metadata.input_tokens, 100);
+        assert_eq!(parsed.metadata.output_tokens, 50);
+        assert!(parsed.metadata.success);
+        // system + user + assistant(tool_call) + tool + assistant(final)
+        assert!(parsed.messages.len() >= 4);
+        assert_eq!(parsed.messages[0].role, "system");
+    }
+
+    #[test]
+    fn trace_record_sanitizer_applied() {
+        let mut record = TraceExporter::build_record(
+            Some("System with email john@example.com."),
+            "User prompt.",
+            &[],
+            "Response with SSN 123-45-6789.",
+            "run-456",
+            0,
+            10,
+            5,
+            true,
+        );
+
+        let sanitizer: ContentSanitizer =
+            std::sync::Arc::new(|s: &str| s.replace("john@example.com", "[REDACTED]"));
+        record.sanitize(&sanitizer);
+
+        assert!(
+            !record.messages[0].content.contains("john@example.com"),
+            "Sanitizer should remove email from system message"
+        );
+        assert!(
+            record.messages[0].content.contains("[REDACTED]"),
+            "Sanitizer should insert redaction marker"
+        );
+    }
+
+    #[test]
+    fn trace_record_write_to_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let record = TraceExporter::build_record(
+            None,
+            "Hello",
+            &[],
+            "World",
+            "test-write-run",
+            0,
+            10,
+            5,
+            true,
+        );
+
+        record.write_to_dir(dir.path()).unwrap();
+
+        let path = dir.path().join("test-write-run.jsonl");
+        assert!(path.exists(), "Trace file should be created");
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: TraceRecord =
+            serde_json::from_str(content.trim()).expect("File should contain valid TraceRecord");
+        assert_eq!(parsed.metadata.run_id, "test-write-run");
+    }
+
+    #[test]
+    fn trace_record_write_creates_dir() {
+        let base = tempfile::tempdir().unwrap();
+        let nested = base.path().join("sub").join("traces");
+
+        let record = TraceExporter::build_record(
+            None,
+            "Hello",
+            &[],
+            "World",
+            "nested-run",
+            0,
+            0,
+            0,
+            true,
+        );
+
+        record.write_to_dir(&nested).unwrap();
+        assert!(nested.join("nested-run.jsonl").exists());
+    }
+
+    #[test]
+    fn build_record_with_tool_blocks() {
+        let mut b1 = ToolBlock::new("file_read", serde_json::json!({"path": "/etc/hosts"}));
+        b1.complete("127.0.0.1 localhost", false);
+        let mut b2 = ToolBlock::new("git_status", serde_json::json!({}));
+        b2.complete("clean", false);
+
+        let record = TraceExporter::build_record(
+            Some("You are helpful."),
+            "Read file and check status",
+            &[b1, b2],
+            "Done.",
+            "multi-tool-run",
+            2,
+            200,
+            100,
+            true,
+        );
+
+        // Should have: system + user + assistant(2 tool_calls) + 2 tool + assistant(final)
+        assert_eq!(record.messages.len(), 6);
+        assert_eq!(record.messages[0].role, "system");
+        assert_eq!(record.messages[1].role, "user");
+        assert_eq!(record.messages[2].role, "assistant");
+        assert_eq!(record.messages[3].role, "tool");
+        assert_eq!(record.messages[4].role, "tool");
+        assert_eq!(record.messages[5].role, "assistant");
+
+        let assistant_msg = &record.messages[2];
+        assert_eq!(
+            assistant_msg.content.matches("<tool_call>").count(),
+            2,
+            "Should have 2 tool_call blocks"
+        );
     }
 }

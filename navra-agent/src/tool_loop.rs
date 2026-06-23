@@ -125,6 +125,12 @@ pub struct ToolLoopConfig {
     /// When the primary model refuses a request, the gateway
     /// retries with this model before propagating the refusal.
     pub fallback_model: Option<Arc<dyn ModelBackend>>,
+    /// Directory for writing Hermes-format JSONL trace files.
+    /// When set, a `TraceRecord` is written to
+    /// `{trace_export_dir}/{run_id}.jsonl` after each run.
+    pub trace_export_dir: Option<std::path::PathBuf>,
+    /// Optional PII sanitizer applied to trace messages before export.
+    pub content_sanitizer: Option<crate::trace::ContentSanitizer>,
 }
 
 impl Default for ToolLoopConfig {
@@ -153,6 +159,8 @@ impl Default for ToolLoopConfig {
             context_retriever: None,
             hook_pipeline: None,
             fallback_model: None,
+            trace_export_dir: None,
+            content_sanitizer: None,
         }
     }
 }
@@ -630,6 +638,37 @@ pub fn repair_json(input: &str) -> Result<serde_json::Value, String> {
     ))
 }
 
+/// Write a trace record for a completed tool loop run.
+fn export_trace(
+    result: &ToolLoopResult,
+    config: &ToolLoopConfig,
+    system_prompt: Option<&str>,
+    user_prompt: &str,
+) {
+    let dir = match &config.trace_export_dir {
+        Some(d) => d,
+        None => return,
+    };
+    let success = !result.interrupted && !result.response.contains("Agent stopped:");
+    let mut record = crate::trace::TraceExporter::build_record(
+        system_prompt,
+        user_prompt,
+        &result.blocks,
+        &result.response,
+        &result.run_id,
+        result.iterations,
+        result.input_tokens,
+        result.output_tokens,
+        success,
+    );
+    if let Some(ref sanitizer) = config.content_sanitizer {
+        record.sanitize(sanitizer);
+    }
+    if let Err(e) = record.write_to_dir(dir) {
+        tracing::warn!(error = %e, dir = %dir.display(), "Failed to write trace record");
+    }
+}
+
 /// Execute the agentic tool-use loop using Open Responses.
 ///
 /// 1. Discover tools from `client`, convert to [`ResponseTool`]
@@ -710,7 +749,7 @@ pub async fn run_tool_loop(
                     } else {
                         "[interrupted before first iteration]".to_string()
                     };
-                    return Ok(ToolLoopResult {
+                    let result = ToolLoopResult {
                         run_id,
                         response: text,
                         iterations: progress_iterations,
@@ -721,7 +760,9 @@ pub async fn run_tool_loop(
                         blocks,
                         compressed_chars_saved,
                         interrupted: true,
-                    });
+                    };
+                    export_trace(&result, config, config.system_prompt.as_deref(), user_prompt);
+                    return Ok(result);
                 }
                 AgentSignal::Terminate => {
                     tracing::info!(run_id = %run_id, "Agent terminated");
@@ -730,7 +771,7 @@ pub async fn run_tool_loop(
                     } else {
                         "[terminated before first iteration]".to_string()
                     };
-                    return Ok(ToolLoopResult {
+                    let result = ToolLoopResult {
                         run_id,
                         response: text,
                         iterations: progress_iterations,
@@ -741,7 +782,9 @@ pub async fn run_tool_loop(
                         blocks,
                         compressed_chars_saved,
                         interrupted: true,
-                    });
+                    };
+                    export_trace(&result, config, config.system_prompt.as_deref(), user_prompt);
+                    return Ok(result);
                 }
                 AgentSignal::Pause => {
                     tracing::info!(run_id = %run_id, "Agent paused, waiting for resume");
@@ -940,7 +983,7 @@ pub async fn run_tool_loop(
                         total_tokens_consumed, config.max_tokens_per_run
                     )
                 });
-                return Ok(ToolLoopResult {
+                let result = ToolLoopResult {
                     run_id,
                     response: text,
                     iterations: progress_iterations,
@@ -951,7 +994,9 @@ pub async fn run_tool_loop(
                     blocks,
                     compressed_chars_saved,
                     interrupted: false,
-                });
+                };
+                export_trace(&result, config, config.system_prompt.as_deref(), user_prompt);
+                return Ok(result);
             }
         }
 
@@ -1040,7 +1085,7 @@ pub async fn run_tool_loop(
                 text = filter_pii(&text, pipeline).await;
             }
 
-            return Ok(ToolLoopResult {
+            let result = ToolLoopResult {
                 run_id,
                 response: text,
                 iterations: iteration,
@@ -1051,7 +1096,9 @@ pub async fn run_tool_loop(
                 blocks,
                 compressed_chars_saved,
                 interrupted: false,
-            });
+            };
+            export_trace(&result, config, config.system_prompt.as_deref(), user_prompt);
+            return Ok(result);
         }
 
         // Check if this round is purely status-polling (non-progress)
