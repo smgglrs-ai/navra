@@ -21,6 +21,17 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::{Child, Command};
 
+const MCP_ACCEPT: &str = "application/json, text/event-stream";
+
+fn parse_sse_json(body: &str) -> serde_json::Value {
+    serde_json::from_str(body).unwrap_or_else(|_| {
+        body.lines()
+            .find(|l| l.starts_with("data: {"))
+            .and_then(|l| serde_json::from_str(&l[6..]).ok())
+            .unwrap_or_else(|| panic!("Cannot parse MCP response:\n{body}"))
+    })
+}
+
 async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -78,6 +89,7 @@ async fn spawn_navra(config_toml: &str) -> (Child, u16, String) {
 async fn init_session(client: &reqwest::Client, url: &str) -> String {
     let resp = client
         .post(format!("{url}/mcp"))
+        .header("accept", MCP_ACCEPT)
         .json(&json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -85,17 +97,17 @@ async fn init_session(client: &reqwest::Client, url: &str) -> String {
             "params": {
                 "protocolVersion": "2026-07-28",
                 "capabilities": {},
-                "clientInfo": {"name": "adversarial-eval"}
+                "clientInfo": {"name": "adversarial-eval", "version": "0.1.0"}
             }
         }))
         .send()
         .await
         .unwrap();
 
-    resp.headers()
-        .get("mcp-session-id")
-        .map(|v| v.to_str().unwrap().to_string())
-        .unwrap_or_else(|| "stateless".to_string())
+    // In stateless mode, rmcp doesn't return a session ID header.
+    // NavraHandler tracks sessions by agent name internally.
+    let _ = resp.text().await;
+    "stateless".to_string()
 }
 
 async fn call_tool(
@@ -109,6 +121,7 @@ async fn call_tool(
     let resp = client
         .post(format!("{url}/mcp"))
         .header("mcp-session-id", session_id)
+        .header("accept", MCP_ACCEPT)
         .json(&json!({
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -122,7 +135,8 @@ async fn call_tool(
         .await
         .unwrap();
 
-    resp.json().await.unwrap()
+    let body = resp.text().await.unwrap();
+    parse_sse_json(&body)
 }
 
 fn result_text(resp: &serde_json::Value) -> String {
@@ -515,6 +529,7 @@ async fn a8_expired_token_rejected() {
             "Authorization",
             "Bearer navra_cap_v1.invalid_payload.invalid_sig",
         )
+        .header("accept", MCP_ACCEPT)
         .json(&json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -522,14 +537,15 @@ async fn a8_expired_token_rejected() {
             "params": {
                 "protocolVersion": "2025-03-26",
                 "capabilities": {},
-                "clientInfo": {"name": "attacker"}
+                "clientInfo": {"name": "attacker", "version": "0.1.0"}
             }
         }))
         .send()
         .await
         .unwrap();
 
-    let json: serde_json::Value = resp.json().await.unwrap();
+    let body = resp.text().await.unwrap();
+    let json = parse_sse_json(&body);
     // Should either error or fall through to anonymous with no capabilities
     let has_capabilities = json["result"]["capabilities"].is_object();
     if has_capabilities {
