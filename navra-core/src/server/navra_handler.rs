@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use navra_protocol::{
-    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequest,
+    CallToolResult, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequest,
 };
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
