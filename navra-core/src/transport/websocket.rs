@@ -1,13 +1,14 @@
-use crate::protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
-use crate::transport::streamable::dispatch::dispatch;
+use crate::server::navra_handler::NavraHandler;
 use crate::transport::streamable::router::AppState;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{State, WebSocketUpgrade};
 use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
+use rmcp::service::ServiceExt;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
 pub(crate) async fn handle_ws_upgrade(
@@ -41,8 +42,6 @@ async fn handle_ws_connection(
 
     let (ws_sender, mut ws_receiver) = socket.split();
     let ws_sender = Arc::new(Mutex::new(ws_sender));
-    let session_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let notify_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
 
     let last_activity = Arc::new(tokio::sync::Notify::new());
     let missed_pongs = Arc::new(std::sync::atomic::AtomicU32::new(0));
@@ -53,7 +52,7 @@ async fn handle_ws_connection(
     let ping_interval = std::time::Duration::from_secs(state.ws_ping_interval_secs);
     let ping_handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(ping_interval);
-        interval.tick().await; // skip immediate first tick
+        interval.tick().await;
         loop {
             interval.tick().await;
             if ping_missed.load(Ordering::Relaxed) >= 3 {
@@ -89,6 +88,58 @@ async fn handle_ws_connection(
         }
     });
 
+    // Create a duplex pair: one side for NavraHandler (rmcp), one for us to bridge
+    let (server_io, bridge_io) = tokio::io::duplex(65536);
+
+    // Serve NavraHandler on the server side of the duplex
+    let handler = NavraHandler::new(state.server.clone());
+    let rmcp_handle = tokio::spawn(async move {
+        match handler.serve(server_io).await {
+            Ok(service) => {
+                if let Err(e) = service.waiting().await {
+                    tracing::debug!(error = %e, "rmcp WebSocket service error");
+                }
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "rmcp WebSocket service init error");
+            }
+        }
+    });
+
+    // Bridge: read lines from the duplex and send as WebSocket text messages
+    let (bridge_read, bridge_write) = tokio::io::split(bridge_io);
+    let bridge_write = Arc::new(Mutex::new(bridge_write));
+    let fwd_sender = ws_sender.clone();
+    let forward_handle = tokio::spawn(async move {
+        let mut reader = BufReader::new(bridge_read);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) => break,
+                Ok(_) => {
+                    let trimmed = line.trim_end();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    let mut sender = fwd_sender.lock().await;
+                    if sender
+                        .send(Message::Text(trimmed.to_string().into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(error = %e, "Bridge read error");
+                    break;
+                }
+            }
+        }
+    });
+
+    // Main loop: receive WebSocket messages and write to the duplex bridge
     while let Some(msg) = ws_receiver.next().await {
         let msg = match msg {
             Ok(msg) => msg,
@@ -102,64 +153,17 @@ async fn handle_ws_connection(
 
         match msg {
             Message::Text(text) => {
-                let request: JsonRpcRequest = match serde_json::from_str(&text) {
-                    Ok(r) => r,
-                    Err(_) => {
-                        let resp = JsonRpcResponse::error(
-                            crate::protocol::RequestId::Number(0),
-                            JsonRpcError::parse_error(),
-                        );
-                        let json = serde_json::to_string(&resp).unwrap_or_default();
-                        let mut sender = ws_sender.lock().await;
-                        if sender.send(Message::Text(json.into())).await.is_err() {
-                            break;
-                        }
-                        continue;
-                    }
-                };
-
-                if request.jsonrpc != "2.0" {
-                    let resp = JsonRpcResponse::error(
-                        request.id,
-                        JsonRpcError::invalid_request("Expected jsonrpc: \"2.0\""),
-                    );
-                    let json = serde_json::to_string(&resp).unwrap_or_default();
-                    let mut sender = ws_sender.lock().await;
-                    if sender.send(Message::Text(json.into())).await.is_err() {
-                        break;
-                    }
-                    continue;
+                let mut writer = bridge_write.lock().await;
+                let mut buf = text.into_bytes();
+                if !buf.ends_with(b"\n") {
+                    buf.push(b'\n');
                 }
-
-                // Concurrent dispatch: spawn each request as a task
-                let state_clone = state.clone();
-                let agent_clone = agent.clone();
-                let sender_clone = ws_sender.clone();
-                let session_clone = session_id.clone();
-                let notify_clone = notify_handle.clone();
-                let broadcaster = state.broadcaster.clone();
-
-                tokio::spawn(async move {
-                    let sid = session_clone.lock().await.clone();
-                    let (response, new_sid) =
-                        dispatch(state_clone.server.clone(), request, agent_clone, sid).await;
-
-                    if let Some(ref new_id) = new_sid {
-                        let mut sid_guard = session_clone.lock().await;
-                        if sid_guard.is_none() {
-                            *sid_guard = Some(new_id.clone());
-
-                            let rx = broadcaster.subscribe(new_id);
-                            let fwd_sender = sender_clone.clone();
-                            let handle = tokio::spawn(forward_notifications(rx, fwd_sender));
-                            *notify_clone.lock().await = Some(handle);
-                        }
-                    }
-
-                    let json = serde_json::to_string(&response).unwrap_or_default();
-                    let mut sender = sender_clone.lock().await;
-                    let _ = sender.send(Message::Text(json.into())).await;
-                });
+                if writer.write_all(&buf).await.is_err() {
+                    break;
+                }
+                if writer.flush().await.is_err() {
+                    break;
+                }
             }
             Message::Pong(_) => {
                 missed_pongs.store(0, Ordering::Relaxed);
@@ -176,12 +180,13 @@ async fn handle_ws_connection(
         }
     }
 
+    // Shut down bridge write side to signal EOF to rmcp
+    drop(bridge_write);
+
     ping_handle.abort();
     idle_handle.abort();
-
-    if let Some(handle) = notify_handle.lock().await.take() {
-        handle.abort();
-    }
+    forward_handle.abort();
+    rmcp_handle.abort();
 
     state
         .metrics
@@ -189,18 +194,6 @@ async fn handle_ws_connection(
         .fetch_sub(1, Ordering::Relaxed);
 
     tracing::debug!("WebSocket connection closed");
-}
-
-async fn forward_notifications(
-    mut rx: tokio::sync::broadcast::Receiver<crate::transport::sse::SseEvent>,
-    ws_sender: Arc<Mutex<futures_util::stream::SplitSink<WebSocket, Message>>>,
-) {
-    while let Ok(event) = rx.recv().await {
-        let mut sender = ws_sender.lock().await;
-        if sender.send(Message::Text(event.data.into())).await.is_err() {
-            break;
-        }
-    }
 }
 
 #[cfg(test)]

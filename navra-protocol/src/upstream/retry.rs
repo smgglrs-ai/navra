@@ -8,37 +8,9 @@
 
 use super::transport::Transport;
 use super::UpstreamError;
+use crate::upstream_config::RetryConfig;
 use async_trait::async_trait;
 use std::time::{Duration, Instant};
-
-/// Configuration for retry and reconnection behavior.
-#[derive(Debug, Clone)]
-pub struct RetryConfig {
-    /// Base delay for exponential backoff (default: 1s).
-    pub base_delay: Duration,
-    /// Maximum delay between retries (default: 30s).
-    pub max_delay: Duration,
-    /// Total time budget for reconnection attempts (default: 10min).
-    pub total_budget: Duration,
-    /// How long to wait for a single request before timing out (default: 45s).
-    pub request_timeout: Duration,
-    /// Gap threshold for sleep detection (default: 60s).
-    /// If the gap since last successful request exceeds this, the retry
-    /// budget is reset (assumes the system was asleep).
-    pub sleep_gap_threshold: Duration,
-}
-
-impl Default for RetryConfig {
-    fn default() -> Self {
-        Self {
-            base_delay: Duration::from_secs(1),
-            max_delay: Duration::from_secs(30),
-            total_budget: Duration::from_secs(600),
-            request_timeout: Duration::from_secs(45),
-            sleep_gap_threshold: Duration::from_secs(60),
-        }
-    }
-}
 
 /// Factory for creating fresh transport instances.
 ///

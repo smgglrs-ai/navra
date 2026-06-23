@@ -4,22 +4,7 @@
 //! and skip-verify for development environments.
 
 use super::UpstreamError;
-use serde::{Deserialize, Serialize};
-
-/// TLS configuration for an upstream MCP server connection.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct TlsConfig {
-    /// Path to CA certificate bundle (PEM). When set, only CAs in this
-    /// bundle are trusted.
-    pub ca_cert: Option<String>,
-    /// Path to client certificate (PEM) for mutual TLS.
-    pub client_cert: Option<String>,
-    /// Path to client private key (PEM) for mutual TLS.
-    pub client_key: Option<String>,
-    /// Skip TLS certificate verification (DANGEROUS — only for development).
-    #[serde(default)]
-    pub danger_skip_verify: bool,
-}
+pub use crate::upstream_config::TlsConfig;
 
 impl TlsConfig {
     /// Build a `reqwest::Client` configured with this TLS config.
