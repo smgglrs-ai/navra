@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 11 active items
+# 12 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -35,6 +35,13 @@ items:
     depends_on: ['NAVRA-079']
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
+
+  - id: "NAVRA-150"
+    title: "Contribute rate limiting middleware to rmcp (issue #388)"
+    status: backlog
+    priority: medium
+    effort: M
+    depends_on: ['NAVRA-149']
 
   - id: "NAVRA-048"
     title: "Adversarial safety evaluation"

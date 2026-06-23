@@ -1,0 +1,27 @@
+id: NAVRA-149
+title: "Adopt rmcp SDK — replace custom MCP implementation"
+status: done
+priority: high
+effort: XL
+tags: [infrastructure, protocol, rmcp]
+acceptance:
+  - MCP types re-exported from rmcp (ToolDefinition, CallToolResult, Content, etc.)
+  - NavraHandler implements rmcp ServerHandler with full 10-gate security pipeline
+  - All three transports (stdio, HTTP, WebSocket) wired through rmcp runtime
+  - Upstream client and agent subsystem use rmcp Peer<RoleClient>
+  - Legacy Upstream type and transport module deleted (~3100 lines)
+  - Custom MCP dispatch deleted (~999 lines)
+  - IFC label tracking preserved (61/61 MVAR attack vectors pass)
+  - Formal proofs (Kani, TLA+) unaffected
+  - All 2676 tests pass
+notes:
+  - "2026-06-23: Full migration completed in one session. 17 commits,
+    113 files changed, -7207 net lines. navra now runs on rmcp SDK
+    for all MCP transport and types. jsonrpc.rs (314 lines) and SSE
+    broadcaster (180 lines) deliberately kept — they serve A2A and
+    ACP protocols, not MCP."
+  - "Backlog: contribute rate limiting to rmcp (issue #388, help wanted).
+    navra running on rmcp gives credibility for upstream contributions."
+  - "Architecture: rmcp handles transport (stateless mode), navra manages
+    sessions (IFC labels, agent identity, permissions) through McpServer.
+    NavraHandler is the thin adapter between the two."
