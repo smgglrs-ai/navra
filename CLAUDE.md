@@ -78,21 +78,27 @@ See `AGENTS.md` for parallel development rules.
 
 ### Testing
 
-2400+ tests. See TESTING.md for per-crate unit/integration/e2e
-breakdown.
-
-Tests that spawn `navra serve` (adversarial_eval, e2e) will OOM
-if run in parallel. Split strategy for workspace tests:
+2400+ tests. **Always use `just` to run tests** — it sets ORT
+environment variables, serializes navra-server tests one binary at
+a time, and cleans up leaked server processes between runs.
 
 ```bash
-# Step 1: all crates except navra-server (parallel OK)
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace --exclude navra-server
+# All tests (workspace parallel + server serialized)
+just test
 
-# Step 2: navra-server alone (MUST serialize)
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server -- --test-threads=1
+# Workspace only (excludes navra-server)
+just test-workspace
+
+# navra-server only (one binary at a time with cleanup)
+just test-server
+
+# Single crate
+just test-crate navra-core
 ```
 
-When in doubt, serialize. OOM is a regression — always investigate.
+**NEVER run raw `cargo test -p navra-server`** — it spawns multiple
+server processes that OOM the machine. The pre-commit hook blocks
+this, but use `just` to avoid the issue entirely.
 
 Doc-test convention: use `no_run` for examples needing cross-crate
 types, `text` for illustrative examples. Never use `ignore`.
@@ -102,17 +108,8 @@ Prerequisites:
 - Ollama with any model for 1 e2e test (`ollama pull qwen2.5:0.5b`)
 
 ```bash
-# Unit + integration tests
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace
-
-# Single crate
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core
-
-# E2e tests (require Ollama running)
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test e2e
-
 # Build with OTel trace export
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --features otel
+just build
 # Then: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 navra serve
 ```
 
