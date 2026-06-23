@@ -65,7 +65,10 @@ pub use signal::{AgentSignal, SignalHandle, SignalReceiver};
 pub use tool_loop::{
     extract_text, run_tool_loop, ContextRetriever, ToolLoopConfig, ToolLoopResult,
 };
-pub use trace::{HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, TraceExporter};
+pub use trace::{
+    ContentSanitizer, HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, TraceExporter,
+    TraceMetadata, TraceRecord,
+};
 
 // SDK facade: external consumers (e.g. agent binaries) depend only on
 // navra-agent and reach protocol/model/security types through these
