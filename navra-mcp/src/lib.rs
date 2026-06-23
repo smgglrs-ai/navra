@@ -22,7 +22,6 @@ pub use navra_safety_hooks::hooks;
 pub use navra_safety_hooks::safety;
 
 pub use navra_protocol as protocol;
-pub use navra_protocol::upstream;
 pub use navra_protocol::RetryConfig;
 
 pub use navra_model as models;

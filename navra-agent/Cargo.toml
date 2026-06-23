@@ -13,8 +13,8 @@ path = "src/bin/agent.rs"
 [features]
 default = ["onnx", "native-tls"]
 onnx = ["navra-model/onnx", "navra-safety-hooks/onnx"]
-native-tls = ["navra-protocol/native-tls", "navra-model/native-tls"]
-rustls = ["navra-protocol/rustls", "navra-model/rustls"]
+native-tls = ["navra-model/native-tls"]
+rustls = ["navra-model/rustls"]
 container = ["rustls"]
 
 [dependencies]

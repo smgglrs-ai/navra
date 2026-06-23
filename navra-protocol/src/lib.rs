@@ -16,7 +16,6 @@ pub mod a2ui;
 pub mod compat;
 pub mod label;
 pub mod permissions;
-pub mod upstream;
 pub mod upstream_config;
 
 mod jsonrpc;

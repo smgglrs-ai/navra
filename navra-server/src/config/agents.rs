@@ -152,7 +152,7 @@ pub struct UpstreamOAuthConfig {
 
 impl UpstreamConfig {
     /// Returns a RetryConfig if any retry fields are set, otherwise None.
-    pub fn retry_config(&self) -> Option<navra_core::upstream::RetryConfig> {
+    pub fn retry_config(&self) -> Option<navra_protocol::RetryConfig> {
         if self.retry_base_delay_ms.is_none()
             && self.retry_max_delay_ms.is_none()
             && self.retry_budget_secs.is_none()
@@ -161,7 +161,7 @@ impl UpstreamConfig {
             return None;
         }
 
-        let mut config = navra_core::upstream::RetryConfig::default();
+        let mut config = navra_protocol::RetryConfig::default();
         if let Some(ms) = self.retry_base_delay_ms {
             config.base_delay = std::time::Duration::from_millis(ms);
         }
