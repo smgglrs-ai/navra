@@ -154,12 +154,13 @@ async fn handle_ws_connection(
         match msg {
             Message::Text(text) => {
                 let mut writer = bridge_write.lock().await;
-                let mut buf = text.into_bytes();
-                if !buf.ends_with(b"\n") {
-                    buf.push(b'\n');
-                }
-                if writer.write_all(&buf).await.is_err() {
+                if writer.write_all(text.as_bytes()).await.is_err() {
                     break;
+                }
+                if !text.ends_with('\n') {
+                    if writer.write_all(b"\n").await.is_err() {
+                        break;
+                    }
                 }
                 if writer.flush().await.is_err() {
                     break;
