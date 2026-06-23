@@ -69,8 +69,8 @@ Everything else is userland:
 
 | Crate | Role | What happens if it has a bug |
 |-------|------|------------------------------|
-| `navra-tools-file` | File read/write/search | Incorrect file operations, but ACLs still enforced by the kernel |
-| `navra-tools-git` | Git operations | Wrong git output, but tool permissions still checked |
+| upstream file server | File read/write/search | Incorrect file operations, but ACLs still enforced by the kernel |
+| upstream git server | Git operations | Wrong git output, but tool permissions still checked |
 | `navra-cognitive` | Persona loading, prompt assembly | Bad prompts, but security is not affected |
 | `navra-memory` | Working memory, knowledge store | Lost context, but no security bypass |
 | `navra-flow` | Multi-agent orchestration | Failed workflows, but capability attenuation still holds |
@@ -119,7 +119,7 @@ The module cannot bypass any of these steps. It is sandboxed by the dispatch pip
 
 ## Why the boundary matters
 
-Consider what happens when a new tool module has a vulnerability. Say `navra-tools-file` has a path traversal bug that lets `../../etc/passwd` slip through its own validation.
+Consider what happens when a tool module has a vulnerability. Say an upstream file server has a path traversal bug that lets `../../etc/passwd` slip through its own validation.
 
 In a monolithic design (everything in one module), this bug bypasses security.
 

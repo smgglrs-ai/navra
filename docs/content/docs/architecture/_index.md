@@ -66,6 +66,38 @@ Modules can run:
 
 The kernel enforces security identically in both modes.
 
+## MCP Transport
+
+navra uses the [rmcp SDK](https://github.com/anthropics/rust-mcp-sdk)
+for MCP protocol handling. The `NavraHandler` implements rmcp's
+`ServerHandler` trait, wrapping the security pipeline around standard
+MCP operations. Three transports are supported:
+
+- **Streamable HTTP** — `POST /mcp` endpoint via `StreamableHttpService`
+- **stdio** — for direct client integration (Claude Desktop, Cursor)
+- **WebSocket** — for persistent connections with keepalive and
+  idle timeout
+
+Upstream MCP servers connect through rmcp's client transport,
+with the gateway applying ACLs, IFC, and content filtering
+transparently on proxied calls.
+
+## Cognitive Layer
+
+The ForgeService loads persona YAML using lazy metadata parsing —
+specialization files are read on demand and cached after first
+access, reducing startup time. The Weaver compiles personas into
+structured prompts with model-family-aware compaction and
+per-phase context budgets.
+
+## Config Composition
+
+Operators can drop TOML fragments into library directories
+(`~/.config/navra/libraries/`) for config composition. Libraries
+are deep-merged into the main config at startup, with the main
+config winning on key conflicts. This enables sharing curated
+security profiles across machines.
+
 ## Formal Verification
 
 - **146 Kani proofs** — Property-level verification of capability

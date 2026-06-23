@@ -25,7 +25,7 @@ toc = true
 - **DONE — MCP gateway landscape**: §10 acknowledges 10+ gateways.
 - **DONE — Compliance reframing**: "compliance infrastructure" in
   §7.4, EU AI Act Art 12+14 language corrected.
-- **DONE — Formal verification**: 138 Kani proofs + 6 TLA+ specs
+- **DONE — Formal verification**: 146 Kani proofs + 6 TLA+ specs
   added (formal/ directory + PROOF_MAP.md). 5 Bell-LaPadula
   invariant property tests (INV-1 through INV-5) in ifc/mod.rs.
 - **DONE — No-read-up**: Bell-LaPadula Simple Security Property
@@ -968,7 +968,7 @@ reasoning.
   verified exhaustively via Kani bounded model checking and
   TLA+ model checking (see `formal/PROOF_MAP.md`). FIDES's
   formal non-interference proofs set the bar that gateway-level
-  IFC should aspire to — navra provides 138 Kani proofs and
+  IFC should aspire to — navra provides 146 Kani proofs and
   6 TLC-verified specifications as a first step.
 - **CaMeL** [14]: Google DeepMind capability metadata on every
   value (arXiv:2503.18813, March 2025). Provable security on
@@ -1150,7 +1150,7 @@ Prompt Injection Attacks and Defenses for LLM Agents." NeurIPS
 | Workspace crates | 22 |
 | Rust source files | 290 |
 | Total LoC (Rust) | ~126,000 |
-| Test count | 2,400+ |
+| Test count | 2,800+ |
 | Kani proofs | 138 |
 | TLA+ specifications | 6 |
 | Benchmark suite | 7 groups, ~30 individual benchmarks |
