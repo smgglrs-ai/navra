@@ -16,8 +16,8 @@ pub mod webmcp;
 pub mod ws;
 
 pub use auth::{StaticTokenProvider, TokenProvider};
-pub use retry::{RetryConfig, TransportFactory};
-pub use tls::TlsConfig;
+pub use crate::upstream_config::{RetryConfig, TlsConfig};
+pub use retry::TransportFactory;
 pub use transport::{Transport, UpstreamNotification};
 
 use crate::mcp::{

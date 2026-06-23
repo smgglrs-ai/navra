@@ -17,6 +17,7 @@ pub mod compat;
 pub mod label;
 pub mod permissions;
 pub mod upstream;
+pub mod upstream_config;
 
 mod jsonrpc;
 mod mcp;
@@ -45,7 +46,7 @@ pub use mcp::{
     NOTIFY_RESOURCES_UPDATED, NOTIFY_TOOLS_LIST_CHANGED, PROTOCOL_VERSION, PROTOCOL_VERSION_2026,
     encode_cursor, paginate,
 };
-pub use upstream::{RetryConfig, TlsConfig};
+pub use upstream_config::{RetryConfig, TlsConfig};
 
 // Re-export rmcp for downstream crates that need direct access.
 pub use rmcp;

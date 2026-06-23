@@ -1,4 +1,3 @@
-pub(crate) mod dispatch;
 mod handlers;
 pub(crate) mod router;
 
