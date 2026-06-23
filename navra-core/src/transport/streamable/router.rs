@@ -1,38 +1,49 @@
+use crate::server::navra_handler::NavraHandler;
 use crate::server::McpServer;
 use crate::transport::a2a::A2aState;
 use crate::transport::sse::SseBroadcaster;
 use axum::routing::{get, post};
 use axum::Router;
+use rmcp::transport::StreamableHttpService;
 use std::sync::Arc;
 
 use super::handlers::*;
 
-/// Shared state for the axum router.
+/// Shared state for the axum router (non-MCP routes).
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub server: Arc<McpServer>,
     pub broadcaster: SseBroadcaster,
-    /// AID (Agent Identity & Discovery) record, served at /.well-known/agent.
     pub aid_record: Option<serde_json::Value>,
-    /// MCP Registry entries, served at /v0.1/servers.
     pub registry_entries: Vec<serde_json::Value>,
-    /// Endpoint URL for A2A Agent Card (None = A2A disabled).
     pub a2a_endpoint: Option<String>,
-    /// Root DID for Agent Card identity.
     pub root_did: Option<String>,
-    /// OAuth 2.0 provider (None = OAuth disabled).
     pub oauth: Option<Arc<navra_auth::auth::oauth::OAuthProvider>>,
-    /// Prometheus metrics registry.
     pub metrics: Arc<crate::metrics::Metrics>,
-    /// WebSocket ping interval in seconds (default: 30).
     pub ws_ping_interval_secs: u64,
-    /// WebSocket idle timeout in seconds (default: 600).
     pub ws_idle_timeout_secs: u64,
+}
+
+fn build_mcp_service(server: Arc<McpServer>) -> StreamableHttpService<
+    NavraHandler,
+    rmcp::transport::streamable_http_server::session::local::LocalSessionManager,
+> {
+    let server_for_factory = server.clone();
+    let config = rmcp::transport::StreamableHttpServerConfig::default()
+        .with_stateful_mode(false)
+        .with_json_response(true)
+        .disable_allowed_hosts();
+    StreamableHttpService::new(
+        move || Ok(NavraHandler::new(server_for_factory.clone())),
+        rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default().into(),
+        config,
+    )
 }
 
 /// Build an axum Router for the MCP Streamable HTTP transport.
 pub fn build_router(server: Arc<McpServer>) -> Router {
     let metrics = server.metrics().clone();
+    let mcp_service = build_mcp_service(server.clone());
     let state = AppState {
         server,
         broadcaster: SseBroadcaster::new(),
@@ -46,8 +57,7 @@ pub fn build_router(server: Arc<McpServer>) -> Router {
         ws_idle_timeout_secs: 600,
     };
     Router::new()
-        .route("/mcp", post(handle_post))
-        .route("/mcp", get(handle_get))
+        .nest_service("/mcp", mcp_service)
         .route("/ws", get(crate::transport::websocket::handle_ws_upgrade))
         .route("/.well-known/mcp.json", get(handle_server_card))
         .route("/sys/status", get(handle_sys_status))
@@ -61,6 +71,7 @@ pub fn build_router_with_broadcaster(
     broadcaster: SseBroadcaster,
 ) -> Router {
     let metrics = server.metrics().clone();
+    let mcp_service = build_mcp_service(server.clone());
     let state = AppState {
         server,
         broadcaster,
@@ -74,8 +85,7 @@ pub fn build_router_with_broadcaster(
         ws_idle_timeout_secs: 600,
     };
     Router::new()
-        .route("/mcp", post(handle_post))
-        .route("/mcp", get(handle_get))
+        .nest_service("/mcp", mcp_service)
         .route("/ws", get(crate::transport::websocket::handle_ws_upgrade))
         .route("/.well-known/mcp.json", get(handle_server_card))
         .route("/sys/status", get(handle_sys_status))
@@ -94,7 +104,6 @@ pub fn build_router_with_discovery(
 ) -> Router {
     let a2a_enabled = a2a_endpoint.is_some();
 
-    // Build A2A state before moving server into AppState
     let a2a_state = if a2a_enabled {
         Some(A2aState {
             server: server.clone(),
@@ -105,6 +114,7 @@ pub fn build_router_with_discovery(
     };
 
     let metrics = server.metrics().clone();
+    let mcp_service = build_mcp_service(server.clone());
     let state = AppState {
         server,
         broadcaster,
@@ -119,8 +129,7 @@ pub fn build_router_with_discovery(
     };
 
     let mut router = Router::new()
-        .route("/mcp", post(handle_post))
-        .route("/mcp", get(handle_get))
+        .nest_service("/mcp", mcp_service)
         .route("/ws", get(crate::transport::websocket::handle_ws_upgrade))
         .route("/metrics", get(handle_metrics))
         .route("/.well-known/mcp.json", get(handle_server_card))
@@ -134,7 +143,6 @@ pub fn build_router_with_discovery(
         router = router.route("/.well-known/agent.json", get(handle_agent_card));
     }
 
-    // OAuth routes
     if state.oauth.is_some() {
         router = router
             .route(
@@ -147,7 +155,6 @@ pub fn build_router_with_discovery(
 
     let mut router = router.with_state(state);
 
-    // Mount A2A JSON-RPC endpoint when A2A is enabled
     if let Some(a2a_state) = a2a_state {
         router = router.merge(
             Router::new()

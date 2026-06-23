@@ -172,8 +172,6 @@ pub(crate) async fn dispatch(
             let persisted_label = server.sessions().context_label(&sid);
             ctx.taint.absorb(persisted_label);
             let result = server.handle_call_tool(params, ctx).await;
-            // Persist the result's label back to the session
-            server.sessions().update_context_label(&sid, result.label);
             (
                 JsonRpcResponse::success(
                     id,
@@ -425,16 +423,7 @@ pub(crate) async fn dispatch(
 
         "completion/complete" => {
             let params: crate::protocol::CompleteParams = match request.params.and_then(|p| {
-                let ref_obj = p.get("ref")?;
-                let argument = p.get("argument")?;
-                Some(crate::protocol::CompleteParams {
-                    ref_type: ref_obj.get("type")?.as_str()?.to_string(),
-                    ref_name: ref_obj.get("name")?.as_str()?.to_string(),
-                    argument: serde_json::from_value::<crate::protocol::CompletionArgument>(
-                        argument.clone(),
-                    )
-                    .ok()?,
-                })
+                serde_json::from_value::<crate::protocol::CompleteParams>(p).ok()
             }) {
                 Some(p) => p,
                 None => {
@@ -453,9 +442,9 @@ pub(crate) async fn dispatch(
                     id,
                     serde_json::json!({
                         "completion": {
-                            "values": result.values,
-                            "total": result.total,
-                            "hasMore": result.has_more,
+                            "values": result.completion.values,
+                            "total": result.completion.total,
+                            "hasMore": result.completion.has_more,
                         }
                     }),
                 ),
@@ -621,10 +610,10 @@ fn ensure_stateless_session(server: &McpServer, agent: &crate::auth::AgentIdenti
     server.sessions().create(crate::session::Session {
         id: key.to_string(),
         agent: agent.clone(),
-        client_info: crate::protocol::ClientInfo {
-            name: agent.name.clone(),
-            version: None,
-        },
+        client_info: crate::protocol::ClientInfo::new(
+            agent.name.clone(),
+            "0.0.0",
+        ),
         initialized: true,
         context_label: crate::ifc::DataLabel::TRUSTED_PUBLIC,
         created_at: now,
@@ -688,7 +677,6 @@ async fn dispatch_with_session(
             let persisted_label = server.sessions().context_label(&sid);
             ctx.taint.absorb(persisted_label);
             let result = server.handle_call_tool(params, ctx).await;
-            server.sessions().update_context_label(&sid, result.label);
             (
                 JsonRpcResponse::success(
                     id,
@@ -906,16 +894,7 @@ async fn dispatch_with_session(
 
         "completion/complete" => {
             let params: crate::protocol::CompleteParams = match request.params.and_then(|p| {
-                let ref_obj = p.get("ref")?;
-                let argument = p.get("argument")?;
-                Some(crate::protocol::CompleteParams {
-                    ref_type: ref_obj.get("type")?.as_str()?.to_string(),
-                    ref_name: ref_obj.get("name")?.as_str()?.to_string(),
-                    argument: serde_json::from_value::<crate::protocol::CompletionArgument>(
-                        argument.clone(),
-                    )
-                    .ok()?,
-                })
+                serde_json::from_value::<crate::protocol::CompleteParams>(p).ok()
             }) {
                 Some(p) => p,
                 None => {
@@ -934,9 +913,9 @@ async fn dispatch_with_session(
                     id,
                     serde_json::json!({
                         "completion": {
-                            "values": result.values,
-                            "total": result.total,
-                            "hasMore": result.has_more,
+                            "values": result.completion.values,
+                            "total": result.completion.total,
+                            "hasMore": result.completion.has_more,
                         }
                     }),
                 ),

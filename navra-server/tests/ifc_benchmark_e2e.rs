@@ -20,6 +20,17 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::{Child, Command};
 
+const MCP_ACCEPT: &str = "application/json, text/event-stream";
+
+fn parse_sse_json(body: &str) -> serde_json::Value {
+    serde_json::from_str(body).unwrap_or_else(|_| {
+        body.lines()
+            .find(|l| l.starts_with("data: {"))
+            .and_then(|l| serde_json::from_str(&l[6..]).ok())
+            .unwrap_or_else(|| panic!("Cannot parse MCP response:\n{body}"))
+    })
+}
+
 fn test_server_path() -> String {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -212,6 +223,7 @@ async fn spawn_navra(config_template: &str) -> (Child, u16, String, tempfile::Te
 async fn init_session(client: &reqwest::Client, url: &str) -> String {
     let resp = client
         .post(format!("{url}/mcp"))
+        .header("accept", MCP_ACCEPT)
         .json(&json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -219,7 +231,7 @@ async fn init_session(client: &reqwest::Client, url: &str) -> String {
             "params": {
                 "protocolVersion": "2025-03-26",
                 "capabilities": {},
-                "clientInfo": {"name": "ifc-benchmark"}
+                "clientInfo": {"name": "ifc-benchmark", "version": "0.1.0"}
             }
         }))
         .send()
@@ -243,6 +255,7 @@ async fn call_tool(
     let resp = client
         .post(format!("{url}/mcp"))
         .header("mcp-session-id", session_id)
+        .header("accept", MCP_ACCEPT)
         .json(&json!({
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -256,7 +269,8 @@ async fn call_tool(
         .await
         .unwrap();
 
-    resp.json().await.unwrap()
+    let body = resp.text().await.unwrap();
+    parse_sse_json(&body)
 }
 
 fn is_error_result(resp: &serde_json::Value) -> bool {
