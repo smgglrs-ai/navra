@@ -269,3 +269,51 @@ async fn no_domain_rules_allows_everything() {
     let prompts = server.handle_list_prompts(&agent, &Default::default());
     assert!(!prompts.prompts.is_empty(), "prompts should be visible");
 }
+
+fn domain_rules_deny_resources() -> DomainRules {
+    use std::collections::{HashMap, HashSet};
+    let mut rules = HashMap::new();
+    rules.insert(Domain::Unknown, HashSet::from([Operation::Read]));
+    rules.insert(Domain::Resource, HashSet::new());
+    DomainRules::new(rules)
+}
+
+#[tokio::test]
+async fn domain_rules_block_resources() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let server = navra_core::McpServer::builder()
+        .allow_anonymous()
+        .domain_rules("restricted", domain_rules_deny_resources())
+        .module(module)
+        .build();
+
+    let agent = navra_core::auth::AgentIdentity::new("test", "restricted");
+
+    let result = server.handle_list_resources(&agent, &Default::default());
+    assert!(
+        result.resources.is_empty(),
+        "resources should be hidden for restricted agent"
+    );
+
+    let templates = server.handle_list_resource_templates(&agent, &Default::default());
+    assert!(
+        templates.resource_templates.is_empty(),
+        "resource templates should be hidden for restricted agent"
+    );
+
+    let result = server
+        .handle_read_resource(
+            navra_core::protocol::ReadResourceParams::new("test://status"),
+            &agent,
+            "test-session",
+        )
+        .await;
+    assert!(result.is_err(), "read_resource should be denied");
+    assert!(
+        result.unwrap_err().contains("Permission denied"),
+        "error should mention permission denied"
+    );
+}

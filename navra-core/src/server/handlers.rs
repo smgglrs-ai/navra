@@ -1069,6 +1069,18 @@ impl McpServer {
         agent: &crate::auth::AgentIdentity,
         pagination: &PaginatedRequest,
     ) -> ListResourcesResult {
+        // Domain-based permission check for resources.
+        if let Some(rules) = self.domain_rules.get(&agent.permissions) {
+            let class = crate::permissions::resource_class::classify_resource();
+            if rules.check(&class) == crate::permissions::DomainPolicy::Deny {
+                return ListResourcesResult {
+                    resources: Vec::new(),
+                    next_cursor: None,
+                    meta: None,
+                };
+            }
+        }
+
         let all_resources: Vec<_> = self
             .resources
             .values()
@@ -1091,6 +1103,17 @@ impl McpServer {
         agent: &crate::auth::AgentIdentity,
         session_id: &str,
     ) -> Result<ReadResourceResult, String> {
+        // Domain-based permission check for resources.
+        if let Some(rules) = self.domain_rules.get(&agent.permissions) {
+            let class = crate::permissions::resource_class::classify_resource();
+            if rules.check(&class) == crate::permissions::DomainPolicy::Deny {
+                return Err(format!(
+                    "Permission denied: resource '{}' blocked by domain rules for '{}'",
+                    params.uri, agent.permissions
+                ));
+            }
+        }
+
         let ctx = CallContext::new(agent.clone(), session_id);
         if let Some(resource) = self.resources.get(&params.uri) {
             if !self.agent_can_see_resource(agent, &resource.definition.uri) {
@@ -1114,6 +1137,18 @@ impl McpServer {
         agent: &crate::auth::AgentIdentity,
         pagination: &PaginatedRequest,
     ) -> crate::protocol::ListResourceTemplatesResult {
+        // Domain-based permission check for resources.
+        if let Some(rules) = self.domain_rules.get(&agent.permissions) {
+            let class = crate::permissions::resource_class::classify_resource();
+            if rules.check(&class) == crate::permissions::DomainPolicy::Deny {
+                return crate::protocol::ListResourceTemplatesResult {
+                    resource_templates: Vec::new(),
+                    next_cursor: None,
+                    meta: None,
+                };
+            }
+        }
+
         let all_templates: Vec<_> = self
             .resource_templates
             .iter()
