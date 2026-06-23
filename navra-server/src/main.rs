@@ -1933,39 +1933,31 @@ async fn serve_inner(
                 auth = ?endpoint.auth,
                 "Discovered MCP endpoint"
             );
-            match navra_core::Upstream::http(&endpoint.domain, &endpoint.url).await {
-                Ok(upstream) => {
-                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default())
-                        .await
-                    {
-                        Ok(module) => {
-                            tracing::info!(
-                                domain = %endpoint.domain,
-                                "Connected discovered upstream"
-                            );
-                            for prompt_def in module.discovered_prompts() {
-                                if let Some(persona_name) = prompt_def.name.strip_prefix("persona:")
-                                {
-                                    let description =
-                                        prompt_def.description.as_deref().unwrap_or("");
-                                    forge.register_upstream_persona(
-                                        persona_name,
-                                        module.upstream_name(),
-                                        &prompt_def.name,
-                                        description,
-                                    );
-                                }
-                            }
-                            builder = builder.module(module);
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                domain = %endpoint.domain,
-                                error = %e,
-                                "Failed to discover capabilities of AID endpoint"
+            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint.url.clone());
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+                Ok(client) => {
+                    let peer = client.peer().clone();
+                    tokio::spawn(async move { let _ = client.waiting().await; });
+                    let module = navra_core::UpstreamModule::discover(
+                        &endpoint.domain, peer, None, &Default::default(),
+                    ).await;
+                    tracing::info!(
+                        domain = %endpoint.domain,
+                        "Connected discovered upstream (rmcp)"
+                    );
+                    for prompt_def in module.discovered_prompts() {
+                        if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                            let description =
+                                prompt_def.description.as_deref().unwrap_or("");
+                            forge.register_upstream_persona(
+                                persona_name,
+                                module.upstream_name(),
+                                &prompt_def.name,
+                                description,
                             );
                         }
                     }
+                    builder = builder.module(module);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -2003,40 +1995,32 @@ async fn serve_inner(
 
         for server in &lan_servers {
             let url = server.url();
-            match navra_core::Upstream::http(&server.name, &url).await {
-                Ok(upstream) => {
-                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default())
-                        .await
-                    {
-                        Ok(module) => {
-                            tracing::info!(
-                                name = %server.name,
-                                url = %url,
-                                "Connected LAN upstream"
-                            );
-                            for prompt_def in module.discovered_prompts() {
-                                if let Some(persona_name) = prompt_def.name.strip_prefix("persona:")
-                                {
-                                    let description =
-                                        prompt_def.description.as_deref().unwrap_or("");
-                                    forge.register_upstream_persona(
-                                        persona_name,
-                                        module.upstream_name(),
-                                        &prompt_def.name,
-                                        description,
-                                    );
-                                }
-                            }
-                            builder = builder.module(module);
-                        }
-                        Err(e) => {
-                            tracing::debug!(
-                                name = %server.name,
-                                error = %e,
-                                "Failed to discover LAN upstream capabilities"
+            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url.clone());
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+                Ok(client) => {
+                    let peer = client.peer().clone();
+                    tokio::spawn(async move { let _ = client.waiting().await; });
+                    let module = navra_core::UpstreamModule::discover(
+                        &server.name, peer, None, &Default::default(),
+                    ).await;
+                    tracing::info!(
+                        name = %server.name,
+                        url = %url,
+                        "Connected LAN upstream (rmcp)"
+                    );
+                    for prompt_def in module.discovered_prompts() {
+                        if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                            let description =
+                                prompt_def.description.as_deref().unwrap_or("");
+                            forge.register_upstream_persona(
+                                persona_name,
+                                module.upstream_name(),
+                                &prompt_def.name,
+                                description,
                             );
                         }
                     }
+                    builder = builder.module(module);
                 }
                 Err(e) => {
                     tracing::debug!(
@@ -2165,7 +2149,7 @@ async fn serve_inner(
                         Ok(client) => {
                             let peer = client.peer().clone();
                             tokio::spawn(async move { let _ = client.waiting().await; });
-                            Ok(navra_core::UpstreamModule::discover_rmcp(
+                            Ok(navra_core::UpstreamModule::discover(
                                 &upstream_cfg.name, peer, None, &upstream_cfg.tool_overrides,
                             ).await)
                         }
@@ -2190,7 +2174,7 @@ async fn serve_inner(
                     Ok(client) => {
                         let peer = client.peer().clone();
                         tokio::spawn(async move { let _ = client.waiting().await; });
-                        Ok(navra_core::UpstreamModule::discover_rmcp(
+                        Ok(navra_core::UpstreamModule::discover(
                             &upstream_cfg.name, peer, None, &upstream_cfg.tool_overrides,
                         ).await)
                     }
