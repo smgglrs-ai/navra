@@ -61,7 +61,7 @@ navra is a 22-crate Rust workspace (~150K lines of code):
 
 | Layer | Crates | Role |
 |-------|--------|------|
-| Protocol | navra-protocol, navra-responses | MCP/A2A/JSON-RPC types |
+| Protocol | navra-protocol, navra-responses | MCP types (via rmcp SDK), A2A |
 | Security | navra-auth, navra-safety, navra-security | Auth, ACLs, IFC, safety |
 | Kernel | navra-core | Server, module trait, session |
 | Models | navra-model, navra-model-hub, navra-model-runtime | Backends, registry |

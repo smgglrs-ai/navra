@@ -187,7 +187,7 @@ The OS analogy is not just a teaching device. It is a design framework. Each of 
 | Information flow control | Bell-LaPadula taint tracking | 8 |
 | Microkernel architecture | Small trusted computing base | 9 |
 
-These are not analogies bolted on after the fact. navra was designed around these concepts from the beginning. The `CapabilityPayload` struct has a `ring` field. The `TaintTracker` implements a formal lattice join. The crate boundary between `navra-auth` and `navra-tools-file` mirrors the kernel/userland split.
+These are not analogies bolted on after the fact. navra was designed around these concepts from the beginning. The `CapabilityPayload` struct has a `ring` field. The `TaintTracker` implements a formal lattice join. The crate boundary between `navra-auth` and userland modules mirrors the kernel/userland split.
 
 Understanding the OS model gives you a mental framework for reasoning about agent security that extends far beyond navra. Every AI security system will eventually reinvent these concepts, because the problem — constraining untrusted code running on shared infrastructure — is the same problem operating systems have been solving since the 1960s.
 

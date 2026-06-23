@@ -172,7 +172,7 @@ is_none() ⇒ write is denied`.
 
 ### H-4. IFC taint not enforced on stateless requests
 
-**File**: `navra-core/src/transport/streamable/dispatch.rs:560+`
+**File**: `navra-core/src/transport/streamable/handlers.rs:560+`
 
 Stateless dispatch creates a fresh `TaintTracker` per request.
 Cross-request taint does not accumulate, violating INV-1.
@@ -302,13 +302,8 @@ URL.
 
 ### H-17. exec workspace path check: string prefix, not directory
 
-**File**: `navra-tools-exec/src/tools.rs:87-89`
-
-`starts_with("/workspace")` accepts `/workspacefoo`,
-`/workspace/../etc`. No canonicalization, no `..` rejection.
-
-**Proof target**: `∀ path: passes_check(path) ⇒
-canonicalize(path).starts_with("/workspace/")`.
+**Status**: Resolved — exec tools inlined into navra-core with
+canonicalized path validation.
 
 ### H-18. DAG back-edge cascading creates unbounded re-execution
 
@@ -323,19 +318,13 @@ bounded_function(tasks, max_iterations)`.
 
 ### H-19. GitLab tools have zero permission checks
 
-**File**: `navra-tools-gitlab/src/tools.rs:81-298`
-
-Unlike git tools which check via `PermissionEngine`, GitLab tools
-allow any agent to create MRs, issues, comments without
-authorization. `_ctx: CallContext` received but never used.
+**Status**: Resolved — GitLab tools removed; GitLab access handled
+via upstream MCP servers with gateway-enforced ACLs.
 
 ### H-20. Git symlink TOCTOU
 
-**File**: `navra-tools-git/src/tools.rs:486-498`
-
-Three separate filesystem operations (`is_symlink()`, `read_link()`,
-`canonicalize()`). Between checks, symlink target can be atomically
-swapped.
+**Status**: Resolved — Git tools removed; git access handled via
+upstream MCP servers. Path validation occurs at the gateway layer.
 
 ---
 
@@ -391,8 +380,8 @@ enforce delegation depth limits from the token chain itself.
 | M-12 | `jsonrpc.rs:17` | `jsonrpc` field not validated to `"2.0"` |
 | M-13 | `jsonrpc.rs:165-170` | Batch request no size limit |
 | M-14 | `jsonrpc.rs:17-23` | Method name/params no size limit |
-| M-15 | `dispatch.rs:612-633` | Stateless mode creates sessions without bound |
-| M-16 | `dispatch.rs:125-139` | `tools/list` doesn't use dynamic IFC-aware filter |
+| M-15 | `handlers.rs:612-633` | Stateless mode creates sessions without bound |
+| M-16 | `handlers.rs:125-139` | `tools/list` doesn't use dynamic IFC-aware filter |
 | M-17 | `direct_transport.rs:29-106` | DirectTransport bypasses session validation |
 | M-18 | `handlers.rs:321-323` | Tool name glob metacharacters not sanitized |
 | M-19 | `permissions.rs:38` | Permission request ID caller-controlled (collision/race) |
@@ -430,8 +419,8 @@ enforce delegation depth limits from the token chain itself.
 | L-6 | `jsonrpc.rs:35-43` | Response can have both result AND error |
 | L-7 | `jsonrpc.rs:8-13` | RequestId accepts arbitrary-length strings |
 | L-8 | `a2a.rs:346-353` | `now_iso8601()` produces non-ISO format |
-| L-9 | `dispatch.rs:114-117` | Notification handling sends response |
-| L-10 | `dispatch.rs:101-104` | Serialization failures return as success |
+| L-9 | `handlers.rs:114-117` | Notification handling sends response |
+| L-10 | `handlers.rs:101-104` | Serialization failures return as success |
 | L-11 | `responses/request.rs:76` | `extra` flattened HashMap unbounded |
 | L-12 | `upstream/stdio.rs` | Stdio transport: no authentication |
 | L-13 | `tool_loop.rs:982` | Loop detector exclusion list is hardcoded |
@@ -492,12 +481,11 @@ enforce delegation depth limits from the token chain itself.
 | P3 | Proc macro code generation | navra-macros |
 | P3 | MCP state machine transitions | navra-protocol |
 
-### Crates with zero Kani proofs (10 of 25)
+### Crates with zero Kani proofs (8 of 22)
 
-navra-mcp, navra-openapi, navra-tools-git, navra-tools-gitlab,
-navra-responses, navra-macros, navra-modal-vision, navra-server,
-navra-memory (partial — only decay.rs), navra-cognitive (partial —
-only budget.rs)
+navra-mcp, navra-openapi, navra-responses, navra-macros,
+navra-modal-vision, navra-server, navra-memory (partial — only
+decay.rs), navra-cognitive (partial — only budget.rs)
 
 ---
 
@@ -523,9 +511,9 @@ only budget.rs)
 | Credential Store | ✅ | ✅ 0 | — | — | **Zeroization** |
 | OAuth | ✅ | ✅ 0 | — | — | CSRF state |
 | Transport | ✅ | ✅ 0 | ✅ | ✅ | **Unbounded reads**, SSE injection |
-| Tool Exec | ✅ | ✅ 2 | — | — | **Workspace prefix** |
-| Tool Git | ✅ | ✅ 0 | — | — | TOCTOU, URL-encoded `..` |
-| Tool GitLab | ✅ | ✅ 0 | — | — | **Zero permission checks** |
+| Tool Exec | — | — | — | — | Resolved: inlined into navra-core |
+| Tool Git | — | — | — | — | Resolved: removed, upstream pattern |
+| Tool GitLab | — | — | — | — | Resolved: removed, upstream pattern |
 
 ---
 
