@@ -16,6 +16,7 @@ mod demo;
 mod direct_transport;
 mod discover;
 mod exec_tools;
+mod flow_api;
 mod flow_tools;
 mod grpc_manager;
 mod mdns;
@@ -4272,6 +4273,11 @@ async fn serve_inner(
 
             // /v1/chat/completions is mounted by ui.rs — agents route model calls
             // through the gateway for safety filters, blackbox audit, and persona injection.
+
+            // --- Flow graph API ---
+            let flow_api = flow_api::flow_api_router(Arc::clone(&flow_registry), None);
+            let router = router.merge(flow_api);
+            tracing::info!("Flow graph API at /flows/{{id}}/graph, /flows/{{id}}/graph/dot, /flows/{{id}}/events");
 
             // --- Web UI: shared state + API routes ---
             // Detect first available Ollama model for UI chat fallback
