@@ -72,6 +72,12 @@ url = "/docs/getting-started/"
 weight = 10
 
 [[extra.menu.main]]
+name = "Learn"
+section = "docs"
+url = "/docs/learn/"
+weight = 20
+
+[[extra.menu.main]]
 name = "GitHub"
 section = "github"
 url = "https://github.com/smgglrs-ai/navra"
