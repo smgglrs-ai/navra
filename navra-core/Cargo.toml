@@ -12,6 +12,7 @@ navra-protocol = { path = "../navra-protocol", features = ["native-tls"] }
 navra-auth = { path = "../navra-auth", features = ["desktop"] }
 navra-safety-hooks = { path = "../navra-safety-hooks" }
 navra-model = { path = "../navra-model", features = ["native-tls"] }
+rmcp = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
 hyper = { workspace = true }
