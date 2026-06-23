@@ -929,18 +929,178 @@ async fn cap_token_bypasses_tool_permissions() {
 // MCP spec compliance: dispatch handler tests (Phase 9i)
 // ========================================================================
 
-/// Helper to run a JSON-RPC request through the dispatch function.
+/// Helper to run a JSON-RPC request by calling McpServer methods directly.
 async fn dispatch_request(
     server: &std::sync::Arc<super::McpServer>,
     method: &str,
     params: Option<serde_json::Value>,
     session_id: Option<String>,
 ) -> crate::protocol::JsonRpcResponse {
-    let request =
-        crate::protocol::JsonRpcRequest::new(method, params, crate::protocol::RequestId::Number(1));
-    let (response, _) =
-        crate::dispatch_for_test(server.clone(), request, test_agent(), session_id).await;
-    response
+    use crate::protocol::{JsonRpcError, JsonRpcResponse, RequestId};
+
+    let id = RequestId::Number(1);
+    let agent = test_agent();
+
+    match method {
+        "initialize" => {
+            let p: crate::protocol::InitializeParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
+                Some(p) => p,
+                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid initialize params")),
+            };
+            match server.handle_initialize(p, agent) {
+                Ok((result, _sid)) => JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap()),
+                Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+            }
+        }
+
+        _ => {
+            let sid = session_id.unwrap_or_else(|| format!("stateless:{}", agent.name));
+
+            if server.mcp_version() != navra_protocol::PROTOCOL_VERSION_2026 {
+                if server.sessions().get(&sid).is_none() {
+                    return JsonRpcResponse::error(
+                        id,
+                        JsonRpcError::new(
+                            crate::protocol::ErrorCode::Custom(-32002),
+                            "Session required — call initialize first",
+                        ),
+                    );
+                }
+            }
+
+            server.ensure_session(&sid, &agent);
+            dispatch_request_inner(server, method, params, &agent, &sid, id).await
+        }
+    }
+}
+
+async fn dispatch_request_inner(
+    server: &std::sync::Arc<super::McpServer>,
+    method: &str,
+    params: Option<serde_json::Value>,
+    agent: &crate::auth::AgentIdentity,
+    sid: &str,
+    id: crate::protocol::RequestId,
+) -> crate::protocol::JsonRpcResponse {
+    use crate::protocol::{JsonRpcError, JsonRpcResponse};
+
+    match method {
+        "ping" => JsonRpcResponse::success(id, serde_json::json!({})),
+
+        "tools/list" => {
+            let pagination: crate::protocol::PaginatedRequest = params
+                .and_then(|p| serde_json::from_value(p).ok())
+                .unwrap_or_default();
+            let result = server.handle_list_tools(&agent, &pagination);
+            JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
+        }
+
+        "tools/call" => {
+            let p: crate::protocol::CallToolParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
+                Some(p) => p,
+                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid tool call params")),
+            };
+            let mut ctx = crate::auth::CallContext::new(agent.clone(), sid.to_string());
+            let persisted_label = server.sessions().context_label(sid);
+            ctx.taint.absorb(persisted_label);
+            let result = server.handle_call_tool(p, ctx).await;
+            JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
+        }
+
+        "resources/list" => {
+            let pagination: crate::protocol::PaginatedRequest = params
+                .and_then(|p| serde_json::from_value(p).ok())
+                .unwrap_or_default();
+            let result = server.handle_list_resources(&agent, &pagination);
+            JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
+        }
+
+        "resources/templates/list" => {
+            let pagination: crate::protocol::PaginatedRequest = params
+                .and_then(|p| serde_json::from_value(p).ok())
+                .unwrap_or_default();
+            let result = server.handle_list_resource_templates(&agent, &pagination);
+            JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
+        }
+
+        "resources/read" => {
+            let p: crate::protocol::ReadResourceParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
+                Some(p) => p,
+                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid resource read params")),
+            };
+            match server.handle_read_resource(p, &agent, &sid).await {
+                Ok(result) => JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap()),
+                Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+            }
+        }
+
+        "prompts/list" => {
+            let pagination: crate::protocol::PaginatedRequest = params
+                .and_then(|p| serde_json::from_value(p).ok())
+                .unwrap_or_default();
+            let result = server.handle_list_prompts(&agent, &pagination);
+            JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
+        }
+
+        "prompts/get" => {
+            let p: crate::protocol::GetPromptParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
+                Some(p) => p,
+                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid prompt get params")),
+            };
+            match server.handle_get_prompt(p, &agent, &sid).await {
+                Ok(result) => JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap()),
+                Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
+            }
+        }
+
+        "completion/complete" => {
+            let p: crate::protocol::CompleteParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
+                Some(p) => p,
+                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid completion/complete params")),
+            };
+            let result = server.handle_complete(p);
+            JsonRpcResponse::success(id, serde_json::json!({
+                "completion": {
+                    "values": result.completion.values,
+                    "total": result.completion.total,
+                    "hasMore": result.completion.has_more,
+                }
+            }))
+        }
+
+        "logging/setLevel" => {
+            let p: crate::protocol::SetLevelParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
+                Some(p) => p,
+                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid logging/setLevel params")),
+            };
+            server.handle_set_log_level(p, &sid);
+            JsonRpcResponse::success(id, serde_json::json!({}))
+        }
+
+        "resources/subscribe" => {
+            let uri = match params.and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from))) {
+                Some(u) => u,
+                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Missing 'uri' parameter")),
+            };
+            match server.handle_resource_subscribe(&uri, &sid) {
+                Ok(()) => JsonRpcResponse::success(id, serde_json::json!({})),
+                Err(e) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&e)),
+            }
+        }
+
+        "resources/unsubscribe" => {
+            let uri = match params.and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from))) {
+                Some(u) => u,
+                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Missing 'uri' parameter")),
+            };
+            match server.handle_resource_unsubscribe(&uri, &sid) {
+                Ok(()) => JsonRpcResponse::success(id, serde_json::json!({})),
+                Err(e) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&e)),
+            }
+        }
+
+        _ => JsonRpcResponse::error(id, JsonRpcError::method_not_found(method)),
+    }
 }
 
 /// Helper to initialize a session and return (server, session_id).

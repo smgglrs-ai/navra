@@ -42,6 +42,3 @@ pub use server::{McpServer, McpServerBuilder, NavraHandler, ToolFilter, ToolUsag
 pub use session::Session;
 pub use upstream_module::UpstreamModule;
 
-/// Re-export dispatch for unit tests (not part of public API).
-#[cfg(test)]
-pub(crate) use transport::streamable::dispatch::dispatch as dispatch_for_test;
