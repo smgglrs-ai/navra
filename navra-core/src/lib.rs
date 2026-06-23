@@ -38,7 +38,7 @@ pub use grpc_module::GrpcModule;
 pub use module::serve_module;
 pub use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperation};
 pub use navra_protocol::{RetryConfig, Upstream};
-pub use server::{McpServer, McpServerBuilder, ToolFilter, ToolUsageTracker, UsagePruningFilter};
+pub use server::{McpServer, McpServerBuilder, NavraHandler, ToolFilter, ToolUsageTracker, UsagePruningFilter};
 pub use session::Session;
 pub use upstream_module::UpstreamModule;
 

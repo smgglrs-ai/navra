@@ -84,6 +84,5 @@ pub use navra_model::{
 pub use navra_protocol::label::DataLabel;
 pub use navra_protocol::{
     CallToolParams, CallToolResult, Content, PromptDefinition, ResourceDefinition, ToolDefinition,
-    Upstream,
 };
 pub use navra_safety_hooks::safety::FilterPipeline;

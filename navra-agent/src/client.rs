@@ -5,27 +5,27 @@ use navra_auth::ifc::{is_external_read_tool, TaintTracker};
 use navra_protocol::label::DataLabel;
 use navra_protocol::{
     CallToolParams, CallToolResult, GetPromptParams, GetPromptResult, PromptDefinition,
-    ReadResourceParams, ReadResourceResult, ResourceDefinition, ToolDefinition, Upstream,
+    ReadResourceParams, ReadResourceResult, ResourceDefinition, ToolDefinition,
 };
-use std::borrow::Cow;
 use std::collections::HashMap;
 
-/// MCP client wrapping [`Upstream`] with authentication and IFC taint tracking.
+/// MCP client wrapping an rmcp [`Peer<RoleClient>`](rmcp::Peer) with
+/// authentication and IFC taint tracking.
 ///
 /// Tracks data labels from tool results across the session. External read
 /// tools automatically label their output as Untrusted (mirroring server-side
 /// IFC enforcement).
 pub struct McpClient {
-    upstream: Upstream,
+    peer: rmcp::Peer<rmcp::RoleClient>,
     taint: TaintTracker,
     auth_token: Option<String>,
 }
 
 impl McpClient {
-    /// Create from an already-connected [`Upstream`].
-    pub fn new(upstream: Upstream) -> Self {
+    /// Create from an already-connected rmcp peer.
+    pub fn new(peer: rmcp::Peer<rmcp::RoleClient>) -> Self {
         Self {
-            upstream,
+            peer,
             taint: TaintTracker::new(),
             auth_token: None,
         }
@@ -38,8 +38,8 @@ impl McpClient {
     }
 
     /// List available tools from the MCP server.
-    pub async fn list_tools(&mut self) -> Result<Vec<ToolDefinition>, AgentError> {
-        Ok(self.upstream.list_tools().await?)
+    pub async fn list_tools(&self) -> Result<Vec<ToolDefinition>, AgentError> {
+        Ok(self.peer.list_all_tools().await?)
     }
 
     /// Call a tool and track IFC labels from the result.
@@ -52,16 +52,13 @@ impl McpClient {
         name: &str,
         arguments: serde_json::Value,
     ) -> Result<CallToolResult, AgentError> {
-        let mut params = CallToolParams::new(Cow::Owned(name.to_string()));
+        let mut params = CallToolParams::new(name.to_string());
         params.arguments = Some(
             serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(arguments)
                 .unwrap_or_default(),
         );
-        let result = self.upstream.call_tool(params).await?;
+        let result = self.peer.call_tool(params).await?;
 
-        // Client-side IFC classification: external read tools produce
-        // untrusted data. Without the label field on CallToolResult,
-        // we track taint purely through the TaintTracker.
         if is_external_read_tool(name) {
             self.taint.absorb(DataLabel::UNTRUSTED_PUBLIC);
         }
@@ -70,13 +67,13 @@ impl McpClient {
     }
 
     /// List prompts from the MCP server.
-    pub async fn list_prompts(&mut self) -> Result<Vec<PromptDefinition>, AgentError> {
-        Ok(self.upstream.list_prompts().await?)
+    pub async fn list_prompts(&self) -> Result<Vec<PromptDefinition>, AgentError> {
+        Ok(self.peer.list_all_prompts().await?)
     }
 
     /// Get a prompt by name with arguments.
     pub async fn get_prompt(
-        &mut self,
+        &self,
         name: &str,
         arguments: HashMap<String, String>,
     ) -> Result<GetPromptResult, AgentError> {
@@ -88,18 +85,18 @@ impl McpClient {
                 .collect();
             params.arguments = Some(map);
         }
-        Ok(self.upstream.get_prompt(params).await?)
+        Ok(self.peer.get_prompt(params).await?)
     }
 
     /// List resources from the MCP server.
-    pub async fn list_resources(&mut self) -> Result<Vec<ResourceDefinition>, AgentError> {
-        Ok(self.upstream.list_resources().await?)
+    pub async fn list_resources(&self) -> Result<Vec<ResourceDefinition>, AgentError> {
+        Ok(self.peer.list_all_resources().await?)
     }
 
     /// Read a resource by URI.
-    pub async fn read_resource(&mut self, uri: &str) -> Result<ReadResourceResult, AgentError> {
+    pub async fn read_resource(&self, uri: &str) -> Result<ReadResourceResult, AgentError> {
         let params = ReadResourceParams::new(uri);
-        Ok(self.upstream.read_resource(params).await?)
+        Ok(self.peer.read_resource(params).await?)
     }
 
     /// Current accumulated taint level.
@@ -107,86 +104,112 @@ impl McpClient {
         self.taint.level()
     }
 
-    /// Access the underlying [`Upstream`] for low-level operations.
-    pub fn upstream(&mut self) -> &mut Upstream {
-        &mut self.upstream
+    /// Access the underlying rmcp peer for low-level operations.
+    pub fn peer(&self) -> &rmcp::Peer<rmcp::RoleClient> {
+        &self.peer
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
+    use navra_protocol::compat::CallToolResultExt;
     use navra_protocol::label::Integrity;
-    use navra_protocol::upstream::{Transport, UpstreamError};
+    use rmcp::model::*;
+    use rmcp::service::ServiceExt;
+    use std::sync::Arc;
 
-    /// Mock transport that returns scripted responses.
-    struct MockTransport {
-        responses: std::sync::Mutex<Vec<serde_json::Value>>,
+    struct MockServer {
+        tools: Vec<Tool>,
+        call_response: Arc<dyn Fn(&str) -> CallToolResult + Send + Sync>,
     }
 
-    impl MockTransport {
-        fn new(responses: Vec<serde_json::Value>) -> Self {
+    impl MockServer {
+        fn new() -> Self {
+            let mut schema = serde_json::Map::new();
+            schema.insert("type".into(), serde_json::json!("object"));
             Self {
-                responses: std::sync::Mutex::new(responses),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl Transport for MockTransport {
-        async fn request(
-            &mut self,
-            _body: serde_json::Value,
-        ) -> Result<serde_json::Value, UpstreamError> {
-            let mut responses = self.responses.lock().unwrap();
-            if responses.is_empty() {
-                Ok(serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 1}))
-            } else {
-                Ok(responses.remove(0))
+                tools: vec![Tool::new("echo", "Echo back", schema)],
+                call_response: Arc::new(|_| CallToolResult::text("ok")),
             }
         }
 
-        fn shutdown(&mut self) {}
+        fn with_call_response(
+            mut self,
+            f: impl Fn(&str) -> CallToolResult + Send + Sync + 'static,
+        ) -> Self {
+            self.call_response = Arc::new(f);
+            self
+        }
     }
 
-    async fn mock_client(responses: Vec<serde_json::Value>) -> McpClient {
-        // First two responses are for initialize + notifications/initialized
-        let mut all = vec![
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "result": {
-                    "protocolVersion": "2025-03-26",
-                    "capabilities": {},
-                    "serverInfo": {"name": "test", "version": "0.1.0"}
-                },
-                "id": 1
-            }),
-            serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 2}),
-        ];
-        all.extend(responses);
-        let transport = MockTransport::new(all);
-        let upstream = Upstream::connect("test", transport).await.unwrap();
-        McpClient::new(upstream)
+    impl rmcp::ServerHandler for MockServer {
+        fn get_info(&self) -> ServerInfo {
+            InitializeResult::new(
+                ServerCapabilities::builder()
+                    .enable_tools()
+                    .build(),
+            )
+            .with_server_info(Implementation::new("mock", "0.1.0"))
+        }
+
+        fn list_tools(
+            &self,
+            _request: Option<PaginatedRequestParams>,
+            _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> impl std::future::Future<Output = Result<ListToolsResult, rmcp::Error>> + Send + '_
+        {
+            async {
+                Ok(ListToolsResult {
+                    meta: None,
+                    tools: self.tools.clone(),
+                    next_cursor: None,
+                })
+            }
+        }
+
+        fn call_tool(
+            &self,
+            request: CallToolRequestParams,
+            _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::Error>> + Send + '_
+        {
+            let resp = (self.call_response)(request.name.as_ref());
+            async move { Ok(resp) }
+        }
+    }
+
+    async fn mock_client_with(server: MockServer) -> McpClient {
+        let (server_io, client_io) = tokio::io::duplex(65536);
+        tokio::spawn(async move {
+            if let Ok(svc) = server.serve(server_io).await {
+                let _ = svc.waiting().await;
+            }
+        });
+        let client = <() as ServiceExt<rmcp::RoleClient>>::serve((), client_io)
+            .await
+            .expect("client connect");
+        let peer = client.peer().clone();
+        tokio::spawn(async move { let _ = client.waiting().await; });
+        McpClient::new(peer)
+    }
+
+    async fn mock_client() -> McpClient {
+        mock_client_with(MockServer::new()).await
     }
 
     #[tokio::test]
     async fn taint_starts_clean() {
-        let client = mock_client(vec![]).await;
+        let client = mock_client().await;
         assert_eq!(client.taint(), DataLabel::TRUSTED_PUBLIC);
     }
 
     #[tokio::test]
     async fn call_tool_tracks_external_read_taint() {
-        let mut client = mock_client(vec![serde_json::json!({
-            "jsonrpc": "2.0",
-            "result": {
-                "content": [{"type": "text", "text": "file contents"}],
-                "isError": false
-            },
-            "id": 3
-        })])
-        .await;
+        let server = MockServer::new().with_call_response(|_| {
+            CallToolResult::text("file contents")
+        });
+        let mut client = mock_client_with(server).await;
 
         let _result = client
             .call_tool("file_read", serde_json::json!({}))
@@ -197,22 +220,15 @@ mod tests {
 
     #[tokio::test]
     async fn call_tool_git_status_taints_session() {
-        let mut client = mock_client(vec![serde_json::json!({
-            "jsonrpc": "2.0",
-            "result": {
-                "content": [{"type": "text", "text": "ok"}],
-                "isError": false
-            },
-            "id": 3
-        })])
-        .await;
+        let server = MockServer::new().with_call_response(|_| {
+            CallToolResult::text("ok")
+        });
+        let mut client = mock_client_with(server).await;
 
         let _result = client
             .call_tool("git_status", serde_json::json!({}))
             .await
             .unwrap();
-        // git_status reads external filesystem state (filenames may be
-        // attacker-controlled), so it correctly taints the session.
         assert_eq!(client.taint(), DataLabel::UNTRUSTED_PUBLIC);
     }
 }

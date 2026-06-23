@@ -11,7 +11,6 @@ use navra_core::acp::store::RunStore;
 use navra_core::acp::types::*;
 use navra_core::auth::AgentIdentity;
 use navra_core::McpServer;
-use navra_core::Upstream;
 use navra_model::ModelBackend;
 use std::future::Future;
 use std::pin::Pin;
@@ -93,8 +92,8 @@ async fn execute_agent_run(
     let prompt = extract_prompt(&input);
 
     let transport = DirectTransport::new(server, agent.clone());
-    let upstream = match Upstream::connect(&agent.name, transport).await {
-        Ok(u) => u,
+    let peer = match crate::direct_transport::connect_direct_peer(transport).await {
+        Ok(p) => p,
         Err(e) => {
             let error = AcpError::server_error(format!("Failed to connect: {e}"));
             let run = store
@@ -104,7 +103,7 @@ async fn execute_agent_run(
             return run;
         }
     };
-    let mut client = McpClient::new(upstream);
+    let mut client = McpClient::new(peer);
 
     let mut config = ToolLoopConfig {
         max_iterations: 10,

@@ -2876,6 +2876,7 @@ dependencies = [
  "navra-responses",
  "navra-safety-hooks",
  "regex-lite",
+ "rmcp",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4611,7 +4612,7 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -4642,7 +4643,7 @@ dependencies = [
 
 [[package]]
 name = "rmcp-macros"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",

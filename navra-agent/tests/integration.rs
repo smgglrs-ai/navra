@@ -3,7 +3,6 @@
 //! Tests the builder pattern, McpClient IFC taint tracking, tool loop,
 //! and type conversions using mock transports.
 
-use async_trait::async_trait;
 use navra_agent::{
     extract_text, run_tool_loop, Agent, AgentError, CallToolResult, Content, CreateResponseRequest,
     DataLabel, FunctionCallItem, ItemStatus, McpClient, MessageItem, ModelBackend, ModelResponse,
@@ -11,9 +10,9 @@ use navra_agent::{
 };
 use navra_model::ModelError;
 use navra_protocol::compat::CallToolResultExt;
-use navra_protocol::upstream::{Transport, UpstreamError};
-use navra_protocol::Upstream;
 use navra_responses::response::Usage;
+use rmcp::model::*;
+use rmcp::service::ServiceExt;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
@@ -22,72 +21,89 @@ use std::sync::Mutex;
 // Mock infrastructure
 // =====================================================================
 
-struct MockTransport {
-    responses: Mutex<Vec<serde_json::Value>>,
+struct MockServer {
+    tools: Vec<Tool>,
+    call_responses: Mutex<Vec<rmcp::model::CallToolResult>>,
 }
 
-impl MockTransport {
-    fn new(responses: Vec<serde_json::Value>) -> Self {
+impl MockServer {
+    fn new(
+        tools: Vec<Tool>,
+        call_responses: Vec<rmcp::model::CallToolResult>,
+    ) -> Self {
         Self {
-            responses: Mutex::new(responses),
-        }
-    }
-}
-
-#[async_trait]
-impl Transport for MockTransport {
-    async fn request(
-        &mut self,
-        _body: serde_json::Value,
-    ) -> Result<serde_json::Value, UpstreamError> {
-        let mut responses = self.responses.lock().unwrap();
-        if responses.is_empty() {
-            Ok(serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 1}))
-        } else {
-            Ok(responses.remove(0))
+            tools,
+            call_responses: Mutex::new(call_responses),
         }
     }
 
-    fn shutdown(&mut self) {}
-}
-
-/// Build a mock client. If `include_list_tools` is true, a list_tools
-/// response is prepended (needed for run_tool_loop).
-async fn mock_client_inner(
-    include_list_tools: bool,
-    tool_responses: Vec<serde_json::Value>,
-) -> McpClient {
-    let mut all = vec![
-        serde_json::json!({
-            "jsonrpc": "2.0",
-            "result": {
-                "protocolVersion": "2025-03-26",
-                "capabilities": {},
-                "serverInfo": {"name": "test", "version": "0.1.0"}
-            },
-            "id": 1
-        }),
-        serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 2}),
-    ];
-    if include_list_tools {
-        all.push(serde_json::json!({
-            "jsonrpc": "2.0",
-            "result": {"tools": []},
-            "id": 3
-        }));
+    fn empty() -> Self {
+        Self::new(vec![], vec![])
     }
-    all.extend(tool_responses);
-    let transport = MockTransport::new(all);
-    let upstream = Upstream::connect("test", transport).await.unwrap();
-    McpClient::new(upstream)
 }
 
-async fn mock_client(tool_responses: Vec<serde_json::Value>) -> McpClient {
-    mock_client_inner(true, tool_responses).await
+impl rmcp::ServerHandler for MockServer {
+    fn get_info(&self) -> ServerInfo {
+        InitializeResult::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .build(),
+        )
+        .with_server_info(Implementation::new("test", "0.1.0"))
+    }
+
+    fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> impl Future<Output = Result<ListToolsResult, rmcp::Error>> + Send + '_ {
+        async {
+            Ok(ListToolsResult {
+                meta: None,
+                tools: self.tools.clone(),
+                next_cursor: None,
+            })
+        }
+    }
+
+    fn call_tool(
+        &self,
+        _request: CallToolRequestParams,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> impl Future<Output = Result<rmcp::model::CallToolResult, rmcp::Error>> + Send + '_ {
+        let resp = {
+            let mut responses = self.call_responses.lock().unwrap();
+            if responses.is_empty() {
+                rmcp::model::CallToolResult::text("ok")
+            } else {
+                responses.remove(0)
+            }
+        };
+        async move { Ok(resp) }
+    }
 }
 
-async fn mock_client_no_list(tool_responses: Vec<serde_json::Value>) -> McpClient {
-    mock_client_inner(false, tool_responses).await
+async fn connect_mock(server: MockServer) -> McpClient {
+    let (server_io, client_io) = tokio::io::duplex(65536);
+    tokio::spawn(async move {
+        if let Ok(svc) = server.serve(server_io).await {
+            let _ = svc.waiting().await;
+        }
+    });
+    let client = <() as ServiceExt<rmcp::RoleClient>>::serve((), client_io)
+        .await
+        .expect("client connect");
+    let peer = client.peer().clone();
+    tokio::spawn(async move { let _ = client.waiting().await; });
+    McpClient::new(peer)
+}
+
+async fn mock_client(tool_responses: Vec<rmcp::model::CallToolResult>) -> McpClient {
+    connect_mock(MockServer::new(vec![], tool_responses)).await
+}
+
+async fn mock_client_no_list(tool_responses: Vec<rmcp::model::CallToolResult>) -> McpClient {
+    connect_mock(MockServer::new(vec![], tool_responses)).await
 }
 
 struct MockModel {
@@ -203,7 +219,6 @@ async fn builder_fails_without_endpoint() {
 
 #[tokio::test]
 async fn builder_config_methods_chainable() {
-    // Verify builder methods return Self for chaining
     let builder = Agent::builder()
         .system_prompt("You are helpful")
         .max_iterations(5)
@@ -212,7 +227,6 @@ async fn builder_config_methods_chainable() {
         .allowed_tools(vec!["file_read".into()])
         .non_progress_tools(vec!["team_status".into()])
         .force_tool_iterations(2);
-    // Can't build without endpoint, but config was set
     let result = builder.build().await;
     assert!(result.is_err());
 }
@@ -229,14 +243,9 @@ async fn client_taint_starts_trusted() {
 
 #[tokio::test]
 async fn client_call_external_read_taints() {
-    let mut client = mock_client_no_list(vec![serde_json::json!({
-        "jsonrpc": "2.0",
-        "result": {
-            "content": [{"type": "text", "text": "file data"}],
-            "isError": false
-        },
-        "id": 3
-    })])
+    let mut client = mock_client_no_list(vec![
+        rmcp::model::CallToolResult::text("file data"),
+    ])
     .await;
 
     let _result = client
@@ -251,14 +260,9 @@ async fn client_call_external_read_taints() {
 
 #[tokio::test]
 async fn client_call_git_status_taints_session() {
-    let mut client = mock_client_no_list(vec![serde_json::json!({
-        "jsonrpc": "2.0",
-        "result": {
-            "content": [{"type": "text", "text": "ok"}],
-            "isError": false
-        },
-        "id": 3
-    })])
+    let mut client = mock_client_no_list(vec![
+        rmcp::model::CallToolResult::text("ok"),
+    ])
     .await;
 
     let _result = client
@@ -292,14 +296,9 @@ async fn tool_loop_one_tool_call() {
         tool_call_response("git_status", "{}"),
         text_response("Repo is clean."),
     ]);
-    let mut client = mock_client(vec![serde_json::json!({
-        "jsonrpc": "2.0",
-        "result": {
-            "content": [{"type": "text", "text": "nothing to commit"}],
-            "isError": false
-        },
-        "id": 4
-    })])
+    let mut client = mock_client(vec![
+        rmcp::model::CallToolResult::text("nothing to commit"),
+    ])
     .await;
     let mut config = ToolLoopConfig::default();
 

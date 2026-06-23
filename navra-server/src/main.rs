@@ -4714,15 +4714,19 @@ async fn run_agent(
         let discover_token = token
             .map(String::from)
             .or_else(|| std::env::var("MCPD_TOKEN").ok());
-        let discover_upstream = if let Some(ref t) = discover_token {
-            navra_agent::Upstream::http_with_auth("discover", endpoint, t)
+        let discover_peer = {
+            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint);
+            rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
                 .await
                 .ok()
-        } else {
-            navra_agent::Upstream::http("discover", endpoint).await.ok()
+                .map(|c| {
+                    let peer = c.peer().clone();
+                    tokio::spawn(async move { let _ = c.waiting().await; });
+                    peer
+                })
         };
-        if let Some(upstream) = discover_upstream {
-            let mut client = navra_agent::McpClient::new(upstream);
+        if let Some(peer) = discover_peer {
+            let client = navra_agent::McpClient::new(peer);
             if let Ok(prompts) = client.list_prompts().await {
                 for p in &prompts {
                     if let Some(persona_name) = p.name.strip_prefix("persona:") {
@@ -4840,12 +4844,14 @@ async fn run_agent(
 
             if has_source || !all_refs.is_empty() {
                 // Need an MCP connection to resolve source and/or prompts
-                let temp_upstream = if let Some(ref t) = auth_token {
-                    navra_agent::Upstream::http_with_auth("resolver", endpoint, t).await?
-                } else {
-                    navra_agent::Upstream::http("resolver", endpoint).await?
+                let resolver_peer = {
+                    let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint);
+                    let c = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
+                    let peer = c.peer().clone();
+                    tokio::spawn(async move { let _ = c.waiting().await; });
+                    peer
                 };
-                let mut resolver_client = navra_agent::McpClient::new(temp_upstream);
+                let mut resolver_client = navra_agent::McpClient::new(resolver_peer);
 
                 if has_source {
                     // MCP-sourced persona: resolve source + mcp_prompts together
@@ -4891,12 +4897,14 @@ async fn run_agent(
         }
     } else if !cli_prompt_refs.is_empty() {
         // No persona loaded but CLI prompts were specified — resolve and append
-        let temp_upstream = if let Some(ref t) = auth_token {
-            navra_agent::Upstream::http_with_auth("resolver", endpoint, t).await?
-        } else {
-            navra_agent::Upstream::http("resolver", endpoint).await?
+        let resolver_peer = {
+            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint);
+            let c = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
+            let peer = c.peer().clone();
+            tokio::spawn(async move { let _ = c.waiting().await; });
+            peer
         };
-        let mut resolver_client = navra_agent::McpClient::new(temp_upstream);
+        let mut resolver_client = navra_agent::McpClient::new(resolver_peer);
 
         let resolved = navra_agent::resolve::resolve_mcp_prompts(
             &mut resolver_client,
