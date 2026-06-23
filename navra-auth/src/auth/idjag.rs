@@ -17,7 +17,6 @@ use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{AgentIdentity, AuthError, Authenticator};
-use crate::identity::CapSigner;
 
 /// Configuration for the ID-JAG authenticator.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -373,7 +372,7 @@ fn verify_eddsa_signature(
 
 /// Build a minimal JWT for testing. Signs with the given `CapSigner`.
 #[cfg(test)]
-fn build_test_jwt(header_json: &str, claims_json: &str, signer: &dyn CapSigner) -> String {
+fn build_test_jwt(header_json: &str, claims_json: &str, signer: &dyn crate::identity::CapSigner) -> String {
     let header_b64 = URL_SAFE_NO_PAD.encode(header_json.as_bytes());
     let claims_b64 = URL_SAFE_NO_PAD.encode(claims_json.as_bytes());
     let signing_input = format!("{header_b64}.{claims_b64}");

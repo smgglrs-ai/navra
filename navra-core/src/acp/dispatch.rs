@@ -8,7 +8,7 @@
 use super::store::RunStore;
 use super::types::*;
 use crate::auth::{AgentIdentity, CallContext};
-use crate::protocol::{CallToolParams, Content};
+use crate::protocol::CallToolParams;
 use crate::server::McpServer;
 use std::future::Future;
 use std::pin::Pin;

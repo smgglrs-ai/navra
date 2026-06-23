@@ -1,6 +1,5 @@
 pub use navra_mcp::{Module, PromptHandler, ResourceHandler};
 
-use crate::auth::AgentIdentity;
 use crate::server::McpServer;
 use std::sync::Arc;
 
