@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 navra-core = { path = "../navra-core" }
+rmcp = { workspace = true }
 navra-safety-hooks = { path = "../navra-safety-hooks" }
 navra-cognitive = { path = "../navra-cognitive" }
 navra-agent = { path = "../navra-agent" }

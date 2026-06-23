@@ -2151,70 +2151,50 @@ async fn serve_inner(
             continue;
         }
 
-        let retry_config = upstream_cfg.retry_config();
-        let connect_result = match upstream_cfg.transport.as_str() {
+        let module_result = match upstream_cfg.transport.as_str() {
             "stdio" => {
-                if let Some(rc) = retry_config {
-                    tracing::info!(
-                        upstream = %upstream_cfg.name,
-                        "Using resilient transport (retry enabled)"
-                    );
-                    navra_core::Upstream::spawn_resilient(
-                        &upstream_cfg.name,
-                        &upstream_cfg.command,
-                        upstream_cfg.cwd.as_deref(),
-                        rc,
-                    )
-                    .await
-                } else {
-                    navra_core::Upstream::spawn(
-                        &upstream_cfg.name,
-                        &upstream_cfg.command,
-                        upstream_cfg.cwd.as_deref(),
-                    )
-                    .await
+                let mut cmd = tokio::process::Command::new(&upstream_cfg.command[0]);
+                for arg in &upstream_cfg.command[1..] {
+                    cmd.arg(arg);
+                }
+                if let Some(ref cwd) = upstream_cfg.cwd {
+                    cmd.current_dir(cwd);
+                }
+                match rmcp::transport::TokioChildProcess::new(cmd) {
+                    Ok(transport) => match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+                        Ok(client) => {
+                            let peer = client.peer().clone();
+                            tokio::spawn(async move { let _ = client.waiting().await; });
+                            Ok(navra_core::UpstreamModule::discover_rmcp(
+                                &upstream_cfg.name, peer, None, &upstream_cfg.tool_overrides,
+                            ).await)
+                        }
+                        Err(e) => Err(format!("rmcp init failed: {e}")),
+                    },
+                    Err(e) => Err(format!("spawn failed: {e}")),
                 }
             }
-            "http" | "streamable-http" => {
+            "http" | "streamable-http" | "sse" => {
                 let url = match &upstream_cfg.url {
                     Some(u) => u.as_str(),
                     None => {
                         tracing::error!(
                             upstream = %upstream_cfg.name,
-                            "HTTP upstream requires 'url' field, skipping"
+                            "HTTP/SSE upstream requires 'url' field, skipping"
                         );
                         continue;
                     }
                 };
-                if let Some(rc) = retry_config {
-                    tracing::info!(
-                        upstream = %upstream_cfg.name,
-                        "Using resilient transport (retry enabled)"
-                    );
-                    navra_core::Upstream::http_resilient(&upstream_cfg.name, url, rc).await
-                } else {
-                    navra_core::Upstream::http(&upstream_cfg.name, url).await
-                }
-            }
-            "sse" => {
-                let url = match &upstream_cfg.url {
-                    Some(u) => u.as_str(),
-                    None => {
-                        tracing::error!(
-                            upstream = %upstream_cfg.name,
-                            "SSE upstream requires 'url' field, skipping"
-                        );
-                        continue;
+                let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url);
+                match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+                    Ok(client) => {
+                        let peer = client.peer().clone();
+                        tokio::spawn(async move { let _ = client.waiting().await; });
+                        Ok(navra_core::UpstreamModule::discover_rmcp(
+                            &upstream_cfg.name, peer, None, &upstream_cfg.tool_overrides,
+                        ).await)
                     }
-                };
-                if let Some(rc) = retry_config {
-                    tracing::info!(
-                        upstream = %upstream_cfg.name,
-                        "Using resilient transport (retry enabled)"
-                    );
-                    navra_core::Upstream::sse_resilient(&upstream_cfg.name, url, rc).await
-                } else {
-                    navra_core::Upstream::sse(&upstream_cfg.name, url).await
+                    Err(e) => Err(format!("rmcp init failed: {e}")),
                 }
             }
             other => {
@@ -2227,80 +2207,62 @@ async fn serve_inner(
             }
         };
 
-        match connect_result {
-            Ok(upstream) => {
-                match navra_core::UpstreamModule::discover(
-                    upstream,
-                    None,
-                    &upstream_cfg.tool_overrides,
-                )
-                .await
-                {
-                    Ok(module) => {
-                        tracing::info!(
-                            upstream = %upstream_cfg.name,
-                            transport = %upstream_cfg.transport,
-                            "Connected upstream"
-                        );
+        match module_result {
+            Ok(module) => {
+                tracing::info!(
+                    upstream = %upstream_cfg.name,
+                    transport = %upstream_cfg.transport,
+                    "Connected upstream (rmcp)"
+                );
 
-                        for prompt_def in module.discovered_prompts() {
-                            if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
-                                let description = prompt_def.description.as_deref().unwrap_or("");
-                                forge.register_upstream_persona(
-                                    persona_name,
-                                    module.upstream_name(),
-                                    &prompt_def.name,
-                                    description,
-                                );
-                            }
-                        }
-
-                        builder = builder.merge_tool_operations(module.tool_operations().clone());
-                        builder = builder
-                            .merge_tool_classifications(module.tool_classifications().clone());
-
-                        // Apply upstream tool_class overrides
-                        if !upstream_cfg.tool_class.is_empty() {
-                            let mut classes = std::collections::HashMap::new();
-                            for (tool_name, tc) in &upstream_cfg.tool_class {
-                                match (tc.domain.parse(), tc.operation.parse()) {
-                                    (Ok(domain), Ok(operation)) => {
-                                        classes.insert(
-                                            tool_name.clone(),
-                                            navra_core::permissions::ResourceClass::new(
-                                                domain, operation,
-                                            ),
-                                        );
-                                    }
-                                    (Err(e), _) | (_, Err(e)) => {
-                                        tracing::error!(
-                                            upstream = %upstream_cfg.name,
-                                            tool = %tool_name,
-                                            "Invalid tool_class: {e}, skipping"
-                                        );
-                                    }
-                                }
-                            }
-                            if !classes.is_empty() {
-                                tracing::info!(
-                                    upstream = %upstream_cfg.name,
-                                    overrides = classes.len(),
-                                    "Upstream tool classification overrides"
-                                );
-                                builder = builder.merge_tool_classifications(classes);
-                            }
-                        }
-
-                        builder = builder.module(module);
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            upstream = %upstream_cfg.name,
-                            error = %e,
-                            "Failed to discover upstream capabilities, skipping"
+                for prompt_def in module.discovered_prompts() {
+                    if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                        let description = prompt_def.description.as_deref().unwrap_or("");
+                        forge.register_upstream_persona(
+                            persona_name,
+                            module.upstream_name(),
+                            &prompt_def.name,
+                            description,
                         );
                     }
                 }
+
+                builder = builder.merge_tool_operations(module.tool_operations().clone());
+                builder =
+                    builder.merge_tool_classifications(module.tool_classifications().clone());
+
+                if !upstream_cfg.tool_class.is_empty() {
+                    let mut classes = std::collections::HashMap::new();
+                    for (tool_name, tc) in &upstream_cfg.tool_class {
+                        match (tc.domain.parse(), tc.operation.parse()) {
+                            (Ok(domain), Ok(operation)) => {
+                                classes.insert(
+                                    tool_name.clone(),
+                                    navra_core::permissions::ResourceClass::new(
+                                        domain, operation,
+                                    ),
+                                );
+                            }
+                            (Err(e), _) | (_, Err(e)) => {
+                                tracing::error!(
+                                    upstream = %upstream_cfg.name,
+                                    tool = %tool_name,
+                                    "Invalid tool_class: {e}, skipping"
+                                );
+                            }
+                        }
+                    }
+                    if !classes.is_empty() {
+                        tracing::info!(
+                            upstream = %upstream_cfg.name,
+                            overrides = classes.len(),
+                            "Upstream tool classification overrides"
+                        );
+                        builder = builder.merge_tool_classifications(classes);
+                    }
+                }
+
+                builder = builder.module(module);
             }
             Err(e) => {
                 tracing::error!(
