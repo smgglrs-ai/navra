@@ -17,6 +17,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { version = "0.24", optional = true }
 tracing = { workspace = true }
+rmcp = { workspace = true }
 
 [features]
 webmcp = ["tokio-tungstenite", "futures-util"]

@@ -56,7 +56,18 @@ url = "2"
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 tonic = "0.12"
 prost = "0.13"
-schemars = "0.8"
+schemars = "1.0"
+rmcp = { path = "../../modelcontextprotocol/rust-sdk/crates/rmcp", features = [
+    "server",
+    "client",
+    "macros",
+    "schemars",
+    "transport-io",
+    "transport-child-process",
+    "transport-streamable-http-server",
+    "transport-streamable-http-client-reqwest",
+    "reqwest-native-tls",
+] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 [profile.container]
