@@ -16,7 +16,6 @@ use navra_core::McpServer;
 use navra_memory::{Message, Role, Turn, WorkingMemory};
 use navra_model::ModelBackend;
 
-use navra_core::Upstream;
 
 /// Thread-safe wrapper around WorkingMemory.
 ///
@@ -255,8 +254,8 @@ pub(crate) async fn handle_agentic_chat(
             server,
             navra_core::auth::AgentIdentity::new("ui-agent", "dev"),
         );
-        let upstream = match Upstream::connect("ui-agent", transport).await {
-            Ok(u) => u,
+        let peer = match crate::direct_transport::connect_direct_peer(transport).await {
+            Ok(p) => p,
             Err(e) => {
                 let _ = tx_done.send(serde_json::json!({
                     "type": "error",
@@ -265,7 +264,7 @@ pub(crate) async fn handle_agentic_chat(
                 return;
             }
         };
-        let mut client = McpClient::new(upstream);
+        let mut client = McpClient::new(peer);
 
         // Configure tool loop
         let mut config = ToolLoopConfig {

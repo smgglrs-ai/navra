@@ -1293,12 +1293,12 @@ fn warn_if_sensitive(text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use navra_model::{
         MessageItem, ModelBackend, ModelError, ModelResponse, OutputItem, ResponseStatus,
     };
-    use navra_protocol::compat::CallToolResultExt;
-    use navra_protocol::upstream::{Transport, UpstreamError};
+    use navra_protocol::compat::CallToolResultExt as _;
+    use rmcp::model::*;
+    use rmcp::service::ServiceExt;
     use std::future::Future;
     use std::pin::Pin;
     use std::sync::Mutex;
@@ -1334,34 +1334,77 @@ mod tests {
         }
     }
 
-    /// Mock transport for tests.
-    struct MockTransport {
-        responses: Mutex<Vec<serde_json::Value>>,
+    struct MockServer {
+        tools: Vec<Tool>,
+        call_responses: Mutex<Vec<CallToolResult>>,
     }
 
-    impl MockTransport {
-        fn new(responses: Vec<serde_json::Value>) -> Self {
+    impl MockServer {
+        fn new(tools: Vec<Tool>, call_responses: Vec<CallToolResult>) -> Self {
             Self {
-                responses: Mutex::new(responses),
+                tools,
+                call_responses: Mutex::new(call_responses),
             }
         }
     }
 
-    #[async_trait]
-    impl Transport for MockTransport {
-        async fn request(
-            &mut self,
-            _body: serde_json::Value,
-        ) -> Result<serde_json::Value, UpstreamError> {
-            let mut responses = self.responses.lock().unwrap();
-            if responses.is_empty() {
-                Ok(serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 1}))
-            } else {
-                Ok(responses.remove(0))
+    impl rmcp::ServerHandler for MockServer {
+        fn get_info(&self) -> ServerInfo {
+            InitializeResult::new(
+                ServerCapabilities::builder()
+                    .enable_tools()
+                    .build(),
+            )
+            .with_server_info(Implementation::new("test", "0.1.0"))
+        }
+
+        fn list_tools(
+            &self,
+            _request: Option<PaginatedRequestParams>,
+            _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> impl Future<Output = Result<ListToolsResult, rmcp::Error>> + Send + '_ {
+            async {
+                Ok(ListToolsResult {
+                    meta: None,
+                    tools: self.tools.clone(),
+                    next_cursor: None,
+                })
             }
         }
 
-        fn shutdown(&mut self) {}
+        fn call_tool(
+            &self,
+            _request: CallToolRequestParams,
+            _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+        ) -> impl Future<Output = Result<CallToolResult, rmcp::Error>> + Send + '_ {
+            let resp = {
+                let mut responses = self.call_responses.lock().unwrap();
+                if responses.is_empty() {
+                    CallToolResult::text("ok")
+                } else {
+                    responses.remove(0)
+                }
+            };
+            async move { Ok(resp) }
+        }
+    }
+
+    fn parse_tool_defs(json_tools: Vec<serde_json::Value>) -> Vec<Tool> {
+        json_tools
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect()
+    }
+
+    fn parse_call_results(json_responses: Vec<serde_json::Value>) -> Vec<CallToolResult> {
+        json_responses
+            .into_iter()
+            .filter_map(|v| {
+                // The old test format wraps in {"jsonrpc":"2.0","result":{...},"id":N}
+                let result = v.get("result").cloned().unwrap_or(v);
+                serde_json::from_value(result).ok()
+            })
+            .collect()
     }
 
     async fn mock_client(tool_responses: Vec<serde_json::Value>) -> McpClient {
@@ -1372,29 +1415,21 @@ mod tests {
         tools: Vec<serde_json::Value>,
         tool_responses: Vec<serde_json::Value>,
     ) -> McpClient {
-        let mut all = vec![
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "result": {
-                    "protocolVersion": "2025-03-26",
-                    "capabilities": {},
-                    "serverInfo": {"name": "test", "version": "0.1.0"}
-                },
-                "id": 1
-            }),
-            serde_json::json!({"jsonrpc": "2.0", "result": {}, "id": 2}),
-            serde_json::json!({
-                "jsonrpc": "2.0",
-                "result": {"tools": tools},
-                "id": 3
-            }),
-        ];
-        all.extend(tool_responses);
-        let transport = MockTransport::new(all);
-        let upstream = navra_protocol::Upstream::connect("test", transport)
+        let tool_defs = parse_tool_defs(tools);
+        let call_results = parse_call_results(tool_responses);
+        let server = MockServer::new(tool_defs, call_results);
+        let (server_io, client_io) = tokio::io::duplex(65536);
+        tokio::spawn(async move {
+            if let Ok(svc) = server.serve(server_io).await {
+                let _ = svc.waiting().await;
+            }
+        });
+        let client = <() as ServiceExt<rmcp::RoleClient>>::serve((), client_io)
             .await
-            .unwrap();
-        McpClient::new(upstream)
+            .expect("client connect");
+        let peer = client.peer().clone();
+        tokio::spawn(async move { let _ = client.waiting().await; });
+        McpClient::new(peer)
     }
 
     fn stop_response(text: &str) -> ModelResponse {

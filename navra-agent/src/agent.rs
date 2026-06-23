@@ -7,7 +7,6 @@ use crate::tool_loop::{run_tool_loop, ToolLoopConfig, ToolLoopResult};
 use navra_auth::identity::CapSigner;
 use navra_model::ModelBackend;
 use navra_protocol::label::DataLabel;
-use navra_protocol::Upstream;
 use navra_safety_hooks::safety::FilterPipeline;
 use std::sync::Arc;
 
@@ -76,7 +75,7 @@ impl Agent {
 
 /// Builder for constructing an [`Agent`].
 pub struct AgentBuilder {
-    upstream: Option<Upstream>,
+    peer: Option<rmcp::Peer<rmcp::RoleClient>>,
     endpoint_url: Option<String>,
     auth_token: Option<String>,
     model: Option<Box<dyn ModelBackend>>,
@@ -87,7 +86,7 @@ pub struct AgentBuilder {
 impl AgentBuilder {
     fn new() -> Self {
         Self {
-            upstream: None,
+            peer: None,
             endpoint_url: None,
             auth_token: None,
             model: None,
@@ -103,9 +102,15 @@ impl AgentBuilder {
         Ok(self)
     }
 
-    /// Connect to an MCP server via SSE.
+    /// Connect to an MCP server via SSE / streamable HTTP.
     pub async fn endpoint_sse(mut self, url: &str) -> Result<Self, AgentError> {
-        self.upstream = Some(Upstream::sse("agent", url).await?);
+        let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url);
+        let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+            .await
+            .map_err(|e| AgentError::Upstream(format!("SSE connect error: {e}")))?;
+        let peer = client.peer().clone();
+        tokio::spawn(async move { let _ = client.waiting().await; });
+        self.peer = Some(peer);
         Ok(self)
     }
 
@@ -115,13 +120,25 @@ impl AgentBuilder {
         command: &[String],
         cwd: Option<&str>,
     ) -> Result<Self, AgentError> {
-        self.upstream = Some(Upstream::spawn("agent", command, cwd).await?);
+        let mut cmd = tokio::process::Command::new(&command[0]);
+        cmd.args(&command[1..]);
+        if let Some(dir) = cwd {
+            cmd.current_dir(dir);
+        }
+        let transport = rmcp::transport::TokioChildProcess::new(cmd)
+            .map_err(|e| AgentError::Upstream(format!("spawn failed: {e}")))?;
+        let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+            .await
+            .map_err(|e| AgentError::Upstream(format!("stdio connect error: {e}")))?;
+        let peer = client.peer().clone();
+        tokio::spawn(async move { let _ = client.waiting().await; });
+        self.peer = Some(peer);
         Ok(self)
     }
 
-    /// Use a pre-connected [`Upstream`].
-    pub fn upstream(mut self, upstream: Upstream) -> Self {
-        self.upstream = Some(upstream);
+    /// Use a pre-connected rmcp peer.
+    pub fn with_peer(mut self, peer: rmcp::Peer<rmcp::RoleClient>) -> Self {
+        self.peer = Some(peer);
         self
     }
 
@@ -373,7 +390,6 @@ impl AgentBuilder {
             navra_cognitive::assemble_full(forge, name, "", None, None, None, &resolved_prompts)
                 .map_err(|e| AgentError::Config(format!("persona '{name}': {e}")))?;
 
-        // Patch the system prompt if the upstream source overrode the core mandate
         let system =
             if persona.source.is_some() && resolved_persona.core_mandate != persona.core_mandate {
                 output.system_prompt().replacen(
@@ -426,14 +442,16 @@ impl AgentBuilder {
 
     /// Build the agent. Requires endpoint and model to be set.
     pub async fn build(self) -> Result<Agent, AgentError> {
-        let upstream = if let Some(upstream) = self.upstream {
-            upstream
+        let peer = if let Some(peer) = self.peer {
+            peer
         } else if let Some(ref url) = self.endpoint_url {
-            if let Some(ref token) = self.auth_token {
-                Upstream::http_with_auth("agent", url, token).await?
-            } else {
-                Upstream::http("agent", url).await?
-            }
+            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url.as_str());
+            let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+                .await
+                .map_err(|e| AgentError::Upstream(format!("connect error: {e}")))?;
+            let peer = client.peer().clone();
+            tokio::spawn(async move { let _ = client.waiting().await; });
+            peer
         } else {
             return Err(AgentError::Config("endpoint not set".into()));
         };
@@ -442,7 +460,7 @@ impl AgentBuilder {
             .model
             .ok_or_else(|| AgentError::Config("model not set".into()))?;
 
-        let client = McpClient::new(upstream);
+        let client = McpClient::new(peer);
 
         Ok(Agent {
             client,

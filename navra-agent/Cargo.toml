@@ -23,6 +23,7 @@ navra-model = { path = "../navra-model", default-features = false }
 navra-auth = { path = "../navra-auth", default-features = false }
 navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
 navra-cognitive = { path = "../navra-cognitive" }
+rmcp = { workspace = true }
 chrono = "0.4"
 regex-lite = "0.1"
 serde = { workspace = true }

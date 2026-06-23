@@ -19,6 +19,7 @@ use std::sync::{Arc, RwLock};
 
 pub use builder::McpServerBuilder;
 pub use handlers::{IFCToolFilter, ToolFilter, ToolUsageTracker, UsagePruningFilter};
+pub use navra_handler::NavraHandler;
 
 use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};
 
