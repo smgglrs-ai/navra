@@ -529,3 +529,16 @@
     exit_reason: "No unblocked items remaining in approve scope"
     branch: "loop/2026-06-19-4"
     tag: "loop-run/2026-06-19-4-6"
+
+- date: 2026-06-23
+  type: manual
+  summary: "NAVRA-149: rmcp SDK migration — complete"
+  details: |
+    Full migration from custom MCP implementation to rmcp SDK.
+    17 commits, 113 files changed, -7207 net lines.
+    Types, transports (stdio/HTTP/WebSocket), upstream client, agent
+    subsystem all migrated. Legacy Upstream type and dispatch deleted.
+    NavraHandler wraps McpServer as rmcp ServerHandler.
+    IFC security pipeline preserved, all 2676 tests pass.
+    Created NAVRA-150 (backlog): contribute rate limiting to rmcp.
+  branch: "loop/2026-06-19-4"

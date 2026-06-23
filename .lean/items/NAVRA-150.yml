@@ -1,0 +1,17 @@
+id: NAVRA-150
+title: "Contribute rate limiting middleware to rmcp (issue #388)"
+status: backlog
+priority: medium
+effort: M
+tags: [upstream, rmcp, community]
+depends_on: [NAVRA-149]
+acceptance:
+  - RateLimitLayer implemented as rmcp ServerHandler middleware
+  - PR opened on modelcontextprotocol/rust-sdk
+  - Tested with navra as a real-world consumer
+notes:
+  - "rmcp issue #388 is marked help-wanted, P2 priority."
+  - "DaleSeo is primary maintainer — responsive, merges external PRs."
+  - "Start with rate limiting, then server card (#527), then middleware
+    composability pattern (no issue yet, needs discussion first)."
+  - "navra running on rmcp gives us credibility and concrete feedback."

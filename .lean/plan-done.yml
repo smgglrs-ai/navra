@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 137 completed items
+# 138 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -906,4 +906,10 @@ items:
     status: done
     priority: medium
     effort: M
+
+  - id: "NAVRA-149"
+    title: "Adopt rmcp SDK — replace custom MCP implementation"
+    status: done
+    priority: high
+    effort: XL
 
