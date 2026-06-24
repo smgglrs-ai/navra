@@ -52,7 +52,7 @@ items:
 
   - id: "NAVRA-062"
     title: "NemoClaw MCP bridge"
-    status: backlog
+    status: wont_do
     priority: low
     effort: M
 
