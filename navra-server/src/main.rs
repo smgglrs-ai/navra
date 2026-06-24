@@ -4648,7 +4648,19 @@ fn uninstall_systemd_units() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Expand `~` to the user's home directory in a path string.
+macro_rules! authed_transport {
+    ($endpoint:expr, $token:expr) => {{
+        let mut config =
+            rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(
+                $endpoint,
+            );
+        if let Some(t) = $token {
+            config = config.auth_header(t);
+        }
+        rmcp::transport::StreamableHttpClientTransport::from_config(config)
+    }};
+}
+
 async fn run_agent(
     prompt: &str,
     model_name: Option<&str>,
@@ -4741,11 +4753,8 @@ async fn run_agent(
 
     // Discover upstream personas from the running navra server
     if let Some(ref mut f) = forge {
-        let discover_token = token
-            .map(String::from)
-            .or_else(|| std::env::var("MCPD_TOKEN").ok());
         let discover_peer = {
-            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint);
+            let transport = authed_transport!(endpoint, token);
             rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
                 .await
                 .ok()
@@ -4875,7 +4884,7 @@ async fn run_agent(
             if has_source || !all_refs.is_empty() {
                 // Need an MCP connection to resolve source and/or prompts
                 let resolver_peer = {
-                    let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint);
+                    let transport = authed_transport!(endpoint, token);
                     let c = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
                     let peer = c.peer().clone();
                     tokio::spawn(async move { let _ = c.waiting().await; });
@@ -4928,7 +4937,7 @@ async fn run_agent(
     } else if !cli_prompt_refs.is_empty() {
         // No persona loaded but CLI prompts were specified — resolve and append
         let resolver_peer = {
-            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint);
+            let transport = authed_transport!(endpoint, token);
             let c = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
             let peer = c.peer().clone();
             tokio::spawn(async move { let _ = c.waiting().await; });

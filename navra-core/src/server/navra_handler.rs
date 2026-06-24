@@ -37,18 +37,21 @@ impl NavraHandler {
         &self.server
     }
 
-    fn agent_from_context(ctx: &RequestContext<RoleServer>) -> AgentIdentity {
-        ctx.extensions
-            .get::<AgentIdentity>()
-            .cloned()
-            .unwrap_or_else(|| {
-                let name = ctx
-                    .peer
-                    .peer_info()
-                    .map(|info| info.client_info.name.clone())
-                    .unwrap_or_else(|| "anonymous".to_string());
-                AgentIdentity::new(&name, "default")
-            })
+    fn agent_from_context(ctx: &RequestContext<RoleServer>, server: &McpServer) -> AgentIdentity {
+        if let Some(id) = ctx.extensions.get::<AgentIdentity>() {
+            return id.clone();
+        }
+        if let Some(parts) = ctx.extensions.get::<axum::http::request::Parts>() {
+            if let Ok(id) = server.authenticator().authenticate(&parts.headers) {
+                return id;
+            }
+        }
+        let name = ctx
+            .peer
+            .peer_info()
+            .map(|info| info.client_info.name.clone())
+            .unwrap_or_else(|| "anonymous".to_string());
+        AgentIdentity::new(&name, "default")
     }
 
     fn session_id_for(agent: &AgentIdentity) -> String {
@@ -81,7 +84,7 @@ impl ServerHandler for NavraHandler {
         request: rmcp::model::InitializeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, ErrorData> {
-        let agent = Self::agent_from_context(&context);
+        let agent = Self::agent_from_context(&context, &self.server);
         let session_id = Self::session_id_for(&agent);
         // Remove any prior session for this agent (clean slate on re-init)
         self.server.sessions().remove(&session_id);
@@ -96,7 +99,7 @@ impl ServerHandler for NavraHandler {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let agent = Self::agent_from_context(&context);
+        let agent = Self::agent_from_context(&context, &self.server);
         let session_id = Self::session_id_for(&agent);
 
         // Ensure a navra session exists (auto-create for stateless mode)
@@ -115,7 +118,7 @@ impl ServerHandler for NavraHandler {
         request: Option<rmcp::model::PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let agent = Self::agent_from_context(&context);
+        let agent = Self::agent_from_context(&context, &self.server);
         let pagination = Self::pagination(&request);
         Ok(self.server.handle_list_tools(&agent, &pagination))
     }
@@ -125,7 +128,7 @@ impl ServerHandler for NavraHandler {
         request: Option<rmcp::model::PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
-        let agent = Self::agent_from_context(&context);
+        let agent = Self::agent_from_context(&context, &self.server);
         let pagination = Self::pagination(&request);
         Ok(self.server.handle_list_prompts(&agent, &pagination))
     }
@@ -135,7 +138,7 @@ impl ServerHandler for NavraHandler {
         request: GetPromptRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, ErrorData> {
-        let agent = Self::agent_from_context(&context);
+        let agent = Self::agent_from_context(&context, &self.server);
         let session_id = Self::session_id_for(&agent);
         self.server
             .handle_get_prompt(request, &agent, &session_id)
@@ -148,7 +151,7 @@ impl ServerHandler for NavraHandler {
         request: Option<rmcp::model::PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        let agent = Self::agent_from_context(&context);
+        let agent = Self::agent_from_context(&context, &self.server);
         let pagination = Self::pagination(&request);
         Ok(self.server.handle_list_resources(&agent, &pagination))
     }
@@ -158,7 +161,7 @@ impl ServerHandler for NavraHandler {
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
-        let agent = Self::agent_from_context(&context);
+        let agent = Self::agent_from_context(&context, &self.server);
         let session_id = Self::session_id_for(&agent);
         self.server
             .handle_read_resource(request, &agent, &session_id)
