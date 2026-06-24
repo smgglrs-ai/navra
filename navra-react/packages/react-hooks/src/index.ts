@@ -60,3 +60,23 @@ export {
   type UseFlowEventsOptions,
   type UseFlowEventsResult,
 } from "./useFlowEvents";
+
+export {
+  graphToYaml,
+  yamlToGraph,
+  type FlowKind,
+  type FlowMeta,
+  type DagNodeData,
+  type HandoffNodeData,
+  type EditorEdgeData,
+  type GraphState,
+} from "./useYamlSync";
+
+export {
+  useFlowValidation,
+  validateFlow,
+  type ValidationSeverity,
+  type ValidationError,
+  type UseFlowValidationOptions,
+  type UseFlowValidationResult,
+} from "./useFlowValidation";
