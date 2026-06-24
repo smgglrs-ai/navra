@@ -1,267 +1,206 @@
 <p align="center">
-  <img src="assets/logo/logo-192.png" alt="navra logo" width="128" />
+  <img src="assets/logo/navra-icon-192.png" alt="navra logo" width="128" />
 </p>
 
 <h1 align="center">navra</h1>
 
 <p align="center">
-  Secure MCP gateway for Linux desktops
+  Secure agentic AI framework for Rust
 </p>
 
 <p align="center">
   <a href="#features">Features</a> ·
   <a href="#quickstart">Quickstart</a> ·
+  <a href="#agent-sdk">Agent SDK</a> ·
+  <a href="#flows">Flows</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="#configuration">Configuration</a> ·
   <a href="#security">Security</a> ·
-  <a href="#workspace">Workspace</a> ·
   <a href="#license">License</a>
 </p>
 
 ---
 
-**navra** is a user-level MCP (Model Context Protocol) gateway that sits
-between AI agents and local resources. It aggregates built-in tool modules
-and upstream MCP servers behind a unified security layer with authentication,
-path ACLs, content safety filtering, human-in-the-loop approval, and a
-hook pipeline.
+**navra** is a Rust framework for building secure AI agents. It
+combines an MCP gateway, an agent SDK, and a multi-agent flow engine
+behind a unified security layer with Information Flow Control,
+authentication, path ACLs, content safety filtering, human-in-the-loop
+approval, and a hook pipeline.
 
 ```
-AI Agent (Claude Code, Goose, custom agents, ...)
+AI Agent (Claude Code, Goose, Rust SDK, ...)
     │
-    │  MCP Streamable HTTP + SSE (Unix socket or TCP)
+    │  MCP Streamable HTTP + SSE
     ▼
-navra (gateway)
+navra gateway
     ├── Auth (BLAKE3 tokens, capability tokens, DID:key)
-    ├── Permission engine (path ACLs, per-tool rules)
-    ├── Hook pipeline (pre/post tool-call)
-    ├── Safety filters (regex + ML)
-    ├── Built-in modules (file, git, exec, RAG, voice, vision)
-    └── Upstream MCP servers (proxied, safety-filtered)
+    ├── Permission engine (path ACLs, domain rules, per-tool policies)
+    ├── Information Flow Control (taint tracking, no-write-down)
+    ├── Hook pipeline (pre/post tool-call, safety, egress)
+    ├── Safety filters (regex + NER + ML classifiers)
+    ├── Built-in modules (file, git, RAG, voice, vision)
+    ├── Upstream MCP servers (proxied, safety-filtered)
+    └── Model proxy (OpenAI-compat, Anthropic, ONNX)
+
+navra-agent (Rust SDK)
+    ├── Agent builder with fluent API
+    ├── ReAct tool-use loop
+    ├── 5 model backends (Ollama, Mistral, Anthropic, OGX, CLI)
+    ├── IFC taint tracking per session
+    ├── Deterministic replay
+    └── Hermes-format trace export
+
+navra-flow (orchestration)
+    ├── DAG execution (parallel tasks, dependency resolution)
+    ├── Handoff routing (model-driven agent transitions)
+    └── Mesh communication (mailbox, blackboard, back-edges)
 ```
 
 ## Features
 
-- **Gateway, not framework** — enforces security at the infrastructure
-  layer; orchestration belongs in the agent.
-- **Deny-wins ACLs** — path deny rules always beat allow rules.
-  Canonicalization before ACL check prevents traversal.
-- **In-process models** — small ONNX models (safety classifiers,
-  embeddings) load directly into the process. No external dependencies
-  for CPU tier.
-- **Information Flow Control** — IFC labels with trusted paths track
-  data sensitivity across tool calls.
+- **Security at the infrastructure layer** — IFC, ACLs, and safety
+  hooks are enforced by the gateway, not by trusting the model.
+- **Rust agent SDK** — builder API, 5 model backends, typed actions,
+  trace export, signals, hibernation, replay.
+- **Multi-agent flows** — DAG and handoff orchestration defined in
+  YAML with dynamic task generation.
+- **In-process models** — ONNX models (safety classifiers,
+  embeddings, PII detection) load directly. No external services
+  needed for CPU tier.
+- **Agent bundles** — package agents as signed OCI artifacts with
+  persona, permissions, and upstream config.
 - **Human-in-the-loop** — D-Bus desktop notifications for approval
   requests, with system tray for session control.
-- **Multi-agent flows** — DAG execution, handoff routing, mesh
-  communication (mailbox, blackboard, back-edges), mandate validation.
-- **Model hub** — pull and cache models from OCI, HuggingFace, and
-  Ollama registries with content-addressed storage.
-- **Persona system** — YAML-defined personas, directives, and
-  heuristics woven into system prompts.
-- **Containerized agents** — agents run in Podman sandboxes with a
-  shared GPU model server. Falls back to in-process when Podman is
-  unavailable.
 
 ## Quickstart
 
-**First 5 minutes** — get navra running and connect Claude Code:
-
 ```bash
-# 1. Install prerequisites (Fedora)
+# Install (Fedora)
 sudo dnf install onnxruntime-devel
-
-# 2. Build
 git clone https://github.com/smgglrs-ai/navra.git && cd navra
-export ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1
-cargo build
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --release
+cp target/release/navra ~/.local/bin/
 
-# 3. Start the gateway
-cargo run -- serve
-# Listening on unix:/run/user/$UID/navra/navra.sock
-# Listening on tcp:127.0.0.1:9315
-# Web UI at http://localhost:9315
+# Interactive setup
+navra init
 
-# 4. Generate a token for your agent
-cargo run -- token generate --name claude --permissions dev
-# Prints an [[agents]] block — paste it into ~/.config/navra/config.toml
-
-# 5. Add a permission set (if not already present)
-cat >> ~/.config/navra/config.toml << 'EOF'
-[permissions.dev]
-allow = ["$HOME/Code/**"]
-deny = ["**/.env", "**/.git/config"]
-safety = "standard"
-EOF
-
-# 6. Restart navra, then point Claude Code at it
+# Start the gateway
+navra serve
 ```
 
-That's it. navra is now filtering tool calls through auth, path ACLs,
-safety filters, and audit logging.
+`navra init` detects your agent (Claude Code, Goose), recommends
+MCP servers for your project type, generates a token, writes config,
+and optionally installs a systemd service.
 
-### Prerequisites
+## Agent SDK
 
-- Rust stable (1.75+)
-- ONNX Runtime (Fedora: `onnxruntime-devel`, Ubuntu: `libonnxruntime-dev`)
-- Linux (systemd + D-Bus for notifications/tray)
+Build agents in Rust with `navra-agent`:
+
+```rust
+use navra_agent::{Agent, OpenAiBackend, Locality};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let model = OpenAiBackend::new(
+        "http://localhost:11434/v1", "granite3.3:8b",
+        None, Locality::Local,
+    );
+
+    let mut agent = Agent::builder()
+        .endpoint("http://localhost:9315/mcp").await?
+        .model(model)
+        .system_prompt("You are a helpful assistant.")
+        .auth_token("mcd_your_token_here")
+        .max_iterations(20)
+        .build().await?;
+
+    let result = agent.run("List the git status").await?;
+    println!("{}", result.response);
+    Ok(())
+}
+```
+
+Works with Ollama, Mistral, Anthropic, any OpenAI-compatible API,
+or a local CLI command. See [examples/standalone-agent/](examples/standalone-agent/)
+for a complete runnable example.
+
+## Flows
+
+Define multi-agent workflows in YAML:
+
+```yaml
+kind: dag
+name: deep-research
+tasks:
+  - id: search
+    specialist: researcher
+    mandate: "Search multiple sources about..."
+  - id: verify
+    specialist: devils_advocate
+    depends_on: [search]
+    mandate: "Adversarially verify each claim..."
+  - id: synthesize
+    specialist: summarizer
+    depends_on: [verify]
+    mandate: "Produce a cited report with only verified findings..."
+```
+
+Included flows: [review](examples/flows/review.yaml),
+[deep-research](examples/flows/deep-research.yaml),
+[security-audit](examples/flows/security-audit.yaml),
+[improve](examples/flows/improve.yaml),
+[self-improve](examples/flows/self-improve.yaml).
 
 ## Architecture
 
-navra is a Rust workspace of 22 crates organized in strict dependency
-layers:
+22-crate Rust workspace organized in strict dependency layers:
 
 ```
 navra-protocol          (no internal deps)
-navra-model-hub         (no internal deps)
-navra-model-runtime     (no internal deps)
-navra-responses         (no internal deps)
-navra-cognitive         (no internal deps)
-navra-macros            (no internal deps, proc-macro)
-    ↓
-navra-model             (responses)
-    ↓
-navra-security          (protocol + model)
-    ↓
-navra-core              (protocol + model + security)  Server
-    ↓
-navra-memory            (core + model, opt: rag)       Persistence
-navra-agent             (protocol + model + security   Client SDK
-                           + cognitive)
-navra-rag        ───┐
-navra-modal-*    ───┘── (core only)
-    ↓
-navra-flow              (agent + cognitive + protocol  Orchestration
-                           + model + security)
-    ↓
-navra-server            (all + hub + runtime)          Binary
-benchmarks                (dev only)
+navra-model             (protocol)
+navra-auth              (protocol)
+navra-safety-hooks      (auth)
+navra-core              (protocol + model + auth + safety)
+navra-agent             (protocol + model + auth + cognitive)
+navra-flow              (agent + core)
+navra-server            (all crates)
 ```
 
-### Key design decisions
-
-- All capabilities are **modules** implementing the `Module` trait.
-  Upstream MCP servers are wrapped in `UpstreamModule`.
-- Content filtering runs as `SafetyHook` in the hook pipeline, not
-  hardcoded in the request path.
-- Resilient upstream transports with exponential backoff, timeout,
-  reconnection, and sleep detection.
-- **Agent isolation**: agents can run in Podman containers
-  (`navra-agent` binary) with a shared model server (GPU) and
-  per-agent sandboxes (no GPU). See [DESIGN.md](DESIGN.md) for details.
-
-## Configuration
-
-Default config path: `~/.config/navra/config.toml`
-
-```toml
-[server]
-tcp = "127.0.0.1:9315"   # Unix socket is the default transport
-
-[modules.file]
-enabled = true
-
-[modules.git]
-enabled = true
-
-[[agents]]
-name = "claude"
-token_hash = "..."       # navra token --name claude
-permissions = "dev"       # references [permissions.dev] below
-
-[permissions.dev]
-allow = ["/home/user/projects/**"]
-deny = ["/home/user/projects/.env"]
-safety = "standard"
-
-[[upstream]]
-name = "filesystem"
-command = ["npx", "-y", "@anthropic/mcp-fs"]
-```
-
-See [DESIGN.md](DESIGN.md) for the full configuration reference.
+See [DESIGN.md](DESIGN.md) for the full architecture, protocol details,
+and security model.
 
 ## Security
 
-### Transport security
+- **Information Flow Control** — taint labels track data sensitivity
+  across tool calls. Tainted sessions cannot write to lower-classification
+  outputs (Bell-LaPadula no-write-down).
+- **Deny-wins ACLs** — deny rules always beat allow rules. Path
+  canonicalization prevents traversal.
+- **34 adversarial tests** — covering ACL bypass, IFC laundering,
+  prompt injection, hook pipeline abuse, approval replay, and
+  cross-session isolation.
+- **Cedar policies** — OWASP Agentic Security Top 10 baseline.
+- **PII detection** — regex + NER (English + multilingual ONNX) with
+  redaction, pseudonymization, or blocking.
 
-navra's default transport is a **Unix domain socket** with `0600`
-permissions, restricting access to the owning user. The optional TCP
-listener binds to `127.0.0.1` only, preventing network exposure.
-These defaults mean local agent-to-gateway communication is secure
-without additional configuration.
+## Agent Bundles
 
-### Upstream connections
+```bash
+navra agent install oci://quay.io/navra/researcher:latest
+navra agent inspect oci://quay.io/navra/code-reviewer:latest
+navra agent list
+```
 
-**Current limitation**: upstream MCP server connections over HTTP
-(`transport = "http"` or `transport = "sse"`) do not use TLS.
-Connections to `localhost` upstreams are fine (traffic never leaves
-the machine), but connecting to remote upstream servers over plain
-HTTP exposes requests and responses to network interception.
-
-For any non-localhost upstream, place a reverse proxy (nginx, Caddy,
-or Envoy) in front of the upstream server to terminate TLS. See the
-[Transport Security](DESIGN.md#transport-security) section in
-DESIGN.md for a worked example and full details.
-
-### PII detection and GDPR compliance
-
-navra detects and handles PII across three layers: regex patterns
-(US + EU), NER models (English + multilingual ONNX), and file path
-analysis. Detected PII can be redacted, pseudonymized, or blocked.
-The PII pipeline covers tool responses, memory storage, audit logs,
-embeddings, and model reasoning text. GDPR tools (`pii_report`,
-`memory_purge_pii`, `pii_consent`) support data subject rights.
-See [DESIGN.md](DESIGN.md#content-safety) for details.
-
-### Further reading
-
-See [DESIGN.md](DESIGN.md) for the full security model: defense in
-depth layers, threat model, content safety filtering, IFC, and
-the approval workflow.
-
-## Workspace
-
-| Crate | Role |
-|---|---|
-| `navra-protocol` | MCP/A2A/JSON-RPC types, upstream client transports |
-| `navra-model` | Model backend trait + ONNX/OpenAI/Anthropic implementations |
-| `navra-model-hub` | Pull/cache models from OCI, HuggingFace, Ollama registries |
-| `navra-model-runtime` | Serve models with pluggable isolation (direct, Podman, OpenShell) |
-| `navra-responses` | Open Responses API types (spec-compliant, no runtime) |
-| `navra-auth` | Authentication, authorization, identity, and permission primitives |
-| `navra-safety` | PII detection, content safety filters, and pseudonymization |
-| `navra-safety-hooks` | Content hooks and integrity monitoring |
-| `navra-security` | Facade: re-exports navra-auth + navra-safety |
-| `navra-cognitive` | Persona/directive/heuristic YAML loader + prompt weaver |
-| `navra-memory` | Working memory (conversation turns) + knowledge store (FTS5) |
-| `navra-agent` | Client SDK: agent builder, MCP client, ReAct tool-use loop |
-| `navra-flow` | Multi-agent flows: DAG execution, handoff routing, mesh |
-| `navra-core` | MCP server, module trait, session, transport |
-| `navra-mcp` | Module trait and type definitions for MCP tool crates |
-| `navra-openapi` | OpenAPI-to-MCP runtime bridge |
-| `navra-rag` | Vector search, sqlite-vec, semantic chunking, reranking |
-| `navra-modal-voice` | Speech I/O (ASR + TTS via ONNX models) |
-| `navra-modal-vision` | Image/screen understanding (GPU tier) |
-| `navra-macros` | `#[tool]` proc macro for tool definition generation |
-| `navra-server` | CLI, config, module wiring, systemd, tray |
-| `benchmarks` | Criterion performance benchmarks |
+See [examples/agent-bundles/](examples/agent-bundles/) for reference
+manifests.
 
 ## Documentation
 
-- [WHY-NAVRA.md](WHY-NAVRA.md) — what navra does differently and why it exists
-- [CONFIG.md](CONFIG.md) — complete configuration reference (every TOML key, type, default)
-- [CHANGELOG.md](CHANGELOG.md) — project history by month
-- [DESIGN.md](DESIGN.md) — full architecture, protocol, security model
-- [TESTING.md](TESTING.md) — test prerequisites, running tests, crate test counts
-- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidelines, commit conventions, DCO
-- [SECURITY.md](SECURITY.md) — vulnerability disclosure policy
-- [ROADMAP.md](ROADMAP.md) — phased development plan
-- [MODELS.md](MODELS.md) — model integration architecture, CPU/GPU tiers, hardware profiles
-- [DISCOVERY.md](DISCOVERY.md) — agent/tool discovery landscape (AID, A2A, MCP Server Cards)
-- [OPENSHELL.md](OPENSHELL.md) — OpenShell integration for sandboxed agent execution
-- [examples/config.toml](examples/config.toml) — annotated starter configuration
-- [llms.txt](llms.txt) — AI-friendly documentation index ([spec](https://llmstxt.org/))
+- [SDK Guide](docs/content/docs/sdk/) — building agents with navra-agent
+- [CONFIG.md](CONFIG.md) — complete configuration reference
+- [DESIGN.md](DESIGN.md) — full architecture and security model
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidelines
+- [SECURITY.md](SECURITY.md) — vulnerability disclosure
+- [examples/](examples/) — configs, flows, agent bundles, standalone agent
 
 ## License
 
