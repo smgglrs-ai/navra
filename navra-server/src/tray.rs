@@ -233,7 +233,7 @@ fn icon_theme_dir() -> std::path::PathBuf {
 /// can reference it by name. Returns `true` if the icon was installed
 /// (or already exists).
 fn install_tray_icon() -> bool {
-    let sizes = [("64x64", include_bytes!("../../assets/logo/navra-64.png").as_slice())];
+    let sizes = [("64x64", include_bytes!("../../assets/logo/navra-icon-64.png").as_slice())];
     let base = icon_theme_dir();
 
     for (size, data) in &sizes {
