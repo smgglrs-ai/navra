@@ -30,6 +30,42 @@ pub(crate) enum Commands {
         #[arg(long)]
         dev_mode: bool,
     },
+    /// Interactive first-time setup
+    Init {
+        /// Skip interactive prompts, use defaults + flags
+        #[arg(long)]
+        quiet: bool,
+        /// Agent name (default: auto-detect)
+        #[arg(long)]
+        agent_name: Option<String>,
+        /// Safety level: standard, strict, minimal
+        #[arg(long, default_value = "standard")]
+        safety: String,
+        /// Project type: dev, data, ops, custom
+        #[arg(long, default_value = "dev")]
+        project: String,
+        /// Model backend: ollama, mistral, anthropic, openai-compat, none
+        #[arg(long, default_value = "none")]
+        model: String,
+        /// Base URL for openai-compat backend
+        #[arg(long)]
+        model_url: Option<String>,
+        /// API key for model backend
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Allowed directories (comma-separated globs)
+        #[arg(long)]
+        allow: Option<String>,
+        /// Install systemd user service
+        #[arg(long)]
+        install_service: bool,
+        /// Output config to stdout instead of writing to file
+        #[arg(long)]
+        dry_run: bool,
+        /// Config output path
+        #[arg(short, long)]
+        output: Option<String>,
+    },
     /// Run as a stdio MCP server (for Claude Desktop, Cursor, etc.)
     Stdio {
         /// Path to config file
@@ -945,6 +981,66 @@ mod tests {
                 assert!(upstream_prompts.is_empty());
             }
             _ => panic!("Expected Run command"),
+        }
+    }
+
+    #[test]
+    fn cli_init_default() {
+        let cli = Cli::try_parse_from(["navra", "init"]).unwrap();
+        match cli.command {
+            Commands::Init {
+                quiet,
+                safety,
+                project,
+                model,
+                dry_run,
+                ..
+            } => {
+                assert!(!quiet);
+                assert_eq!(safety, "standard");
+                assert_eq!(project, "dev");
+                assert_eq!(model, "none");
+                assert!(!dry_run);
+            }
+            _ => panic!("Expected Init command"),
+        }
+    }
+
+    #[test]
+    fn cli_init_quiet() {
+        let cli = Cli::try_parse_from([
+            "navra",
+            "init",
+            "--quiet",
+            "--agent-name",
+            "foo",
+            "--project",
+            "data",
+            "--safety",
+            "strict",
+            "--model",
+            "ollama",
+            "--dry-run",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Init {
+                quiet,
+                agent_name,
+                safety,
+                project,
+                model,
+                dry_run,
+                ..
+            } => {
+                assert!(quiet);
+                assert_eq!(agent_name.as_deref(), Some("foo"));
+                assert_eq!(safety, "strict");
+                assert_eq!(project, "data");
+                assert_eq!(model, "ollama");
+                assert!(dry_run);
+            }
+            _ => panic!("Expected Init command"),
         }
     }
 
