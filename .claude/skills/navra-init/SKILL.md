@@ -3,160 +3,67 @@ name: navra-init
 description: Set up navra for a new user — detect environment, generate config, create tokens, install service
 ---
 
-Generate a working navra configuration for first-time setup.
+Set up navra for a new user using the built-in `navra init` command.
 
 ## Usage
 
 Run `/navra-init` when a user wants to start using navra as their
-MCP gateway. The skill detects the environment, asks a few questions,
-and produces a complete setup.
+MCP gateway.
 
-## Workflow
+## Primary: `navra init`
 
-### 1. Detect agent runtime
-
-Check which AI agent the user runs:
-
-- `.claude/` exists in cwd or home → Claude Code
-- `~/.config/goose/` exists → Goose
-- Otherwise → ask the user
-
-### 2. Gather requirements
-
-Ask the user (use AskUserQuestion):
-
-**Directories**: "Which directories should your agent access?"
-- Suggest `~/Code/**` and `~/Documents/**` as defaults
-- Always deny `**/.env`, `**/*secret*`, `**/credentials*`
-
-**Safety level**: "What safety filtering do you want?"
-- `standard` (recommended) — PII detection + secret filtering + prompt injection detection
-- `strict` — all of standard plus ML-based content classification
-- `minimal` — secret filtering only (`secrets-only`)
-
-**Modules**: "Which capabilities do you need?"
-- File access (default: yes)
-- Git operations (default: yes)
-- RAG search (default: no)
-- Voice I/O (default: no)
-
-### 3. Generate token
-
-Run the token generation command:
+If navra is installed and in PATH:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 navra token generate --name <agent-name> --permissions <perm-set>
+# Interactive setup (recommended for first-time users)
+navra init
+
+# Non-interactive with explicit options
+navra init --quiet --agent-name claude-code --project dev --safety standard
+
+# Preview config without writing
+navra init --quiet --dry-run --project dev
 ```
 
-Parse the output to extract the token and hash. If `navra` is not
-in PATH, build it first:
+## Fallback: build from source
+
+If navra is not in PATH, build and run from the repo:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo run -- token generate --name <agent-name> --permissions <perm-set>
+ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo run -- init
 ```
 
-### 4. Generate config.toml
+## CLI Options
 
-Write `~/.config/navra/config.toml` using the gathered information.
-Use the example config at `examples/config.toml` as the reference
-for field names and structure.
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--quiet` | Skip interactive prompts | false |
+| `--agent-name NAME` | Agent name | auto-detect |
+| `--safety LEVEL` | standard, strict, minimal | standard |
+| `--project TYPE` | dev, data, ops, custom | dev |
+| `--model BACKEND` | ollama, mistral, anthropic, openai-compat, none | none |
+| `--model-url URL` | Base URL for openai-compat | - |
+| `--api-key KEY` | API key for model backend | - |
+| `--allow DIRS` | Comma-separated directory globs | ~/Code/** |
+| `--install-service` | Install systemd user service | false |
+| `--dry-run` | Print config to stdout | false |
+| `-o, --output PATH` | Config output path | ~/.config/navra/config.toml |
 
-Template:
+## What it does
 
-```toml
-[server]
-socket = "~/.run/navra/navra.sock"
-mcp_version = "2026-07-28"
-
-[modules.file]
-enabled = true
-db = "~/.local/share/navra/index.db"
-
-[modules.git]
-enabled = true    # or false based on user answer
-
-[modules.rag]
-enabled = false   # or true
-
-[modules.memory]
-pii_filter = "standard"
-
-[[agents]]
-name = "<agent-name>"
-token_hash = "<hash from step 3>"
-permissions = "<perm-set-name>"
-
-[permissions.<perm-set-name>]
-allow = [<user directories>]
-deny = ["**/.env", "**/*secret*", "**/credentials*", "**/.git/config"]
-operations = ["read", "write"]
-safety = "<safety level>"
-default_tool_policy = "allow"
-
-[[permissions.<perm-set-name>.tool_rules]]
-tool = "git_push"
-policy = "approve"
-
-[[permissions.<perm-set-name>.tool_rules]]
-tool = "exec_*"
-policy = "deny"
-
-[approval]
-timeout_secs = 300
-notify = "dbus"
-
-[budget]
-max_agents = 50
-max_iterations = 200
-max_parallel = 2
-timeout_secs = 3600
-```
-
-### 5. Install systemd service
-
-```bash
-mkdir -p ~/.config/systemd/user
-cp navra-server/systemd/navra.service ~/.config/systemd/user/navra.service
-systemctl --user daemon-reload
-systemctl --user enable navra
-systemctl --user start navra
-```
-
-Or if navra has the `install` subcommand:
-
-```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 navra install
-systemctl --user start navra
-```
-
-### 6. Print connection instructions
-
-Tell the user how to connect their agent:
-
-**Claude Code**: Add to `.claude/settings.json`:
-```json
-{
-  "mcpServers": {
-    "navra": {
-      "type": "stdio",
-      "command": "navra",
-      "args": ["connect", "--token", "<bearer-token>"]
-    }
-  }
-}
-```
-
-**Goose**: Add to `~/.config/goose/config.yaml` the appropriate
-MCP server configuration.
-
-**Other**: Connect to the Unix socket at `~/.run/navra/navra.sock`
-with bearer token authentication.
+1. Detects the agent runtime (Claude Code, Goose, or custom)
+2. Selects project type to determine which MCP servers to enable
+3. Configures model backend (local Ollama or cloud API)
+4. Sets safety level (maps to navra safety profiles)
+5. Configures allowed/denied directory patterns
+6. Generates a BLAKE3-hashed agent token
+7. Writes config.toml (backs up any existing config)
+8. Optionally installs systemd user service
+9. Prints connection instructions for the detected agent
 
 ## Notes
 
-- Always create the config directory: `mkdir -p ~/.config/navra`
-- Always create the data directory: `mkdir -p ~/.local/share/navra`
-- The token is shown once — remind the user to save it
-- Check if a config already exists before overwriting — ask first
-- If navra binary is not installed, suggest building from source:
-  `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo install --path navra-server`
+- The token is displayed once and cannot be recovered
+- Existing config is backed up to `config.toml.bak.<timestamp>`
+- Safety levels map: standard -> standard, strict -> guardian, minimal -> secrets-only
+- For `dev` projects, both built-in file/git modules and upstream MCP servers are enabled

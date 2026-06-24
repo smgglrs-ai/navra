@@ -19,6 +19,7 @@ mod exec_tools;
 mod flow_api;
 mod flow_tools;
 mod grpc_manager;
+mod init;
 mod mdns;
 mod memory_tools;
 mod plan_execute;
@@ -105,6 +106,34 @@ async fn main() -> anyhow::Result<()> {
     init_tracing()?;
 
     match cli.command {
+        Commands::Init {
+            quiet,
+            agent_name,
+            safety,
+            project,
+            model,
+            model_url,
+            api_key,
+            allow,
+            install_service,
+            dry_run,
+            output,
+        } => {
+            init::run_init(
+                quiet,
+                agent_name,
+                safety,
+                project,
+                model,
+                model_url,
+                api_key,
+                allow,
+                install_service,
+                dry_run,
+                output,
+            )
+            .await?;
+        }
         Commands::Serve {
             config: config_path,
             no_tray,
@@ -4532,7 +4561,7 @@ async fn query_status(addr: &str) -> anyhow::Result<()> {
 }
 
 /// Install systemd user units for navra.
-fn install_systemd_units() -> anyhow::Result<()> {
+pub(crate) fn install_systemd_units() -> anyhow::Result<()> {
     let unit_dir = dirs::config_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
         .join("systemd/user");
