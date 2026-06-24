@@ -1,0 +1,9 @@
+/home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/deps/ort_sys-996895c839683736.d: /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/lib.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/internal/mod.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/internal/dirs.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/stub.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/version.rs
+
+/home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/deps/libort_sys-996895c839683736.rmeta: /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/lib.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/internal/mod.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/internal/dirs.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/stub.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/version.rs
+
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/lib.rs:
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/internal/mod.rs:
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/internal/dirs.rs:
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/stub.rs:
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ort-sys-2.0.0-rc.12/src/version.rs:

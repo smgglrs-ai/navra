@@ -1,0 +1,5 @@
+cargo:rustc-check-cfg=cfg(link_error)
+cargo:rerun-if-env-changed=ORT_LIB_PATH
+cargo:rerun-if-env-changed=ORT_PREFER_DYNAMIC_LINK
+cargo:rustc-link-lib=onnxruntime
+cargo:rustc-link-search=native=/usr/lib64

@@ -1,0 +1,5 @@
+/home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/build/rustls-3baa95858e3b16f4/build_script_build-3baa95858e3b16f4.d: /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.23.41/build.rs
+
+/home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/build/rustls-3baa95858e3b16f4/build_script_build-3baa95858e3b16f4: /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.23.41/build.rs
+
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-0.23.41/build.rs:
