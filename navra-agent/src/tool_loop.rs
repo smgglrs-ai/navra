@@ -192,12 +192,15 @@ impl LoopDetector {
         if self.threshold == 0 {
             return None;
         }
-        let primary_arg = args
-            .as_object()
-            .and_then(|o| o.values().next())
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let key = format!("{tool_name}:{primary_arg}");
+        // Hash all args so that calls with the same tool but different
+        // argument combinations are tracked independently. Previously
+        // keyed on first arg only, which caused false positives when
+        // tools share a common first argument (e.g., document_id).
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let canonical = args.to_string();
+        canonical.hash(&mut hasher);
+        let key = format!("{tool_name}:{:016x}", hasher.finish());
         let count = self.counts.entry(key.clone()).or_insert(0);
         *count += 1;
 
@@ -2730,6 +2733,22 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         assert!(wa.is_some());
         let wb = detector.record("file_edit", &b);
         assert!(wb.is_some());
+    }
+
+    #[test]
+    fn loop_detector_same_first_arg_different_rest() {
+        let mut detector = LoopDetector::new(3);
+        let a1 = serde_json::json!({"document_id": "doc-1", "text": "Title"});
+        let a2 = serde_json::json!({"document_id": "doc-1", "text": "Subtitle"});
+        let a3 = serde_json::json!({"document_id": "doc-1", "text": "Body paragraph"});
+        let a4 = serde_json::json!({"document_id": "doc-1", "text": "Footer"});
+        assert!(detector.record("gws_docs_insert_text", &a1).is_none());
+        assert!(detector.record("gws_docs_insert_text", &a2).is_none());
+        assert!(detector.record("gws_docs_insert_text", &a3).is_none());
+        assert!(
+            detector.record("gws_docs_insert_text", &a4).is_none(),
+            "different args should not trigger loop detection"
+        );
     }
 
     #[test]
