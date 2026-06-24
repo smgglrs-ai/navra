@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 12 active items
+# 7 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -43,31 +43,6 @@ items:
     effort: M
     depends_on: ['NAVRA-149']
 
-  - id: "NAVRA-048"
-    title: "Adversarial safety evaluation"
-    status: backlog
-    priority: low
-    effort: L
-
-  - id: "NAVRA-050"
-    title: "Harness-aligned training data generation"
-    status: backlog
-    priority: low
-    effort: L
-
-  - id: "NAVRA-054"
-    title: "Interactive flow DAG visualization"
-    status: backlog
-    priority: low
-    effort: M
-    depends_on: ['NAVRA-005']
-
-  - id: "NAVRA-055"
-    title: "Branding and polish"
-    status: backlog
-    priority: low
-    effort: M
-
   - id: "NAVRA-056"
     title: "Embeddable rendra-ag-ui widget"
     status: backlog
@@ -80,11 +55,4 @@ items:
     status: backlog
     priority: low
     effort: M
-
-  - id: "NAVRA-148"
-    title: "Visual flow editor in navra-react"
-    status: backlog
-    priority: low
-    effort: L
-    depends_on: ['NAVRA-059']
 
