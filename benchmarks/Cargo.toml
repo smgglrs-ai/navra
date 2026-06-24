@@ -3,6 +3,7 @@ name = "navra-benchmarks"
 version = "0.1.0"
 edition = "2021"
 publish = false
+description = "Criterion benchmarks for the navra gateway"
 
 [dev-dependencies]
 navra-auth = { path = "../navra-auth" }

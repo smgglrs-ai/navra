@@ -1,6 +1,8 @@
 [package]
 name = "navra-safety-hooks"
 description = "Content hooks and integrity monitoring for the navra gateway"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true

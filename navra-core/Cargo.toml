@@ -1,6 +1,8 @@
 [package]
 name = "navra-core"
 description = "MCP gateway core: server, module trait, session, transport"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true

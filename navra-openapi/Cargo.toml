@@ -1,6 +1,8 @@
 [package]
 name = "navra-openapi"
 description = "OpenAPI-to-MCP runtime bridge for navra"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -35,11 +35,10 @@ Default config path: `~/.config/navra/config.toml`. Build requires ONNX Runtime 
 - [navra-rag](https://github.com/smgglrs-ai/navra/blob/main/navra-rag/README.md): Hybrid FTS5+vector search, RRF fusion, cross-encoder reranking, confidence gating
 - [navra-memory](https://github.com/smgglrs-ai/navra/blob/main/navra-memory/README.md): Working memory and knowledge store with FTS5
 - [navra-cognitive](https://github.com/smgglrs-ai/navra/blob/main/navra-cognitive/README.md): Persona/directive/heuristic YAML loader and prompt weaver
-- [navra-tools-file](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-file/README.md): File tools, SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs
-- [navra-tools-git](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-git/README.md): Git tools — status, diff, log, branch, commit, push, pull, fetch
-- [navra-tools-github](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-github/README.md): GitHub forge tools — PR create/list/view, issue create/list/comment via gh CLI
-- [navra-tools-gitlab](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-gitlab/README.md): GitLab forge tools — MR create/list/view, issue create/list/comment via glab CLI
-- [navra-tools-exec](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-exec/README.md): Command execution inside OpenShell sandboxes or directly on host
+- [navra-auth](https://github.com/smgglrs-ai/navra/blob/main/navra-auth/README.md): Authentication, authorization, identity, and permission primitives
+- [navra-safety-hooks](https://github.com/smgglrs-ai/navra/blob/main/navra-safety-hooks/README.md): Content hooks and integrity monitoring for the gateway
+- [navra-mcp](https://github.com/smgglrs-ai/navra/blob/main/navra-mcp/README.md): Module trait and type definitions for MCP tool crates
+- [navra-openapi](https://github.com/smgglrs-ai/navra/blob/main/navra-openapi/README.md): OpenAPI-to-MCP runtime bridge
 - [navra-macros](https://github.com/smgglrs-ai/navra/blob/main/navra-macros/README.md): #[tool] proc macro for generating tool definitions from async functions
 
 ## Guides
