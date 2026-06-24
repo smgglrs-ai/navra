@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -15,6 +15,12 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { TextArea } from "@patternfly/react-core";
+import {
+  graphToYaml,
+  yamlToGraph,
+  useFlowValidation,
+  type FlowMeta,
+} from "@navra/react-hooks";
 import { EditorNode, type EditorNodeData } from "./EditorNode";
 import { NodePalette } from "./NodePalette";
 import { NodeConfigPanel } from "./NodeConfigPanel";
@@ -41,41 +47,28 @@ function FlowEditorInner({
     id: string;
     data: Record<string, unknown>;
   } | null>(null);
-  const [flowMeta, setFlowMeta] = useState<{
-    kind: "dag" | "handoff";
-    name: string;
-    description?: string;
-  }>({ kind: "dag", name: "New Flow" });
+  const [flowMeta, setFlowMeta] = useState<FlowMeta>({
+    kind: "dag",
+    name: "New Flow",
+  });
   const [showYaml, setShowYaml] = useState(false);
   const [yamlContent, setYamlContent] = useState("");
 
   const nodeCounter = useRef(1);
 
-  // Simple graph to YAML converter (placeholder - will use real graphToYaml from hooks)
-  const graphToYaml = useCallback(() => {
-    const nodeList = nodes.map((n) => ({
-      id: n.id,
-      ...n.data,
-    }));
-    const edgeList = edges.map((e) => ({
-      from: e.source,
-      to: e.target,
-    }));
-    return `kind: ${flowMeta.kind}\nname: ${flowMeta.name}\nnodes:\n${JSON.stringify(nodeList, null, 2)}\nedges:\n${JSON.stringify(edgeList, null, 2)}`;
+  const { errors, isValid } = useFlowValidation({
+    nodes,
+    edges,
+    kind: flowMeta.kind,
+    entry: flowMeta.entry,
+  });
+
+  const errorCount = errors.filter((e) => e.severity === "error").length;
+
+  const buildYaml = useCallback(() => {
+    return graphToYaml(nodes, edges, flowMeta);
   }, [nodes, edges, flowMeta]);
 
-  // Simple YAML to graph converter (placeholder - will use real yamlToGraph from hooks)
-  const yamlToGraph = useCallback((yaml: string) => {
-    try {
-      // This is a placeholder - real implementation will parse actual YAML
-      const parsed = { nodes: [], edges: [] };
-      return parsed;
-    } catch {
-      return { nodes: [], edges: [] };
-    }
-  }, []);
-
-  // Handle drop from palette
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -130,7 +123,6 @@ function FlowEditorInner({
   const onNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
       setSelectedNode({ id: node.id, data: node.data });
-      // Mark node as selected in data
       setNodes((nds) =>
         nds.map((n) =>
           n.id === node.id
@@ -175,26 +167,40 @@ function FlowEditorInner({
   );
 
   const handleSave = useCallback(() => {
-    const yaml = graphToYaml();
+    const yaml = buildYaml();
     setYamlContent(yaml);
     onSave?.(yaml);
-  }, [graphToYaml, onSave]);
+  }, [buildYaml, onSave]);
 
   const handleToggleYaml = useCallback(() => {
     if (!showYaml) {
-      setYamlContent(graphToYaml());
+      setYamlContent(buildYaml());
     }
     setShowYaml((s) => !s);
-  }, [showYaml, graphToYaml]);
+  }, [showYaml, buildYaml]);
 
-  // Initialize from YAML if provided
+  const handleYamlChange = useCallback(
+    (_event: React.ChangeEvent<HTMLTextAreaElement>, value: string) => {
+      setYamlContent(value);
+      const graph = yamlToGraph(value);
+      if (graph.nodes.length > 0 || value.trim() === "") {
+        setNodes(graph.nodes as Node[]);
+        setEdges(graph.edges as Edge[]);
+        setFlowMeta(graph.flowMeta);
+      }
+    },
+    [setNodes, setEdges],
+  );
+
   React.useEffect(() => {
     if (initialYaml) {
       const graph = yamlToGraph(initialYaml);
-      setNodes(graph.nodes || []);
-      setEdges(graph.edges || []);
+      setNodes(graph.nodes as Node[]);
+      setEdges(graph.edges as Edge[]);
+      setFlowMeta(graph.flowMeta);
+      setYamlContent(initialYaml);
     }
-  }, [initialYaml, yamlToGraph, setNodes, setEdges]);
+  }, [initialYaml, setNodes, setEdges]);
 
   return (
     <div
@@ -214,7 +220,7 @@ function FlowEditorInner({
         onLoad={onLoad || (() => {})}
         onToggleYaml={handleToggleYaml}
         showYaml={showYaml}
-        validationErrorCount={0}
+        validationErrorCount={errorCount}
       />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -247,6 +253,9 @@ function FlowEditorInner({
             kind={flowMeta.kind}
             onChange={handleNodeConfigChange}
             onClose={handleNodeConfigClose}
+            validationErrors={errors.filter(
+              (e) => e.nodeIds?.includes(selectedNode.id),
+            )}
           />
         )}
       </div>
@@ -262,9 +271,10 @@ function FlowEditorInner({
         >
           <TextArea
             value={yamlContent}
-            onChange={(_event, value) => setYamlContent(value)}
+            onChange={handleYamlChange}
             rows={10}
             style={{ fontFamily: "monospace", fontSize: 12 }}
+            validated={isValid ? "default" : "error"}
           />
         </div>
       )}

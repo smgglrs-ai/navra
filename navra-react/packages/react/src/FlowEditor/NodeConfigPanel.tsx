@@ -12,13 +12,7 @@ import {
   Alert,
 } from "@patternfly/react-core";
 import { TimesIcon } from "@patternfly/react-icons";
-
-export interface ValidationError {
-  id: string;
-  severity: "error" | "warning";
-  message: string;
-  nodeIds?: string[];
-}
+import type { ValidationError } from "@navra/react-hooks";
 
 export interface NodeConfigPanelProps {
   node: { id: string; data: Record<string, unknown> } | null;
