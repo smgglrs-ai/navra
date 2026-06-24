@@ -445,7 +445,12 @@ impl AgentBuilder {
         let peer = if let Some(peer) = self.peer {
             peer
         } else if let Some(ref url) = self.endpoint_url {
-            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url.as_str());
+            let mut config =
+                rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url.as_str());
+            if let Some(ref token) = self.auth_token {
+                config = config.auth_header(token);
+            }
+            let transport = rmcp::transport::StreamableHttpClientTransport::from_config(config);
             let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
                 .await
                 .map_err(|e| AgentError::Upstream(format!("connect error: {e}")))?;
