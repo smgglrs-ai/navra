@@ -1,0 +1,12 @@
+/home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/deps/ref_cast-73b4a4701da3d2a6.d: /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/lib.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/custom.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/layout.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/trivial.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/private.rs /home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/build/ref-cast-5cbddc07062571c2/out/private.rs
+
+/home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/deps/libref_cast-73b4a4701da3d2a6.rmeta: /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/lib.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/custom.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/layout.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/trivial.rs /home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/private.rs /home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/build/ref-cast-5cbddc07062571c2/out/private.rs
+
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/lib.rs:
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/custom.rs:
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/layout.rs:
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/trivial.rs:
+/home/fdupont/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ref-cast-1.0.25/src/private.rs:
+/home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/build/ref-cast-5cbddc07062571c2/out/private.rs:
+
+# env-dep:OUT_DIR=/home/fdupont/Code/github.com/smgglrs-ai/navra/.claude/worktrees/agent-ab187be5e4ceac4a1/examples/standalone-agent/target/debug/build/ref-cast-5cbddc07062571c2/out

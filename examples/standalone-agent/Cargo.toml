@@ -1,0 +1,16 @@
+[package]
+name = "navra-standalone-agent"
+version = "0.1.0"
+edition = "2021"
+
+# Empty workspace table prevents Cargo from auto-discovering
+# the parent navra workspace. This example is standalone.
+[workspace]
+
+[dependencies]
+navra-agent = { path = "../../navra-agent" }
+navra-model = { path = "../../navra-model", default-features = false }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
