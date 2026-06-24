@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 138 completed items
+# 143 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -307,11 +307,23 @@ items:
     priority: high
     effort: 1-2d
 
+  - id: "NAVRA-048"
+    title: "Adversarial safety evaluation"
+    status: done
+    priority: low
+    effort: L
+
   - id: "NAVRA-049"
     title: "PII ONNX classifier"
     status: done
     priority: low
     effort: M
+
+  - id: "NAVRA-050"
+    title: "Harness-aligned training data generation"
+    status: done
+    priority: low
+    effort: L
 
   - id: "NAVRA-051"
     title: "Paper significant fixes"
@@ -333,6 +345,19 @@ items:
     priority: medium
     effort: S
     feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+
+  - id: "NAVRA-054"
+    title: "Interactive flow DAG visualization"
+    status: done
+    priority: low
+    effort: M
+    depends_on: ['NAVRA-005']
+
+  - id: "NAVRA-055"
+    title: "Branding and polish"
+    status: done
+    priority: low
+    effort: M
 
   - id: "NAVRA-057"
     title: "Lazy-loading tool and persona metadata"
@@ -906,6 +931,13 @@ items:
     status: done
     priority: medium
     effort: M
+
+  - id: "NAVRA-148"
+    title: "Visual flow editor in navra-react"
+    status: done
+    priority: low
+    effort: L
+    depends_on: ['NAVRA-059']
 
   - id: "NAVRA-149"
     title: "Adopt rmcp SDK — replace custom MCP implementation"

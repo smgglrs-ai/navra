@@ -1,6 +1,6 @@
 id: NAVRA-148
 title: Visual flow editor in navra-react
-status: backlog
+status: done
 priority: low
 effort: L
 depends_on:
