@@ -30,6 +30,8 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.91"
+homepage = "https://github.com/smgglrs-ai/navra"
+repository = "https://github.com/smgglrs-ai/navra"
 
 [workspace.dependencies]
 async-trait = "0.1"

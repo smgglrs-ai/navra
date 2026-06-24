@@ -20,6 +20,8 @@ pub struct McpdTray {
     agents: Vec<AgentInfo>,
     paused: bool,
     cmd_tx: mpsc::UnboundedSender<TrayCommand>,
+    /// Whether the navra icon is installed in the hicolor theme.
+    has_custom_icon: bool,
 }
 
 #[derive(Clone)]
@@ -64,6 +66,8 @@ impl Tray for McpdTray {
     fn icon_name(&self) -> String {
         if self.paused {
             "media-playback-pause".to_string()
+        } else if self.has_custom_icon {
+            "navra".to_string()
         } else {
             "security-medium".to_string()
         }
@@ -71,6 +75,16 @@ impl Tray for McpdTray {
 
     fn attention_icon_name(&self) -> String {
         "dialog-warning".to_string()
+    }
+
+    fn icon_theme_path(&self) -> String {
+        if self.has_custom_icon {
+            icon_theme_dir()
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        }
     }
 
     fn tool_tip(&self) -> ToolTip {
@@ -208,6 +222,48 @@ fn short_path(path: &str) -> String {
     }
 }
 
+/// Return the base directory for the navra icon theme overlay.
+fn icon_theme_dir() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/icons")
+}
+
+/// Install the navra icon into a hicolor theme directory so the tray
+/// can reference it by name. Returns `true` if the icon was installed
+/// (or already exists).
+fn install_tray_icon() -> bool {
+    let sizes = [("64x64", include_bytes!("../../assets/logo/navra-64.png").as_slice())];
+    let base = icon_theme_dir();
+
+    for (size, data) in &sizes {
+        let dir = base.join(format!("hicolor/{size}/apps"));
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            tracing::debug!(error = %e, "Failed to create icon directory");
+            return false;
+        }
+        let dest = dir.join("navra.png");
+        if dest.exists() {
+            continue;
+        }
+        if let Err(e) = std::fs::write(&dest, data) {
+            tracing::debug!(error = %e, "Failed to write tray icon");
+            return false;
+        }
+    }
+
+    // Write a minimal index.theme so the icon resolver picks up the directory
+    let index = base.join("hicolor/index.theme");
+    if !index.exists() {
+        let _ = std::fs::write(
+            &index,
+            "[Icon Theme]\nName=hicolor\nDirectories=64x64/apps\n\n[64x64/apps]\nSize=64\nType=Fixed\n",
+        );
+    }
+
+    true
+}
+
 /// Spawn the tray icon and return a command receiver + handle for updates.
 ///
 /// The tray runs on its own tokio task. The caller receives:
@@ -217,11 +273,14 @@ pub async fn spawn_tray(
 ) -> anyhow::Result<(mpsc::UnboundedReceiver<TrayCommand>, ksni::Handle<McpdTray>)> {
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
 
+    let has_custom_icon = install_tray_icon();
+
     let tray = McpdTray {
         pending: Vec::new(),
         agents: Vec::new(),
         paused: false,
         cmd_tx,
+        has_custom_icon,
     };
 
     let handle = tray
@@ -322,6 +381,7 @@ mod tests {
             agents: Vec::new(),
             paused: false,
             cmd_tx: tx,
+            has_custom_icon: false,
         };
         assert_eq!(tray.status(), Status::Active);
     }
@@ -339,6 +399,7 @@ mod tests {
             agents: Vec::new(),
             paused: false,
             cmd_tx: tx,
+            has_custom_icon: false,
         };
         assert_eq!(tray.status(), Status::NeedsAttention);
     }
@@ -351,6 +412,7 @@ mod tests {
             agents: Vec::new(),
             paused: true,
             cmd_tx: tx,
+            has_custom_icon: false,
         };
         assert_eq!(tray.status(), Status::Passive);
     }
@@ -363,6 +425,7 @@ mod tests {
             agents: Vec::new(),
             paused: false,
             cmd_tx: tx,
+            has_custom_icon: false,
         };
         let menu = tray.menu();
         let has_quit = menu
@@ -384,6 +447,7 @@ mod tests {
             agents: Vec::new(),
             paused: false,
             cmd_tx: tx,
+            has_custom_icon: false,
         };
         let menu = tray.menu();
         let has_pending_header = menu.iter().any(
@@ -403,6 +467,7 @@ mod tests {
             }],
             paused: false,
             cmd_tx: tx,
+            has_custom_icon: false,
         };
         let menu = tray.menu();
         let has_agent = menu

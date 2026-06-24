@@ -1,6 +1,8 @@
 [package]
 name = "navra-protocol"
 description = "MCP and A2A protocol types, JSON-RPC, and IFC labels"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true

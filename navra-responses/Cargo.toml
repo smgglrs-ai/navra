@@ -1,6 +1,8 @@
 [package]
 name = "navra-responses"
 description = "Open Responses API types for Rust — spec-compliant, no client, no runtime"
+homepage.workspace = true
+repository.workspace = true
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"

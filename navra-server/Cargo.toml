@@ -1,6 +1,8 @@
 [package]
 name = "navra-server"
 description = "Composable MCP server with modular architecture"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true

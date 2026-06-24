@@ -710,6 +710,17 @@ async fn serve_inner(
     mode: TransportMode,
     dev_mode: bool,
 ) -> anyhow::Result<()> {
+    // Branded startup banner (before tracing, so it's always visible)
+    {
+        let version = env!("CARGO_PKG_VERSION");
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
+        eprintln!("navra v{version} ({profile})");
+    }
+
     tracing::info!("Starting navra");
 
     // Bootstrap root identity (DID:key from Ed25519)

@@ -108,7 +108,7 @@ safety filters, and audit logging.
 
 ## Architecture
 
-navra is a Rust workspace of 20 crates organized in strict dependency
+navra is a Rust workspace of 22 crates organized in strict dependency
 layers:
 
 ```
@@ -128,10 +128,7 @@ navra-core              (protocol + model + security)  Server
 navra-memory            (core + model, opt: rag)       Persistence
 navra-agent             (protocol + model + security   Client SDK
                            + cognitive)
-navra-tools-file ───┐
-navra-tools-git  ───┤
-navra-tools-exec ───┼── (core, exec also: model-runtime)
-navra-rag        ───┤
+navra-rag        ───┐
 navra-modal-*    ───┘── (core only)
     ↓
 navra-flow              (agent + cognitive + protocol  Orchestration
@@ -232,16 +229,17 @@ the approval workflow.
 | `navra-model-hub` | Pull/cache models from OCI, HuggingFace, Ollama registries |
 | `navra-model-runtime` | Serve models with pluggable isolation (direct, Podman, OpenShell) |
 | `navra-responses` | Open Responses API types (spec-compliant, no runtime) |
-| `navra-security` | Auth, permissions, IFC, safety filters, hook pipeline |
+| `navra-auth` | Authentication, authorization, identity, and permission primitives |
+| `navra-safety` | PII detection, content safety filters, and pseudonymization |
+| `navra-safety-hooks` | Content hooks and integrity monitoring |
+| `navra-security` | Facade: re-exports navra-auth + navra-safety |
 | `navra-cognitive` | Persona/directive/heuristic YAML loader + prompt weaver |
 | `navra-memory` | Working memory (conversation turns) + knowledge store (FTS5) |
 | `navra-agent` | Client SDK: agent builder, MCP client, ReAct tool-use loop |
 | `navra-flow` | Multi-agent flows: DAG execution, handoff routing, mesh |
 | `navra-core` | MCP server, module trait, session, transport |
-| `navra-tools-file` | File tools, SQLite FTS5 + sqlite-vec, MCP resources |
-| `navra-tools-git` | Git tools (status, diff, log, branch, commit) |
-| `navra-tools-exec` | Command execution inside OpenShell sandboxes |
-| `navra-tools-gitlab` | GitLab forge tools (MR, issues) via `glab` CLI |
+| `navra-mcp` | Module trait and type definitions for MCP tool crates |
+| `navra-openapi` | OpenAPI-to-MCP runtime bridge |
 | `navra-rag` | Vector search, sqlite-vec, semantic chunking, reranking |
 | `navra-modal-voice` | Speech I/O (ASR + TTS via ONNX models) |
 | `navra-modal-vision` | Image/screen understanding (GPU tier) |

@@ -1,6 +1,8 @@
 [package]
 name = "navra-agent"
 description = "SDK for building AI agents that connect to MCP servers"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true

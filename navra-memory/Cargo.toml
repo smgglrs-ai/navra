@@ -1,6 +1,8 @@
 [package]
 name = "navra-memory"
 description = "Persistent agent memory: working memory (conversation turns) and knowledge store (FTS5)"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true

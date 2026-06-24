@@ -10,7 +10,7 @@ fn default_cognitive_core_path() -> String {
 }
 
 #[derive(Parser)]
-#[command(name = "navra", about = "Composable MCP server")]
+#[command(name = "navra", about = "navra \u{2014} secure MCP gateway for AI agents", version)]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Commands,
