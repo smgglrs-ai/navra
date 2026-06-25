@@ -1,6 +1,6 @@
 id: NAVRA-153
 title: "Integration guides (Claude Code, Goose, OpenAI clients)"
-status: planned
+status: done
 priority: high
 effort: 3-5d
 tags: [docs, onboarding]

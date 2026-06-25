@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 143 completed items
+# 146 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -944,4 +944,22 @@ items:
     status: done
     priority: high
     effort: XL
+
+  - id: "NAVRA-153"
+    title: "Integration guides (Claude Code, Goose, OpenAI clients)"
+    status: done
+    priority: high
+    effort: 3-5d
+
+  - id: "NAVRA-155"
+    title: "navra wrap one-liner UX"
+    status: done
+    priority: medium
+    effort: 3-5d
+
+  - id: "NAVRA-156"
+    title: "Optional ONNX (cargo feature gate)"
+    status: done
+    priority: medium
+    effort: 1-3d
 
