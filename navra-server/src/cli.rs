@@ -303,6 +303,14 @@ pub(crate) enum AgentAction {
         #[arg(long)]
         name: Option<String>,
     },
+    /// Upgrade an installed agent bundle to a new version
+    Upgrade {
+        /// Bundle name or OCI reference
+        bundle: String,
+        /// Skip signature verification
+        #[arg(long)]
+        allow_unsigned: bool,
+    },
     /// List installed agent bundles and instances
     List,
     /// Remove an installed agent bundle
@@ -594,6 +602,29 @@ pub(crate) async fn agent_install(
 fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
     use crate::agent_bundle::bundle_dir;
 
+    // Check for existing bundle to show permission diff
+    let new_bundle = bundle_dir::load_bundle(dir)?;
+    let existing_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/agent-bundles")
+        .join(&new_bundle.meta.name);
+    if existing_dir.exists() {
+        if let Ok(old_bundle) = bundle_dir::load_bundle(&existing_dir) {
+            let diff = bundle_dir::diff_permissions(
+                &old_bundle.permissions,
+                &new_bundle.permissions,
+            );
+            if !diff.is_empty() {
+                println!(
+                    "Upgrading {} v{} → v{}",
+                    old_bundle.meta.name, old_bundle.meta.version, new_bundle.meta.version
+                );
+                print!("{diff}");
+                println!();
+            }
+        }
+    }
+
     let installed = bundle_dir::install_from_dir(dir)?;
     println!("Installed: {} v{}", installed.name, installed.version);
     println!("Location: {}", installed.path.display());
@@ -746,6 +777,41 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
             println!("  navra run {instance}/{wf_name}  {desc}");
         }
     }
+
+    Ok(())
+}
+
+pub(crate) fn agent_upgrade(bundle_name: &str) -> anyhow::Result<()> {
+    use crate::agent_bundle::bundle_dir;
+
+    let bundles_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/agent-bundles")
+        .join(bundle_name);
+
+    if !bundles_dir.exists() {
+        anyhow::bail!(
+            "bundle '{}' not installed. Cannot upgrade.",
+            bundle_name
+        );
+    }
+
+    let old_bundle = bundle_dir::load_bundle(&bundles_dir)?;
+
+    // For local upgrades, the user re-installs from the new directory.
+    // For OCI upgrades, we'd pull the new version first (TODO).
+    // For now, show the current state and diff mechanism.
+    println!(
+        "Bundle: {} v{}",
+        old_bundle.meta.name, old_bundle.meta.version
+    );
+    println!("Location: {}", bundles_dir.display());
+    println!();
+    println!(
+        "To upgrade, re-install from the new source:\n  \
+         navra agent install ./path-to-new-version/\n\n\
+         The permission diff will be shown automatically."
+    );
 
     Ok(())
 }

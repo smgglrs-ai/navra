@@ -1,6 +1,6 @@
 id: NAVRA-168
 title: "navra agent upgrade: versioned bundles and permission diff"
-status: planned
+status: in_progress
 priority: medium
 effort: 3-5d
 tags: [bundles, agents, upgrades, security]

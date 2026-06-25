@@ -1,6 +1,6 @@
 id: NAVRA-167
 title: "Cross-bundle workflow composition and transitive permissions"
-status: in_progress
+status: done
 priority: medium
 effort: 3-5d
 tags: [workflows, permissions, security, flow]
