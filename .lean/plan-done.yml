@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 150 completed items
+# 153 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -990,4 +990,25 @@ items:
     priority: high
     effort: 3-5d
     depends_on: ['NAVRA-161', 'NAVRA-164']
+
+  - id: "NAVRA-166"
+    title: "Credential brokering: daemon injects credentials into MCP servers"
+    status: done
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-161', 'NAVRA-164']
+
+  - id: "NAVRA-167"
+    title: "Cross-bundle workflow composition and transitive permissions"
+    status: done
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-163', 'NAVRA-165']
+
+  - id: "NAVRA-168"
+    title: "navra agent upgrade: versioned bundles and permission diff"
+    status: done
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-163', 'NAVRA-164']
 
