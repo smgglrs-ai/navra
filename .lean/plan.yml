@@ -19,7 +19,7 @@ items:
 
   - id: "NAVRA-153"
     title: "Integration guides (Claude Code, Goose, OpenAI clients)"
-    status: planned
+    status: done
     priority: high
     effort: 3-5d
 
@@ -31,13 +31,13 @@ items:
 
   - id: "NAVRA-155"
     title: "navra wrap one-liner UX"
-    status: planned
+    status: done
     priority: medium
     effort: 3-5d
 
   - id: "NAVRA-156"
     title: "Optional ONNX (cargo feature gate)"
-    status: planned
+    status: done
     priority: medium
     effort: 1-3d
 
