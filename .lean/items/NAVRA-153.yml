@@ -1,0 +1,25 @@
+id: NAVRA-153
+title: "Integration guides (Claude Code, Goose, OpenAI clients)"
+status: planned
+priority: high
+effort: 3-5d
+tags: [docs, onboarding]
+description: |
+  Write step-by-step integration guides for the docs site showing
+  how to connect popular agents and clients to navra. navra exposes
+  standard MCP and OpenAI-compatible APIs, so any MCP or OpenAI
+  client works — but people don't know that yet.
+
+  Guides to write:
+  1. "navra + Claude Code in 5 minutes" — MCP config, token setup
+  2. "navra + Goose" — MCP endpoint configuration
+  3. "navra + any OpenAI client" — Python openai, Node openai
+  4. "navra + LangGraph" — using navra as MCP tool provider
+  5. "navra + custom MCP client" — minimal example
+
+  Each guide: prerequisites, config snippets, verify it works,
+  troubleshooting.
+acceptance:
+  - 5 integration guides published on docs site
+  - Each guide tested end-to-end
+  - Linked from README quickstart section
