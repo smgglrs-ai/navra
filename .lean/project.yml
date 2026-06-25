@@ -1,5 +1,5 @@
 name: navra
-version: "0.1.0"
+version: "0.2.0"
 description: Secure MCP gateway daemon for Linux desktops
 repository: git@github.com:smgglrs-ai/navra.git
 type: monorepo
