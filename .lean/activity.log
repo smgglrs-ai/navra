@@ -612,3 +612,17 @@
     - "NAVRA-163: done"
     - "NAVRA-164: done"
     - "NAVRA-165: done"
+
+- date: 2026-06-25
+  action: loop-complete
+  summary: "Loop complete: 7 items done (NAVRA-161..168 minus 162). New CLI: navra model serve, navra agent init/upgrade, navra run --workflow. New crate: navra-model-server. Gateway model loading refactored to use ModelRegistry (-270 lines). Credential brokering wired to MCP upstream spawn. Permission intersection, visibility enforcement, and upgrade diff."
+  items:
+    - "NAVRA-161: done (model server split)"
+    - "NAVRA-163: done (bundle format v2)"
+    - "NAVRA-164: done (agent instances)"
+    - "NAVRA-165: done (navra run workflow)"
+    - "NAVRA-166: done (credential brokering)"
+    - "NAVRA-167: done (cross-bundle permissions)"
+    - "NAVRA-168: done (agent upgrade diff)"
+  remaining:
+    - "NAVRA-162: daemon (scheduler, events) — deferred, needs full design"
