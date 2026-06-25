@@ -62,6 +62,12 @@ pub struct Config {
     /// Named model definitions (embedding, classification, chat, generate).
     #[serde(default)]
     pub models: HashMap<String, ModelConfig>,
+    /// URL of an external navra model server.
+    /// When set, the gateway connects to the model server instead of
+    /// loading models in-process. When absent, models are loaded
+    /// directly (backward-compatible behavior).
+    #[serde(default)]
+    pub model_server: Option<String>,
     /// Path to cognitive core directory (personas, heuristics, directives).
     #[serde(default)]
     pub cognitive_core: Option<String>,
@@ -335,6 +341,7 @@ impl Default for Config {
             upstream: Vec::new(),
             credentials: HashMap::new(),
             models: HashMap::new(),
+            model_server: None,
             cognitive_core: None,
             flow_dirs: Vec::new(),
             discover: Vec::new(),
