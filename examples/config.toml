@@ -159,6 +159,10 @@ max_agents = 50
 max_iterations = 200
 max_parallel = 2
 timeout_secs = 3600
+# max_tokens_per_run = 500000  # total tokens per agent run; unlimited by default
+# compression_start_ratio = 0.9  # enable tool output compression at 90% fill (disabled by default)
+# compaction_keep_recent = 10    # recent items kept during compaction; derived from context window if unset
+# compaction_trigger_ratio = 0.6 # context fill ratio to trigger history compaction; 0.6 by default
 
 # ---------------------------------------------------------------------------
 # Approval (human-in-the-loop)

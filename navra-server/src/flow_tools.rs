@@ -1082,6 +1082,10 @@ async fn spawn_and_track_tasks(
             openshell_gateway: ctx.openshell_gateway.clone(),
             exec_state: ctx.exec_state.clone(),
             workspace_provider: ctx.workspace_provider.clone(),
+            max_tokens_per_run: ctx.budget_cfg.max_tokens_per_run,
+            compression_start_ratio: ctx.budget_cfg.compression_start_ratio,
+            compaction_keep_recent: ctx.budget_cfg.compaction_keep_recent,
+            compaction_trigger_ratio: ctx.budget_cfg.compaction_trigger_ratio,
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.

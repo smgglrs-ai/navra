@@ -246,9 +246,33 @@ impl AgentBuilder {
         self
     }
 
-    /// Set the max tool output token limit.
+    /// Set the maximum total tokens (input + output) per run.
+    pub fn max_tokens_per_run(mut self, n: u64) -> Self {
+        self.config.max_tokens_per_run = n;
+        self
+    }
+
+    /// Set the max tool output token limit (used when compression is enabled).
     pub fn max_tool_output_tokens(mut self, n: u32) -> Self {
-        self.config.max_tool_output_tokens = n;
+        self.config.max_tool_output_tokens = Some(n);
+        self
+    }
+
+    /// Enable tool output compression at the given context fill ratio.
+    pub fn compression_start_ratio(mut self, ratio: f32) -> Self {
+        self.config.compression_start_ratio = Some(ratio);
+        self
+    }
+
+    /// Set the number of recent items kept verbatim during compaction.
+    pub fn compaction_keep_recent(mut self, n: usize) -> Self {
+        self.config.compaction_keep_recent = Some(n);
+        self
+    }
+
+    /// Set the context fill ratio at which conversation compaction triggers.
+    pub fn compaction_trigger_ratio(mut self, ratio: f32) -> Self {
+        self.config.compaction_trigger_ratio = Some(ratio);
         self
     }
 
@@ -436,7 +460,7 @@ impl AgentBuilder {
             self.config.context_window_tokens = limit;
         }
         if let Some(max_output) = persona.max_tool_output_tokens {
-            self.config.max_tool_output_tokens = max_output;
+            self.config.max_tool_output_tokens = Some(max_output);
         }
     }
 
