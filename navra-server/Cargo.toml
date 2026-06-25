@@ -22,6 +22,7 @@ navra-agent = { path = "../navra-agent", default-features = false }
 navra-flow = { path = "../navra-flow", default-features = false }
 navra-memory = { path = "../navra-memory", default-features = false }
 navra-model = { path = "../navra-model", default-features = false }
+navra-model-server = { path = "../navra-model-server", default-features = false }
 navra-model-hub = { path = "../navra-model-hub" }
 navra-model-runtime = { path = "../navra-model-runtime", features = ["openshell"] }
 navra-macros = { path = "../navra-macros" }
@@ -72,7 +73,8 @@ tracing-opentelemetry = { version = "0.29", optional = true }
 [features]
 default = ["onnx"]
 onnx = [
-    "navra-core/onnx", "navra-rag/onnx", "navra-model/onnx", "navra-safety-hooks/onnx",
+    "navra-core/onnx", "navra-rag/onnx", "navra-model/onnx", "navra-model-server/onnx",
+    "navra-safety-hooks/onnx",
     "navra-agent/onnx", "navra-flow/onnx", "navra-memory/onnx", "navra-mcp/onnx",
     "navra-modal-vision/onnx", "navra-modal-voice/onnx", "navra-openapi/onnx",
 ]

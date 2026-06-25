@@ -297,6 +297,21 @@ pub(crate) enum AgentAction {
 
 #[derive(Subcommand)]
 pub(crate) enum ModelAction {
+    /// Start a standalone model inference server
+    Serve {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+        /// Bind address
+        #[arg(short, long, default_value = "127.0.0.1:9316")]
+        bind: String,
+        /// Auto-detect hardware and propose resource allocation
+        #[arg(long)]
+        auto: bool,
+        /// Maximum VRAM budget (e.g., 24GB, 16GB)
+        #[arg(long)]
+        budget: Option<String>,
+    },
     /// Download a model from HuggingFace
     Pull {
         /// Model name (e.g., guardian-hap, granite-embed)
