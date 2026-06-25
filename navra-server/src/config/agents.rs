@@ -101,6 +101,18 @@ pub struct UpstreamConfig {
     /// When absent and `--sandbox` is used, defaults to deny-all.
     #[serde(default)]
     pub network: Option<NetworkPolicy>,
+    /// Environment variables to set when launching this upstream.
+    /// Values support credential store references: `"${credential:label}"`
+    /// resolves the label via the navra credential store (OS keyring or env).
+    /// Plain values are passed through as-is.
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
+    /// Credential label mappings: env var name → credential store label.
+    /// The credential is resolved from the OS keyring at launch time
+    /// and injected as an environment variable into the server process.
+    /// Credentials are zeroized in navra's memory after injection.
+    #[serde(default)]
+    pub credentials: std::collections::HashMap<String, String>,
 }
 
 /// Network egress policy controlling which external endpoints a sandboxed
