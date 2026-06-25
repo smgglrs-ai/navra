@@ -570,3 +570,14 @@
   summary: "Wrote 5 integration guides: Claude Code, Goose, OpenAI clients, LangGraph, custom MCP"
   iteration: 4
   max_iterations: 20
+- timestamp: "2026-06-25T15:45:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 3 items completed (NAVRA-156, NAVRA-155, NAVRA-153). Exit: no unblocked items in approve scope"
+  details:
+    iterations: 4
+    max_iterations: 20
+    completed: [NAVRA-156, NAVRA-155, NAVRA-153]
+    exit_reason: "No unblocked items remaining in approve scope — remaining items need CI, macOS, or multi-day design work"
+    branch: "loop/2026-06-19-4"
+    tag: null
