@@ -1136,42 +1136,8 @@ async fn model_serve(
         .transpose()?
         .unwrap_or(0);
 
-    let mut model_entries = std::collections::HashMap::new();
-    for (name, model_cfg) in &cfg.models {
-        model_entries.insert(
-            name.clone(),
-            navra_model_server::config::ModelEntry {
-                model_path: model_cfg.model_path.clone(),
-                source: model_cfg.source.clone(),
-                tokenizer_path: model_cfg.tokenizer_path.clone(),
-                task: model_cfg.task.clone(),
-                device: model_cfg.device.clone(),
-                dimensions: model_cfg.dimensions,
-                labels: model_cfg.labels.clone(),
-                threshold: model_cfg.threshold,
-                format: model_cfg.format.clone(),
-                execution_mode: model_cfg.execution_mode,
-                runtime: model_cfg.runtime.clone(),
-                context_size: model_cfg.context_size,
-                parallel: model_cfg.parallel,
-                model_name: model_cfg.model_name.clone(),
-                cache_type: model_cfg.cache_type,
-                speculative: model_cfg.speculative.as_ref().map(|s| {
-                    navra_model_server::config::SpeculativeEntry {
-                        draft_model: s.draft_model.clone(),
-                        draft_tokens: s.draft_tokens,
-                        draft_min_p: s.draft_min_p,
-                    }
-                }),
-                base_url: model_cfg.base_url.clone(),
-                api_key: model_cfg.api_key.clone(),
-                locality: model_cfg.locality.clone(),
-            },
-        );
-    }
-
     let server_config = navra_model_server::ModelServerConfig {
-        models: model_entries,
+        models: convert_model_configs(&cfg.models),
         bind: bind.clone(),
         vram_budget,
         desktop_reservation: 2 * 1024 * 1024 * 1024,
@@ -1605,278 +1571,26 @@ async fn serve_inner(
     }
 
     // --- Load models into registry ---
-    let mut models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>> =
-        std::collections::HashMap::new();
+    // The model registry is owned by navra-model-server and manages
+    // model lifecycle (loading, unloading, runtime process tracking).
+    // The gateway extracts the model backends for direct use.
+    let model_entries = convert_model_configs(&cfg.models);
+    let model_registry = navra_model_server::ModelRegistry::from_config(&model_entries)
+        .await
+        .context("failed to build model registry")?;
+    let mut models = model_registry.models().clone();
+
+    // Keep the registry alive for runtime process management.
+    // When the registry is dropped, it logs but doesn't stop runtimes
+    // (shutdown is handled below via running_endpoints for backward compat).
+    let _model_registry = model_registry;
+
+    // Legacy endpoint tracking for shutdown — still needed for team
+    // models added later in containerized mode.
     let mut running_endpoints: Vec<(
         Box<dyn navra_model_runtime::ModelRuntime>,
         navra_model_runtime::Endpoint,
     )> = Vec::new();
-
-    let hub = navra_model_hub::ModelHub::new().ok();
-
-    for (name, model_cfg) in &cfg.models {
-        // --- Resolve model path: hub source or local file ---
-        let resolved_path = if let Some(ref source) = model_cfg.source {
-            // Pull from hub
-            let Some(ref hub) = hub else {
-                tracing::error!(model = %name, "Model hub unavailable, skipping");
-                continue;
-            };
-            let uri = match navra_model_hub::ModelUri::parse(source) {
-                Ok(u) => u,
-                Err(e) => {
-                    tracing::error!(model = %name, source = %source, error = %e, "Invalid model URI, skipping");
-                    continue;
-                }
-            };
-            match hub.pull(&uri).await {
-                Ok(p) => {
-                    tracing::info!(model = %name, source = %source, path = %p.display(), "Model pulled from hub");
-                    p
-                }
-                Err(e) => {
-                    tracing::error!(model = %name, source = %source, error = %e, "Failed to pull model, skipping");
-                    continue;
-                }
-            }
-        } else if let Some(ref path_str) = model_cfg.model_path {
-            let expanded = expand_tilde(path_str);
-            std::path::PathBuf::from(&expanded)
-        } else {
-            tracing::warn!(model = %name, "No source or model_path, skipping");
-            continue;
-        };
-
-        if !resolved_path.exists() {
-            tracing::warn!(
-                model = %name,
-                path = %resolved_path.display(),
-                "Model file not found, skipping"
-            );
-            continue;
-        }
-
-        let execution_mode = model_cfg
-            .execution_mode
-            .unwrap_or_else(|| navra_model_runtime::ExecutionMode::from_task(&model_cfg.task));
-
-        let backend: Arc<dyn navra_model::ModelBackend> = match execution_mode {
-            navra_model_runtime::ExecutionMode::InProcess => {
-                #[cfg(feature = "onnx")]
-                {
-                    let device = model_cfg
-                        .device
-                        .as_deref()
-                        .map(navra_model::Device::parse)
-                        .unwrap_or_default();
-
-                    let (task, tokenizer_path) = match model_cfg.task.as_str() {
-                        "embedding" => {
-                            let dims = model_cfg.dimensions.unwrap_or(768);
-                            (
-                                navra_model::ModelTask::Embedding { dimensions: dims },
-                                model_cfg
-                                    .tokenizer_path
-                                    .as_ref()
-                                    .map(|p| std::path::PathBuf::from(expand_tilde(p))),
-                            )
-                        }
-                        "classification" => {
-                            let labels = if model_cfg.labels.is_empty() {
-                                vec!["safe".to_string(), "unsafe".to_string()]
-                            } else {
-                                model_cfg.labels.clone()
-                            };
-                            (
-                                navra_model::ModelTask::Classification { labels },
-                                model_cfg
-                                    .tokenizer_path
-                                    .as_ref()
-                                    .map(|p| std::path::PathBuf::from(expand_tilde(p))),
-                            )
-                        }
-                        other => {
-                            tracing::warn!(
-                                model = %name, task = %other,
-                                "execution_mode=in_process but task is not embedding/classification, skipping"
-                            );
-                            continue;
-                        }
-                    };
-
-                    match navra_model::OnnxBackend::load(
-                        name,
-                        &resolved_path,
-                        tokenizer_path.as_deref(),
-                        task,
-                        device.clone(),
-                    ) {
-                        Ok(model) => Arc::new(model),
-                        Err(e) => {
-                            tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
-                            continue;
-                        }
-                    }
-                }
-                #[cfg(not(feature = "onnx"))]
-                {
-                    tracing::warn!(
-                        model = %name,
-                        "execution_mode=in_process requires the 'onnx' feature, skipping"
-                    );
-                    continue;
-                }
-            }
-            navra_model_runtime::ExecutionMode::Served => {
-                // Serve via runtime and wrap in OpenAiBackend
-                let runtime_kind = model_cfg.runtime.as_deref().unwrap_or("auto");
-                let runtime: Box<dyn navra_model_runtime::ModelRuntime> = match runtime_kind {
-                    "auto" => match navra_model_runtime::auto_runtime().await {
-                        Ok(r) => r,
-                        Err(e) => {
-                            tracing::error!(model = %name, error = %e, "No runtime available, skipping");
-                            continue;
-                        }
-                    },
-                    "llama-cpp" | "direct" => {
-                        Box::new(navra_model_runtime::direct::DirectRuntime::new(
-                            navra_model_runtime::Engine::LlamaCpp,
-                        ))
-                    }
-                    "llama-cpp-podman" | "podman" => {
-                        Box::new(navra_model_runtime::podman::PodmanRuntime::new(
-                            navra_model_runtime::Engine::LlamaCpp,
-                        ))
-                    }
-                    "vllm" => Box::new(navra_model_runtime::direct::DirectRuntime::new(
-                        navra_model_runtime::Engine::Vllm,
-                    )),
-                    "vllm-podman" => Box::new(navra_model_runtime::podman::PodmanRuntime::new(
-                        navra_model_runtime::Engine::Vllm,
-                    )),
-                    "ollama" => {
-                        let model_id = model_cfg
-                            .model_name
-                            .clone()
-                            .or_else(|| {
-                                model_cfg
-                                    .source
-                                    .as_ref()
-                                    .and_then(|s| s.strip_prefix("ollama://").map(String::from))
-                            })
-                            .unwrap_or_else(|| name.clone());
-                        let backend: Arc<dyn navra_model::ModelBackend> =
-                            Arc::new(navra_model::OpenAiBackend::new(
-                                "http://localhost:11434/v1",
-                                &model_id,
-                                None,
-                                navra_model::Locality::Local,
-                            ));
-                        tracing::info!(model = %name, model_id = %model_id, "Model served via Ollama");
-                        models.insert(name.clone(), backend);
-                        continue;
-                    }
-                    "ogx" => {
-                        let model_id = model_cfg.model_name.clone().unwrap_or_else(|| name.clone());
-                        let base_url = model_cfg
-                            .base_url
-                            .as_deref()
-                            .unwrap_or(navra_model::DEFAULT_OGX_URL);
-                        let locality = if model_cfg.locality.as_deref() == Some("remote") {
-                            navra_model::Locality::Remote
-                        } else {
-                            navra_model::Locality::Local
-                        };
-                        let backend: Arc<dyn navra_model::ModelBackend> =
-                            if model_cfg.task == "classification" {
-                                Arc::new(navra_model::OgxBackend::new(
-                                    base_url,
-                                    &model_id,
-                                    model_cfg.api_key.clone(),
-                                    locality,
-                                ))
-                            } else {
-                                Arc::new(navra_model::OpenAiBackend::new(
-                                    base_url,
-                                    &model_id,
-                                    model_cfg.api_key.clone(),
-                                    locality,
-                                ))
-                            };
-                        tracing::info!(model = %name, model_id = %model_id, base_url = %base_url, task = %model_cfg.task, "Model served via OGX");
-                        models.insert(name.clone(), backend);
-                        continue;
-                    }
-                    "none" => {
-                        tracing::warn!(model = %name, "Task is chat/generate but runtime=none, skipping");
-                        continue;
-                    }
-                    other => {
-                        tracing::warn!(model = %name, runtime = %other, "Unknown runtime, skipping");
-                        continue;
-                    }
-                };
-
-                let gpus = navra_model_runtime::detect_gpus();
-                let target = navra_model_runtime::HardwareTarget::from_gpus(&gpus);
-                let format = model_cfg
-                    .format
-                    .as_deref()
-                    .and_then(|s| s.parse::<navra_model_runtime::ModelFormat>().ok())
-                    .or_else(|| navra_model_runtime::ModelFormat::detect(&resolved_path));
-                let speculative = model_cfg.speculative.as_ref().map(|s| {
-                    navra_model_runtime::SpeculativeConfig {
-                        draft_model: std::path::PathBuf::from(crate::expand_tilde(&s.draft_model)),
-                        draft_tokens: s.draft_tokens,
-                        draft_min_p: s.draft_min_p,
-                    }
-                });
-                let serve_cfg = navra_model_runtime::ServeConfig {
-                    model_path: resolved_path,
-                    gpus,
-                    target,
-                    format,
-                    context_size: model_cfg.context_size.unwrap_or(4096),
-                    parallel: model_cfg.parallel.unwrap_or(1),
-                    cache_type: model_cfg.cache_type,
-                    speculative,
-                    ..Default::default()
-                };
-
-                let endpoint = match runtime.serve(&serve_cfg).await {
-                    Ok(ep) => ep,
-                    Err(e) => {
-                        tracing::error!(model = %name, error = %e, "Failed to start model runtime, skipping");
-                        continue;
-                    }
-                };
-
-                tracing::info!(
-                    model = %name,
-                    url = %endpoint.url,
-                    backend = ?endpoint.backend,
-                    "Model served via runtime"
-                );
-
-                let model_id = model_cfg.model_name.clone().unwrap_or_else(|| name.clone());
-                let backend: Arc<dyn navra_model::ModelBackend> =
-                    Arc::new(navra_model::OpenAiBackend::new(
-                        &endpoint.url,
-                        &model_id,
-                        None,
-                        navra_model::Locality::Local,
-                    ));
-
-                running_endpoints.push((runtime, endpoint));
-                backend
-            }
-        };
-
-        tracing::info!(model = %name, task = %model_cfg.task, "Model loaded");
-        models.insert(name.clone(), backend);
-    }
-
-    tracing::info!(count = models.len(), "Model registry ready");
 
     #[cfg(feature = "onnx")]
     let pii_ner_filter: Option<Arc<navra_core::safety::NerFilter>> = {
@@ -5580,6 +5294,46 @@ pub(crate) fn expand_tilde(path: &str) -> String {
         }
     }
     out
+}
+
+fn convert_model_configs(
+    models: &std::collections::HashMap<String, config::ModelConfig>,
+) -> std::collections::HashMap<String, navra_model_server::config::ModelEntry> {
+    models
+        .iter()
+        .map(|(name, mc)| {
+            (
+                name.clone(),
+                navra_model_server::config::ModelEntry {
+                    model_path: mc.model_path.clone(),
+                    source: mc.source.clone(),
+                    tokenizer_path: mc.tokenizer_path.clone(),
+                    task: mc.task.clone(),
+                    device: mc.device.clone(),
+                    dimensions: mc.dimensions,
+                    labels: mc.labels.clone(),
+                    threshold: mc.threshold,
+                    format: mc.format.clone(),
+                    execution_mode: mc.execution_mode,
+                    runtime: mc.runtime.clone(),
+                    context_size: mc.context_size,
+                    parallel: mc.parallel,
+                    model_name: mc.model_name.clone(),
+                    cache_type: mc.cache_type,
+                    speculative: mc.speculative.as_ref().map(|s| {
+                        navra_model_server::config::SpeculativeEntry {
+                            draft_model: s.draft_model.clone(),
+                            draft_tokens: s.draft_tokens,
+                            draft_min_p: s.draft_min_p,
+                        }
+                    }),
+                    base_url: mc.base_url.clone(),
+                    api_key: mc.api_key.clone(),
+                    locality: mc.locality.clone(),
+                },
+            )
+        })
+        .collect()
 }
 
 fn audit_command(
