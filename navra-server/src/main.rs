@@ -223,6 +223,9 @@ async fn main() -> anyhow::Result<()> {
             AgentAction::Inspect { oci_ref } => {
                 cli::agent_inspect(&oci_ref).await?;
             }
+            AgentAction::Init { bundle, name } => {
+                cli::agent_init(&bundle, name.as_deref())?;
+            }
             AgentAction::List => {
                 cli::agent_list()?;
             }
