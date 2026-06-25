@@ -8,6 +8,14 @@ mod server;
 
 use serde::Deserialize;
 use std::collections::HashMap;
+
+pub(crate) fn default_pii_model_dir(name: &str) -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra")
+        .join("models")
+        .join(name)
+}
 use std::path::PathBuf;
 
 pub use crate::grpc_manager::GrpcModuleConfig;
@@ -235,7 +243,7 @@ impl Config {
                 };
                 expanded
             })
-            .unwrap_or_else(navra_core::safety::default_pii_ner_model_dir)
+            .unwrap_or_else(|| default_pii_model_dir("pii-ner"))
     }
 
     pub fn pii_multilingual_model_dir(&self) -> std::path::PathBuf {
@@ -251,7 +259,7 @@ impl Config {
                     std::path::PathBuf::from(p)
                 }
             })
-            .unwrap_or_else(navra_core::safety::default_pii_ner_multilingual_model_dir)
+            .unwrap_or_else(|| default_pii_model_dir("pii-ner-multilingual"))
     }
 
     pub fn rag_db_path(&self) -> String {

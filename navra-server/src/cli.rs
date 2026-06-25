@@ -753,7 +753,7 @@ pub(crate) async fn pii_download(multilingual: bool) -> anyhow::Result<()> {
 /// This model (dslim/bert-base-NER converted to ONNX by ProtectAI) detects
 /// PERSON, LOCATION, ORGANIZATION, and MISC entities in natural language.
 async fn pii_download_english() -> anyhow::Result<()> {
-    let model_dir = navra_core::safety::default_pii_ner_model_dir();
+    let model_dir = super::config::default_pii_model_dir("pii-ner");
     std::fs::create_dir_all(&model_dir)?;
 
     println!("Pulling protectai/bert-base-NER-onnx — semantic PII detection (PER, LOC, ORG, MISC)");
@@ -799,7 +799,7 @@ async fn pii_download_english() -> anyhow::Result<()> {
 /// of Davlan/xlm-roberta-base-ner-hrl. Covers 10+ languages including
 /// English, French, German, Spanish, Italian, Portuguese, and Dutch.
 pub(crate) async fn pii_download_multilingual() -> anyhow::Result<()> {
-    let model_dir = navra_core::safety::default_pii_ner_multilingual_model_dir();
+    let model_dir = super::config::default_pii_model_dir("pii-ner-multilingual");
     std::fs::create_dir_all(&model_dir)?;
 
     println!(
@@ -859,7 +859,7 @@ pub(crate) async fn pii_download_multilingual() -> anyhow::Result<()> {
 /// Check if the PII NER model is installed.
 pub(crate) fn pii_status() {
     // English model (protectai)
-    let model_dir = navra_core::safety::default_pii_ner_model_dir();
+    let model_dir = super::config::default_pii_model_dir("pii-ner");
     let has_model = model_dir.join("model.onnx").exists();
     let has_tokenizer = model_dir.join("tokenizer.json").exists();
 
@@ -882,7 +882,7 @@ pub(crate) fn pii_status() {
     println!();
 
     // Multilingual model
-    let ml_dir = navra_core::safety::default_pii_ner_multilingual_model_dir();
+    let ml_dir = super::config::default_pii_model_dir("pii-ner-multilingual");
     let ml_has_model = ml_dir.join("model.onnx").exists();
     let ml_has_tokenizer = ml_dir.join("tokenizer.json").exists();
 

@@ -20,7 +20,7 @@ proc-macro2 = "1"
 
 [dev-dependencies]
 navra-protocol = { path = "../navra-protocol" }
-navra-mcp = { path = "../navra-mcp" }
+navra-mcp = { path = "../navra-mcp", default-features = false }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt"] }
 trybuild = "1"

@@ -1162,65 +1162,75 @@ async fn serve_inner(
             continue;
         }
 
-        // --- Choose backend based on execution mode ---
-        let device = model_cfg
-            .device
-            .as_deref()
-            .map(navra_model::Device::parse)
-            .unwrap_or_default();
-
         let execution_mode = model_cfg
             .execution_mode
             .unwrap_or_else(|| navra_model_runtime::ExecutionMode::from_task(&model_cfg.task));
 
         let backend: Arc<dyn navra_model::ModelBackend> = match execution_mode {
             navra_model_runtime::ExecutionMode::InProcess => {
-                let (task, tokenizer_path) = match model_cfg.task.as_str() {
-                    "embedding" => {
-                        let dims = model_cfg.dimensions.unwrap_or(768);
-                        (
-                            navra_model::ModelTask::Embedding { dimensions: dims },
-                            model_cfg
-                                .tokenizer_path
-                                .as_ref()
-                                .map(|p| std::path::PathBuf::from(expand_tilde(p))),
-                        )
-                    }
-                    "classification" => {
-                        let labels = if model_cfg.labels.is_empty() {
-                            vec!["safe".to_string(), "unsafe".to_string()]
-                        } else {
-                            model_cfg.labels.clone()
-                        };
-                        (
-                            navra_model::ModelTask::Classification { labels },
-                            model_cfg
-                                .tokenizer_path
-                                .as_ref()
-                                .map(|p| std::path::PathBuf::from(expand_tilde(p))),
-                        )
-                    }
-                    other => {
-                        tracing::warn!(
-                            model = %name, task = %other,
-                            "execution_mode=in_process but task is not embedding/classification, skipping"
-                        );
-                        continue;
-                    }
-                };
+                #[cfg(feature = "onnx")]
+                {
+                    let device = model_cfg
+                        .device
+                        .as_deref()
+                        .map(navra_model::Device::parse)
+                        .unwrap_or_default();
 
-                match navra_model::OnnxBackend::load(
-                    name,
-                    &resolved_path,
-                    tokenizer_path.as_deref(),
-                    task,
-                    device.clone(),
-                ) {
-                    Ok(model) => Arc::new(model),
-                    Err(e) => {
-                        tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
-                        continue;
+                    let (task, tokenizer_path) = match model_cfg.task.as_str() {
+                        "embedding" => {
+                            let dims = model_cfg.dimensions.unwrap_or(768);
+                            (
+                                navra_model::ModelTask::Embedding { dimensions: dims },
+                                model_cfg
+                                    .tokenizer_path
+                                    .as_ref()
+                                    .map(|p| std::path::PathBuf::from(expand_tilde(p))),
+                            )
+                        }
+                        "classification" => {
+                            let labels = if model_cfg.labels.is_empty() {
+                                vec!["safe".to_string(), "unsafe".to_string()]
+                            } else {
+                                model_cfg.labels.clone()
+                            };
+                            (
+                                navra_model::ModelTask::Classification { labels },
+                                model_cfg
+                                    .tokenizer_path
+                                    .as_ref()
+                                    .map(|p| std::path::PathBuf::from(expand_tilde(p))),
+                            )
+                        }
+                        other => {
+                            tracing::warn!(
+                                model = %name, task = %other,
+                                "execution_mode=in_process but task is not embedding/classification, skipping"
+                            );
+                            continue;
+                        }
+                    };
+
+                    match navra_model::OnnxBackend::load(
+                        name,
+                        &resolved_path,
+                        tokenizer_path.as_deref(),
+                        task,
+                        device.clone(),
+                    ) {
+                        Ok(model) => Arc::new(model),
+                        Err(e) => {
+                            tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
+                            continue;
+                        }
                     }
+                }
+                #[cfg(not(feature = "onnx"))]
+                {
+                    tracing::warn!(
+                        model = %name,
+                        "execution_mode=in_process requires the 'onnx' feature, skipping"
+                    );
+                    continue;
                 }
             }
             navra_model_runtime::ExecutionMode::Served => {
@@ -1374,12 +1384,10 @@ async fn serve_inner(
 
     tracing::info!(count = models.len(), "Model registry ready");
 
-    // Try to load PII NER models.
-    // Prefer the multilingual model (better coverage), fall back to English-only.
-    let pii_ml_dir = cfg.pii_multilingual_model_dir();
-    let pii_en_dir = cfg.pii_model_dir();
-
-    let pii_ner_filter: Option<Arc<navra_core::safety::NerFilter>> =
+    #[cfg(feature = "onnx")]
+    let pii_ner_filter: Option<Arc<navra_core::safety::NerFilter>> = {
+        let pii_ml_dir = cfg.pii_multilingual_model_dir();
+        let pii_en_dir = cfg.pii_model_dir();
         match navra_core::safety::load_ner_filter(&pii_ml_dir) {
             Some(filter) => {
                 tracing::info!(
@@ -1403,11 +1411,12 @@ async fn serve_inner(
                     None
                 }
             },
-        };
+        }
+    };
 
-    // Load OpenAI privacy-filter (address, date, secret detection)
-    let privacy_filter_dir = navra_core::safety::default_privacy_filter_model_dir();
-    let privacy_filter: Option<Arc<navra_core::safety::PrivacyFilterModel>> =
+    #[cfg(feature = "onnx")]
+    let privacy_filter: Option<Arc<navra_core::safety::PrivacyFilterModel>> = {
+        let privacy_filter_dir = navra_core::safety::default_privacy_filter_model_dir();
         match navra_core::safety::load_privacy_filter(&privacy_filter_dir) {
             Some(filter) => {
                 tracing::info!(
@@ -1422,7 +1431,8 @@ async fn serve_inner(
                 );
                 None
             }
-        };
+        }
+    };
 
     // Build custom PII filter from global pii_patterns config (shared across all pipelines)
     let custom_pii_filter: Option<Arc<navra_core::safety::CustomPiiFilter>> =
@@ -1522,7 +1532,7 @@ async fn serve_inner(
             }
         }
 
-        // Add PII NER filter to profiles that use content filtering
+        #[cfg(feature = "onnx")]
         if let Some(ref ner) = pii_ner_filter {
             match pset.safety.as_str() {
                 "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
@@ -1536,7 +1546,7 @@ async fn serve_inner(
             }
         }
 
-        // Add privacy-filter (address, date, secret) to content-filtering profiles
+        #[cfg(feature = "onnx")]
         if let Some(ref pf) = privacy_filter {
             match pset.safety.as_str() {
                 "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
@@ -2988,9 +2998,11 @@ async fn serve_inner(
             });
             if has_pii_profile {
                 let mut pipeline = navra_core::safety::build_pipeline("standard");
+                #[cfg(feature = "onnx")]
                 if let Some(ref ner) = pii_ner_filter {
                     pipeline.add_ner_filter_shared(Arc::clone(ner));
                 }
+                #[cfg(feature = "onnx")]
                 if let Some(ref pf) = privacy_filter {
                     pipeline.add_privacy_filter_shared(Arc::clone(pf));
                 }
@@ -3846,7 +3858,7 @@ async fn serve_inner(
                     }
                 }
             }
-            // Re-add PII NER filter
+            #[cfg(feature = "onnx")]
             if let Some(ref ner) = pii_ner_filter {
                 match pset.safety.as_str() {
                     "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
@@ -3855,7 +3867,7 @@ async fn serve_inner(
                     _ => {}
                 }
             }
-            // Re-add privacy-filter
+            #[cfg(feature = "onnx")]
             if let Some(ref pf) = privacy_filter {
                 match pset.safety.as_str() {
                     "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {

@@ -14,7 +14,8 @@ path = "src/bin/server.rs"
 required-features = ["server"]
 
 [features]
-default = []
+default = ["onnx"]
+onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers", "navra-model/onnx", "navra-core/onnx", "navra-mcp/onnx"]
 server = ["axum", "tokio/rt-multi-thread", "tokio/macros", "tokio/signal", "tokio/net", "clap", "tracing-subscriber", "anyhow"]
 
 [dependencies]
@@ -22,9 +23,9 @@ axum = { workspace = true, optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 anyhow = { version = "1", optional = true }
-navra-mcp = { path = "../navra-mcp" }
-navra-core = { path = "../navra-core" }
-navra-model = { path = "../navra-model", default-features = false, features = ["onnx"] }
+navra-mcp = { path = "../navra-mcp", default-features = false }
+navra-core = { path = "../navra-core", default-features = false }
+navra-model = { path = "../navra-model", default-features = false }
 navra-macros = { path = "../navra-macros" }
 navra-protocol = { path = "../navra-protocol" }
 serde = { workspace = true }
@@ -37,9 +38,9 @@ rusqlite = { workspace = true }
 sqlite-vec = "0.1.6-alpha.2"
 zerocopy = { version = "0.8", features = ["derive"] }
 dirs = "6"
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"] }
-ndarray = "0.17"
-tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
+ndarray = { version = "0.17", optional = true }
+tokenizers = { version = "0.22", default-features = false, features = ["onig"], optional = true }
 regex-lite = "0.1"
 
 [dev-dependencies]

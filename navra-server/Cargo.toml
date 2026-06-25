@@ -14,23 +14,23 @@ name = "navra"
 path = "src/main.rs"
 
 [dependencies]
-navra-core = { path = "../navra-core" }
+navra-core = { path = "../navra-core", default-features = false }
 rmcp = { workspace = true }
-navra-safety-hooks = { path = "../navra-safety-hooks" }
+navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
 navra-cognitive = { path = "../navra-cognitive" }
-navra-agent = { path = "../navra-agent" }
-navra-flow = { path = "../navra-flow" }
-navra-memory = { path = "../navra-memory" }
-navra-model = { path = "../navra-model" }
+navra-agent = { path = "../navra-agent", default-features = false }
+navra-flow = { path = "../navra-flow", default-features = false }
+navra-memory = { path = "../navra-memory", default-features = false }
+navra-model = { path = "../navra-model", default-features = false }
 navra-model-hub = { path = "../navra-model-hub" }
 navra-model-runtime = { path = "../navra-model-runtime", features = ["openshell"] }
 navra-macros = { path = "../navra-macros" }
-navra-mcp = { path = "../navra-mcp" }
+navra-mcp = { path = "../navra-mcp", default-features = false }
 navra-protocol = { path = "../navra-protocol" }
-navra-rag = { path = "../navra-rag" }
-navra-modal-vision = { path = "../navra-modal-vision" }
-navra-modal-voice = { path = "../navra-modal-voice" }
-navra-openapi = { path = "../navra-openapi" }
+navra-rag = { path = "../navra-rag", default-features = false }
+navra-modal-vision = { path = "../navra-modal-vision", default-features = false }
+navra-modal-voice = { path = "../navra-modal-voice", default-features = false }
+navra-openapi = { path = "../navra-openapi", default-features = false }
 axum = { workspace = true }
 tokio = { workspace = true }
 schemars = { workspace = true }
@@ -70,6 +70,12 @@ opentelemetry-otlp = { version = "0.28", features = ["tonic"], optional = true }
 tracing-opentelemetry = { version = "0.29", optional = true }
 
 [features]
+default = ["onnx"]
+onnx = [
+    "navra-core/onnx", "navra-rag/onnx", "navra-model/onnx", "navra-safety-hooks/onnx",
+    "navra-agent/onnx", "navra-flow/onnx", "navra-memory/onnx", "navra-mcp/onnx",
+    "navra-modal-vision/onnx", "navra-modal-voice/onnx", "navra-openapi/onnx",
+]
 cedar = ["navra-core/cedar"]
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry"]
 
