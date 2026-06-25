@@ -286,7 +286,15 @@ pub(crate) enum AgentAction {
         /// OCI reference
         oci_ref: String,
     },
-    /// List installed agent bundles
+    /// Initialize an agent instance from an installed bundle
+    Init {
+        /// Bundle name (must be installed)
+        bundle: String,
+        /// Instance name (defaults to bundle name)
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// List installed agent bundles and instances
     List,
     /// Remove an installed agent bundle
     Remove {
@@ -592,6 +600,141 @@ fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
         if !template.credentials.is_empty() {
             println!("\nThis agent needs credentials. Run:");
             println!("  navra agent init {}", installed.name);
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyhow::Result<()> {
+    use crate::agent_bundle::bundle_dir;
+
+    let bundles_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/agent-bundles")
+        .join(bundle_name);
+
+    if !bundles_dir.exists() {
+        anyhow::bail!(
+            "bundle '{}' not installed. Run: navra agent install <path-or-oci-ref>",
+            bundle_name
+        );
+    }
+
+    let bundle = bundle_dir::load_bundle(&bundles_dir)?;
+    let template = bundle_dir::load_config_template(&bundles_dir)?;
+    let instance = instance_name.unwrap_or(bundle_name);
+    let instance_dir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/agents")
+        .join(instance);
+
+    std::fs::create_dir_all(&instance_dir)?;
+
+    // Generate instance config
+    let mut config = String::new();
+    config.push_str(&format!("# Agent instance: {instance}\n"));
+    config.push_str(&format!("# Bundle: {} v{}\n\n", bundle.meta.name, bundle.meta.version));
+    config.push_str(&format!("bundle = \"{}\"\n", bundle.meta.name));
+
+    // Model preferences
+    if let Some(ref preferred) = bundle.model.preferred {
+        config.push_str(&format!("model = \"{preferred}\"\n"));
+    }
+
+    // Credential references
+    if let Some(ref tmpl) = template {
+        if !tmpl.credentials.is_empty() {
+            config.push_str("\n[credentials]\n");
+            for cred in &tmpl.credentials {
+                let required = if cred.required { "" } else { "  # optional" };
+                config.push_str(&format!(
+                    "# {} ({}){}",
+                    cred.name, cred.cred_type, required
+                ));
+                if let Some(ref desc) = cred.description {
+                    config.push_str(&format!(" — {desc}"));
+                }
+                config.push('\n');
+                if !cred.scopes.is_empty() {
+                    config.push_str(&format!(
+                        "# scopes: {}\n",
+                        cred.scopes.join(", ")
+                    ));
+                }
+                config.push_str(&format!(
+                    "{} = \"navra/{instance}/{}\"\n\n",
+                    cred.name, cred.name
+                ));
+            }
+        }
+    }
+
+    // Permission envelope
+    if !bundle.permissions.operations.is_empty() || !bundle.permissions.default.is_empty() {
+        config.push_str("[permissions]\n");
+        if !bundle.permissions.operations.is_empty() {
+            config.push_str(&format!(
+                "operations = [{}]\n",
+                bundle
+                    .permissions
+                    .operations
+                    .iter()
+                    .map(|o| format!("\"{o}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        for (upstream, ops) in &bundle.permissions.default {
+            config.push_str(&format!(
+                "{upstream} = [{}]\n",
+                ops.iter()
+                    .map(|o| format!("\"{o}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+
+    // Workflow triggers
+    if !bundle.workflows.is_empty() {
+        config.push_str("\n# Triggers (uncomment and configure as needed)\n");
+        config.push_str("# [[triggers]]\n");
+        config.push_str("# type = \"schedule\"\n");
+        config.push_str("# cron = \"0 9 * * 1-5\"\n");
+        for (wf_name, _) in &bundle.workflows {
+            config.push_str(&format!("# workflow = \"{wf_name}\"\n"));
+            break;
+        }
+    }
+
+    let config_path = instance_dir.join("config.toml");
+    std::fs::write(&config_path, &config)?;
+
+    println!("Instance '{instance}' initialized from bundle '{}'", bundle.meta.name);
+    println!("Config: {}", config_path.display());
+
+    if let Some(ref tmpl) = template {
+        if !tmpl.credentials.is_empty() {
+            println!("\nCredentials needed:");
+            for cred in &tmpl.credentials {
+                let req = if cred.required { "(required)" } else { "(optional)" };
+                println!(
+                    "  {} — {} {}",
+                    cred.name, cred.cred_type, req
+                );
+            }
+            println!(
+                "\nStore credentials in your OS keyring under 'navra/{instance}/<name>'"
+            );
+        }
+    }
+
+    if !bundle.workflows.is_empty() {
+        println!("\nAvailable workflows:");
+        for (wf_name, wf) in &bundle.workflows {
+            let desc = wf.description.as_deref().unwrap_or("");
+            println!("  navra run {instance}/{wf_name}  {desc}");
         }
     }
 
