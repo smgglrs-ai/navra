@@ -205,6 +205,9 @@ pub(crate) enum Commands {
         /// Run upstream in a container sandbox (openshell or podman)
         #[arg(long)]
         sandbox: Option<String>,
+        /// Allow egress to specific domains (can be repeated, merged with auto-discovered)
+        #[arg(long = "allow-domain")]
+        allow_domains: Vec<String>,
         /// Command and args to start the upstream MCP server
         #[arg(trailing_var_arg = true, required = true)]
         command: Vec<String>,

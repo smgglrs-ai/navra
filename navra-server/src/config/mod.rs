@@ -19,7 +19,7 @@ pub(crate) fn default_pii_model_dir(name: &str) -> std::path::PathBuf {
 use std::path::PathBuf;
 
 pub use crate::grpc_manager::GrpcModuleConfig;
-pub use agents::{AgentConfig, OpenApiAuthConfig, UpstreamConfig};
+pub use agents::{AgentConfig, NetworkPolicy, OpenApiAuthConfig, UpstreamConfig};
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
 pub use permissions::{DomainRuleConfig, PermissionSet, PiiPatternConfig, ToolRuleConfig};

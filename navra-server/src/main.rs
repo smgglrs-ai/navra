@@ -22,6 +22,7 @@ mod grpc_manager;
 mod init;
 mod mdns;
 mod memory_tools;
+mod network_discovery;
 mod plan_execute;
 mod rag_retriever;
 mod registry_tools;
@@ -461,9 +462,10 @@ async fn main() -> anyhow::Result<()> {
             discover,
             allow_all,
             sandbox,
+            allow_domains,
             command,
         } => {
-            wrap_command(command, bind, safety, name, no_tray, discover, allow_all, sandbox).await?;
+            wrap_command(command, bind, safety, name, no_tray, discover, allow_all, sandbox, allow_domains).await?;
         }
         Commands::Demo {
             project,
@@ -508,6 +510,7 @@ async fn wrap_command(
     discover: bool,
     allow_all: bool,
     sandbox: Option<String>,
+    allow_domains: Vec<String>,
 ) -> anyhow::Result<()> {
     if command.is_empty() {
         anyhow::bail!("No command specified. Usage: navra wrap -- <command> [args...]");
@@ -553,6 +556,48 @@ async fn wrap_command(
         }
     };
 
+    // Discover network requirements when sandbox is active
+    let mut egress_domains: Vec<String> = allow_domains;
+    let egress_active = sandbox.is_some() && !allow_all;
+
+    if egress_active {
+        if let Some(known) = network_discovery::known_server_domains(&upstream_name, &command) {
+            for d in known {
+                if !egress_domains.contains(&d) {
+                    egress_domains.push(d);
+                }
+            }
+        }
+    }
+
+    let egress_section = if egress_active {
+        let domain_list = egress_domains
+            .iter()
+            .map(|d| format!("\"{d}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "egress_deny_all_external = true\negress_allowed_domains = [{domain_list}]\n"
+        )
+    } else {
+        String::new()
+    };
+
+    let network_section = if egress_active && !egress_domains.is_empty() {
+        let domain_list = egress_domains
+            .iter()
+            .map(|d| format!("\"{d}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "\n[upstream.network]\nallowed_domains = [{domain_list}]\ndeny_all_external = true\n"
+        )
+    } else if egress_active {
+        "\n[upstream.network]\ndeny_all_external = true\n".to_string()
+    } else {
+        String::new()
+    };
+
     let toml_str = format!(
         r#"{sandbox_section}
 [[agents]]
@@ -566,12 +611,12 @@ ring = 2
 allow = ["*"]
 deny = []
 operations = ["read", "write"]
-
+{egress_section}
 [[upstream]]
 name = "{upstream_name}"
 transport = "stdio"
 command = [{command_str}]
-"#
+{network_section}"#
     );
 
     let cfg: config::Config = toml::from_str(&toml_str)?;
@@ -587,10 +632,20 @@ command = [{command_str}]
     eprintln!("  Gateway:   http://{bind}/mcp");
     eprintln!("  Safety:    {effective_safety}");
     eprintln!("  Sandbox:   {sandbox_label}");
+    if egress_active {
+        if egress_domains.is_empty() {
+            eprintln!("  Egress:    deny-all (no domains allowed)");
+        } else {
+            eprintln!("  Egress:    {} domain(s) allowed", egress_domains.len());
+            for d in &egress_domains {
+                eprintln!("             - {d}");
+            }
+        }
+    }
     eprintln!("  Token:     {token}");
     if allow_all {
         eprintln!();
-        eprintln!("  WARNING: --allow-all disables all safety filters");
+        eprintln!("  WARNING: --allow-all disables safety filters and egress filtering");
     }
     eprintln!();
     eprintln!("Use with any MCP client:");
@@ -721,6 +776,30 @@ async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
         }
     }
 
+    // --- Network requirements ---
+    let net_reqs = network_discovery::discover_all(name, command, &tools);
+    println!();
+    println!("Network requirements:");
+    if net_reqs.is_empty() {
+        println!("  No external endpoints detected (likely offline-only).");
+    } else {
+        for d in &net_reqs.known {
+            println!("  {d:<40} (known server registry)");
+        }
+        for d in &net_reqs.from_descriptions {
+            if !net_reqs.known.contains(d) {
+                println!("  {d:<40} (extracted from tool description)");
+            }
+        }
+        if !net_reqs.url_accepting_tools.is_empty() {
+            println!();
+            println!("  Tools that accept URLs (may need arbitrary egress):");
+            for t in &net_reqs.url_accepting_tools {
+                println!("    - {t}");
+            }
+        }
+    }
+
     // --- Policy suggestion ---
     println!();
     println!("--- Suggested policy ---");
@@ -743,6 +822,32 @@ async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
             println!("{t} = \"write\"");
         }
     }
+
+    let all_domains = net_reqs.all_domains();
+    if !all_domains.is_empty() || net_reqs.url_accepting_tools.is_empty() {
+        println!();
+        println!("[upstream.network]");
+        if all_domains.is_empty() {
+            println!("# No external endpoints needed — full network isolation recommended.");
+            println!("deny_all_external = true");
+        } else {
+            let domain_list = all_domains
+                .iter()
+                .map(|d| format!("\"{d}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!("allowed_domains = [{domain_list}]");
+            println!("deny_all_external = true");
+        }
+    } else {
+        println!();
+        println!("# [upstream.network]");
+        println!("# WARNING: this server accepts URLs as input — cannot determine");
+        println!("# a fixed domain allowlist. Review tool usage and add domains manually.");
+        println!("# allowed_domains = [\"api.example.com\"]");
+        println!("# deny_all_external = true");
+    }
+
     println!();
     println!("[permissions.{name}]");
     println!("safety = \"standard\"");
@@ -771,6 +876,15 @@ async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
         }
         println!("operations = [\"read\", \"write\"]");
         println!("approve = [{}]", write_patterns.join(", "));
+    }
+    if !all_domains.is_empty() {
+        let domain_list = all_domains
+            .iter()
+            .map(|d| format!("\"{d}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("egress_deny_all_external = true");
+        println!("egress_allowed_domains = [{domain_list}]");
     }
 
     // Shut down the client
@@ -3332,6 +3446,10 @@ async fn serve_inner(
             openshell_gateway: cfg.server.openshell_gateway.clone(),
             exec_state: exec_module.clone(),
             workspace_provider: None,
+            max_tokens_per_run: cfg.budget.max_tokens_per_run,
+            compression_start_ratio: cfg.budget.compression_start_ratio,
+            compaction_keep_recent: cfg.budget.compaction_keep_recent,
+            compaction_trigger_ratio: cfg.budget.compaction_trigger_ratio,
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -4172,6 +4290,31 @@ async fn serve_inner(
             safety_hook.add_pipeline(name.clone(), pipeline);
         }
         builder = builder.hook(safety_hook);
+
+        // Egress endpoint filtering from permission set config
+        {
+            let mut allowed = Vec::new();
+            let mut blocked = Vec::new();
+            let mut deny_all = false;
+            for pset in cfg.permissions.values() {
+                allowed.extend(pset.egress_allowed_domains.iter().cloned());
+                blocked.extend(pset.egress_blocked_domains.iter().cloned());
+                if pset.egress_deny_all_external {
+                    deny_all = true;
+                }
+            }
+            if deny_all || !allowed.is_empty() || !blocked.is_empty() {
+                let egress_config = navra_core::hooks::EgressConfig {
+                    enabled: true,
+                    allowed_domains: allowed,
+                    blocked_domains: blocked,
+                    deny_all_external: deny_all,
+                    block_tainted_egress: true,
+                };
+                builder = builder.hook(navra_core::hooks::EgressFilterHook::new(egress_config));
+                tracing::info!("Egress endpoint filtering enabled from permission config");
+            }
+        }
 
         builder = builder.hook(BudgetHook::new(cfg.budget.max_tool_output_tokens, strategy));
         tracing::info!(

@@ -97,6 +97,36 @@ pub struct UpstreamConfig {
     /// refresh, and 401/403 challenges automatically.
     #[serde(default)]
     pub oauth: Option<UpstreamOAuthConfig>,
+    /// Network egress policy for sandboxed execution.
+    /// When absent and `--sandbox` is used, defaults to deny-all.
+    #[serde(default)]
+    pub network: Option<NetworkPolicy>,
+}
+
+/// Network egress policy controlling which external endpoints a sandboxed
+/// upstream MCP server can reach.
+///
+/// Both domains and IP addresses are supported. When `deny_all_external`
+/// is true (the default), raw IP addresses are blocked unless they appear
+/// in `allowed_ips`. This prevents bypassing domain-based rules by
+/// resolving to an IP and connecting directly.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+pub struct NetworkPolicy {
+    /// Domains the upstream is allowed to reach (e.g., `"*.googleapis.com"`).
+    /// Supports wildcard prefix matching (`*.example.com`).
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+    /// Domains explicitly blocked (deny wins over allow).
+    #[serde(default)]
+    pub blocked_domains: Vec<String>,
+    /// IP addresses or CIDR ranges allowed (e.g., `"10.0.0.0/8"`).
+    /// Raw IP access is blocked by default when `deny_all_external` is true.
+    #[serde(default)]
+    pub allowed_ips: Vec<String>,
+    /// When true, only `allowed_domains` and `allowed_ips` are reachable.
+    /// Default: true.
+    #[serde(default = "super::default_true")]
+    pub deny_all_external: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
