@@ -7,7 +7,16 @@ use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::Mutex;
 
-type TurnRow = (String, String, String, i64, Option<String>, Option<String>, f64, i64);
+type TurnRow = (
+    String,
+    String,
+    String,
+    i64,
+    Option<String>,
+    Option<String>,
+    f64,
+    i64,
+);
 
 /// Persistent working memory backed by SQLite.
 ///

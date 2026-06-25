@@ -22,7 +22,6 @@ pub enum OnError {
     Default,
 }
 
-
 impl<'de> serde::Deserialize<'de> for OnError {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

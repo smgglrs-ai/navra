@@ -936,15 +936,12 @@ async fn spawn_and_track_tasks(
             Some(task.specialist.clone())
         };
 
-        let ops = task
-            .operations
-            .clone()
-            .unwrap_or_else(|| {
-                crate::team_tools::DEFAULT_OPERATIONS
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect()
-            });
+        let ops = task.operations.clone().unwrap_or_else(|| {
+            crate::team_tools::DEFAULT_OPERATIONS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        });
         let tools = task.tools.clone().unwrap_or_else(|| {
             crate::team_tools::DEFAULT_TOOLS
                 .iter()
