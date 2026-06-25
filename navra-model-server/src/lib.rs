@@ -9,8 +9,8 @@
 //!   in-process and accesses the [`ModelRegistry`] directly without HTTP.
 //!
 //! The registry is the single source of truth for loaded models. In remote
-//! mode, the gateway connects via [`RemoteRegistry`] which implements the
-//! same lookup interface over HTTP.
+//! mode, the gateway connects to the model server's HTTP API, which
+//! exposes the same lookup and inference interface.
 
 pub mod api;
 pub mod config;
