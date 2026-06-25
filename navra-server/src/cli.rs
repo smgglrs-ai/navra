@@ -182,6 +182,24 @@ pub(crate) enum Commands {
         #[arg(long, default_value_t = default_cognitive_core_path())]
         cognitive_core: String,
     },
+    /// Wrap an MCP server with secure-by-default gateway in one command
+    Wrap {
+        /// Bind address for the gateway (default: 127.0.0.1:9315)
+        #[arg(short, long, default_value = "127.0.0.1:9315")]
+        bind: String,
+        /// Safety profile: standard, block, secrets-only, none
+        #[arg(short, long, default_value = "standard")]
+        safety: String,
+        /// Name for the upstream server (default: derived from command)
+        #[arg(short, long)]
+        name: Option<String>,
+        /// Disable system tray icon
+        #[arg(long)]
+        no_tray: bool,
+        /// Command and args to start the upstream MCP server
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
+    },
     /// Run the end-to-end security audit demo
     Demo {
         /// Path to the demo project (default: examples/payments-app)

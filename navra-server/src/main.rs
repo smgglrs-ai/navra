@@ -453,6 +453,15 @@ async fn main() -> anyhow::Result<()> {
                 policy_suggest(hours, &format, db.as_deref(), agent.as_deref(), min_count)?;
             }
         },
+        Commands::Wrap {
+            bind,
+            safety,
+            name,
+            no_tray,
+            command,
+        } => {
+            wrap_command(command, bind, safety, name, no_tray).await?;
+        }
         Commands::Demo {
             project,
             live,
@@ -485,6 +494,76 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn wrap_command(
+    command: Vec<String>,
+    bind: String,
+    safety: String,
+    name: Option<String>,
+    no_tray: bool,
+) -> anyhow::Result<()> {
+    if command.is_empty() {
+        anyhow::bail!("No command specified. Usage: navra wrap -- <command> [args...]");
+    }
+
+    let upstream_name = name.unwrap_or_else(|| {
+        std::path::Path::new(&command[0])
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("upstream")
+            .to_string()
+    });
+
+    let token = config::generate_token();
+    let token_hash = TokenAuthenticator::hash_token(&token);
+
+    let command_toml: Vec<String> = command.clone();
+    let command_str = command_toml
+        .iter()
+        .map(|s| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let toml_str = format!(
+        r#"[server]
+tcp = "{bind}"
+
+[[agents]]
+name = "wrap-client"
+token_hash = "{token_hash}"
+permissions = "wrap"
+
+[permissions.wrap]
+safety = "{safety}"
+ring = 2
+allow = ["*"]
+deny = []
+operations = ["read", "write"]
+
+[[upstream]]
+name = "{upstream_name}"
+transport = "stdio"
+command = [{command_str}]
+"#
+    );
+
+    let cfg: config::Config = toml::from_str(&toml_str)?;
+
+    eprintln!("navra wrap: starting secured proxy for '{upstream_name}'");
+    eprintln!();
+    eprintln!("  Upstream:  {}", command.join(" "));
+    eprintln!("  Gateway:   http://{bind}/mcp");
+    eprintln!("  Safety:    {safety}");
+    eprintln!("  Token:     {token}");
+    eprintln!();
+    eprintln!("Use with any MCP client:");
+    eprintln!("  export MCPD_TOKEN={token}");
+    eprintln!("  # endpoint: http://{bind}/mcp");
+    eprintln!();
+    eprintln!("Press Ctrl-C to stop.");
+
+    serve(cfg, no_tray, false).await
 }
 
 fn import_mcp_file(path: &str, redact: bool) -> anyhow::Result<()> {
