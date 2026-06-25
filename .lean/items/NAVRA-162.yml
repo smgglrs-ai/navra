@@ -1,0 +1,51 @@
+id: NAVRA-162
+title: "navra daemon: unified persistent process"
+status: planned
+priority: high
+effort: 5-10d
+tags: [architecture, daemon, scheduler, events]
+depends_on: [NAVRA-161]
+description: |
+  Introduce `navra daemon start|stop|status` as the single
+  persistent process managing model server, scheduler, event
+  watchers, and MCP gateway for external clients.
+
+  Today running navra at full capacity requires multiple
+  processes: model server, gateway, watch loops. The daemon
+  consolidates these.
+
+  Components:
+  - Embedded model server (from NAVRA-161) or connects to
+    external one
+  - Scheduler: cron-like, reads trigger configs from agent
+    instance configs, fires `navra run` equivalents
+  - Event watcher: poll-based (v1) — IMAP IDLE, WebSocket,
+    MCP notifications. Webhook listener deferred to cloud
+    deployment story.
+  - MCP gateway endpoint for external clients (Claude Desktop,
+    Cursor, other MCP clients) — replaces standalone `navra serve`
+
+  `navra daemon start --detach` daemonizes. Integrates with
+  systemd user service (existing navra install/uninstall).
+
+  Agent instance configs declare triggers:
+
+    triggers:
+      - type: schedule
+        cron: "0 6 * * 1-5"
+        workflow: day-planner
+      - type: event
+        source: gmail
+        filter: "is:unread"
+        workflow: triage
+
+  `navra serve` becomes `navra daemon start --gateway` or is
+  kept as sugar that starts the daemon with gateway enabled.
+acceptance:
+  - navra daemon start|stop|status works
+  - Embeds model server or connects to external
+  - Scheduled triggers fire from agent instance configs
+  - Poll-based event watchers (IMAP IDLE at minimum)
+  - MCP gateway for external clients available as daemon mode
+  - systemd user service integration
+  - navra serve still works (delegates to daemon)

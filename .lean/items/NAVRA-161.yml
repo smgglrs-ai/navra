@@ -1,0 +1,42 @@
+id: NAVRA-161
+title: "Architecture: split model server from gateway"
+status: planned
+priority: high
+effort: 5-10d
+tags: [architecture, model-server, daemon]
+feeds: [NAVRA-162, NAVRA-163, NAVRA-164, NAVRA-165, NAVRA-166, NAVRA-167, NAVRA-168]
+description: |
+  Separate model serving from the gateway into a standalone
+  `navra model serve` process. This is the foundation for all
+  other items in the daemon/agent-bundle initiative.
+
+  Today `navra serve` bundles model loading, gateway, and agent
+  runtime in one process. This makes it impossible to share models
+  across agents with different configs, or to manage GPU resources
+  independently.
+
+  Design:
+  - `navra model serve` starts a stateless inference server
+  - Manages multiple models (load/unload on demand, LRU eviction)
+  - Auto-detects hardware: GPU model, VRAM, RAM, NPU
+  - Proposes resource allocation with desktop reservation
+  - `--budget 24GB` for manual override, `--auto` for guided setup
+  - Models are shared across all agent instances and gateways
+  - No conversation state, no cross-request data leakage
+  - Support multiple model server instances for isolation:
+    `navra model serve --name trading --budget 8GB --port 9401`
+
+  The existing model loading in navra-model-runtime becomes the
+  backend for this server. Gateway code switches from loading
+  models directly to calling the model server API.
+
+  Stateless per-request: prompt in, completion out. KV cache
+  sharing within the engine (prefix caching in vLLM/llama.cpp)
+  is an engine concern, not a navra concern — document this.
+acceptance:
+  - navra model serve starts standalone, auto-detects GPU/VRAM/RAM
+  - Proposes resource allocation with desktop reservation on first run
+  - Multiple models loaded/unloaded based on demand and budget
+  - Gateway connects to model server instead of loading models directly
+  - Multiple model server instances supported (--name, --port)
+  - No regression in existing navra serve functionality

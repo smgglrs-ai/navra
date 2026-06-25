@@ -581,3 +581,21 @@
     exit_reason: "No unblocked items remaining in approve scope — remaining items need CI, macOS, or multi-day design work"
     branch: "loop/2026-06-19-4"
     tag: null
+- timestamp: "2026-06-25T16:30:00Z"
+  actor: claude
+  action: item-complete
+  item: "NAVRA-160"
+  summary: "Network policy discovery and egress enforcement for navra wrap --sandbox. Known-server registry, tool description scanning, EgressFilterHook wiring, --allow-domain CLI flag."
+
+- date: 2026-06-25
+  action: design-session
+  summary: "CLI & architecture redesign — split model server from gateway, daemon, agent bundles/instances, credential brokering, per-step permissions. Created NAVRA-161 through NAVRA-168."
+  items_created:
+    - "NAVRA-161: Architecture: split model server from gateway"
+    - "NAVRA-162: navra daemon: unified persistent process"
+    - "NAVRA-163: Agent bundle format and directory convention"
+    - "NAVRA-164: Agent instances and navra agent init"
+    - "NAVRA-165: navra run: self-contained agent execution"
+    - "NAVRA-166: Credential brokering: daemon injects credentials into MCP servers"
+    - "NAVRA-167: Cross-bundle workflow composition and transitive permissions"
+    - "NAVRA-168: navra agent upgrade: versioned bundles and permission diff"
