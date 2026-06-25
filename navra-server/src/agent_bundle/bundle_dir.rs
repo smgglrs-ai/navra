@@ -232,6 +232,37 @@ fn agent_bundles_dir() -> PathBuf {
         .join("navra/agent-bundles")
 }
 
+/// Check if a workflow is visible on a given surface.
+pub fn workflow_visible(entry: &WorkflowEntry, surface: &str) -> bool {
+    entry.expose.iter().any(|e| e == surface)
+}
+
+/// Intersect caller permissions with callee step permissions.
+///
+/// The effective permissions for a cross-bundle call are the intersection
+/// of what the caller is allowed to do and what the callee step declares.
+/// This implements capability-based security: you can only delegate what
+/// you have.
+pub fn intersect_permissions(
+    caller: &HashMap<String, Vec<String>>,
+    callee_step: &HashMap<String, Vec<String>>,
+) -> HashMap<String, Vec<String>> {
+    let mut result = HashMap::new();
+    for (upstream, callee_ops) in callee_step {
+        if let Some(caller_ops) = caller.get(upstream) {
+            let effective: Vec<String> = callee_ops
+                .iter()
+                .filter(|op| caller_ops.contains(op))
+                .cloned()
+                .collect();
+            if !effective.is_empty() {
+                result.insert(upstream.clone(), effective);
+            }
+        }
+    }
+    result
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -392,5 +423,67 @@ preferences:
 
         let bundle = load_bundle(&bundle_dir).unwrap();
         assert_eq!(bundle.meta.name, "test-agent");
+    }
+
+    #[test]
+    fn workflow_visibility() {
+        let entry = WorkflowEntry {
+            description: None,
+            expose: vec!["cli".to_string(), "tool".to_string()],
+            steps: vec![],
+        };
+        assert!(workflow_visible(&entry, "cli"));
+        assert!(workflow_visible(&entry, "tool"));
+        assert!(!workflow_visible(&entry, "internal"));
+
+        let internal = WorkflowEntry {
+            description: None,
+            expose: vec![],
+            steps: vec![],
+        };
+        assert!(!workflow_visible(&internal, "cli"));
+        assert!(!workflow_visible(&internal, "tool"));
+    }
+
+    #[test]
+    fn permission_intersection_basic() {
+        let mut caller = HashMap::new();
+        caller.insert("gmail".to_string(), vec!["read".to_string(), "search".to_string()]);
+        caller.insert("calendar".to_string(), vec!["read".to_string()]);
+
+        let mut callee = HashMap::new();
+        callee.insert("gmail".to_string(), vec!["read".to_string(), "send".to_string()]);
+        callee.insert("slack".to_string(), vec!["post".to_string()]);
+
+        let result = intersect_permissions(&caller, &callee);
+
+        // gmail: caller has [read, search], callee wants [read, send] → [read]
+        assert_eq!(result.get("gmail").unwrap(), &vec!["read".to_string()]);
+        // slack: caller doesn't have it → not in result
+        assert!(!result.contains_key("slack"));
+        // calendar: callee doesn't ask for it → not in result
+        assert!(!result.contains_key("calendar"));
+    }
+
+    #[test]
+    fn permission_intersection_no_overlap() {
+        let mut caller = HashMap::new();
+        caller.insert("gmail".to_string(), vec!["read".to_string()]);
+
+        let mut callee = HashMap::new();
+        callee.insert("gmail".to_string(), vec!["send".to_string()]);
+
+        let result = intersect_permissions(&caller, &callee);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn permission_intersection_empty_caller() {
+        let caller = HashMap::new();
+        let mut callee = HashMap::new();
+        callee.insert("gmail".to_string(), vec!["read".to_string()]);
+
+        let result = intersect_permissions(&caller, &callee);
+        assert!(result.is_empty());
     }
 }
