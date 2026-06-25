@@ -37,6 +37,7 @@ pub(crate) mod workspace;
 
 use clap::Parser;
 use navra_core::auth::{AgentIdentity, TokenAuthenticator};
+use navra_core::credentials::CredentialStore as _;
 use navra_core::identity::{self, CapSigner, Ed25519Signer};
 use navra_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use navra_core::Module;
@@ -1207,7 +1208,7 @@ async fn serve_inner(
     );
 
     // Build credential store from config mappings
-    let _credential_store = Arc::new(navra_core::credentials::MappedCredentialStore::new(
+    let credential_store = Arc::new(navra_core::credentials::MappedCredentialStore::new(
         cfg.credentials.clone(),
     ));
     if !cfg.credentials.is_empty() {
@@ -2417,6 +2418,40 @@ async fn serve_inner(
                 }
                 if let Some(ref cwd) = upstream_cfg.cwd {
                     cmd.current_dir(cwd);
+                }
+                // Inject plain environment variables
+                for (key, val) in &upstream_cfg.env {
+                    cmd.env(key, val);
+                }
+                // Resolve credentials from store and inject as env vars
+                for (env_var, label) in &upstream_cfg.credentials {
+                    match credential_store.resolve(label) {
+                        Ok(secret) => {
+                            if let Some(val) = secret.as_str() {
+                                cmd.env(env_var, val);
+                                tracing::debug!(
+                                    upstream = %upstream_cfg.name,
+                                    env = %env_var,
+                                    label = %label,
+                                    "Credential injected"
+                                );
+                            } else {
+                                tracing::warn!(
+                                    upstream = %upstream_cfg.name,
+                                    label = %label,
+                                    "Credential is not valid UTF-8, skipping"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                upstream = %upstream_cfg.name,
+                                label = %label,
+                                error = %e,
+                                "Failed to resolve credential, upstream may fail"
+                            );
+                        }
+                    }
                 }
                 match rmcp::transport::TokioChildProcess::new(cmd) {
                     Ok(transport) => match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
