@@ -1,0 +1,49 @@
+id: NAVRA-160
+title: "Network policy discovery and enforcement for navra wrap --sandbox"
+status: planned
+priority: medium
+effort: 3-5d
+tags: [cli, security, sandbox, wrap]
+depends_on: ['NAVRA-155']
+description: |
+  Extend `navra wrap --discover` and `navra wrap --sandbox` to
+  detect and enforce network egress policies for sandboxed MCP
+  upstreams.
+
+  Two phases:
+
+  1. **Static discovery** (in --discover mode):
+     - Parse tool descriptions and annotations for URL patterns
+     - Heuristic extraction of hostnames from known MCP servers
+       (e.g., google-workspace → *.googleapis.com)
+     - Output a suggested `[upstream.network_policy]` TOML fragment
+       with allow_egress and deny_egress rules
+
+  2. **Dynamic discovery** (optional, heavier):
+     - Run one test call per tool inside the sandbox
+     - Capture DNS queries and TCP connections via network namespace
+     - Build an observed egress allowlist from actual traffic
+     - Present for user review before locking down
+
+  3. **Enforcement** (in --sandbox mode):
+     - Translate network_policy to OpenShell policy YAML or Podman
+       --network/--add-host rules
+     - Apply at sandbox creation time
+     - Default-deny all egress when --sandbox is used without a
+       policy (user must explicitly --allow-all to skip)
+
+  Example output from --discover:
+
+    ```toml
+    [upstream.network_policy]
+    allow_egress = ["*.googleapis.com:443", "oauth2.googleapis.com:443"]
+    deny_egress = ["*"]
+    ```
+
+  This closes the gap where `navra wrap --sandbox` isolates the
+  filesystem but leaves network egress wide open.
+acceptance:
+  - navra wrap --discover shows suggested network policy for the upstream
+  - navra wrap --sandbox applies network egress restrictions
+  - Default-deny egress when sandbox is active (unless --allow-all)
+  - Policy is human-readable TOML, editable before use

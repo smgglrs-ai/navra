@@ -1,6 +1,6 @@
 id: NAVRA-156
 title: "Optional ONNX (cargo feature gate)"
-status: planned
+status: done
 priority: medium
 effort: 1-3d
 tags: [build, onboarding]
