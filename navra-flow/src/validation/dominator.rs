@@ -165,6 +165,7 @@ fn find_end_node(nodes: &[String], predecessors: &HashMap<String, HashSet<String
 }
 
 /// Build the immediate dominator tree from dominator sets.
+#[allow(dead_code)]
 pub fn build_dominator_tree(traces: &[ExecutionTrace]) -> DominatorTree {
     if traces.is_empty() {
         return DominatorTree {

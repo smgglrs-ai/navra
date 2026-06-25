@@ -278,6 +278,7 @@ impl TeamRegistry {
         Ok(team_id)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add_teammate(
         &self,
         team_id: &str,
@@ -1379,7 +1380,7 @@ fn spawn_containerized_agent(
     message: &str,
     max_iterations: usize,
     timeout_secs: u64,
-    generates_tasks: bool,
+    _generates_tasks: bool,
 ) -> tokio::task::JoinHandle<()> {
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
@@ -2723,19 +2724,17 @@ pub fn select_model_for_task(
                     // Prefer 12-20B for specialist tasks (fits in GPU with
                     // concurrent KV caches). ≥20B is penalized because model
                     // swapping under concurrent load can hang the GPU.
-                    if param_b >= 12.0 && param_b <= 20.0 {
+                    if (12.0..=20.0).contains(&param_b) {
                         score += 20;
                     } else if param_b >= 20.0 {
                         score += 5;
                     } else {
                         score -= 50;
                     } // ≤10B models can't reliably call tools via Ollama
-                } else {
-                    if param_b <= 10.0 {
-                        score += 8;
-                    } else if param_b <= 20.0 {
-                        score += 4;
-                    }
+                } else if param_b <= 10.0 {
+                    score += 8;
+                } else if param_b <= 20.0 {
+                    score += 4;
                 }
             }
 

@@ -365,7 +365,7 @@ pub(crate) async fn handle_agentic_chat(
 pub(crate) async fn handle_list_sessions(
     State(state): State<Arc<AgentChatState>>,
 ) -> impl IntoResponse {
-    let sessions = state.memory.with(|mem| list_sessions_from_memory(mem));
+    let sessions = state.memory.with(list_sessions_from_memory);
     axum::Json(serde_json::json!({ "sessions": sessions }))
 }
 

@@ -11,9 +11,10 @@ use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::collections::HashMap;
 
 /// Error handling strategy for a step.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum OnError {
     /// Stop plan execution on failure (default).
+    #[default]
     Stop,
     /// Skip the failed step and continue.
     Continue,
@@ -21,11 +22,6 @@ pub enum OnError {
     Default,
 }
 
-impl Default for OnError {
-    fn default() -> Self {
-        OnError::Stop
-    }
-}
 
 impl<'de> serde::Deserialize<'de> for OnError {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -289,6 +285,7 @@ pub async fn execute_yaml_plan(
 }
 
 /// Execute a single step (tool call or for_each), appending to results/vars.
+#[allow(clippy::too_many_arguments)]
 fn execute_step<'a>(
     yaml_step: &'a YamlStep,
     index: usize,
@@ -335,6 +332,7 @@ fn execute_step<'a>(
 }
 
 /// Execute a single tool-call step.
+#[allow(clippy::too_many_arguments)]
 async fn execute_tool_step(
     step: &PlanStep,
     index: usize,
@@ -479,6 +477,7 @@ fn apply_on_error(
 }
 
 /// Execute a for_each iteration step.
+#[allow(clippy::too_many_arguments)]
 async fn execute_for_each_step(
     fe: &ForEachStep,
     index: usize,

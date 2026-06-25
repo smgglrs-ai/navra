@@ -261,7 +261,7 @@ pub fn parse_planner_tasks(output: &str) -> Vec<TaskDefinition> {
         search_from += pos + id_pattern.len();
     }
 
-    for (idx, &pos) in positions.iter().enumerate() {
+    for &pos in &positions {
         // Walk backwards from "id" to find the nearest `{`
         let obj_start = array_str[..pos].rfind('{').unwrap_or(pos);
         // Walk forward to find the matching `}`

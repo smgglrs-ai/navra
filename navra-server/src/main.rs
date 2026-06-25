@@ -41,7 +41,7 @@ use navra_core::credentials::CredentialStore as _;
 use navra_core::identity::{self, CapSigner, Ed25519Signer};
 use navra_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use navra_core::Module;
-use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+use navra_protocol::compat::CallToolResultExt;
 use std::sync::Arc;
 
 use cli::{AgentAction, Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
@@ -321,7 +321,7 @@ async fn main() -> anyhow::Result<()> {
             target,
             cycles,
             branch,
-            config,
+            config: _,
         } => {
             println!("navra self-improvement: {} cycles on {}", cycles, target);
             println!("Branch: {branch}");
@@ -542,6 +542,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn wrap_command(
     command: Vec<String>,
     bind: String,
@@ -660,10 +661,7 @@ command = [{command_str}]
 
     let cfg: config::Config = toml::from_str(&toml_str)?;
 
-    let sandbox_label = match sandbox.as_deref() {
-        Some(s) => s,
-        None => "none (direct)",
-    };
+    let sandbox_label = sandbox.as_deref().unwrap_or("none (direct)");
 
     eprintln!("navra wrap: starting secured proxy for '{upstream_name}'");
     eprintln!();
@@ -1021,7 +1019,7 @@ async fn start_model_server_container(
     let hub = navra_model_hub::ModelHub::new().ok();
     let mut model_path: Option<std::path::PathBuf> = None;
 
-    for (_name, model_cfg) in &cfg.models {
+    for model_cfg in cfg.models.values() {
         if !matches!(model_cfg.task.as_str(), "chat" | "generate") {
             continue;
         }
@@ -1605,7 +1603,7 @@ async fn serve_inner(
     let model_registry = navra_model_server::ModelRegistry::from_config(&model_entries)
         .await
         .context("failed to build model registry")?;
-    let mut models = model_registry.models().clone();
+    let models = model_registry.models().clone();
 
     // Keep the registry alive for runtime process management.
     // When the registry is dropped, it logs but doesn't stop runtimes
@@ -1966,7 +1964,7 @@ async fn serve_inner(
         cfg.approval.timeout_secs,
         cfg.approval.grant_ttl_secs,
     ));
-    let notifier: Arc<dyn navra_core::notify::Notifier> = match cfg.approval.notify.as_str() {
+    let _notifier: Arc<dyn navra_core::notify::Notifier> = match cfg.approval.notify.as_str() {
         "dbus" => match navra_core::notify::DbusNotifier::new().await {
             Ok(n) => {
                 tracing::info!("D-Bus notifier connected");
@@ -5464,8 +5462,8 @@ fn audit_command(
     let filtered: Vec<_> = entries
         .iter()
         .rev()
-        .filter(|e| agent.as_ref().map_or(true, |a| e.agent_name == *a))
-        .filter(|e| tool.as_ref().map_or(true, |t| e.tool_name == *t))
+        .filter(|e| agent.as_ref().is_none_or(|a| e.agent_name == *a))
+        .filter(|e| tool.as_ref().is_none_or(|t| e.tool_name == *t))
         .collect();
 
     if detail {
@@ -5491,8 +5489,8 @@ fn audit_command(
         }
     } else {
         println!(
-            "{:<6} {:<12} {:<12} {:<20} {:<8} {}",
-            "SEQ", "AGENT", "OUTCOME", "TOOL", "US", "IFC"
+            "{:<6} {:<12} {:<12} {:<20} {:<8} IFC",
+            "SEQ", "AGENT", "OUTCOME", "TOOL", "US"
         );
         println!("{}", "-".repeat(80));
         for e in &filtered {
@@ -5545,7 +5543,7 @@ fn policy_suggest(
         .iter()
         .filter(|e| e.outcome.starts_with("denied"))
         .filter(|e| e.timestamp_ms >= cutoff_ms)
-        .filter(|e| agent_filter.map_or(true, |a| e.agent_name == a))
+        .filter(|e| agent_filter.is_none_or(|a| e.agent_name == a))
         .collect();
 
     if denials.is_empty() {
@@ -5621,7 +5619,7 @@ fn policy_suggest(
                     println!(
                         "# [permissions.{}]\n# operations = [..., \"{}\"]\n",
                         permissions,
-                        tool_name.split('_').last().unwrap_or(tool_name)
+                        tool_name.split('_').next_back().unwrap_or(tool_name)
                     );
                 }
             }
@@ -5724,7 +5722,7 @@ fn resolve_openapi_auth(
         return navra_openapi::auth::AuthConfig::default();
     };
 
-    let bearer = auth.bearer.as_deref().map(|s| resolve_env_vars(s));
+    let bearer = auth.bearer.as_deref().map(resolve_env_vars);
 
     let api_key = match (&auth.api_key_name, &auth.api_key_value) {
         (Some(name), Some(value)) => {

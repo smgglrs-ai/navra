@@ -60,6 +60,7 @@ pub fn validate_mandate(task: &Task, output: &str) -> ValidationResult {
 
 /// Pure scoring logic for Kani verification.
 /// Computes (score, passed) from penalty flags and missed criteria count.
+#[cfg(kani)]
 fn compute_score(is_empty: bool, is_short_with_expected: bool, missed_criteria: u8) -> (f32, bool) {
     let mut score = 100.0_f32;
     if is_empty {

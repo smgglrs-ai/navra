@@ -185,7 +185,7 @@ fn parse_test_results(stdout: &str, stderr: &str) -> (u32, u32, u32) {
             let words: Vec<&str> = line.split_whitespace().collect();
             for (i, word) in words.iter().enumerate() {
                 if i > 0 {
-                    if let Some(n) = words[i - 1].parse::<u32>().ok() {
+                    if let Ok(n) = words[i - 1].parse::<u32>() {
                         match *word {
                             "passed" | "passed;" => passed += n,
                             "failed" | "failed;" => failed += n,

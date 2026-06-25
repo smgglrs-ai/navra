@@ -13,6 +13,7 @@ use super::handlers::*;
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub server: Arc<McpServer>,
+    #[allow(dead_code)]
     pub broadcaster: SseBroadcaster,
     pub aid_record: Option<serde_json::Value>,
     pub registry_entries: Vec<serde_json::Value>,
@@ -170,6 +171,7 @@ pub fn build_router_with_discovery(
 }
 
 /// Set the OAuth provider on an existing router's state.
+#[allow(dead_code)]
 pub fn set_oauth(state: &mut AppState, provider: Arc<navra_auth::auth::oauth::OAuthProvider>) {
     state.oauth = Some(provider);
 }

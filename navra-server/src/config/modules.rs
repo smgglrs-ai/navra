@@ -50,6 +50,7 @@ pub struct MemoryModuleConfig {
     /// Automatically distill facts from session conversations on session end.
     /// Default: true.
     #[serde(default = "super::default_true")]
+    #[allow(dead_code)]
     pub auto_distill: bool,
 }
 
@@ -185,9 +186,11 @@ fn default_silence_timeout_ms() -> u64 {
 pub struct FileModuleConfig {
     /// Enable the file module. Default: true.
     #[serde(default = "super::default_true")]
+    #[allow(dead_code)]
     pub enabled: bool,
     /// SQLite database path for the file index.
     #[serde(default = "default_db_path")]
+    #[allow(dead_code)]
     pub db: String,
     /// Default root path for file_tree when no path argument is given.
     /// Overrides the top-level `cognitive_core` setting for docs routing.
@@ -195,6 +198,7 @@ pub struct FileModuleConfig {
     pub default_root: Option<String>,
     /// Directories to watch for auto-reindexing.
     #[serde(default)]
+    #[allow(dead_code)]
     pub watch: Vec<String>,
 }
 

@@ -23,6 +23,7 @@ impl Role {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "system" => Self::System,
@@ -92,6 +93,7 @@ impl MemoryType {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, crate::error::MemoryError> {
         match s {
             "fact" => Ok(Self::Fact),

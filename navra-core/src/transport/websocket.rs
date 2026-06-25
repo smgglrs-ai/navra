@@ -33,7 +33,7 @@ pub(crate) async fn handle_ws_upgrade(
 async fn handle_ws_connection(
     socket: WebSocket,
     state: AppState,
-    agent: crate::auth::AgentIdentity,
+    _agent: crate::auth::AgentIdentity,
 ) {
     state
         .metrics
@@ -157,10 +157,8 @@ async fn handle_ws_connection(
                 if writer.write_all(text.as_bytes()).await.is_err() {
                     break;
                 }
-                if !text.ends_with('\n') {
-                    if writer.write_all(b"\n").await.is_err() {
-                        break;
-                    }
+                if !text.ends_with('\n') && writer.write_all(b"\n").await.is_err() {
+                    break;
                 }
                 if writer.flush().await.is_err() {
                     break;

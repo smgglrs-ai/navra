@@ -137,7 +137,7 @@ impl Module for RagModule {
 fn resolve_path(raw: &str) -> Result<PathBuf, String> {
     let expanded = if raw.starts_with("~/") {
         match dirs::home_dir() {
-            Some(home) => home.join(&raw[2..]),
+            Some(home) => home.join(raw.strip_prefix("~/").unwrap()),
             None => return Err("Cannot resolve home directory".to_string()),
         }
     } else {

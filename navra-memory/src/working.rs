@@ -7,6 +7,8 @@ use rusqlite::{params, Connection};
 use std::path::Path;
 use std::sync::Mutex;
 
+type TurnRow = (String, String, String, i64, Option<String>, Option<String>, f64, i64);
+
 /// Persistent working memory backed by SQLite.
 ///
 /// Stores conversation turns (user messages, assistant responses,
@@ -600,16 +602,7 @@ impl WorkingMemory {
              ORDER BY created_at ASC",
         )?;
 
-        let rows: Vec<(
-            String,
-            String,
-            String,
-            i64,
-            Option<String>,
-            Option<String>,
-            f64,
-            i64,
-        )> = stmt
+        let rows: Vec<TurnRow> = stmt
             .query_map(params![session_id, agent], |row| {
                 Ok((
                     row.get::<_, String>(0)?,

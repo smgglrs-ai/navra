@@ -283,7 +283,7 @@ async fn handle_status(ctx: CallContext, #[state] state: Arc<VoiceState>) -> Cal
 fn resolve_path(raw: &str) -> Result<PathBuf, String> {
     let expanded = if raw.starts_with("~/") {
         match dirs::home_dir() {
-            Some(home) => home.join(&raw[2..]),
+            Some(home) => home.join(raw.strip_prefix("~/").unwrap()),
             None => return Err("Cannot resolve home directory".to_string()),
         }
     } else {
@@ -408,7 +408,7 @@ fn read_wav_file(path: &std::path::Path) -> Result<Vec<f32>, String> {
 
         pos += 8 + chunk_size;
         // Align to 2-byte boundary
-        if chunk_size % 2 != 0 {
+        if !chunk_size.is_multiple_of(2) {
             pos += 1;
         }
     }
