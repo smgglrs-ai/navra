@@ -91,6 +91,16 @@ navra serve
 MCP servers for your project type, generates a token, writes config,
 and optionally installs a systemd service.
 
+### Integration guides
+
+Step-by-step guides for connecting popular agents and clients:
+
+- [navra + Claude Code](docs/content/docs/integrations/claude-code.md)
+- [navra + Goose](docs/content/docs/integrations/goose.md)
+- [navra + OpenAI clients (Python/Node)](docs/content/docs/integrations/openai-clients.md)
+- [navra + LangGraph](docs/content/docs/integrations/langgraph.md)
+- [navra + custom MCP client](docs/content/docs/integrations/custom-mcp.md)
+
 ## Agent SDK
 
 Build agents in Rust with `navra-agent`:

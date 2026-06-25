@@ -152,6 +152,7 @@ navra is a 22-crate Rust workspace:
 
 ## Next steps
 
+- [Integration guides](/docs/integrations/) — Claude Code, Goose, OpenAI clients, LangGraph, custom MCP
 - [Agent SDK guide](/docs/sdk/) — build agents in Rust with navra-agent
 - [Configuration reference](/docs/configuration/) — full config.toml reference
 - [Architecture](/docs/architecture/) — security model and design decisions
