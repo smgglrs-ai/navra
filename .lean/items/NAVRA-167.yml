@@ -1,0 +1,43 @@
+id: NAVRA-167
+title: "Cross-bundle workflow composition and transitive permissions"
+status: planned
+priority: medium
+effort: 3-5d
+tags: [workflows, permissions, security, flow]
+depends_on: [NAVRA-163, NAVRA-165]
+description: |
+  Allow workflows to invoke workflows from other bundles via
+  flow_* tools. Permissions are intersected, not unioned —
+  a called workflow cannot escalate beyond what the caller
+  is allowed to do.
+
+  When workflow A (bundle X) calls workflow B (bundle Y):
+  - B's effective permissions = intersection of A's current
+    step permissions and B's declared permissions
+  - B cannot access MCP servers or credentials that A doesn't
+    have access to
+  - Audit trail shows the full call chain
+
+  Bundle manifest controls workflow visibility:
+
+    workflows:
+      deploy:
+        expose: [cli, tool]    # user can run, agents can call
+      rollback:
+        expose: [tool]         # only callable by other agents
+      preflight:
+        expose: []             # internal sub-flow only
+
+  flow_* tools (flow_run, flow_status, flow_cancel) go through
+  the same gateway permission checks as any other tool call.
+  The daemon enforces the visibility and permission intersection.
+
+  This is capability-based security: you can only delegate
+  what you have.
+acceptance:
+  - Workflow A can invoke workflow B from a different bundle
+  - Effective permissions are intersection of caller and callee
+  - Bundle expose field controls visibility (cli, tool, internal)
+  - flow_* tools enforce permission checks
+  - Audit trail captures cross-bundle call chain
+  - Escalation is impossible (callee can't exceed caller's perms)

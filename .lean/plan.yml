@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 14 active items
+# 22 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -16,6 +16,48 @@ items:
     status: planned
     priority: high
     effort: 5-10d
+
+  - id: "NAVRA-161"
+    title: "Architecture: split model server from gateway"
+    status: planned
+    priority: high
+    effort: 5-10d
+    feeds: ['NAVRA-162', 'NAVRA-163', 'NAVRA-164', 'NAVRA-165', 'NAVRA-166', 'NAVRA-167', 'NAVRA-168']
+
+  - id: "NAVRA-162"
+    title: "navra daemon: unified persistent process"
+    status: planned
+    priority: high
+    effort: 5-10d
+    depends_on: ['NAVRA-161']
+
+  - id: "NAVRA-163"
+    title: "Agent bundle format and directory convention"
+    status: planned
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-161']
+
+  - id: "NAVRA-164"
+    title: "Agent instances and navra agent init"
+    status: planned
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-163']
+
+  - id: "NAVRA-165"
+    title: "navra run: self-contained agent execution"
+    status: planned
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-161', 'NAVRA-164']
+
+  - id: "NAVRA-166"
+    title: "Credential brokering: daemon injects credentials into MCP servers"
+    status: planned
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-161', 'NAVRA-164']
 
   - id: "NAVRA-154"
     title: "macOS HITL notifications"
@@ -36,6 +78,20 @@ items:
     priority: medium
     effort: 3-5d
     depends_on: ['NAVRA-155']
+
+  - id: "NAVRA-167"
+    title: "Cross-bundle workflow composition and transitive permissions"
+    status: planned
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-163', 'NAVRA-165']
+
+  - id: "NAVRA-168"
+    title: "navra agent upgrade: versioned bundles and permission diff"
+    status: planned
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-163', 'NAVRA-164']
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"
