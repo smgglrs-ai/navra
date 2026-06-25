@@ -1333,7 +1333,7 @@ pub struct TeammateSpawnContext {
     pub container_pids: u32,
     /// Optional embedding model for query-aware tool output compression.
     pub embedding_model: Option<std::sync::Arc<dyn navra_model::ModelBackend>>,
-    /// OpenShell compute driver gRPC endpoint (e.g., `http://[::1]:50051`).
+    /// OpenShell compute driver gRPC endpoint (e.g., `http://\[::1\]:50051`).
     /// When set, agents are spawned via OpenShell instead of Podman.
     pub openshell_gateway: Option<String>,
     /// Shared exec state for routing exec_run calls to the correct sandbox.
