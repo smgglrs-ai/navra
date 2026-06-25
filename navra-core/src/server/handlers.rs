@@ -1334,13 +1334,7 @@ impl McpServer {
                 if matching.is_empty() {
                     self.prompts
                         .values()
-                        .flat_map(|p| {
-                            p.definition
-                                .arguments
-                                .as_deref()
-                                .unwrap_or_default()
-                                .iter()
-                        })
+                        .flat_map(|p| p.definition.arguments.as_deref().unwrap_or_default().iter())
                         .filter(|a| a.name == params.argument.name)
                         .filter_map(|a| a.description.clone())
                         .collect()
