@@ -1,6 +1,6 @@
 id: NAVRA-166
 title: "Credential brokering: daemon injects credentials into MCP servers"
-status: planned
+status: done
 priority: high
 effort: 3-5d
 tags: [credentials, security, mcp, daemon]
