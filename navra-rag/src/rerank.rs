@@ -47,21 +47,25 @@ impl Reranker for NoopReranker {
     }
 }
 
-/// Cross-encoder reranker using an ONNX model.
-///
-/// Scores each (query, candidate) pair independently. The model
-/// takes two text segments as input and produces a relevance score.
-/// Typical model: `cross-encoder/ms-marco-MiniLM-L-6-v2`.
-///
-/// The ONNX model must accept `input_ids`, `attention_mask`, and
-/// `token_type_ids` tensors and output a single logit per pair.
-pub struct CrossEncoderReranker {
-    session: Mutex<ort::session::Session>,
-    tokenizer: tokenizers::Tokenizer,
-    name: String,
-}
+#[cfg(feature = "onnx")]
+mod onnx_reranker {
+    use super::*;
 
-impl CrossEncoderReranker {
+    /// Cross-encoder reranker using an ONNX model.
+    ///
+    /// Scores each (query, candidate) pair independently. The model
+    /// takes two text segments as input and produces a relevance score.
+    /// Typical model: `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+    ///
+    /// The ONNX model must accept `input_ids`, `attention_mask`, and
+    /// `token_type_ids` tensors and output a single logit per pair.
+    pub struct CrossEncoderReranker {
+        session: Mutex<ort::session::Session>,
+        tokenizer: tokenizers::Tokenizer,
+        name: String,
+    }
+
+    impl CrossEncoderReranker {
     /// Load a cross-encoder ONNX model.
     ///
     /// `model_path` — path to the `.onnx` file.
@@ -301,19 +305,24 @@ impl Reranker for CrossEncoderReranker {
     }
 }
 
-/// Error type for cross-encoder operations.
-#[derive(Debug, thiserror::Error)]
-pub enum CrossEncoderError {
-    #[error("failed to load cross-encoder: {0}")]
-    Load(String),
-    #[error("cross-encoder inference failed: {0}")]
-    Inference(String),
+    /// Error type for cross-encoder operations.
+    #[derive(Debug, thiserror::Error)]
+    pub enum CrossEncoderError {
+        #[error("failed to load cross-encoder: {0}")]
+        Load(String),
+        #[error("cross-encoder inference failed: {0}")]
+        Inference(String),
+    }
 }
+
+#[cfg(feature = "onnx")]
+pub use onnx_reranker::{CrossEncoderError, CrossEncoderReranker};
 
 /// Try to load a cross-encoder reranker, falling back to noop.
 ///
 /// This is the recommended way to create a reranker — it provides
 /// graceful degradation when the model files are not available.
+#[cfg(feature = "onnx")]
 pub fn load_reranker(
     model_path: Option<&Path>,
     tokenizer_path: Option<&Path>,
@@ -336,6 +345,15 @@ pub fn load_reranker(
             Box::new(NoopReranker)
         }
     }
+}
+
+#[cfg(not(feature = "onnx"))]
+pub fn load_reranker(
+    _model_path: Option<&Path>,
+    _tokenizer_path: Option<&Path>,
+) -> Box<dyn Reranker> {
+    tracing::debug!("ONNX disabled, using noop reranker");
+    Box::new(NoopReranker)
 }
 
 /// Configuration for confidence-based abstention.

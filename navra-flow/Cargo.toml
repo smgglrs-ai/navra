@@ -9,13 +9,13 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-navra-agent = { path = "../navra-agent" }
+navra-agent = { path = "../navra-agent", default-features = false }
 rmcp = { workspace = true }
 navra-cognitive = { path = "../navra-cognitive" }
 navra-protocol = { path = "../navra-protocol" }
-navra-model = { path = "../navra-model" }
+navra-model = { path = "../navra-model", default-features = false }
 navra-auth = { path = "../navra-auth" }
-navra-safety-hooks = { path = "../navra-safety-hooks" }
+navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -25,6 +25,10 @@ anyhow = { workspace = true }
 toml = "0.8"
 serde_yaml = "0.9"
 rusqlite = { workspace = true }
+
+[features]
+default = ["onnx"]
+onnx = ["navra-model/onnx", "navra-safety-hooks/onnx", "navra-agent/onnx"]
 
 [dev-dependencies]
 navra-responses = { path = "../navra-responses" }

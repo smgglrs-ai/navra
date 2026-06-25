@@ -9,11 +9,11 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-navra-mcp = { path = "../navra-mcp" }
+navra-mcp = { path = "../navra-mcp", default-features = false }
 navra-protocol = { path = "../navra-protocol" }
 navra-auth = { path = "../navra-auth", features = ["desktop"] }
-navra-safety-hooks = { path = "../navra-safety-hooks" }
-navra-model = { path = "../navra-model", features = ["native-tls"] }
+navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
+navra-model = { path = "../navra-model", default-features = false, features = ["native-tls"] }
 rmcp = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
@@ -37,6 +37,8 @@ prost = { workspace = true }
 tokio-stream = "0.1"
 
 [features]
+default = ["onnx"]
+onnx = ["navra-safety-hooks/onnx", "navra-model/onnx", "navra-mcp/onnx"]
 cedar = ["navra-auth/cedar"]
 
 [build-dependencies]

@@ -9,7 +9,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-navra-mcp = { path = "../navra-mcp" }
+navra-mcp = { path = "../navra-mcp", default-features = false }
 navra-macros = { path = "../navra-macros" }
 navra-protocol = { path = "../navra-protocol" }
 navra-auth = { path = "../navra-auth" }
@@ -21,6 +21,10 @@ zbus = { version = "5", default-features = false, features = ["tokio"] }
 base64 = "0.22"
 dirs = "6"
 futures-util = "0.3"
+
+[features]
+default = ["onnx"]
+onnx = ["navra-mcp/onnx"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
