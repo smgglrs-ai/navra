@@ -12,7 +12,7 @@ use navra_protocol::{CallToolResult, Content, RawContent};
 /// Strategy for reducing oversized tool outputs.
 #[derive(Debug, Clone)]
 pub enum TruncationStrategy {
-    /// Hard truncate at token limit, add "[truncated]" marker.
+    /// Hard truncate at token limit, add "\[truncated\]" marker.
     Truncate,
     /// Keep first `head_ratio` of the budget at the start and
     /// the remainder at the end, eliding the middle.
