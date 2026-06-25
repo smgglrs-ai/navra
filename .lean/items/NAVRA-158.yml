@@ -1,0 +1,24 @@
+id: NAVRA-158
+title: "Multi-model adversarial review of security paper"
+status: backlog
+priority: low
+effort: 3-5d
+tags: [security, research, paper]
+description: |
+  Before submitting the formal verification paper for academic
+  publication, run the claims through adversarial review from
+  multiple LLM models, angles, and prompts. Goal is to find
+  weaknesses in the argument before reviewers do.
+
+  Approach:
+  1. Extract key claims from docs/papers/security-gateway.md
+  2. Run each claim through 3+ models (Claude, GPT, Gemini)
+  3. Use different reviewer personas (security researcher,
+     formal methods expert, systems programmer, red teamer)
+  4. Collect and address all substantive criticisms
+  5. Revise paper based on findings
+acceptance:
+  - Claims reviewed by 3+ models with distinct prompts
+  - All substantive criticisms documented
+  - Paper revised to address findings
+  - Ready for academic submission

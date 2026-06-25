@@ -1,0 +1,25 @@
+id: NAVRA-157
+title: "Publish reference agent bundles to quay.io"
+status: planned
+priority: medium
+effort: 3-5d
+tags: [bundles, distribution, agents]
+depends_on: [NAVRA-151]
+description: |
+  Publish the existing reference agent bundles (researcher,
+  code-reviewer, security-auditor) as signed OCI artifacts to
+  quay.io/navra/. Demonstrates the bundle pattern works
+  end-to-end and gives users installable agents out of the box.
+
+  Steps:
+  1. Build container images for each reference agent
+  2. Sign with cosign (keyless or key-based)
+  3. Push to quay.io/navra/<agent-name>:latest
+  4. Add CI job to rebuild on tag
+  5. Verify `navra agent install oci://quay.io/navra/researcher:latest`
+  6. Document in docs site
+acceptance:
+  - 3 reference agents published to quay.io
+  - Signed with cosign
+  - navra agent install works for each
+  - CI rebuilds on release tag

@@ -1,0 +1,28 @@
+id: NAVRA-152
+title: "navra eval CLI (AgentDojo + MCPTox adversarial evals)"
+status: planned
+priority: high
+effort: 5-10d
+tags: [evaluation, security, cli]
+description: |
+  Package the existing AgentDojo (C3 IFC defense) and MCPTox
+  (tool poisoning resistance) benchmarks as a standalone `navra eval`
+  CLI subcommand. Any team can run adversarial security evals against
+  their MCP setup without writing test harnesses.
+
+  Market context: 89% of teams have observability but only 52% have
+  evals (37-point gap). No standard security eval exists for MCP
+  gateways. navra can own this category.
+
+  Steps:
+  1. Extract eval harness from existing eval/ directory
+  2. Add `navra eval agentdojo` and `navra eval mcptox` subcommands
+  3. Auto-detect running navra instance or accept --endpoint
+  4. Output structured JSON results + human-readable summary
+  5. Add `navra eval report` to generate markdown comparison table
+  6. Document in docs site
+acceptance:
+  - navra eval agentdojo runs full C3 benchmark against a navra instance
+  - navra eval mcptox runs tool poisoning benchmark
+  - Results output as JSON + summary table
+  - Works against any navra instance (local or remote)

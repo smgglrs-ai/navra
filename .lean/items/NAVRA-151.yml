@@ -1,0 +1,26 @@
+id: NAVRA-151
+title: "Binary distribution (GitHub releases + cargo-binstall)"
+status: planned
+priority: high
+effort: 3-5d
+tags: [distribution, onboarding]
+description: |
+  Publish prebuilt binaries for navra and navra-agent on GitHub
+  releases. Add cargo-binstall metadata to Cargo.toml so
+  `cargo binstall navra` works. Consider Fedora COPR for RPM
+  distribution.
+
+  This eliminates the biggest onboarding friction: clone + set
+  ORT_LIB_PATH + cargo build. Users should be able to install
+  navra in one command.
+
+  Steps:
+  1. Add CI job to build release binaries (x86_64-linux, aarch64-linux)
+  2. Bundle libonnxruntime.so alongside the binary (or link statically)
+  3. Upload to GitHub releases with checksums
+  4. Add [package.metadata.binstall] to workspace Cargo.toml
+  5. Optional: create Fedora COPR spec
+acceptance:
+  - cargo binstall navra installs a working binary
+  - GitHub release includes checksums and SBOM
+  - No ORT_LIB_PATH required after install
