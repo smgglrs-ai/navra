@@ -227,6 +227,12 @@ async fn main() -> anyhow::Result<()> {
             AgentAction::Init { bundle, name } => {
                 cli::agent_init(&bundle, name.as_deref())?;
             }
+            AgentAction::Upgrade {
+                bundle,
+                allow_unsigned: _,
+            } => {
+                cli::agent_upgrade(&bundle)?;
+            }
             AgentAction::List => {
                 cli::agent_list()?;
             }

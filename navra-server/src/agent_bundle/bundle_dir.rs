@@ -263,6 +263,80 @@ pub fn intersect_permissions(
     result
 }
 
+/// Diff permissions between two bundle versions.
+///
+/// Returns (added, removed) permission operations per upstream.
+pub fn diff_permissions(
+    old: &BundlePermissions,
+    new: &BundlePermissions,
+) -> PermissionDiff {
+    let mut added = HashMap::new();
+    let mut removed = HashMap::new();
+
+    // Check each upstream in new
+    for (upstream, new_ops) in &new.default {
+        let old_ops = old.default.get(upstream).cloned().unwrap_or_default();
+        let added_ops: Vec<String> = new_ops.iter().filter(|o| !old_ops.contains(o)).cloned().collect();
+        let removed_ops: Vec<String> = old_ops.iter().filter(|o| !new_ops.contains(o)).cloned().collect();
+        if !added_ops.is_empty() {
+            added.insert(upstream.clone(), added_ops);
+        }
+        if !removed_ops.is_empty() {
+            removed.insert(upstream.clone(), removed_ops);
+        }
+    }
+
+    // Check upstreams in old but not in new (fully removed)
+    for (upstream, old_ops) in &old.default {
+        if !new.default.contains_key(upstream) {
+            removed.insert(upstream.clone(), old_ops.clone());
+        }
+    }
+
+    PermissionDiff { added, removed }
+}
+
+/// Result of comparing permissions between bundle versions.
+pub struct PermissionDiff {
+    pub added: HashMap<String, Vec<String>>,
+    pub removed: HashMap<String, Vec<String>>,
+}
+
+impl PermissionDiff {
+    pub fn has_additions(&self) -> bool {
+        !self.added.is_empty()
+    }
+
+    pub fn has_removals(&self) -> bool {
+        !self.removed.is_empty()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.added.is_empty() && self.removed.is_empty()
+    }
+}
+
+impl std::fmt::Display for PermissionDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !self.added.is_empty() {
+            writeln!(f, "New permissions requested:")?;
+            for (upstream, ops) in &self.added {
+                writeln!(f, "  + {upstream}: [{}]", ops.join(", "))?;
+            }
+        }
+        if !self.removed.is_empty() {
+            writeln!(f, "Removed permissions:")?;
+            for (upstream, ops) in &self.removed {
+                writeln!(f, "  - {upstream}: [{}]", ops.join(", "))?;
+            }
+        }
+        if self.is_empty() {
+            writeln!(f, "No permission changes.")?;
+        }
+        Ok(())
+    }
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -485,5 +559,46 @@ preferences:
 
         let result = intersect_permissions(&caller, &callee);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn permission_diff_additions_and_removals() {
+        let old = BundlePermissions {
+            operations: vec![],
+            default: {
+                let mut m = HashMap::new();
+                m.insert("gmail".to_string(), vec!["read".to_string(), "search".to_string()]);
+                m.insert("calendar".to_string(), vec!["read".to_string(), "delete".to_string()]);
+                m
+            },
+        };
+        let new = BundlePermissions {
+            operations: vec![],
+            default: {
+                let mut m = HashMap::new();
+                m.insert("gmail".to_string(), vec!["read".to_string(), "search".to_string(), "draft".to_string()]);
+                m.insert("calendar".to_string(), vec!["read".to_string()]);
+                m
+            },
+        };
+        let diff = diff_permissions(&old, &new);
+        assert!(diff.has_additions());
+        assert!(diff.has_removals());
+        assert_eq!(diff.added.get("gmail").unwrap(), &vec!["draft".to_string()]);
+        assert_eq!(diff.removed.get("calendar").unwrap(), &vec!["delete".to_string()]);
+    }
+
+    #[test]
+    fn permission_diff_no_changes() {
+        let perms = BundlePermissions {
+            operations: vec![],
+            default: {
+                let mut m = HashMap::new();
+                m.insert("gmail".to_string(), vec!["read".to_string()]);
+                m
+            },
+        };
+        let diff = diff_permissions(&perms, &perms);
+        assert!(diff.is_empty());
     }
 }
