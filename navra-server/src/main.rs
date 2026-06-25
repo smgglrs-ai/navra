@@ -407,8 +407,20 @@ async fn main() -> anyhow::Result<()> {
             token,
             max_iterations,
             upstream_prompts,
+            workflow,
+            file: _file,
+            config: _run_config,
             dry_run,
         } => {
+            // If prompt looks like instance/workflow, treat as workflow run
+            let (prompt, _workflow_name) = if let Some(wf) = workflow {
+                (format!("Run workflow: {wf}"), Some(wf))
+            } else if prompt.contains('/') && !prompt.contains(' ') {
+                let wf = prompt.clone();
+                (format!("Run workflow: {wf}"), Some(wf))
+            } else {
+                (prompt, None)
+            };
             if dry_run {
                 println!("--- Dry Run ---");
                 println!("Endpoint: {endpoint}");

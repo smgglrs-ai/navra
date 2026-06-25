@@ -119,7 +119,7 @@ pub(crate) enum Commands {
     },
     /// Run an agent task against a running navra instance
     Run {
-        /// Prompt for the agent
+        /// Prompt for the agent (or instance/workflow for named workflows)
         prompt: String,
         /// Model to use (default: auto-detect from Ollama)
         #[arg(short, long)]
@@ -142,6 +142,15 @@ pub(crate) enum Commands {
         /// Can be repeated.
         #[arg(long = "upstream-prompt")]
         upstream_prompts: Vec<String>,
+        /// Run a named workflow from an agent instance (e.g., work-assistant/day-planner)
+        #[arg(long)]
+        workflow: Option<String>,
+        /// Path to a standalone workflow file (for development)
+        #[arg(long)]
+        file: Option<String>,
+        /// Path to agent instance config (overrides default resolution)
+        #[arg(long)]
+        config: Option<String>,
         /// Preview the constructed prompt without executing
         #[arg(long)]
         dry_run: bool,

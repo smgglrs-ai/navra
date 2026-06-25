@@ -1,6 +1,6 @@
 id: NAVRA-164
 title: "Agent instances and navra agent init"
-status: planned
+status: done
 priority: high
 effort: 3-5d
 tags: [agents, cli, credentials, onboarding]

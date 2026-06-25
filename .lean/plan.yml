@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 22 active items
+# 21 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -16,13 +16,6 @@ items:
     status: planned
     priority: high
     effort: 5-10d
-
-  - id: "NAVRA-161"
-    title: "Architecture: split model server from gateway"
-    status: planned
-    priority: high
-    effort: 5-10d
-    feeds: ['NAVRA-162', 'NAVRA-163', 'NAVRA-164', 'NAVRA-165', 'NAVRA-166', 'NAVRA-167', 'NAVRA-168']
 
   - id: "NAVRA-162"
     title: "navra daemon: unified persistent process"
