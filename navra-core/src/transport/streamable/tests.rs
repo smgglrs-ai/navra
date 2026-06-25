@@ -1,9 +1,9 @@
-use navra_protocol::compat::empty_input_schema;
-use navra_protocol::compat::CallToolResultExt;
 use crate::auth::{AgentIdentity, NoAuthenticator};
 use crate::protocol::{CallToolResult, ToolDefinition};
-use crate::server::McpServer;
 use crate::server::navra_handler::NavraHandler;
+use crate::server::McpServer;
+use navra_protocol::compat::empty_input_schema;
+use navra_protocol::compat::CallToolResultExt;
 use rmcp::model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams};
 use rmcp::service::ServiceExt;
 use std::sync::Arc;
@@ -29,7 +29,8 @@ impl Module for TestPromptModule {
                             crate::protocol::PromptRole::User,
                             "Hello!",
                         ),
-                    ]).with_description("Greeting")
+                    ])
+                    .with_description("Greeting")
                 })
             }),
         )]
@@ -109,7 +110,9 @@ async fn connect_client() -> rmcp::service::RunningService<rmcp::RoleClient, ()>
 #[tokio::test]
 async fn initialize_returns_capabilities() {
     let client = connect_client().await;
-    let info = client.peer_info().expect("should have peer info after init");
+    let info = client
+        .peer_info()
+        .expect("should have peer info after init");
     assert_eq!(info.server_info.name, "test-server");
     assert_eq!(info.server_info.version, "0.1.0");
     client.cancel().await.ok();

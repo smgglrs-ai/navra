@@ -31,3 +31,6 @@ onnx = ["navra-mcp/onnx"]
 [dev-dependencies]
 axum = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true

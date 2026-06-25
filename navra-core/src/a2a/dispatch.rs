@@ -154,9 +154,7 @@ pub async fn handle_message_send(
         }
         p
     };
-    let tool_result = server
-        .handle_call_tool(call_params, ctx)
-        .await;
+    let tool_result = server.handle_call_tool(call_params, ctx).await;
 
     // Build artifact from result
     let artifact = Artifact {
@@ -355,9 +353,7 @@ pub async fn handle_message_stream(
         }
         p
     };
-    let tool_result = server
-        .handle_call_tool(call_params, ctx)
-        .await;
+    let tool_result = server.handle_call_tool(call_params, ctx).await;
 
     // Event 3: Artifact update
     let artifact = Artifact {
@@ -385,11 +381,7 @@ pub async fn handle_message_stream(
 
     // Event 4: Final status update
     let is_err = tool_result.is_error == Some(true);
-    let final_state = if is_err {
-        "failed"
-    } else {
-        "completed"
-    };
+    let final_state = if is_err { "failed" } else { "completed" };
     let final_task_state = if is_err {
         TaskState::Failed
     } else {

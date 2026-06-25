@@ -109,7 +109,9 @@ impl AgentBuilder {
             .await
             .map_err(|e| AgentError::Upstream(format!("SSE connect error: {e}")))?;
         let peer = client.peer().clone();
-        tokio::spawn(async move { let _ = client.waiting().await; });
+        tokio::spawn(async move {
+            let _ = client.waiting().await;
+        });
         self.peer = Some(peer);
         Ok(self)
     }
@@ -131,7 +133,9 @@ impl AgentBuilder {
             .await
             .map_err(|e| AgentError::Upstream(format!("stdio connect error: {e}")))?;
         let peer = client.peer().clone();
-        tokio::spawn(async move { let _ = client.waiting().await; });
+        tokio::spawn(async move {
+            let _ = client.waiting().await;
+        });
         self.peer = Some(peer);
         Ok(self)
     }
@@ -479,7 +483,9 @@ impl AgentBuilder {
                 .await
                 .map_err(|e| AgentError::Upstream(format!("connect error: {e}")))?;
             let peer = client.peer().clone();
-            tokio::spawn(async move { let _ = client.waiting().await; });
+            tokio::spawn(async move {
+                let _ = client.waiting().await;
+            });
             peer
         } else {
             return Err(AgentError::Config("endpoint not set".into()));

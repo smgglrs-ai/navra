@@ -156,10 +156,7 @@ impl Hook for SafetyHook {
                         ResourceContent::TextResourceContents {
                             mime_type, text, ..
                         } => {
-                            if mime_type
-                                .as_deref()
-                                .is_some_and(|m| m.starts_with("text/"))
-                            {
+                            if mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
                                 let (processed, _findings) = pipeline
                                     .process_outbound_with_findings(text, &filter_ctx)
                                     .await;
@@ -329,12 +326,10 @@ mod tests {
             .await;
 
         match decision {
-            HookDecision::ModifyResult(r) => {
-                match &r.content[0].raw {
-                    RawContent::Text(t) => assert!(t.text.contains("[REDACTED:")),
-                    _ => panic!("expected text content"),
-                }
-            }
+            HookDecision::ModifyResult(r) => match &r.content[0].raw {
+                RawContent::Text(t) => assert!(t.text.contains("[REDACTED:")),
+                _ => panic!("expected text content"),
+            },
             other => panic!("Expected ModifyResult, got {other:?}"),
         }
     }

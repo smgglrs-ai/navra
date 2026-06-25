@@ -158,13 +158,10 @@ impl UpstreamModule {
         scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
         tool_overrides: &HashMap<String, String>,
     ) -> Self {
-        let tools = peer
-            .list_all_tools()
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
-                Vec::new()
-            });
+        let tools = peer.list_all_tools().await.unwrap_or_else(|e| {
+            tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
+            Vec::new()
+        });
 
         let tools = if let Some(scanner) = scanner {
             use navra_auth::tool_scanner::ScanVerdict;
@@ -222,31 +219,26 @@ impl UpstreamModule {
 
         let mut tool_classifications = HashMap::new();
         for def in &accepted_tools {
-            let domain =
-                navra_auth::permissions::resource_class::infer_domain_heuristic(&def.name);
+            let domain = navra_auth::permissions::resource_class::infer_domain_heuristic(&def.name);
             let operation = navra_auth::permissions::resource_class::infer_operation_heuristic(
                 &def.name,
                 def.annotations.as_ref(),
             );
-            tool_classifications
-                .insert(def.name.to_string(), navra_auth::permissions::ResourceClass::new(domain, operation));
+            tool_classifications.insert(
+                def.name.to_string(),
+                navra_auth::permissions::ResourceClass::new(domain, operation),
+            );
         }
 
-        let prompts = peer
-            .list_all_prompts()
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(upstream = %name, error = %e, "Failed to discover prompts");
-                Vec::new()
-            });
+        let prompts = peer.list_all_prompts().await.unwrap_or_else(|e| {
+            tracing::warn!(upstream = %name, error = %e, "Failed to discover prompts");
+            Vec::new()
+        });
 
-        let resources = peer
-            .list_all_resources()
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(upstream = %name, error = %e, "Failed to discover resources");
-                Vec::new()
-            });
+        let resources = peer.list_all_resources().await.unwrap_or_else(|e| {
+            tracing::warn!(upstream = %name, error = %e, "Failed to discover resources");
+            Vec::new()
+        });
 
         tracing::info!(
             upstream = %name,
@@ -307,30 +299,29 @@ impl Module for UpstreamModule {
             .map(|def| {
                 let prompt_name = def.name.clone();
                 let peer = self.peer.clone();
-                let handler: PromptHandler = Arc::new(move |args: HashMap<String, String>, _ctx| {
-                    let peer = peer.clone();
-                    let name = prompt_name.clone();
-                    Box::pin(async move {
-                        let mut params = GetPromptParams::new(name);
-                        if !args.is_empty() {
-                            let obj: serde_json::Map<String, serde_json::Value> = args
-                                .into_iter()
-                                .map(|(k, v)| (k, serde_json::Value::String(v)))
-                                .collect();
-                            params.arguments = Some(obj);
-                        }
-                        match peer.get_prompt(params).await {
-                            Ok(result) => result,
-                            Err(e) => {
-                                let mut r =
-                                    crate::protocol::GetPromptResult::new(vec![]);
-                                r.description =
-                                    Some(format!("upstream error: {e}"));
-                                r
+                let handler: PromptHandler =
+                    Arc::new(move |args: HashMap<String, String>, _ctx| {
+                        let peer = peer.clone();
+                        let name = prompt_name.clone();
+                        Box::pin(async move {
+                            let mut params = GetPromptParams::new(name);
+                            if !args.is_empty() {
+                                let obj: serde_json::Map<String, serde_json::Value> = args
+                                    .into_iter()
+                                    .map(|(k, v)| (k, serde_json::Value::String(v)))
+                                    .collect();
+                                params.arguments = Some(obj);
                             }
-                        }
-                    })
-                });
+                            match peer.get_prompt(params).await {
+                                Ok(result) => result,
+                                Err(e) => {
+                                    let mut r = crate::protocol::GetPromptResult::new(vec![]);
+                                    r.description = Some(format!("upstream error: {e}"));
+                                    r
+                                }
+                            }
+                        })
+                    });
                 (def.clone(), handler)
             })
             .collect()

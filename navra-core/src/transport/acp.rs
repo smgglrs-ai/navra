@@ -472,13 +472,13 @@ async fn handle_get_session(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_protocol::compat::empty_input_schema;
-    use navra_protocol::compat::CallToolResultExt;
     use crate::auth::{AgentIdentity, NoAuthenticator};
     use crate::protocol::{CallToolResult, ToolDefinition};
     use axum::body::Body;
     use axum::http::Request;
     use http_body_util::BodyExt;
+    use navra_protocol::compat::empty_input_schema;
+    use navra_protocol::compat::CallToolResultExt;
     use tower::util::ServiceExt;
 
     fn test_server() -> Arc<McpServer> {

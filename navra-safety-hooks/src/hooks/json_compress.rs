@@ -72,7 +72,10 @@ impl Hook for JsonCompressHook {
 
         for content in &result.content {
             match content {
-                Content { raw: RawContent::Text(t), .. } => {
+                Content {
+                    raw: RawContent::Text(t),
+                    ..
+                } => {
                     let Ok(mut json) = serde_json::from_str::<Value>(&t.text) else {
                         compressed_content.push(content.clone());
                         continue;
@@ -404,7 +407,10 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content { raw: RawContent::Text(t), .. } => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 let parsed: Value = serde_json::from_str(text).unwrap();
@@ -413,7 +419,10 @@ mod tests {
                 assert!(parsed.get("pagination").is_none());
                 // Check annotation
                 let annotation = match &r.content[1] {
-                    Content { raw: RawContent::Text(t), .. } => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(annotation.contains("json_compress"));
@@ -443,13 +452,19 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content { raw: RawContent::Text(t), .. } => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 let parsed: Vec<Value> = serde_json::from_str(text).unwrap();
                 assert_eq!(parsed.len(), 3);
                 let annotation = match &r.content[1] {
-                    Content { raw: RawContent::Text(t), .. } => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(annotation.contains("3/25 elements kept"));
@@ -506,7 +521,10 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content { raw: RawContent::Text(t), .. } => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 let parsed: Value = serde_json::from_str(text).unwrap();
@@ -521,7 +539,10 @@ mod tests {
                 assert!(items[0].get("metadata").is_none());
 
                 let annotation = match r.content.last() {
-                    Some(Content { raw: RawContent::Text(t), .. }) => &t.text,
+                    Some(Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    }) => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(annotation.contains("json_compress"));

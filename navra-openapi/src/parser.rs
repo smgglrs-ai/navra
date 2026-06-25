@@ -232,34 +232,18 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 
 fn annotations_from_method(method: &Method) -> ToolAnnotations {
     match method {
-        Method::Get | Method::Head | Method::Options => ToolAnnotations::from_raw(
-            None,
-            Some(true),
-            Some(false),
-            Some(true),
-            Some(true),
-        ),
-        Method::Put => ToolAnnotations::from_raw(
-            None,
-            Some(false),
-            Some(false),
-            Some(true),
-            Some(true),
-        ),
-        Method::Post | Method::Patch => ToolAnnotations::from_raw(
-            None,
-            Some(false),
-            Some(false),
-            Some(false),
-            Some(true),
-        ),
-        Method::Delete => ToolAnnotations::from_raw(
-            None,
-            Some(false),
-            Some(true),
-            Some(true),
-            Some(true),
-        ),
+        Method::Get | Method::Head | Method::Options => {
+            ToolAnnotations::from_raw(None, Some(true), Some(false), Some(true), Some(true))
+        }
+        Method::Put => {
+            ToolAnnotations::from_raw(None, Some(false), Some(false), Some(true), Some(true))
+        }
+        Method::Post | Method::Patch => {
+            ToolAnnotations::from_raw(None, Some(false), Some(false), Some(false), Some(true))
+        }
+        Method::Delete => {
+            ToolAnnotations::from_raw(None, Some(false), Some(true), Some(true), Some(true))
+        }
     }
 }
 
@@ -581,8 +565,14 @@ mod tests {
             .find(|t| t.definition.name == "ps_getpetbyid")
             .unwrap();
         let required: Vec<String> = serde_json::from_value(
-            get_by_id.definition.input_schema.get("required").cloned().unwrap()
-        ).unwrap();
+            get_by_id
+                .definition
+                .input_schema
+                .get("required")
+                .cloned()
+                .unwrap(),
+        )
+        .unwrap();
         assert!(required.contains(&"petId".to_string()));
     }
 
@@ -594,10 +584,17 @@ mod tests {
             .iter()
             .find(|t| t.definition.name == "ps_listpets")
             .unwrap();
-        let props = list.definition.input_schema.get("properties")
-            .and_then(|v| v.as_object()).unwrap();
+        let props = list
+            .definition
+            .input_schema
+            .get("properties")
+            .and_then(|v| v.as_object())
+            .unwrap();
         assert!(props.contains_key("limit"));
-        let required: Vec<String> = list.definition.input_schema.get("required")
+        let required: Vec<String> = list
+            .definition
+            .input_schema
+            .get("required")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
         assert!(!required.contains(&"limit".to_string()));
@@ -611,8 +608,12 @@ mod tests {
             .iter()
             .find(|t| t.definition.name == "ps_createpet")
             .unwrap();
-        let props = create.definition.input_schema.get("properties")
-            .and_then(|v| v.as_object()).unwrap();
+        let props = create
+            .definition
+            .input_schema
+            .get("properties")
+            .and_then(|v| v.as_object())
+            .unwrap();
         assert!(props.contains_key("body"));
         assert!(create.meta.has_body);
     }

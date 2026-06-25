@@ -27,10 +27,7 @@ struct MockServer {
 }
 
 impl MockServer {
-    fn new(
-        tools: Vec<Tool>,
-        call_responses: Vec<rmcp::model::CallToolResult>,
-    ) -> Self {
+    fn new(tools: Vec<Tool>, call_responses: Vec<rmcp::model::CallToolResult>) -> Self {
         Self {
             tools,
             call_responses: Mutex::new(call_responses),
@@ -44,12 +41,8 @@ impl MockServer {
 
 impl rmcp::ServerHandler for MockServer {
     fn get_info(&self) -> ServerInfo {
-        InitializeResult::new(
-            ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
-        )
-        .with_server_info(Implementation::new("test", "0.1.0"))
+        InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new("test", "0.1.0"))
     }
 
     fn list_tools(
@@ -94,7 +87,9 @@ async fn connect_mock(server: MockServer) -> McpClient {
         .await
         .expect("client connect");
     let peer = client.peer().clone();
-    tokio::spawn(async move { let _ = client.waiting().await; });
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
     McpClient::new(peer)
 }
 
@@ -243,10 +238,8 @@ async fn client_taint_starts_trusted() {
 
 #[tokio::test]
 async fn client_call_external_read_taints() {
-    let mut client = mock_client_no_list(vec![
-        rmcp::model::CallToolResult::text("file data"),
-    ])
-    .await;
+    let mut client =
+        mock_client_no_list(vec![rmcp::model::CallToolResult::text("file data")]).await;
 
     let _result = client
         .call_tool("file_read", serde_json::json!({}))
@@ -260,10 +253,7 @@ async fn client_call_external_read_taints() {
 
 #[tokio::test]
 async fn client_call_git_status_taints_session() {
-    let mut client = mock_client_no_list(vec![
-        rmcp::model::CallToolResult::text("ok"),
-    ])
-    .await;
+    let mut client = mock_client_no_list(vec![rmcp::model::CallToolResult::text("ok")]).await;
 
     let _result = client
         .call_tool("git_status", serde_json::json!({}))
@@ -296,10 +286,8 @@ async fn tool_loop_one_tool_call() {
         tool_call_response("git_status", "{}"),
         text_response("Repo is clean."),
     ]);
-    let mut client = mock_client(vec![
-        rmcp::model::CallToolResult::text("nothing to commit"),
-    ])
-    .await;
+    let mut client =
+        mock_client(vec![rmcp::model::CallToolResult::text("nothing to commit")]).await;
     let mut config = ToolLoopConfig::default();
 
     let result = run_tool_loop(&model, &mut client, "status?", &mut config, "run-2".into())

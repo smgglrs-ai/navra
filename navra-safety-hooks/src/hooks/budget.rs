@@ -425,7 +425,10 @@ mod tests {
                     .content
                     .iter()
                     .filter_map(|c| match c {
-                        Content { raw: RawContent::Text(t), .. } => Some(&t.text),
+                        Content {
+                            raw: RawContent::Text(t),
+                            ..
+                        } => Some(&t.text),
                         _ => None,
                     })
                     .collect();
@@ -458,7 +461,10 @@ mod tests {
                     .content
                     .iter()
                     .filter_map(|c| match c {
-                        Content { raw: RawContent::Text(t), .. } => Some(t.text.as_str()),
+                        Content {
+                            raw: RawContent::Text(t),
+                            ..
+                        } => Some(t.text.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()

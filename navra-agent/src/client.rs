@@ -145,12 +145,8 @@ mod tests {
 
     impl rmcp::ServerHandler for MockServer {
         fn get_info(&self) -> ServerInfo {
-            InitializeResult::new(
-                ServerCapabilities::builder()
-                    .enable_tools()
-                    .build(),
-            )
-            .with_server_info(Implementation::new("mock", "0.1.0"))
+            InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
+                .with_server_info(Implementation::new("mock", "0.1.0"))
         }
 
         fn list_tools(
@@ -190,7 +186,9 @@ mod tests {
             .await
             .expect("client connect");
         let peer = client.peer().clone();
-        tokio::spawn(async move { let _ = client.waiting().await; });
+        tokio::spawn(async move {
+            let _ = client.waiting().await;
+        });
         McpClient::new(peer)
     }
 
@@ -206,9 +204,8 @@ mod tests {
 
     #[tokio::test]
     async fn call_tool_tracks_external_read_taint() {
-        let server = MockServer::new().with_call_response(|_| {
-            CallToolResult::text("file contents")
-        });
+        let server =
+            MockServer::new().with_call_response(|_| CallToolResult::text("file contents"));
         let mut client = mock_client_with(server).await;
 
         let _result = client
@@ -220,9 +217,7 @@ mod tests {
 
     #[tokio::test]
     async fn call_tool_git_status_taints_session() {
-        let server = MockServer::new().with_call_response(|_| {
-            CallToolResult::text("ok")
-        });
+        let server = MockServer::new().with_call_response(|_| CallToolResult::text("ok"));
         let mut client = mock_client_with(server).await;
 
         let _result = client

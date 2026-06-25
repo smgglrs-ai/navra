@@ -1365,7 +1365,9 @@ async fn e1_prompt_injection_via_completions() {
     let is_model_error = body["error"].is_object()
         && body["error"]["type"]
             .as_str()
-            .map(|t| t == "upstream_error" || t == "not_found_error" || t == "invalid_request_error")
+            .map(|t| {
+                t == "upstream_error" || t == "not_found_error" || t == "invalid_request_error"
+            })
             .unwrap_or(false);
     let passed_through = status.is_success() || is_model_error;
 
@@ -1780,7 +1782,15 @@ async fn f3_direct_tool_invocation_bypass() {
     // In stateless mode, the server still accepts requests — the
     // security assertion is that /etc/shadow is blocked by ACL, not
     // that sessionless requests are rejected.
-    let body1 = call_tool(&client, &url, "stateless", "read_file", json!({"path": "/etc/shadow"}), 1).await;
+    let body1 = call_tool(
+        &client,
+        &url,
+        "stateless",
+        "read_file",
+        json!({"path": "/etc/shadow"}),
+        1,
+    )
+    .await;
     let blocked1 = is_error_result(&body1)
         || result_text(&body1).contains("denied")
         || result_text(&body1).contains("Permission denied")
@@ -1791,7 +1801,15 @@ async fn f3_direct_tool_invocation_bypass() {
     );
 
     // Attempt 2: Call tool with a forged session ID
-    let body2 = call_tool(&client, &url, "forged-session-00000000", "read_file", json!({"path": "/etc/shadow"}), 2).await;
+    let body2 = call_tool(
+        &client,
+        &url,
+        "forged-session-00000000",
+        "read_file",
+        json!({"path": "/etc/shadow"}),
+        2,
+    )
+    .await;
     let blocked2 = is_error_result(&body2)
         || result_text(&body2).contains("denied")
         || result_text(&body2).contains("Permission denied")

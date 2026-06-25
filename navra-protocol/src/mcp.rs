@@ -17,54 +17,54 @@ use std::collections::HashMap;
 pub use rmcp::model::Annotated;
 
 // --- Tools ---
+pub use rmcp::model::CallToolRequestParams as CallToolParams;
+pub use rmcp::model::CallToolResult;
+pub use rmcp::model::ListToolsResult;
 pub use rmcp::model::Tool as ToolDefinition;
 pub use rmcp::model::ToolAnnotations;
-pub use rmcp::model::CallToolResult;
-pub use rmcp::model::CallToolRequestParams as CallToolParams;
-pub use rmcp::model::ListToolsResult;
 
 // --- Content ---
 pub use rmcp::model::Content;
-pub use rmcp::model::RawContent;
-pub use rmcp::model::RawTextContent as TextContent;
-pub use rmcp::model::RawImageContent as ImageContent;
 pub use rmcp::model::RawAudioContent as AudioContent;
+pub use rmcp::model::RawContent;
 pub use rmcp::model::RawEmbeddedResource as EmbeddedResourceContent;
+pub use rmcp::model::RawImageContent as ImageContent;
+pub use rmcp::model::RawTextContent as TextContent;
 pub use rmcp::model::ResourceContents as ResourceContent;
 
 // --- Prompts ---
-pub use rmcp::model::Prompt as PromptDefinition;
-pub use rmcp::model::PromptArgument;
 pub use rmcp::model::GetPromptRequestParams as GetPromptParams;
 pub use rmcp::model::GetPromptResult;
+pub use rmcp::model::ListPromptsResult;
+pub use rmcp::model::Prompt as PromptDefinition;
+pub use rmcp::model::PromptArgument;
 pub use rmcp::model::PromptMessage;
 pub use rmcp::model::PromptMessageContent;
 pub use rmcp::model::PromptMessageRole as PromptRole;
-pub use rmcp::model::ListPromptsResult;
 
 // --- Resources ---
-pub use rmcp::model::Resource as ResourceDefinition;
+pub use rmcp::model::ListResourceTemplatesResult;
+pub use rmcp::model::ListResourcesResult;
 pub use rmcp::model::RawResource;
+pub use rmcp::model::RawResourceTemplate;
 pub use rmcp::model::ReadResourceRequestParams as ReadResourceParams;
 pub use rmcp::model::ReadResourceResult;
-pub use rmcp::model::ListResourcesResult;
+pub use rmcp::model::Resource as ResourceDefinition;
 pub use rmcp::model::ResourceTemplate;
-pub use rmcp::model::RawResourceTemplate;
-pub use rmcp::model::ListResourceTemplatesResult;
 pub use rmcp::model::ResourceUpdatedNotificationParam as ResourceUpdatedParams;
 
 // --- Capabilities ---
+pub use rmcp::model::ClientCapabilities;
 pub use rmcp::model::PromptsCapability;
 pub use rmcp::model::ResourcesCapability;
 pub use rmcp::model::ToolsCapability;
-pub use rmcp::model::ClientCapabilities;
 
 // --- Initialize ---
-pub use rmcp::model::InitializeRequestParams as InitializeParams;
-pub use rmcp::model::ProtocolVersion;
-pub use rmcp::model::InitializeResult;
 pub use rmcp::model::Implementation as ServerInfo;
 pub use rmcp::model::Implementation as ClientInfo;
+pub use rmcp::model::InitializeRequestParams as InitializeParams;
+pub use rmcp::model::InitializeResult;
+pub use rmcp::model::ProtocolVersion;
 
 // --- Logging ---
 pub use rmcp::model::LoggingLevel;
@@ -72,13 +72,13 @@ pub use rmcp::model::LoggingMessageNotificationParam as LoggingMessageNotificati
 pub use rmcp::model::SetLevelRequestParams as SetLevelParams;
 
 // --- Progress ---
-pub use rmcp::model::ProgressNotificationParam as ProgressParams;
 pub use rmcp::model::Meta as RequestMeta;
+pub use rmcp::model::ProgressNotificationParam as ProgressParams;
 
 // --- Completions ---
+pub use rmcp::model::ArgumentInfo as CompletionArgument;
 pub use rmcp::model::CompleteRequestParams as CompleteParams;
 pub use rmcp::model::CompleteResult;
-pub use rmcp::model::ArgumentInfo as CompletionArgument;
 
 // ========================================================================
 // Protocol version constants

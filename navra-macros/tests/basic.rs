@@ -29,16 +29,19 @@ fn tool_def_has_description() {
 #[test]
 fn tool_def_has_required_field() {
     let def = test_echo_tool_def();
-    let required: Vec<String> = serde_json::from_value(
-        def.input_schema.get("required").cloned().unwrap()
-    ).unwrap();
+    let required: Vec<String> =
+        serde_json::from_value(def.input_schema.get("required").cloned().unwrap()).unwrap();
     assert_eq!(required, vec!["message".to_string()]);
 }
 
 #[test]
 fn tool_def_has_message_property() {
     let def = test_echo_tool_def();
-    let props = def.input_schema.get("properties").and_then(|v| v.as_object()).unwrap();
+    let props = def
+        .input_schema
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .unwrap();
     let msg_schema = props.get("message").unwrap();
     assert_eq!(msg_schema["type"], "string");
     assert_eq!(msg_schema["description"], "Message to echo");
@@ -59,9 +62,8 @@ async fn test_search(
 #[test]
 fn optional_arg_not_required() {
     let def = test_search_tool_def();
-    let required: Vec<String> = serde_json::from_value(
-        def.input_schema.get("required").cloned().unwrap()
-    ).unwrap();
+    let required: Vec<String> =
+        serde_json::from_value(def.input_schema.get("required").cloned().unwrap()).unwrap();
     assert!(required.contains(&"query".to_string()));
     assert!(!required.contains(&"limit".to_string()));
 }
@@ -69,7 +71,11 @@ fn optional_arg_not_required() {
 #[test]
 fn optional_arg_has_default_in_schema() {
     let def = test_search_tool_def();
-    let props = def.input_schema.get("properties").and_then(|v| v.as_object()).unwrap();
+    let props = def
+        .input_schema
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .unwrap();
     let limit_schema = props.get("limit").unwrap();
     assert_eq!(limit_schema["type"], "integer");
     assert_eq!(limit_schema["default"], 10);
@@ -93,35 +99,55 @@ async fn test_types(
 #[test]
 fn type_mapping_string() {
     let def = test_types_tool_def();
-    let props = def.input_schema.get("properties").and_then(|v| v.as_object()).unwrap();
+    let props = def
+        .input_schema
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .unwrap();
     assert_eq!(props["name"]["type"], "string");
 }
 
 #[test]
 fn type_mapping_integer() {
     let def = test_types_tool_def();
-    let props = def.input_schema.get("properties").and_then(|v| v.as_object()).unwrap();
+    let props = def
+        .input_schema
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .unwrap();
     assert_eq!(props["count"]["type"], "integer");
 }
 
 #[test]
 fn type_mapping_number() {
     let def = test_types_tool_def();
-    let props = def.input_schema.get("properties").and_then(|v| v.as_object()).unwrap();
+    let props = def
+        .input_schema
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .unwrap();
     assert_eq!(props["ratio"]["type"], "number");
 }
 
 #[test]
 fn type_mapping_boolean() {
     let def = test_types_tool_def();
-    let props = def.input_schema.get("properties").and_then(|v| v.as_object()).unwrap();
+    let props = def
+        .input_schema
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .unwrap();
     assert_eq!(props["verbose"]["type"], "boolean");
 }
 
 #[test]
 fn type_mapping_array() {
     let def = test_types_tool_def();
-    let props = def.input_schema.get("properties").and_then(|v| v.as_object()).unwrap();
+    let props = def
+        .input_schema
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .unwrap();
     assert_eq!(props["tags"]["type"], "array");
     assert_eq!(props["tags"]["items"]["type"], "string");
 }
@@ -129,9 +155,8 @@ fn type_mapping_array() {
 #[test]
 fn all_non_option_args_required() {
     let def = test_types_tool_def();
-    let required: Vec<String> = serde_json::from_value(
-        def.input_schema.get("required").cloned().unwrap()
-    ).unwrap();
+    let required: Vec<String> =
+        serde_json::from_value(def.input_schema.get("required").cloned().unwrap()).unwrap();
     assert!(required.contains(&"name".to_string()));
     assert!(required.contains(&"count".to_string()));
     assert!(required.contains(&"ratio".to_string()));
@@ -163,7 +188,10 @@ async fn handler_can_be_called() {
     );
     let result = handler(args, ctx).await;
     assert!(result.is_error != Some(true));
-    let t = result.content[0].raw.as_text().expect("expected text content");
+    let t = result.content[0]
+        .raw
+        .as_text()
+        .expect("expected text content");
     assert_eq!(t.text, "hello");
 }
 
@@ -185,7 +213,10 @@ async fn missing_required_arg_returns_error() {
     );
     let result = handler(args, ctx).await;
     assert!(result.is_error == Some(true));
-    let t = result.content[0].raw.as_text().expect("expected text content");
+    let t = result.content[0]
+        .raw
+        .as_text()
+        .expect("expected text content");
     assert!(t.text.contains("Missing required parameter: message"));
 }
 
@@ -210,12 +241,15 @@ async fn test_stateful(
 #[test]
 fn state_param_excluded_from_schema() {
     let def = test_stateful_tool_def();
-    let props = def.input_schema.get("properties").and_then(|v| v.as_object()).unwrap();
+    let props = def
+        .input_schema
+        .get("properties")
+        .and_then(|v| v.as_object())
+        .unwrap();
     assert!(props.contains_key("text"));
     assert!(!props.contains_key("state"));
-    let required: Vec<String> = serde_json::from_value(
-        def.input_schema.get("required").cloned().unwrap()
-    ).unwrap();
+    let required: Vec<String> =
+        serde_json::from_value(def.input_schema.get("required").cloned().unwrap()).unwrap();
     assert!(required.contains(&"text".to_string()));
     assert!(!required.contains(&"state".to_string()));
 }
@@ -248,7 +282,10 @@ async fn state_handler_passes_state_to_function() {
     );
     let result = handler(args, ctx).await;
     assert!(result.is_error != Some(true));
-    let t = result.content[0].raw.as_text().expect("expected text content");
+    let t = result.content[0]
+        .raw
+        .as_text()
+        .expect("expected text content");
     assert_eq!(t.text, ">>world");
 }
 

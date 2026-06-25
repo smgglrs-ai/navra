@@ -15,8 +15,8 @@ use navra_macros::tool;
 use navra_mcp::models::{GenerateRequest, ImageInput, ModelBackend};
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
-use navra_protocol::compat::CallToolResultExt;
 use navra_mcp::{Module, ToolHandler};
+use navra_protocol::compat::CallToolResultExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -699,7 +699,10 @@ mod tests {
             test_ctx(),
         )
         .await;
-        assert!(result.is_error != Some(true), "describe should succeed with valid PNG");
+        assert!(
+            result.is_error != Some(true),
+            "describe should succeed with valid PNG"
+        );
     }
 
     #[tokio::test]

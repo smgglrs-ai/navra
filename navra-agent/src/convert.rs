@@ -21,7 +21,11 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    fn make_tool(name: &str, description: Option<&str>, schema: serde_json::Value) -> ToolDefinition {
+    fn make_tool(
+        name: &str,
+        description: Option<&str>,
+        schema: serde_json::Value,
+    ) -> ToolDefinition {
         let obj = match schema {
             serde_json::Value::Object(m) => m,
             _ => serde_json::Map::new(),
@@ -61,11 +65,7 @@ mod tests {
 
     #[test]
     fn converts_minimal_tool_definition() {
-        let tool = make_tool(
-            "ping",
-            None,
-            serde_json::json!({"type": "object"}),
-        );
+        let tool = make_tool("ping", None, serde_json::json!({"type": "object"}));
 
         let response_tool = tool_def_to_response(&tool);
         assert_eq!(response_tool.name, "ping");

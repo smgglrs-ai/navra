@@ -14,8 +14,10 @@ fn test_server_path() -> PathBuf {
         .join("test_upstream.py")
 }
 
-async fn spawn_rmcp_peer(
-) -> (rmcp::Peer<rmcp::RoleClient>, rmcp::service::RunningService<rmcp::RoleClient, ()>) {
+async fn spawn_rmcp_peer() -> (
+    rmcp::Peer<rmcp::RoleClient>,
+    rmcp::service::RunningService<rmcp::RoleClient, ()>,
+) {
     let mut cmd = tokio::process::Command::new("python3");
     cmd.arg(test_server_path().to_string_lossy().to_string());
     let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
@@ -159,7 +161,16 @@ async fn domain_rules_block_write_tool() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "test"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "test"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx,
         )
         .await;
@@ -199,7 +210,16 @@ async fn domain_rules_allow_read_tool() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "test"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "test"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx,
         )
         .await;
@@ -231,11 +251,7 @@ async fn domain_rules_block_prompts() {
     );
 
     let result = server
-        .handle_get_prompt(
-            GetPromptParams::new("greeting"),
-            &agent,
-            "test-session",
-        )
+        .handle_get_prompt(GetPromptParams::new("greeting"), &agent, "test-session")
         .await;
     assert!(result.is_err(), "get_prompt should be denied");
     assert!(
@@ -260,11 +276,23 @@ async fn no_domain_rules_allows_everything() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "test"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "test"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx,
         )
         .await;
-    assert!(result.is_error != Some(true), "no domain_rules = no enforcement");
+    assert!(
+        result.is_error != Some(true),
+        "no domain_rules = no enforcement"
+    );
 
     let prompts = server.handle_list_prompts(&agent, &Default::default());
     assert!(!prompts.prompts.is_empty(), "prompts should be visible");

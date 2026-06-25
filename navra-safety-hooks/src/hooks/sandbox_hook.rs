@@ -176,7 +176,10 @@ impl Hook for SandboxHook {
                 let mut new_content = Vec::new();
                 for content in &result.content {
                     match content {
-                        navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => {
+                        navra_protocol::Content {
+                            raw: navra_protocol::RawContent::Text(t),
+                            ..
+                        } => {
                             let redacted = Self::redact_text(&t.text, patterns, replacement);
                             new_content.push(navra_protocol::Content::text(redacted));
                         }

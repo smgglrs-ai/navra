@@ -84,8 +84,8 @@ async fn chat_completions(
         .get(&req.model)
         .ok_or_else(|| model_not_found(&req.model))?;
 
-    let request: navra_model::CreateResponseRequest =
-        serde_json::from_value(req.rest).map_err(|e| bad_request(&format!("invalid request: {e}")))?;
+    let request: navra_model::CreateResponseRequest = serde_json::from_value(req.rest)
+        .map_err(|e| bad_request(&format!("invalid request: {e}")))?;
 
     let response = backend
         .respond(&request)

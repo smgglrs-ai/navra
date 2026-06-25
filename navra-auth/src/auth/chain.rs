@@ -125,6 +125,7 @@ impl ChainAuthenticator {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn add(mut self, auth: impl Authenticator + 'static) -> Self {
         self.authenticators.push(Box::new(auth));
         self

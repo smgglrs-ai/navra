@@ -20,9 +20,7 @@ struct RunningEndpoint {
 
 impl ModelRegistry {
     /// Build a registry from config, loading all models.
-    pub async fn from_config(
-        models: &HashMap<String, ModelEntry>,
-    ) -> anyhow::Result<Self> {
+    pub async fn from_config(models: &HashMap<String, ModelEntry>) -> anyhow::Result<Self> {
         let mut registry = Self {
             models: HashMap::new(),
             running_endpoints: Vec::new(),
@@ -76,7 +74,7 @@ impl ModelRegistry {
         &self,
         name: &str,
         entry: &ModelEntry,
-        path: &PathBuf,
+        path: &std::path::Path,
     ) -> anyhow::Result<Arc<dyn ModelBackend>> {
         let device = entry
             .device
@@ -116,13 +114,8 @@ impl ModelRegistry {
             }
         };
 
-        let model = navra_model::OnnxBackend::load(
-            name,
-            path,
-            tokenizer_path.as_deref(),
-            task,
-            device,
-        )?;
+        let model =
+            navra_model::OnnxBackend::load(name, path, tokenizer_path.as_deref(), task, device)?;
         Ok(Arc::new(model))
     }
 
@@ -140,7 +133,7 @@ impl ModelRegistry {
         &mut self,
         name: &str,
         entry: &ModelEntry,
-        resolved_path: &PathBuf,
+        resolved_path: &std::path::Path,
     ) -> anyhow::Result<Arc<dyn ModelBackend>> {
         let runtime_kind = entry.runtime.as_deref().unwrap_or("auto");
 
@@ -228,15 +221,17 @@ impl ModelRegistry {
             .as_deref()
             .and_then(|s| s.parse::<navra_model_runtime::ModelFormat>().ok())
             .or_else(|| navra_model_runtime::ModelFormat::detect(resolved_path));
-        let speculative = entry.speculative.as_ref().map(|s| {
-            navra_model_runtime::SpeculativeConfig {
-                draft_model: PathBuf::from(expand_tilde(&s.draft_model)),
-                draft_tokens: s.draft_tokens,
-                draft_min_p: s.draft_min_p,
-            }
-        });
+        let speculative =
+            entry
+                .speculative
+                .as_ref()
+                .map(|s| navra_model_runtime::SpeculativeConfig {
+                    draft_model: PathBuf::from(expand_tilde(&s.draft_model)),
+                    draft_tokens: s.draft_tokens,
+                    draft_min_p: s.draft_min_p,
+                });
         let serve_cfg = navra_model_runtime::ServeConfig {
-            model_path: resolved_path.clone(),
+            model_path: resolved_path.to_path_buf(),
             gpus,
             target,
             format,
@@ -263,7 +258,8 @@ impl ModelRegistry {
             navra_model::Locality::Local,
         ));
 
-        self.running_endpoints.push(RunningEndpoint { runtime, endpoint });
+        self.running_endpoints
+            .push(RunningEndpoint { runtime, endpoint });
         Ok(backend)
     }
 

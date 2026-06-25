@@ -13,7 +13,7 @@
 
 use navra_agent::AuditSink;
 use navra_core::identity::CapSigner;
-use navra_core::protocol::{ToolDefinition};
+use navra_core::protocol::ToolDefinition;
 use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::collections::HashMap;
 use std::sync::{
@@ -1003,10 +1003,7 @@ pub fn models_list_def() -> ToolDefinition {
              - For simple tasks: prefer speed_tier='fast' and cost_tier='free'\n\
              - Minimize use of cost_tier='high' models — use only when task requires it\n\
              - Check runtime.by_task if available — real data beats operator assumptions",
-        tool_input_schema(
-            None,
-            None,
-        ),
+        tool_input_schema(None, None),
     )
 }
 
@@ -1017,10 +1014,7 @@ pub fn personas_list_def() -> ToolDefinition {
              Each persona has a name, display name, core mandate, and \
              heuristic modules. Use persona names in the `persona` field \
              of team_add to assign specialist behavior to teammates.",
-        tool_input_schema(
-            None,
-            None,
-        ),
+        tool_input_schema(None, None),
     )
 }
 

@@ -446,8 +446,8 @@ fn levenshtein(a: &str, b: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_protocol::ToolDefinition;
     use navra_protocol::compat::empty_input_schema;
+    use navra_protocol::ToolDefinition;
 
     fn clean_tool(name: &str, desc: &str) -> ToolDefinition {
         ToolDefinition::new(name.to_string(), desc.to_string(), empty_input_schema())

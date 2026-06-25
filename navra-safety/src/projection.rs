@@ -101,10 +101,9 @@ impl SparseProjectionMatrix {
 
         let mut student_logits = vec![0.0f32; self.student_vocab_size];
 
-        for i in 0..self.teacher_vocab_size {
+        for (i, &teacher_val) in teacher_logits.iter().enumerate() {
             let start = self.row_ptr[i];
             let end = self.row_ptr[i + 1];
-            let teacher_val = teacher_logits[i];
 
             if teacher_val == 0.0 {
                 continue;

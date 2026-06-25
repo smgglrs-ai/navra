@@ -584,7 +584,7 @@ impl FilterPipeline {
 fn apply_action(
     action: &FilterAction,
     content: &str,
-    findings: &mut Vec<Finding>,
+    findings: &mut [Finding],
     pseudonym_map: &PseudonymMap,
 ) -> Result<String, String> {
     match action {

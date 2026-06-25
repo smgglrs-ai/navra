@@ -24,6 +24,7 @@ pub struct PolicyFile {
 
 /// A named policy containing one or more rules.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct Policy {
     pub name: String,
     #[serde(default)]
@@ -366,7 +367,10 @@ policies:
         match decision {
             HookDecision::ModifyResult(modified) => {
                 let text = match &modified.content[0] {
-                    navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => t.text.as_str(),
+                    navra_protocol::Content {
+                        raw: navra_protocol::RawContent::Text(t),
+                        ..
+                    } => t.text.as_str(),
                     _ => panic!("Expected text content"),
                 };
                 assert_eq!(text, "[REDACTED]");

@@ -14,8 +14,8 @@ use navra_mcp::auth::CallContext;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
-use navra_protocol::compat::CallToolResultExt;
 use navra_mcp::Module;
+use navra_protocol::compat::CallToolResultExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -528,7 +528,10 @@ mod tests {
         let (_, handler) = handle_status_handler(state);
         let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(result.is_error != Some(true));
-        let t = result.content[0].raw.as_text().expect("expected text content");
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
         assert!(t.text.contains("Voice Module Status"));
         assert!(t.text.contains("Audio host"));
     }

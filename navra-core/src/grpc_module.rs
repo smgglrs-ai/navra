@@ -10,8 +10,8 @@ use crate::protocol::{
     CallToolResult, Content, GetPromptResult, PromptArgument, PromptDefinition, PromptMessage,
     PromptRole, ReadResourceResult, ResourceContent, ResourceDefinition, ToolDefinition,
 };
-use navra_protocol::compat::CallToolResultExt;
 use navra_mcp::ToolHandler;
+use navra_protocol::compat::CallToolResultExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -202,11 +202,8 @@ impl Module for GrpcModule {
                         Some(def.description.clone().into())
                     };
 
-                let tool_def = ToolDefinition::new_with_raw(
-                    def.name.clone(),
-                    description,
-                    input_schema,
-                );
+                let tool_def =
+                    ToolDefinition::new_with_raw(def.name.clone(), description, input_schema);
 
                 let client = self.client.clone();
                 let tool_name = def.name.clone();
@@ -321,8 +318,7 @@ impl Module for GrpcModule {
                                 }
                                 Err(e) => {
                                     let mut result = GetPromptResult::new(vec![]);
-                                    result.description =
-                                        Some(format!("grpc error: {e}"));
+                                    result.description = Some(format!("grpc error: {e}"));
                                     result
                                 }
                             }
@@ -346,8 +342,10 @@ impl Module for GrpcModule {
                 if !def.mime_type.is_empty() {
                     raw_resource = raw_resource.with_mime_type(def.mime_type.clone());
                 }
-                let resource_def =
-                    ResourceDefinition { raw: raw_resource, annotations: None };
+                let resource_def = ResourceDefinition {
+                    raw: raw_resource,
+                    annotations: None,
+                };
 
                 let client = self.client.clone();
 
@@ -512,11 +510,13 @@ mod tests {
         let input_schema: serde_json::Map<String, serde_json::Value> =
             serde_json::from_slice(&proto_def.input_schema_json).unwrap();
 
-        assert_eq!(input_schema.get("type").and_then(|v| v.as_str()), Some("object"));
+        assert_eq!(
+            input_schema.get("type").and_then(|v| v.as_str()),
+            Some("object")
+        );
         assert!(input_schema.contains_key("properties"));
-        let required: Vec<String> = serde_json::from_value(
-            input_schema.get("required").cloned().unwrap()
-        ).unwrap();
+        let required: Vec<String> =
+            serde_json::from_value(input_schema.get("required").cloned().unwrap()).unwrap();
         assert_eq!(required, vec!["path".to_string()]);
     }
 
@@ -535,18 +535,25 @@ mod tests {
         let prompt_def = PromptDefinition::new(
             proto_def.name.clone(),
             Some(proto_def.description.clone()),
-            Some(proto_def
-                .arguments
-                .iter()
-                .map(|a| PromptArgument::new(a.name.clone())
-                    .with_description(a.description.clone())
-                    .with_required(a.required))
-                .collect()),
+            Some(
+                proto_def
+                    .arguments
+                    .iter()
+                    .map(|a| {
+                        PromptArgument::new(a.name.clone())
+                            .with_description(a.description.clone())
+                            .with_required(a.required)
+                    })
+                    .collect(),
+            ),
         );
 
         assert_eq!(prompt_def.name, "test_prompt");
         assert_eq!(prompt_def.arguments.as_ref().unwrap().len(), 1);
-        assert_eq!(prompt_def.arguments.as_ref().unwrap()[0].required, Some(true));
+        assert_eq!(
+            prompt_def.arguments.as_ref().unwrap()[0].required,
+            Some(true)
+        );
     }
 
     #[test]

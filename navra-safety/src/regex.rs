@@ -709,7 +709,7 @@ fn validate_luhn(s: &str) -> bool {
         double = !double;
     }
 
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 /// Validate a French NIR: key = 97 - (first 13 digits mod 97).
@@ -781,7 +781,7 @@ fn validate_siret(s: &str) -> bool {
         }
         sum += v;
     }
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 /// Validate that an IPv4 address is not a well-known non-PII address

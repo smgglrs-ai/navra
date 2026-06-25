@@ -485,7 +485,9 @@ impl McpServerBuilder {
                                     })
                                 })
                                 .collect();
-                            CallToolResult::text(serde_json::to_string_pretty(&json).unwrap_or_default())
+                            CallToolResult::text(
+                                serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            )
                         })
                     }),
                 },
@@ -525,9 +527,9 @@ impl McpServerBuilder {
                                     // label tracking placeholder: stored.label not propagated via CallToolResult
                                     result
                                 }
-                                None => {
-                                    CallToolResult::error_msg(format!("Variable not found: {var_id}"))
-                                }
+                                None => CallToolResult::error_msg(format!(
+                                    "Variable not found: {var_id}"
+                                )),
                             }
                         })
                     }),
@@ -562,9 +564,9 @@ impl McpServerBuilder {
                                 Some(_) => {
                                     CallToolResult::text(format!("Variable {var_id} removed"))
                                 }
-                                None => {
-                                    CallToolResult::error_msg(format!("Variable not found: {var_id}"))
-                                }
+                                None => CallToolResult::error_msg(format!(
+                                    "Variable not found: {var_id}"
+                                )),
                             }
                         })
                     }),
@@ -658,9 +660,12 @@ impl McpServerBuilder {
                 "navra://audit/recent".to_string(),
                 RegisteredResource {
                     definition: crate::protocol::ResourceDefinition {
-                        raw: crate::protocol::RawResource::new("navra://audit/recent", "Recent audit entries")
-                            .with_description("Last 50 blackbox audit entries")
-                            .with_mime_type("application/json"),
+                        raw: crate::protocol::RawResource::new(
+                            "navra://audit/recent",
+                            "Recent audit entries",
+                        )
+                        .with_description("Last 50 blackbox audit entries")
+                        .with_mime_type("application/json"),
                         annotations: None,
                     },
                     handler: Arc::new(move |uri, _ctx| {

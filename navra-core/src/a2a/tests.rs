@@ -1,7 +1,5 @@
 use super::dispatch::{extract_arguments, resolve_tool};
 use super::*;
-    use navra_protocol::compat::empty_input_schema;
-    use navra_protocol::compat::CallToolResultExt;
 use crate::auth::{AgentIdentity, NoAuthenticator};
 use crate::protocol::a2a::{
     Artifact, Message, MessageKind, MessageRole, MessageSendParams, Part, Task, TaskIdParams,
@@ -10,6 +8,8 @@ use crate::protocol::a2a::{
 };
 use crate::protocol::{CallToolResult, ToolDefinition};
 use crate::server::McpServer;
+use navra_protocol::compat::empty_input_schema;
+use navra_protocol::compat::CallToolResultExt;
 use std::collections::HashMap;
 
 fn test_server() -> McpServer {

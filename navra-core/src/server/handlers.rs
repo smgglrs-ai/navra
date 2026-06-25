@@ -4,9 +4,9 @@ use crate::protocol::{
     InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequest,
     ReadResourceParams, ReadResourceResult, ToolDefinition,
 };
-use navra_protocol::compat::CallToolResultExt;
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::Session;
+use navra_protocol::compat::CallToolResultExt;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -167,7 +167,9 @@ impl McpServer {
             tools: if self.tools.is_empty() {
                 None
             } else {
-                Some(crate::protocol::ToolsCapability { list_changed: Some(true) })
+                Some(crate::protocol::ToolsCapability {
+                    list_changed: Some(true),
+                })
             },
             resources: if self.resources.is_empty() {
                 None
@@ -246,8 +248,7 @@ impl McpServer {
         rmcp_caps.tools = navra_caps.tools;
         rmcp_caps.resources = navra_caps.resources;
         rmcp_caps.prompts = navra_caps.prompts;
-        let mut result = InitializeResult::new(rmcp_caps)
-            .with_server_info(self.server_info());
+        let mut result = InitializeResult::new(rmcp_caps).with_server_info(self.server_info());
         result.protocol_version = navra_protocol::rmcp::model::ProtocolVersion::V_2026_07_28;
         Ok((result, session_id))
     }
@@ -266,7 +267,11 @@ impl McpServer {
         let offset = pagination.decode_offset().unwrap_or(0);
         let (tools, next_cursor) =
             crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
-        ListToolsResult { tools, next_cursor, meta: None }
+        ListToolsResult {
+            tools,
+            next_cursor,
+            meta: None,
+        }
     }
 
     /// List tools with dynamic filtering based on runtime context.
@@ -292,7 +297,11 @@ impl McpServer {
         let offset = pagination.decode_offset().unwrap_or(0);
         let (tools, next_cursor) =
             crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
-        ListToolsResult { tools, next_cursor, meta: None }
+        ListToolsResult {
+            tools,
+            next_cursor,
+            meta: None,
+        }
     }
 
     pub async fn handle_call_tool(
@@ -478,7 +487,10 @@ impl McpServer {
                         permission_set = %ctx.agent.permissions,
                         "Domain classification denied"
                     );
-                    return CallToolResult::error_msg(format!("Permission denied: '{}'", params.name));
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: '{}'",
+                        params.name
+                    ));
                 }
             }
         }
@@ -511,7 +523,10 @@ impl McpServer {
                         cedar_reason = %reason,
                         "Cedar policy denied"
                     );
-                    return CallToolResult::error_msg(format!("Permission denied: '{}'", params.name));
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: '{}'",
+                        params.name
+                    ));
                 }
             }
         }
@@ -567,8 +582,7 @@ impl McpServer {
         // IFC: resolve variable references in arguments
         let session_store = self.value_stores.get_or_create(&ctx.session_id);
         let resolved =
-            match crate::ifc::value_store::resolve_variable_refs(&arguments, &session_store)
-            {
+            match crate::ifc::value_store::resolve_variable_refs(&arguments, &session_store) {
                 Ok(r) => r,
                 Err(msg) => {
                     self.process_table.record_denied(
@@ -693,7 +707,10 @@ impl McpServer {
                         reason = %reason,
                         "Tool blocked by pre-hook"
                     );
-                    return CallToolResult::error_msg(format!("Permission denied: '{}'", params.name));
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: '{}'",
+                        params.name
+                    ));
                 }
                 crate::hooks::PreHookOutcome::Pending { request_id, reason } => {
                     tracing::info!(
@@ -886,7 +903,11 @@ impl McpServer {
                 &params.name,
                 &arguments.to_string(),
                 result_trunc,
-                if result.is_error == Some(true) { "error" } else { "allowed" },
+                if result.is_error == Some(true) {
+                    "error"
+                } else {
+                    "allowed"
+                },
                 tool_duration_us,
                 &format!("{:?}", result_label),
             );
@@ -950,10 +971,7 @@ impl McpServer {
                         mime_type, text, ..
                     } = &res.resource
                     {
-                        if mime_type
-                            .as_deref()
-                            .is_some_and(|m| m.starts_with("text/"))
-                        {
+                        if mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
                             match pipeline.process(text, &filter_ctx) {
                                 Ok(processed) => {
                                     filtered_content.push(Content::text(processed));
@@ -1302,14 +1320,11 @@ impl McpServer {
                     .prompts
                     .values()
                     .filter_map(|p| {
-                        p.definition
-                            .arguments
-                            .as_ref()
-                            .and_then(|args| {
-                                args.iter()
-                                    .find(|a| a.name == params.argument.name)
-                                    .map(|_| p.definition.name.clone())
-                            })
+                        p.definition.arguments.as_ref().and_then(|args| {
+                            args.iter()
+                                .find(|a| a.name == params.argument.name)
+                                .map(|_| p.definition.name.clone())
+                        })
                     })
                     .filter(|name| {
                         params.argument.value.is_empty() || name.starts_with(&params.argument.value)

@@ -73,7 +73,12 @@ impl McpServer {
                 AgentSkill {
                     id: name.to_string(),
                     name: name.to_string(),
-                    description: t.definition.description.as_deref().unwrap_or_default().to_string(),
+                    description: t
+                        .definition
+                        .description
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_string(),
                     tags: vec![tag],
                     examples: vec![],
                     input_modes: None,

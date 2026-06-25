@@ -30,3 +30,6 @@ harness = false
 [[bench]]
 name = "embedding_retrieval"
 harness = false
+
+[lints]
+workspace = true

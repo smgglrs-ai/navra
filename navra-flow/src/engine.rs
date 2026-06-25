@@ -148,12 +148,10 @@ impl Flow {
             if let Some(cw) = node_def.context_window {
                 builder = builder.context_window_tokens(cw);
             }
-            let mut agent = builder.build()
-                .await
-                .map_err(|e| FlowError::Agent {
-                    node: node_def.id.clone(),
-                    source: e,
-                })?;
+            let mut agent = builder.build().await.map_err(|e| FlowError::Agent {
+                node: node_def.id.clone(),
+                source: e,
+            })?;
 
             let handle = agent.install_signal();
             signal_handles.insert(node_def.id.clone(), handle);
@@ -570,9 +568,9 @@ mod tests {
     async fn mock_peer() -> (rmcp::Peer<rmcp::RoleClient>, tokio::task::JoinHandle<()>) {
         let (server_io, client_io) = tokio::io::duplex(65536);
         tokio::spawn(async move {
-            if let Ok(svc) = rmcp::service::ServiceExt::<rmcp::RoleServer>::serve(
-                EmptyServer, server_io,
-            ).await {
+            if let Ok(svc) =
+                rmcp::service::ServiceExt::<rmcp::RoleServer>::serve(EmptyServer, server_io).await
+            {
                 let _ = svc.waiting().await;
             }
         });
@@ -580,7 +578,9 @@ mod tests {
             .await
             .unwrap();
         let peer = client.peer().clone();
-        let handle = tokio::spawn(async move { let _ = client.waiting().await; });
+        let handle = tokio::spawn(async move {
+            let _ = client.waiting().await;
+        });
         (peer, handle)
     }
 

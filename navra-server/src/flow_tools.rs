@@ -4,7 +4,7 @@
 //! so a planner agent can define, launch, monitor, and read results from
 //! multi-agent flows — all through standard MCP tool calls.
 
-use navra_core::protocol::{ToolDefinition};
+use navra_core::protocol::ToolDefinition;
 use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -240,9 +240,7 @@ impl FlowRegistry {
             .enumerate()
             .map(|(i, node)| {
                 let duration_ms = match (node.started_at, node.completed_at) {
-                    (Some(start), Some(end)) => {
-                        Some(end.duration_since(start).as_millis() as u64)
-                    }
+                    (Some(start), Some(end)) => Some(end.duration_since(start).as_millis() as u64),
                     (Some(start), None) => Some(start.elapsed().as_millis() as u64),
                     _ => None,
                 };
@@ -522,7 +520,9 @@ pub async fn handle_flow_result(
             if let Some(ref audit) = audit_log {
                 if let Ok(tasks) = audit.get_flow_results(flow_id) {
                     if tasks.is_empty() {
-                        return CallToolResult::error_msg(format!("No results for flow: {flow_id}"));
+                        return CallToolResult::error_msg(format!(
+                            "No results for flow: {flow_id}"
+                        ));
                     }
                     if let Some(nid) = node_id {
                         if let Some(task) = tasks.iter().find(|t| t.task_id == nid) {
@@ -2042,10 +2042,7 @@ pub fn flow_list_tool_def() -> ToolDefinition {
         "flow_list",
         "List available YAML flow files from configured flow directories. \
              Returns flow names, descriptions, and parameter definitions.",
-        tool_input_schema(
-            Some(HashMap::new()),
-            None,
-        ),
+        tool_input_schema(Some(HashMap::new()), None),
     )
 }
 
@@ -2291,10 +2288,14 @@ pub async fn handle_flow_resume(
                     "Flow {flow_id} not found in audit.db or checkpoint"
                 ))
             }
-            Err(e) => return CallToolResult::error_msg(format!("Failed to load flow metadata: {e}")),
+            Err(e) => {
+                return CallToolResult::error_msg(format!("Failed to load flow metadata: {e}"))
+            }
         },
         None => {
-            return CallToolResult::error_msg("Audit log not configured and no checkpoint available")
+            return CallToolResult::error_msg(
+                "Audit log not configured and no checkpoint available",
+            )
         }
     };
 
@@ -2302,7 +2303,9 @@ pub async fn handle_flow_resume(
     let completed_results = match &ctx.audit_log {
         Some(audit) => match audit.get_flow_results(&flow_id) {
             Ok(r) => r,
-            Err(e) => return CallToolResult::error_msg(format!("Failed to load flow results: {e}")),
+            Err(e) => {
+                return CallToolResult::error_msg(format!("Failed to load flow results: {e}"))
+            }
         },
         None => Vec::new(),
     };
@@ -2402,7 +2405,9 @@ pub async fn handle_flow_resume(
             .create_team(&metadata.name, None, agent_name, 0, team_budget)
         {
             Ok(id) => id,
-            Err(e) => return CallToolResult::error_msg(format!("Failed to create resume team: {e}")),
+            Err(e) => {
+                return CallToolResult::error_msg(format!("Failed to create resume team: {e}"))
+            }
         };
     ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
 

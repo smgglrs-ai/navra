@@ -9,9 +9,9 @@
 //! pipeline from navra-security. The filter profile is controlled
 //! by `[modules.memory] pii_filter` in config (default: "standard").
 
-use navra_core::protocol::{ToolDefinition};
-use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+use navra_core::protocol::ToolDefinition;
 use navra_core::safety::{FilterContext, FilterPipeline, PiiMetrics};
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use navra_rag::ChunkStore;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -771,10 +771,7 @@ pub fn pii_report_def() -> ToolDefinition {
          retention policies, and current state of PII-flagged entries. \
          Provides data needed for Data Protection Impact Assessments \
          (GDPR Article 35).",
-        tool_input_schema(
-            Some(HashMap::new()),
-            None,
-        ),
+        tool_input_schema(Some(HashMap::new()), None),
     )
 }
 
@@ -882,7 +879,9 @@ pub async fn handle_memory_consent(
             let id = match args.get("id").and_then(|v| v.as_str()) {
                 Some(id) => id,
                 None => {
-                    return CallToolResult::error_msg("Missing required parameter: id (for 'set' mode)")
+                    return CallToolResult::error_msg(
+                        "Missing required parameter: id (for 'set' mode)",
+                    )
                 }
             };
             let basis = match args.get("basis").and_then(|v| v.as_str()) {
@@ -905,7 +904,9 @@ pub async fn handle_memory_consent(
             let id = match args.get("id").and_then(|v| v.as_str()) {
                 Some(id) => id,
                 None => {
-                    return CallToolResult::error_msg("Missing required parameter: id (for 'get' mode)")
+                    return CallToolResult::error_msg(
+                        "Missing required parameter: id (for 'get' mode)",
+                    )
                 }
             };
 

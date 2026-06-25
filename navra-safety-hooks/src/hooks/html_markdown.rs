@@ -93,7 +93,10 @@ impl Hook for HtmlToMarkdownHook {
 
         for content in &result.content {
             match content {
-                Content { raw: RawContent::Text(t), .. } => {
+                Content {
+                    raw: RawContent::Text(t),
+                    ..
+                } => {
                     if looks_like_html(&t.text) {
                         let markdown = convert_html_to_markdown(&t.text);
                         let orig_len = t.text.len();
@@ -203,7 +206,10 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content { raw: RawContent::Text(t), .. } => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(text.contains("Page Title"));
@@ -211,7 +217,10 @@ mod tests {
                 assert!(text.len() < html.len());
 
                 let annotation = match r.content.last() {
-                    Some(Content { raw: RawContent::Text(t), .. }) => &t.text,
+                    Some(Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    }) => &t.text,
                     _ => panic!("expected annotation"),
                 };
                 assert!(annotation.contains("html_markdown"));
@@ -303,13 +312,19 @@ println!("{}", w.id);</code></pre>
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content { raw: RawContent::Text(t), .. } => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(text.contains("API Reference"));
                 // At least 40% reduction
                 let annotation = match r.content.last() {
-                    Some(Content { raw: RawContent::Text(t), .. }) => &t.text,
+                    Some(Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    }) => &t.text,
                     _ => panic!("expected annotation"),
                 };
                 assert!(annotation.contains("reduction"));

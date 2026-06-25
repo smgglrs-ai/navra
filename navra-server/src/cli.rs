@@ -10,7 +10,11 @@ fn default_cognitive_core_path() -> String {
 }
 
 #[derive(Parser)]
-#[command(name = "navra", about = "navra \u{2014} secure MCP gateway for AI agents", version)]
+#[command(
+    name = "navra",
+    about = "navra \u{2014} secure MCP gateway for AI agents",
+    version
+)]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -610,10 +614,8 @@ fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
         .join(&new_bundle.meta.name);
     if existing_dir.exists() {
         if let Ok(old_bundle) = bundle_dir::load_bundle(&existing_dir) {
-            let diff = bundle_dir::diff_permissions(
-                &old_bundle.permissions,
-                &new_bundle.permissions,
-            );
+            let diff =
+                bundle_dir::diff_permissions(&old_bundle.permissions, &new_bundle.permissions);
             if !diff.is_empty() {
                 println!(
                     "Upgrading {} v{} → v{}",
@@ -674,7 +676,10 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
     // Generate instance config
     let mut config = String::new();
     config.push_str(&format!("# Agent instance: {instance}\n"));
-    config.push_str(&format!("# Bundle: {} v{}\n\n", bundle.meta.name, bundle.meta.version));
+    config.push_str(&format!(
+        "# Bundle: {} v{}\n\n",
+        bundle.meta.name, bundle.meta.version
+    ));
     config.push_str(&format!("bundle = \"{}\"\n", bundle.meta.name));
 
     // Model preferences
@@ -688,19 +693,13 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
             config.push_str("\n[credentials]\n");
             for cred in &tmpl.credentials {
                 let required = if cred.required { "" } else { "  # optional" };
-                config.push_str(&format!(
-                    "# {} ({}){}",
-                    cred.name, cred.cred_type, required
-                ));
+                config.push_str(&format!("# {} ({}){}", cred.name, cred.cred_type, required));
                 if let Some(ref desc) = cred.description {
                     config.push_str(&format!(" — {desc}"));
                 }
                 config.push('\n');
                 if !cred.scopes.is_empty() {
-                    config.push_str(&format!(
-                        "# scopes: {}\n",
-                        cred.scopes.join(", ")
-                    ));
+                    config.push_str(&format!("# scopes: {}\n", cred.scopes.join(", ")));
                 }
                 config.push_str(&format!(
                     "{} = \"navra/{instance}/{}\"\n\n",
@@ -751,22 +750,24 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
     let config_path = instance_dir.join("config.toml");
     std::fs::write(&config_path, &config)?;
 
-    println!("Instance '{instance}' initialized from bundle '{}'", bundle.meta.name);
+    println!(
+        "Instance '{instance}' initialized from bundle '{}'",
+        bundle.meta.name
+    );
     println!("Config: {}", config_path.display());
 
     if let Some(ref tmpl) = template {
         if !tmpl.credentials.is_empty() {
             println!("\nCredentials needed:");
             for cred in &tmpl.credentials {
-                let req = if cred.required { "(required)" } else { "(optional)" };
-                println!(
-                    "  {} — {} {}",
-                    cred.name, cred.cred_type, req
-                );
+                let req = if cred.required {
+                    "(required)"
+                } else {
+                    "(optional)"
+                };
+                println!("  {} — {} {}", cred.name, cred.cred_type, req);
             }
-            println!(
-                "\nStore credentials in your OS keyring under 'navra/{instance}/<name>'"
-            );
+            println!("\nStore credentials in your OS keyring under 'navra/{instance}/<name>'");
         }
     }
 
@@ -790,10 +791,7 @@ pub(crate) fn agent_upgrade(bundle_name: &str) -> anyhow::Result<()> {
         .join(bundle_name);
 
     if !bundles_dir.exists() {
-        anyhow::bail!(
-            "bundle '{}' not installed. Cannot upgrade.",
-            bundle_name
-        );
+        anyhow::bail!("bundle '{}' not installed. Cannot upgrade.", bundle_name);
     }
 
     let old_bundle = bundle_dir::load_bundle(&bundles_dir)?;
