@@ -21,6 +21,7 @@ members = [
     "navra-macros",
     "navra-mcp",
     "navra-openapi",
+    "navra-model-server",
     "navra-server",
     "benchmarks",
 ]
