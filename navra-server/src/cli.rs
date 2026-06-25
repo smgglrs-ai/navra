@@ -196,6 +196,15 @@ pub(crate) enum Commands {
         /// Disable system tray icon
         #[arg(long)]
         no_tray: bool,
+        /// Connect, list tools/resources/prompts, suggest policy, then exit
+        #[arg(long)]
+        discover: bool,
+        /// Skip safety filters entirely (fast iteration, no content scanning)
+        #[arg(long)]
+        allow_all: bool,
+        /// Run upstream in a container sandbox (openshell or podman)
+        #[arg(long)]
+        sandbox: Option<String>,
         /// Command and args to start the upstream MCP server
         #[arg(trailing_var_arg = true, required = true)]
         command: Vec<String>,
