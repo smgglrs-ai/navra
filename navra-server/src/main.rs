@@ -458,9 +458,12 @@ async fn main() -> anyhow::Result<()> {
             safety,
             name,
             no_tray,
+            discover,
+            allow_all,
+            sandbox,
             command,
         } => {
-            wrap_command(command, bind, safety, name, no_tray).await?;
+            wrap_command(command, bind, safety, name, no_tray, discover, allow_all, sandbox).await?;
         }
         Commands::Demo {
             project,
@@ -502,6 +505,9 @@ async fn wrap_command(
     safety: String,
     name: Option<String>,
     no_tray: bool,
+    discover: bool,
+    allow_all: bool,
+    sandbox: Option<String>,
 ) -> anyhow::Result<()> {
     if command.is_empty() {
         anyhow::bail!("No command specified. Usage: navra wrap -- <command> [args...]");
@@ -515,27 +521,47 @@ async fn wrap_command(
             .to_string()
     });
 
+    if discover {
+        return wrap_discover(&upstream_name, &command).await;
+    }
+
+    let effective_safety = if allow_all { "none" } else { &safety };
+
     let token = config::generate_token();
     let token_hash = TokenAuthenticator::hash_token(&token);
 
-    let command_toml: Vec<String> = command.clone();
-    let command_str = command_toml
+    let command_str = command
         .iter()
         .map(|s| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")))
         .collect::<Vec<_>>()
         .join(", ");
 
-    let toml_str = format!(
-        r#"[server]
-tcp = "{bind}"
+    let sandbox_section = match sandbox.as_deref() {
+        Some("openshell") => {
+            format!(
+                "\n[server]\ntcp = \"{bind}\"\ncontainerized = true\nopenshell_gateway = \"http://127.0.0.1:50051\"\n"
+            )
+        }
+        Some("podman") => {
+            format!("\n[server]\ntcp = \"{bind}\"\ncontainerized = true\n")
+        }
+        Some(other) => {
+            anyhow::bail!("Unknown sandbox type '{other}'. Use 'openshell' or 'podman'.");
+        }
+        None => {
+            format!("[server]\ntcp = \"{bind}\"\n")
+        }
+    };
 
+    let toml_str = format!(
+        r#"{sandbox_section}
 [[agents]]
 name = "wrap-client"
 token_hash = "{token_hash}"
 permissions = "wrap"
 
 [permissions.wrap]
-safety = "{safety}"
+safety = "{effective_safety}"
 ring = 2
 allow = ["*"]
 deny = []
@@ -550,12 +576,22 @@ command = [{command_str}]
 
     let cfg: config::Config = toml::from_str(&toml_str)?;
 
+    let sandbox_label = match sandbox.as_deref() {
+        Some(s) => s,
+        None => "none (direct)",
+    };
+
     eprintln!("navra wrap: starting secured proxy for '{upstream_name}'");
     eprintln!();
     eprintln!("  Upstream:  {}", command.join(" "));
     eprintln!("  Gateway:   http://{bind}/mcp");
-    eprintln!("  Safety:    {safety}");
+    eprintln!("  Safety:    {effective_safety}");
+    eprintln!("  Sandbox:   {sandbox_label}");
     eprintln!("  Token:     {token}");
+    if allow_all {
+        eprintln!();
+        eprintln!("  WARNING: --allow-all disables all safety filters");
+    }
     eprintln!();
     eprintln!("Use with any MCP client:");
     eprintln!("  export MCPD_TOKEN={token}");
@@ -564,6 +600,184 @@ command = [{command_str}]
     eprintln!("Press Ctrl-C to stop.");
 
     serve(cfg, no_tray, false).await
+}
+
+async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
+    eprintln!("navra wrap --discover: connecting to '{name}'...");
+    eprintln!("  Command: {}", command.join(" "));
+    eprintln!();
+
+    let mut cmd = tokio::process::Command::new(&command[0]);
+    for arg in &command[1..] {
+        cmd.arg(arg);
+    }
+
+    let transport = rmcp::transport::TokioChildProcess::new(cmd)
+        .map_err(|e| anyhow::anyhow!("Failed to spawn upstream: {e}"))?;
+
+    let client =
+        rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+            .await
+            .map_err(|e| anyhow::anyhow!("MCP handshake failed: {e}"))?;
+
+    let peer = client.peer().clone();
+
+    let tools = peer
+        .list_all_tools()
+        .await
+        .map_err(|e| anyhow::anyhow!("tools/list failed: {e}"))?;
+    let prompts = peer
+        .list_all_prompts()
+        .await
+        .unwrap_or_default();
+    let resources = peer
+        .list_all_resources()
+        .await
+        .unwrap_or_default();
+
+    println!("Upstream: {name}");
+    println!("Command: {}", command.join(" "));
+    println!();
+
+    // --- Tools ---
+    println!("Tools ({}):", tools.len());
+    let mut read_tools = Vec::new();
+    let mut write_tools = Vec::new();
+    let mut unknown_tools = Vec::new();
+
+    for tool in &tools {
+        let desc = tool
+            .description
+            .as_deref()
+            .unwrap_or("")
+            .chars()
+            .take(60)
+            .collect::<String>();
+
+        let is_read = tool
+            .annotations
+            .as_ref()
+            .and_then(|a| a.read_only_hint)
+            .unwrap_or(false);
+        let is_destructive = tool
+            .annotations
+            .as_ref()
+            .and_then(|a| a.destructive_hint)
+            .unwrap_or(false);
+
+        let classification = if is_read {
+            "read"
+        } else if is_destructive {
+            "write (destructive)"
+        } else if navra_core::ifc::is_write_tool(&tool.name, tool.annotations.as_ref()) {
+            "write"
+        } else {
+            "read"
+        };
+
+        println!("  {:<30} [{classification}]  {desc}", tool.name);
+
+        match classification {
+            "read" => read_tools.push(tool.name.clone()),
+            _ => {
+                if classification.contains("write") || classification.contains("destructive") {
+                    write_tools.push(tool.name.clone());
+                } else {
+                    unknown_tools.push(tool.name.clone());
+                }
+            }
+        }
+    }
+
+    // --- Prompts ---
+    if !prompts.is_empty() {
+        println!();
+        println!("Prompts ({}):", prompts.len());
+        for prompt in &prompts {
+            let desc = prompt
+                .description
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(60)
+                .collect::<String>();
+            println!("  {:<30} {desc}", prompt.name);
+        }
+    }
+
+    // --- Resources ---
+    if !resources.is_empty() {
+        println!();
+        println!("Resources ({}):", resources.len());
+        for resource in &resources {
+            let desc = resource
+                .description
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(60)
+                .collect::<String>();
+            println!("  {:<30} {desc}", resource.name);
+        }
+    }
+
+    // --- Policy suggestion ---
+    println!();
+    println!("--- Suggested policy ---");
+    println!();
+    println!("[[upstream]]");
+    println!("name = \"{name}\"");
+    println!("transport = \"stdio\"");
+    println!(
+        "command = [{}]",
+        command
+            .iter()
+            .map(|s| format!("\"{}\"", s.replace('"', "\\\"")))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if !write_tools.is_empty() {
+        println!();
+        println!("[upstream.tool_overrides]");
+        for t in &write_tools {
+            println!("{t} = \"write\"");
+        }
+    }
+    println!();
+    println!("[permissions.{name}]");
+    println!("safety = \"standard\"");
+    println!("ring = 2");
+    if write_tools.is_empty() {
+        println!("allow = [\"*\"]");
+        println!("operations = [\"read\"]");
+    } else {
+        let read_patterns: Vec<String> = read_tools.iter().map(|t| format!("\"{t}\"")).collect();
+        let write_patterns: Vec<String> = write_tools.iter().map(|t| format!("\"{t}\"")).collect();
+        println!(
+            "allow = [{}]",
+            read_tools
+                .iter()
+                .chain(write_tools.iter())
+                .chain(unknown_tools.iter())
+                .map(|t| format!("\"{t}\""))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        if !read_patterns.is_empty() {
+            println!("# Read-only tools: {}", read_patterns.join(", "));
+        }
+        if !write_patterns.is_empty() {
+            println!("# Write tools (review carefully): {}", write_patterns.join(", "));
+        }
+        println!("operations = [\"read\", \"write\"]");
+        println!("approve = [{}]", write_patterns.join(", "));
+    }
+
+    // Shut down the client
+    drop(peer);
+    drop(client);
+
+    Ok(())
 }
 
 fn import_mcp_file(path: &str, redact: bool) -> anyhow::Result<()> {
