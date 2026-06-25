@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 146 completed items
+# 150 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -962,4 +962,32 @@ items:
     status: done
     priority: medium
     effort: 1-3d
+
+  - id: "NAVRA-161"
+    title: "Architecture: split model server from gateway"
+    status: done
+    priority: high
+    effort: 5-10d
+    feeds: ['NAVRA-162', 'NAVRA-163', 'NAVRA-164', 'NAVRA-165', 'NAVRA-166', 'NAVRA-167', 'NAVRA-168']
+
+  - id: "NAVRA-163"
+    title: "Agent bundle format and directory convention"
+    status: done
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-161']
+
+  - id: "NAVRA-164"
+    title: "Agent instances and navra agent init"
+    status: done
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-163']
+
+  - id: "NAVRA-165"
+    title: "navra run: self-contained agent execution"
+    status: done
+    priority: high
+    effort: 3-5d
+    depends_on: ['NAVRA-161', 'NAVRA-164']
 

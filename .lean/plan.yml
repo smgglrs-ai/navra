@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 21 active items
+# 18 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -23,27 +23,6 @@ items:
     priority: high
     effort: 5-10d
     depends_on: ['NAVRA-161']
-
-  - id: "NAVRA-163"
-    title: "Agent bundle format and directory convention"
-    status: planned
-    priority: high
-    effort: 3-5d
-    depends_on: ['NAVRA-161']
-
-  - id: "NAVRA-164"
-    title: "Agent instances and navra agent init"
-    status: planned
-    priority: high
-    effort: 3-5d
-    depends_on: ['NAVRA-163']
-
-  - id: "NAVRA-165"
-    title: "navra run: self-contained agent execution"
-    status: planned
-    priority: high
-    effort: 3-5d
-    depends_on: ['NAVRA-161', 'NAVRA-164']
 
   - id: "NAVRA-166"
     title: "Credential brokering: daemon injects credentials into MCP servers"

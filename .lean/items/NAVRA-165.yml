@@ -1,6 +1,6 @@
 id: NAVRA-165
 title: "navra run: self-contained agent execution"
-status: planned
+status: done
 priority: high
 effort: 3-5d
 tags: [cli, agents, workflows]
