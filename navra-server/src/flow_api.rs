@@ -68,7 +68,10 @@ async fn handle_flow_graph_dot(
             }
             dot.push_str("}\n");
             (
-                [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                [(
+                    axum::http::header::CONTENT_TYPE,
+                    "text/plain; charset=utf-8",
+                )],
                 dot,
             )
                 .into_response()
@@ -88,11 +91,7 @@ async fn handle_flow_events(
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     let Some(event_log) = state.event_log else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Event log not configured",
-        )
-            .into_response();
+        return (StatusCode::SERVICE_UNAVAILABLE, "Event log not configured").into_response();
     };
 
     // Check flow exists
@@ -169,10 +168,7 @@ pub(crate) fn flow_api_router(
             "/flows/{id}/graph/dot",
             axum::routing::get(handle_flow_graph_dot),
         )
-        .route(
-            "/flows/{id}/events",
-            axum::routing::get(handle_flow_events),
-        )
+        .route("/flows/{id}/events", axum::routing::get(handle_flow_events))
         .with_state(state)
 }
 
@@ -360,7 +356,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
-        let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(ct.contains("text/plain"));
 
         let body = axum::body::to_bytes(resp.into_body(), usize::MAX)

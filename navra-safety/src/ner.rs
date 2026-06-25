@@ -69,7 +69,7 @@ fn entity_type_to_category(entity_type: &str) -> Option<&'static str> {
         "IMEI" => Some("device-fingerprint"),
         "COORDINATE" => Some("location"),
         "NRP" | "AGE" => Some("demographic"),
-        "HONORIFIC" | "TITLE" => None,
+        "HONORIFIC" => None,
         // Lowercase variants (ettin/Nemotron-PII)
         "first_name" | "last_name" | "middle_name" => Some("person"),
         "street_address" | "city" | "state" | "county" | "postcode" | "country" | "coordinate" => {
@@ -155,7 +155,9 @@ pub(crate) struct EntitySpan {
 ///
 /// Each token is represented by its BIO label, confidence, and character
 /// offsets in the original text.
-pub(crate) fn group_bio_tags(tokens: &[(String, f32, Option<(usize, usize)>)]) -> Vec<EntitySpan> {
+type BioToken = (String, f32, Option<(usize, usize)>);
+
+pub(crate) fn group_bio_tags(tokens: &[BioToken]) -> Vec<EntitySpan> {
     let mut spans = Vec::new();
     let mut current: Option<EntitySpan> = None;
 
@@ -637,7 +639,7 @@ impl NerFilter {
         let num_labels = self.label_map.len();
         let offsets = encoding.get_offsets();
 
-        let mut tokens: Vec<(String, f32, Option<(usize, usize)>)> = Vec::new();
+        let mut tokens: Vec<BioToken> = Vec::new();
 
         for pos in 0..seq_len {
             let start_idx = pos * num_labels;
@@ -875,7 +877,7 @@ fn suppress_technical_names(text: &str, span: &EntitySpan) -> bool {
     // Check if the text after the span starts with "-<Word> <technical>"
     if after.starts_with('-') {
         // Find the end of the hyphenated part (next space or end)
-        if let Some(space_pos) = after[1..].find(' ') {
+        if let Some(space_pos) = after.strip_prefix('-').and_then(|s| s.find(' ')) {
             // remainder includes the space: " model ..."
             let remainder = &after_lower[1 + space_pos..];
             for word in TECHNICAL_WORDS {

@@ -123,7 +123,10 @@ fn all_tools_have_descriptions_and_object_schema() {
             "Tool '{}' missing description",
             def.name
         );
-        assert_eq!(def.input_schema.get("type").and_then(|v| v.as_str()), Some("object"));
+        assert_eq!(
+            def.input_schema.get("type").and_then(|v| v.as_str()),
+            Some("object")
+        );
     }
 }
 
@@ -132,9 +135,8 @@ fn speak_tool_requires_text() {
     let module = build_voice_module();
     let tools = module.tools();
     let speak = tools.iter().find(|(d, _)| d.name == "voice_speak").unwrap();
-    let required: Vec<String> = serde_json::from_value(
-        speak.0.input_schema.get("required").cloned().unwrap()
-    ).unwrap();
+    let required: Vec<String> =
+        serde_json::from_value(speak.0.input_schema.get("required").cloned().unwrap()).unwrap();
     assert!(required.contains(&"text".to_string()));
 }
 
@@ -146,9 +148,9 @@ fn transcribe_tool_requires_path() {
         .iter()
         .find(|(d, _)| d.name == "voice_transcribe")
         .unwrap();
-    let required: Vec<String> = serde_json::from_value(
-        transcribe.0.input_schema.get("required").cloned().unwrap()
-    ).unwrap();
+    let required: Vec<String> =
+        serde_json::from_value(transcribe.0.input_schema.get("required").cloned().unwrap())
+            .unwrap();
     assert!(required.contains(&"path".to_string()));
 }
 

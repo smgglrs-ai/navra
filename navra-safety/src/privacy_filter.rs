@@ -45,7 +45,9 @@ struct Span {
     confidence: f32,
 }
 
-fn group_bioes_tags(tokens: &[(String, f32, Option<(usize, usize)>)]) -> Vec<Span> {
+type BioesToken = (String, f32, Option<(usize, usize)>);
+
+fn group_bioes_tags(tokens: &[BioesToken]) -> Vec<Span> {
     let mut spans = Vec::new();
     let mut current_cat: Option<String> = None;
     let mut current_start = 0usize;
@@ -338,7 +340,7 @@ impl PrivacyFilterModel {
         let num_labels = self.id2label.len();
         let offsets = encoding.get_offsets();
 
-        let mut tokens: Vec<(String, f32, Option<(usize, usize)>)> = Vec::new();
+        let mut tokens: Vec<BioesToken> = Vec::new();
 
         for pos in 0..seq_len {
             let start_idx = pos * num_labels;

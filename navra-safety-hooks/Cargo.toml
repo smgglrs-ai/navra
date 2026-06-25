@@ -42,3 +42,6 @@ tokenizers = { version = "0.22", default-features = false, features = ["onig"], 
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
 toml = "0.8"
+
+[lints]
+workspace = true

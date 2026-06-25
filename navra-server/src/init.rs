@@ -124,10 +124,7 @@ pub async fn run_init(
             .as_secs();
         let backup_path = config_path.with_extension(format!("toml.bak.{timestamp}"));
         std::fs::copy(&config_path, &backup_path)?;
-        eprintln!(
-            "Backed up existing config to {}",
-            backup_path.display()
-        );
+        eprintln!("Backed up existing config to {}", backup_path.display());
     }
 
     // Write config
@@ -244,10 +241,7 @@ async fn interactive_flow() -> Result<InitAnswers> {
         "openai-compat" => {
             let url = prompt_line("Base URL", "http://localhost:8080/v1");
             let key = prompt_line("API key (empty for none)", "");
-            (
-                Some(url),
-                if key.is_empty() { None } else { Some(key) },
-            )
+            (Some(url), if key.is_empty() { None } else { Some(key) })
         }
         "mistral" | "anthropic" => {
             let key = prompt_line("API key", "");
@@ -543,9 +537,7 @@ fn build_config_toml(answers: &InitAnswers, token_hash: &str) -> String {
     }
 
     // [approval] + [budget]
-    sections.push(
-        "[approval]\ntimeout_secs = 300\nnotify = \"dbus\"".to_string(),
-    );
+    sections.push("[approval]\ntimeout_secs = 300\nnotify = \"dbus\"".to_string());
     sections.push(
         "[budget]\nmax_agents = 50\nmax_iterations = 200\nmax_parallel = 2\ntimeout_secs = 3600"
             .to_string(),
@@ -644,7 +636,10 @@ mod tests {
 
         // Check upstream servers for dev: filesystem + git
         let upstream = parsed["upstream"].as_array().unwrap();
-        let names: Vec<&str> = upstream.iter().map(|u| u["name"].as_str().unwrap()).collect();
+        let names: Vec<&str> = upstream
+            .iter()
+            .map(|u| u["name"].as_str().unwrap())
+            .collect();
         assert!(names.contains(&"filesystem"));
         assert!(names.contains(&"git"));
     }
@@ -659,7 +654,10 @@ mod tests {
         let parsed: toml::Value = toml::from_str(&config).expect("valid TOML");
 
         let upstream = parsed["upstream"].as_array().unwrap();
-        let names: Vec<&str> = upstream.iter().map(|u| u["name"].as_str().unwrap()).collect();
+        let names: Vec<&str> = upstream
+            .iter()
+            .map(|u| u["name"].as_str().unwrap())
+            .collect();
         assert!(names.contains(&"filesystem"));
         assert!(names.contains(&"postgres"));
         assert!(names.contains(&"sqlite"));
@@ -751,7 +749,8 @@ mod tests {
 
     #[test]
     fn test_connection_instructions_claude() {
-        let instructions = connection_instructions("claude", "mcd_test123", "~/.run/navra/navra.sock");
+        let instructions =
+            connection_instructions("claude", "mcd_test123", "~/.run/navra/navra.sock");
         assert!(instructions.contains("mcpServers"));
         assert!(instructions.contains("mcd_test123"));
         assert!(instructions.contains(".claude/settings.json"));
@@ -759,14 +758,16 @@ mod tests {
 
     #[test]
     fn test_connection_instructions_goose() {
-        let instructions = connection_instructions("goose", "mcd_test123", "~/.run/navra/navra.sock");
+        let instructions =
+            connection_instructions("goose", "mcd_test123", "~/.run/navra/navra.sock");
         assert!(instructions.contains("config.yaml"));
         assert!(instructions.contains("mcd_test123"));
     }
 
     #[test]
     fn test_connection_instructions_custom() {
-        let instructions = connection_instructions("custom", "mcd_test123", "~/.run/navra/navra.sock");
+        let instructions =
+            connection_instructions("custom", "mcd_test123", "~/.run/navra/navra.sock");
         assert!(instructions.contains("Unix socket"));
         assert!(instructions.contains("mcd_test123"));
     }

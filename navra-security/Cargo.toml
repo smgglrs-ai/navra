@@ -26,3 +26,6 @@ axum = { workspace = true }
 navra-protocol = { path = "../navra-protocol" }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
+
+[lints]
+workspace = true

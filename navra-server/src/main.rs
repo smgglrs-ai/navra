@@ -495,7 +495,18 @@ async fn main() -> anyhow::Result<()> {
             allow_domains,
             command,
         } => {
-            wrap_command(command, bind, safety, name, no_tray, discover, allow_all, sandbox, allow_domains).await?;
+            wrap_command(
+                command,
+                bind,
+                safety,
+                name,
+                no_tray,
+                discover,
+                allow_all,
+                sandbox,
+                allow_domains,
+            )
+            .await?;
         }
         Commands::Demo {
             project,
@@ -606,9 +617,7 @@ async fn wrap_command(
             .map(|d| format!("\"{d}\""))
             .collect::<Vec<_>>()
             .join(", ");
-        format!(
-            "egress_deny_all_external = true\negress_allowed_domains = [{domain_list}]\n"
-        )
+        format!("egress_deny_all_external = true\negress_allowed_domains = [{domain_list}]\n")
     } else {
         String::new()
     };
@@ -700,10 +709,9 @@ async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
     let transport = rmcp::transport::TokioChildProcess::new(cmd)
         .map_err(|e| anyhow::anyhow!("Failed to spawn upstream: {e}"))?;
 
-    let client =
-        rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
-            .await
-            .map_err(|e| anyhow::anyhow!("MCP handshake failed: {e}"))?;
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+        .await
+        .map_err(|e| anyhow::anyhow!("MCP handshake failed: {e}"))?;
 
     let peer = client.peer().clone();
 
@@ -711,14 +719,8 @@ async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
         .list_all_tools()
         .await
         .map_err(|e| anyhow::anyhow!("tools/list failed: {e}"))?;
-    let prompts = peer
-        .list_all_prompts()
-        .await
-        .unwrap_or_default();
-    let resources = peer
-        .list_all_resources()
-        .await
-        .unwrap_or_default();
+    let prompts = peer.list_all_prompts().await.unwrap_or_default();
+    let resources = peer.list_all_resources().await.unwrap_or_default();
 
     println!("Upstream: {name}");
     println!("Command: {}", command.join(" "));
@@ -902,7 +904,10 @@ async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
             println!("# Read-only tools: {}", read_patterns.join(", "));
         }
         if !write_patterns.is_empty() {
-            println!("# Write tools (review carefully): {}", write_patterns.join(", "));
+            println!(
+                "# Write tools (review carefully): {}",
+                write_patterns.join(", ")
+            );
         }
         println!("operations = [\"read\", \"write\"]");
         println!("approve = [{}]", write_patterns.join(", "));
@@ -2214,22 +2219,28 @@ async fn serve_inner(
                 auth = ?endpoint.auth,
                 "Discovered MCP endpoint"
             );
-            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint.url.clone());
+            let transport =
+                rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint.url.clone());
             match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
                 Ok(client) => {
                     let peer = client.peer().clone();
-                    tokio::spawn(async move { let _ = client.waiting().await; });
+                    tokio::spawn(async move {
+                        let _ = client.waiting().await;
+                    });
                     let module = navra_core::UpstreamModule::discover(
-                        &endpoint.domain, peer, None, &Default::default(),
-                    ).await;
+                        &endpoint.domain,
+                        peer,
+                        None,
+                        &Default::default(),
+                    )
+                    .await;
                     tracing::info!(
                         domain = %endpoint.domain,
                         "Connected discovered upstream (rmcp)"
                     );
                     for prompt_def in module.discovered_prompts() {
                         if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
-                            let description =
-                                prompt_def.description.as_deref().unwrap_or("");
+                            let description = prompt_def.description.as_deref().unwrap_or("");
                             forge.register_upstream_persona(
                                 persona_name,
                                 module.upstream_name(),
@@ -2280,10 +2291,16 @@ async fn serve_inner(
             match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
                 Ok(client) => {
                     let peer = client.peer().clone();
-                    tokio::spawn(async move { let _ = client.waiting().await; });
+                    tokio::spawn(async move {
+                        let _ = client.waiting().await;
+                    });
                     let module = navra_core::UpstreamModule::discover(
-                        &server.name, peer, None, &Default::default(),
-                    ).await;
+                        &server.name,
+                        peer,
+                        None,
+                        &Default::default(),
+                    )
+                    .await;
                     tracing::info!(
                         name = %server.name,
                         url = %url,
@@ -2291,8 +2308,7 @@ async fn serve_inner(
                     );
                     for prompt_def in module.discovered_prompts() {
                         if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
-                            let description =
-                                prompt_def.description.as_deref().unwrap_or("");
+                            let description = prompt_def.description.as_deref().unwrap_or("");
                             forge.register_upstream_persona(
                                 persona_name,
                                 module.upstream_name(),
@@ -2460,16 +2476,26 @@ async fn serve_inner(
                     }
                 }
                 match rmcp::transport::TokioChildProcess::new(cmd) {
-                    Ok(transport) => match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
-                        Ok(client) => {
-                            let peer = client.peer().clone();
-                            tokio::spawn(async move { let _ = client.waiting().await; });
-                            Ok(navra_core::UpstreamModule::discover(
-                                &upstream_cfg.name, peer, None, &upstream_cfg.tool_overrides,
-                            ).await)
+                    Ok(transport) => {
+                        match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+                            .await
+                        {
+                            Ok(client) => {
+                                let peer = client.peer().clone();
+                                tokio::spawn(async move {
+                                    let _ = client.waiting().await;
+                                });
+                                Ok(navra_core::UpstreamModule::discover(
+                                    &upstream_cfg.name,
+                                    peer,
+                                    None,
+                                    &upstream_cfg.tool_overrides,
+                                )
+                                .await)
+                            }
+                            Err(e) => Err(format!("rmcp init failed: {e}")),
                         }
-                        Err(e) => Err(format!("rmcp init failed: {e}")),
-                    },
+                    }
                     Err(e) => Err(format!("spawn failed: {e}")),
                 }
             }
@@ -2488,10 +2514,16 @@ async fn serve_inner(
                 match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
                     Ok(client) => {
                         let peer = client.peer().clone();
-                        tokio::spawn(async move { let _ = client.waiting().await; });
+                        tokio::spawn(async move {
+                            let _ = client.waiting().await;
+                        });
                         Ok(navra_core::UpstreamModule::discover(
-                            &upstream_cfg.name, peer, None, &upstream_cfg.tool_overrides,
-                        ).await)
+                            &upstream_cfg.name,
+                            peer,
+                            None,
+                            &upstream_cfg.tool_overrides,
+                        )
+                        .await)
                     }
                     Err(e) => Err(format!("rmcp init failed: {e}")),
                 }
@@ -2527,8 +2559,7 @@ async fn serve_inner(
                 }
 
                 builder = builder.merge_tool_operations(module.tool_operations().clone());
-                builder =
-                    builder.merge_tool_classifications(module.tool_classifications().clone());
+                builder = builder.merge_tool_classifications(module.tool_classifications().clone());
 
                 if !upstream_cfg.tool_class.is_empty() {
                     let mut classes = std::collections::HashMap::new();
@@ -2537,9 +2568,7 @@ async fn serve_inner(
                             (Ok(domain), Ok(operation)) => {
                                 classes.insert(
                                     tool_name.clone(),
-                                    navra_core::permissions::ResourceClass::new(
-                                        domain, operation,
-                                    ),
+                                    navra_core::permissions::ResourceClass::new(domain, operation),
                                 );
                             }
                             (Err(e), _) | (_, Err(e)) => {
@@ -2605,10 +2634,10 @@ async fn serve_inner(
 
         builder = builder.tool(
             navra_core::protocol::ToolDefinition::new(
-                                      "cap_delegate",
-                                      "Issue an attenuated capability token for a sub-agent. \
+                "cap_delegate",
+                "Issue an attenuated capability token for a sub-agent. \
                      The new token grants a subset of the caller's capabilities.",
-                                      navra_protocol::compat::tool_input_schema(
+                navra_protocol::compat::tool_input_schema(
                     {
                         let mut props = std::collections::HashMap::new();
                         props.insert(
@@ -2664,7 +2693,7 @@ async fn serve_inner(
                     },
                     Some(vec!["subject_did".to_string()]),
                 ),
-                                  ),
+            ),
             move |args, ctx| {
                 let signer = Arc::clone(&delegate_signer);
                 let permissions = delegate_permissions.clone();
@@ -2837,14 +2866,11 @@ async fn serve_inner(
     {
         builder = builder.tool(
             navra_core::protocol::ToolDefinition::new(
-                                      "sys_status",
-                                      "Show AI OS process table: active agents, their rings, \
+                "sys_status",
+                "Show AI OS process table: active agents, their rings, \
                      call counts, and active tool calls.",
-                                      navra_protocol::compat::tool_input_schema(
-                    None,
-                    None,
-                ),
-                                  ),
+                navra_protocol::compat::tool_input_schema(None, None),
+            ),
             |_args, _ctx| {
                 // The actual data comes from the server's process table,
                 // but the handler doesn't have access to &self.
@@ -3681,12 +3707,12 @@ async fn serve_inner(
         let audit = Arc::clone(&audit_log);
         builder = builder.tool(
             navra_core::protocol::ToolDefinition::new(
-                                      "audit_query",
-                                      "Query the structured audit log. Returns tool calls, model calls, \
+                "audit_query",
+                "Query the structured audit log. Returns tool calls, model calls, \
                      and run summaries from past agent executions. Use to inspect \
                      what tools were called, with what arguments, and what results \
                      were returned.",
-                                      navra_protocol::compat::tool_input_schema(
+                navra_protocol::compat::tool_input_schema(
                     {
                         let mut props = std::collections::HashMap::new();
                         props.insert(
@@ -3704,7 +3730,7 @@ async fn serve_inner(
                     },
                     None,
                 ),
-                                  ),
+            ),
             move |args, _ctx| {
                 let audit = Arc::clone(&audit);
                 Box::pin(async move {
@@ -3722,14 +3748,18 @@ async fn serve_inner(
                                 Ok(s) => CallToolResult::text(
                                     serde_json::to_string_pretty(&s).unwrap_or_default(),
                                 ),
-                                Err(e) => CallToolResult::error_msg(format!("Audit query failed: {e}")),
+                                Err(e) => {
+                                    CallToolResult::error_msg(format!("Audit query failed: {e}"))
+                                }
                             }
                         } else {
                             match audit.get_tool_calls(rid) {
                                 Ok(calls) => CallToolResult::text(
                                     serde_json::to_string_pretty(&calls).unwrap_or_default(),
                                 ),
-                                Err(e) => CallToolResult::error_msg(format!("Audit query failed: {e}")),
+                                Err(e) => {
+                                    CallToolResult::error_msg(format!("Audit query failed: {e}"))
+                                }
                             }
                         }
                     } else {
@@ -3762,9 +3792,9 @@ async fn serve_inner(
                     Some(server) => {
                         plan_execute::handle_plan_execute(args, server, ctx, allow_direct).await
                     }
-                    None => {
-                        navra_core::protocol::CallToolResult::error_msg("Server not yet initialized")
-                    }
+                    None => navra_core::protocol::CallToolResult::error_msg(
+                        "Server not yet initialized",
+                    ),
                 }
             })
         });
@@ -3873,14 +3903,14 @@ async fn serve_inner(
                 Box::pin(async move {
                     let agents = pt.snapshot();
                     let json = serde_json::json!({ "agents": agents });
-                    navra_core::protocol::ReadResourceResult::new(
-                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
                             text: serde_json::to_string_pretty(&json).unwrap_or_default(),
                             meta: None,
-                        }],
-                    )
+                        },
+                    ])
                 })
             }),
         );
@@ -3915,14 +3945,14 @@ async fn serve_inner(
                         "count": count,
                         "sessions": session_list,
                     });
-                    navra_core::protocol::ReadResourceResult::new(
-                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
                             text: serde_json::to_string_pretty(&json).unwrap_or_default(),
                             meta: None,
-                        }],
-                    )
+                        },
+                    ])
                 })
             }),
         );
@@ -3958,14 +3988,14 @@ async fn serve_inner(
                          navra_tool_calls_denied_total {total_denied}\n",
                         snapshot.len(),
                     );
-                    navra_core::protocol::ReadResourceResult::new(
-                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("text/plain".to_string()),
                             text,
                             meta: None,
-                        }],
-                    )
+                        },
+                    ])
                 })
             }),
         );
@@ -3995,14 +4025,14 @@ async fn serve_inner(
                         "count": count,
                         "tools": tools,
                     });
-                    navra_core::protocol::ReadResourceResult::new(
-                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
                             text: serde_json::to_string_pretty(&json).unwrap_or_default(),
                             meta: None,
-                        }],
-                    )
+                        },
+                    ])
                 })
             }),
         );
@@ -4027,14 +4057,14 @@ async fn serve_inner(
                         "crates": 20,
                         "uptime_secs": boot.elapsed().as_secs(),
                     });
-                    navra_core::protocol::ReadResourceResult::new(
-                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
                             text: serde_json::to_string_pretty(&json).unwrap_or_default(),
                             meta: None,
-                        }],
-                    )
+                        },
+                    ])
                 })
             }),
         );
@@ -5065,7 +5095,9 @@ async fn run_agent(
                 .ok()
                 .map(|c| {
                     let peer = c.peer().clone();
-                    tokio::spawn(async move { let _ = c.waiting().await; });
+                    tokio::spawn(async move {
+                        let _ = c.waiting().await;
+                    });
                     peer
                 })
         };
@@ -5190,9 +5222,12 @@ async fn run_agent(
                 // Need an MCP connection to resolve source and/or prompts
                 let resolver_peer = {
                     let transport = authed_transport!(endpoint, token);
-                    let c = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
+                    let c =
+                        rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
                     let peer = c.peer().clone();
-                    tokio::spawn(async move { let _ = c.waiting().await; });
+                    tokio::spawn(async move {
+                        let _ = c.waiting().await;
+                    });
                     peer
                 };
                 let mut resolver_client = navra_agent::McpClient::new(resolver_peer);
@@ -5245,7 +5280,9 @@ async fn run_agent(
             let transport = authed_transport!(endpoint, token);
             let c = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
             let peer = c.peer().clone();
-            tokio::spawn(async move { let _ = c.waiting().await; });
+            tokio::spawn(async move {
+                let _ = c.waiting().await;
+            });
             peer
         };
         let mut resolver_client = navra_agent::McpClient::new(resolver_peer);
@@ -5749,14 +5786,12 @@ mod tests {
             Box::pin(async move {
                 let agents = pt.snapshot();
                 let json = serde_json::json!({ "agents": agents });
-                ReadResourceResult::new(
-                    vec![ResourceContent::TextResourceContents {
-                        uri,
-                        mime_type: Some("application/json".to_string()),
-                        text: serde_json::to_string_pretty(&json).unwrap_or_default(),
-                        meta: None,
-                    }],
-                )
+                ReadResourceResult::new(vec![ResourceContent::TextResourceContents {
+                    uri,
+                    mime_type: Some("application/json".to_string()),
+                    text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                    meta: None,
+                }])
             })
         })
     }
@@ -5783,14 +5818,12 @@ mod tests {
                     "count": count,
                     "sessions": session_list,
                 });
-                ReadResourceResult::new(
-                    vec![ResourceContent::TextResourceContents {
-                        uri,
-                        mime_type: Some("application/json".to_string()),
-                        text: serde_json::to_string_pretty(&json).unwrap_or_default(),
-                        meta: None,
-                    }],
-                )
+                ReadResourceResult::new(vec![ResourceContent::TextResourceContents {
+                    uri,
+                    mime_type: Some("application/json".to_string()),
+                    text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                    meta: None,
+                }])
             })
         })
     }
@@ -5807,14 +5840,12 @@ mod tests {
                     "crates": 20,
                     "uptime_secs": boot.elapsed().as_secs(),
                 });
-                ReadResourceResult::new(
-                    vec![ResourceContent::TextResourceContents {
-                        uri,
-                        mime_type: Some("application/json".to_string()),
-                        text: serde_json::to_string_pretty(&json).unwrap_or_default(),
-                        meta: None,
-                    }],
-                )
+                ReadResourceResult::new(vec![ResourceContent::TextResourceContents {
+                    uri,
+                    mime_type: Some("application/json".to_string()),
+                    text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                    meta: None,
+                }])
             })
         })
     }
@@ -5899,32 +5930,18 @@ mod tests {
     async fn kernel_tools_via_server() {
         // Build a minimal server with a couple of tools, then verify
         // the tool_names() method that navra://tools relies on.
-        use navra_core::protocol::{ToolDefinition};
+        use navra_core::protocol::ToolDefinition;
 
         let server = navra_core::McpServer::builder()
             .name("test")
             .version("0.1.0")
             .allow_anonymous()
             .tool(
-                ToolDefinition::new(
-                    "file_read",
-                    "Read a file",
-                    tool_input_schema(
-            None,
-            None,
-        ),
-                ),
+                ToolDefinition::new("file_read", "Read a file", tool_input_schema(None, None)),
                 |_args, _ctx| Box::pin(async { navra_core::protocol::CallToolResult::text("ok") }),
             )
             .tool(
-                ToolDefinition::new(
-                    "git_status",
-                    "Git status",
-                    tool_input_schema(
-            None,
-            None,
-        ),
-                ),
+                ToolDefinition::new("git_status", "Git status", tool_input_schema(None, None)),
                 |_args, _ctx| Box::pin(async { navra_core::protocol::CallToolResult::text("ok") }),
             )
             .build();

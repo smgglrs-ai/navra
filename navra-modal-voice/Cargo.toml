@@ -25,3 +25,6 @@ onnx = ["navra-mcp/onnx"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+
+[lints]
+workspace = true

@@ -9,6 +9,7 @@ use std::sync::Arc;
 /// Sink for audit events emitted by the agent tool loop.
 pub trait AuditSink: Send + Sync {
     /// Record a tool call.
+    #[allow(clippy::too_many_arguments)]
     fn log_tool_call(
         &self,
         run_id: &str,
@@ -21,6 +22,7 @@ pub trait AuditSink: Send + Sync {
     );
 
     /// Record a model call.
+    #[allow(clippy::too_many_arguments)]
     fn log_model_call(
         &self,
         run_id: &str,

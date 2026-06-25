@@ -73,6 +73,9 @@ rmcp = { version = "1.8", features = [
 ] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [profile.container]
 inherits = "release"
 lto = true

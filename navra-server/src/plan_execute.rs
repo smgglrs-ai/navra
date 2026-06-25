@@ -5,11 +5,9 @@
 //! - **Python** (sandbox): CodeAct via OpenShell or Podman
 
 use navra_core::auth::CallContext;
-use navra_core::protocol::{
-    CallToolParams, CallToolResult, ToolDefinition,
-};
-use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+use navra_core::protocol::{CallToolParams, CallToolResult, ToolDefinition};
 use navra_core::McpServer;
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::collections::HashMap;
 
 /// Error handling strategy for a step.
@@ -1506,16 +1504,8 @@ steps:
 
     #[tokio::test]
     async fn test_sequential_execution_with_echo_tool() {
-        
         // Register an echo tool that returns its args as text
-        let echo_def = ToolDefinition::new(
-                           "echo",
-                           "Echo args",
-                           tool_input_schema(
-            None,
-            None,
-        ),
-                       );
+        let echo_def = ToolDefinition::new("echo", "Echo args", tool_input_schema(None, None));
         let server = navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -1565,14 +1555,7 @@ steps:
 
     #[tokio::test]
     async fn test_when_conditional_skip() {
-        let echo_def = ToolDefinition::new(
-                           "echo",
-                           "Echo",
-                           tool_input_schema(
-            None,
-            None,
-        ),
-                       );
+        let echo_def = ToolDefinition::new("echo", "Echo", tool_input_schema(None, None));
         let server = navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -1822,14 +1805,7 @@ steps:
     /// Build a test server with an "echo" tool that returns the "msg" field
     /// as plain text (not JSON-wrapped args).
     fn build_echo_server() -> navra_core::McpServer {
-        let echo_def = ToolDefinition::new(
-                           "echo",
-                           "Echo msg field",
-                           tool_input_schema(
-            None,
-            None,
-        ),
-                       );
+        let echo_def = ToolDefinition::new("echo", "Echo msg field", tool_input_schema(None, None));
         navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -2096,14 +2072,7 @@ steps:
 
     #[tokio::test]
     async fn test_on_error_stop_halts_on_failure() {
-        let echo_def = ToolDefinition::new(
-                           "echo",
-                           "Echo",
-                           tool_input_schema(
-            None,
-            None,
-        ),
-                       );
+        let echo_def = ToolDefinition::new("echo", "Echo", tool_input_schema(None, None));
         let server = navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")
@@ -2147,22 +2116,12 @@ steps:
 
     #[tokio::test]
     async fn test_for_each_with_on_error_continue() {
-        let echo_def = ToolDefinition::new(
-                           "echo",
-                           "Echo msg",
-                           tool_input_schema(
-            None,
-            None,
-        ),
-                       );
+        let echo_def = ToolDefinition::new("echo", "Echo msg", tool_input_schema(None, None));
         let fail_def = ToolDefinition::new(
-                           "maybe_fail",
-                           "Fails on certain input",
-                           tool_input_schema(
-            None,
-            None,
-        ),
-                       );
+            "maybe_fail",
+            "Fails on certain input",
+            tool_input_schema(None, None),
+        );
         let server = navra_core::McpServer::builder()
             .allow_anonymous()
             .name("test")

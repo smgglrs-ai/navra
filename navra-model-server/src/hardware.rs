@@ -118,7 +118,10 @@ pub fn print_summary(summary: &HardwareSummary) {
         let budget_gb = summary.suggested_vram_budget / (1024 * 1024 * 1024);
         let reserved_gb = summary.desktop_reservation / (1024 * 1024 * 1024);
         println!("Proposed allocation:");
-        println!("  GPU: {}GB for models ({}GB reserved for desktop)", budget_gb, reserved_gb);
+        println!(
+            "  GPU: {}GB for models ({}GB reserved for desktop)",
+            budget_gb, reserved_gb
+        );
     } else {
         println!("Proposed allocation:");
         println!("  CPU-only mode (no GPU detected or budget exhausted)");

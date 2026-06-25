@@ -79,7 +79,9 @@ async fn connect(endpoint: &str) -> Result<McpClient, String> {
         .await
         .map_err(|e| format!("connect failed: {e}"))?;
     let peer = client.peer().clone();
-    tokio::spawn(async move { let _ = client.waiting().await; });
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
     Ok(McpClient::new(peer))
 }
 

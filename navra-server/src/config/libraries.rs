@@ -528,8 +528,7 @@ operations = ["write"]
 "#,
         );
 
-        let libs =
-            scan_libraries(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()]).unwrap();
+        let libs = scan_libraries(&[dir1.path().to_path_buf(), dir2.path().to_path_buf()]).unwrap();
         assert_eq!(libs.len(), 2);
 
         let mut main: toml::Value = toml::from_str("[server]\ntcp = \"127.0.0.1:9315\"").unwrap();

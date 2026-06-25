@@ -5,9 +5,9 @@
 
 use navra_core::auth::CallContext;
 use navra_core::protocol::{CallToolResult, Content};
-use navra_protocol::compat::CallToolResultExt;
 use navra_macros::tool;
 use navra_model_runtime::openshell::{ComputeDriverClient, ExecCommandRequest};
+use navra_protocol::compat::CallToolResultExt;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -94,14 +94,18 @@ async fn handle_exec_run(
 
     let did = match &ctx.agent.did {
         Some(d) => d.clone(),
-        None => return CallToolResult::error_msg("exec_run requires agent DID to identify sandbox"),
+        None => {
+            return CallToolResult::error_msg("exec_run requires agent DID to identify sandbox")
+        }
     };
 
     let sandbox_id = {
         let sandboxes = state.sandboxes.lock().unwrap_or_else(|e| e.into_inner());
         match sandboxes.get(&did) {
             Some(id) => id.clone(),
-            None => return CallToolResult::error_msg(format!("no sandbox registered for agent {did}")),
+            None => {
+                return CallToolResult::error_msg(format!("no sandbox registered for agent {did}"))
+            }
         }
     };
 
@@ -184,7 +188,12 @@ mod tests {
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
 
         assert!(result.is_err());
-        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
+        let text = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content")
+            .text
+            .as_str();
         assert!(text.contains("path traversal denied"));
     }
 
@@ -201,7 +210,12 @@ mod tests {
 
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
         assert!(result.is_err());
-        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
+        let text = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content")
+            .text
+            .as_str();
         assert!(text.contains("path traversal denied"));
     }
 
@@ -218,7 +232,12 @@ mod tests {
 
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
         assert!(result.is_err());
-        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
+        let text = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content")
+            .text
+            .as_str();
         assert!(text.contains("path traversal denied"));
     }
 
@@ -232,7 +251,12 @@ mod tests {
         let result = handler(args, test_ctx(None)).await;
 
         assert!(result.is_err());
-        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
+        let text = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content")
+            .text
+            .as_str();
         assert!(text.contains("requires agent DID"));
     }
 
@@ -246,7 +270,12 @@ mod tests {
         let result = handler(args, test_ctx(Some("did:test:unknown"))).await;
 
         assert!(result.is_err());
-        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
+        let text = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content")
+            .text
+            .as_str();
         assert!(text.contains("no sandbox registered"));
     }
 
@@ -260,7 +289,12 @@ mod tests {
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
 
         assert!(result.is_err());
-        let text = result.content[0].raw.as_text().expect("expected text content").text.as_str();
+        let text = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content")
+            .text
+            .as_str();
         assert!(text.contains("non-empty"));
     }
 

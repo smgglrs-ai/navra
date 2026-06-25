@@ -360,7 +360,11 @@ async fn compress_tool_output(
     embedding_model: Option<&dyn ModelBackend>,
     query: Option<&str>,
 ) -> String {
-    let effective_limit = effective_token_limit(max_tool_output_tokens, context_fill_ratio, compression_start);
+    let effective_limit = effective_token_limit(
+        max_tool_output_tokens,
+        context_fill_ratio,
+        compression_start,
+    );
     if navra_cognitive::estimate_tokens(text) <= effective_limit {
         return text.to_string();
     }
@@ -557,7 +561,7 @@ fn compact_conversation(input: &mut Vec<InputItem>, keep_recent: usize) {
     let mut idx = 0;
     input.retain(|item| {
         idx += 1;
-        if idx - 1 >= compact_end {
+        if idx > compact_end {
             return true; // keep recent items
         }
         match item {
@@ -705,7 +709,7 @@ pub async fn run_tool_loop(
             config
                 .allowed_tools
                 .as_ref()
-                .map_or(true, |allowed| allowed.contains(&t.name.to_string()))
+                .is_none_or(|allowed| allowed.contains(&t.name.to_string()))
         })
         .map(crate::convert::tool_def_to_response)
         .collect();
@@ -772,7 +776,12 @@ pub async fn run_tool_loop(
                         compressed_chars_saved,
                         interrupted: true,
                     };
-                    export_trace(&result, config, config.system_prompt.as_deref(), user_prompt);
+                    export_trace(
+                        &result,
+                        config,
+                        config.system_prompt.as_deref(),
+                        user_prompt,
+                    );
                     return Ok(result);
                 }
                 AgentSignal::Terminate => {
@@ -794,7 +803,12 @@ pub async fn run_tool_loop(
                         compressed_chars_saved,
                         interrupted: true,
                     };
-                    export_trace(&result, config, config.system_prompt.as_deref(), user_prompt);
+                    export_trace(
+                        &result,
+                        config,
+                        config.system_prompt.as_deref(),
+                        user_prompt,
+                    );
                     return Ok(result);
                 }
                 AgentSignal::Pause => {
@@ -1006,7 +1020,12 @@ pub async fn run_tool_loop(
                     compressed_chars_saved,
                     interrupted: false,
                 };
-                export_trace(&result, config, config.system_prompt.as_deref(), user_prompt);
+                export_trace(
+                    &result,
+                    config,
+                    config.system_prompt.as_deref(),
+                    user_prompt,
+                );
                 return Ok(result);
             }
         }
@@ -1108,7 +1127,12 @@ pub async fn run_tool_loop(
                 compressed_chars_saved,
                 interrupted: false,
             };
-            export_trace(&result, config, config.system_prompt.as_deref(), user_prompt);
+            export_trace(
+                &result,
+                config,
+                config.system_prompt.as_deref(),
+                user_prompt,
+            );
             return Ok(result);
         }
 
@@ -1417,12 +1441,8 @@ mod tests {
 
     impl rmcp::ServerHandler for MockServer {
         fn get_info(&self) -> ServerInfo {
-            InitializeResult::new(
-                ServerCapabilities::builder()
-                    .enable_tools()
-                    .build(),
-            )
-            .with_server_info(Implementation::new("test", "0.1.0"))
+            InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
+                .with_server_info(Implementation::new("test", "0.1.0"))
         }
 
         fn list_tools(
@@ -1495,7 +1515,9 @@ mod tests {
             .await
             .expect("client connect");
         let peer = client.peer().clone();
-        tokio::spawn(async move { let _ = client.waiting().await; });
+        tokio::spawn(async move {
+            let _ = client.waiting().await;
+        });
         McpClient::new(peer)
     }
 
@@ -2145,7 +2167,8 @@ mod tests {
         for (name, size) in &tool_outputs {
             let text = "x".repeat(*size);
             let fill = context_used as f32 / context_window as f32;
-            let compressed = compress_tool_output(&text, max_tool_output, fill, 0.0, None, None).await;
+            let compressed =
+                compress_tool_output(&text, max_tool_output, fill, 0.0, None, None).await;
 
             let saved = size - compressed.len();
             total_raw += size;
@@ -2515,7 +2538,11 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         // Old tool call pair (c1) dropped, reasoning message kept,
         // system prompt kept, recent pair kept
         // system + reasoning + c2_call + c2_output = 4
-        assert_eq!(input.len(), 4, "should drop old tool pair but keep messages");
+        assert_eq!(
+            input.len(),
+            4,
+            "should drop old tool pair but keep messages"
+        );
 
         // First item is system prompt
         assert!(matches!(&input[0], InputItem::Message(_)));

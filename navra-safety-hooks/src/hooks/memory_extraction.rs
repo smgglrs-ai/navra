@@ -151,7 +151,10 @@ fn extract_text_length(result: &CallToolResult) -> usize {
         .content
         .iter()
         .filter_map(|c| match c {
-            Content { raw: RawContent::Text(t), .. } => Some(t.text.len()),
+            Content {
+                raw: RawContent::Text(t),
+                ..
+            } => Some(t.text.len()),
             _ => None,
         })
         .sum()
@@ -161,7 +164,11 @@ fn extract_text_length(result: &CallToolResult) -> usize {
 fn extract_text_content(result: &CallToolResult, max_len: usize) -> String {
     let mut buf = String::new();
     for content in &result.content {
-        if let Content { raw: RawContent::Text(t), .. } = content {
+        if let Content {
+            raw: RawContent::Text(t),
+            ..
+        } = content
+        {
             if buf.len() + t.text.len() > max_len {
                 let remaining = max_len.saturating_sub(buf.len());
                 if remaining > 0 {

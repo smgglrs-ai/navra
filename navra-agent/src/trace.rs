@@ -136,6 +136,7 @@ impl TraceExporter {
     ///
     /// Reconstructs Hermes-format messages from the tool blocks and
     /// final response, attaching run metadata.
+    #[allow(clippy::too_many_arguments)]
     pub fn build_record(
         system_prompt: Option<&str>,
         user_prompt: &str,
@@ -595,17 +596,8 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         let nested = base.path().join("sub").join("traces");
 
-        let record = TraceExporter::build_record(
-            None,
-            "Hello",
-            &[],
-            "World",
-            "nested-run",
-            0,
-            0,
-            0,
-            true,
-        );
+        let record =
+            TraceExporter::build_record(None, "Hello", &[], "World", "nested-run", 0, 0, 0, true);
 
         record.write_to_dir(&nested).unwrap();
         assert!(nested.join("nested-run.jsonl").exists());

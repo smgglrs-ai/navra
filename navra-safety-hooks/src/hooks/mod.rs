@@ -90,6 +90,7 @@ pub struct ModelCallContext {
 
 /// Decision returned by a hook in the pre-model-call phase.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum PreModelDecision {
     Continue,
     ModifyRequest(CreateResponseRequest),
@@ -98,6 +99,7 @@ pub enum PreModelDecision {
 
 /// Decision returned by a hook in the post-model-call phase.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum PostModelDecision {
     Continue,
     ModifyResponse(ModelResponse),
@@ -107,6 +109,7 @@ pub enum PostModelDecision {
 
 /// Outcome of running pre-model-call hooks through the pipeline.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum PreModelOutcome {
     Proceed(CreateResponseRequest),
     Blocked(String),

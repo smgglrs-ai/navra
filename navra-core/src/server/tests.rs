@@ -133,7 +133,11 @@ async fn call_module_tool() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("test_ping"); p.arguments = Some(serde_json::Map::new()); p },
+            {
+                let mut p = CallToolParams::new("test_ping");
+                p.arguments = Some(serde_json::Map::new());
+                p
+            },
             test_ctx(),
         )
         .await;
@@ -175,7 +179,16 @@ async fn call_registered_tool() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "hello"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "hello"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             test_ctx(),
         )
         .await;
@@ -191,10 +204,7 @@ async fn call_registered_tool() {
 async fn call_unknown_tool() {
     let server = test_builder().build();
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("nonexistent"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("nonexistent"), test_ctx())
         .await;
     assert!(result.is_error == Some(true));
 }
@@ -202,10 +212,20 @@ async fn call_unknown_tool() {
 #[test]
 fn handle_initialize_creates_session() {
     let server = test_builder().name("test").build();
-    let params = { let mut p = crate::protocol::InitializeParams::new(Default::default(), crate::protocol::ClientInfo::new("client", "")); p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28; p };
+    let params = {
+        let mut p = crate::protocol::InitializeParams::new(
+            Default::default(),
+            crate::protocol::ClientInfo::new("client", ""),
+        );
+        p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28;
+        p
+    };
 
     let (result, session_id) = server.handle_initialize(params, test_agent()).unwrap();
-    assert_eq!(result.protocol_version, crate::protocol::ProtocolVersion::V_2026_07_28);
+    assert_eq!(
+        result.protocol_version,
+        crate::protocol::ProtocolVersion::V_2026_07_28
+    );
     assert_eq!(result.server_info.name, "test");
     assert_eq!(server.sessions().count(), 1);
     assert!(!session_id.is_empty());
@@ -215,7 +235,14 @@ fn handle_initialize_creates_session() {
 #[test]
 fn handle_initialize_accepts_any_valid_protocol_version() {
     let server = test_builder().name("test").build();
-    let params = { let mut p = crate::protocol::InitializeParams::new(Default::default(), crate::protocol::ClientInfo::new("client", "")); p.protocol_version = crate::protocol::ProtocolVersion::V_2024_11_05; p };
+    let params = {
+        let mut p = crate::protocol::InitializeParams::new(
+            Default::default(),
+            crate::protocol::ClientInfo::new("client", ""),
+        );
+        p.protocol_version = crate::protocol::ProtocolVersion::V_2024_11_05;
+        p
+    };
 
     let result = server.handle_initialize(params, test_agent());
     assert!(result.is_ok());
@@ -224,7 +251,14 @@ fn handle_initialize_accepts_any_valid_protocol_version() {
 #[test]
 fn handle_initialize_rejects_empty_client_name() {
     let server = test_builder().name("test").build();
-    let params = { let mut p = crate::protocol::InitializeParams::new(Default::default(), crate::protocol::ClientInfo::new("", "")); p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28; p };
+    let params = {
+        let mut p = crate::protocol::InitializeParams::new(
+            Default::default(),
+            crate::protocol::ClientInfo::new("", ""),
+        );
+        p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28;
+        p
+    };
 
     let err = server.handle_initialize(params, test_agent()).unwrap_err();
     assert!(err.contains("client_info"));
@@ -245,15 +279,28 @@ async fn safety_filter_redacts_secrets() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             test_ctx(),
         )
         .await;
 
     assert!(result.is_error != Some(true));
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("[REDACTED:aws-key]"));
-            assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("[REDACTED:aws-key]"));
+        assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
     }
 }
 
@@ -271,7 +318,16 @@ async fn safety_filter_blocks_when_configured() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "SSN: 123-45-6789"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "SSN: 123-45-6789"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             test_ctx(),
         )
         .await;
@@ -288,15 +344,16 @@ async fn no_safety_profile_passes_through() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
 
     // No safety profile configured → content passes through unmodified
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("AKIAIOSFODNN7EXAMPLE"));
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("AKIAIOSFODNN7EXAMPLE"));
     }
 }
 
@@ -306,11 +363,9 @@ fn greeting_prompt_def() -> crate::protocol::PromptDefinition {
     crate::protocol::PromptDefinition::new(
         "greeting",
         Some("A greeting prompt"),
-        Some(vec![
-            crate::protocol::PromptArgument::new("name")
-                .with_description("Name to greet")
-                .with_required(true),
-        ]),
+        Some(vec![crate::protocol::PromptArgument::new("name")
+            .with_description("Name to greet")
+            .with_required(true)]),
     )
 }
 
@@ -321,12 +376,11 @@ fn greeting_prompt_handler() -> PromptHandler {
                 .get("name")
                 .cloned()
                 .unwrap_or_else(|| "world".to_string());
-            crate::protocol::GetPromptResult::new(vec![
-                crate::protocol::PromptMessage::new_text(
-                    crate::protocol::PromptRole::User,
-                    format!("Hello, {name}!"),
-                ),
-            ]).with_description("A greeting")
+            crate::protocol::GetPromptResult::new(vec![crate::protocol::PromptMessage::new_text(
+                crate::protocol::PromptRole::User,
+                format!("Hello, {name}!"),
+            )])
+            .with_description("A greeting")
         })
     })
 }
@@ -367,7 +421,10 @@ async fn call_registered_prompt() {
             {
                 let mut p = crate::protocol::GetPromptParams::new("greeting");
                 let mut args = serde_json::Map::new();
-                args.insert("name".to_string(), serde_json::Value::String("Alice".to_string()));
+                args.insert(
+                    "name".to_string(),
+                    serde_json::Value::String("Alice".to_string()),
+                );
                 p.arguments = Some(args);
                 p
             },
@@ -583,10 +640,17 @@ async fn kernel_resource_proc_returns_json() {
         .await
         .unwrap();
     assert_eq!(
-        match &result.contents[0] { navra_protocol::ResourceContent::TextResourceContents { mime_type, .. } => mime_type.clone(), _ => panic!("expected text resource") },
+        match &result.contents[0] {
+            navra_protocol::ResourceContent::TextResourceContents { mime_type, .. } =>
+                mime_type.clone(),
+            _ => panic!("expected text resource"),
+        },
         Some("application/json".to_string())
     );
-    let text = match &result.contents[0] { navra_protocol::ResourceContent::TextResourceContents { text, .. } => text.as_str(), _ => panic!("expected text resource") };
+    let text = match &result.contents[0] {
+        navra_protocol::ResourceContent::TextResourceContents { text, .. } => text.as_str(),
+        _ => panic!("expected text resource"),
+    };
     let parsed: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
     assert!(parsed.is_empty());
 }
@@ -606,7 +670,10 @@ async fn kernel_resource_proc_shows_active_agents() {
         )
         .await
         .unwrap();
-    let text = match &result.contents[0] { navra_protocol::ResourceContent::TextResourceContents { text, .. } => text.as_str(), _ => panic!("expected text resource") };
+    let text = match &result.contents[0] {
+        navra_protocol::ResourceContent::TextResourceContents { text, .. } => text.as_str(),
+        _ => panic!("expected text resource"),
+    };
     let parsed: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed[0]["name"], "test-agent");
@@ -624,7 +691,10 @@ async fn kernel_resource_ifc_labels_returns_json() {
         )
         .await
         .unwrap();
-    let text = match &result.contents[0] { navra_protocol::ResourceContent::TextResourceContents { text, .. } => text.as_str(), _ => panic!("expected text resource") };
+    let text = match &result.contents[0] {
+        navra_protocol::ResourceContent::TextResourceContents { text, .. } => text.as_str(),
+        _ => panic!("expected text resource"),
+    };
     let _: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
 }
 
@@ -639,7 +709,10 @@ async fn kernel_resource_audit_recent_returns_json() {
         )
         .await
         .unwrap();
-    let text = match &result.contents[0] { navra_protocol::ResourceContent::TextResourceContents { text, .. } => text.as_str(), _ => panic!("expected text resource") };
+    let text = match &result.contents[0] {
+        navra_protocol::ResourceContent::TextResourceContents { text, .. } => text.as_str(),
+        _ => panic!("expected text resource"),
+    };
     let _: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
 }
 
@@ -679,7 +752,9 @@ async fn kernel_resource_template_capabilities_matches() {
     let server = test_builder().build();
     let result = server
         .handle_read_resource(
-            crate::protocol::ReadResourceParams::new("navra://proc/my-agent/capabilities".to_string()),
+            crate::protocol::ReadResourceParams::new(
+                "navra://proc/my-agent/capabilities".to_string(),
+            ),
             &test_agent(),
             "test-session",
         )
@@ -710,15 +785,16 @@ async fn tool_permissions_deny_blocks_tool() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
 
     assert!(result.is_error == Some(true));
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("Permission denied"));
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("Permission denied"));
     }
 }
 
@@ -743,10 +819,7 @@ async fn tool_permissions_allow_passes_through() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
 
     assert!(result.is_error != Some(true));
@@ -777,15 +850,16 @@ async fn tool_permissions_approve_returns_approval_required() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
 
     assert!(result.is_error == Some(true));
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("Approval required"));
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("Approval required"));
     }
 }
 
@@ -799,10 +873,7 @@ async fn no_tool_permissions_allows_all() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
 
     assert!(result.is_error != Some(true));
@@ -844,10 +915,7 @@ async fn cap_token_allows_matching_tool() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            cap_ctx(vec!["echo", "file_*"]),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), cap_ctx(vec!["echo", "file_*"]))
         .await;
 
     assert!(result.is_error != Some(true));
@@ -887,8 +955,12 @@ async fn cap_token_denies_unmatched_tool() {
         .await;
 
     assert!(result.is_error == Some(true));
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("not in capability token"));
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("not in capability token"));
     }
 }
 
@@ -915,10 +987,7 @@ async fn cap_token_bypasses_tool_permissions() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            cap_ctx(vec!["echo"]),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), cap_ctx(vec!["echo"]))
         .await;
 
     // Cap token allows — tool_permissions not consulted
@@ -943,12 +1012,20 @@ async fn dispatch_request(
 
     match method {
         "initialize" => {
-            let p: crate::protocol::InitializeParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
-                Some(p) => p,
-                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid initialize params")),
-            };
+            let p: crate::protocol::InitializeParams =
+                match params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid initialize params"),
+                        )
+                    }
+                };
             match server.handle_initialize(p, agent) {
-                Ok((result, _sid)) => JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap()),
+                Ok((result, _sid)) => {
+                    JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
+                }
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             }
         }
@@ -996,10 +1073,16 @@ async fn dispatch_request_inner(
         }
 
         "tools/call" => {
-            let p: crate::protocol::CallToolParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
-                Some(p) => p,
-                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid tool call params")),
-            };
+            let p: crate::protocol::CallToolParams =
+                match params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid tool call params"),
+                        )
+                    }
+                };
             let mut ctx = crate::auth::CallContext::new(agent.clone(), sid.to_string());
             let persisted_label = server.sessions().context_label(sid);
             ctx.taint.absorb(persisted_label);
@@ -1024,10 +1107,16 @@ async fn dispatch_request_inner(
         }
 
         "resources/read" => {
-            let p: crate::protocol::ReadResourceParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
-                Some(p) => p,
-                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid resource read params")),
-            };
+            let p: crate::protocol::ReadResourceParams =
+                match params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid resource read params"),
+                        )
+                    }
+                };
             match server.handle_read_resource(p, &agent, &sid).await {
                 Ok(result) => JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap()),
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
@@ -1043,10 +1132,16 @@ async fn dispatch_request_inner(
         }
 
         "prompts/get" => {
-            let p: crate::protocol::GetPromptParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
-                Some(p) => p,
-                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid prompt get params")),
-            };
+            let p: crate::protocol::GetPromptParams =
+                match params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid prompt get params"),
+                        )
+                    }
+                };
             match server.handle_get_prompt(p, &agent, &sid).await {
                 Ok(result) => JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap()),
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
@@ -1054,33 +1149,55 @@ async fn dispatch_request_inner(
         }
 
         "completion/complete" => {
-            let p: crate::protocol::CompleteParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
-                Some(p) => p,
-                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid completion/complete params")),
-            };
+            let p: crate::protocol::CompleteParams =
+                match params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid completion/complete params"),
+                        )
+                    }
+                };
             let result = server.handle_complete(p);
-            JsonRpcResponse::success(id, serde_json::json!({
-                "completion": {
-                    "values": result.completion.values,
-                    "total": result.completion.total,
-                    "hasMore": result.completion.has_more,
-                }
-            }))
+            JsonRpcResponse::success(
+                id,
+                serde_json::json!({
+                    "completion": {
+                        "values": result.completion.values,
+                        "total": result.completion.total,
+                        "hasMore": result.completion.has_more,
+                    }
+                }),
+            )
         }
 
         "logging/setLevel" => {
-            let p: crate::protocol::SetLevelParams = match params.and_then(|p| serde_json::from_value(p).ok()) {
-                Some(p) => p,
-                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Invalid logging/setLevel params")),
-            };
+            let p: crate::protocol::SetLevelParams =
+                match params.and_then(|p| serde_json::from_value(p).ok()) {
+                    Some(p) => p,
+                    None => {
+                        return JsonRpcResponse::error(
+                            id,
+                            JsonRpcError::invalid_params("Invalid logging/setLevel params"),
+                        )
+                    }
+                };
             server.handle_set_log_level(p, &sid);
             JsonRpcResponse::success(id, serde_json::json!({}))
         }
 
         "resources/subscribe" => {
-            let uri = match params.and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from))) {
+            let uri = match params
+                .and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from)))
+            {
                 Some(u) => u,
-                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Missing 'uri' parameter")),
+                None => {
+                    return JsonRpcResponse::error(
+                        id,
+                        JsonRpcError::invalid_params("Missing 'uri' parameter"),
+                    )
+                }
             };
             match server.handle_resource_subscribe(&uri, &sid) {
                 Ok(()) => JsonRpcResponse::success(id, serde_json::json!({})),
@@ -1089,9 +1206,16 @@ async fn dispatch_request_inner(
         }
 
         "resources/unsubscribe" => {
-            let uri = match params.and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from))) {
+            let uri = match params
+                .and_then(|p| p.get("uri").and_then(|u| u.as_str().map(String::from)))
+            {
                 Some(u) => u,
-                None => return JsonRpcResponse::error(id, JsonRpcError::invalid_params("Missing 'uri' parameter")),
+                None => {
+                    return JsonRpcResponse::error(
+                        id,
+                        JsonRpcError::invalid_params("Missing 'uri' parameter"),
+                    )
+                }
             };
             match server.handle_resource_unsubscribe(&uri, &sid) {
                 Ok(()) => JsonRpcResponse::success(id, serde_json::json!({})),
@@ -1111,7 +1235,14 @@ fn init_test_session() -> (std::sync::Arc<super::McpServer>, String) {
             .name("test")
             .build(),
     );
-    let params = { let mut p = crate::protocol::InitializeParams::new(Default::default(), crate::protocol::ClientInfo::new("test-client", "")); p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28; p };
+    let params = {
+        let mut p = crate::protocol::InitializeParams::new(
+            Default::default(),
+            crate::protocol::ClientInfo::new("test-client", ""),
+        );
+        p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28;
+        p
+    };
     let (_, session_id) = server.handle_initialize(params, test_agent()).unwrap();
     (server, session_id)
 }
@@ -1260,7 +1391,14 @@ fn init_test_session_with_modules() -> (std::sync::Arc<super::McpServer>, String
             .module(ResourceModule)
             .build(),
     );
-    let params = { let mut p = crate::protocol::InitializeParams::new(Default::default(), crate::protocol::ClientInfo::new("test-client", "")); p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28; p };
+    let params = {
+        let mut p = crate::protocol::InitializeParams::new(
+            Default::default(),
+            crate::protocol::ClientInfo::new("test-client", ""),
+        );
+        p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28;
+        p
+    };
     let (_, session_id) = server.handle_initialize(params, test_agent()).unwrap();
     (server, session_id)
 }
@@ -1486,7 +1624,16 @@ async fn ifc_deny_write_after_untrusted_read() {
     let mut ctx = test_ctx();
     let read_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/file.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/file.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx.clone(),
         )
         .await;
@@ -1498,13 +1645,26 @@ async fn ifc_deny_write_after_untrusted_read() {
     // Second call: write — should be denied by IFC
     let write_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_write"); p.arguments = Some(serde_json::json!({"path": "/tmp/out.md", "content": "exfiltrated"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/out.md", "content": "exfiltrated"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx,
         )
         .await;
     assert!(write_result.is_error == Some(true));
-    { let t = write_result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("Permission denied"));
+    {
+        let t = write_result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("Permission denied"));
     }
 }
 
@@ -1519,10 +1679,7 @@ async fn ifc_allow_write_without_taint() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("file_write"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("file_write"), test_ctx())
         .await;
     assert!(result.is_error != Some(true));
 }
@@ -1540,12 +1697,12 @@ async fn ifc_no_policy_denies_tainted_write() {
     ctx.taint.absorb(crate::ifc::DataLabel::UNTRUSTED_SENSITIVE);
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("file_write"),
-            ctx,
-        )
+        .handle_call_tool(CallToolParams::new("file_write"), ctx)
         .await;
-    assert!(result.is_error == Some(true), "missing IFC policy should default to deny");
+    assert!(
+        result.is_error == Some(true),
+        "missing IFC policy should default to deny"
+    );
 }
 
 #[tokio::test]
@@ -1558,10 +1715,7 @@ async fn ifc_read_tool_auto_labels_untrusted() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("file_read"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("file_read"), test_ctx())
         .await;
 
     // The result should be labeled Untrusted (confidentiality stays Public)
@@ -1580,11 +1734,19 @@ async fn ifc_trusted_path_keeps_trusted_label() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/home/user/Code/project/main.rs"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/home/user/Code/project/main.rs"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             test_ctx(),
         )
         .await;
-
 }
 
 #[tokio::test]
@@ -1599,11 +1761,19 @@ async fn ifc_untrusted_path_still_labeled_untrusted() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/untrusted.txt"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/untrusted.txt"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             test_ctx(),
         )
         .await;
-
 }
 
 #[tokio::test]
@@ -1617,12 +1787,8 @@ async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("file_read"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("file_read"), test_ctx())
         .await;
-
 }
 
 #[tokio::test]
@@ -1644,7 +1810,16 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
     let ctx = CallContext::new(test_agent(), sid);
     let _read_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/home/user/Code/main.rs"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/home/user/Code/main.rs"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx,
         )
         .await;
@@ -1688,14 +1863,27 @@ async fn hook_safety_filter_via_pipeline() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "key = AKIAIOSFODNN7EXAMPLE"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             test_ctx(),
         )
         .await;
 
     assert!(result.is_error != Some(true));
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("[REDACTED:aws-key]"));
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("[REDACTED:aws-key]"));
     }
 }
 
@@ -1728,19 +1916,20 @@ async fn hook_blocks_tool_call() {
         .build();
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
 
     assert!(result.is_error == Some(true));
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(
-                t.text.contains("Permission denied"),
-                "Expected sanitized denial, got: {}",
-                t.text
-            );
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(
+            t.text.contains("Permission denied"),
+            "Expected sanitized denial, got: {}",
+            t.text
+        );
     }
 }
 
@@ -1759,14 +1948,27 @@ async fn legacy_safety_filter_still_works_without_hooks() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("echo"); p.arguments = Some(serde_json::json!({"message": "AKIAIOSFODNN7EXAMPLE"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "AKIAIOSFODNN7EXAMPLE"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             test_ctx(),
         )
         .await;
 
     assert!(result.is_error != Some(true));
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("[REDACTED:aws-key]"));
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("[REDACTED:aws-key]"));
     }
 }
 
@@ -1784,15 +1986,16 @@ async fn paused_server_rejects_tool_calls() {
     assert!(server.is_paused());
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
 
     assert!(result.is_error == Some(true));
-    { let t = result.content[0].raw.as_text().expect("expected text content");
-            assert!(t.text.contains("paused"));
+    {
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("paused"));
     }
 }
 
@@ -1809,10 +2012,7 @@ async fn resumed_server_accepts_tool_calls() {
     assert!(!server.is_paused());
 
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
 
     assert!(result.is_error != Some(true));
@@ -2014,10 +2214,7 @@ async fn dynamic_grant_overrides_tool_deny() {
 
     // Without dynamic grant, tool is denied
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
     assert!(result.is_error == Some(true));
 
@@ -2042,10 +2239,7 @@ async fn dynamic_grant_overrides_tool_deny() {
 
     // Now the tool should be allowed via dynamic grant
     let result = server
-        .handle_call_tool(
-            CallToolParams::new("echo"),
-            test_ctx(),
-        )
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
     assert!(result.is_error != Some(true));
     match &result.content[0] {

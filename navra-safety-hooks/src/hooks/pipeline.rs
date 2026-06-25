@@ -367,7 +367,10 @@ mod tests {
             _ctx: &CallContext,
         ) -> HookDecision {
             let text = match &result.content[0] {
-                navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => &t.text,
+                navra_protocol::Content {
+                    raw: navra_protocol::RawContent::Text(t),
+                    ..
+                } => &t.text,
                 _ => return HookDecision::Continue,
             };
             HookDecision::ModifyResult(CallToolResult::text(format!("{}{}", text, self.suffix)))

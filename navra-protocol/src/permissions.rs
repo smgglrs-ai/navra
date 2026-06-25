@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-/// MCP permission negotiation extension.
-///
-/// Adds four JSON-RPC methods to MCP:
-/// - `permissions/request` — server requests elevated permissions from client
-/// - `permissions/grant` — client grants the permission
-/// - `permissions/deny` — client denies the permission
-/// - `permissions/list` — list current permission grants for a session
+// MCP permission negotiation extension.
+//
+// Adds four JSON-RPC methods to MCP:
+// - permissions/request — server requests elevated permissions from client
+// - permissions/grant — client grants the permission
+// - permissions/deny — client denies the permission
+// - permissions/list — list current permission grants for a session
 
 // --- Scope ---
 

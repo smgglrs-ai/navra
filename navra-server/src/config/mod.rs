@@ -20,10 +20,10 @@ use std::path::PathBuf;
 
 pub use crate::grpc_manager::GrpcModuleConfig;
 pub use agents::{AgentConfig, NetworkPolicy, OpenApiAuthConfig, UpstreamConfig};
+pub use libraries::LibraryConfig;
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
 pub use permissions::{DomainRuleConfig, PermissionSet, PiiPatternConfig, ToolRuleConfig};
-pub use libraries::LibraryConfig;
 pub use server::{RegistryEntry, ServerConfig};
 
 pub use security::{

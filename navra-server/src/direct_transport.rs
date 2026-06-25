@@ -5,8 +5,8 @@
 //! a `Peer<RoleClient>` without any network I/O.
 
 use navra_core::auth::AgentIdentity;
-use navra_core::NavraHandler;
 use navra_core::McpServer;
+use navra_core::NavraHandler;
 use rmcp::service::ServiceExt;
 use std::sync::Arc;
 
@@ -40,6 +40,8 @@ pub(crate) async fn connect_direct_peer(
         .await
         .map_err(|e| format!("rmcp connect failed: {e}"))?;
     let peer = client.peer().clone();
-    tokio::spawn(async move { let _ = client.waiting().await; });
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
     Ok(peer)
 }

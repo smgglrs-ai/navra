@@ -99,12 +99,11 @@ impl ContentFilter for PrivacyRouter {
         // Phase 2: expensive ML detectors — skip when short-circuit fires
         #[cfg(feature = "onnx")]
         {
-            let skip_expensive = findings.len() >= self.short_circuit_threshold
-                || content.len() < MIN_NER_LENGTH;
+            let skip_expensive =
+                findings.len() >= self.short_circuit_threshold || content.len() < MIN_NER_LENGTH;
 
             if skip_expensive {
-                let has_expensive =
-                    self.ner_filter.is_some() || self.privacy_model.is_some();
+                let has_expensive = self.ner_filter.is_some() || self.privacy_model.is_some();
                 if has_expensive && !findings.is_empty() {
                     self.skipped_total.fetch_add(1, Ordering::Relaxed);
                     tracing::debug!(

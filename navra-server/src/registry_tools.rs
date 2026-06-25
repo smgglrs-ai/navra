@@ -114,10 +114,7 @@ pub fn registry_list_def() -> ToolDefinition {
         "registry_list",
         "List all configured external registries and their capabilities. \
          Shows name, type, endpoint, and status for each registry.",
-        tool_input_schema(
-            None,
-            None,
-        ),
+        tool_input_schema(None, None),
     )
 }
 
@@ -661,8 +658,7 @@ mod tests {
 
     /// Extract text from the first content item of a CallToolResult.
     fn result_text(result: &CallToolResult) -> &str {
-        navra_protocol::compat::content_as_text(&result.content[0])
-            .expect("expected text content")
+        navra_protocol::compat::content_as_text(&result.content[0]).expect("expected text content")
     }
 
     #[tokio::test]

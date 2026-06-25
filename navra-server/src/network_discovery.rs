@@ -40,11 +40,7 @@ pub fn known_server_domains(name: &str, command: &[String]) -> Option<Vec<String
     let name_lower = name.to_lowercase();
     let binary = command
         .first()
-        .and_then(|c| {
-            std::path::Path::new(c)
-                .file_name()
-                .and_then(|n| n.to_str())
-        })
+        .and_then(|c| std::path::Path::new(c).file_name().and_then(|n| n.to_str()))
         .unwrap_or("")
         .to_lowercase();
 
@@ -78,10 +74,7 @@ pub fn known_server_domains(name: &str, command: &[String]) -> Option<Vec<String
     }
 
     if name_lower.contains("jira") || name_lower.contains("atlassian") {
-        return Some(vec![
-            "*.atlassian.net".into(),
-            "*.atlassian.com".into(),
-        ]);
+        return Some(vec!["*.atlassian.net".into(), "*.atlassian.com".into()]);
     }
 
     if name_lower.contains("notion") || cmd_joined.contains("server-notion") {
@@ -134,7 +127,11 @@ pub fn discover_from_tools(tools: &[rmcp::model::Tool]) -> NetworkRequirements {
             }
         }
 
-        if let Some(props) = tool.input_schema.get("properties").and_then(|v| v.as_object()) {
+        if let Some(props) = tool
+            .input_schema
+            .get("properties")
+            .and_then(|v| v.as_object())
+        {
             for key in props.keys() {
                 let k = key.to_lowercase();
                 if k == "url" || k == "endpoint" || k == "uri" || k == "host" {
@@ -188,8 +185,8 @@ mod tests {
 
     #[test]
     fn known_filesystem_is_offline() {
-        let domains = known_server_domains("fs", &["npx".into(), "server-filesystem".into()])
-            .unwrap();
+        let domains =
+            known_server_domains("fs", &["npx".into(), "server-filesystem".into()]).unwrap();
         assert!(domains.is_empty());
     }
 
@@ -200,8 +197,8 @@ mod tests {
 
     #[test]
     fn known_slack() {
-        let domains = known_server_domains("slack", &["npx".into(), "server-slack".into()])
-            .unwrap();
+        let domains =
+            known_server_domains("slack", &["npx".into(), "server-slack".into()]).unwrap();
         assert!(domains.iter().any(|d| d.contains("slack.com")));
     }
 
@@ -229,7 +226,10 @@ mod tests {
             r#"{"type":"object","properties":{"path":{"type":"string"}}}"#,
         )];
         let reqs = discover_from_tools(&tools);
-        assert!(reqs.from_descriptions.iter().any(|d| d == "docs.example.com"));
+        assert!(reqs
+            .from_descriptions
+            .iter()
+            .any(|d| d == "docs.example.com"));
     }
 
     #[test]
@@ -240,7 +240,9 @@ mod tests {
             r#"{"type":"object","properties":{"url":{"type":"string"},"method":{"type":"string"}}}"#,
         )];
         let reqs = discover_from_tools(&tools);
-        assert!(reqs.url_accepting_tools.contains(&"http_request".to_string()));
+        assert!(reqs
+            .url_accepting_tools
+            .contains(&"http_request".to_string()));
     }
 
     #[test]
@@ -251,9 +253,6 @@ mod tests {
             url_accepting_tools: vec![],
         };
         let all = reqs.all_domains();
-        assert_eq!(
-            all.iter().filter(|d| *d == "api.github.com").count(),
-            1
-        );
+        assert_eq!(all.iter().filter(|d| *d == "api.github.com").count(), 1);
     }
 }

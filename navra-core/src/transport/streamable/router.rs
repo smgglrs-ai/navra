@@ -24,7 +24,9 @@ pub(crate) struct AppState {
     pub ws_idle_timeout_secs: u64,
 }
 
-fn build_mcp_service(server: Arc<McpServer>) -> StreamableHttpService<
+fn build_mcp_service(
+    server: Arc<McpServer>,
+) -> StreamableHttpService<
     NavraHandler,
     rmcp::transport::streamable_http_server::session::local::LocalSessionManager,
 > {
@@ -35,7 +37,8 @@ fn build_mcp_service(server: Arc<McpServer>) -> StreamableHttpService<
         .disable_allowed_hosts();
     StreamableHttpService::new(
         move || Ok(NavraHandler::new(server_for_factory.clone())),
-        rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default().into(),
+        rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default()
+            .into(),
         config,
     )
 }

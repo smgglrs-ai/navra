@@ -186,7 +186,11 @@ pub fn list_workflows(dir: &Path) -> Vec<String> {
     if let Ok(entries) = std::fs::read_dir(&workflows_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map(|e| e == "yaml" || e == "yml").unwrap_or(false) {
+            if path
+                .extension()
+                .map(|e| e == "yaml" || e == "yml")
+                .unwrap_or(false)
+            {
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                     names.push(stem.to_string());
                 }
@@ -266,18 +270,23 @@ pub fn intersect_permissions(
 /// Diff permissions between two bundle versions.
 ///
 /// Returns (added, removed) permission operations per upstream.
-pub fn diff_permissions(
-    old: &BundlePermissions,
-    new: &BundlePermissions,
-) -> PermissionDiff {
+pub fn diff_permissions(old: &BundlePermissions, new: &BundlePermissions) -> PermissionDiff {
     let mut added = HashMap::new();
     let mut removed = HashMap::new();
 
     // Check each upstream in new
     for (upstream, new_ops) in &new.default {
         let old_ops = old.default.get(upstream).cloned().unwrap_or_default();
-        let added_ops: Vec<String> = new_ops.iter().filter(|o| !old_ops.contains(o)).cloned().collect();
-        let removed_ops: Vec<String> = old_ops.iter().filter(|o| !new_ops.contains(o)).cloned().collect();
+        let added_ops: Vec<String> = new_ops
+            .iter()
+            .filter(|o| !old_ops.contains(o))
+            .cloned()
+            .collect();
+        let removed_ops: Vec<String> = old_ops
+            .iter()
+            .filter(|o| !new_ops.contains(o))
+            .cloned()
+            .collect();
         if !added_ops.is_empty() {
             added.insert(upstream.clone(), added_ops);
         }
@@ -421,7 +430,11 @@ workflows:
         let triage = &bundle.workflows["triage"];
         assert_eq!(triage.steps.len(), 2);
         assert_eq!(triage.steps[1].name, "respond");
-        assert!(triage.steps[1].permissions.get("gmail").unwrap().contains(&"send".to_string()));
+        assert!(triage.steps[1]
+            .permissions
+            .get("gmail")
+            .unwrap()
+            .contains(&"send".to_string()));
     }
 
     #[test]
@@ -486,11 +499,7 @@ preferences:
             "meta:\n  name: test-agent\n  version: '1.0.0'\n",
         )
         .unwrap();
-        std::fs::write(
-            bundle_dir.join("workflows/hello.yaml"),
-            "steps: []\n",
-        )
-        .unwrap();
+        std::fs::write(bundle_dir.join("workflows/hello.yaml"), "steps: []\n").unwrap();
 
         let workflows = list_workflows(&bundle_dir);
         assert_eq!(workflows, vec!["hello"]);
@@ -522,11 +531,17 @@ preferences:
     #[test]
     fn permission_intersection_basic() {
         let mut caller = HashMap::new();
-        caller.insert("gmail".to_string(), vec!["read".to_string(), "search".to_string()]);
+        caller.insert(
+            "gmail".to_string(),
+            vec!["read".to_string(), "search".to_string()],
+        );
         caller.insert("calendar".to_string(), vec!["read".to_string()]);
 
         let mut callee = HashMap::new();
-        callee.insert("gmail".to_string(), vec!["read".to_string(), "send".to_string()]);
+        callee.insert(
+            "gmail".to_string(),
+            vec!["read".to_string(), "send".to_string()],
+        );
         callee.insert("slack".to_string(), vec!["post".to_string()]);
 
         let result = intersect_permissions(&caller, &callee);
@@ -567,8 +582,14 @@ preferences:
             operations: vec![],
             default: {
                 let mut m = HashMap::new();
-                m.insert("gmail".to_string(), vec!["read".to_string(), "search".to_string()]);
-                m.insert("calendar".to_string(), vec!["read".to_string(), "delete".to_string()]);
+                m.insert(
+                    "gmail".to_string(),
+                    vec!["read".to_string(), "search".to_string()],
+                );
+                m.insert(
+                    "calendar".to_string(),
+                    vec!["read".to_string(), "delete".to_string()],
+                );
                 m
             },
         };
@@ -576,7 +597,14 @@ preferences:
             operations: vec![],
             default: {
                 let mut m = HashMap::new();
-                m.insert("gmail".to_string(), vec!["read".to_string(), "search".to_string(), "draft".to_string()]);
+                m.insert(
+                    "gmail".to_string(),
+                    vec![
+                        "read".to_string(),
+                        "search".to_string(),
+                        "draft".to_string(),
+                    ],
+                );
                 m.insert("calendar".to_string(), vec!["read".to_string()]);
                 m
             },
@@ -585,7 +613,10 @@ preferences:
         assert!(diff.has_additions());
         assert!(diff.has_removals());
         assert_eq!(diff.added.get("gmail").unwrap(), &vec!["draft".to_string()]);
-        assert_eq!(diff.removed.get("calendar").unwrap(), &vec!["delete".to_string()]);
+        assert_eq!(
+            diff.removed.get("calendar").unwrap(),
+            &vec!["delete".to_string()]
+        );
     }
 
     #[test]

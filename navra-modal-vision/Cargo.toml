@@ -29,3 +29,6 @@ onnx = ["navra-mcp/onnx"]
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
+
+[lints]
+workspace = true

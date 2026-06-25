@@ -116,7 +116,9 @@ pub async fn handle_build_test(
             return CallToolResult::error_msg(format!("Failed to execute cargo: {e}"));
         }
         Err(_) => {
-            return CallToolResult::error_msg(format!("Build timed out after {BUILD_TIMEOUT_SECS}s"));
+            return CallToolResult::error_msg(format!(
+                "Build timed out after {BUILD_TIMEOUT_SECS}s"
+            ));
         }
     };
 

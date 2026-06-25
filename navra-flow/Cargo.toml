@@ -35,3 +35,6 @@ navra-responses = { path = "../navra-responses" }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
+
+[lints]
+workspace = true

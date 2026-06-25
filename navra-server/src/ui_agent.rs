@@ -16,7 +16,6 @@ use navra_core::McpServer;
 use navra_memory::{Message, Role, Turn, WorkingMemory};
 use navra_model::ModelBackend;
 
-
 /// Thread-safe wrapper around WorkingMemory.
 ///
 /// rusqlite::Connection is !Send, so we wrap the entire WorkingMemory

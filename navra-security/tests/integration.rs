@@ -3,8 +3,8 @@
 //! Tests cross-module behavior: auth → permissions → IFC → hooks → safety.
 
 use axum::http::HeaderMap;
-use navra_protocol::Content;
 use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::Content;
 use navra_security::auth::capability::{
     build_delegated_payload, build_payload, decode_token, encode_token, resolve_capabilities,
     validate_delegation, CapabilitySet,
@@ -258,7 +258,10 @@ impl Hook for TestResultHook {
         result: &navra_protocol::CallToolResult,
         _ctx: &CallContext,
     ) -> HookDecision {
-        let text = result.content[0].raw.as_text().expect("expected text content");
+        let text = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
         HookDecision::ModifyResult(navra_protocol::CallToolResult::text(format!(
             "{}{}",
             text.text, self.suffix
@@ -316,7 +319,10 @@ async fn hook_pipeline_post_modifies_result() {
         .run_post("file_read", &serde_json::json!({}), original, &test_ctx())
         .await;
 
-    let t = result.content[0].raw.as_text().expect("expected text content");
+    let t = result.content[0]
+        .raw
+        .as_text()
+        .expect("expected text content");
     assert_eq!(t.text, "output [audited]");
 }
 

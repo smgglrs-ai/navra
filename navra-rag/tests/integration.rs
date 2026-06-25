@@ -110,7 +110,10 @@ fn all_tools_have_descriptions_and_object_schema() {
             "Tool '{}' missing description",
             def.name
         );
-        assert_eq!(def.input_schema.get("type").and_then(|v| v.as_str()), Some("object"));
+        assert_eq!(
+            def.input_schema.get("type").and_then(|v| v.as_str()),
+            Some("object")
+        );
     }
 }
 

@@ -9,7 +9,8 @@
 use navra_core::auth::{AgentIdentity, CallContext};
 use navra_core::ifc::{DataLabel, TaintedWritePolicy};
 use navra_core::protocol::{
-    CallToolParams, CallToolResult, ClientInfo, Content, InitializeParams, ProtocolVersion, ToolDefinition,
+    CallToolParams, CallToolResult, ClientInfo, Content, InitializeParams, ProtocolVersion,
+    ToolDefinition,
 };
 use navra_core::McpServer;
 use navra_protocol::compat::empty_input_schema;
@@ -80,7 +81,8 @@ fn build_ifc_server() -> McpServer {
 fn extract_var_id(result: &CallToolResult) -> Option<String> {
     for content in &result.content {
         match content {
-            c if c.raw.as_text().is_some() => { let t = c.raw.as_text().unwrap();
+            c if c.raw.as_text().is_some() => {
+                let t = c.raw.as_text().unwrap();
                 if let Some(line) = t.text.lines().find(|l| l.contains("_var: ")) {
                     let start = line.find("_var: ")? + 6;
                     let rest = &line[start..];
@@ -101,7 +103,8 @@ fn extract_var_id(result: &CallToolResult) -> Option<String> {
 fn is_ifc_error(result: &CallToolResult) -> bool {
     result.is_error == Some(true)
         && result.content.iter().any(|c| match c {
-            c if c.raw.as_text().is_some() => { let t = c.raw.as_text().unwrap();
+            c if c.raw.as_text().is_some() => {
+                let t = c.raw.as_text().unwrap();
                 t.text.contains("Permission denied")
                     || t.text.contains("Access denied")
                     || t.text.contains("Approval required")
@@ -124,7 +127,16 @@ async fn exfiltration_blocked_via_var_ref() {
     // Step 1: Read the poisoned file
     let read_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/poisoned.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx.clone(),
         )
         .await;
@@ -137,10 +149,15 @@ async fn exfiltration_blocked_via_var_ref() {
         .handle_call_tool(
             {
                 let mut p = CallToolParams::new("file_write");
-                p.arguments = Some(serde_json::json!({
-"path": "/tmp/exfil.txt",
-"content": format!("var://{var_id}"),
-}).as_object().unwrap().clone());
+                p.arguments = Some(
+                    serde_json::json!({
+                    "path": "/tmp/exfil.txt",
+                    "content": format!("var://{var_id}"),
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
                 p
             },
             ctx,
@@ -165,7 +182,16 @@ async fn exfiltration_blocked_via_context_label() {
     // Step 1: Read — taints the context_label via auto-store + session update
     let read_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/poisoned.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             session_ctx(&sid),
         )
         .await;
@@ -179,10 +205,19 @@ async fn exfiltration_blocked_via_context_label() {
 
     let write_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_write"); p.arguments = Some(serde_json::json!({
-                    "path": "/tmp/exfil.txt",
-                    "content": "I'll just paste the secret here: SECRET_DATA_abc123",
-                }).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({
+                        "path": "/tmp/exfil.txt",
+                        "content": "I'll just paste the secret here: SECRET_DATA_abc123",
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                p
+            },
             write_ctx,
         )
         .await;
@@ -204,7 +239,16 @@ async fn clean_write_allowed_after_tainted_read() {
     // Read 1: poisoned file → UNTRUSTED_SENSITIVE
     let _tainted_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/poisoned.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx.clone(),
         )
         .await;
@@ -212,10 +256,7 @@ async fn clean_write_allowed_after_tainted_read() {
     // Use navra_var_list (gateway tool, excluded from is_external_read_tool
     // → result is TRUSTED_PUBLIC)
     let list_result = server
-        .handle_call_tool(
-            CallToolParams::new("navra_var_list"),
-            ctx.clone(),
-        )
+        .handle_call_tool(CallToolParams::new("navra_var_list"), ctx.clone())
         .await;
     assert!(list_result.is_error != Some(true));
     let clean_var_id = extract_var_id(&list_result).expect("var_list should produce a var ID");
@@ -226,10 +267,15 @@ async fn clean_write_allowed_after_tainted_read() {
         .handle_call_tool(
             {
                 let mut p = CallToolParams::new("file_write");
-                p.arguments = Some(serde_json::json!({
-"path": "/tmp/output.txt",
-"content": format!("var://{clean_var_id}"),
-}).as_object().unwrap().clone());
+                p.arguments = Some(
+                    serde_json::json!({
+                    "path": "/tmp/output.txt",
+                    "content": format!("var://{clean_var_id}"),
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
                 p
             },
             ctx,
@@ -253,7 +299,16 @@ async fn var_inspect_taints_context() {
     // Read poisoned file — auto-stored as untrusted variable
     let read_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/poisoned.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             session_ctx(&sid),
         )
         .await;
@@ -262,7 +317,16 @@ async fn var_inspect_taints_context() {
     // Inspect the variable — this taints the context_label
     let inspect_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("navra_var_inspect"); p.arguments = Some(serde_json::json!({"id": var_id}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("navra_var_inspect");
+                p.arguments = Some(
+                    serde_json::json!({"id": var_id})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             session_ctx(&sid),
         )
         .await;
@@ -275,10 +339,19 @@ async fn var_inspect_taints_context() {
 
     let write_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_write"); p.arguments = Some(serde_json::json!({
-                    "path": "/tmp/exfil.txt",
-                    "content": "exfiltrated data",
-                }).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({
+                        "path": "/tmp/exfil.txt",
+                        "content": "exfiltrated data",
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                p
+            },
             write_ctx,
         )
         .await;
@@ -297,7 +370,16 @@ async fn auto_store_produces_var_id() {
 
     let result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/file.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/file.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx,
         )
         .await;
@@ -322,30 +404,46 @@ async fn var_list_shows_stored_variables() {
     // Read two files to create two variables
     server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/file1.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/file1.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx.clone(),
         )
         .await;
     server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/file2.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/file2.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx.clone(),
         )
         .await;
 
     // List variables
     let list_result = server
-        .handle_call_tool(
-            CallToolParams::new("navra_var_list"),
-            ctx,
-        )
+        .handle_call_tool(CallToolParams::new("navra_var_list"), ctx)
         .await;
     assert!(list_result.is_error != Some(true));
 
     // Parse the JSON list — should have at least 2 user variables
     // (plus the var_list result itself gets auto-stored)
     match &list_result.content[0] {
-        c if c.raw.as_text().is_some() => { let t = c.raw.as_text().unwrap();
+        c if c.raw.as_text().is_some() => {
+            let t = c.raw.as_text().unwrap();
             let vars: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
             // At least 2 from file_read (the var_list call itself hasn't been stored yet)
             assert!(
@@ -373,7 +471,16 @@ async fn context_label_persists_across_calls() {
     // Read poisoned file — should taint context_label
     server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/poisoned.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             session_ctx(&sid),
         )
         .await;
@@ -396,7 +503,16 @@ async fn multiple_reads_mixed_labels_per_value() {
     // Read poisoned file
     let poisoned = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/poisoned.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx.clone(),
         )
         .await;
@@ -405,7 +521,16 @@ async fn multiple_reads_mixed_labels_per_value() {
     // Read clean file (still auto-labeled UNTRUSTED by is_external_read_tool)
     let clean = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/clean.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/clean.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx.clone(),
         )
         .await;
@@ -416,10 +541,15 @@ async fn multiple_reads_mixed_labels_per_value() {
         .handle_call_tool(
             {
                 let mut p = CallToolParams::new("file_write");
-                p.arguments = Some(serde_json::json!({
-"path": "/tmp/out1.txt",
-"content": format!("var://{tainted_var}"),
-}).as_object().unwrap().clone());
+                p.arguments = Some(
+                    serde_json::json!({
+                    "path": "/tmp/out1.txt",
+                    "content": format!("var://{tainted_var}"),
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
                 p
             },
             ctx.clone(),
@@ -436,10 +566,15 @@ async fn multiple_reads_mixed_labels_per_value() {
         .handle_call_tool(
             {
                 let mut p = CallToolParams::new("file_write");
-                p.arguments = Some(serde_json::json!({
-"path": "/tmp/out2.txt",
-"content": format!("var://{clean_var}"),
-}).as_object().unwrap().clone());
+                p.arguments = Some(
+                    serde_json::json!({
+                    "path": "/tmp/out2.txt",
+                    "content": format!("var://{clean_var}"),
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
                 p
             },
             ctx,
@@ -602,15 +737,28 @@ async fn llm_exfiltration_attempt_blocked() {
     // Step 1: Read the poisoned file
     let read_result = server
         .handle_call_tool(
-            { let mut p = CallToolParams::new("file_read"); p.arguments = Some(serde_json::json!({"path": "/tmp/poisoned.md"}).as_object().unwrap().clone()); p },
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
             ctx.clone(),
         )
         .await;
     assert!(read_result.is_error != Some(true));
     let var_id = extract_var_id(&read_result).unwrap();
 
-    let file_content = read_result.content[0].raw.as_text()
-        .expect("expected text content").text.clone();
+    let file_content = read_result.content[0]
+        .raw
+        .as_text()
+        .expect("expected text content")
+        .text
+        .clone();
 
     // Step 2: Ask the LLM what to do with this file content
     use navra_model::{
@@ -792,10 +940,15 @@ async fn llm_exfiltration_attempt_blocked() {
                     .handle_call_tool(
                         {
                             let mut p = CallToolParams::new("file_write");
-                            p.arguments = Some(serde_json::json!({
-"path": target_path,
-"content": format!("var://{var_id}"),
-}).as_object().unwrap().clone());
+                            p.arguments = Some(
+                                serde_json::json!({
+                                "path": target_path,
+                                "content": format!("var://{var_id}"),
+                                })
+                                .as_object()
+                                .unwrap()
+                                .clone(),
+                            );
                             p
                         },
                         ctx.clone(),
@@ -803,8 +956,12 @@ async fn llm_exfiltration_attempt_blocked() {
                     .await;
 
                 let ifc_blocked = is_ifc_error(&write_result);
-                let error_msg = write_result.content[0].raw.as_text()
-                    .expect("expected text content").text.clone();
+                let error_msg = write_result.content[0]
+                    .raw
+                    .as_text()
+                    .expect("expected text content")
+                    .text
+                    .clone();
                 eprintln!();
                 eprintln!("    Actual result:");
                 eprintln!("      Blocked: {}", ifc_blocked);

@@ -119,8 +119,8 @@ impl OpenApiModule {
     /// Remove tools marked "deny" in tool_overrides so they never
     /// appear in tools/list or tool_operations().
     pub fn apply_overrides(&mut self, overrides: &HashMap<String, String>) {
-        self.tools
-            .retain(|parsed| match overrides.get(parsed.definition.name.as_ref()) {
+        self.tools.retain(
+            |parsed| match overrides.get(parsed.definition.name.as_ref()) {
                 Some(v) if v == "deny" => {
                     tracing::info!(
                         tool = %parsed.definition.name,
@@ -129,7 +129,8 @@ impl OpenApiModule {
                     false
                 }
                 _ => true,
-            });
+            },
+        );
     }
 
     pub fn tool_operations(&self) -> HashMap<String, ToolOperation> {

@@ -593,7 +593,10 @@ impl Hook for StatisticalGuardrailHook {
             .content
             .iter()
             .filter_map(|c| match c {
-                navra_protocol::Content { raw: navra_protocol::RawContent::Text(t), .. } => Some(t.text.as_str()),
+                navra_protocol::Content {
+                    raw: navra_protocol::RawContent::Text(t),
+                    ..
+                } => Some(t.text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
